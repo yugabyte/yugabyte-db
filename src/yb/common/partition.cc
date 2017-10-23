@@ -45,6 +45,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_constants.h"
+#include "yb/common/ql_value.h"
 
 namespace yb {
 
@@ -198,7 +199,7 @@ void PartitionSchema::ToPB(PartitionSchemaPB* pb) const {
     case YBHashSchema::kRedisHash:
       pb->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
       break;
-    case  YBHashSchema::kDefault:
+    case  YBHashSchema::kKuduHashSchema:
       pb->set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
       break;
   }
@@ -222,17 +223,20 @@ Status PartitionSchema::EncodeRedisKey(const YBPartialRow& row, string* buf) con
 
 Status PartitionSchema::EncodeRedisKey(const ConstContiguousRow& row, string* buf) const {
   auto slice = reinterpret_cast<const Slice*>(row.cell_ptr(0));
+  return EncodeRedisKey(*slice, buf);
+}
 
+Status PartitionSchema::EncodeRedisKey(const Slice& slice, string* buf) const {
   size_t i = 0;
-  for (i = 0; i < slice->size(); i++) {
-    if (slice->data()[i] == '{') break;
+  for (i = 0; i < slice.size(); i++) {
+    if (slice.data()[i] == '{') break;
   }
 
-  for (size_t j = i + 1; j < slice->size(); j++) {
-    if (slice->data()[j] == '}') {
+  for (size_t j = i + 1; j < slice.size(); j++) {
+    if (slice.data()[j] == '}') {
       if (j - i > 1) {
         *buf = EncodeMultiColumnHashValue(
-            crc16(&slice->data()[i + 1], j - i - 1) % kRedisClusterSlots);
+            crc16(&slice.data()[i + 1], j - i - 1) % kRedisClusterSlots);
         return Status::OK();
       }
       // We only search up to the first '}' character following the first '{' character.
@@ -240,19 +244,47 @@ Status PartitionSchema::EncodeRedisKey(const ConstContiguousRow& row, string* bu
     }
   }
 
-  *buf = EncodeMultiColumnHashValue(crc16(slice->data(), slice->size()) % kRedisClusterSlots);
+  *buf = EncodeMultiColumnHashValue(crc16(slice.data(), slice.size()) % kRedisClusterSlots);
   return Status::OK();
+}
+
+Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLColumnValuePB>& hash_values,
+                                  string* buf) const {
+
+  switch (hash_schema_) {
+    case YBHashSchema::kMultiColumnHash: {
+      string tmp;
+      for (const auto &col_pb : hash_values) {
+        RETURN_NOT_OK(QLValue::AppendToKeyBytes(col_pb.expr().value(), &tmp));
+      }
+      const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
+      *buf = EncodeMultiColumnHashValue(hash_value);
+      return Status::OK();
+    }
+    case YBHashSchema::kRedisHash: {
+      if (hash_values.size() != 1 || hash_values.Get(0).expr().value().has_string_value()) {
+        return STATUS(InvalidArgument, "Invalid Redis hash key");
+      }
+      Slice slice(hash_values.Get(0).expr().value().string_value());
+      return EncodeRedisKey(slice, buf);
+    }
+
+    case YBHashSchema::kKuduHashSchema:
+      break;
+  }
+
+  return STATUS(InvalidArgument, "Unsupported Partition Schema Type.");
 }
 
 Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
 
   switch (hash_schema_) {
-    case YBHashSchema::kDefault:
-      break;
     case YBHashSchema::kMultiColumnHash:
       return EncodeColumns(row, buf);
     case YBHashSchema::kRedisHash:
       return EncodeRedisKey(row, buf);
+    case YBHashSchema::kKuduHashSchema:
+      break;
   }
 
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
@@ -272,7 +304,7 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
       LOG(FATAL) << "Invalid hash schema kRedisHash passed to EncodeKey";
     case YBHashSchema::kMultiColumnHash:
       return EncodeColumns(row, buf);
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       break;
   }
 
@@ -474,7 +506,7 @@ Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
 
   string partition_key;
   switch (hash_schema_) {
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       RETURN_NOT_OK(EncodeColumns(row, range_schema_.column_ids, &partition_key));
       break;
     case YBHashSchema::kMultiColumnHash:
@@ -587,7 +619,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
       }
       return s;
     }
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       break;
   }
 
@@ -748,7 +780,7 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
       } else {
         return Substitute("hash_code: $0", DecodeMultiColumnHashValue(key));
       }
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       break;
   }
 
@@ -807,7 +839,7 @@ string PartitionSchema::DebugString(const Schema& schema) const {
       component_types.push_back(component);
       break;
     }
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       break;
   }
 
@@ -866,7 +898,7 @@ bool PartitionSchema::IsSimplePKRangePartitioning(const Schema& schema) const {
       return true;
     case YBHashSchema::kMultiColumnHash:
       return true;
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       break;
   }
 
@@ -999,7 +1031,7 @@ Status PartitionSchema::BucketForRow(const ConstContiguousRow& row,
 void PartitionSchema::Clear() {
   hash_bucket_schemas_.clear();
   range_schema_.column_ids.clear();
-  hash_schema_ = YBHashSchema::kDefault;
+  hash_schema_ = YBHashSchema::kKuduHashSchema;
 }
 
 Status PartitionSchema::Validate(const Schema& schema) const {

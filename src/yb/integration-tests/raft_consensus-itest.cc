@@ -76,7 +76,7 @@ METRIC_DECLARE_gauge_int64(raft_term);
 namespace yb {
 namespace tserver {
 
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableName;
@@ -239,7 +239,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        shared_ptr<YBInsert> insert(table->NewInsert());
+        shared_ptr<KuduInsert> insert(table->NewInsert());
         YBPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, j));
         CHECK_OK(row->SetInt32(1, j * 2));

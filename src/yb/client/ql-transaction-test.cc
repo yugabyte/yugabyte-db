@@ -82,8 +82,7 @@ class QLTransactionTest : public QLDmlTestBase {
   shared_ptr<YBqlWriteOp> InsertRow(const YBSessionPtr& session, int32_t key, int32_t value) {
     const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    YBPartialRow *prow = op->mutable_row();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key, prow, 0);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key);
     table_.SetInt32ColumnValue(req->add_column_values(), "v", value);
     CHECK_OK(session->Apply(op));
     return op;
@@ -103,8 +102,7 @@ class QLTransactionTest : public QLDmlTestBase {
   Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key) {
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    YBPartialRow *prow = op->mutable_row();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key, prow, 0);
+    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key);
     table_.AddColumns({"v"}, req);
     RETURN_NOT_OK(session->Apply(op));
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();

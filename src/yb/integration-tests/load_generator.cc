@@ -58,7 +58,7 @@ using yb::client::YBClient;
 using yb::client::YBError;
 using yb::client::YBNoOp;
 using yb::client::YBPredicate;
-using yb::client::YBInsert;
+using yb::client::KuduInsert;
 using yb::client::YBSession;
 using yb::client::YBScanBatch;
 using yb::client::YBScanner;
@@ -400,7 +400,7 @@ void YBSingleThreadedWriter::ConfigureSession() {
 
 bool YBSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
-  shared_ptr<YBInsert> insert(table_->NewInsert());
+  shared_ptr<KuduInsert> insert(table_->NewInsert());
   // Generate a Put for key_str, value_str
   CHECK_OK(insert->mutable_row()->SetBinary("k", key_str.c_str()));
   CHECK_OK(insert->mutable_row()->SetBinary("v", value_str.c_str()));

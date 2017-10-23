@@ -85,13 +85,7 @@ class YBOperation {
   };
   virtual ~YBOperation();
 
-  Status SetKey(const Slice& string_key);
-
   const YBTable* table() const { return table_.get(); }
-
-  // See YBPartialRow API for field setters, etc.
-  const YBPartialRow& row() const { return row_; }
-  YBPartialRow* mutable_row() { return &row_; }
 
   virtual std::string ToString() const = 0;
   virtual Type type() const = 0;
@@ -108,41 +102,59 @@ class YBOperation {
   }
 
   // Returns the partition key of the operation.
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const;
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
 
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 
   std::shared_ptr<YBTable> const table_;
-  YBPartialRow row_;
 
  private:
-  friend class internal::Batcher;
   friend class internal::AsyncRpc;
-
-  // Return the number of bytes required to buffer this operation,
-  // including direct and indirect data.
-  int64_t SizeInBuffer() const;
 
   scoped_refptr<internal::RemoteTablet> tablet_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
 
+// Kudu operations are currently only used in some tests and should be removed once the dependent
+// tests are migrated to YbQL operations.
+class KuduOperation : public YBOperation {
+ public:
+  // See YBPartialRow API for field setters, etc.
+  const YBPartialRow& row() const { return row_; }
+  YBPartialRow* mutable_row() { return &row_; }
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const;
+
+ protected:
+  explicit KuduOperation(const std::shared_ptr<YBTable>& table);
+  YBPartialRow row_;
+
+ private:
+  friend class internal::Batcher;
+
+  // Return the number of bytes required to buffer this operation,
+  // including direct and indirect data.
+  int64_t SizeInBuffer() const;
+};
+
+// Kudu inserts are currently only used in some tests and should be removed once the dependent
+// tests are migrated to YbQL operations.
+//
 // A single row insert to be sent to the cluster.
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being inserted
 // An insert requires all key columns from the table schema to be defined.
-class YBInsert : public YBOperation {
+class KuduInsert : public KuduOperation {
  public:
-  virtual ~YBInsert();
+  virtual ~KuduInsert();
 
   virtual std::string ToString() const override { return "INSERT " + row_.ToString(); }
 
   virtual bool read_only() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
-  // when YBInsert / YBUpdate / YBDelete are deprecated.
+  // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
   void SetHashCode(uint16_t hash_code) override {};
 
  protected:
@@ -152,24 +164,27 @@ class YBInsert : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBInsert(const std::shared_ptr<YBTable>& table);
+  explicit KuduInsert(const std::shared_ptr<YBTable>& table);
 };
 
+// Kudu updates are currently only used in some tests and should be removed once the dependent
+// tests are migrated to use YbQL operations.
+//
 // A single row update to be sent to the cluster.
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being updated.
 // An update requires the key columns and at least one other column
 // in the schema to be defined.
-class YBUpdate : public YBOperation {
+class KuduUpdate : public KuduOperation {
  public:
-  virtual ~YBUpdate();
+  virtual ~KuduUpdate();
 
   virtual std::string ToString() const override { return "UPDATE " + row_.ToString(); }
 
   virtual bool read_only() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
-  // when YBInsert / YBUpdate / YBDelete are deprecated.
+  // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
   void SetHashCode(uint16_t hash_code) override {};
 
  protected:
@@ -179,24 +194,26 @@ class YBUpdate : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBUpdate(const std::shared_ptr<YBTable>& table);
+  explicit KuduUpdate(const std::shared_ptr<YBTable>& table);
 };
 
-
+// Kudu deletes are currently only used in some tests and should be removed once the dependent
+// tests are migrated to use YbQL operations.
+//
 // A single row delete to be sent to the cluster.
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being deleted
 // A delete requires just the key columns to be defined.
-class YBDelete : public YBOperation {
+class KuduDelete : public KuduOperation {
  public:
-  virtual ~YBDelete();
+  virtual ~KuduDelete();
 
   virtual std::string ToString() const override { return "DELETE " + row_.ToString(); }
 
   virtual bool read_only() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
-  // when YBInsert / YBUpdate / YBDelete are deprecated.
+  // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
   void SetHashCode(uint16_t hash_code) override {};
 
  protected:
@@ -206,10 +223,27 @@ class YBDelete : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBDelete(const std::shared_ptr<YBTable>& table);
+  explicit KuduDelete(const std::shared_ptr<YBTable>& table);
 };
 
-class YBRedisWriteOp : public YBOperation {
+class YBRedisOp : public YBOperation {
+ public:
+  explicit YBRedisOp(const std::shared_ptr<YBTable>& table);
+  virtual ~YBRedisOp();
+
+  bool has_response() { return redis_response_ ? true : false; }
+
+  const RedisResponsePB& response() const;
+
+  RedisResponsePB* mutable_response();
+
+  virtual const std::string& GetKey() const = 0;
+
+ private:
+  std::unique_ptr<RedisResponsePB> redis_response_;
+};
+
+class YBRedisWriteOp : public YBRedisOp {
  public:
   explicit YBRedisWriteOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBRedisWriteOp();
@@ -221,16 +255,16 @@ class YBRedisWriteOp : public YBOperation {
 
   RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
 
-  const RedisResponsePB& response() const { return *redis_response_; }
-
-  RedisResponsePB* mutable_response();
-
   virtual std::string ToString() const override;
 
   virtual bool read_only() override { return false; };
 
   // Set the hash key in the WriteRequestPB.
   void SetHashCode(uint16_t hash_code) override;
+
+  virtual const std::string& GetKey() const override;
+
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override {
@@ -244,7 +278,7 @@ class YBRedisWriteOp : public YBOperation {
 };
 
 
-class YBRedisReadOp : public YBOperation {
+class YBRedisReadOp : public YBRedisOp {
  public:
   explicit YBRedisReadOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBRedisReadOp();
@@ -256,12 +290,6 @@ class YBRedisReadOp : public YBOperation {
 
   RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
 
-  bool has_response() { return redis_response_ ? true : false; }
-
-  const RedisResponsePB& response() const;
-
-  RedisResponsePB* mutable_response();
-
   virtual std::string ToString() const override;
 
   virtual bool read_only() override { return true; };
@@ -269,15 +297,17 @@ class YBRedisReadOp : public YBOperation {
   // Set the hash key in the ReadRequestPB.
   void SetHashCode(uint16_t hash_code) override;
 
+  virtual const std::string& GetKey() const override;
+
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+
  protected:
   virtual Type type() const override { return REDIS_READ; }
 
  private:
   friend class YBTable;
   std::unique_ptr<RedisReadRequestPB> redis_read_request_;
-  std::unique_ptr<RedisResponsePB> redis_response_;
 };
-
 
 class YBqlOp : public YBOperation {
  public:
@@ -291,11 +321,8 @@ class YBqlOp : public YBOperation {
 
   std::string* mutable_rows_data() { return &rows_data_; }
 
-  // Set the row key in the YBPartialRow.
-  virtual CHECKED_STATUS SetKey() = 0;
-
   // Set the hash key in the partial row of this QL operation.
-  virtual void SetHashCode(uint16_t hash_code) = 0;
+  virtual void SetHashCode(uint16_t hash_code) override = 0;
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);
@@ -319,9 +346,10 @@ class YBqlWriteOp : public YBqlOp {
 
   virtual bool read_only() override { return false; };
 
-  virtual CHECKED_STATUS SetKey() override;
 
   virtual void SetHashCode(uint16_t hash_code) override;
+
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override {
@@ -352,8 +380,6 @@ class YBqlReadOp : public YBqlOp {
   virtual std::string ToString() const override;
 
   virtual bool read_only() override { return true; };
-
-  virtual CHECKED_STATUS SetKey() override;
 
   virtual void SetHashCode(uint16_t hash_code) override;
 

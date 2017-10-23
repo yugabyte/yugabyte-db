@@ -23,7 +23,6 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
-                                         YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops,
                                          const MCList<SubscriptedColumnOp>& subcol_where_ops) {
@@ -41,9 +40,6 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-    if (col_desc->is_hash()) {
-      RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
-    }
   }
 
   // Setup the rest of the columns.
@@ -75,7 +71,6 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
 }
 
 CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
-                                         YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops,
                                          const MCList<SubscriptedColumnOp>& subcol_where_ops,
@@ -157,7 +152,6 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         break;
       }
     }
-    RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
   }
 
   // Skip generation of query condition if where clause is empty.

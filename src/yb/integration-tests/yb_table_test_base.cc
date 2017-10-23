@@ -24,7 +24,7 @@ namespace yb {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBScanner;
 using client::YBScanBatch;
 using client::YBSchemaBuilder;
@@ -189,7 +189,7 @@ shared_ptr<YBSession> YBTableTestBase::NewSession(bool read_only) {
 }
 
 void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
-  shared_ptr<YBInsert> insert(table_->NewInsert());
+  shared_ptr<KuduInsert> insert(table_->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetBinary("k", key));
   ASSERT_OK(insert->mutable_row()->SetBinary("v", value));
   ASSERT_OK(session->Apply(insert));

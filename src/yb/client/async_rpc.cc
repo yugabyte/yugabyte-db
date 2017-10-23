@@ -218,13 +218,33 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 #ifndef NDEBUG
     const Partition& partition = op->tablet->partition();
     const PartitionSchema& partition_schema = table()->partition_schema();
-    const YBPartialRow& row = op->yb_op->row();
 
-    bool partition_contains_row;
-    CHECK(partition_schema.PartitionContainsRow(partition, row, &partition_contains_row).ok());
+    bool partition_contains_row = false;
+    switch (op->yb_op->type()) {
+      case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::REDIS_WRITE: {
+        string partition_key;
+        CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
+        partition_contains_row = partition.ConstainsKey(partition_key);
+        break;
+      }
+
+      case YBOperation::INSERT: FALLTHROUGH_INTENDED;
+      case YBOperation::UPDATE: FALLTHROUGH_INTENDED;
+      case YBOperation::DELETE: {
+        auto* kudu_op = down_cast<KuduOperation*>(op->yb_op.get());
+        const YBPartialRow& row = kudu_op->row();
+        CHECK_OK(partition_schema.PartitionContainsRow(partition, row, &partition_contains_row));
+        break;
+      }
+    }
+
     CHECK(partition_contains_row)
-    << "Row " << partition_schema.RowDebugString(row)
-    << "not in partition " << partition_schema.PartitionDebugString(partition, schema);
+        << "Row " << op->yb_op->ToString()
+        << "not in partition " << partition_schema.PartitionDebugString(partition, schema);
+
 #endif
     switch (op->yb_op->type()) {
       case YBOperation::Type::REDIS_WRITE: {
@@ -248,7 +268,8 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
       case YBOperation::Type::DELETE: {
         CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE)
             << "unsupported table type " << table()->table_type() << " for insert/update/delete";
-        enc.Add(ToInternalWriteType(op->yb_op->type()), op->yb_op->row());
+        auto* kudu_op = down_cast<KuduOperation*>(op->yb_op.get());
+        enc.Add(ToInternalWriteType(kudu_op->type()), kudu_op->row());
         if (!req_.has_schema()) {
           // Only in the Kudu case, we still need the schema as part of every WriteRequest.
           CHECK_OK(SchemaToPB(schema, req_.mutable_schema(),

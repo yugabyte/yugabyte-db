@@ -230,18 +230,22 @@ void Batcher::FlushAsync(YBStatusCallback* cb) {
 }
 
 Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
-  int64_t required_size = yb_op->SizeInBuffer();
-  int64_t size_after_adding = buffer_bytes_used_.IncrementBy(required_size);
-  if (PREDICT_FALSE(size_after_adding > max_buffer_size_)) {
-    buffer_bytes_used_.IncrementBy(-required_size);
-    int64_t size_before_adding = size_after_adding - required_size;
-    return STATUS(Incomplete, Substitute(
-        "not enough space remaining in buffer for op (required $0, "
-        "$1 already used",
-        HumanReadableNumBytes::ToString(required_size),
-        HumanReadableNumBytes::ToString(size_before_adding)));
+  // Check buffer size for KuduOperations which contain a PartialRow.
+  if (yb_op->type() == YBOperation::INSERT ||
+      yb_op->type() == YBOperation::UPDATE ||
+      yb_op->type() == YBOperation::DELETE) {
+    int64_t required_size = down_cast<KuduOperation *>(yb_op.get())->SizeInBuffer();
+    int64_t size_after_adding = buffer_bytes_used_.IncrementBy(required_size);
+    if (PREDICT_FALSE(size_after_adding > max_buffer_size_)) {
+      buffer_bytes_used_.IncrementBy(-required_size);
+      int64_t size_before_adding = size_after_adding - required_size;
+      return STATUS(Incomplete, Substitute(
+          "not enough space remaining in buffer for op (required $0, "
+              "$1 already used",
+          HumanReadableNumBytes::ToString(required_size),
+          HumanReadableNumBytes::ToString(size_before_adding)));
+    }
   }
-
 
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.

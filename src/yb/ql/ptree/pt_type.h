@@ -130,7 +130,7 @@ using PTBigInt = PTSimpleType<InternalType::kInt64Value, DataType::INT64>;
 using PTVarInt = PTSimpleType<InternalType::kVarintValue, DataType::VARINT>;
 using PTDecimal = PTSimpleType<InternalType::kDecimalValue, DataType::DECIMAL>;
 
-class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, false> {
+class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, true> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
@@ -153,7 +153,7 @@ class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, 
   int8_t precision_;
 };
 
-class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, false> {
+class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, true> {
  public:
   typedef MCSharedPtr<PTDouble> SharedPtr;
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;

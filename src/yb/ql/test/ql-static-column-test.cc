@@ -190,12 +190,12 @@ TEST_F(TestQLStaticColumn, TestSelect) {
     CHECK_OK(processor->Run("SELECT DISTINCT s1, s2 FROM t;"));
     std::shared_ptr<QLRowBlock> row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row0 = row_block->row(0);
-    CHECK_EQ(row0.column(0).int32_value(), 4);
-    CHECK_EQ(row0.column(1).string_value(), "d");
-    const QLRow& row1 = row_block->row(1);
+    const QLRow& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 3);
     CHECK_EQ(row1.column(1).string_value(), "c");
+    const QLRow& row2 = row_block->row(1);
+    CHECK_EQ(row2.column(0).int32_value(), 4);
+    CHECK_EQ(row2.column(1).string_value(), "d");
   }
 
   // Update static and non-static columns together.
@@ -226,12 +226,12 @@ TEST_F(TestQLStaticColumn, TestSelect) {
     CHECK_OK(processor->Run("SELECT DISTINCT s1, s2 FROM t;"));
     std::shared_ptr<QLRowBlock> row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 2);
-    const QLRow& row0 = row_block->row(0);
-    CHECK_EQ(row0.column(0).int32_value(), 6);
-    CHECK_EQ(row0.column(1).string_value(), "f");
-    const QLRow& row1 = row_block->row(1);
+    const QLRow& row1 = row_block->row(0);
     CHECK_EQ(row1.column(0).int32_value(), 5);
     CHECK_EQ(row1.column(1).string_value(), "e");
+    const QLRow& row2 = row_block->row(1);
+    CHECK_EQ(row2.column(0).int32_value(), 6);
+    CHECK_EQ(row2.column(1).string_value(), "f");
   }
 }
 
@@ -258,24 +258,24 @@ TEST_F(TestQLStaticColumn, TestPagingSelect) {
 
   // Test selecting all rows and columns. Ensure the static column is not missed across pages.
   VerifyPaginationSelect(processor, "SELECT * FROM t;", 1,
-      "{ { int32:2, int32:1, int32:6, int32:21 } }"
-      "{ { int32:2, int32:2, int32:6, int32:22 } }"
-      "{ { int32:2, int32:3, int32:6, int32:23 } }"
       "{ { int32:1, int32:1, int32:3, int32:11 } }"
       "{ { int32:1, int32:2, int32:3, int32:12 } }"
-      "{ { int32:1, int32:3, int32:3, int32:13 } }");
+      "{ { int32:1, int32:3, int32:3, int32:13 } }"
+      "{ { int32:2, int32:1, int32:6, int32:21 } }"
+      "{ { int32:2, int32:2, int32:6, int32:22 } }"
+      "{ { int32:2, int32:3, int32:6, int32:23 } }");
 
   // Test selecting all rows for the non-primary key columns using page-size 2. Ensure the static
   // column is not missed across pages also.
   VerifyPaginationSelect(processor, "SELECT s, c FROM t;", 2,
-      "{ { int32:6, int32:21 }, { int32:6, int32:22 } }"
-      "{ { int32:6, int32:23 }, { int32:3, int32:11 } }"
-      "{ { int32:3, int32:12 }, { int32:3, int32:13 } }");
+      "{ { int32:3, int32:11 }, { int32:3, int32:12 } }"
+      "{ { int32:3, int32:13 }, { int32:6, int32:21 } }"
+      "{ { int32:6, int32:22 }, { int32:6, int32:23 } }");
 
   // Test selecting all distinct static columns with page-size 1.
   VerifyPaginationSelect(processor, "SELECT DISTINCT s FROM t;", 1,
-      "{ { int32:6 } }"
-      "{ { int32:3 } }");
+      "{ { int32:3 } }"
+      "{ { int32:6 } }");
 }
 
 } // namespace ql

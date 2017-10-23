@@ -228,7 +228,7 @@ class LinkedListChainGenerator {
     int64_t this_key = (Rand64() << 8) | chain_idx_;
     int64_t ts = GetCurrentTimeMicros();
 
-    std::shared_ptr<client::YBInsert> insert(table->NewInsert());
+    std::shared_ptr<client::KuduInsert> insert(table->NewInsert());
     CHECK_OK(insert->mutable_row()->SetInt64(kKeyColumnName, this_key));
     CHECK_OK(insert->mutable_row()->SetInt64(kInsertTsColumnName, ts));
     CHECK_OK(insert->mutable_row()->SetInt64(kLinkColumnName, prev_key_));
@@ -287,7 +287,7 @@ class ScopedRowUpdater {
     int64_t next_key;
     int64_t updated_count = 0;
     while (to_update_.BlockingGet(&next_key)) {
-      std::shared_ptr<client::YBUpdate> update(table_->NewUpdate());
+      std::shared_ptr<client::KuduUpdate> update(table_->NewUpdate());
       CHECK_OK(update->mutable_row()->SetInt64(kKeyColumnName, next_key));
       CHECK_OK(update->mutable_row()->SetBool(kUpdatedColumnName, true));
       CHECK_OK(session->Apply(update));

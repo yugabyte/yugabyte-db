@@ -61,7 +61,7 @@ using std::vector;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBSchema;
 using client::YBSession;
 using client::YBTable;
@@ -107,7 +107,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   LOG(INFO) << "Inserting random rows...";
   for (uint64_t record_id = 0; true; ++record_id) {
-    shared_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<KuduInsert> insert(table->NewInsert());
     YBPartialRow* row = insert->mutable_row();
     GenerateDataForRow(schema, record_id, &random, row);
 

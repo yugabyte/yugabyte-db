@@ -123,7 +123,7 @@ int QLValue::CompareTo(const QLValue& other) const {
   return 0;
 }
 
-CHECKED_STATUS QLValue::AppendToKeyBytes(const QLValuePB &value_pb, bool is_last, string *bytes) {
+CHECKED_STATUS QLValue::AppendToKeyBytes(const QLValuePB &value_pb, string *bytes) {
   switch (value_pb.value_case()) {
     case QLValue::InternalType::kInt8Value: {
       YBPartition::AppendIntToKey<int8, uint8>(value_pb.int8_value(), bytes);
@@ -142,54 +142,56 @@ CHECKED_STATUS QLValue::AppendToKeyBytes(const QLValuePB &value_pb, bool is_last
       break;
     }
     case QLValue::InternalType::kTimestampValue: {
-      YBPartition::AppendIntToKey<int64, uint64>(QLValue::timestamp_value(value_pb).value(), bytes);
+      YBPartition::AppendIntToKey<int64, uint64>(value_pb.timestamp_value(), bytes);
       break;
     }
     case QLValue::InternalType::kStringValue: {
-      string str = value_pb.string_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      const string& str = value_pb.string_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
     case QLValue::InternalType::kUuidValue: {
-      string str;
-      RETURN_NOT_OK(QLValue::uuid_value(value_pb).ToBytes(&str));
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      const string& str = value_pb.uuid_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
     case QLValue::InternalType::kTimeuuidValue: {
-      string str;
-      RETURN_NOT_OK(QLValue::timeuuid_value(value_pb).ToBytes(&str));
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      const string& str = value_pb.timeuuid_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
     case QLValue::InternalType::kInetaddressValue: {
-      string str;
-      RETURN_NOT_OK(QLValue::inetaddress_value(value_pb).ToBytes(&str));
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      const string& str = value_pb.inetaddress_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
     case QLValue::InternalType::kDecimalValue: {
-      string str = value_pb.decimal_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      const string& str = value_pb.decimal_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
     case QLValue::InternalType::kBinaryValue: {
-      string str = value_pb.binary_value();
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
+      const string& str = value_pb.binary_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kFloatValue: {
+      YBPartition::AppendIntToKey<float, uint32>(util::CanonicalizeFloat(value_pb.float_value()),
+                                                 bytes);
+      break;
+    }
+    case QLValue::InternalType::kDoubleValue: {
+      YBPartition::AppendIntToKey<double, uint64>(util::CanonicalizeDouble(value_pb.double_value()),
+                                                  bytes);
       break;
     }
     case QLValue::InternalType::kFrozenValue: {
-      string str;
       for (const auto& elem_pb : value_pb.frozen_value().elems()) {
-        // Setting is_last to true to not encode the frozen elements (for string/bytes types).
-        RETURN_NOT_OK(AppendToKeyBytes(elem_pb, /* is_last = */ true, &str));
+        RETURN_NOT_OK(AppendToKeyBytes(elem_pb, bytes));
       }
-      YBPartition::AppendBytesToKey(str.c_str(), str.length(), is_last, bytes);
       break;
     }
     case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kFloatValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kDoubleValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kVarintValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;

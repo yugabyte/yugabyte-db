@@ -232,7 +232,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
-      shared_ptr<YBUpdate> update(UpdateTestRow(table, i));
+      shared_ptr<KuduUpdate> update(UpdateTestRow(table, i));
       ASSERT_OK(session->Apply(update));
     }
     FlushSessionOrDie(session);
@@ -244,15 +244,15 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
-      shared_ptr<YBDelete> del(DeleteTestRow(table, i));
+      shared_ptr<KuduDelete> del(DeleteTestRow(table, i));
       ASSERT_OK(session->Apply(del));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
-  shared_ptr<YBInsert> BuildTestRow(YBTable* table, int index) {
-    shared_ptr<YBInsert> insert(table->NewInsert());
+  shared_ptr<KuduInsert> BuildTestRow(YBTable* table, int index) {
+    shared_ptr<KuduInsert> insert(table->NewInsert());
     YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2));
@@ -261,8 +261,8 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     return insert;
   }
 
-  shared_ptr<YBUpdate> UpdateTestRow(YBTable* table, int index) {
-    shared_ptr<YBUpdate> update(table->NewUpdate());
+  shared_ptr<KuduUpdate> UpdateTestRow(YBTable* table, int index) {
+    shared_ptr<KuduUpdate> update(table->NewUpdate());
     YBPartialRow* row = update->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2 + 1));
@@ -270,8 +270,8 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     return update;
   }
 
-  shared_ptr<YBDelete> DeleteTestRow(YBTable* table, int index) {
-    shared_ptr<YBDelete> del(table->NewDelete());
+  shared_ptr<KuduDelete> DeleteTestRow(YBTable* table, int index) {
+    shared_ptr<KuduDelete> del(table->NewDelete());
     YBPartialRow* row = del->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     return del;
@@ -659,7 +659,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(5000);
   for (int i = 1; i < 5; i++) {
-    shared_ptr<YBInsert> insert;
+    shared_ptr<KuduInsert> insert;
     insert = BuildTestRow(table.get(), 2 + (i * 10));
     ASSERT_OK(session->Apply(insert));
     insert = BuildTestRow(table.get(), 3 + (i * 10));
@@ -685,7 +685,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    shared_ptr<YBUpdate> update;
+    shared_ptr<KuduUpdate> update;
     update = UpdateTestRow(table.get(), 2 + i * 10);
     ASSERT_OK(session->Apply(update));
     update = UpdateTestRow(table.get(), 5 + i * 10);
@@ -707,7 +707,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    shared_ptr<YBDelete> del;
+    shared_ptr<KuduDelete> del;
     del = DeleteTestRow(table.get(), 5 + i*10);
     ASSERT_OK(session->Apply(del));
     del = DeleteTestRow(table.get(), 7 + i*10);
@@ -729,7 +729,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    shared_ptr<YBDelete> del;
+    shared_ptr<KuduDelete> del;
     del = DeleteTestRow(table.get(), 2 + i*10);
     ASSERT_OK(session->Apply(del));
     del = DeleteTestRow(table.get(), 3 + i*10);
@@ -1449,7 +1449,7 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
 
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
-  shared_ptr<YBInsert> insert(client_table_->NewInsert());
+  shared_ptr<KuduInsert> insert(client_table_->NewInsert());
   // Try inserting without specifying a key: should fail.
   ASSERT_OK(insert->mutable_row()->SetInt32("int_val", 54321));
   ASSERT_OK(insert->mutable_row()->SetStringCopy("string_val", "hello world"));
@@ -1475,7 +1475,7 @@ static Status ApplyInsertToSession(YBSession* session,
                                    int row_key,
                                    int int_val,
                                    const char* string_val) {
-  shared_ptr<YBInsert> insert(table->NewInsert());
+  shared_ptr<KuduInsert> insert(table->NewInsert());
   RETURN_NOT_OK(insert->mutable_row()->SetInt32("key", row_key));
   RETURN_NOT_OK(insert->mutable_row()->SetInt32("int_val", int_val));
   RETURN_NOT_OK(insert->mutable_row()->SetStringCopy("string_val", string_val));
@@ -1486,7 +1486,7 @@ static Status ApplyUpdateToSession(YBSession* session,
                                    const shared_ptr<YBTable>& table,
                                    int row_key,
                                    int int_val) {
-  shared_ptr<YBUpdate> update(table->NewUpdate());
+  shared_ptr<KuduUpdate> update(table->NewUpdate());
   RETURN_NOT_OK(update->mutable_row()->SetInt32("key", row_key));
   RETURN_NOT_OK(update->mutable_row()->SetInt32("int_val", int_val));
   return session->Apply(update);
@@ -1495,7 +1495,7 @@ static Status ApplyUpdateToSession(YBSession* session,
 static Status ApplyDeleteToSession(YBSession* session,
                                    const shared_ptr<YBTable>& table,
                                    int row_key) {
-  shared_ptr<YBDelete> del(table->NewDelete());
+  shared_ptr<KuduDelete> del(table->NewDelete());
   RETURN_NOT_OK(del->mutable_row()->SetInt32("key", row_key));
   return session->Apply(del);
 }
@@ -1837,7 +1837,7 @@ TEST_F(ClientTest, TestWriteWithBadColumn) {
   // Try to do a write with the bad schema.
   shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  gscoped_ptr<YBInsert> insert(table->NewInsert());
+  gscoped_ptr<KuduInsert> insert(table->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetInt32("key", 12345));
   Status s = insert->mutable_row()->SetInt32("bad_col", 12345);
   ASSERT_TRUE(s.IsNotFound());

@@ -39,8 +39,7 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
 
 CHECKED_STATUS Executor::ColumnArgsToPB(const shared_ptr<client::YBTable>& table,
                                         const PTDmlStmt *tnode,
-                                        QLWriteRequestPB *req,
-                                        YBPartialRow *row) {
+                                        QLWriteRequestPB *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
@@ -68,10 +67,6 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const shared_ptr<client::YBTable>& table
       LOG(INFO) << "Unexpected null value. Current request: " << req->DebugString();
       return exec_context_->Error(ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
-
-    if (col_desc->is_hash()) {
-      RETURN_NOT_OK(SetupPartialRow(col_desc, expr_pb, row));
-    }
   }
 
   const MCVector<SubscriptedColumnArg>& subcol_args = tnode->subscripted_col_args();
@@ -85,94 +80,6 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const shared_ptr<client::YBTable>& table
       QLExpressionPB *arg_pb = col_pb->add_subscript_args();
       RETURN_NOT_OK(PTExprToPB(col_arg, arg_pb));
     }
-  }
-
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
-                                         const QLExpressionPB *expr_pb,
-                                         YBPartialRow *row) {
-  DCHECK(expr_pb->has_value()) << "Expecting literals for hash columns";
-
-  const QLValuePB& value_pb = expr_pb->value();
-  if (QLValue::IsNull(value_pb)) {
-    return Status::OK();
-  }
-
-  switch (QLValue::type(value_pb)) {
-    case InternalType::kInt8Value:
-      RETURN_NOT_OK(row->SetInt8(col_desc->index(), QLValue::int8_value(value_pb)));
-      break;
-    case InternalType::kInt16Value:
-      RETURN_NOT_OK(row->SetInt16(col_desc->index(), QLValue::int16_value(value_pb)));
-      break;
-    case InternalType::kInt32Value:
-      RETURN_NOT_OK(row->SetInt32(col_desc->index(), QLValue::int32_value(value_pb)));
-      break;
-    case InternalType::kInt64Value:
-      RETURN_NOT_OK(row->SetInt64(col_desc->index(), QLValue::int64_value(value_pb)));
-      break;
-    case InternalType::kDecimalValue: {
-      const string& decimal_value = QLValue::decimal_value(value_pb);
-      RETURN_NOT_OK(row->SetDecimal(col_desc->index(),
-                                    Slice(decimal_value.data(), decimal_value.size())));
-      break;
-    }
-    case InternalType::kStringValue:
-      RETURN_NOT_OK(row->SetString(col_desc->index(), QLValue::string_value(value_pb)));
-      break;
-    case InternalType::kTimestampValue:
-      RETURN_NOT_OK(row->SetTimestamp(col_desc->index(),
-                                      QLValue::timestamp_value(value_pb).ToInt64()));
-      break;
-    case InternalType::kInetaddressValue: {
-      std::string bytes;
-      RETURN_NOT_OK(QLValue::inetaddress_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetInet(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kUuidValue: {
-      std::string bytes;
-      RETURN_NOT_OK(QLValue::uuid_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetUuidCopy(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kTimeuuidValue: {
-      std::string bytes;
-      RETURN_NOT_OK(QLValue::timeuuid_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetTimeUuidCopy(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kBinaryValue:
-      RETURN_NOT_OK(row->SetBinary(col_desc->index(), QLValue::binary_value(value_pb)));
-      break;
-    case InternalType::kFloatValue:
-      RETURN_NOT_OK(row->SetFloat(col_desc->index(), QLValue::float_value(value_pb)));
-      break;
-    case InternalType::kDoubleValue:
-      RETURN_NOT_OK(row->SetDouble(col_desc->index(), QLValue::double_value(value_pb)));
-      break;
-    case InternalType::kFrozenValue: {
-      std::string bytes;
-      for (const auto& val : value_pb.frozen_value().elems()) {
-        // Setting is_last to true to not encode the frozen elements (for string/bytes types).
-        RETURN_NOT_OK(QLValue::AppendToKeyBytes(val, /* is_last = */ true, &bytes));
-      }
-      RETURN_NOT_OK(row->SetFrozenCopy(col_desc->index(), Slice(bytes)));
-      break;
-    }
-    case InternalType::kListValue: FALLTHROUGH_INTENDED;
-    case InternalType::kMapValue: FALLTHROUGH_INTENDED;
-    case InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case InternalType::kBoolValue:
-      LOG(FATAL) << "Invalid datatype for partition column";
-
-    case InternalType::kVarintValue: FALLTHROUGH_INTENDED;
-    default:
-      LOG(FATAL) << "DataType not yet supported";
   }
 
   return Status::OK();

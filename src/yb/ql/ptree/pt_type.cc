@@ -24,7 +24,7 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, false>(memctx, loc),
+    : PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, true>(memctx, loc),
       precision_(precision) {
 }
 
@@ -32,7 +32,7 @@ PTFloat::~PTFloat() {
 }
 
 PTDouble::PTDouble(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, false>(memctx, loc),
+    : PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE, true>(memctx, loc),
       precision_(precision) {
 }
 

@@ -51,7 +51,7 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
 using client::YBError;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
@@ -60,7 +60,7 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBValue;
-using client::YBOperation;
+using client::KuduOperation;
 using std::shared_ptr;
 using std::make_pair;
 using std::map;
@@ -375,7 +375,7 @@ struct MirrorTable {
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(15 * 1000);
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    shared_ptr<YBOperation> op;
+    shared_ptr<KuduOperation> op;
     switch (op_type) {
       case INSERT: op.reset(table->NewInsert()); break;
       case UPDATE: op.reset(table->NewUpdate()); break;

@@ -76,27 +76,17 @@ std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp() {
 }
 
 void TableHandle::SetInt32ColumnValue(
-    QLColumnValuePB *column_value, const string &column_name, const int32_t value,
-    YBPartialRow *prow, int prow_index) {
+    QLColumnValuePB *column_value, const string &column_name, const int32_t value) {
 
   column_value->set_column_id(ColumnId(column_name));
   column_value->mutable_expr()->mutable_value()->set_int32_value(value);
-
-  if (prow != nullptr) {
-    ASSERT_OK(prow->SetInt32(prow_index, value));
-  }
 }
 
 void TableHandle::SetStringColumnValue(
-    QLColumnValuePB *column_value, const string &column_name, const string &value,
-    YBPartialRow *prow, int prow_index) {
+    QLColumnValuePB *column_value, const string &column_name, const string &value) {
 
   column_value->set_column_id(ColumnId(column_name));
   column_value->mutable_expr()->mutable_value()->set_string_value(value);
-
-  if (prow != nullptr) {
-    ASSERT_OK(prow->SetString(prow_index, value));
-  }
 }
 
 void TableHandle::SetColumn(QLColumnValuePB *column_value, const string &column_name) {

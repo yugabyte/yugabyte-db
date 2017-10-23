@@ -12,12 +12,15 @@
 //
 package com.yugabyte.driver.core.policies;
 
+import com.google.common.reflect.TypeToken;
 import org.junit.Test;
 
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.UserType;
+import com.datastax.driver.core.UDTValue;
 import com.datastax.driver.core.utils.UUIDs;
 
 import org.yb.cql.BaseCQLTest;
@@ -35,6 +38,10 @@ import java.net.InetAddress;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.List;
+import java.util.LinkedList;
 import java.util.Random;
 import java.util.UUID;
 
@@ -156,6 +163,98 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
       assertEquals(h5, row.getUUID("h5"));
 
       session.execute("drop table t3;");
+    }
+
+    // Test hash key composed of float and double.
+    {
+      session.execute("create table t4 (h1 float, h2 double, primary key ((h1, h2)));");
+
+      // Insert a row with random hash column values.
+      float h1 = rand.nextFloat() * Float.MAX_VALUE * (float)(rand.nextBoolean() ? 1.0 : -1.0);
+      double h2 = rand.nextDouble() * Double.MAX_VALUE * (rand.nextBoolean() ? 1.0 : -1.0);
+      LOG.info("h1 = " + h1 + ", h2 = " + h2);
+      BoundStatement stmt = session.prepare("insert into t4 (h1, h2) values (?, ?);")
+                            .bind(Float.valueOf(h1), Double.valueOf(h2));
+      session.execute(stmt);
+
+      // Select the row back using the hash key value and verify the row.
+      Row row = session.execute("select * from t4 where token(h1, h2) = ?;",
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
+      assertNotNull(row);
+      assertEquals(h1, row.getFloat("h1"), 0.0 /* delta */);
+      assertEquals(h2, row.getDouble("h2"), 0.0 /* delta */);
+
+      // Insert a row with NaN hash column values.
+      h1 = Float.NaN;
+      h2 = Double.NaN;
+      LOG.info("h1 = " + h1 + ", h2 = " + h2);
+      stmt = session.prepare("insert into t4 (h1, h2) values (?, ?);")
+             .bind(Float.valueOf(h1), Double.valueOf(h2));
+      session.execute(stmt);
+
+      // Select the row back using the hash key value and verify the row.
+      row = session.execute("select * from t4 where token(h1, h2) = ?;",
+              PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
+      assertNotNull(row);
+      assertEquals(h1, row.getFloat("h1"), 0.0 /* delta */);
+      assertEquals(h2, row.getDouble("h2"), 0.0 /* delta */);
+
+      session.execute("drop table t4;");
+    }
+
+    // Test hash key composed of frozen types (Map, Set, List, and User-Defined-Type)
+    {
+      session.execute("create type udt1(a int, b text, c float)");
+      session.execute("create table t5 (h1 frozen<map<int, text>>, " +
+          "h2 frozen<set<double>>, h3 frozen<list<frozen<set<text>>>>, h4 frozen<udt1>, " +
+          "v int, primary key ((h1, h2, h3, h4)));");
+
+      Map<Integer, String> map = new HashMap<>();
+      int map_size = rand.nextInt(10);
+      for (int i = 0; i < map_size; i++) {
+        map.put(rand.nextInt(), RandomStringUtils.random(rand.nextInt(64)));
+      }
+
+      Set<Double> set = new HashSet<>();
+      int set_size = rand.nextInt(10);
+      for (int i = 0; i < set_size; i++) {
+        set.add(rand.nextDouble());
+      }
+
+      List<Set<String>> list = new LinkedList<>();
+      int list_size = rand.nextInt(5);
+      for (int i = 0; i < list_size; i++) {
+        Set<String> list_set = new HashSet<>();
+        int list_set_size = rand.nextInt(5);
+        for (int j = 0; j < list_set_size; j++) {
+          list_set.add(RandomStringUtils.random(rand.nextInt(32)));
+        }
+
+        list.add(list_set);
+      }
+
+      UserType udt_type = cluster.getMetadata()
+          .getKeyspace(DEFAULT_TEST_KEYSPACE)
+          .getUserType("udt1");
+
+      UDTValue udt = udt_type.newValue()
+          .set("a", rand.nextInt(), Integer.class)
+          .set("b", "xyz", String.class)
+          .set("c", Float.valueOf(rand.nextFloat()), Float.class);
+
+
+      LOG.info("h1 = " + map + "\nh2 = " + set + "\nh3 = " + list + "\nh4 = " + udt);
+      BoundStatement stmt = session.prepare("insert into t5 (h1, h2, h3, h4) values (?, ?, ?, ?);")
+          .bind(map, set, list, udt);
+      session.execute(stmt);
+
+      Row row = session.execute("select * from t5 where token(h1, h2, h3, h4) = ?;",
+          PartitionAwarePolicy.YBToCqlHashCode(PartitionAwarePolicy.getKey(stmt))).one();
+      assertNotNull(row);
+      assertEquals(map, row.getMap("h1", Integer.class, String.class));
+      assertEquals(set, row.getSet("h2", Double.class));
+      assertEquals(list, row.getList("h3", new TypeToken<Set<String>>() {}));
+      assertEquals(udt, row.getUDTValue("h4"));
     }
   }
 

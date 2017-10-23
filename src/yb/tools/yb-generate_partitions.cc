@@ -75,13 +75,9 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
   }
 
   std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewQLRead());
-  YBPartialRow* partial_row = yb_op->mutable_row();
-
-  // Add empty hash column value to ensure GetPartitionKey knows we have hash column values. We
-  // don't need to actually set the column values here.
   QLReadRequestPB* ql_read = yb_op->mutable_request();
-  ql_read->add_hashed_column_values();
 
+  // Set the hash column values to compute the partition key.
   auto it = tokenizer.begin();
   for (int i = 0; i < schema.num_hash_key_columns(); i++, it++) {
     if (IsNull(*it)) {
@@ -91,30 +87,38 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
     DataType column_type = schema.column(i).type_info()->type();
     int32_t int_val;
     int64_t long_val;
+    auto* col_pb = ql_read->add_hashed_column_values();
+
     switch(column_type) {
       case DataType::INT8:
         RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        RETURN_NOT_OK(partial_row->SetInt8(i, int_val));
+        col_pb->set_column_id(i);
+        col_pb->mutable_expr()->mutable_value()->set_int8_value(int_val);
         break;
       case DataType::INT16:
         RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        RETURN_NOT_OK(partial_row->SetInt16(i, int_val));
+        col_pb->set_column_id(i);
+        col_pb->mutable_expr()->mutable_value()->set_int16_value(int_val);
         break;
       case DataType::INT32:
         RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        RETURN_NOT_OK(partial_row->SetInt32(i, int_val));
+        col_pb->set_column_id(i);
+        col_pb->mutable_expr()->mutable_value()->set_int32_value(int_val);
         break;
       case DataType::INT64:
         RETURN_NOT_OK(util::CheckedStoll(*it, &long_val));
-        RETURN_NOT_OK(partial_row->SetInt64(i, long_val));
+        col_pb->set_column_id(i);
+        col_pb->mutable_expr()->mutable_value()->set_int64_value(long_val);
         break;
       case DataType::STRING:
-        RETURN_NOT_OK(partial_row->SetStringCopy(i, *it));
+        col_pb->set_column_id(i);
+        col_pb->mutable_expr()->mutable_value()->set_string_value(*it);
         break;
       case DataType::TIMESTAMP: {
         Timestamp ts;
         RETURN_NOT_OK(TimestampFromString(*it, &ts));
-        RETURN_NOT_OK(partial_row->SetTimestamp(i, ts.ToInt64()));
+        col_pb->set_column_id(i);
+        col_pb->mutable_expr()->mutable_value()->set_timestamp_value(ts.ToInt64());
         break;
       }
       case DataType::BOOL: FALLTHROUGH_INTENDED;

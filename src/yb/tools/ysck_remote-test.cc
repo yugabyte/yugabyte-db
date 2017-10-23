@@ -48,7 +48,7 @@ namespace yb {
 namespace tools {
 
 using client::YBColumnSchema;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
@@ -134,7 +134,7 @@ class RemoteYsckTest : public YBTest {
     }
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
-      shared_ptr<YBInsert> insert(table->NewInsert());
+      shared_ptr<KuduInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
       status = session->Apply(insert);
       if (!status.ok()) {
@@ -170,7 +170,7 @@ class RemoteYsckTest : public YBTest {
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
-      shared_ptr<YBInsert> insert(table->NewInsert());
+      shared_ptr<KuduInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
       RETURN_NOT_OK(session->Apply(insert));
 

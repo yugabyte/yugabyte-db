@@ -153,7 +153,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
 
 BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 
-using yb::client::YBOperation;
+using yb::client::YBRedisOp;
 using yb::client::YBRedisReadOp;
 using yb::client::YBRedisWriteOp;
 using yb::client::YBClientBuilder;
@@ -212,7 +212,7 @@ class Operation {
     return read_;
   }
 
-  const YBOperation& operation() const {
+  const YBRedisOp& operation() const {
     return *operation_;
   }
 
@@ -242,9 +242,7 @@ class Operation {
 
   void GetKeys(RedisKeyList* keys) const {
     if (FLAGS_redis_safe_batch) {
-      Slice key;
-      CHECK_OK(operation_->row().GetBinary(kRedisKeyColumnName, &key));
-      keys->push_back(key);
+      keys->emplace_back(operation_->GetKey());
     }
   }
 
@@ -272,7 +270,7 @@ class Operation {
   bool read_;
   std::shared_ptr<RedisInboundCall> call_;
   size_t index_;
-  std::shared_ptr<YBOperation> operation_;
+  std::shared_ptr<YBRedisOp> operation_;
   rpc::RpcMethodMetrics metrics_;
   std::string partition_key_;
   scoped_refptr<client::internal::RemoteTablet> tablet_;

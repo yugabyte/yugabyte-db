@@ -994,7 +994,7 @@ YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
 
 YBTableCreator& YBTableCreator::set_hash_schema(YBHashSchema hash_schema) {
   switch (hash_schema) {
-    case YBHashSchema::kDefault:
+    case YBHashSchema::kKuduHashSchema:
       data_->partition_schema_.set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
       break;
     case YBHashSchema::kMultiColumnHash:
@@ -1225,16 +1225,16 @@ const Schema& YBTable::InternalSchema() const {
   return internal::GetSchema(data_->schema_);
 }
 
-YBInsert* YBTable::NewInsert() {
-  return new YBInsert(shared_from_this());
+KuduInsert* YBTable::NewInsert() {
+  return new KuduInsert(shared_from_this());
 }
 
-YBUpdate* YBTable::NewUpdate() {
-  return new YBUpdate(shared_from_this());
+KuduUpdate* YBTable::NewUpdate() {
+  return new KuduUpdate(shared_from_this());
 }
 
-YBDelete* YBTable::NewDelete() {
-  return new YBDelete(shared_from_this());
+KuduDelete* YBTable::NewDelete() {
+  return new KuduDelete(shared_from_this());
 }
 
 YBqlWriteOp* YBTable::NewQLWrite() {

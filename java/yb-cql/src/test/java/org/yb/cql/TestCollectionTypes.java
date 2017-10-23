@@ -60,11 +60,11 @@ public class TestCollectionTypes extends BaseCQLTest {
     validKeyTypes.add("uuid");
     validKeyTypes.add("timeuuid");
     validKeyTypes.add("blob");
+    validKeyTypes.add("float");
+    validKeyTypes.add("double");
 
     // Types that cannot be keys but can be valid collection elements (map values or list elems)
     Set<String> nonKeyTypes = new HashSet<>();
-    nonKeyTypes.add("float");
-    nonKeyTypes.add("double");
     nonKeyTypes.add("boolean");
 
     //------------------------------------------------------------------------------------------

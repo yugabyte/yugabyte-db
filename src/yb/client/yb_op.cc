@@ -63,21 +63,21 @@ RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
 // WriteOperation --------------------------------------------------------------
 
 YBOperation::YBOperation(const shared_ptr<YBTable>& table)
-  : table_(table),
-    row_(&internal::GetSchema(table->schema())) {
+  : table_(table) {
 }
 
 YBOperation::~YBOperation() {}
 
-Status YBOperation::SetKey(const Slice& string_key) {
-  return mutable_row()->SetBinaryCopy(kRedisKeyColumnName, string_key);
+// KuduOperation ----------------------------------------------------------------
+KuduOperation::KuduOperation(const shared_ptr<YBTable>& table)
+    : YBOperation(table), row_(&internal::GetSchema(table->schema())) {
 }
 
-Status YBOperation::GetPartitionKey(std::string *partition_key) const {
+Status KuduOperation::GetPartitionKey(std::string *partition_key) const {
   return table_->partition_schema().EncodeKey(row_, partition_key);
 }
 
-int64_t YBOperation::SizeInBuffer() const {
+int64_t KuduOperation::SizeInBuffer() const {
   const Schema* schema = row_.schema();
   int size = 1; // for the operation type
 
@@ -102,32 +102,53 @@ int64_t YBOperation::SizeInBuffer() const {
 
 // Insert -----------------------------------------------------------------------
 
-YBInsert::YBInsert(const shared_ptr<YBTable>& table) : YBOperation(table) {
+KuduInsert::KuduInsert(const shared_ptr<YBTable>& table) : KuduOperation(table) {
 }
 
-YBInsert::~YBInsert() {
+KuduInsert::~KuduInsert() {
 }
 
 // Update -----------------------------------------------------------------------
 
-YBUpdate::YBUpdate(const shared_ptr<YBTable>& table) : YBOperation(table) {
+KuduUpdate::KuduUpdate(const shared_ptr<YBTable>& table) : KuduOperation(table) {
 }
 
-YBUpdate::~YBUpdate() {
+KuduUpdate::~KuduUpdate() {
 }
 
 // Delete -----------------------------------------------------------------------
 
-YBDelete::YBDelete(const shared_ptr<YBTable>& table) : YBOperation(table) {
+KuduDelete::KuduDelete(const shared_ptr<YBTable>& table) : KuduOperation(table) {
 }
 
-YBDelete::~YBDelete() {
+KuduDelete::~KuduDelete() {
+}
+
+// YBRedisOp ----------------------------------------------------------------------
+
+YBRedisOp::YBRedisOp(const shared_ptr<YBTable>& table)
+    : YBOperation(table) {
+}
+
+YBRedisOp::~YBRedisOp() {}
+
+RedisResponsePB* YBRedisOp::mutable_response() {
+  if (!redis_response_) {
+    redis_response_.reset(new RedisResponsePB());
+  }
+  return redis_response_.get();
+}
+
+
+const RedisResponsePB& YBRedisOp::response() const {
+  assert(redis_response_ != nullptr);
+  return *redis_response_;
 }
 
 // YBRedisWriteOp -----------------------------------------------------------------
 
 YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
-    : YBOperation(table), redis_write_request_(new RedisWriteRequestPB()) {
+    : YBRedisOp(table), redis_write_request_(new RedisWriteRequestPB()) {
 }
 
 YBRedisWriteOp::~YBRedisWriteOp() {}
@@ -136,21 +157,23 @@ std::string YBRedisWriteOp::ToString() const {
   return "REDIS_WRITE " + redis_write_request_->key_value().key();
 }
 
-RedisResponsePB* YBRedisWriteOp::mutable_response() {
-  if (!redis_response_) {
-    redis_response_.reset(new RedisResponsePB());
-  }
-  return redis_response_.get();
-}
-
 void YBRedisWriteOp::SetHashCode(uint16_t hash_code) {
   redis_write_request_->mutable_key_value()->set_hash_code(hash_code);
+}
+
+const std::string& YBRedisWriteOp::GetKey() const {
+  return redis_write_request_->key_value().key();
+}
+
+Status YBRedisWriteOp::GetPartitionKey(std::string *partition_key) const {
+  const Slice& slice(redis_write_request_->key_value().key());
+  return table_->partition_schema().EncodeRedisKey(slice, partition_key);
 }
 
 // YBRedisReadOp -----------------------------------------------------------------
 
 YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
-    : YBOperation(table), redis_read_request_(new RedisReadRequestPB()) {
+    : YBRedisOp(table), redis_read_request_(new RedisReadRequestPB()) {
 }
 
 YBRedisReadOp::~YBRedisReadOp() {}
@@ -159,20 +182,17 @@ std::string YBRedisReadOp::ToString() const {
   return "REDIS_READ " + redis_read_request_->key_value().key();
 }
 
-const RedisResponsePB& YBRedisReadOp::response() const {
-  assert(redis_response_ != nullptr);
-  return *redis_response_;
-}
-
-RedisResponsePB* YBRedisReadOp::mutable_response() {
-  if (!redis_response_) {
-    redis_response_.reset(new RedisResponsePB());
-  }
-  return redis_response_.get();
-}
-
 void YBRedisReadOp::SetHashCode(uint16_t hash_code) {
   redis_read_request_->mutable_key_value()->set_hash_code(hash_code);
+}
+
+const std::string& YBRedisReadOp::GetKey() const {
+  return redis_read_request_->key_value().key();
+}
+
+Status YBRedisReadOp::GetPartitionKey(std::string *partition_key) const {
+  const Slice& slice(redis_read_request_->key_value().key());
+  return table_->partition_schema().EncodeRedisKey(slice, partition_key);
 }
 
 // YBqlOp -----------------------------------------------------------------
@@ -222,119 +242,9 @@ std::string YBqlWriteOp::ToString() const {
   return "QL_WRITE " + ql_write_request_->ShortDebugString();
 }
 
-namespace {
-
-Status SetColumn(YBPartialRow* row, const int32 column_id, const QLValuePB& value) {
-  const auto column_idx = row->schema()->find_column_by_id(ColumnId(column_id));
-  CHECK_NE(column_idx, Schema::kColumnNotFound);
-  if (QLValue::IsNull(value)) {
-    return row->SetNull(column_idx);
-  }
-  const DataType data_type = row->schema()->column(column_idx).type_info()->type();
-  switch (data_type) {
-    case INT8:     return row->SetInt8(column_idx, QLValue::int8_value(value));
-    case INT16:    return row->SetInt16(column_idx, QLValue::int16_value(value));
-    case INT32:    return row->SetInt32(column_idx, QLValue::int32_value(value));
-    case INT64:    return row->SetInt64(column_idx, QLValue::int64_value(value));
-    case FLOAT:    return row->SetFloat(column_idx, QLValue::float_value(value));
-    case DOUBLE:   return row->SetDouble(column_idx, QLValue::double_value(value));
-    case DECIMAL:  return row->SetDecimal(column_idx, QLValue::decimal_value(value));
-    case STRING:   return row->SetString(column_idx, Slice(QLValue::string_value(value)));
-    case BOOL:     return row->SetBool(column_idx, QLValue::bool_value(value));
-    case TIMESTAMP:
-      return row->SetTimestamp(column_idx, QLValue::timestamp_value(value).ToInt64());
-    case INET: {
-      string bytes;
-      RETURN_NOT_OK(QLValue::inetaddress_value(value).ToBytes(&bytes));
-      return row->SetInet(column_idx, Slice(bytes));
-    }
-    case UUID: {
-      string bytes;
-      RETURN_NOT_OK(QLValue::uuid_value(value).ToBytes(&bytes));
-      return row->SetUuidCopy(column_idx, Slice(bytes));
-    }
-    case TIMEUUID: {
-      string bytes;
-      RETURN_NOT_OK(QLValue::timeuuid_value(value).ToBytes(&bytes));
-      return row->SetTimeUuidCopy(column_idx, Slice(bytes));
-    };
-
-    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case BINARY: FALLTHROUGH_INTENDED;
-    case VARINT: FALLTHROUGH_INTENDED;
-    case FROZEN: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
-    case MAP: FALLTHROUGH_INTENDED;
-    case SET: FALLTHROUGH_INTENDED;
-    case TUPLE: FALLTHROUGH_INTENDED;
-    case TYPEARGS: FALLTHROUGH_INTENDED;
-    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
-    case DATE: FALLTHROUGH_INTENDED;
-    case TIME: FALLTHROUGH_INTENDED;
-
-    case UINT8:  FALLTHROUGH_INTENDED;
-    case UINT16: FALLTHROUGH_INTENDED;
-    case UINT32: FALLTHROUGH_INTENDED;
-    case UINT64: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA:
-      break;
-
-    // default: fall through
-  }
-
-  LOG(ERROR) << "Internal error: unsupported datatype " << data_type;
-  return STATUS(RuntimeError, "unsupported datatype");
-}
-
-Status SetColumn(YBPartialRow* row, const int32 column_id, const QLExpressionPB& ql_expr) {
-  switch (ql_expr.expr_case()) {
-    case QLExpressionPB::ExprCase::kValue:
-      return SetColumn(row, column_id, ql_expr.value());
-
-    case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kTscall:
-      LOG(FATAL) << "Builtin call is not yet supported";
-      return Status::OK();
-
-    case QLExpressionPB::ExprCase::kColumnId:
-      return STATUS(RuntimeError, "unexpected column reference");
-
-    case QLExpressionPB::ExprCase::kSubscriptedCol:
-      return STATUS(RuntimeError, "unexpected subscripted-column reference");
-
-    case QLExpressionPB::ExprCase::kCondition:
-      return STATUS(RuntimeError, "unexpected relational expression");
-
-    case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
-    case QLExpressionPB::ExprCase::EXPR_NOT_SET:
-      return STATUS(Corruption, "expression not set");
-  }
-
-  return STATUS(RuntimeError, "unexpected case");
-}
-
-Status SetPartialRowKey(
-    YBPartialRow* row,
-    const google::protobuf::RepeatedPtrField<QLColumnValuePB>& hashed_column_values) {
-  // Set the partition key in partial row from the hashed columns.
-  for (const auto& column_value : hashed_column_values) {
-    RETURN_NOT_OK(SetColumn(row, column_value.column_id(), column_value.expr()));
-  }
-  // Verify that all hashed columns have been specified.
-  const auto* schema = row->schema();
-  for (size_t column_idx = 0; column_idx < schema->num_key_columns(); ++column_idx) {
-    if (schema->column(column_idx).is_hash_key() && !row->IsColumnSet(column_idx)) {
-      return STATUS(IllegalState, "Not all hash column values specified");
-    }
-  }
-  return Status::OK();
-}
-
-} // namespace
-
-Status YBqlWriteOp::SetKey() {
-  return SetPartialRowKey(mutable_row(), ql_write_request_->hashed_column_values());
+Status YBqlWriteOp::GetPartitionKey(string* partition_key) const {
+  return table_->partition_schema().EncodeKey(ql_write_request_->hashed_column_values(),
+                                              partition_key);
 }
 
 void YBqlWriteOp::SetHashCode(const uint16_t hash_code) {
@@ -368,10 +278,6 @@ std::string YBqlReadOp::ToString() const {
   return "QL_READ " + ql_read_request_->DebugString();
 }
 
-Status YBqlReadOp::SetKey() {
-  return SetPartialRowKey(mutable_row(), ql_read_request_->hashed_column_values());
-}
-
 void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
   ql_read_request_->set_hash_code(hash_code);
 }
@@ -387,7 +293,8 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
 
   // otherwise, if hashed columns are set, use them to compute the exact key
   if (!ql_read_request_->hashed_column_values().empty()) {
-    RETURN_NOT_OK(YBOperation::GetPartitionKey(partition_key));
+    RETURN_NOT_OK(table_->partition_schema().EncodeKey(ql_read_request_->hashed_column_values(),
+                                                       partition_key));
 
     // make sure given key is not smaller than lower bound (if any)
     if (ql_read_request_->has_hash_code()) {

@@ -639,9 +639,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Create a new write operation for this table. It is the caller's
   // responsibility to free it, unless it is passed to YBSession::Apply().
-  YBInsert* NewInsert();
-  YBUpdate* NewUpdate();
-  YBDelete* NewDelete();
+  KuduInsert* NewInsert();
+  KuduUpdate* NewUpdate();
+  KuduDelete* NewDelete();
 
   // Create a new QL operation for this table.
   YBqlWriteOp* NewQLWrite();

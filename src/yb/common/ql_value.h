@@ -241,9 +241,8 @@ class QLValue {
 
 #undef QL_GET_VALUE
 
-  // TODO (Mihnea) the 'is_last' parameter should be removed entirely in a follow-up commit.
-  static CHECKED_STATUS AppendToKeyBytes(const QLValuePB &value_pb, bool is_last, string *bytes);
-  virtual CHECKED_STATUS AppendToKeyBytes(bool is_last, string *bytes) const = 0;
+  static CHECKED_STATUS AppendToKeyBytes(const QLValuePB &value_pb, string *bytes);
+  virtual CHECKED_STATUS AppendToKeyBytes(string *bytes) const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -406,8 +405,8 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   const QLValuePB& value() const { return *static_cast<const QLValuePB*>(this); }
   QLValuePB* mutable_value() { return static_cast<QLValuePB*>(this); }
 
-  virtual CHECKED_STATUS AppendToKeyBytes(bool is_last, string *bytes) const override {
-    return QLValue::AppendToKeyBytes(value(), is_last, bytes);
+  virtual CHECKED_STATUS AppendToKeyBytes(string *bytes) const override {
+    return QLValue::AppendToKeyBytes(value(), bytes);
   }
 
   //------------------------------------ Nullness methods -----------------------------------

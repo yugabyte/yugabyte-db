@@ -1223,11 +1223,10 @@ TEST_F(TestQLQuery, TestScanWithBounds) {
   std::vector<std::tuple<int64_t, int, string, int, int>> rows;
   for (int i = 0; i < 10; i++) {
     std::string i_str = std::to_string(i);
-    YBPartialRow row(&table->InternalSchema());
-    CHECK_OK(row.SetInt32(0, i));
-    CHECK_OK(row.SetString(1, i_str));
-    CHECK_OK(row.SetInt32(2, i));
-    CHECK_OK(row.SetInt32(3, i));
+    google::protobuf::RepeatedPtrField<QLColumnValuePB> row;
+    row.Add()->mutable_expr()->mutable_value()->set_int32_value(i);
+    row.Add()->mutable_expr()->mutable_value()->set_string_value(i_str);
+
     std::string part_key;
     CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));
     uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(part_key);

@@ -59,11 +59,9 @@ class TableHandle {
   }
 
   void SetInt32ColumnValue(
-      QLColumnValuePB *column_value, const std::string &column_name, const int32_t value,
-      YBPartialRow *prow = nullptr, int prow_index = -1);
+      QLColumnValuePB *column_value, const std::string &column_name, const int32_t value);
   void SetStringColumnValue(
-      QLColumnValuePB *column_value, const std::string &column_name, const std::string &value,
-      YBPartialRow *prow = nullptr, int prow_index = -1);
+      QLColumnValuePB *column_value, const std::string &column_name, const std::string &value);
 
   // Set a column id without value - for DELETE
   void SetColumn(QLColumnValuePB *column_value, const string &column_name);

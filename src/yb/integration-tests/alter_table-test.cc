@@ -75,7 +75,7 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
 using client::YBError;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBRowResult;
 using client::YBScanner;
 using client::YBSchema;
@@ -86,7 +86,7 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTableType;
-using client::YBUpdate;
+using client::KuduUpdate;
 using client::YBValue;
 using std::shared_ptr;
 using master::AlterTableRequestPB;
@@ -439,7 +439,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
 
   // Insert a bunch of rows with the current schema
   for (int i = start_row; i < start_row + num_rows; i++) {
-    shared_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<KuduInsert> insert(table->NewInsert());
     // Endian-swap the key so that we spew inserts randomly
     // instead of just a sequential write pattern. This way
     // compactions may actually be triggered.
@@ -467,7 +467,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   CHECK_OK(client_->OpenTable(kTableName, &table));
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15 * 1000);
-  shared_ptr<YBUpdate> update(table->NewUpdate());
+  shared_ptr<KuduUpdate> update(table->NewUpdate());
   int32_t key = bswap_32(row_key); // endian swap to match 'InsertRows'
   CHECK_OK(update->mutable_row()->SetInt32(0, key));
   typedef map<string, int32_t>::value_type entry;
@@ -733,7 +733,7 @@ void AlterTableTest::InserterThread() {
   CHECK_OK(client_->OpenTable(kTableName, &table));
   int32_t i = 0;
   while (!stop_threads_.Load()) {
-    shared_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<KuduInsert> insert(table->NewInsert());
     // Endian-swap the key so that we spew inserts randomly
     // instead of just a sequential write pattern. This way
     // compactions may actually be triggered.
@@ -765,7 +765,7 @@ void AlterTableTest::UpdaterThread() {
   Random rng(1);
   int32_t i = 0;
   while (!stop_threads_.Load()) {
-    shared_ptr<YBUpdate> update(table->NewUpdate());
+    shared_ptr<KuduUpdate> update(table->NewUpdate());
 
     int32_t max = inserted_idx_.Load();
     if (max == 0) {
@@ -865,7 +865,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   ASSERT_OK(AddNewI32Column(kSplitTableName, "new-i32", 10));
   shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kSplitTableName, &table));
-  shared_ptr<YBInsert> insert(table->NewInsert());
+  shared_ptr<KuduInsert> insert(table->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetInt32("c0", 1));
   ASSERT_OK(insert->mutable_row()->SetInt32("c1", 1));
   ASSERT_OK(insert->mutable_row()->SetInt32("new-i32", 1));

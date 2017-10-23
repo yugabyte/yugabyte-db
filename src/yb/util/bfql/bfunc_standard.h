@@ -71,8 +71,7 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
   string encoded_key = "";
   for (int i = 0; i < params.size(); i++) {
     const PTypePtr& param = params[i];
-    bool is_last = i == params.size() - 1;
-    RETURN_NOT_OK(param->AppendToKeyBytes(is_last, &encoded_key));
+    RETURN_NOT_OK(param->AppendToKeyBytes(&encoded_key));
   }
 
   uint16_t hash = YBPartition::HashColumnCompoundValue(encoded_key);

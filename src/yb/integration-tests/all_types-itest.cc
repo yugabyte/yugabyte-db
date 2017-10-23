@@ -85,7 +85,7 @@ struct SliceKeysTestSetup {
     return rows;
   }
 
-  Status GenerateRowKey(YBInsert* insert, int split_idx, int row_idx) const {
+  Status GenerateRowKey(KuduInsert* insert, int split_idx, int row_idx) const {
     int row_key_num = (split_idx * increment_) + row_idx;
     string row_key = StringPrintf("%016x", row_key_num);
     Slice row_key_slice(row_key);
@@ -160,7 +160,7 @@ struct IntKeysTestSetup {
     return rows;
   }
 
-  Status GenerateRowKey(YBInsert* insert, int split_idx, int row_idx) const {
+  Status GenerateRowKey(KuduInsert* insert, int split_idx, int row_idx) const {
     CppType val = (split_idx * increment_) + row_idx;
     return insert->mutable_row()->Set<TypeTraits<KeyTypeWrapper::type> >(0, val);
   }
@@ -262,7 +262,7 @@ class AllTypesItest : public YBTest {
   }
 
   Status GenerateRow(YBSession* session, int split_idx, int row_idx) {
-    YBInsert* insert = table_->NewInsert();
+    KuduInsert* insert = table_->NewInsert();
     RETURN_NOT_OK(setup_.GenerateRowKey(insert, split_idx, row_idx));
     int int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
     YBPartialRow* row = insert->mutable_row();
@@ -276,7 +276,7 @@ class AllTypesItest : public YBTest {
     RETURN_NOT_OK(row->SetBinaryCopy("binary_val", slice_val));
     RETURN_NOT_OK(row->SetBool("bool_val", int_val % 2));
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
-    RETURN_NOT_OK(session->Apply(shared_ptr<YBInsert>(insert)));
+    RETURN_NOT_OK(session->Apply(shared_ptr<KuduInsert>(insert)));
     return Status::OK();
   }
 

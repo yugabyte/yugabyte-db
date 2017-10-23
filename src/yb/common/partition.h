@@ -39,6 +39,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/ref_counted.h"
@@ -53,9 +54,9 @@ class PartitionSchemaPB;
 class TypeInfo;
 
 enum YBHashSchema {
-  kDefault = 1,
-  kMultiColumnHash = 2,
-  kRedisHash = 3
+  kKuduHashSchema = 1, // Used only in some tests, should be removed once they are migrated to YbQL.
+  kMultiColumnHash = 2, // YbQL default hashing.
+  kRedisHash = 3 // Redis default hashing.
 };
 
 // A Partition describes the set of rows that a Tablet is responsible for
@@ -95,6 +96,11 @@ class Partition {
   // The protobuf message is not validated, since partitions are only expected
   // to be created by the master process.
   static void FromPB(const PartitionPB& pb, Partition* partition);
+
+  bool ConstainsKey(const std::string& partition_key) const {
+    return partition_key >= partition_key_start() &&
+        (partition_key_end().empty() || partition_key < partition_key_end());
+  }
 
  private:
   friend class PartitionSchema;
@@ -161,7 +167,12 @@ class PartitionSchema {
   CHECKED_STATUS EncodeRedisKey(const ConstContiguousRow& row,
                                 std::string* buf) const WARN_UNUSED_RESULT;
 
-  // Appends the row's encoded partition key into the provided buffer.
+  CHECKED_STATUS EncodeRedisKey(const Slice& slice, std::string* buf) const WARN_UNUSED_RESULT;
+
+  CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& hash_values,
+                           std::string* buf) const WARN_UNUSED_RESULT;
+
+      // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
   CHECKED_STATUS EncodeKey(const YBPartialRow& row, std::string* buf) const WARN_UNUSED_RESULT;
 
@@ -312,7 +323,7 @@ class PartitionSchema {
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;
-  YBHashSchema hash_schema_ = YBHashSchema::kDefault;
+  YBHashSchema hash_schema_ = YBHashSchema::kKuduHashSchema;
 };
 
 } // namespace yb

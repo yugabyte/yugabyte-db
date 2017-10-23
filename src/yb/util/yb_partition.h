@@ -45,26 +45,13 @@ class YBPartition {
     return std::to_string(cql_hash_code);
   }
 
-  static void AppendBytesToKey(const char *bytes, size_t len, bool is_last, string *encoded_key) {
-    if (is_last) {
-      encoded_key->append(bytes, len);
-    } else {
-      for (size_t i = 0; i < len; i++) {
-        *encoded_key += *bytes;
-        if (PREDICT_FALSE(*bytes == '\0')) {
-          *encoded_key += '\1';
-        }
-        bytes++;
-      }
-      *encoded_key += '\0';
-      *encoded_key += '\0';
-    }
+  static void AppendBytesToKey(const char *bytes, size_t len, string *encoded_key) {
+    encoded_key->append(bytes, len);
   }
 
   template<typename signed_type, typename unsigned_type>
   static void AppendIntToKey(signed_type val, string *encoded_key) {
-    unsigned_type uval = static_cast<unsigned_type>(val);
-    uval ^= 1UL << (sizeof(uval) * CHAR_BIT - 1);
+    unsigned_type& uval = reinterpret_cast<unsigned_type&>(val);
     switch (sizeof(uval)) {
       case 1:
         break; // Nothing to do.

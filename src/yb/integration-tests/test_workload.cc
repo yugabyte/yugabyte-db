@@ -50,7 +50,7 @@ namespace yb {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
@@ -59,7 +59,7 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 using client::YBTableName;
-using client::YBUpdate;
+using client::KuduUpdate;
 using std::shared_ptr;
 
 const YBTableName TestWorkload::kDefaultTableName("my_keyspace", "test-workload");
@@ -121,13 +121,13 @@ void TestWorkload::WriteThread() {
   while (should_run_.Load()) {
     for (int i = 0; i < write_batch_size_; i++) {
       if (pathological_one_row_enabled_) {
-        shared_ptr<YBUpdate> update(table->NewUpdate());
+        shared_ptr<KuduUpdate> update(table->NewUpdate());
         YBPartialRow* row = update->mutable_row();
         CHECK_OK(row->SetInt32(0, 0));
         CHECK_OK(row->SetInt32(1, r.Next()));
         CHECK_OK(session->Apply(update));
       } else {
-        shared_ptr<YBInsert> insert(table->NewInsert());
+        shared_ptr<KuduInsert> insert(table->NewInsert());
         YBPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, r.Next()));
         CHECK_OK(row->SetInt32(1, r.Next()));
@@ -225,7 +225,7 @@ void TestWorkload::Setup(YBTableType table_type) {
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     shared_ptr<YBTable> table;
     CHECK_OK(client_->OpenTable(table_name_, &table));
-    shared_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<KuduInsert> insert(table->NewInsert());
     YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, 0));
     CHECK_OK(row->SetInt32(1, 0));

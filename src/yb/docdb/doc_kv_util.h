@@ -105,7 +105,6 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
 inline void AppendFloatToKey(float val, std::string* dest, bool descending = false) {
   char buf[sizeof(uint32_t)];
   uint32_t v = *(reinterpret_cast<uint32_t*>(&val));
-  LOG(INFO) << "here " << val << ", " << v;
   if (v >> 31) { // This is the sign bit: better than using val >= 0 (because -0, nulls denormals).
     v = ~v;
   } else {

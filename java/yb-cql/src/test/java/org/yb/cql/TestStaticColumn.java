@@ -106,12 +106,12 @@ public class TestStaticColumn extends BaseCQLTest {
     // Test select distinct static rows from the whole table. The order of rows should be stable
     // when the table shards remain the same.
     assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[6, h6, 60, s60]" +
                 "Row[5, h5, 50, s50]"+
-                "Row[4, h4, 40, s40]"+
                 "Row[1, h1, 13, s13]"+
                 "Row[3, h3, 33, s33]"+
                 "Row[2, h2, 23, s23]"+
-                "Row[6, h6, 60, s60]");
+                "Row[4, h4, 40, s40]");
 
     LOG.info("Test End");
   }
@@ -164,12 +164,12 @@ public class TestStaticColumn extends BaseCQLTest {
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
     assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[6, h6, 60, s60]" +
                 "Row[5, h5, 50, s50]"+
-                "Row[4, h4, 40, s40]"+
                 "Row[1, h1, 13, s13]"+
                 "Row[3, h3, 33, s33]"+
                 "Row[2, h2, 23, s23]"+
-                "Row[6, h6, 60, s60]");
+                "Row[4, h4, 40, s40]");
 
     LOG.info("Test End");
   }
@@ -243,21 +243,21 @@ public class TestStaticColumn extends BaseCQLTest {
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
     assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[6, h6, 120, s120]"+
                 "Row[5, h5, 100, s100]"+
-                "Row[4, h4, 80, s80]"+
                 "Row[1, h1, 15, s15]"+
                 "Row[3, h3, 35, s35]"+
                 "Row[2, h2, 25, s25]"+
-                "Row[6, h6, 120, s120]");
+                "Row[4, h4, 80, s80]");
 
     // Update a static columns to null. Expect that row to be gone.
     session.execute("update t set s1 = null, s2 = null where h1 = 6 and h2 = 'h6';");
     assertQuery("select distinct h1, h2, s1, s2 from t;",
                 "Row[5, h5, 100, s100]"+
-                "Row[4, h4, 80, s80]"+
                 "Row[1, h1, 15, s15]"+
                 "Row[3, h3, 35, s35]"+
-                "Row[2, h2, 25, s25]");
+                "Row[2, h2, 25, s25]"+
+                "Row[4, h4, 80, s80]");
 
     LOG.info("Test End");
   }
@@ -347,13 +347,13 @@ public class TestStaticColumn extends BaseCQLTest {
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
     assertQuery("select distinct h1, h2, s1, s2 from t;",
-                "Row[7, h7, 76, s76]"+
+                "Row[6, h6, 60, s60]" +
                 "Row[5, h5, 50, s50]"+
-                "Row[4, h4, 40, s40]"+
                 "Row[1, h1, 17, s17]"+
+                "Row[7, h7, 76, s76]"+
                 "Row[3, h3, 33, s33]"+
                 "Row[2, h2, 23, s23]"+
-                "Row[6, h6, 60, s60]");
+                "Row[4, h4, 40, s40]");
 
     LOG.info("Test End");
   }
@@ -459,7 +459,7 @@ public class TestStaticColumn extends BaseCQLTest {
 
   @Test
   public void testDeleteStaticColumn() throws Exception {
-  	LOG.info("Test Start");
+    LOG.info("Test Start");
     session.execute("create table t (" +
                     "h int, r int, v int static," +
                     "primary key (h, r));");
@@ -478,7 +478,7 @@ public class TestStaticColumn extends BaseCQLTest {
     List<Row> rows = rs.all();
     assertEquals(2, rows.size());
     for (Row row : rows) {
-    		assertTrue(row.isNull(0));
+      assertTrue(row.isNull(0));
     }
     LOG.info("Test End");
   }

@@ -96,7 +96,7 @@ namespace tablet {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBInsert;
+using client::KuduInsert;
 using client::YBRowResult;
 using client::YBScanner;
 using client::YBSchema;
@@ -387,7 +387,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
   for (int64_t key = start; key < end; ++key) {
-    shared_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<KuduInsert> insert(table->NewInsert());
     RandomRow(&rng, insert->mutable_row(), randstr, key, id);
     CHECK_OK(session->Apply(insert));
 

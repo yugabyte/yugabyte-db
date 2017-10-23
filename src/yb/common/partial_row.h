@@ -52,7 +52,7 @@
 namespace yb {
 class ColumnSchema;
 namespace client {
-class YBOperation;
+class KuduOperation;
 template<typename KeyTypeWrapper> struct SliceKeysTestSetup;
 template<typename KeyTypeWrapper> struct IntKeysTestSetup;
 } // namespace client
@@ -244,7 +244,7 @@ class YBPartialRow {
   friend class RowKeyUtilTest;
   friend class RowOperationsPBDecoder;
   friend class RowOperationsPBEncoder;
-  friend class client::YBOperation;   // for row_data_.
+  friend class client::KuduOperation;   // for row_data_.
   friend class PartitionSchema;
   template<typename KeyTypeWrapper> friend struct client::SliceKeysTestSetup;
   template<typename KeyTypeWrapper> friend struct client::IntKeysTestSetup;

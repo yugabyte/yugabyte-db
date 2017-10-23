@@ -995,7 +995,10 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
   // Create partitions.
   vector <Partition> partitions;
+  PartitionSchemaPB partition_schema_pb;
+  partition_schema_pb.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
   PartitionSchema partition_schema;
+  RETURN_NOT_OK(PartitionSchema::FromPB(partition_schema_pb, schema, &partition_schema));
   RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
 
   RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
@@ -1318,7 +1321,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                                       &partitions, kRedisClusterSlots));
       break;
     }
-    case YBHashSchema::kDefault: {
+    case YBHashSchema::kKuduHashSchema: {
       // If the client did not set a partition schema in the create table request,
       // the default partition schema (no hash bucket components and a range
       // partitioned on the primary key columns) will be used.

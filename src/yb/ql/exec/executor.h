@@ -193,20 +193,13 @@ class Executor {
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToPB(const std::shared_ptr<client::YBTable>& table,
                                 const PTDmlStmt *tnode,
-                                QLWriteRequestPB *req,
-                                YBPartialRow *row);
-
-  // Set up partial row for computing hash value.
-  CHECKED_STATUS SetupPartialRow(const ColumnDesc *col_desc,
-                                 const QLExpressionPB *col_expr,
-                                 YBPartialRow *row);
+                                QLWriteRequestPB *req);
 
   //------------------------------------------------------------------------------------------------
   // Where clause evaluation.
 
   // Convert where clause to protobuf for read request.
   CHECKED_STATUS WhereClauseToPB(QLReadRequestPB *req,
-                                 YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops,
                                  const MCList<SubscriptedColumnOp>& subcol_where_ops,
@@ -216,7 +209,6 @@ class Executor {
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(QLWriteRequestPB *req,
-                                 YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops,
                                  const MCList<SubscriptedColumnOp>& subcol_where_ops);

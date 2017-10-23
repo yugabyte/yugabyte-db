@@ -444,10 +444,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   shared_ptr<YBqlReadOp> select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
   // Where clause - Hash, range, and regular columns.
-  YBPartialRow *row = select_op->mutable_row();
 
   bool no_results = false;
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+  Status st = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                               tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
                               tnode->func_ops(), &no_results);
   if (PREDICT_FALSE(!st.ok())) {
@@ -571,7 +570,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   RETURN_NOT_OK(TtlToPB(tnode, insert_op->mutable_request()));
 
   // Set the values for columns.
-  Status s = ColumnArgsToPB(table, tnode, req, insert_op->mutable_row());
+  Status s = ColumnArgsToPB(table, tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -604,8 +603,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
-  YBPartialRow *row = delete_op->mutable_row();
-  Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                              tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
@@ -616,7 +614,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
-  s = ColumnArgsToPB(table, tnode, req, delete_op->mutable_row());
+  s = ColumnArgsToPB(table, tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -643,8 +641,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
-  YBPartialRow *row = update_op->mutable_row();
-  Status s = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
       tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
@@ -654,7 +651,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   RETURN_NOT_OK(TtlToPB(tnode, update_op->mutable_request()));
 
   // Setup the columns' new values.
-  s = ColumnArgsToPB(table, tnode, update_op->mutable_request(), update_op->mutable_row());
+  s = ColumnArgsToPB(table, tnode, update_op->mutable_request());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
