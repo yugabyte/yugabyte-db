@@ -7,6 +7,7 @@
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
+  justify-content: space-between;
   width: 100%;
   .navbar-header {
     margin: 0;
@@ -18,7 +19,7 @@
     flex: 1;
   }
   & > *:last-child {
-    flex: 0 0 144px;
+    flex: 0 0 auto;
   }
 }
 
@@ -28,7 +29,8 @@
 }
 
 .yb-nav-bar .navbar {
-    margin-bottom: 0px
+    margin-bottom: 0px;
+    border: none;
 }
 
 .nav_title {
@@ -79,11 +81,14 @@
 
 .navbar-nav {
   margin: 0;
+  li {
+    float: left;
+  }
   .dropdown {
     float: left;
-    width: 72px;
     .dropdown-toggle i, .task-list-heading i {
       color: $YB_VIOLET_TEXT;
+      vertical-align: middle;
     }
     &.open .dropdown-toggle {
       background-color: $YB_BACKGROUND !important;
@@ -111,7 +116,7 @@
 
   .caret {
     position: relative;
-    top: -5px;
+    top: -1px;
     border-top-color: $YB_VIOLET;
   }
 }
@@ -151,12 +156,15 @@
 }
 
 .navbar-brand, .navbar-nav>li>a {
-  font-weight: 500;
+  font-weight: 300;
   color: #ECF0F1 !important;
   margin-left: 0 !important;
-  line-height: 32px;
-  padding-top: 17px;
-  padding-bottom: 15px;
+  height: 64px;
+  padding-top: 21px;
+  padding-bottom: 14px;
+  &.dropdown-toggle {
+    border-left: 1px solid $YB_GRAY_HOVER !important;
+  }
 }
 
 .nav.navbar-nav>li>a {

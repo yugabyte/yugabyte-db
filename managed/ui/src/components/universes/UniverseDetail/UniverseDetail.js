@@ -86,8 +86,8 @@ class UniverseDetail extends Component {
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
         <div className="universe-detail-flex-container">
-          <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
           <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
+          <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
         </div>
         <Row>
           <Col lg={5}>
