@@ -332,7 +332,11 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
           RETURN_NOT_OK(kv_entries.ConvertToRedisTS());
         }
 
-        if (kv.subkey_size() == 1 && FLAGS_emulate_redis_responses) {
+        // For an HSET command (which has only one subkey), we need to read the subkey to find out
+        // if the key already existed, and return 0 or 1 accordingly. This read is unnecessary for
+        // HMSET and TSADD.
+        if (kv.subkey_size() == 1 && FLAGS_emulate_redis_responses &&
+            kv.type() != REDIS_TYPE_TIMESERIES) {
           RedisDataType type;
           RETURN_NOT_OK(GetRedisValueType(
               doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, doc_write_batch, 0));

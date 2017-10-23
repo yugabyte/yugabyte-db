@@ -130,7 +130,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((hdel, HDel, -3, WRITE)) \
     ((sadd, SAdd, -3, WRITE)) \
     ((srem, SRem, -3, WRITE)) \
-    ((tsadd, TsAdd, 4, WRITE)) \
+    ((tsadd, TsAdd, -4, WRITE)) \
     ((getset, GetSet, 3, WRITE)) \
     ((append, Append, 3, WRITE)) \
     ((del, Del, 2, WRITE)) \

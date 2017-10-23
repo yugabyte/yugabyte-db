@@ -854,26 +854,36 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey2", "12"});
   DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key", "subkey1"});
   DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key", "subkey2"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "1", "v1", "2", "v2", "3.0", "v3"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "1", "v1", "2", "v2", "abc", "v3"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "1", "v1", "2", "v2", "123abc", "v3"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "1", "v1", "2", "v2", " 123", "v3"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "1", "v1", "2", "v2", "0xff", "v3"});
 
   // Incorrect number of arguments.
   DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey1"});
   DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "subkey2"});
   DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key"});
   DoRedisTestExpectError(__LINE__, {"TSGET", "ts_key"});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "ts_key", "1", "v1", "2", "v2", "3"});
 
   // Valid statements.
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "-10", "value1"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "-20", "value2"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "-30", "value3"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "10", "value1"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "20", "value2"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "30", "value3"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key",
-      strings::Substitute("$0", std::numeric_limits<int64_t>::max()), "valuemax"}, 1);
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key",
-      strings::Substitute("$0", std::numeric_limits<int64_t>::min()), "valuemin"}, 1);
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-10", "value1"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-20", "value2"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-30", "value3"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "10", "value1"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "20", "value2"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value3"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      strings::Substitute("$0", std::numeric_limits<int64_t>::max()), "valuemax"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      strings::Substitute("$0", std::numeric_limits<int64_t>::min()), "valuemin"});
   SyncClient();
-  DoRedisTestInt(__LINE__, {"TSADD", "ts_key", "30", "value4"}, 0);
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value4"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_multi", "10", "v1", "20", "v2", "30", "v3", "40", "v4"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_multi", "10", "v5", "50", "v6", "30", "v7", "60", "v8"});
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_multi", "10", "v9", "70", "v10", "30", "v11", "80", "v12"});
   SyncClient();
 
   // Ensure we retrieve appropriate results.
@@ -887,6 +897,14 @@ TEST_F(TestRedisService, TestTimeSeries) {
       strings::Substitute("$0", std::numeric_limits<int64_t>::max())}, "valuemax");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
       strings::Substitute("$0", std::numeric_limits<int64_t>::min())}, "valuemin");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "10"}, "v9");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "20"}, "v2");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "30"}, "v11");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "40"}, "v4");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "50"}, "v6");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "60"}, "v8");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "70"}, "v10");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "80"}, "v12");
 
   // Keys that are not present.
   DoRedisTestNull(__LINE__, {"TSGET", "ts_key", "40"});
@@ -897,6 +915,10 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestExpectError(__LINE__, {"SISMEMBER", "ts_key", "30"});
   DoRedisTestExpectError(__LINE__, {"HEXISTS", "ts_key", "30"});
   DoRedisTestExpectError(__LINE__, {"GET", "ts_key"});
+
+  // TSGET should not work with HSET.
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "30", "v1"}, 1);
+  DoRedisTestNull(__LINE__, {"TSGET", "map_key", "30"});
 
   SyncClient();
   VerifyCallbacks();

@@ -140,41 +140,63 @@ Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
-Status ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
-  const auto& key = args[1];
-  int64_t timestamp;
-  RETURN_NOT_OK(util::CheckedStoll(args[2], &timestamp));
-  const auto& value = args[3];
+template <typename T, typename ArgParser, typename AddSubKey>
+Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
+                              const RedisDataType& type,
+                              ArgParser arg_parser,
+                              AddSubKey add_sub_key) {
+  if (args.size() < 4 || args.size() % 2 == 1) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+                             "wrong number of arguments: $0 for command: $1", args.size(),
+                             string(args[0].cdata(), args[0].size()));
+  }
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_TIMESERIES);
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(timestamp);
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->set_type(type);
+  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  // We remove duplicates from the subkeys here.
+  std::unordered_map<T, string> kv_map;
+  for (int i = 2; i < args.size(); i += 2) {
+    T val;
+    RETURN_NOT_OK(arg_parser(string(args[i].cdata(), args[i].size()), &val));
+    kv_map[val] = string(args[i + 1].cdata(), args[i + 1].size());
+  }
+  for (const auto& kv : kv_map) {
+    add_sub_key(kv.first, op->mutable_request()->mutable_key_value());
+    op->mutable_request()->mutable_key_value()->add_value(kv.second);
+  }
   return Status::OK();
 }
 
 Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("hmset", to_lower_case(args[0]))
       << "Parsing hmset request where first arg is not hmset.";
-  if (args.size() < 4 || args.size() % 2 == 1) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
-        "wrong number of arguments for HMSET");
-  }
-  op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
-  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
-  // We remove duplicates from the subkeys here.
-  std::unordered_map<string, string> kv_map;
-  for (int i = 2; i < args.size(); i += 2) {
-    kv_map[string(args[i].cdata(), args[i].size())] =
-        string(args[i + 1].cdata(), args[i + 1].size());
-  }
-  for (const auto& kv : kv_map) {
-    op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(kv.first);
-    op->mutable_request()->mutable_key_value()->add_value(kv.second);
-  }
-  return Status::OK();
+  return ParseHMSetLikeCommands<string>(op, args, REDIS_TYPE_HASH,
+                                        [](const string& arg, string* val) -> Status {
+                                          *val =  arg;
+                                          return Status::OK();
+                                        },
+                                        [](const string& subkey, RedisKeyValuePB* kv_pb) {
+                                          kv_pb->add_subkey()->set_string_subkey(subkey);
+                                        }
+  );
 }
+
+Status ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  DCHECK_EQ("tsadd", to_lower_case(args[0]))
+    << "Parsing hmset request where first arg is not hmset.";
+  return ParseHMSetLikeCommands<int64_t>(op, args, REDIS_TYPE_TIMESERIES,
+                                         [](const string& arg, int64_t* val) -> Status {
+                                           int64_t timestamp;
+                                           RETURN_NOT_OK(util::CheckedStoll(arg, &timestamp));
+                                           *val =  timestamp;
+                                           return Status::OK();
+                                         },
+                                         [](int64_t subkey, RedisKeyValuePB* kv_pb) {
+                                           kv_pb->add_subkey()->set_timestamp_subkey(subkey);
+                                         }
+  );
+}
+
 
 template <class YBRedisOp>
 Status ParseCollection(YBRedisOp *op,
