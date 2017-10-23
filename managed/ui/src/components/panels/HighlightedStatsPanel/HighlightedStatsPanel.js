@@ -48,7 +48,7 @@ export default class HighlightedStatsPanel extends Component {
     );
     return (
       <div className="row tile_count highlighted-stats-panel">
-        <Col xs={12} sm={8} smOffset={3} md={6}>
+        <Col xs={12} sm={12} mdOffset={2} md={8} lgOffset={4} lg={6}>
           <StatsPanelComponent value={universeList.data.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
           <StatsPanelComponent value={formattedCost} label={"Per Month"}/>

@@ -24,7 +24,7 @@
   }
 }
 .tile_count .tile_stats_count {
-  border-left: 1px solid #ddd;
+  border-left: 1px solid $YB_GRAY_HOVER;
 }
 .tile_count .tile_stats_count:first-child {
   border-left: none;
