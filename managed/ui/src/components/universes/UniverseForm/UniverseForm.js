@@ -180,9 +180,9 @@ class UniverseForm extends Component {
 
   handleUniverseConfigure(universeTaskParams) {
     const {universe: {currentUniverse}} = this.props;
+    const checkSpotPrice = universeTaskParams.userIntent.providerType === 'aws' && !this.state.gettingSuggestedSpotPrice;
     if (isDefinedNotNull(this.state.instanceTypeSelected) && isNonEmptyArray(this.state.regionList) &&
-        (_.isEqual(this.state.spotPrice, normalizeToPositiveFloat(this.state.spotPrice)) ||
-        this.state.gettingSuggestedSpotPrice)) {
+        (!checkSpotPrice || _.isEqual(this.state.spotPrice, normalizeToPositiveFloat(this.state.spotPrice)))) {
       if (isNonEmptyObject(currentUniverse.data) &&
         areIntentsEqual(currentUniverse.data.universeDetails.userIntent, universeTaskParams.userIntent)) {
         this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
