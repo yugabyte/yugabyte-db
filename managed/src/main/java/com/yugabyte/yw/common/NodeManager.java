@@ -24,6 +24,7 @@ import play.libs.Json;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -164,8 +165,7 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
-        Map<String, String> extra_gflags =
-           Universe.get(taskParam.universeUUID).getUniverseDetails().userIntent.gflags;
+        Map<String, String> extra_gflags = new HashMap<>();
         if (taskParam.isMaster) {
           extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
         }

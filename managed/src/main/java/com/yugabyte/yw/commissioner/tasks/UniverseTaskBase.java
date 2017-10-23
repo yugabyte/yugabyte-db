@@ -379,11 +379,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Creates a task to persist customized gflags to be used by server processes.
    */
-  public SubTaskGroup updateGFlagsPersistTasks(Map<String, String> newGflags) {
+  public SubTaskGroup updateGFlagsPersistTasks(Map<String, String> masterGFlags, Map<String, String> tserverGFlags) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdateAndPersistGFlags", executor);
     UpdateAndPersistGFlags.Params params = new UpdateAndPersistGFlags.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.newGflags = newGflags;
+    params.masterGFlags = masterGFlags;
+    params.tserverGFlags = tserverGFlags;
     UpdateAndPersistGFlags task = new UpdateAndPersistGFlags();
     task.initialize(params);
     subTaskGroup.addTask(task);

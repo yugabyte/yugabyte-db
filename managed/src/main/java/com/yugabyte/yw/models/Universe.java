@@ -104,7 +104,8 @@ public class Universe extends Model {
           json.set("provider", Json.toJson(regions.get(0).provider));
         }
       }
-      json.set("gflags", Json.toJson(userIntent.gflags));
+      json.set("masterGFlags", Json.toJson(userIntent.masterGFlags));
+      json.set("tserverGFlags", Json.toJson(userIntent.tserverGFlags));
     }
 
     return json;

@@ -3,7 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -384,16 +386,13 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
+      ObjectNode formData = (ObjectNode) request().body().asJson();
 
-      // Get the user submitted form data.
-      Form<RollingRestartParams> formData = formFactory.form(RollingRestartParams.class).bindFromRequest();
+      RollingRestartParams taskParams = bindRollingRestartFormDataToTaskParams(formData);
 
-      // Check for any form errors.
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      if (taskParams.taskType == null) {
+        return ApiResponse.error(BAD_REQUEST, "task type is required");
       }
-
-      RollingRestartParams taskParams = formData.get();
 
       CustomerTask.TaskType customerTaskType = null;
       // Validate if any required params are missed based on the taskType
@@ -408,7 +407,8 @@ public class UniverseController extends AuthenticatedController {
           break;
         case GFlags:
           customerTaskType = CustomerTask.TaskType.UpgradeGflags;
-          if (taskParams.gflags == null || taskParams.gflags.isEmpty()) {
+          if ((taskParams.masterGFlags == null || taskParams.masterGFlags.isEmpty()) &&
+            (taskParams.tserverGFlags == null || taskParams.tserverGFlags.isEmpty())) {
             return ApiResponse.error(
               BAD_REQUEST,
               "gflags param is required for taskType: " + taskParams.taskType);
@@ -513,6 +513,22 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  private RollingRestartParams bindRollingRestartFormDataToTaskParams(ObjectNode formData) throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+    RollingRestartParams taskParams = new RollingRestartParams();
+
+    Map<String, String> masterGFlagsMap = serializeGFlagListToMap(formData, "masterGFlags");
+    Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(formData, "tserverGFlags");
+
+    // Nodes Option for RollingRestartParams will no longer be supported.
+    formData.remove("nodeNames");
+
+    taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
+    taskParams.masterGFlags = masterGFlagsMap;
+    taskParams.tserverGFlags = tserverGFlagsMap;
+    return taskParams;
+  }
+
   private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -525,10 +541,14 @@ public class UniverseController extends AuthenticatedController {
     if (formData.get("expectedUniverseVersion") != null) {
       expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
     }
-    taskParams = mapper.treeToValue(formData, UniverseDefinitionTaskParams.class);
-    if (taskParams.userIntent == null ) {
+    ObjectNode userIntent = (ObjectNode) formData.get("userIntent");
+    if (userIntent == null ) {
       throw new Exception("userIntent: This field is required");
     }
+    Map<String, String> masterGFlagsMap = serializeGFlagListToMap(userIntent, "masterGFlags");
+    Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(userIntent, "tserverGFlags");
+    formData.set("userIntent", userIntent);
+    taskParams = mapper.treeToValue(formData, UniverseDefinitionTaskParams.class);
     if (nodeSetArray != null) {
       Set<NodeDetails> nodeDetailSet = new HashSet<NodeDetails>();
       for (JsonNode nodeItem : nodeSetArray) {
@@ -538,8 +558,33 @@ public class UniverseController extends AuthenticatedController {
       }
       taskParams.nodeDetailsSet = nodeDetailSet;
     }
+    taskParams.userIntent.masterGFlags = masterGFlagsMap;
+    taskParams.userIntent.tserverGFlags = tserverGFlagsMap;
     taskParams.expectedUniverseVersion = expectedUniverseVersion;
     return taskParams;
+  }
+
+  /**
+   * Method serializes the GFlag ObjectNode into a Map and then deletes it from it's parent node.
+   * @param formNode Parent FormObject for the GFlag Node.
+   * @param listType Type of GFlag object
+   * @return Serialized JSON array into Map
+   */
+  private Map<String, String>  serializeGFlagListToMap(ObjectNode formNode, String listType) {
+    Map<String, String> gflagMap = new HashMap<>();
+    JsonNode formNodeList = formNode.get(listType);
+    if (formNodeList != null && formNodeList.isArray()) {
+      ArrayNode flagNodeArray = (ArrayNode) formNodeList;
+      for (int counter = 0; counter < flagNodeArray.size(); counter++) {
+        if (flagNodeArray.get(counter).get("name") != null) {
+          String key = flagNodeArray.get(counter).get("name").asText();
+          String value = flagNodeArray.get(counter).get("value").asText();
+          gflagMap.put(key, value);
+        }
+      }
+    }
+    formNode.remove(listType);
+    return gflagMap;
   }
 }
 
