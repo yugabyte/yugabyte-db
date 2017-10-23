@@ -68,8 +68,8 @@ export default class NodeDetails extends Component {
 
     const nodeDetailRows = nodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
-      if (!inLoadingOrInitState && isDefinedNotNull(universePerNodeStatus.data) &&
-          isDefinedNotNull(universePerNodeStatus.data[nodeDetail.nodeName])) {
+
+      if (!inLoadingOrInitState && isDefinedNotNull(universePerNodeStatus.data) && universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]) {
         nodeStatus = insertSpacesFromCamelCase(universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]);
       }
       return {

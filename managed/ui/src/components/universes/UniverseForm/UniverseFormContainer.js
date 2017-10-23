@@ -115,7 +115,7 @@ const mapDispatchToProps = (dispatch) => {
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
   'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields', 'accessKeyCode',
-  'spotPrice'];
+  'spotPrice', 'masterGFlags', 'tserverGFlags'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
@@ -153,6 +153,12 @@ function mapStateToProps(state, ownProps) {
         label: currentUniverse.data.regions[0].name
       }];
     }
+    data.masterGFlags = Object.keys(userIntent.masterGFlags).map(function(key){
+      return {name: key, value: userIntent.masterGFlags[key]}
+    });
+    data.tserverGFlags = Object.keys(userIntent.tserverGFlags).map(function(key){
+      return {name: key, value: userIntent.tserverGFlags[key]}
+    });
   }
 
   const selector = formValueSelector('UniverseForm');
@@ -167,7 +173,7 @@ function mapStateToProps(state, ownProps) {
     formValues: selector(state,
       'formType', 'universeName', 'provider', 'providerType', 'regionList',
       'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'accessKeyCode',
-      'spotPrice', 'useSpotPrice')
+      'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
   };
 }
 

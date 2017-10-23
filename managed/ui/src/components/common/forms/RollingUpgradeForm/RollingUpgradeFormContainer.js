@@ -33,13 +33,16 @@ function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   let initalGFlagValues = {};
   if (isNonEmptyObject(currentUniverse) && currentUniverse.data.universeDetails.userIntent) {
-    const currentGFlags = currentUniverse.data.universeDetails.userIntent.gflags;
-    const gFlagList = Object.keys(currentGFlags).map(function(gFlagKey){
-      return {name: gFlagKey, value: currentGFlags[gFlagKey]};
+    let masterGFlags = currentUniverse.data.universeDetails.userIntent.masterGFlags;
+    let tserverGFlags = currentUniverse.data.universeDetails.userIntent.tserverGFlags;
+    const masterList = Object.keys(masterGFlags).map(function(gFlagKey){
+      return {name: gFlagKey, value: masterGFlags[gFlagKey]};
     });
-    if (isNonEmptyArray(gFlagList)) {
-      initalGFlagValues = {gflags: gFlagList};
-    }
+    const tserverList = Object.keys(tserverGFlags).map(function(gFlagKey){
+      return {name: gFlagKey, value: tserverGFlags[gFlagKey]};
+    });
+    initalGFlagValues.masterGFlags = masterList;
+    initalGFlagValues.tserverGFlags = tserverList;
   }
   initalGFlagValues.timeDelay = 180;
   return {

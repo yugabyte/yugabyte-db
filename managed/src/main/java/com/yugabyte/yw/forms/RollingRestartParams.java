@@ -11,12 +11,6 @@ import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
 public class RollingRestartParams extends UniverseDefinitionTaskParams {
-  
-  public static class GFlag {
-    public String name;
-    public String value;
-    public String type;
-  }
 
   // The universe that we want to perform a rolling restart on.
   @Constraints.Required()
@@ -29,40 +23,8 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
 
-  // The new gflag values to update on the desired set of nodes.
-  public List<GFlag> gflags;
-
-  @JsonIgnore
-  // Since we would use gflags as a map in task and subtask level
-  public Map<String, String> getGFlagsAsMap() {
-    Map<String, String> gflagsMap = new HashMap<>();
-    for (GFlag gflag: gflags) {
-      gflagsMap.put(gflag.name, gflag.value);
-    }
-    return gflagsMap;
-  }
-
-  @JsonIgnore
-  public Map<String, String> getMasterGFlagsAsMap() {
-    Map<String, String> gflagsMap = new HashMap<>();
-    for (GFlag gflag: gflags) {
-      if (gflag.type.equals("master")) {
-        gflagsMap.put(gflag.name, gflag.value);
-      }
-    }
-    return gflagsMap;
-  }
-
-  @JsonIgnore
-  public Map<String, String> getTServerGFlagsAsMap() {
-    Map<String, String> gflagsMap = new HashMap<>();
-    for (GFlag gflag: gflags) {
-      if (gflag.type.equals("tserver")) {
-        gflagsMap.put(gflag.name, gflag.value);
-      }
-    }
-    return gflagsMap;
-  }
+  public Map<String, String> masterGFlags = new HashMap<String, String>();
+  public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
   // The nodes that we want to perform the operation and the subsequent rolling restart on.
   @Constraints.Required()

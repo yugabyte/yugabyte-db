@@ -16,7 +16,9 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
+import play.api.libs.json.JsArray;
 import play.data.validation.Constraints;
+import play.libs.Json;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -111,7 +113,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    public Map<String, String> gflags = new HashMap<String, String>();
+    public Map<String, String> masterGFlags = new HashMap<String, String>();
+    public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
     @Override
     public String toString() {
@@ -136,7 +139,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.spotPrice = spotPrice;
-      newUserIntent.gflags = gflags;
+      newUserIntent.masterGFlags = masterGFlags;
+      newUserIntent.tserverGFlags = tserverGFlags;
       return newUserIntent;
     }
 
@@ -153,7 +157,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
           spotPrice == other.spotPrice &&
-          gflags.equals(other.gflags)) {
+          masterGFlags.equals(other.masterGFlags) &&
+          tserverGFlags.equals(other.tserverGFlags)) {
          return true;
       }
       return false;

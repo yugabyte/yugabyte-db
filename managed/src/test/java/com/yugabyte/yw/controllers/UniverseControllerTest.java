@@ -31,6 +31,7 @@ import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -95,6 +96,41 @@ public class UniverseControllerTest extends WithApplication {
       .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
       .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
       .build();
+  }
+
+
+  public Result getTestUniverseResult(ObjectNode testUserIntent) {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode topJson = Json.newObject();
+    ObjectNode bodyJson = Json.newObject();
+    ArrayNode regionList = Json.newArray();
+    regionList.add(r.uuid.toString());
+    bodyJson.set("regionList", regionList);
+    bodyJson.put("universeName", "Single UserUniverse");
+    bodyJson.put("isMultiAZ", false);
+    bodyJson.put("instanceType", i.getInstanceTypeCode());
+    bodyJson.put("replicationFactor", 3);
+    bodyJson.put("numNodes", 3);
+    bodyJson.put("provider", p.uuid.toString());
+    topJson.set("userIntent", testUserIntent);
+
+    AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
+    assertThat(az.region.name, is(notNullValue()));
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
+      .cookie(validCookie).bodyJson(topJson));
+    return result;
+
   }
 
   @Before
@@ -232,6 +268,7 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(contentAsString(result), is(containsString("userIntent: This field is required")));
   }
 
+
   @Test
   public void testUniverseCreateWithoutAvailabilityZone() {
     Provider p = ModelFactory.awsProvider(customer);
@@ -345,6 +382,55 @@ public class UniverseControllerTest extends WithApplication {
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
                                       "/universes/" + universe.universeUUID)
                                       .cookie(validCookie).bodyJson(topJson));
+
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("universeUUID").asText(), is(notNullValue()));
+    JsonNode universeDetails = json.get("universeDetails");
+    assertThat(universeDetails, is(notNullValue()));
+
+    CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Update)));
+  }
+
+  @Test
+  public void testUniverseCreateWithInvalidTServerJson() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    InstanceType i =
+      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode topJson = Json.newObject();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("masterGFlags", "abcd");
+    ArrayNode regionList = Json.newArray();
+    regionList.add(r.uuid.toString());
+    bodyJson.set("regionList", regionList);
+    bodyJson.put("isMultiAZ", true);
+    bodyJson.put("universeName", universe.name);
+    bodyJson.put("instanceType", i.getInstanceTypeCode());
+    bodyJson.put("replicationFactor", 3);
+    bodyJson.put("numNodes", 3);
+    bodyJson.put("provider", p.uuid.toString());
+    topJson.set("userIntent", bodyJson);
+
+    AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
+    assertThat(az.region.name, is(notNullValue()));
+
+    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID)
+      .cookie(validCookie).bodyJson(topJson));
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -475,9 +561,6 @@ public class UniverseControllerTest extends WithApplication {
     assertEquals(BAD_REQUEST, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").toString(), is(containsString("\"universeUUID\":[\"This field is required\"]")));
-    assertThat(json.get("error").toString(), is(containsString("\"taskType\":[\"This field is required\"]")));
-    assertThat(json.get("error").toString(), is(containsString("\"nodeNames\":[\"This field is required\"]")));
 
     CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
     assertNull(th);
@@ -556,7 +639,8 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("universeUUID", universe.universeUUID.toString());
     bodyJson.put("taskType", "GFlags");
     bodyJson.set("nodeNames", nodes);
-    bodyJson.set("gflags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
+    bodyJson.set("masterGFlags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
+    bodyJson.set("tserverGFlags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
     UserIntent userIntent = getDefaultUserIntent();
     userIntent.universeName = universe.name;
     bodyJson.set("userIntent", Json.toJson(userIntent));
@@ -595,6 +679,78 @@ public class UniverseControllerTest extends WithApplication {
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
                             .cookie(validCookie).bodyJson(bodyJson));
+
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), is(containsString("gflags param is required for taskType: GFlags")));
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithMissingGflags() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "GFlags");
+
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+      .cookie(validCookie).bodyJson(bodyJson));
+
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), is(containsString("gflags param is required for taskType: GFlags")));
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithMalformedTServerFlags() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "GFlags");
+    bodyJson.put("tserverGFlags", "abcd");
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+      .cookie(validCookie).bodyJson(bodyJson));
+
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), is(containsString("gflags param is required for taskType: GFlags")));
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithMalformedMasterGFlags() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "GFlags");
+    bodyJson.put("masterGFlags", "abcd");
+    UserIntent userIntent = getDefaultUserIntent();
+    userIntent.universeName = universe.name;
+    bodyJson.set("userIntent", Json.toJson(userIntent));
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+      .cookie(validCookie).bodyJson(bodyJson));
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -929,6 +1085,8 @@ public class UniverseControllerTest extends WithApplication {
       ui.numNodes = numNodes;
       ui.instanceType = i.getInstanceTypeCode();
       ui.isMultiAZ = true;
+      ui.masterGFlags = new HashMap<String, String>();
+      ui.tserverGFlags = new HashMap<String, String>();
       return ui;
     }
 

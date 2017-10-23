@@ -19,7 +19,8 @@ public class UpdateAndPersistGFlags extends AbstractTaskBase {
 
   // Parameters for setting and persisting universe gflags.
   public static class Params extends UniverseTaskParams {
-    public Map<String, String> newGflags;
+    public Map<String, String> masterGFlags;
+    public Map<String, String> tserverGFlags;
   }
 
   protected Params taskParams() {
@@ -50,7 +51,10 @@ public class UpdateAndPersistGFlags extends AbstractTaskBase {
 
           // Update the gflags.
           UserIntent userIntent = universeDetails.userIntent;
-          userIntent.gflags.putAll(taskParams().newGflags);
+
+          userIntent.masterGFlags.putAll(taskParams().masterGFlags);
+          userIntent.tserverGFlags.putAll(taskParams().tserverGFlags);
+
           universe.setUniverseDetails(universeDetails);
         }
       };
