@@ -37,6 +37,13 @@ public class CassandraBatchKeyValue extends CassandraKeyValue {
     appConfig.cassandraBatchSize = 10;
   }
 
+  // Buffers for each key in a batch.
+  private final byte[][] buffers;
+
+  public CassandraBatchKeyValue() {
+    buffers = new byte[appConfig.cassandraBatchSize][appConfig.valueSize];
+  }
+
   @Override
   public long doWrite() {
     BatchStatement batch = new BatchStatement();
@@ -49,6 +56,7 @@ public class CassandraBatchKeyValue extends CassandraKeyValue {
         if (appConfig.valueSize == 0) {
           value = ByteBuffer.wrap(key.getValueStr().getBytes());
         } else {
+          buffer = buffers[i];
           value = ByteBuffer.wrap(getRandomValue(key));
         }
         keys.add(key);
