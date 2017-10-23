@@ -46,7 +46,7 @@ export default class TopNavBar extends Component {
           <NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
             <TaskAlertsContainer eventKey="1"/>
           </NavDropdown>
-          <NavDropdown  eventKey="2" title={<span>{customerEmail} <i className="fa fa-user fa-fw"></i></span>} id="profile-dropdown">
+          <NavDropdown  eventKey="2" title={<span><i className="fa fa-user fa-fw"></i> {customerEmail}</span>} id="profile-dropdown">
             <LinkContainer to="/profile">
               <MenuItem eventKey="2.1">
                 <i className="fa fa-user fa-fw"></i>Profile
