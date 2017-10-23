@@ -278,9 +278,9 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
     assertTrue(userIntentJson.get("regionList").isArray());
     assertEquals(3, userIntentJson.get("regionList").size());
-    JsonNode gflags = userIntentJson.get("gflags");
-    assertThat(gflags, is(notNullValue()));
-    assertTrue(gflags.isObject());
+    JsonNode masterGFlags = userIntentJson.get("masterGFlags");
+    assertThat(masterGFlags, is(notNullValue()));
+    assertTrue(masterGFlags.isObject());
 
     JsonNode regionsNode = universeJson.get("regions");
     assertThat(regionsNode, is(notNullValue()));
@@ -318,14 +318,14 @@ public class UniverseTest extends FakeDBApplication {
     userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
-    userIntent.gflags = null;
+    userIntent.masterGFlags = null;
 
     // SaveDetails in order to generate universeDetailsJson with null gflags
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
     // Update in-memory user intent so userDetails no longer has null gflags, but json still does
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
-    udtp.userIntent.gflags = new HashMap<>();
+    udtp.userIntent.masterGFlags = new HashMap<>();
     u.setUniverseDetails(udtp);
 
     // Verify returned json is generated from the non-json userDetails object
@@ -333,9 +333,9 @@ public class UniverseTest extends FakeDBApplication {
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
         equalTo(u.universeUUID.toString())));
     JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
-    JsonNode gflags = userIntentJson.get("gflags");
-    assertThat(gflags, is(notNullValue()));
-    assertTrue(gflags.isObject());
+    JsonNode masterGFlags = userIntentJson.get("masterGFlags");
+    assertThat(masterGFlags, is(notNullValue()));
+    assertTrue(masterGFlags.isObject());
     JsonNode providerNode = universeJson.get("provider");
     assertNull(providerNode);
   }
@@ -372,8 +372,48 @@ public class UniverseTest extends FakeDBApplication {
     assertThat(universeJson.get("universeUUID").asText(),
                allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode univDetailsGflagsJson =
-        universeJson.get("universeDetails").get("userIntent").get("gflags");
+        universeJson.get("universeDetails").get("userIntent").get("masterGFlags");
     assertThat(univDetailsGflagsJson, is(notNullValue()));
     assertEquals(0, univDetailsGflagsJson.size());
+  }
+
+  @Test
+  public void testFromJSONWithFlags() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.userIntent = getBaseIntent();
+    Map<String, String> gflagMap = new HashMap<>();
+    gflagMap.put("emulate_redis_responses", "false");
+    taskParams.userIntent.masterGFlags = gflagMap;
+    JsonNode universeJson = Json.toJson(taskParams);
+
+    assertThat(universeJson.get("userIntent").get("masterGFlags").get("emulate_redis_responses"), is(notNullValue()));
+  }
+
+  private UserIntent getBaseIntent() {
+
+    // Create regions
+    Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
+    List<UUID> regionList = new ArrayList<>();
+    regionList.add(r1.uuid);
+    regionList.add(r2.uuid);
+    regionList.add(r3.uuid);
+    String instanceType = "c3.xlarge";
+    // Create userIntent
+    UserIntent userIntent = new UserIntent();
+    userIntent.isMultiAZ = true;
+    userIntent.replicationFactor = 3;
+    userIntent.regionList = regionList;
+    userIntent.instanceType = instanceType;
+    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.ebsType = PublicCloudConstants.EBSType.IO1;
+    userIntent.deviceInfo.numVolumes = 2;
+    userIntent.deviceInfo.diskIops = 1000;
+    userIntent.deviceInfo.volumeSize = 100;
+    return userIntent;
   }
 }

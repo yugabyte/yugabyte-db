@@ -62,7 +62,7 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
+    const { universe: {visibleModal, currentUniverse, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
       userIntent}, universeUUID}}}, reset} = this.props;
     const nodeNames = [];
     const payload = {};
@@ -82,28 +82,28 @@ export default class RollingUpgradeForm extends Component {
     payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
     payload.userIntent = userIntent;
-    let gflagList = [];
+    let masterGFlagList = [];
+    let tserverGFlagList = [];
     if (isNonEmptyArray(values.masterGFlags)) {
-      gflagList = values.masterGFlags.map((flag)=>{
-        if (flag.name && flag.value) {
-          return Object.assign({type: "master"}, flag);
+      masterGFlagList = values.masterGFlags.map(function(masterFlag, masterIdx){
+        if (masterFlag.name && masterFlag.value) {
+          return {name: masterFlag.name, value: masterFlag.value};
         } else {
           return null;
         }
       }).filter(Boolean);
     }
     if (isNonEmptyArray(values.tserverGFlags)) {
-      gflagList = gflagList.concat(
-        values.tserverGFlags.map((flag)=>{
-          if (flag.name && flag.value) {
-            return Object.assign({type: "tserver"}, flag);
-          } else {
-            return null;
-          }
-        }).filter(Boolean)
-      );
+      tserverGFlagList = values.tserverGFlags.map(function(tserverFlag, tserverIdx){
+        if (tserverFlag.name && tserverFlag.value) {
+          return {name: tserverFlag.name, value: tserverFlag.value};
+        } else {
+          return null;
+        }
+      }).filter(Boolean);
     }
-    payload.gflags = gflagList;
+    payload.masterGFlags = masterGFlagList;
+    payload.tserverGFlags = tserverGFlagList;
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     this.props.submitRollingUpgradeForm(payload, universeUUID, reset);
@@ -113,6 +113,7 @@ export default class RollingUpgradeForm extends Component {
     const self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
       error, currentUniverse: {data: {universeDetails}}}, resetRollingUpgrade, softwareVersions} = this.props;
+
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     let title = "";
     let formBody = <span/>;

@@ -3,19 +3,20 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Row, Col, Grid, ButtonGroup } from 'react-bootstrap';
-import { Field, change } from 'redux-form';
+import { Field, change, FieldArray } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
-import { isDefinedNotNull, isNonEmptyObject, areIntentsEqual, isEmptyObject, isNonEmptyArray,
-  normalizeToPositiveFloat } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject, isNonEmptyArray,
+          normalizeToPositiveFloat } from 'utils/ObjectUtils';
 import { YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
-  YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
-  YBButton, YBToggle } from 'components/common/forms/fields';
+          YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
+          YBButton, YBToggle, YBTextInput } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
+import GFlagArrayComponent from './GFlagArrayComponent';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 
 const initialState = {
@@ -156,6 +157,7 @@ class UniverseForm extends Component {
     const currentState = this.state;
     universeTaskParams.userIntent = {
       universeName: formValues.universeName,
+
       provider: currentState.providerSelected,
       regionList: currentState.regionList,
       numNodes: currentState.numNodes,
@@ -167,6 +169,13 @@ class UniverseForm extends Component {
       accessKeyCode: currentState.accessKeyCode,
       spotPrice: currentState.spotPrice
     };
+
+    if (isNonEmptyObject(formValues.masterGFlags)) {
+      universeTaskParams.userIntent["masterGFlags"] = formValues.masterGFlags;
+    }
+    if (isNonEmptyObject(formValues.tserverGFlags)) {
+      universeTaskParams.userIntent["tserverGFlags"] = formValues.tserverGFlags;
+    }
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isNonEmptyArray(currentState.regionList)) {
       this.props.cloud.providers.data.forEach(function (providerItem) {
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
@@ -413,6 +422,26 @@ class UniverseForm extends Component {
     if (this.state.useSpotPrice) {
       submitPayload.userIntent.spotPrice = parseFloat(this.state.spotPrice);
     }
+
+    let masterFlagList = formValues.masterGFlags.map(function(masterFlag, masterIdx){
+      if (isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value)) {
+        return {name: masterFlag.name, value: masterFlag.value};
+      } else {
+        return null;
+      }
+    }).filter(Boolean);
+
+    let tserverFlagList = formValues.tserverGFlags.map(function(tserverFlag, tserverIdx){
+      if (isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value)) {
+        return {name: tserverFlag.name, value: tserverFlag.value};
+      } else {
+        return null;
+      }
+    }).filter(Boolean);
+
+    submitPayload.userIntent.masterGFlags = masterFlagList;
+    submitPayload.userIntent.tserverGFlags = tserverFlagList;
+    
     return submitPayload;
   }
 
@@ -793,6 +822,17 @@ class UniverseForm extends Component {
                 <Field name="accessKeyCode" type="select" component={YBSelectWithLabel} label="Access Key"
                        defaultValue={this.state.accessKeyCode} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
               </div>
+            </Col>
+          </Row>
+          <Row className={"no-margin-row top-border-row"}>
+            <Col md={12}>
+              <h4>G-Flags</h4>
+            </Col>
+            <Col md={6}>
+              <FieldArray component={GFlagArrayComponent} name="masterGFlags" type="master"/>
+            </Col>
+            <Col lg={6}>
+              <FieldArray component={GFlagArrayComponent} name="tserverGFlags" type="tserver"/>
             </Col>
           </Row>
           <div className="form-action-button-container">

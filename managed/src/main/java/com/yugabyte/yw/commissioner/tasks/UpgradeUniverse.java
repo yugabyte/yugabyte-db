@@ -40,7 +40,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
   public static class Params extends RollingRestartParams {}
 
   public static List<NodeDetails> filterByNodeName (List<NodeDetails> nodeDetails, List<String> nodeNames) {
-    if (nodeNames.isEmpty()) {
+    if (nodeNames == null || nodeNames.isEmpty()) {
       return nodeDetails;
     }
 
@@ -78,9 +78,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
                  taskParams().ybSoftwareVersion, taskParams().nodeNames.size(), universe.name);
       } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
         LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
-          taskParams().getMasterGFlagsAsMap(), masterNodes.size(), universe.name);
+          taskParams().masterGFlags, masterNodes.size(), universe.name);
         LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
-          taskParams().getTServerGFlagsAsMap(),  tServerNodes.size(), universe.name);
+          taskParams().tserverGFlags,  tServerNodes.size(), universe.name);
       }
 
       SubTaskGroupType subTaskGroupType;
@@ -97,10 +97,10 @@ public class UpgradeUniverse extends UniverseTaskBase {
           break;
         case GFlags:
           subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
-          if (!taskParams().getMasterGFlagsAsMap().isEmpty()) {
+          if (!taskParams().masterGFlags.isEmpty()) {
             createAllUpgradeTasks(masterNodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
           }
-          if (!taskParams().getTServerGFlagsAsMap().isEmpty()) {
+          if (!taskParams().tserverGFlags.isEmpty()) {
             // Disable the load balancer.
             createLoadBalancerStateChangeTask(false /*enable*/)
               .setSubTaskGroupType(subTaskGroupType);
@@ -119,7 +119,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
       // Update the list of parameter key/values in the universe with the new ones.
       if (taskParams().taskType == UpgradeTaskType.GFlags) {
-        updateGFlagsPersistTasks(taskParams().getGFlagsAsMap())
+        updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
             .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
       }
 
@@ -229,9 +229,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
       params.ybSoftwareVersion = taskParams().ybSoftwareVersion;
     } else if (type == UpgradeTaskType.GFlags) {
       if (processType.equals(ServerType.MASTER)) {
-        params.gflags = taskParams().getMasterGFlagsAsMap();
+        params.gflags = taskParams().masterGFlags;
       } else {
-        params.gflags = taskParams().getTServerGFlagsAsMap();
+        params.gflags = taskParams().tserverGFlags;
       }
     }
 
