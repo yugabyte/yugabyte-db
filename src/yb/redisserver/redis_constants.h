@@ -15,8 +15,16 @@
 #define YB_REDISSERVER_REDIS_CONSTANTS_H
 
 #include "yb/common/redis_constants_common.h"
+#include "yb/util/monotime.h"
 
 static constexpr const char* const kRedisKeyColumnName = "key";
 static constexpr uint16_t kRedisClusterSlots = 16384;
+static constexpr const char* const kExpireAt = "EXPIRE_AT";
+static constexpr const char* const kExpireIn = "EXPIRE_IN";
+static constexpr int64_t kRedisMaxTtlSeconds = std::numeric_limits<int64_t>::max() /
+    yb::MonoTime::kNanosecondsPerSecond;
+// Note that this deviates from vanilla Redis, since vanilla Redis allows negative TTLs. We
+// currently don't support negative TTLs at the docdb level.
+static constexpr int64_t kRedisMinTtlSeconds = 1;
 
 #endif  // YB_REDISSERVER_REDIS_CONSTANTS_H

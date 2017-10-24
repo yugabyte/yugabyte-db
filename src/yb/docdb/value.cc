@@ -108,5 +108,14 @@ void Value::EncodeAndAppend(std::string *value_bytes) const {
   value_bytes->append(primitive_value_.ToValue());
 }
 
+Status Value::DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
+                                       ValueType* value_type) {
+  MonoDelta ttl;
+  auto slice_copy = rocksdb_value;
+  RETURN_NOT_OK(DecodeTTL(&slice_copy, &ttl));
+  *value_type = DecodeValueType(slice_copy);
+  return Status::OK();
+}
+
 }  // namespace docdb
 }  // namespace yb

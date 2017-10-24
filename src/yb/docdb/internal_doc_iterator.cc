@@ -124,7 +124,7 @@ Status InternalDocIterator::SeekToKeyPrefix() {
       // document/subdocument pointed to by key_prefix_ exists, or has been recently deleted.
       if (key_prefix_.IsPrefixOf(key)) {
         // TODO: make this return a Status and propagate it to the caller.
-        subdoc_type_ = DecodeValueType(iter_->value());
+        RETURN_NOT_OK(Value::DecodePrimitiveValueType(iter_->value(), &subdoc_type_));
 
         // TODO: with optional init markers we can find something that is more than one level
         //       deep relative to the current prefix.

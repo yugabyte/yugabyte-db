@@ -168,7 +168,8 @@ bool DocDBCompactionFilter::Filter(int level,
     }
   }
 
-  const ValueType value_type = DecodeValueType(existing_value);
+  ValueType value_type;
+  CHECK_OK(Value::DecodePrimitiveValueType(existing_value, &value_type));
   MonoDelta ttl;
 
   // If the value expires by the time of history cutoff, it is treated as deleted and filtered out.

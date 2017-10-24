@@ -44,7 +44,6 @@ using std::string;
 
 namespace {
 
-constexpr int64_t kMaxTTLSec = std::numeric_limits<int64_t>::max() / 1000000;
 constexpr size_t kMaxNumberOfArgs = 1 << 20;
 constexpr size_t kLineEndLength = 2;
 
@@ -97,11 +96,12 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
       }
       auto ttl_val = ParseInt64(args[idx + 1], "TTL");
       RETURN_NOT_OK(ttl_val);
-      if (*ttl_val <= 0 || *ttl_val > kMaxTTLSec) {
+      if (*ttl_val < kRedisMinTtlSeconds || *ttl_val > kRedisMaxTtlSeconds) {
         return STATUS_FORMAT(InvalidArgument,
             "TTL field $0 is not within valid bounds", args[idx + 1]);
       }
-      const int64_t milliseconds_per_unit = args[idx] == "EX" ? 1000 : 1;
+      const int64_t milliseconds_per_unit =
+          args[idx] == "EX" ? MonoTime::kMillisecondsPerSecond : 1;
       op->mutable_request()->mutable_set_request()->set_ttl(*ttl_val * milliseconds_per_unit);
       idx += 2;
     } else if (args[idx] == "XX") {
@@ -156,9 +156,32 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
   // We remove duplicates from the subkeys here.
   std::unordered_map<T, string> kv_map;
   for (int i = 2; i < args.size(); i += 2) {
-    T val;
-    RETURN_NOT_OK(arg_parser(string(args[i].cdata(), args[i].size()), &val));
-    kv_map[val] = string(args[i + 1].cdata(), args[i + 1].size());
+    // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.
+    if ((args[i] == kExpireAt || args[i] == kExpireIn) && type == REDIS_TYPE_TIMESERIES) {
+      if (i + 2 != args.size()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "$0 should be at the end of the command",
+                                 string(args[i].cdata(), args[i].size()));
+      }
+      int64_t ttl;
+      if (args[i] == kExpireIn) {
+        RETURN_NOT_OK(util::CheckedStoll(args[i + 1], &ttl));
+      } else {
+        int64_t unix_timestamp;
+        RETURN_NOT_OK(util::CheckedStoll(args[i + 1], &unix_timestamp));
+        ttl = unix_timestamp - GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
+      }
+
+      if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSeconds) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "TTL: $0 needs be in the range [$1, $2]", ttl,
+                                 kRedisMinTtlSeconds, kRedisMaxTtlSeconds);
+      }
+      // Need to pass ttl in milliseconds, user supplied values are in seconds.
+      op->mutable_request()->mutable_set_request()->set_ttl(ttl * MonoTime::kMillisecondsPerSecond);
+    } else {
+      T val;
+      RETURN_NOT_OK(arg_parser(string(args[i].cdata(), args[i].size()), &val));
+      kv_map[val] = string(args[i + 1].cdata(), args[i + 1].size());
+    }
   }
   for (const auto& kv : kv_map) {
     add_sub_key(kv.first, op->mutable_request()->mutable_key_value());

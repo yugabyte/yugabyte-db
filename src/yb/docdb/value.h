@@ -70,6 +70,10 @@ class Value {
 
   void EncodeAndAppend(std::string* value_bytes) const;
 
+  // Decodes the ValueType of the primitive value stored in the given rocksdb_value.
+  static CHECKED_STATUS DecodePrimitiveValueType(const rocksdb::Slice& rocksdb_value,
+                                                 ValueType* value_type);
+
  private:
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to
   // the timestamp.

@@ -26,6 +26,7 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
+#include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_encoding.h"
 #include "yb/redisserver/redis_server.h"
 
@@ -184,6 +185,79 @@ class TestRedisService : public RedisTableTestBase {
     auto read_counter = server_->metric_entity()->FindOrCreateGauge(&read_proto, kInitialValue);
     auto write_counter = server_->metric_entity()->FindOrCreateGauge(&write_proto, kInitialValue);
     return read_counter->value() + write_counter->value();
+  }
+
+  void TestTSTtl(const std::string& expire_command, int64_t ttl_sec, int64_t expire_val,
+                 const std::string& redis_key) {
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "10", "v1", "20", "v2", "30", "v3", expire_command,
+        strings::Substitute("$0", expire_val)});
+    SyncClient();
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "40", "v4"});
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "10", "v5"});
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "50", "v6", expire_command,
+        std::to_string(expire_val + ttl_sec)});
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "60", "v7", expire_command,
+        std::to_string(expire_val - ttl_sec + kRedisMaxTtlSeconds)});
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "70", "v8", expire_command,
+        std::to_string(expire_val - ttl_sec + kRedisMinTtlSeconds)});
+    // Same kv with different ttl (later one should win).
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "80", "v9", expire_command,
+        std::to_string(expire_val)});
+    DoRedisTestOk(__LINE__, {"TSADD", redis_key, "80", "v9", expire_command,
+        std::to_string(expire_val + ttl_sec)});
+    SyncClient();
+
+    // Wait for min ttl to expire.
+    std::this_thread::sleep_for(std::chrono::seconds(kRedisMinTtlSeconds + 1));
+
+    SyncClient();
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "10"}, "v5");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "20"}, "v2");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "30"}, "v3");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "50"}, "v6");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "60"}, "v7");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "80"}, "v9");
+    SyncClient();
+
+    // Wait for TTL expiry
+    std::this_thread::sleep_for(std::chrono::seconds(ttl_sec + 1));
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "10"}, "v5");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "40"}, "v4");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "50"}, "v6");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "60"}, "v7");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "80"}, "v9");
+    DoRedisTestNull(__LINE__, {"TSGET", redis_key, "20"});
+    DoRedisTestNull(__LINE__, {"TSGET", redis_key, "30"});
+    SyncClient();
+
+    // Wait for next TTL expiry
+    std::this_thread::sleep_for(std::chrono::seconds(ttl_sec + 1));
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "10"}, "v5");
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "40"}, "v4");
+    DoRedisTestNull(__LINE__, {"TSGET", redis_key, "20"});
+    DoRedisTestNull(__LINE__, {"TSGET", redis_key, "30"});
+    DoRedisTestNull(__LINE__, {"TSGET", redis_key, "50"});
+    DoRedisTestBulkString(__LINE__, {"TSGET", redis_key, "60"}, "v7");
+    SyncClient();
+    VerifyCallbacks();
+
+    // Test invalid commands.
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command,
+        std::to_string(expire_val - 2 * ttl_sec)}); // Negative ttl.
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", "20", "v2", "30", "v3",
+        expire_command});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command, "v2", "30",
+        "v3"});
+    DoRedisTestExpectError(__LINE__, {"TSADD", expire_command, redis_key, "10", "v1", "30", "v3"});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command, "abc"});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command, "3.0"});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command, "123 "});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command,
+        "9223372036854775808"});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command,
+        "-9223372036854775809"});
+    DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command,
+        std::to_string(expire_val - ttl_sec)}); // ttl of 0 not allowed.
   }
 
   bool expected_no_sessions_ = false;
@@ -816,6 +890,14 @@ TEST_F(TestRedisService, TestTtl) {
   DoRedisTestOk(__LINE__, {"SET", "k1", "v1"});
   DoRedisTestOk(__LINE__, {"SET", "k2", "v2", "EX", "1"});
   DoRedisTestOk(__LINE__, {"SET", "k3", "v3", "EX", "10"});
+  DoRedisTestOk(__LINE__, {"SET", "k4", "v4", "EX", std::to_string(kRedisMaxTtlSeconds)});
+  DoRedisTestOk(__LINE__, {"SET", "k5", "v5", "EX", std::to_string(kRedisMinTtlSeconds)});
+
+  // Invalid ttl.
+  DoRedisTestExpectError(__LINE__, {"SET", "k6", "v6", "EX",
+      std::to_string(kRedisMaxTtlSeconds + 1)});
+  DoRedisTestExpectError(__LINE__, {"SET", "k7", "v7", "EX",
+      std::to_string(kRedisMinTtlSeconds - 1)});
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
@@ -825,6 +907,8 @@ TEST_F(TestRedisService, TestTtl) {
   DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "v1");
   DoRedisTestNull(__LINE__, {"GET", "k2"});
   DoRedisTestBulkString(__LINE__, {"GET", "k3"}, "v3");
+  DoRedisTestBulkString(__LINE__, {"GET", "k4"}, "v4");
+  DoRedisTestNull(__LINE__, {"GET", "k5"});
 
   SyncClient();
   VerifyCallbacks();
@@ -922,6 +1006,23 @@ TEST_F(TestRedisService, TestTimeSeries) {
 
   SyncClient();
   VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestTimeSeriesTTL) {
+  int64_t ttl_sec = 5;
+  TestTSTtl("EXPIRE_IN", ttl_sec, ttl_sec, "test_expire_in");
+  int64_t curr_time_sec = GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
+  TestTSTtl("EXPIRE_AT", ttl_sec, curr_time_sec + ttl_sec, "test_expire_at");
+
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_in", "10", "v1", "EXPIRE_IN",
+      std::to_string(kRedisMinTtlSeconds - 1)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_in", "10", "v1", "EXPIRE_IN",
+      std::to_string(kRedisMaxTtlSeconds + 1)});
+
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_AT",
+      std::to_string(curr_time_sec + kRedisMinTtlSeconds - 1)});
+  DoRedisTestExpectError(__LINE__, {"TSADD", "test_expire_at", "10", "v1", "EXPIRE_IN",
+      std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
 TEST_F(TestRedisService, TestAdditionalCommands) {

@@ -704,7 +704,7 @@ yb::Status BuildSubDocument(
             // We should have expiry > hybrid time from key > low_ts.
             return STATUS_SUBSTITUTE(Corruption,
                 "Unexpected expiry time $0 found, should be higher than $1",
-                expiry.ToString(), low_ts.ToString());
+                expiry.ToDebugString(), low_ts.ToString());
           }
           doc_value = Value(PrimitiveValue(ValueType::kTombstone));
           // Use a write id that could never be used by a real operation within a single-shard txn,
