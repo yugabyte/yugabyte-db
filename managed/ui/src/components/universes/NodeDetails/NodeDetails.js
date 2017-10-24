@@ -4,7 +4,9 @@ import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import { isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase } from 'utils/ObjectUtils';
+import {
+  isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject
+} from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
 import { isNodeRemovable } from 'utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -69,7 +71,8 @@ export default class NodeDetails extends Component {
     const nodeDetailRows = nodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
 
-      if (!inLoadingOrInitState && isDefinedNotNull(universePerNodeStatus.data) && universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]) {
+      if (!inLoadingOrInitState && isNonEmptyObject(universePerNodeStatus.data)
+          && isNonEmptyObject(universePerNodeStatus.data[nodeDetail.nodeName])) {
         nodeStatus = insertSpacesFromCamelCase(universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]);
       }
       return {
