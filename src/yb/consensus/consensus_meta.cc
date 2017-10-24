@@ -218,11 +218,8 @@ Status ConsensusMetadata::Flush() {
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
       fs_manager_->env(), meta_file_path, pb_,
       pb_util::OVERWRITE,
-      // We use FLAGS_durable_wal_write here because the consensus metadata is
-      // essentially an extension of the primary durability mechanism of the
-      // consensus subsystem: the WAL. Using the same flag ensures that the WAL
-      // and the consensus metadata get the same durability guarantees.
-      FLAGS_durable_wal_write ? pb_util::SYNC : pb_util::NO_SYNC),
+      // Always fsync the consensus metadata.
+      pb_util::SYNC),
           Substitute("Unable to write consensus meta file for tablet $0 to path $1",
                      tablet_id_, meta_file_path));
   return Status::OK();

@@ -46,6 +46,7 @@ DECLARE_bool(evict_failed_followers);
 DECLARE_double(default_memory_limit_to_ram_ratio);
 DECLARE_int32(webserver_port);
 DECLARE_string(rpc_bind_addresses);
+DECLARE_bool(durable_wal_write);
 
 namespace yb {
 namespace master {
@@ -55,6 +56,8 @@ static int MasterMain(int argc, char** argv) {
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
   FLAGS_webserver_port = kMasterDefaultWebPort;
   FLAGS_default_memory_limit_to_ram_ratio = 0.10;
+  // For masters we always want to fsync the WAL files.
+  FLAGS_durable_wal_write = true;
 
   // A multi-node Master leader should not evict failed Master followers
   // because there is no-one to assign replacement servers in order to maintain

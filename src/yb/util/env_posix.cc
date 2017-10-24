@@ -110,11 +110,11 @@ DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
 
-DEFINE_int32(o_direct_block_size_bytes, 512,
+DEFINE_int32(o_direct_block_size_bytes, 4096,
              "Size of the block to use when flag durable_wal_write is set.");
 TAG_FLAG(o_direct_block_size_bytes, advanced);
 
-DEFINE_int32(o_direct_block_alignment_bytes, 512,
+DEFINE_int32(o_direct_block_alignment_bytes, 4096,
              "Alignment (in bytes) for blocks used for O_DIRECT operations.");
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 

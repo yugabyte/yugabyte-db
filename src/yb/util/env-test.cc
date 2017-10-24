@@ -55,7 +55,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-
 DECLARE_int32(o_direct_block_size_bytes);
 
 #if !defined(__APPLE__)
@@ -210,6 +209,9 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
         if (!fast) {
           // Verify as write. Note: this requires that file is pre-allocated, otherwise
           // the ReadFully() fails with EINVAL.
+          if (opts.o_direct) {
+            file->Sync();
+          }
           ASSERT_NO_FATALS(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
                                                         num_slices * slice_size));
         }
