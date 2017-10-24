@@ -66,29 +66,47 @@ googleAnalytics = "UA-104956980-1"
 	weight = 4
 
 [[menu.main]]
+	name = "1. Install YugaByte DB"
+	parent = "community-quick-start"
+	url = "community-edition/quick-start/install/"
+	weight = 5
+
+[[menu.main]]
+	name = "2. Create Local Cluster"
+	parent = "community-quick-start"
+	url = "community-edition/quick-start/create-local-cluster/"
+	weight = 6
+
+[[menu.main]]
+	name = "3. Test Local Cluster"
+	parent = "community-quick-start"
+	url = "community-edition/quick-start/test-local-cluster/"
+	weight = 7
+
+[[menu.main]]
 	name = "Explore Core Features"
 	identifier = "community-explore"
 	parent = "community-edition"
 	url = "community-edition/explore/"
-	weight = 7
+	weight = 8
 
 [[menu.main]]
 	name = "Fault Tolerance"
 	parent = "community-explore"
 	url = "community-edition/explore/fault-tolerance/"
-	weight = 8
+	weight = 9
 
 [[menu.main]]
 	name = "Auto Rebalancing"
 	parent = "community-explore"
 	url = "community-edition/explore/auto-rebalancing/"
-	weight = 9
+	weight = 10
 
 [[menu.main]]
 	name   = "Develop Apps"
 	parent = "community-edition"
 	url    = "community-edition/develop/"
-	weight = 10
+	weight = 11
 
 [[menu.main]]
 	name   = "Deploy"

@@ -1,73 +1,4 @@
-## Prerequisites
-
-Operating systems supported for local clusters are
-
-- Linux: Centos 7 or higher
-- Mac OS X
-
-## Step 1. Install
-
-### Download
-
-Download the YugaByte CE package [here](http://www.yugabyte.com#download). Thereafter, follow the instructions below.
-
-### Install
-
-On your localhost, execute the following commands.
-
-```sh
-$ mkdir ~/yugabyte
-$ tar xvfz yugabyte.ce.<version>.tar.gz -C yugabyte
-$ cd yugabyte
-```
-
-### Configure
-
-- For Linux
-
-Run the **configure** script to ensure all dependencies get auto-installed. This script will also install a couple of libraries (`cyrus-sasl`, `cyrus-sasl-plain` and `file`) and will request for a sudo password in case you are not running the script as root.
-
-```sh
-$ ./bin/configure
-```
-
-- For Mac OS
-
-Setup loopback IP addresses on your localhost so that every node in the 3 node local cluster gets a unique IP address of its own.
-
-```sh
-$ sudo ifconfig lo0 alias 127.0.0.2
-$ sudo ifconfig lo0 alias 127.0.0.3
-```
-
-
-## Step 2. Create local cluster
-
-### Create a 3 node cluster with replication factor 3 
-
-We will use the [yb-ctl](/admin/yb-ctl) utility that has a set of pre-built commands to create and thereafter administer a local cluster. The default data directory used is `/tmp/yugabyte-local-cluster`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](/admin/yb-ctl/#create-cluster).
-
-```sh
-$ ./bin/yb-ctl create
-```
-
-You can now check `/tmp/yugabyte-local-cluster` to see 2 directories `disk1` and `disk2` created. Inside each of these you will find the data for all the nodes in the respective `node-i` directores where `i` represents the `node_id` of the node. Note that the IP address of `node-i` is by default set to `127.0.0.i`.
-
-### Check the status of the cluster
-
-Run the command below to see that we now have 3 `yb-master` processes and 3 `yb-tserver` processes running on this localhost. Roles played by these processes in a YugaByte cluster (aka Universe) is explained in detail [here](/architecture/concepts/#universe-components).
-
-```sh
-$ ./bin/yb-ctl status
-2017-10-16 22:19:52,363 INFO: Server is running: type=master, node_id=1, PID=31926, admin service=127.0.0.1:7000
-2017-10-16 22:19:52,438 INFO: Server is running: type=master, node_id=2, PID=31929, admin service=127.0.0.2:7000
-2017-10-16 22:19:52,448 INFO: Server is running: type=master, node_id=3, PID=31932, admin service=127.0.0.3:7000
-2017-10-16 22:19:52,462 INFO: Server is running: type=tserver, node_id=1, PID=31935, admin service=127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
-2017-10-16 22:19:52,795 INFO: Server is running: type=tserver, node_id=2, PID=31938, admin service=127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
-2017-10-16 22:19:53,476 INFO: Server is running: type=tserver, node_id=3, PID=31941, admin service=127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
-```
-
-## Step 3. Test CQL service
+## Test CQL service
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line.
 
@@ -189,7 +120,7 @@ cqlsh:ybdemo_keyspace>
 
 ```
 
-## Step 4. Test Redis service 
+## Test Redis service 
 
 ### Setup Redis service
 

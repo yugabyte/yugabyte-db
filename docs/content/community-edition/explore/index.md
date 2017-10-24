@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Explore Core Features
-weight: 7
+weight: 8
 ---
 
  You can use your local cluster to explore all the core features of YugaByte DB.

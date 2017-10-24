@@ -35,6 +35,8 @@ optional arguments:
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
+Note that the create command pulls the latest `yugabytedb/yugabyte` image at the outset in case the image is not yet downloaded or is not the latest.
+
 ```sh
 $ ./yb-docker-ctl create
 latest: Pulling from yugabytedb/yugabyte
