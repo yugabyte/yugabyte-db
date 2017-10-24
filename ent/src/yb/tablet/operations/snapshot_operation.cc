@@ -1,6 +1,4 @@
-//
 // Copyright (c) YugaByte, Inc.
-//
 
 #include <glog/logging.h>
 
@@ -25,8 +23,8 @@ using consensus::SNAPSHOT_OP;
 using consensus::DriverType;
 using strings::Substitute;
 using yb::tserver::TabletServerErrorPB;
-using yb::tserver::CreateTabletSnapshotRequestPB;
-using yb::tserver::CreateTabletSnapshotResponsePB;
+using yb::tserver::TabletSnapshotOpRequestPB;
+using yb::tserver::TabletSnapshotOpResponsePB;
 
 string SnapshotOperationState::ToString() const {
   return Substitute("SnapshotOperationState "
@@ -61,7 +59,7 @@ consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
 Status SnapshotOperation::Prepare() {
   TRACE("PREPARE SNAPSHOT: Starting");
   TabletClass* tablet = state()->tablet_peer()->tablet();
-  RETURN_NOT_OK(tablet->PrepareForCreateSnapshot(state()));
+  RETURN_NOT_OK(tablet->PrepareForSnapshotOp(state()));
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
@@ -80,9 +78,26 @@ void SnapshotOperation::Start() {
 
 Status SnapshotOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   TRACE("APPLY SNAPSHOT: Starting");
-
   TabletClass* const tablet = state()->tablet_peer()->tablet();
-  RETURN_NOT_OK(tablet->CreateSnapshot(state()));
+  bool handled = false;
+
+  switch (state()->operation()) {
+    case TabletSnapshotOpRequestPB::CREATE: {
+      handled = true;
+      RETURN_NOT_OK(tablet->CreateSnapshot(state()));
+      break;
+    }
+    case TabletSnapshotOpRequestPB::RESTORE: {
+      handled = true;
+      RETURN_NOT_OK(tablet->RestoreSnapshot(state()));
+      break;
+    }
+    case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
+  }
+
+  if (!handled) {
+    FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, state()->operation());
+  }
 
   commit_msg->reset(new CommitMsg());
   (*commit_msg)->set_op_type(SNAPSHOT_OP);

@@ -16,20 +16,28 @@ MasterBackupServiceImpl::MasterBackupServiceImpl(Master* server)
     MasterServiceBase(server) {
 }
 
-void MasterBackupServiceImpl::CreateSnapshot(
-    const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, RpcContext rpc) {
+void MasterBackupServiceImpl::CreateSnapshot(const CreateSnapshotRequestPB* req,
+                                             CreateSnapshotResponsePB* resp,
+                                             RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateSnapshot);
 }
 
-void MasterBackupServiceImpl::IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB* req,
-    IsCreateSnapshotDoneResponsePB* resp, RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsCreateSnapshotDone);
+void MasterBackupServiceImpl::IsSnapshotOpDone(const IsSnapshotOpDoneRequestPB* req,
+                                               IsSnapshotOpDoneResponsePB* resp,
+                                               RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsSnapshotOpDone);
 }
 
 void MasterBackupServiceImpl::ListSnapshots(const ListSnapshotsRequestPB* req,
                                             ListSnapshotsResponsePB* resp,
                                             RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListSnapshots);
+}
+
+void MasterBackupServiceImpl::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
+                                              RestoreSnapshotResponsePB* resp,
+                                              RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::RestoreSnapshot);
 }
 
 } // namespace master
