@@ -9,18 +9,19 @@
 namespace yb {
 namespace master {
 
-// Send the "Create Tablet Snapshot" to the leader replica for the tablet.
+// Send the "Create/Restore/.. Tablet Snapshot operation" to the leader replica for the tablet.
 // Keeps retrying until we get an "ok" response.
-class AsyncCreateTabletSnapshot : public enterprise::RetryingTSRpcTask {
+class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
  public:
-  AsyncCreateTabletSnapshot(Master *master,
-                            ThreadPool* callback_pool,
-                            const scoped_refptr<TabletInfo>& tablet,
-                            const std::string& snapshot_id);
+  AsyncTabletSnapshotOp(Master *master,
+                        ThreadPool* callback_pool,
+                        const scoped_refptr<TabletInfo>& tablet,
+                        const std::string& snapshot_id,
+                        tserver::TabletSnapshotOpRequestPB::Operation op);
 
-  Type type() const override { return ASYNC_CREATE_SNAPSHOT; }
+  Type type() const override { return ASYNC_SNAPSHOT_OP; }
 
-  std::string type_name() const override { return "Create Tablet Snapshot"; }
+  std::string type_name() const override { return "Tablet Snapshot Operation"; }
 
   std::string description() const override;
 
@@ -33,7 +34,8 @@ class AsyncCreateTabletSnapshot : public enterprise::RetryingTSRpcTask {
 
   scoped_refptr<TabletInfo> tablet_;
   const std::string snapshot_id_;
-  tserver::CreateTabletSnapshotResponsePB resp_;
+  tserver::TabletSnapshotOpRequestPB::Operation operation_;
+  tserver::TabletSnapshotOpResponsePB resp_;
 };
 
 } // namespace master

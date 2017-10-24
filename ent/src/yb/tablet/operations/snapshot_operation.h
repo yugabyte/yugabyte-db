@@ -1,6 +1,4 @@
-//
 // Copyright (c) YugaByte, Inc.
-//
 
 #ifndef ENT_SRC_YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H
 #define ENT_SRC_YB_TABLET_OPERATIONS_SNAPSHOT_OPERATION_H
@@ -15,19 +13,24 @@
 namespace yb {
 namespace tablet {
 
-// Operation Context for the CreateTabletSnapshot operation.
+// Operation Context for the TabletSnapshotOp operation.
 // Keeps track of the Operation states (request, result, ...)
 class SnapshotOperationState : public OperationState {
  public:
   ~SnapshotOperationState() {}
 
   SnapshotOperationState(TabletPeer* tablet_peer,
-                         const tserver::CreateTabletSnapshotRequestPB* request = nullptr)
+                         const tserver::TabletSnapshotOpRequestPB* request = nullptr)
       : OperationState(tablet_peer),
         request_(request) {
   }
 
-  const tserver::CreateTabletSnapshotRequestPB* request() const override { return request_; }
+  const tserver::TabletSnapshotOpRequestPB* request() const override { return request_; }
+
+  tserver::TabletSnapshotOpRequestPB::Operation operation() const {
+    return request_ == nullptr ?
+        tserver::TabletSnapshotOpRequestPB::UNKNOWN : request_->operation();
+  }
 
   void UpdateRequestFromConsensusRound() override {
     request_ = consensus_round()->replicate_msg()->mutable_snapshot_request();
@@ -51,7 +54,7 @@ class SnapshotOperationState : public OperationState {
  private:
 
   // The original RPC request and response.
-  const tserver::CreateTabletSnapshotRequestPB *request_;
+  const tserver::TabletSnapshotOpRequestPB *request_;
 
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;
@@ -59,7 +62,7 @@ class SnapshotOperationState : public OperationState {
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);
 };
 
-// Executes the CreateTabletSnapshot operation.
+// Executes the TabletSnapshotOp operation.
 class SnapshotOperation : public Operation {
  public:
   SnapshotOperation(std::unique_ptr<SnapshotOperationState> tx_state,
@@ -77,10 +80,10 @@ class SnapshotOperation : public Operation {
 
   CHECKED_STATUS Prepare() override;
 
-  // Starts the CreateTabletSnapshot operation by assigning it a timestamp.
+  // Starts the TabletSnapshotOp operation by assigning it a timestamp.
   void Start() override;
 
-  // Executes an Apply for the CreateTabletSnapshot operation
+  // Executes an Apply for the TabletSnapshotOp operation
   CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
 
   // Actually commits the operation.

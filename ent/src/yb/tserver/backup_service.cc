@@ -21,10 +21,10 @@ TabletServiceBackupImpl::TabletServiceBackupImpl(TSTabletManager* tablet_manager
       tablet_manager_(tablet_manager) {
 }
 
-void TabletServiceBackupImpl::CreateTabletSnapshot(const CreateTabletSnapshotRequestPB* req,
-                                                   CreateTabletSnapshotResponsePB* resp,
-                                                   RpcContext context) {
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "CreateTabletSnapshot", req, resp, &context)) {
+void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* req,
+                                               TabletSnapshotOpResponsePB* resp,
+                                               RpcContext context) {
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "TabletSnapshotOp", req, resp, &context)) {
     return;
   }
 
@@ -37,10 +37,10 @@ void TabletServiceBackupImpl::CreateTabletSnapshot(const CreateTabletSnapshotReq
 
   server::UpdateClock(*req, tablet_manager_->server()->Clock());
 
-  TRACE_EVENT1("tserver", "CreateTabletSnapshot",
+  TRACE_EVENT1("tserver", "TabletSnapshotOp",
                "tablet_id: ", req->tablet_id());
 
-  LOG(INFO) << "Processing CreateTabletSnapshot for tablet " << req->tablet_id()
+  LOG(INFO) << "Processing TabletSnapshotOp for tablet " << req->tablet_id()
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
