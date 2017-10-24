@@ -154,10 +154,10 @@ function mapStateToProps(state, ownProps) {
       }];
     }
     data.masterGFlags = Object.keys(userIntent.masterGFlags).map(function(key){
-      return {name: key, value: userIntent.masterGFlags[key]}
+      return {name: key, value: userIntent.masterGFlags[key]};
     });
     data.tserverGFlags = Object.keys(userIntent.tserverGFlags).map(function(key){
-      return {name: key, value: userIntent.tserverGFlags[key]}
+      return {name: key, value: userIntent.tserverGFlags[key]};
     });
   }
 

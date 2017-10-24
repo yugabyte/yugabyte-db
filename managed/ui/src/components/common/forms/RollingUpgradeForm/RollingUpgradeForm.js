@@ -62,8 +62,8 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse, currentUniverse: {data: {universeDetails: {nodeDetailsSet,
-      userIntent}, universeUUID}}}, reset} = this.props;
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet, userIntent},
+      universeUUID}}}, reset} = this.props;
     const nodeNames = [];
     const payload = {};
     nodeDetailsSet.forEach((item) => {
