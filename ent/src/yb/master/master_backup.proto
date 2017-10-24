@@ -16,6 +16,7 @@ message SysSnapshotEntryPB {
     DELETED = 4;
     FAILED = 5;
     CANCELLED = 6;
+    RESTORING = 7;
   }
 
   // Note: The id of the snapshot is not stored here as it is already part of
@@ -24,7 +25,7 @@ message SysSnapshotEntryPB {
   optional State state = 1 [ default = UNKNOWN ];
 
   message TabletSnapshotPB {
-    required bytes id = 1;
+    optional bytes id = 1;
     optional State state = 2;
   }
 
@@ -49,11 +50,11 @@ message CreateSnapshotResponsePB {
   optional bytes snapshot_id = 2;
 }
 
-message IsCreateSnapshotDoneRequestPB {
-  required bytes snapshot_id = 1;
+message IsSnapshotOpDoneRequestPB {
+  optional bytes snapshot_id = 1;
 }
 
-message IsCreateSnapshotDoneResponsePB {
+message IsSnapshotOpDoneResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 
@@ -69,18 +70,28 @@ message ListSnapshotsResponsePB {
   optional MasterErrorPB error = 1;
 
   message SnapshotInfo {
-    required bytes id = 1;
+    optional bytes id = 1;
     // Detailed snapshot entries.
-    required SysSnapshotEntryPB entry = 2;
+    optional SysSnapshotEntryPB entry = 2;
   }
 
   optional bytes current_snapshot_id = 2; // Snapshot currently being created.
   repeated SnapshotInfo snapshots = 3;
 }
 
+message RestoreSnapshotRequestPB {
+  optional bytes snapshot_id = 2;
+}
+
+message RestoreSnapshotResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
-  rpc IsCreateSnapshotDone(IsCreateSnapshotDoneRequestPB) returns (IsCreateSnapshotDoneResponsePB);
+  rpc IsSnapshotOpDone(IsSnapshotOpDoneRequestPB) returns (IsSnapshotOpDoneResponsePB);
   rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);
+  rpc RestoreSnapshot(RestoreSnapshotRequestPB) returns (RestoreSnapshotResponsePB);
 }

@@ -19,12 +19,16 @@ class MasterBackupServiceImpl : public MasterBackupServiceIf,
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       rpc::RpcContext rpc) override;
 
-  virtual void IsCreateSnapshotDone(
-      const IsCreateSnapshotDoneRequestPB* req, IsCreateSnapshotDoneResponsePB* resp,
+  virtual void IsSnapshotOpDone(
+      const IsSnapshotOpDoneRequestPB* req, IsSnapshotOpDoneResponsePB* resp,
       rpc::RpcContext rpc) override;
 
   virtual void ListSnapshots(
       const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp,
+      rpc::RpcContext rpc) override;
+
+  virtual void RestoreSnapshot(
+      const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp,
       rpc::RpcContext rpc) override;
 
  private:
