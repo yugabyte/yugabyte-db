@@ -10,7 +10,7 @@ import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, 
           normalizeToPositiveFloat } from 'utils/ObjectUtils';
 import { YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
           YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
-          YBButton, YBToggle, YBTextInput } from 'components/common/forms/fields';
+          YBButton, YBToggle } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
@@ -423,7 +423,7 @@ class UniverseForm extends Component {
       submitPayload.userIntent.spotPrice = parseFloat(this.state.spotPrice);
     }
 
-    let masterFlagList = formValues.masterGFlags.map(function(masterFlag, masterIdx){
+    submitPayload.userIntent.masterGFlags = formValues.masterGFlags.map(function(masterFlag){
       if (isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value)) {
         return {name: masterFlag.name, value: masterFlag.value};
       } else {
@@ -431,16 +431,13 @@ class UniverseForm extends Component {
       }
     }).filter(Boolean);
 
-    let tserverFlagList = formValues.tserverGFlags.map(function(tserverFlag, tserverIdx){
+    submitPayload.userIntent.tserverGFlags = formValues.tserverGFlags.map(function(tserverFlag){
       if (isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value)) {
         return {name: tserverFlag.name, value: tserverFlag.value};
       } else {
         return null;
       }
     }).filter(Boolean);
-
-    submitPayload.userIntent.masterGFlags = masterFlagList;
-    submitPayload.userIntent.tserverGFlags = tserverFlagList;
     
     return submitPayload;
   }

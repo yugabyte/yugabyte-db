@@ -5,6 +5,7 @@ import { YBControlledSelect, YBControlledNumericInput } from 'components/common/
 import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual, isEmptyObject } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
 import _ from 'lodash';
+import {isNonEmptyObject} from "../../../utils/ObjectUtils";
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
@@ -21,7 +22,7 @@ export default class AZSelectorTable extends Component {
   }
   static propTypes = {
     universe: PropTypes.object,
-  }
+  };
 
   resetAZSelectionConfig() {
     const {universe: {universeConfigTemplate}} = this.props;
@@ -127,7 +128,7 @@ export default class AZSelectorTable extends Component {
 
   getGroupWithCounts(universeConfigTemplate) {
     const uniConfigArray = [];
-    if (isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
+    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
       universeConfigTemplate.nodeDetailsSet.forEach(function (nodeItem) {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           let nodeFound = false;
@@ -146,7 +147,9 @@ export default class AZSelectorTable extends Component {
     }
     const groupsArray = [];
     const uniqueRegions = [];
-    if (isValidObject(universeConfigTemplate.placementInfo)) {
+    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyObject(universeConfigTemplate.placementInfo) &&
+        isNonEmptyArray(universeConfigTemplate.placementInfo.cloudList) &&
+        isNonEmptyArray(universeConfigTemplate.placementInfo.cloudList[0].regionList)) {
       universeConfigTemplate.placementInfo.cloudList[0].regionList.forEach(function(regionItem) {
         regionItem.azList.forEach(function(azItem) {
           uniConfigArray.forEach(function(configArrayItem) {
@@ -172,6 +175,7 @@ export default class AZSelectorTable extends Component {
       this.setState({azItemState: azGroups});
     }
   }
+
   componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate}} = nextProps;
     const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
@@ -202,9 +206,8 @@ export default class AZSelectorTable extends Component {
     const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
     const self = this;
     let azListForSelectedRegions = [];
-    if (isValidObject(universeConfigTemplate.data.userIntent) && 
-      isNonEmptyArray(universeConfigTemplate.data.userIntent.regionList)
-    ) {
+    if (isNonEmptyObject(universeConfigTemplate.data) && isNonEmptyObject(universeConfigTemplate.data.userIntent) &&
+        isNonEmptyArray(universeConfigTemplate.data.userIntent.regionList)) {
       azListForSelectedRegions = regions.data.filter(
         region => universeConfigTemplate.data.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);

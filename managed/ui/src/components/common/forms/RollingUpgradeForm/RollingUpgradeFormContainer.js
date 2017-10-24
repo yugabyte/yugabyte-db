@@ -3,7 +3,7 @@
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { RollingUpgradeForm }  from '../../../common/forms';
-import {isNonEmptyObject, isNonEmptyArray} from 'utils/ObjectUtils';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
 import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrade } from '../../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -31,10 +31,10 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
-  let initalGFlagValues = {};
+  const initalGFlagValues = {};
   if (isNonEmptyObject(currentUniverse) && currentUniverse.data.universeDetails.userIntent) {
-    let masterGFlags = currentUniverse.data.universeDetails.userIntent.masterGFlags;
-    let tserverGFlags = currentUniverse.data.universeDetails.userIntent.tserverGFlags;
+    const masterGFlags = currentUniverse.data.universeDetails.userIntent.masterGFlags;
+    const tserverGFlags = currentUniverse.data.universeDetails.userIntent.tserverGFlags;
     const masterList = Object.keys(masterGFlags).map(function(gFlagKey){
       return {name: gFlagKey, value: masterGFlags[gFlagKey]};
     });

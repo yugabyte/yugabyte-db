@@ -1,16 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {YBTextInput } from 'components/common/forms/fields';
-import { Field, change, FieldArray } from 'redux-form';
-import {Row, Col} from 'react-bootstrap';
+import { YBTextInput } from 'components/common/forms/fields';
+import { Field } from 'redux-form';
+import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 
 export default class GFlagArrayComponent extends Component {
 
   static propTypes = {
     type: PropTypes.oneOf(['master', 'tserver']).isRequired
-  }
+  };
 
   constructor(props) {
     super(props);
@@ -19,7 +19,7 @@ export default class GFlagArrayComponent extends Component {
   }
 
   componentWillMount() {
-    if (this.props.fields.length == 0) {
+    if (this.props.fields.length === 0) {
       this.props.fields.push({});
     }
   }
@@ -34,7 +34,7 @@ export default class GFlagArrayComponent extends Component {
 
   render() {
     const {fields, type} = this.props;
-    let self = this;
+    const self = this;
     let currentLabel = <span/>;
     if (type === "tserver") {
       currentLabel = "T-Server";
@@ -46,7 +46,7 @@ export default class GFlagArrayComponent extends Component {
         <label>{currentLabel}</label>
         {
           fields.map(function(field, idx){
-            let isReadOnly = fields.get(idx).readOnly;
+            const isReadOnly = fields.get(idx).readOnly;
             return (
               <Row key={`${type}${idx}`} className="gflag-row">
                 <Col md={5}>
@@ -56,8 +56,10 @@ export default class GFlagArrayComponent extends Component {
                   <Field name={`${field}value`} component={YBTextInput} isReadOnly={isReadOnly}/>
                 </Col>
                 <Col md={2}>
-                  {isReadOnly ? <span/> :
-                    <i className="fa fa-minus-circle flag-button remove-flag-button" onClick={(idx) => self.removeRow}/>}
+                  {
+                    isReadOnly ? <span/> :
+                    <i className="fa fa-minus-circle flag-button remove-flag-button" onClick={() => self.removeRow(idx)}/>
+                  }
                 </Col>
               </Row>
             );
@@ -67,6 +69,6 @@ export default class GFlagArrayComponent extends Component {
           <i className="fa fa-plus-circle flag-button add-flag-button" onClick={self.addRow}/>
         </Col>
       </div>
-    )
+    );
   }
 }
