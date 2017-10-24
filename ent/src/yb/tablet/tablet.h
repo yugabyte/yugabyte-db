@@ -30,12 +30,19 @@ class Tablet : public yb::tablet::Tablet {
       : super(metadata, clock, parent_mem_tracker, metric_registry, log_anchor_registry,
           tablet_options, transaction_participant_context, transaction_coordinator_context) {}
 
-  // Prepares the transaction context for the create snapshot operation.
-  CHECKED_STATUS PrepareForCreateSnapshot(SnapshotOperationState* tx_state);
+  // Prepares the transaction context for a snapshot operation.
+  CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
 
   // Create snapshot for this tablet.
   // This operation will trigger a flush on the current MemRowSet.
   CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state);
+
+  // Restore snapshot for this tablet.
+  CHECKED_STATUS RestoreSnapshot(SnapshotOperationState* tx_state);
+
+  // Restore the RocksDB checkpoint from the provided directory.
+  // Only used when table_type_ == YQL_TABLE_TYPE.
+  CHECKED_STATUS RestoreCheckpoint(const std::string& dir);
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);

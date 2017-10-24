@@ -15,9 +15,9 @@ class TabletServiceBackupImpl : public TabletServerBackupServiceIf {
   TabletServiceBackupImpl(TSTabletManager* tablet_manager,
                           const scoped_refptr<MetricEntity>& metric_entity);
 
-  virtual void CreateTabletSnapshot(const CreateTabletSnapshotRequestPB* req,
-                                    CreateTabletSnapshotResponsePB* resp,
-                                    rpc::RpcContext context) override;
+  virtual void TabletSnapshotOp(const TabletSnapshotOpRequestPB* req,
+                                TabletSnapshotOpResponsePB* resp,
+                                rpc::RpcContext context) override;
  private:
   TSTabletManager* tablet_manager_;
 };
