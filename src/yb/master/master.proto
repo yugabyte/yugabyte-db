@@ -108,6 +108,8 @@ message MasterErrorPB {
     SNAPSHOT_NOT_FOUND = 22;
     SNAPSHOT_FAILED = 23;
     SNAPSHOT_CANCELLED = 24;
+    PARALLEL_SNAPSHOT_OPERATION = 25;
+    SNAPSHOT_IS_NOT_READY = 26;
   }
 
   // The error code.

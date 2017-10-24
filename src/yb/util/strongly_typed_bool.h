@@ -16,15 +16,15 @@
 
 #include <vector>
 
-namespace yb {
-
 // A "strongly-typed boolean" tool. This is needed to prevent passing the wrong boolean as a
 // function parameter, and to make callsites more readable by enforcing that MyBooleanType::kTrue or
 // MyBooleanType::kFalse is specified instead of kTrue, kFalse. Conversion from strongly-typed bools
 // to regular bools is automatic, but the reverse conversion is always explicit.
 #define YB_STRONGLY_TYPED_BOOL(TypeName) \
   class BOOST_PP_CAT(TypeName, _Tag); \
-  typedef StronglyTypedBool<BOOST_PP_CAT(TypeName, _Tag)> TypeName;
+  typedef ::yb::StronglyTypedBool<BOOST_PP_CAT(TypeName, _Tag)> TypeName;
+
+namespace yb {
 
 template <class Tag>
 class StronglyTypedBool {

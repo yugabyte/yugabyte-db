@@ -19,19 +19,23 @@
 //
 #include "yb/rocksdb/util/file_util.h"
 
-#include <string>
+#include <vector>
 #include <algorithm>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/gutil/strings/substitute.h"
 
 namespace rocksdb {
 
+using std::string;
+using strings::Substitute;
+
 // Utility function to copy a file up to a specified length
-Status CopyFile(Env* env, const std::string& source,
-                const std::string& destination, uint64_t size) {
+Status CopyFile(Env* env, const string& source,
+                const string& destination, uint64_t size) {
   const EnvOptions soptions;
   Status s;
   unique_ptr<SequentialFileReader> src_reader;
@@ -39,24 +43,24 @@ Status CopyFile(Env* env, const std::string& source,
 
   {
     unique_ptr<SequentialFile> srcfile;
-  s = env->NewSequentialFile(source, &srcfile, soptions);
-  unique_ptr<WritableFile> destfile;
-  if (s.ok()) {
-    s = env->NewWritableFile(destination, &destfile, soptions);
-  } else {
-    return s;
-  }
-
-  if (size == 0) {
-    // default argument means copy everything
+    s = env->NewSequentialFile(source, &srcfile, soptions);
+    unique_ptr<WritableFile> destfile;
     if (s.ok()) {
-      s = env->GetFileSize(source, &size);
+      s = env->NewWritableFile(destination, &destfile, soptions);
     } else {
       return s;
     }
-  }
-  src_reader.reset(new SequentialFileReader(std::move(srcfile)));
-  dest_writer.reset(new WritableFileWriter(std::move(destfile), soptions));
+
+    if (size == 0) {
+      // default argument means copy everything
+      if (s.ok()) {
+        s = env->GetFileSize(source, &size);
+      } else {
+        return s;
+      }
+    }
+    src_reader.reset(new SequentialFileReader(std::move(srcfile)));
+    dest_writer.reset(new WritableFileWriter(std::move(destfile), soptions));
   }
 
   char buffer[4096];
@@ -80,7 +84,7 @@ Status CopyFile(Env* env, const std::string& source,
   return Status::OK();
 }
 
-Status DeleteSSTFile(const DBOptions* db_options, const std::string& fname,
+Status DeleteSSTFile(const DBOptions* db_options, const string& fname,
                      uint32_t path_id) {
   // TODO(tec): support sst_file_manager for multiple path_ids
   auto sfm =
@@ -90,6 +94,52 @@ Status DeleteSSTFile(const DBOptions* db_options, const std::string& fname,
   } else {
     return db_options->env->DeleteFile(fname);
   }
+}
+
+Status CopyDirectory(Env* env, const string& src_dir, const string& dest_dir,
+                     CreateIfMissing create_if_missing, UseHardLinks use_hard_links) {
+  RETURN_NOT_OK_PREPEND(
+      env->FileExists(src_dir),
+      Substitute("Source directory does not exist: $0", src_dir));
+
+  Status s = env->FileExists(dest_dir);
+  if (!s.ok()) {
+    if (create_if_missing) {
+      RETURN_NOT_OK_PREPEND(
+          env->CreateDir(dest_dir),
+          Substitute("Cannot create destination directory: $0", dest_dir));
+    } else {
+      return s.CloneAndPrepend(Substitute("Destination directory does not exist: $0", dest_dir));
+    }
+  }
+
+  // Copy files.
+  std::vector<string> files;
+  RETURN_NOT_OK_PREPEND(
+      env->GetChildren(src_dir, &files),
+      Substitute("Cannot get list of files for directory: $0", src_dir));
+
+  for (const string& file : files) {
+    if (file != "." && file != "..") {
+      const string file_path = src_dir + '/' + file;
+      const string target_path = dest_dir + '/' + file;
+
+      if (use_hard_links) {
+        s = env->LinkFile(file_path, target_path);
+
+        if (s.ok()) {
+          continue;
+        }
+      }
+
+      // Last argument size == 0 means coping whole file.
+      RETURN_NOT_OK_PREPEND(
+          CopyFile(env, file_path, target_path, 0),
+          Substitute("Cannot copy file: $0", file_path));
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace rocksdb

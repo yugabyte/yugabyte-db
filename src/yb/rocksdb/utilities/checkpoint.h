@@ -29,10 +29,7 @@ namespace rocksdb {
 
 class DB;
 
-class Checkpoint {
- public:
-  // Creates a Checkpoint object to be used for creating openable sbapshots
-  static Status Create(DB* db, Checkpoint** checkpoint_ptr);
+namespace checkpoint {
 
   // Builds an openable snapshot of RocksDB on the same disk, which
   // accepts an output directory on the same disk, and under the directory
@@ -41,10 +38,8 @@ class Checkpoint {
   // (2) a copied manifest files and other files
   // The directory should not already exist and will be created by this API.
   // The directory will be an absolute path
-  virtual Status CreateCheckpoint(const std::string& checkpoint_dir);
+  CHECKED_STATUS CreateCheckpoint(DB* db, const std::string& checkpoint_dir);
 
-  virtual ~Checkpoint() {}
-};
-
+}  // namespace checkpoint
 }  // namespace rocksdb
 #endif  // !ROCKSDB_LITE

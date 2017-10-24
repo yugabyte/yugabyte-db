@@ -32,6 +32,7 @@
 #ifndef YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 #define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 
+#include "yb/gutil/basictypes.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/rpc/rpc_context.h"
 
@@ -40,11 +41,12 @@ namespace master {
 
 // Non-template helpers.
 
-inline void SetupError(MasterErrorPB* error,
-                       MasterErrorPB::Code code,
-                       const Status& s) {
+inline CHECKED_STATUS SetupError(MasterErrorPB* error,
+                                 MasterErrorPB::Code code,
+                                 const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(code);
+  return s;
 }
 
 // Template helpers.
@@ -53,7 +55,7 @@ inline void SetupError(MasterErrorPB* error,
 // Service::UnavailableError as the error, set NOT_THE_LEADER as the
 // error code and return true.
 template<class RespClass>
-void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
+CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
   // TODO (KUDU-591): This is a bit of a hack, as right now
   // there's no way to propagate why a write to a consensus configuration has
   // failed. However, since we use Status::IllegalState()/IsAborted() to
@@ -64,8 +66,10 @@ void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
     Status new_status = STATUS(ServiceUnavailable,
         "operation requested can only be executed on a leader master, but this"
         " master is no longer the leader", s.ToString());
-    SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status);
+    ignore_result(SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status));
   }
+
+  return s;
 }
 
 ////////////////////////////////////////////////////////////

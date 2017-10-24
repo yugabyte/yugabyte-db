@@ -24,6 +24,7 @@
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
 
@@ -32,5 +33,13 @@ extern Status CopyFile(Env* env, const std::string& source,
 
 extern Status DeleteSSTFile(const DBOptions* db_options,
                             const std::string& fname, uint32_t path_id);
+
+YB_STRONGLY_TYPED_BOOL(CreateIfMissing);
+YB_STRONGLY_TYPED_BOOL(UseHardLinks);
+
+extern Status CopyDirectory(
+    Env* env, const std::string& src_dir, const std::string& dest_dir,
+    CreateIfMissing create_if_missing = CreateIfMissing::kTrue,
+    UseHardLinks use_hard_links = UseHardLinks::kTrue);
 
 }  // namespace rocksdb

@@ -235,7 +235,6 @@ TEST_F(DBTest, GetSnapshotLink) {
     DB* snapshotDB;
     ReadOptions roptions;
     std::string result;
-    Checkpoint* checkpoint;
 
     options = CurrentOptions();
     delete db_;
@@ -251,8 +250,7 @@ TEST_F(DBTest, GetSnapshotLink) {
     std::string key = std::string("foo");
     ASSERT_OK(Put(key, "v1"));
     // Take a snapshot
-    ASSERT_OK(Checkpoint::Create(db_, &checkpoint));
-    ASSERT_OK(checkpoint->CreateCheckpoint(snapshot_name));
+    ASSERT_OK(checkpoint::CreateCheckpoint(db_, snapshot_name));
     ASSERT_OK(Put(key, "v2"));
     ASSERT_EQ("v2", Get(key));
     ASSERT_OK(Flush());
@@ -278,7 +276,6 @@ TEST_F(DBTest, GetSnapshotLink) {
     delete db_;
     db_ = nullptr;
     ASSERT_OK(DestroyDB(dbname_, options));
-    delete checkpoint;
 
     // Restore DB name
     dbname_ = test::TmpDir(env_) + "/db_test";
@@ -314,10 +311,7 @@ TEST_F(DBTest, CheckpointCF) {
   Status s;
   // Take a snapshot
   std::thread t([&]() {
-    Checkpoint* checkpoint;
-    ASSERT_OK(Checkpoint::Create(db_, &checkpoint));
-    ASSERT_OK(checkpoint->CreateCheckpoint(snapshot_name));
-    delete checkpoint;
+    ASSERT_OK(checkpoint::CreateCheckpoint(db_, snapshot_name));
   });
   TEST_SYNC_POINT("DBTest::CheckpointCF:1");
   ASSERT_OK(Put(0, "Default", "Default1"));
@@ -339,7 +333,7 @@ TEST_F(DBTest, CheckpointCF) {
   // Open snapshot and verify contents while DB is running
   options.create_if_missing = false;
   std::vector<std::string> cfs;
-  cfs=  {kDefaultColumnFamilyName, "one", "two", "three", "four", "five"};
+  cfs = {kDefaultColumnFamilyName, "one", "two", "three", "four", "five"};
   std::vector<ColumnFamilyDescriptor> column_families;
     for (size_t i = 0; i < cfs.size(); ++i) {
       column_families.push_back(ColumnFamilyDescriptor(cfs[i], options));

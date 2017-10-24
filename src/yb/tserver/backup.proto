@@ -7,22 +7,31 @@ option java_package = "org.yb.tserver";
 import "yb/tserver/tserver.proto";
 
 service TabletServerBackupService {
-  rpc CreateTabletSnapshot(CreateTabletSnapshotRequestPB) returns (CreateTabletSnapshotResponsePB);
+  rpc TabletSnapshotOp(TabletSnapshotOpRequestPB)
+      returns (TabletSnapshotOpResponsePB);
 }
 
-message CreateTabletSnapshotRequestPB {
+message TabletSnapshotOpRequestPB {
+  enum Operation {
+    UNKNOWN = 0;
+    CREATE = 1;
+    RESTORE = 2;
+  }
+
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
-  optional bytes snapshot_id = 2;
+  optional Operation operation = 2;
+
+  optional bytes snapshot_id = 3;
 
   // Tablet to snapshot.
-  optional bytes tablet_id = 3;
+  optional bytes tablet_id = 4;
 
-  optional fixed64 propagated_hybrid_time = 4;
+  optional fixed64 propagated_hybrid_time = 5;
 }
 
-message CreateTabletSnapshotResponsePB {
+message TabletSnapshotOpResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;

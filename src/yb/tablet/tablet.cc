@@ -96,6 +96,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/tablet-internal.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/alter_schema_operation.h"
@@ -170,15 +171,6 @@ using yb::docdb::KuduWriteOperation;
 using yb::docdb::IntentKind;
 using yb::docdb::IntentTypePair;
 using yb::docdb::KeyToIntentTypeMap;
-
-// Make sure RocksDB does not disappear while we're using it. This is used at the top level of
-// functions that perform RocksDB operations (directly or indirectly). Once a function is using
-// this mechanism, any functions that it calls can safely use RocksDB as usual.
-#define GUARD_AGAINST_ROCKSDB_SHUTDOWN \
-  if (IsShutdownRequested()) { \
-    return STATUS(IllegalState, "tablet is shutting down"); \
-  } \
-  ScopedPendingOperation shutdown_guard(&pending_op_counter_);
 
 namespace yb {
 namespace tablet {
@@ -849,19 +841,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
-  rocksdb::Status status;
-  std::unique_ptr<rocksdb::Checkpoint> checkpoint;
-  {
-    rocksdb::Checkpoint* checkpoint_raw_ptr = nullptr;
-    status = rocksdb::Checkpoint::Create(rocksdb_.get(), &checkpoint_raw_ptr);
-    if (!status.ok()) {
-      return STATUS(IllegalState, Substitute("Unable to create checkpoint object: $0",
-                                             status.ToString()));
-    }
-    checkpoint.reset(checkpoint_raw_ptr);
-  }
-
-  status = checkpoint->CreateCheckpoint(dir);
+  rocksdb::Status status = rocksdb::checkpoint::CreateCheckpoint(rocksdb_.get(), dir);
 
   if (!status.ok()) {
     LOG(WARNING) << "Create checkpoint status: " << status.ToString();
