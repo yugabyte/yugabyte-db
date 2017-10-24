@@ -34,6 +34,10 @@ struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntr
   bool is_complete() const {
     return pb.state() == SysSnapshotEntryPB::COMPLETE;
   }
+
+  bool is_restoring() const {
+    return pb.state() == SysSnapshotEntryPB::RESTORING;
+  }
 };
 
 // The information about a snapshot.
@@ -51,6 +55,9 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
   // Returns true if the snapshot creation is in-progress.
   bool IsCreateInProgress() const;
+
+  // Returns true if the snapshot restoring is in-progress.
+  bool IsRestoreInProgress() const;
 
   CHECKED_STATUS AddEntries(const scoped_refptr<NamespaceInfo> ns,
                             const scoped_refptr<TableInfo>& table,
@@ -80,22 +87,33 @@ class CatalogManager : public yb::master::CatalogManager {
                                 CreateSnapshotResponsePB* resp);
 
   // API to check if this snapshot creation operation has finished.
-  CHECKED_STATUS IsCreateSnapshotDone(const IsCreateSnapshotDoneRequestPB* req,
-                                      IsCreateSnapshotDoneResponsePB* resp);
+  CHECKED_STATUS IsSnapshotOpDone(const IsSnapshotOpDoneRequestPB* req,
+                                  IsSnapshotOpDoneResponsePB* resp);
 
   // API to list all available snapshots.
   CHECKED_STATUS ListSnapshots(const ListSnapshotsRequestPB*,
                                ListSnapshotsResponsePB* resp);
 
-  CHECKED_STATUS HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
+  // API to restore a snapshot.
+  CHECKED_STATUS RestoreSnapshot(const RestoreSnapshotRequestPB* req,
+                                 RestoreSnapshotResponsePB* resp);
+
+  void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
+
+  void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
  private:
   friend class SnapshotLoader;
 
+  CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
+
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id);
+
+  void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
+                                        const std::string& snapshot_id);
 
   // Snapshot map: snapshot-id -> SnapshotInfo
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;

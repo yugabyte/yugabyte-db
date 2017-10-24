@@ -20,6 +20,7 @@ namespace yb {
 
 using std::make_shared;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::tuple;
 using std::set;
 using std::vector;
@@ -57,10 +58,12 @@ using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;
 using yb::master::CreateSnapshotRequestPB;
 using yb::master::CreateSnapshotResponsePB;
-using yb::master::IsCreateSnapshotDoneRequestPB;
-using yb::master::IsCreateSnapshotDoneResponsePB;
+using yb::master::IsSnapshotOpDoneRequestPB;
+using yb::master::IsSnapshotOpDoneResponsePB;
 using yb::master::ListSnapshotsRequestPB;
 using yb::master::ListSnapshotsResponsePB;
+using yb::master::RestoreSnapshotRequestPB;
+using yb::master::RestoreSnapshotResponsePB;
 
 class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -256,7 +259,7 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
-  void ListAllSnapshots(
+  void CheckAllSnapshots(
       const std::set<std::tuple<SnapshotId, SysSnapshotEntryPB::State>>& snapshot_info,
       SnapshotId cur_id = "") {
     ListSnapshotsRequestPB list_req;
@@ -292,82 +295,167 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
+  template <typename THandler>
+  void WaitTillComplete(const string& handler_name, THandler handler) {
+    // Do a set of iterations to check that the operation is done.
+    // Sleep if the operation is not done by the moment.
+    // Increase sleep time on each iteration in accordance with the formula:
+    //   X[0] = 100 ms
+    //   X[i+1] = X[i] * 1.5    // +50%
+    //   Sleep(100 ms + X[i] ms)
+    // So, sleep time:
+    //   Iteration  0: 0.20 sec
+    //   Iteration  1: 0.25 sec
+    //   Iteration  2: 0.32 sec
+    //   ...
+    //   Iteration  9: 3.94 sec
+    //   Iteration 10: 5.87 sec
+    //   Iteration 11: 8.75 sec
+    //   Sum: 27 seconds (in 12 iterations)
+    static const int kHalfMinWaitMs = 100;
+    static const int kMaxNumRetries = 12;
+    int wait_ms = kHalfMinWaitMs;
+    bool complete = false;
+
+    for (int num_retries = kMaxNumRetries; num_retries > 0; --num_retries) {
+      complete = handler();
+      if (complete) {
+        LOG(INFO) << handler_name << ": DONE";
+        break;
+      }
+
+      LOG(INFO) << handler_name << ": not done - sleep " << (kHalfMinWaitMs + wait_ms) << " ms";
+      SleepFor(MonoDelta::FromMilliseconds(kHalfMinWaitMs + wait_ms));
+      wait_ms = wait_ms * 3 / 2; // +50%
+    }
+
+    // Test fails if operation was not successfully completed.
+    ASSERT_TRUE(complete);
+  }
+
+  template <typename TReq, typename TResp, typename TProxy>
+  auto ProxyCallLambda(
+      const TReq& req, TResp* resp, TProxy* proxy,
+      Status (TProxy::*call)(const TReq&, TResp*, rpc::RpcController* controller)) {
+    return [&]() -> bool {
+      EXPECT_OK((proxy->*call)(req, resp, ResetAndGetController()));
+      EXPECT_FALSE(resp->has_error());
+      EXPECT_TRUE(resp->has_done());
+      return resp->done();
+    };
+  }
+
+  void CreateNamespaceAndTable(const NamespaceName& ns_name, const TableName& table_name) {
+    // Create a new namespace.
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(ns_name, &resp));
+    NamespaceId ns_id = resp.id();
+
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    // Note: kNumSystemNamespaces plus "testns" (ns_name).
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespacesExistance({ make_tuple(ns_name, ns_id) }, namespaces);
+
+    // Create a table with the defined new namespace.
+    const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+    string table_id;
+    ASSERT_OK(CreateTable(table_name, kTableSchema, ns_name, &table_id));
+
+    IsCreateTableDoneRequestPB is_create_req;
+    IsCreateTableDoneResponsePB is_create_resp;
+    is_create_req.mutable_table()->set_table_name(table_name);
+    is_create_req.mutable_table()->mutable_namespace_()->set_name(ns_name);
+
+    WaitTillComplete(
+        "IsCreateTableDone", ProxyCallLambda(
+            is_create_req, &is_create_resp, proxy_.get(), &MasterServiceProxy::IsCreateTableDone));
+
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
+    CheckTablesExistance({ make_tuple(table_name, ns_name, ns_id) }, tables);
+  }
+
+  void DestroyNamespaceAndTable(const NamespaceName& ns_name, const TableName& table_name) {
+    // Delete the table in the namespace 'ns_name'.
+    ASSERT_OK(DeleteTable(table_name, ns_name));
+
+    // List tables, should show only system tables.
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
+
+    // Delete the namespace (by NAME).
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_()->set_name(ns_name);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+
+    ListNamespacesResponsePB namespaces;
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(kNumSystemNamespaces, namespaces.namespaces_size());
+  }
+
+  void WaitForSnapshotOpDone(const string& op_name, const string& snapshot_id) {
+    IsSnapshotOpDoneRequestPB is_snapshot_done_req;
+    IsSnapshotOpDoneResponsePB is_snapshot_done_resp;
+    is_snapshot_done_req.set_snapshot_id(snapshot_id);
+
+    WaitTillComplete(
+        op_name, ProxyCallLambda(
+            is_snapshot_done_req, &is_snapshot_done_resp,
+            proxy_backup_.get(), &MasterBackupServiceProxy::IsSnapshotOpDone));
+  }
+
+  string CreateSnapshot(const NamespaceName& ns_name, const TableName& table_name) {
+    CreateSnapshotRequestPB req;
+    CreateSnapshotResponsePB resp;
+    TableIdentifierPB* const table = req.mutable_tables()->Add();
+    table->set_table_name(table_name);
+    table->mutable_namespace_()->set_name(ns_name);
+
+    // Check the request.
+    EXPECT_OK(proxy_backup_->CreateSnapshot(req, &resp, ResetAndGetController()));
+
+    // Check the response.
+    SCOPED_TRACE(resp.DebugString());
+    EXPECT_FALSE(resp.has_error());
+    EXPECT_TRUE(resp.has_snapshot_id());
+    LOG(INFO) << "Started snapshot creation: ID=" << resp.snapshot_id();
+    const string snapshot_id = resp.snapshot_id();
+
+    CheckAllSnapshots(
+        {
+            std::make_tuple(snapshot_id, SysSnapshotEntryPB::CREATING)
+        }, snapshot_id);
+
+    // Check the snapshot creation is complete.
+    WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id);
+
+    CheckAllSnapshots(
+        {
+            std::make_tuple(snapshot_id, SysSnapshotEntryPB::COMPLETE)
+        });
+
+    return snapshot_id;
+  }
+
  protected:
   shared_ptr<Messenger> messenger_;
-  gscoped_ptr<MasterServiceProxy> proxy_;
-  gscoped_ptr<MasterBackupServiceProxy> proxy_backup_;
+  unique_ptr<MasterServiceProxy> proxy_;
+  unique_ptr<MasterBackupServiceProxy> proxy_backup_;
   shared_ptr<RpcController> controller_;
   TabletServerMap ts_map_;
   MiniMaster* mini_master_;
 };
 
 TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
-  // Create a new namespace.
-  const NamespaceName other_ns_name = "testns";
-  NamespaceId other_ns_id;
-  ListNamespacesResponsePB namespaces;
-  {
-    CreateNamespaceResponsePB resp;
-    ASSERT_OK(CreateNamespace(other_ns_name, &resp));
-    other_ns_id = resp.id();
-  }
-  {
-    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
-    CheckNamespacesExistance({ make_tuple(other_ns_name, other_ns_id) }, namespaces);
-  }
-
-  // Create a table with the defined new namespace.
+  const NamespaceName kNamespaceName = "testns";
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
-  string table_id;
-  ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name, &table_id));
-
-  IsCreateTableDoneRequestPB is_create_req;
-  IsCreateTableDoneResponsePB is_create_resp;
-
-  is_create_req.mutable_table()->set_table_name(kTableName);
-  is_create_req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-
-  // Do a set of iterations to check that the operation is done.
-  // Sleep if the operation is not done by the moment.
-  // Increase sleep time on each iteration in accordance with the formula:
-  //   X[0] = 100 ms
-  //   X[i+1] = X[i] * 1.5    // +50%
-  //   Sleep(100 ms + X[i] ms)
-  // So, sleep time:
-  //   Iteration  0: 0,20 sec
-  //   Iteration  1: 0,25 sec
-  //   Iteration  2: 0,32 sec
-  //   ...
-  //   Iteration  9: 3,94 sec
-  //   Iteration 10: 5,87 sec
-  //   Iteration 11: 8,75 sec
-  //   Sum: 27 seconds (in 12 iterations)
-  int wait_ms = 100;
-  static const int kMaxNumRetries = 12;
-
-  for (int num_retries = kMaxNumRetries; num_retries > 0; --num_retries) {
-    Status s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
-    ASSERT_TRUE(s.ok());
-    ASSERT_FALSE(is_create_resp.has_error());
-    ASSERT_TRUE(is_create_resp.has_done());
-    if (is_create_resp.done()) {
-      LOG(INFO) << "IsCreateTableDone: DONE";
-      break;
-    }
-    LOG(INFO) << "IsCreateTableDone: not done - sleep " << (100 + wait_ms) << " ms";
-    SleepFor(MonoDelta::FromMilliseconds(100 + wait_ms));
-    wait_ms = wait_ms * 3 / 2; // +50%
-  }
-
-  // Test fails if table was not created.
-  ASSERT_TRUE(is_create_resp.done());
-
-  ListTablesResponsePB tables;
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
-  CheckTablesExistance({ make_tuple(kTableName, other_ns_name, other_ns_id) }, tables);
+  CreateNamespaceAndTable(kNamespaceName, kTableName);
 
   // Check tablet folders before the snapshot creation.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
@@ -387,76 +475,10 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     }
   }
 
-  ListAllSnapshots({});
-
-  string snapshot_id;
+  CheckAllSnapshots({});
 
   // Check CreateSnapshot().
-  {
-    CreateSnapshotRequestPB req;
-    CreateSnapshotResponsePB resp;
-    TableIdentifierPB* const table = req.mutable_tables()->Add();
-    table->set_table_name(kTableName);
-    table->mutable_namespace_()->set_name(other_ns_name);
-
-    // Check the request.
-    ASSERT_OK(proxy_backup_->CreateSnapshot(req, &resp, ResetAndGetController()));
-
-    // Check the response.
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-    ASSERT_TRUE(resp.has_snapshot_id());
-    snapshot_id = resp.snapshot_id();
-    LOG(INFO) << "Started snapshot creation: ID=" << snapshot_id;
-  }
-
-  ListAllSnapshots(
-      {
-          std::make_tuple(snapshot_id, SysSnapshotEntryPB::CREATING)
-      }, snapshot_id);
-
-  // Check the snapshot creation complete.
-  {
-    IsCreateSnapshotDoneRequestPB is_snapshot_done_req;
-    IsCreateSnapshotDoneResponsePB is_snapshot_done_resp;
-
-    is_snapshot_done_req.set_snapshot_id(snapshot_id);
-    // Do a set of iterations to check that the operation is done.
-    // Sleep if the operation is not done by the moment.
-    // Increase sleep time on each iteration in accordance with the formula:
-    //   X[0] = 100 ms
-    //   X[i+1] = X[i] * 1.5    // +50%
-    //   Sleep(100 ms + X[i] ms)
-    // So, sleep time:
-    //   Iteration  0: 0,20 sec
-    //   Iteration  1: 0,25 sec
-    //   Iteration  2: 0,32 sec
-    //   ...
-    //   Iteration  9: 3,94 sec
-    //   Iteration 10: 5,87 sec
-    //   Iteration 11: 8,75 sec
-    //   Sum: 27 seconds (in 12 iterations)
-    wait_ms = 100;
-
-    for (int num_retries = kMaxNumRetries; num_retries > 0; --num_retries) {
-      const Status s = proxy_backup_->IsCreateSnapshotDone(
-          is_snapshot_done_req, &is_snapshot_done_resp, ResetAndGetController());
-
-      ASSERT_TRUE(s.ok());
-      ASSERT_FALSE(is_snapshot_done_resp.has_error());
-      ASSERT_TRUE(is_snapshot_done_resp.has_done());
-      if (is_snapshot_done_resp.done()) {
-        LOG(INFO) << "IsCreateSnapshotDone: DONE";
-        break;
-      }
-      LOG(INFO) << "IsCreateSnapshotDone: not done - sleep " << (100 + wait_ms) << " ms";
-      SleepFor(MonoDelta::FromMilliseconds(100 + wait_ms));
-      wait_ms = wait_ms * 3 / 2; // +50%
-    }
-
-    // Test fails if snapshot was not successfully completed.
-    ASSERT_TRUE(is_snapshot_done_resp.done());
-  }
+  const string snapshot_id = CreateSnapshot(kNamespaceName, kTableName);
 
   // Check snapshot files existence.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
@@ -482,31 +504,52 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     }
   }
 
-  ListAllSnapshots(
+  LOG(INFO) << "TestCreateSnapshot finished. Deleting test table & namespace.";
+  DestroyNamespaceAndTable(kNamespaceName, kTableName);
+}
+
+TEST_F(MiniClusterMasterTest, TestRestoreSnapshot) {
+  const NamespaceName kNamespaceName = "testns";
+  const TableName kTableName = "testtb";
+  CreateNamespaceAndTable(kNamespaceName, kTableName);
+
+  CheckAllSnapshots({});
+
+  // Check CreateSnapshot().
+  const string snapshot_id = CreateSnapshot(kNamespaceName, kTableName);
+
+  // Check RestoreSnapshot().
+  {
+    RestoreSnapshotRequestPB req;
+    RestoreSnapshotResponsePB resp;
+    req.set_snapshot_id(snapshot_id);
+
+    // Check the request.
+    ASSERT_OK(proxy_backup_->RestoreSnapshot(req, &resp, ResetAndGetController()));
+
+    // Check the response.
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+    LOG(INFO) << "Started snapshot restoring: ID=" << snapshot_id;
+  }
+
+  CheckAllSnapshots(
+      {
+          std::make_tuple(snapshot_id, SysSnapshotEntryPB::RESTORING)
+      }, snapshot_id);
+
+  // Check the snapshot restoring is complete.
+  WaitForSnapshotOpDone("IsRestoreSnapshotDone", snapshot_id);
+
+  CheckAllSnapshots(
       {
           std::make_tuple(snapshot_id, SysSnapshotEntryPB::COMPLETE)
       });
 
-  LOG(INFO) << "CreateSnapshot finished. Deleting test table & namespace.";
-  // Delete the table in the namespace 'testns'.
-  ASSERT_OK(DeleteTable(kTableName, other_ns_name));
+  // TODO: Check restored data.
 
-  // List tables, should show only system tables.
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
-
-  // Delete the namespace (by NAME).
-  {
-    DeleteNamespaceRequestPB req;
-    DeleteNamespaceResponsePB resp;
-    req.mutable_namespace_()->set_name(other_ns_name);
-    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-
-  ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-  ASSERT_EQ(kNumSystemNamespaces, namespaces.namespaces_size());
+  LOG(INFO) << "TestRestoreSnapshot finished. Deleting test table & namespace.";
+  DestroyNamespaceAndTable(kNamespaceName, kTableName);
 }
 
 } // namespace yb
