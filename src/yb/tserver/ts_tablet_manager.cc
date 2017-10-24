@@ -145,7 +145,7 @@ DEFINE_int32(db_block_cache_size_percentage, 50,
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
-constexpr int kTServerYbClientDefaultTimeoutMs = yb::RegularBuildVsSanitizers(5, 60) * 1000;
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 60 * 1000; // 1 hour
 
 DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
