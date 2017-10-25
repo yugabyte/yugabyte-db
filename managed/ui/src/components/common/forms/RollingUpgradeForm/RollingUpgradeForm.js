@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {Field, FieldArray } from 'redux-form';
-import {Row, Col, Tabs, Tab} from 'react-bootstrap';
+import { Field, FieldArray } from 'redux-form';
+import { Row, Col, Tabs, Tab } from 'react-bootstrap';
 import { YBButton, YBModal, YBInputField, YBCheckBox, YBSelectWithLabel } from '../fields';
 import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
