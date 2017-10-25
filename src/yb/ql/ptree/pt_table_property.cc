@@ -142,8 +142,8 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       // TTL value is entered by user in seconds, but we store internally in milliseconds.
       if (!common::IsValidTTLSeconds(int_val)) {
         return sem_context->Error(this, Substitute("Valid ttl range : [$0, $1]",
-                                                   common::kMinTtlSeconds,
-                                                   common::kMaxTtlSeconds).c_str(),
+                                                   common::kCassandraMinTtlSeconds,
+                                                   common::kCassandraMaxTtlSeconds).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
       break;

@@ -50,16 +50,16 @@ TEST_F(TestQLInsertTable, TestQLInsertTableSimple) {
   EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(1)));
 
   // INSERT: Valid statement with ttl at the lower limit.
-  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlSeconds)));
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kCassandraMinTtlSeconds)));
 
   // INSERT: Valid statement with ttl at the upper limit.
-  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlSeconds)));
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kCassandraMaxTtlSeconds)));
 
   // INSERT: Invalid statement with ttl just over limit.
-  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlSeconds + 1)));
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kCassandraMaxTtlSeconds + 1)));
 
   // INSERT: Invalid statement with ttl just below lower limit.
-  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlSeconds - 1)));
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kCassandraMinTtlSeconds - 1)));
 
   // INSERT: Invalid statement with ttl too high.
   EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(std::numeric_limits<int64_t>::max())));

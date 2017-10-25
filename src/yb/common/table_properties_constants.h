@@ -26,18 +26,20 @@
 namespace yb {
 namespace common {
 
-// Upper bound for TTL in Cassandra is max int32 value (in seconds).
-static const MonoDelta kMaxTtl = MonoDelta::FromSeconds(std::numeric_limits<int32_t>::max());
+static const MonoDelta kMaxTtl = MonoDelta::FromNanoseconds(std::numeric_limits<int64_t>::max());
 
 static constexpr int64_t kInvalidUserTimestamp = std::numeric_limits<int64_t>::min();
 
-static const int64_t kMaxTtlSeconds = kMaxTtl.ToSeconds();
+// We use an upper bound of int32_t max (in seconds) for Cassandra. Note that this is higher than
+// what vanilla Cassandra itself uses, since they store the expiry timestamp in seconds as
+// int32_t and have overflow issues. See CASSANDRA-4771.
+static const int64_t kCassandraMaxTtlSeconds = std::numeric_limits<int32_t>::max();
 
-static const int64_t kMinTtlSeconds = 0;
+static const int64_t kCassandraMinTtlSeconds = 0;
 
 // Verifies whether the TTL provided in milliseconds is valid.
 inline static bool IsValidTTLSeconds(int64_t ttl_seconds) {
-  return (ttl_seconds >= kMinTtlSeconds && ttl_seconds <= kMaxTtlSeconds);
+  return (ttl_seconds >= kCassandraMinTtlSeconds && ttl_seconds <= kCassandraMaxTtlSeconds);
 }
 
 static constexpr auto kSpeculativeRetryAlways = "always";

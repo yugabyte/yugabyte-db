@@ -50,10 +50,10 @@ TEST_F(TestQLUpdateTable, TestQLUpdateTableSimple) {
                             "primary key((h1, h2), r1, r2));";
   CHECK_VALID_STMT(create_stmt);
 
-  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMaxTtlSeconds));
-  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMinTtlSeconds));
-  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMaxTtlSeconds + 1));
-  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMinTtlSeconds - 1));
+  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kCassandraMaxTtlSeconds));
+  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kCassandraMinTtlSeconds));
+  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kCassandraMaxTtlSeconds + 1));
+  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kCassandraMinTtlSeconds - 1));
 
   // -----------------------------------------------------------------------------------------------
   // Unknown table.

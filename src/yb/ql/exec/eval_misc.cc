@@ -39,8 +39,8 @@ CHECKED_STATUS Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) 
     if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
       return exec_context_->Error(tnode->ttl_seconds(),
                                   strings::Substitute("Valid ttl range : [$0, $1]",
-                                                      yb::common::kMinTtlSeconds,
-                                                      yb::common::kMaxTtlSeconds).c_str(),
+                                                      yb::common::kCassandraMinTtlSeconds,
+                                                      yb::common::kCassandraMaxTtlSeconds).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_ttl(static_cast<uint64_t>(ttl_seconds * MonoTime::kMillisecondsPerSecond));

@@ -20,10 +20,7 @@ import org.junit.Test;
 
 import java.net.InetAddress;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.TimeZone;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -198,6 +195,12 @@ public class TestInsert extends BaseCQLTest {
 
   private void runValidInsertWithTTL(String tableName, String ttlSeconds) {
     session.execute(getInsertStmt(tableName, ttlSeconds));
+
+    // Verify TTL.
+    List<Row> rows = session.execute(String.format("SELECT ttl(v1) FROM %s", tableName)).all();
+    assertEquals(1, rows.size());
+    // TTL should be atleast within 10 seconds of what we set it to.
+    assertTrue(Math.abs(Long.valueOf(ttlSeconds).longValue() - rows.get(0).getLong(0)) <= 10);
   }
 
   @Test
@@ -205,8 +208,17 @@ public class TestInsert extends BaseCQLTest {
     String tableName = "test_insert_with_invalid_ttl";
     createTable(tableName);
 
-    runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC));
+    runValidInsertWithTTL(tableName, "1000");
     runValidInsertWithTTL(tableName, "0");
+    runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC - 1));
+    runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC));
+    // Test ttl() function with no ttl.
+    session.execute(String.format(
+      "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d);", tableName,
+      1, 2, 3, 4, 5));
+    List<Row> rows = session.execute(String.format("SELECT ttl(v1) FROM %s", tableName)).all();
+    assertEquals(1, rows.size());
+    assertEquals(0, rows.get(0).getLong(0));
 
     runInvalidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC + 1));
     runInvalidInsertWithTTL(tableName, String.valueOf(Long.MAX_VALUE));
