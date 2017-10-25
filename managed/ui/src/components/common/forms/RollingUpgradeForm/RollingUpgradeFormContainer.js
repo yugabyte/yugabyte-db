@@ -36,12 +36,12 @@ function mapStateToProps(state, ownProps) {
     const masterGFlags = currentUniverse.data.universeDetails.userIntent.masterGFlags;
     const tserverGFlags = currentUniverse.data.universeDetails.userIntent.tserverGFlags;
     if(isNonEmptyObject(masterGFlags)) {
-      initalGFlagValues.masterGFlags = Object.keys(tserverGFlags).map(function(gFlagKey){
-        return {name: gFlagKey, value: tserverGFlags[gFlagKey]};
+      initalGFlagValues.masterGFlags = Object.keys(masterGFlags).map(function(gFlagKey){
+        return {name: gFlagKey, value: masterGFlags[gFlagKey]};
       });
     }
     if(isNonEmptyObject(tserverGFlags)) {
-      initalGFlagValues.masterGFlags = Object.keys(tserverGFlags).map(function(gFlagKey){
+      initalGFlagValues.tserverGFlags = Object.keys(tserverGFlags).map(function(gFlagKey){
         return {name: gFlagKey, value: tserverGFlags[gFlagKey]};
       });
     }
@@ -50,7 +50,7 @@ function mapStateToProps(state, ownProps) {
   return {
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
-    initialValues: isNonEmptyObject(initalGFlagValues) ? initalGFlagValues : null
+    initialValues: initalGFlagValues
   };
 }
 
