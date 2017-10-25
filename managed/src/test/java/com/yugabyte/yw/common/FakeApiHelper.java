@@ -14,6 +14,8 @@ import play.test.Helpers;
 
 import java.util.List;
 
+import static play.test.Helpers.route;
+
 public class FakeApiHelper {
   private static String getAuthToken() {
     Customer customer = Customer.create("Valid Customer", "foo@bar.com", "password");
@@ -27,7 +29,7 @@ public class FakeApiHelper {
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url)
             .header("X-AUTH-TOKEN", authToken);
-    return Helpers.route(request);
+    return route(request);
   }
 
   public static Result doRequestWithBody(String method, String url, JsonNode body) {
@@ -38,7 +40,7 @@ public class FakeApiHelper {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url)
             .header("X-AUTH-TOKEN", authToken)
             .bodyJson(body);
-    return Helpers.route(request);
+    return route(request);
   }
 
   public static Result doRequestWithMultipartData(String method, String url,
@@ -54,6 +56,6 @@ public class FakeApiHelper {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url)
         .header("X-AUTH-TOKEN", authToken)
         .bodyMultipart(data, mat);
-    return Helpers.route(request);
+    return route(request);
   }
 }
