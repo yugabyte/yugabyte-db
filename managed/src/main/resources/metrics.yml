@@ -226,7 +226,7 @@ redis_rpcs_per_sec:
 
 redis_ops_latency:
   metric: "rpc_latency.avg"
-  function: "avg"
+  function: "rate|avg"
   operator: "/ 1000 > 0"
   filters:
     server_type: "yb_redisserver"
@@ -765,37 +765,39 @@ lsm_rocksdb_latencies_mutex:
       alias:
         "rocksdb_db_mutex_wait_micros.avg": "Mutex"
 
-lsm_rocksdb_block_cache_hit:
+lsm_rocksdb_block_cache_hit_miss:
   metric: ""
   function: "rate|avg"
   range: "1m"
   filters:
-    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_single_touch_hit|rocksdb_block_cache_multi_touch_hit"
+    saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
-    title: "Cache Hit / Table"
+    title: "Cache Hit & Miss / Table / Sec"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_block_cache_hit": "Hit"
-        "rocksdb_block_cache_single_touch_hit": "Single Touch Hit"
-        "rocksdb_block_cache_multi_touch_hit": "Multi Touch Hit"
+        "rocksdb_block_cache_miss": "Miss"
 
-lsm_rocksdb_block_cache_miss:
-  metric: "rocksdb_block_cache_miss"
-  function: "rate|avg"
-  range: "1m"
+lsm_rocksdb_block_cache_usage:
+  metric: ""
+  function: "avg"
+  operator: "/ 1048576"
   filters:
+    saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
     export_type: "tserver_export"
+  group_by: "saved_name"
   layout:
-    title: "Cache Miss / Table"
+    title: "Block cache usage MB"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_block_cache_miss": "Miss"
+        "block_cache_single_touch_usage": "Single Touch"
+        "block_cache_multi_touch_usage": "Multi Touch"
 
 lsm_rocksdb_block_cache_add:
   metric: ""
@@ -814,40 +816,6 @@ lsm_rocksdb_block_cache_add:
         "rocksdb_block_cache_add": "Add"
         "rocksdb_block_cache_single_touch_add": "Single Touch Add"
         "rocksdb_block_cache_multi_touch_add": "Multi Touch Add"
-
-lsm_rocksdb_block_cache_bytes_read:
-  metric: ""
-  function: "rate|avg"
-  range: "1m"
-  filters:
-    saved_name: "rocksdb_block_cache_bytes_read|rocksdb_block_cache_single_touch_bytes_read|rocksdb_block_cache_multi_touch_bytes_read"
-  group_by: "saved_name"
-  layout:
-    title: "Block Cache Bytes Read / Table"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "rocksdb_block_cache_bytes_read": "Total Bytes Read"
-        "rocksdb_block_cache_single_touch_bytes_read": "Single Touch Bytes Read"
-        "rocksdb_block_cache_multi_touch_bytes_read": "Multi Touch Bytes Read"
-
-lsm_rocksdb_block_cache_bytes_write:
-  metric: ""
-  function: "rate|avg"
-  range: "1m"
-  filters:
-    saved_name: "rocksdb_block_cache_bytes_write|rocksdb_block_cache_single_touch_bytes_write|rocksdb_block_cache_multi_touch_bytes_write"
-  group_by: "saved_name"
-  layout:
-    title: "Block Cache Bytes Write / Table"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "rocksdb_block_cache_bytes_write": "Total Bytes Written"
-        "rocksdb_block_cache_single_touch_bytes_write": "Single Touch Bytes Written"
-        "rocksdb_block_cache_multi_touch_bytes_write": "Multi Touch Bytes Written"
 
 lsm_rocksdb_stalls:
   metric: "rocksdb_stall_micros"
