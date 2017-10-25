@@ -2884,7 +2884,8 @@ Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &do
   bool need_read_snapshot = false;
   HybridTime hybrid_time;
   docdb::PrepareDocWriteOperation(
-      doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot);
+      doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot,
+      metrics_->write_lock_latency);
   unique_ptr<ScopedReadOperation> read_txn;
   if (need_read_snapshot) {
     read_txn.reset(new ScopedReadOperation(this));

@@ -73,6 +73,9 @@
 // https://docs.google.com/document/d/1uEOHUqGBVkijw_CGD568FMt8UOJdHtiE3JROUOppYBU/edit
 
 namespace yb {
+
+class Histogram;
+
 namespace docdb {
 
 enum class InitMarkerBehavior {
@@ -233,7 +236,8 @@ class DocWriteBatch {
 void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
                               SharedLockManager *lock_manager,
                               LockBatch *keys_locked,
-                              bool *need_read_snapshot);
+                              bool *need_read_snapshot,
+                              const scoped_refptr<Histogram>& write_lock_latency);
 
 // This function reads from rocksdb and constructs the write batch.
 //

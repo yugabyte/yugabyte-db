@@ -172,6 +172,10 @@ METRIC_DEFINE_histogram(
     tablet, ql_read_latency, "HandleQLReadRequest latency", yb::MetricUnit::kMicroseconds,
     "Time taken to handle a QLReadRequest", 60000000LU, 2);
 
+METRIC_DEFINE_histogram(
+    tablet, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
+    "Time taken to acquire key locks for a write operation", 60000000LU, 2);
+
 METRIC_DEFINE_gauge_uint32(tablet, flush_dms_running,
   "DeltaMemStore Flushes Running",
   yb::MetricUnit::kMaintenanceOperations,
@@ -258,6 +262,7 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(snapshot_read_inflight_wait_duration),
     MINIT(redis_read_latency),
     MINIT(ql_read_latency),
+    MINIT(write_lock_latency),
     MINIT(write_op_duration_client_propagated_consistency),
     MINIT(write_op_duration_commit_wait_consistency),
     GINIT(flush_dms_running),

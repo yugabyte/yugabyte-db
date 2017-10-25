@@ -41,6 +41,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/util/metrics.h"
 
 using std::endl;
 using std::list;
@@ -100,7 +101,8 @@ IntentTypePair WriteIntentsForIsolationLevel(const IsolationLevel level) {
 void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                               SharedLockManager *lock_manager,
                               LockBatch *keys_locked,
-                              bool *need_read_snapshot) {
+                              bool *need_read_snapshot,
+                              const scoped_refptr<Histogram>& write_lock_latency) {
   *need_read_snapshot = false;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     list<DocPath> doc_paths;
@@ -120,7 +122,12 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
       *need_read_snapshot = true;
     }
   }
+  const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::FineNow() : MonoTime();
   lock_manager->Lock(*keys_locked);
+  if (write_lock_latency != nullptr) {
+    const MonoDelta elapsed_time = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time);
+    write_lock_latency->Increment(elapsed_time.ToMicroseconds());
+  }
 }
 
 Status ApplyDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
