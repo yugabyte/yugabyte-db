@@ -111,7 +111,7 @@
 .status-pending-progress-container {
   display: inline-block;
   position: relative;
-  top: 8px;
+  top: 2px;
   width: 120px;
 
   .progress-bar {
@@ -121,4 +121,8 @@
 
 .status-pending {
   float: right;
+}
+
+.universe-pending-spinner {
+  display: inline;
 }
