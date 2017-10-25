@@ -103,11 +103,13 @@ button, .btn {
 }
 
 .btn-group {
-  & > .btn:last-child, & > *:last-child .btn {
+  .bg-orange + .btn{
     border-left: none;
   }
-  & > :not(.btn-group) > .btn:first-child, & > *:first-child .btn {
-    border-right: none;
+  .bg-orange + * {
+    & > .btn{
+      border-left: none;
+    }
   }
 }
 
