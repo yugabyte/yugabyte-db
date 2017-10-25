@@ -2,11 +2,17 @@
 
 package com.yugabyte.yw.common;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -111,6 +117,29 @@ public class ApiUtils {
         universe.setUniverseDetails(universeDetails);
       }
     };
+  }
+
+  public static UserIntent getDefaultUserIntent(Customer customer) {
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UserIntent ui = getTestUserIntent(r, p, i, 3);
+    ui.replicationFactor = 3;
+    ui.masterGFlags = new HashMap<>();
+    ui.tserverGFlags = new HashMap<>();
+    return ui;
+  }
+
+  public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
+    UserIntent ui = new UserIntent();
+    ui.regionList = ImmutableList.of(r.uuid);
+    ui.provider = p.uuid.toString();
+    ui.numNodes = numNodes;
+    ui.instanceType = i.getInstanceTypeCode();
+    ui.isMultiAZ = true;
+    return ui;
   }
 
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {

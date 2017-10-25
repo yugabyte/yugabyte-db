@@ -40,7 +40,9 @@ public class AssertHelper {
   }
 
   public static void assertValue(JsonNode json, String key, String value) {
-    assertEquals(json.path(key).asText(), value);
+    JsonNode targetNode = json.path(key);
+    assertFalse(targetNode.isMissingNode());
+    assertEquals(targetNode.asText(), value);
   }
 
   public static void assertValues(JsonNode json, String key, List<String> values) {

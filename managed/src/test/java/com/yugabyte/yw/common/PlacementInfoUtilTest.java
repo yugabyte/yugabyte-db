@@ -5,13 +5,18 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.InstanceType;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
+import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
@@ -258,7 +263,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     testData.add(new TestData(Common.CloudType.aws));
-    testData.add(new TestData(Common.CloudType.onprem));
+    testData.add(new TestData(onprem));
   }
 
   @Test
@@ -695,6 +700,70 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
       validatePerNodeStatus(result, t.universe.getNodes(), null, null, deadNodes);
     }
+  }
+
+  @Test
+  public void testUpdateUniverseDefinitionForCreate() {
+    Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Provider p = testData.stream().filter(t -> t.provider.code.equals(onprem.name())).findFirst().get().provider;
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    for (String ip : ImmutableList.of("1.2.3.4", "2.3.4.5", "3.4.5.6")) {
+      NodeInstanceFormData.NodeInstanceData node = new NodeInstanceFormData.NodeInstanceData();
+      node.ip = ip;
+      node.instanceType = i.getInstanceTypeCode();
+      node.sshUser = "centos";
+      node.region = r.code;
+      node.zone = az1.code;
+      NodeInstance.create(az1.uuid, node);
+    }
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.userIntent = getTestUserIntent(r, p, i, 3);
+    utd.userIntent.providerType = onprem;
+
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
+    Set<UUID> azUUIDSet = utd.nodeDetailsSet.stream().map(node -> node.azUuid).collect(Collectors.toSet());
+    assertTrue(azUUIDSet.contains(az1.uuid));
+    assertFalse(azUUIDSet.contains(az2.uuid));
+    assertFalse(azUUIDSet.contains(az3.uuid));
+  }
+
+  @Test
+  public void testUpdateUniverseDefinitionForEdit() {
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Provider p = testData.stream().filter(t -> t.provider.code.equals(onprem.name())).findFirst().get().provider;
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType.upsert(p.code, "type.small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    for (String ip : ImmutableList.of("1.2.3.4", "2.3.4.5", "3.4.5.6", "9.6.5.4")) {
+      NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
+      nodeData.ip = ip;
+      nodeData.instanceType = i.getInstanceTypeCode();
+      nodeData.sshUser = "centos";
+      nodeData.region = r.code;
+      nodeData.zone = az1.code;
+      NodeInstance.create(az1.uuid, nodeData);
+    }
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.userIntent = getTestUserIntent(r, p, i, 3);
+    utd.userIntent.providerType = CloudType.onprem;
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
+    universe.setUniverseDetails(utd);
+    universe.save();
+    UniverseDefinitionTaskParams editTestUTD = universe.getUniverseDetails();
+    editTestUTD.userIntent.numNodes = 4;
+
+    PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId());
+    Set<UUID> azUUIDSet = editTestUTD.nodeDetailsSet.stream().map(node -> node.azUuid).collect(Collectors.toSet());
+    assertTrue(azUUIDSet.contains(az1.uuid));
+    assertFalse(azUUIDSet.contains(az2.uuid));
+    assertFalse(azUUIDSet.contains(az3.uuid));
   }
 
 }
