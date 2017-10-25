@@ -41,7 +41,7 @@ export default class UniverseStatus extends Component {
           statusDisplay = (
             <div className="status-pending">
               <div className="status-pending-display-container">
-                <i className="fa fa-spinner fa-spin"/>
+                <i className="fa fa-spinner fa-spin universe-pending-spinner"/>
                 <span className="status-pending-name">
                   Pending&hellip;
                   {universePendingTask.percentComplete}%
