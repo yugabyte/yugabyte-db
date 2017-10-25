@@ -210,7 +210,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
           // Verify as write. Note: this requires that file is pre-allocated, otherwise
           // the ReadFully() fails with EINVAL.
           if (opts.o_direct) {
-            file->Sync();
+            ASSERT_OK(file->Sync());
           }
           ASSERT_NO_FATALS(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
                                                         num_slices * slice_size));
