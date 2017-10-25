@@ -183,6 +183,8 @@ enum Tickers : uint32_t {
   NUMBER_SUPERVERSION_RELEASES,
   NUMBER_SUPERVERSION_CLEANUPS,
   NUMBER_BLOCK_NOT_COMPRESSED,
+  // Total size of all the SST Files
+  TOTAL_SST_FILE_SIZE,
   MERGE_OPERATION_TOTAL_TIME,
   FILTER_OPERATION_TOTAL_TIME,
 
@@ -283,6 +285,7 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {NUMBER_SUPERVERSION_RELEASES, "rocksdb_number_superversion_releases"},
     {NUMBER_SUPERVERSION_CLEANUPS, "rocksdb_number_superversion_cleanups"},
     {NUMBER_BLOCK_NOT_COMPRESSED, "rocksdb_number_block_not_compressed"},
+    {TOTAL_SST_FILE_SIZE, "rocksdb_total_sst_file_size"},
     {MERGE_OPERATION_TOTAL_TIME, "rocksdb_merge_operation_time_nanos"},
     {FILTER_OPERATION_TOTAL_TIME, "rocksdb_filter_operation_time_nanos"},
     {ROW_CACHE_HIT, "rocksdb_row_cache_hit"},

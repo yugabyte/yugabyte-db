@@ -1614,6 +1614,17 @@ Status DBImpl::FlushMemTableToOutputFile(
   return s;
 }
 
+void DBImpl::SetTotalSSTFileSizeTicker() {
+  std::vector<rocksdb::LiveFileMetaData> file_metadata;
+  GetLiveFilesMetaData(&file_metadata);
+  uint64_t total_sst_file_size = 0;
+  for (const auto &meta : file_metadata) {
+    total_sst_file_size += meta.total_size;
+  }
+  SetTickerCount(stats_, TOTAL_SST_FILE_SIZE, total_sst_file_size);
+}
+
+
 void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
                                     FileMetaData* file_meta,
                                     const MutableCFOptions& mutable_cf_options,
@@ -1658,6 +1669,7 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
     for (auto listener : db_options_.listeners) {
       listener->OnFlushCompleted(this, info);
     }
+    SetTotalSSTFileSizeTicker();
   }
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
@@ -2068,6 +2080,7 @@ void DBImpl::NotifyOnCompactionCompleted(
     for (auto listener : db_options_.listeners) {
       listener->OnCompactionCompleted(this, info);
     }
+    SetTotalSSTFileSizeTicker();
   }
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
@@ -5798,7 +5811,10 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     handles->clear();
     delete impl;
     *dbptr = nullptr;
+  } else if (impl) {
+    impl->SetTotalSSTFileSizeTicker();
   }
+
   return s;
 }
 

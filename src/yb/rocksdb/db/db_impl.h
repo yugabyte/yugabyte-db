@@ -601,6 +601,13 @@ class DBImpl : public DB {
   Status BackgroundFlush(bool* madeProgress, JobContext* job_context,
                          LogBuffer* log_buffer);
 
+  // Yugabyte: This updates the stats object to show
+  // total SST file size ticker.
+  // This is different from HandleTotalSSTFileSizes since the later
+  // looks into the version set and not necessarily computes
+  // all the live file sizes.
+  void SetTotalSSTFileSizeTicker();
+
   void PrintStatistics();
 
   // dump rocksdb.stats to LOG
