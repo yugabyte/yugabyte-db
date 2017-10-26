@@ -225,13 +225,22 @@ class SubDocKey {
         doc_ht_(std::move(hybrid_time)) {
   }
 
-  static SubDocKey MakeSeekKey(const DocKey& doc_key, HybridTime hybrid_time) {
-    return SubDocKey(doc_key, DocHybridTime(hybrid_time, kMaxWriteId));
+  SubDocKey(const DocKey& doc_key,
+            DocHybridTime doc_hybrid_time,
+            const std::vector<PrimitiveValue>& subkeys)
+      : doc_key_(doc_key),
+        doc_ht_(doc_hybrid_time),
+        subkeys_(subkeys) {
+  }
+
+  static SubDocKey MakeSeekKey(const DocKey& doc_key, const std::vector<PrimitiveValue>& subkeys,
+                               HybridTime hybrid_time) {
+    return SubDocKey(doc_key, DocHybridTime(hybrid_time, kMaxWriteId), subkeys);
   }
 
   SubDocKey(const DocKey& doc_key,
             HybridTime hybrid_time,
-            std::vector<PrimitiveValue> subkeys)
+            const std::vector<PrimitiveValue>& subkeys)
       : doc_key_(doc_key),
         doc_ht_(DocHybridTime(hybrid_time)),
         subkeys_(subkeys) {

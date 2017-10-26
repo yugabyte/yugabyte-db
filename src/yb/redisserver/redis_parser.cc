@@ -346,6 +346,28 @@ Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGET);
 }
 
+Status ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
+  op->mutable_request()->set_allocated_get_collection_range_request(
+      new RedisCollectionGetRangeRequestPB());
+  op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
+      RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME);
+
+  const auto& key = args[1];
+  int64_t lower_bound;
+  int64_t upper_bound;
+  RETURN_NOT_OK(util::CheckedStoll(args[2], &lower_bound));
+  RETURN_NOT_OK(util::CheckedStoll(args[3], &upper_bound));
+  if (lower_bound > upper_bound) {
+    return STATUS(InvalidArgument, "Lower bound of range needs to be less than or equal to "
+        "upper bound");
+  }
+
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(lower_bound);
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(upper_bound);
+  return Status::OK();
+}
+
 Status ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   op->mutable_request()->mutable_get_request()->set_request_type(

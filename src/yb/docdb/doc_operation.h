@@ -117,6 +117,7 @@ class RedisReadOperation {
   CHECKED_STATUS ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time);
   CHECKED_STATUS ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
   CHECKED_STATUS ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteCollectionGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
 
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;

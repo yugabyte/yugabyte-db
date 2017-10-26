@@ -1025,6 +1025,94 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
+TEST_F(TestRedisService, TestTsRangeByTime) {
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "-50", "v1",
+      "-40", "v2",
+      "-30", "v3",
+      "-20", "v4",
+      "-10", "v5",
+      "10", "v6",
+      "20", "v7",
+      "30", "v8",
+      "40", "v9",
+      "50", "v10",
+  });
+
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-35", "25"},
+                   {"v3", "v4", "v5", "v6", "v7"});
+
+  // Overwrite and test.
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "-50", "v11",
+      "-40", "v22",
+      "-30", "v33",
+      "-20", "v44",
+      "-10", "v55",
+      "10", "v66",
+      "20", "v77",
+      "30", "v88",
+      "40", "v99",
+      "50", "v110",
+  });
+
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "-10"},
+                   {"v11", "v22", "v33", "v44", "v55"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-20", "55"},
+                   {"v44", "v55", "v66", "v77", "v88", "v99", "v110"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "55"},
+                   {"v11", "v22", "v33", "v44", "v55", "v66", "v77", "v88", "v99", "v110"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {"v55"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "-10"}, {"v55"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-57", "-55"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "55", "60"}, {});
+
+  // Test with ttl.
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "-30", "v333",
+      "-10", "v555",
+      "20", "v777",
+      "30", "v888",
+      "50", "v1110",
+      "EXPIRE_IN", "5",
+  });
+  SyncClient();
+  std::this_thread::sleep_for(std::chrono::seconds(6));
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "-10"},
+                   {"v11", "v22", "v44"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-20", "55"},
+                   {"v44", "v66", "v99"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "60"},
+                   {"v11", "v22", "v44", "v66", "v99"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-25", "-15"}, {"v44"});
+
+  // Test invalid requests.
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "55", "45"});
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-45", "-55"});
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "20", "30"});
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "abc"});
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "20.1"});
+  DoRedisTestOk(__LINE__, {"HMSET", "map_key",
+      "1", "v100",
+      "2", "v200",
+      "3", "v300",
+      "4", "v400",
+      "5", "v500",
+  });
+  DoRedisTestOk(__LINE__, {"SET", "key", "value"});
+  SyncClient();
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "map_key", "1", "5"});
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "key"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestAdditionalCommands) {
 
   // The default value is true, but we explicitly set this here for clarity.

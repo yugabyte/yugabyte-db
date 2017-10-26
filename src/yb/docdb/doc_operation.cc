@@ -637,6 +637,8 @@ Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const HybridTime& hybri
       return ExecuteExists(rocksdb, hybrid_time);
     case RedisReadRequestPB::RequestCase::kGetRangeRequest:
       return ExecuteGetRange(rocksdb, hybrid_time);
+    case RedisReadRequestPB::RequestCase::kGetCollectionRangeRequest:
+      return ExecuteCollectionGetRange(rocksdb, hybrid_time);
     default:
       return STATUS(Corruption,
           Substitute("Unsupported redis write operation: $0", request_.request_case()));
@@ -650,15 +652,44 @@ int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
   return index;
 }
 
-void PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
-                          RedisResponsePB *response,
-                          bool add_keys,
-                          bool add_values) {
-  for (auto iter = key_values.begin(); iter != key_values.end(); iter++) {
+template <typename T>
+CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
+                                                 const T& iter_end,
+                                                 RedisResponsePB *response,
+                                                 bool add_keys,
+                                                 bool add_values) {
+  for (; iter != iter_end; iter++) {
     const PrimitiveValue& first = iter->first;
     const PrimitiveValue& second = iter->second;
-    if (add_keys) response->mutable_array_response()->add_elements(first.GetString());
-    if (add_values) response->mutable_array_response()->add_elements(second.GetString());
+    if (add_keys) {
+      if (!first.IsString()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "Key has value type: $0, expected string",
+                                 static_cast<int>(first.value_type()));
+      }
+      response->mutable_array_response()->add_elements(first.GetString());
+    }
+    if (add_values) {
+      if (!second.IsString()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "Value has value type: $0, expected string",
+                                 static_cast<int>(second.value_type()));
+      }
+      response->mutable_array_response()->add_elements(second.GetString());
+    }
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
+                                    RedisResponsePB *response,
+                                    bool add_keys,
+                                    bool add_values,
+                                    bool reverse = false) {
+  if (reverse) {
+    return PopulateRedisResponseFromInternal(key_values.rbegin(), key_values.rend(), response,
+                                             add_keys, add_values);
+  } else {
+    return PopulateRedisResponseFromInternal(key_values.begin(), key_values.end(), response,
+                                             add_keys, add_values);
   }
 }
 
@@ -684,10 +715,60 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
   }
   if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
     if (add_keys || add_values) {
-      PopulateResponseFrom(doc.object_container(), &response_, add_keys, add_values);
+      RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), &response_, add_keys, add_values));
     } else {
       response_.set_int_response(doc.object_container().size());
     }
+  }
+  return Status::OK();
+}
+
+Status RedisReadOperation::ExecuteCollectionGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
+  const RedisKeyValuePB& key_value = request_.key_value();
+  if (!request_.has_key_value() || !key_value.has_key() ||
+      !(key_value.subkey_size() == 2)) {
+    return STATUS(InvalidArgument, "Need to specify key and exactly two subkeys as lower "
+        "bound and upper bound.");
+  }
+
+  const auto request_type = request_.get_collection_range_request().request_type();
+  switch (request_type) {
+    case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
+      if (!key_value.subkey(0).has_timestamp_subkey() ||
+          !key_value.subkey(0).has_timestamp_subkey()) {
+        return STATUS(InvalidArgument, "Need to specify subkeys as timestamps");
+      }
+      int64_t low_timestamp = key_value.subkey(0).timestamp_subkey();
+      int64_t high_timestamp = key_value.subkey(1).timestamp_subkey();
+
+      // Need to switch the order since we store the timestamps in descending order.
+      PrimitiveValue low_subkey(high_timestamp, SortOrder::kDescending);
+      PrimitiveValue high_subkey(low_timestamp, SortOrder::kDescending);
+
+      // Look for the appropriate subdoc.
+      SubDocKey doc_key(
+          DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+      SubDocument doc;
+      bool doc_found = false;
+      RETURN_NOT_OK(GetSubDocument(
+          rocksdb, doc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found, hybrid_time,
+          Value::kMaxTtl, false, low_subkey, high_subkey));
+
+      // Validate and populate response.
+      response_.set_allocated_array_response(new RedisArrayPB());
+      if (!doc_found) {
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+        return Status::OK();
+      }
+      if (VerifyTypeAndSetCode(ValueType::kRedisTS, doc.value_type(), &response_)) {
+        // Need to reverse the order here since we store the timestamps in descending order.
+        RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), &response_, /* add_keys */ false,
+            /* add_values */ true, /* reverse */ true));
+      }
+      break;
+    }
+    case RedisCollectionGetRangeRequestPB_GetRangeRequestType_UNKNOWN:
+      return STATUS(InvalidCommand, "Unknown Collection Get Range Request not supported");
   }
   return Status::OK();
 }

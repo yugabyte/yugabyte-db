@@ -637,14 +637,17 @@ namespace {
 //
 // The iterator is expected to be placed at the smallest key that is subdocument_key or later, and
 // after the function returns, the iterator should be placed just completely outside the
-// subdocument_key prefix.
+// subdocument_key prefix. Although if high_subkey is specified, the iterator is only guaranteed
+// to be positioned after the high_subkey and not necessarily outside the subdocument_key prefix.
 yb::Status BuildSubDocument(
     IntentAwareIterator* iter,
     const SubDocKey &subdocument_key,
     SubDocument* subdocument,
     const HybridTime high_ts,
     DocHybridTime low_ts,
-    MonoDelta table_ttl) {
+    MonoDelta table_ttl,
+    const PrimitiveValue& low_subkey,
+    const PrimitiveValue& high_subkey) {
   DCHECK(!subdocument_key.has_hybrid_time());
   DOCDB_DEBUG_LOG("subdocument_key=$0, high_ts=$1, low_ts=$2, table_ttl=$3",
                   subdocument_key.ToString(),
@@ -725,8 +728,17 @@ yb::Status BuildSubDocument(
             doc_value.value_type() == ValueType::kArray) {
           *subdocument = SubDocument(doc_value.value_type());
         }
-        DOCDB_DEBUG_LOG("SeekPastSubKey: $0", found_key.ToString());
-        RETURN_NOT_OK(iter->SeekPastSubKey(found_key));
+
+        if (IsObjectType(doc_value.value_type()) && low_subkey.IsValidType()) {
+          // Try to seek to the low_subkey for efficiency.
+          auto subkeys = found_key.subkeys();
+          subkeys.push_back(low_subkey);
+          auto seek_key = SubDocKey::MakeSeekKey(found_key.doc_key(), subkeys, high_ts);
+          RETURN_NOT_OK(iter->SeekForward(seek_key));
+        } else {
+          DOCDB_DEBUG_LOG("SeekPastSubKey: $0", found_key.ToString());
+          RETURN_NOT_OK(iter->SeekPastSubKey(found_key));
+        }
         continue;
       } else {
         if (!IsPrimitiveValueType(doc_value.value_type())) {
@@ -759,11 +771,24 @@ yb::Status BuildSubDocument(
     // TODO: what if found_key is the same as before? We'll get into an infinite recursion then.
     found_key.remove_hybrid_time();
 
-    RETURN_NOT_OK(BuildSubDocument(iter, found_key, &descendant, high_ts, low_ts, table_ttl));
+    // low_subkey and high_subkey only apply to the first level currently.
+    RETURN_NOT_OK(BuildSubDocument(iter, found_key, &descendant, high_ts, low_ts, table_ttl,
+                                   PrimitiveValue(ValueType::kInvalidValueType),
+                                   PrimitiveValue(ValueType::kInvalidValueType)));
     if (descendant.value_type() == ValueType::kInvalidValueType) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
     }
+
+    if (found_key.subkeys().empty()) {
+      return STATUS_SUBSTITUTE(Corruption, "No subkeys found for key: $0", found_key.ToString());
+    }
+
+    if (high_subkey.IsValidType() && high_subkey < found_key.subkeys().back()) {
+      // We have encountered a subkey higher than our constraints, we should stop here.
+      return Status::OK();
+    }
+
     if (!IsObjectType(subdocument->value_type())) {
       *subdocument = SubDocument();
     }
@@ -779,7 +804,8 @@ yb::Status BuildSubDocument(
 
 }  // namespace
 
-yb::Status GetSubDocument(rocksdb::DB *db,
+yb::Status GetSubDocument(
+    rocksdb::DB *db,
     const SubDocKey& subdocument_key,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
@@ -787,14 +813,17 @@ yb::Status GetSubDocument(rocksdb::DB *db,
     bool* doc_found,
     HybridTime scan_ht,
     MonoDelta table_ttl,
-    bool return_type_only) {
+    bool return_type_only,
+    const PrimitiveValue& low_subkey,
+    const PrimitiveValue& high_subkey) {
   const auto doc_key_encoded = subdocument_key.doc_key().Encode();
   auto iter = CreateIntentAwareIterator(
       db, BloomFilterMode::USE_BLOOM_FILTER, doc_key_encoded.AsSlice(), query_id, txn_op_context,
       scan_ht);
   return GetSubDocument(
       iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl,
-      nullptr /* projection */, return_type_only, false /* is_iter_valid */);
+      nullptr /* projection */, return_type_only, false /* is_iter_valid */, low_subkey,
+      high_subkey);
 }
 
 yb::Status GetSubDocument(
@@ -806,7 +835,9 @@ yb::Status GetSubDocument(
     MonoDelta table_ttl,
     const vector<PrimitiveValue>* projection,
     bool return_type_only,
-    const bool is_iter_valid) {
+    const bool is_iter_valid,
+    const PrimitiveValue& low_subkey,
+    const PrimitiveValue& high_subkey) {
   // TODO(dtxn) scan through all involved first transactions to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
   // TODO(dtxn) we need to restart read with scan_ht = commit_ht if some transaction was committed
@@ -854,7 +885,7 @@ yb::Status GetSubDocument(
   if (projection == nullptr) {
     *result = SubDocument(ValueType::kInvalidValueType);
     RETURN_NOT_OK(BuildSubDocument(db_iter, subdocument_key, result, scan_ht, max_deleted_ts,
-        table_ttl));
+        table_ttl, low_subkey, high_subkey));
     *doc_found = result->value_type() != ValueType::kInvalidValueType;
     if (*doc_found && doc_value.value_type() == ValueType::kRedisSet) {
       RETURN_NOT_OK(result->ConvertToRedisSet());
@@ -875,7 +906,7 @@ yb::Status GetSubDocument(
     RETURN_NOT_OK(db_iter->SeekForwardWithoutHt(
         projection_subdockey.Encode(/* include_hybrid_time */ false)));
     RETURN_NOT_OK(BuildSubDocument(db_iter, projection_subdockey, &descendant, scan_ht,
-        max_deleted_ts, table_ttl));
+        max_deleted_ts, table_ttl, low_subkey, high_subkey));
     if (descendant.value_type() != ValueType::kInvalidValueType) {
       *doc_found = true;
     }

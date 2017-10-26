@@ -77,6 +77,9 @@ string RealToString(T val) {
 
 } // anonymous namespace
 
+const PrimitiveValue PrimitiveValue::kInvalidPrimitiveValue =
+    PrimitiveValue(ValueType::kInvalidValueType);
+
 string PrimitiveValue::ToString() const {
   switch (type_) {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;

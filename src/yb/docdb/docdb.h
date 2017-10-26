@@ -302,12 +302,16 @@ class DocVisitor {
 // subdocument_key should not have a timestamp.
 // Before the function is called, if is_iter_valid == true, the iterator is expected to be
 // positioned on or before the first key.
-// After this, the iter should be positioned just outside the SubDocument.
+// After this, the iter should be positioned just outside the SubDocument (unless high_subkey is
+// specified, see below for details).
 // This function works with or without object init markers present.
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
 // behavior. TODO: We should have write-id's to make sure timestamps are always unique.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
+// If low and high subkey are specified, only first level keys in the subdocument within that
+// range(inclusive) are returned and the iterator is positioned after high_subkey and not
+// necessarily outside the SubDocument.
 yb::Status GetSubDocument(
     IntentAwareIterator *db_iter,
     const SubDocKey& subdocument_key,
@@ -317,10 +321,15 @@ yb::Status GetSubDocument(
     MonoDelta table_ttl = Value::kMaxTtl,
     const std::vector<PrimitiveValue>* projection = nullptr,
     bool return_type_only = false,
-    const bool is_iter_valid = true);
+    const bool is_iter_valid = true,
+    const PrimitiveValue& low_subkey = PrimitiveValue(ValueType::kInvalidValueType),
+    const PrimitiveValue& high_subkey = PrimitiveValue(ValueType::kInvalidValueType));
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
+// low_subkey and high_subkey are optional ranges that we can specify for the subkeys to ensure
+// that we include only a particular set of subkeys for the first level of the subdocument that
+// we're looking for.
 yb::Status GetSubDocument(
     rocksdb::DB* db,
     const SubDocKey& subdocument_key,
@@ -330,7 +339,9 @@ yb::Status GetSubDocument(
     bool* doc_found,
     HybridTime scan_ts = HybridTime::kMax,
     MonoDelta table_ttl = Value::kMaxTtl,
-    bool return_type_only = false);
+    bool return_type_only = false,
+    const PrimitiveValue& low_subkey = PrimitiveValue(ValueType::kInvalidValueType),
+    const PrimitiveValue& high_subkey = PrimitiveValue(ValueType::kInvalidValueType));
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

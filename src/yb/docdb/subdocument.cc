@@ -118,10 +118,6 @@ bool SubDocument::operator ==(const SubDocument& other) const {
 }
 
 Status SubDocument::ConvertToCollection(ValueType value_type) {
-  if (type_ != ValueType::kObject) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Expected kObject Subdocument, found $0", type_);
-  }
   if (!has_valid_object_container()) {
     return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
   }

@@ -50,6 +50,8 @@ enum class SortOrder : int8_t {
 
 class PrimitiveValue {
  public:
+  static const PrimitiveValue kInvalidPrimitiveValue;
+
   PrimitiveValue() : type_(ValueType::kNull) {
   }
 
@@ -189,8 +191,8 @@ class PrimitiveValue {
 
   // Set a primitive value in a QLExpressionPB.
   static void ToQLExpressionPB(const PrimitiveValue& pv,
-                                const std::shared_ptr<QLType>& ql_type,
-                                QLExpressionPB* ql_expr);
+                               const std::shared_ptr<QLType>& ql_type,
+                               QLExpressionPB* ql_expr);
 
   ValueType value_type() const { return type_; }
 
@@ -262,6 +264,10 @@ class PrimitiveValue {
 
   bool IsString() const {
     return ValueType::kString == type_ || ValueType::kStringDescending == type_;
+  }
+
+  bool IsValidType() const {
+    return type_ != ValueType::kInvalidValueType;
   }
 
   bool IsDouble() const {

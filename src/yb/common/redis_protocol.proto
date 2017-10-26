@@ -48,10 +48,10 @@ message RedisReadRequestPB {
     RedisStrLenRequestPB strlen_request = 3;
     RedisExistsRequestPB exists_request = 4;
     RedisGetRangeRequestPB get_range_request = 5;
+    RedisCollectionGetRangeRequestPB get_collection_range_request = 9;
   }
 
   optional RedisKeyValuePB key_value = 6;
-
 }
 
 enum RedisDataType {
@@ -111,6 +111,8 @@ message RedisKeyValuePB {
   optional bytes key = 2;                   // Required
   optional RedisDataType type = 3 [ default = REDIS_TYPE_NONE ];
   // It is assumed that all subkeys are distinct for HMSET and SADD.
+  // For collection range requests, we would have exactly two subkeys denoting the lower bound
+  // and upper bound for the range request.
   repeated RedisKeyValueSubKeyPB subkey = 4;
   optional int32 index = 5;
   repeated bytes value = 6;
@@ -146,6 +148,16 @@ message RedisGetRequestPB {
 
   optional GetRequestType request_type = 1 [ default = GET ];
 
+}
+
+message RedisCollectionGetRangeRequestPB {
+
+  enum GetRangeRequestType {
+    TSRANGEBYTIME = 1;
+    UNKNOWN = 99;
+  }
+
+  optional GetRangeRequestType request_type = 1 [ default = TSRANGEBYTIME ];
 }
 
 // GETSET
