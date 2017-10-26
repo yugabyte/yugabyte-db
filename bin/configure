@@ -19,16 +19,21 @@ set -euo pipefail
 # NAME="CentOS Linux"
 #
 ETC_RELEASE_FILE=/etc/os-release
-if [[ -f $ETC_RELEASE_FILE ]] && egrep -q '^NAME="CentOS.*' "$ETC_RELEASE_FILE";
-then
-  echo "Attempting to install cyrus SASL dependencies..."
-  yum_install_cmd=( yum install -y cyrus-sasl cyrus-sasl-plain file )
-  if [[ $( id -u ) != "0" ]]; then
-    yum_install_cmd=( sudo "${yum_install_cmd[@]}" )
+if [[ -f $ETC_RELEASE_FILE ]]; then
+  . $ETC_RELEASE_FILE
+
+  if [[ $ID = "ubuntu" ]]; then
+    install_cmd=( apt-get install -y sasl2-bin file python )
+  elif [[ $ID = "centos" ]]; then
+    install_cmd=( yum install -y cyrus-sasl cyrus-sasl-plain file )
   fi
-  "${yum_install_cmd[@]}"
+  if [[ $( id -u ) != "0" ]]; then
+    install_cmd=( sudo "${install_cmd[@]}" )
+  fi
+  "${install_cmd[@]}"
 else
-  echo "We only support CentOS for now. YugaByte might not function well on this platform..."
+  echo "We only support CentOS/Ubuntu for now. Please email us at info@yugabyte.com and tell us about
+  your preferred deployment platform."
   exit 1
 fi
 
