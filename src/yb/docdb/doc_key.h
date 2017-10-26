@@ -298,6 +298,10 @@ class SubDocKey {
 
   void Clear();
 
+  bool IsValid() const {
+    return !doc_key_.empty();
+  }
+
   KeyBytes Encode(bool include_hybrid_time = true) const;
 
   // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key.
@@ -357,6 +361,22 @@ class SubDocKey {
 
   int CompareTo(const SubDocKey& other) const;
   int CompareToIgnoreHt(const SubDocKey& other) const;
+
+  bool operator <(const SubDocKey& other) const {
+    return CompareTo(other) < 0;
+  }
+
+  bool operator <=(const SubDocKey& other) const {
+    return CompareTo(other) <= 0;
+  }
+
+  bool operator >(const SubDocKey& other) const {
+    return CompareTo(other) > 0;
+  }
+
+  bool operator >=(const SubDocKey& other) const {
+    return CompareTo(other) >= 0;
+  }
 
   HybridTime hybrid_time() const {
     DCHECK(has_hybrid_time());

@@ -262,6 +262,12 @@ class TestRedisService : public RedisTableTestBase {
 
   bool expected_no_sessions_ = false;
 
+ protected:
+  std::string int64Max_ = std::to_string(std::numeric_limits<int64_t>::max());
+  std::string int64MaxExclusive_ = "(" + int64Max_;
+  std::string int64Min_ = std::to_string(std::numeric_limits<int64_t>::min());
+  std::string int64MinExclusive_ = "(" + int64Min_;
+
  private:
   RedisClient test_client_;
   std::atomic_int num_callbacks_called_;
@@ -272,6 +278,7 @@ class TestRedisService : public RedisTableTestBase {
   unique_ptr<FileLock> redis_port_lock_;
   unique_ptr<FileLock> redis_webserver_lock_;
   std::vector<uint8_t> resp_;
+
 };
 
 void TestRedisService::SetUp() {
@@ -958,10 +965,8 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "10", "value4"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "20", "value5"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value6"});
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
-      strings::Substitute("$0", std::numeric_limits<int64_t>::max()), "valuemax"});
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
-      strings::Substitute("$0", std::numeric_limits<int64_t>::min()), "valuemin"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", int64Max_, "valuemax"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", int64Min_, "valuemin"});
   SyncClient();
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value7"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_multi", "10", "v1", "20", "v2", "30", "v3", "40", "v4"});
@@ -977,10 +982,8 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "10"}, "value4");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "20"}, "value5");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "30"}, "value7");
-  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
-      strings::Substitute("$0", std::numeric_limits<int64_t>::max())}, "valuemax");
-  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
-      strings::Substitute("$0", std::numeric_limits<int64_t>::min())}, "valuemin");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", int64Max_}, "valuemax");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", int64Min_}, "valuemin");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "10"}, "v9");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "20"}, "v2");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_multi", "30"}, "v11");
@@ -1041,7 +1044,7 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
 
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-35", "25"},
-                   {"v3", "v4", "v5", "v6", "v7"});
+                   {"-30", "v3", "-20", "v4", "-10", "v5", "10", "v6", "20", "v7"});
 
   // Overwrite and test.
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
@@ -1059,14 +1062,16 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
 
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "-10"},
-                   {"v11", "v22", "v33", "v44", "v55"});
+                   {"-50", "v11", "-40", "v22", "-30", "v33", "-20", "v44", "-10", "v55"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-20", "55"},
-                   {"v44", "v55", "v66", "v77", "v88", "v99", "v110"});
+                   {"-20", "v44", "-10", "v55", "10", "v66", "20", "v77", "30", "v88", "40", "v99",
+                       "50", "v110"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "55"},
-                   {"v11", "v22", "v33", "v44", "v55", "v66", "v77", "v88", "v99", "v110"});
-  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {"v55"});
-  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"v66"});
-  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "-10"}, {"v55"});
+                   {"-50", "v11", "-40", "v22", "-30", "v33", "-20", "v44", "-10", "v55",
+                       "10", "v66", "20", "v77", "30", "v88", "40", "v99", "50", "v110"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {"-10", "v55"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "-10"}, {"-10", "v55"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-57", "-55"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "55", "60"}, {});
 
@@ -1082,18 +1087,93 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
   SyncClient();
   std::this_thread::sleep_for(std::chrono::seconds(6));
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "-10"},
-                   {"v11", "v22", "v44"});
+                   {"-50", "v11", "-40", "v22", "-20", "v44"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-20", "55"},
-                   {"v44", "v66", "v99"});
+                   {"-20", "v44", "10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "60"},
-                   {"v11", "v22", "v44", "v66", "v99"});
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {});
-  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"v66"});
-  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-25", "-15"}, {"v44"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-25", "-15"}, {"-20", "v44"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-5", "-15"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-45", "-55"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "45", "55"}, {});
+
+  // Test exclusive ranges.
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-20", "(40"}, {"10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-20", "(-20"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-20", "-10"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "(10"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-50", "(-40"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "(11"},
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-50", "10"},
+                   {"-40", "v22", "-20", "v44", "10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-51", "10"},
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+
+  // Test infinity.
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "+inf"},
+                   {"10", "v66", "40", "v99"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-inf", "10"},
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "(+inf"},
+                   {"10", "v66", "40", "v99"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-inf", "10"},
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-inf", "+inf"},
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-inf", "(+inf"},
+                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "-inf"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "10"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "+inf"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "-inf"}, {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-inf", "-inf"}, {});
+
+  // Test infinity with int64 min, max.
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_inf",
+      int64Min_, "v1",
+      "-10", "v2",
+      "10", "v3",
+      int64Max_, "v4",
+  });
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-inf", "+inf"},
+                   {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "(-inf", "(+inf"},
+                   {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-inf", "-inf"},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "+inf", "+inf"},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-10", "(+inf"},
+                   {"-10", "v2", "10", "v3", int64Max_, "v4"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-10", "+inf"},
+                   {"-10", "v2", "10", "v3", int64Max_, "v4"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "(-inf", "10"},
+                   {int64Min_, "v1", "-10", "v2", "10", "v3"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-inf", "10"},
+                   {int64Min_, "v1", "-10", "v2", "10", "v3"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Min_, int64Max_},
+                   {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MaxExclusive_, int64Max_},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MaxExclusive_, int64MaxExclusive_},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Max_, int64MaxExclusive_},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MinExclusive_, int64MinExclusive_},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MinExclusive_, int64Min_},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Min_, int64MinExclusive_},
+                   {});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Min_, int64Min_},
+                   {int64Min_, "v1"});
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Max_, int64Max_},
+                   {int64Max_, "v4"});
 
   // Test invalid requests.
-  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "55", "45"});
-  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-45", "-55"});
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "20", "30"});
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "abc"});
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "20.1"});

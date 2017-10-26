@@ -46,6 +46,8 @@ namespace {
 
 constexpr size_t kMaxNumberOfArgs = 1 << 20;
 constexpr size_t kLineEndLength = 2;
+constexpr char kPositiveInfinity[] = "+inf";
+constexpr char kNegativeInfinity[] = "-inf";
 
 
 string to_lower_case(Slice slice) {
@@ -76,7 +78,7 @@ Result<int32_t> ParseInt32(const Slice& slice, const char* field) {
 
 } // namespace
 
-Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args[1].empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "A SET request must have a non empty key field");
@@ -118,7 +120,7 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 // TODO: support MSET
-Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args.size() < 3 || args.size() % 2 == 0) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "An MSET request must have at least 3, odd number of arguments, found $0", args.size());
@@ -126,7 +128,7 @@ Status ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return STATUS(InvalidCommand, "MSET command not yet supported");
 }
 
-Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& subkey = args[2];
   const auto& value = args[3];
@@ -140,10 +142,10 @@ Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 template <typename T, typename ArgParser, typename AddSubKey>
-Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
-                              const RedisDataType& type,
-                              ArgParser arg_parser,
-                              AddSubKey add_sub_key) {
+CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
+                                      const RedisDataType& type,
+                                      ArgParser arg_parser,
+                                      AddSubKey add_sub_key) {
   if (args.size() < 4 || args.size() % 2 == 1) {
     return STATUS_SUBSTITUTE(InvalidArgument,
                              "wrong number of arguments: $0 for command: $1", args.size(),
@@ -186,7 +188,7 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
   return Status::OK();
 }
 
-Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("hmset", to_lower_case(args[0]))
       << "Parsing hmset request where first arg is not hmset.";
   return ParseHMSetLikeCommands<string>(op, args, REDIS_TYPE_HASH,
@@ -199,7 +201,7 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   );
 }
 
-Status ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("tsadd", to_lower_case(args[0]))
     << "Parsing hmset request where first arg is not hmset.";
   return ParseHMSetLikeCommands<int64_t>(op, args, REDIS_TYPE_TIMESERIES, util::CheckedStoll,
@@ -211,10 +213,10 @@ Status ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
 
 template <class YBRedisOp>
-Status ParseCollection(YBRedisOp *op,
-                       const RedisClientCommand& args,
-                       boost::optional<RedisDataType> type,
-                       bool remove_duplicates = true) {
+CHECKED_STATUS ParseCollection(YBRedisOp *op,
+                               const RedisClientCommand& args,
+                               boost::optional<RedisDataType> type,
+                               bool remove_duplicates = true) {
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   if (type) {
@@ -238,22 +240,22 @@ Status ParseCollection(YBRedisOp *op,
   return Status::OK();
 }
 
-Status ParseHDel(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHDel(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   return ParseCollection(op, args, REDIS_TYPE_HASH);
 }
 
-Status ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_add_request(new RedisAddRequestPB());
   return ParseCollection(op, args, REDIS_TYPE_SET);
 }
 
-Status ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   return ParseCollection(op, args, REDIS_TYPE_SET);
 }
 
-Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& value = args[2];
   op->mutable_request()->set_allocated_getset_request(new RedisGetSetRequestPB());
@@ -262,7 +264,7 @@ Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
-Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& value = args[2];
   op->mutable_request()->set_allocated_append_request(new RedisAppendRequestPB());
@@ -272,7 +274,7 @@ Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
 }
 
 // Note: deleting only one key is supported using one command as of now.
-Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
@@ -281,7 +283,7 @@ Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
-Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& value = args[3];
   op->mutable_request()->set_allocated_set_range_request(new RedisSetRangeRequestPB());
@@ -295,14 +297,14 @@ Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
-Status ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   op->mutable_request()->set_allocated_incr_request(new RedisIncrRequestPB());
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   return Status::OK();
 }
 
-Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   const auto& key = args[1];
   if (key.empty()) {
@@ -317,9 +319,9 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 
 //  Used for HGET/HSTRLEN/HEXISTS. Also for HMGet
 //  CMD <KEY> [<SUB-KEY>]*
-Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
-                             RedisGetRequestPB_GetRequestType request_type,
-                             bool remove_duplicates = false) {
+CHECKED_STATUS ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
+                                     RedisGetRequestPB_GetRequestType request_type,
+                                     bool remove_duplicates = false) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   op->mutable_request()->mutable_get_request()->set_request_type(request_type);
 
@@ -327,37 +329,63 @@ Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
 }
 
 // TODO: Support MGET
-Status ParseMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return STATUS(InvalidCommand, "MGET command not yet supported");
 }
 
-Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGET);
 }
 
-Status ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb, bool exclusive) {
+  string bound(slice.cdata(), slice.size());
+  if (bound == kPositiveInfinity) {
+    bound_pb->set_infinity_type(RedisSubKeyBoundPB_InfinityType_POSITIVE);
+  } else if (bound == kNegativeInfinity) {
+    bound_pb->set_infinity_type(RedisSubKeyBoundPB_InfinityType_NEGATIVE);
+  } else {
+    auto ts_bound = util::CheckedStoll(slice);
+    RETURN_NOT_OK(ts_bound);
+    bound_pb->set_is_exclusive(exclusive);
+    bound_pb->mutable_subkey_bound()->set_timestamp_subkey(*ts_bound);
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundPB* bound_pb) {
+  if (slice.empty()) {
+    return STATUS(InvalidArgument, "range bound key cannot be empty");
+  }
+
+  if (slice[0] == '(' && slice.size() > 1) {
+    auto slice_copy = slice;
+    slice_copy.remove_prefix(1);
+    RETURN_NOT_OK(ParseTsBoundArg(slice_copy, bound_pb, /* exclusive */ true));
+  } else {
+    RETURN_NOT_OK(ParseTsBoundArg(slice, bound_pb, /* exclusive */ false));
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_collection_range_request(
       new RedisCollectionGetRangeRequestPB());
   op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
       RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME);
 
   const auto& key = args[1];
-  auto lower_bound = util::CheckedStoll(args[2]);
-  RETURN_NOT_OK(lower_bound);
-  auto upper_bound = util::CheckedStoll(args[3]);
-  RETURN_NOT_OK(upper_bound);
-  if (*lower_bound > *upper_bound) {
-    return STATUS(InvalidArgument,
-                  "Lower bound of range needs to be less than or equal to upper bound");
-  }
+  RETURN_NOT_OK(ParseTsSubKeyBound(
+      args[2],
+      op->mutable_request()->mutable_subkey_range()->mutable_lower_bound()));
+  RETURN_NOT_OK(ParseTsSubKeyBound(
+      args[3],
+      op->mutable_request()->mutable_subkey_range()->mutable_upper_bound()));
 
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*lower_bound);
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*upper_bound);
+  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
   return Status::OK();
 }
 
-Status ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   op->mutable_request()->mutable_get_request()->set_request_type(
       RedisGetRequestPB_GetRequestType_TSGET);
@@ -371,47 +399,47 @@ Status ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
-Status ParseHStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HSTRLEN);
 }
 
-Status ParseHExists(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHExists(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HEXISTS);
 }
 
-Status ParseHMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHMGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HMGET);
 }
 
-Status ParseHGetAll(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHGetAll(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGETALL);
 }
 
-Status ParseHKeys(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHKeys(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HKEYS);
 }
 
-Status ParseHVals(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHVals(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HVALS);
 }
 
-Status ParseHLen(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseHLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HLEN);
 }
 
-Status ParseSMembers(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSMembers(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SMEMBERS);
 }
 
-Status ParseSIsMember(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSIsMember(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SISMEMBER);
 }
 
-Status ParseSCard(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseSCard(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_SCARD);
 }
 
-Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_strlen_request(new RedisStrLenRequestPB());
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
@@ -419,14 +447,14 @@ Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
 }
 
 // Note: Checking existence of only one key is supported as of now.
-Status ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_exists_request(new RedisExistsRequestPB());
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   return Status::OK();
 }
 
-Status ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
+CHECKED_STATUS ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_range_request(new RedisGetRangeRequestPB());
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
@@ -466,7 +494,7 @@ void RedisParser::Update(Slice source) {
 }
 
 // Parse next command.
-Status RedisParser::NextCommand(const uint8_t** end_of_command) {
+CHECKED_STATUS RedisParser::NextCommand(const uint8_t** end_of_command) {
   *end_of_command = nullptr;
   while (pos_ != end_) {
     incomplete_ = false;
@@ -488,7 +516,7 @@ Status RedisParser::NextCommand(const uint8_t** end_of_command) {
   return Status::OK();
 }
 
-Status RedisParser::AdvanceToNextToken() {
+CHECKED_STATUS RedisParser::AdvanceToNextToken() {
   switch (state_) {
     case State::INITIAL:
       return Initial();
@@ -506,13 +534,13 @@ Status RedisParser::AdvanceToNextToken() {
   LOG(FATAL) << "Unexpected parser state: " << util::to_underlying(state_);
 }
 
-Status RedisParser::Initial() {
+CHECKED_STATUS RedisParser::Initial() {
   token_begin_ = pos_;
   state_ = *pos_ == '*' ? State::BULK_HEADER : State::SINGLE_LINE;
   return Status::OK();
 }
 
-Status RedisParser::SingleLine() {
+CHECKED_STATUS RedisParser::SingleLine() {
   auto status = FindEndOfLine();
   if (!status.ok() || incomplete_) {
     return status;
@@ -532,7 +560,7 @@ Status RedisParser::SingleLine() {
   return Status::OK();
 }
 
-Status RedisParser::BulkHeader() {
+CHECKED_STATUS RedisParser::BulkHeader() {
   auto status = FindEndOfLine();
   if (!status.ok() || incomplete_) {
     return status;
@@ -549,7 +577,7 @@ Status RedisParser::BulkHeader() {
   return Status::OK();
 }
 
-Status RedisParser::BulkArgumentSize() {
+CHECKED_STATUS RedisParser::BulkArgumentSize() {
   auto status = FindEndOfLine();
   if (!status.ok() || incomplete_) {
     return status;
@@ -562,7 +590,7 @@ Status RedisParser::BulkArgumentSize() {
   return Status::OK();
 }
 
-Status RedisParser::BulkArgumentBody() {
+CHECKED_STATUS RedisParser::BulkArgumentBody() {
   auto desired_position = token_begin_ + current_argument_size_ + kLineEndLength;
   if (desired_position > end_) {
     incomplete_ = true;
@@ -586,7 +614,7 @@ Status RedisParser::BulkArgumentBody() {
   return Status::OK();
 }
 
-Status RedisParser::FindEndOfLine() {
+CHECKED_STATUS RedisParser::FindEndOfLine() {
   auto new_line = static_cast<const uint8_t *>(memchr(pos_, '\n', end_ - pos_));
   incomplete_ = new_line == nullptr;
   if (!incomplete_) {
@@ -604,11 +632,11 @@ Status RedisParser::FindEndOfLine() {
 // Parses number with specified bounds.
 // Number is located in separate line, and contain prefix before actual number.
 // Line starts at token_begin_ and pos_ is a start of next line.
-Status RedisParser::ParseNumber(char prefix,
-                                ptrdiff_t min,
-                                ptrdiff_t max,
-                                const char* name,
-                                ptrdiff_t* out) {
+CHECKED_STATUS RedisParser::ParseNumber(char prefix,
+                                        ptrdiff_t min,
+                                        ptrdiff_t max,
+                                        const char* name,
+                                        ptrdiff_t* out) {
   if (*token_begin_ != prefix) {
     return STATUS_SUBSTITUTE(Corruption,
                              "Invalid character before number, expected: $0, but found: $1",

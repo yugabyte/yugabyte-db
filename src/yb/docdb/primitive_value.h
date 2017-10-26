@@ -262,6 +262,10 @@ class PrimitiveValue {
     return Slice(str_val_);
   }
 
+  bool IsInt64() const {
+    return ValueType::kInt64 == type_ || ValueType::kInt64Descending == type_;
+  }
+
   bool IsString() const {
     return ValueType::kString == type_ || ValueType::kStringDescending == type_;
   }
@@ -336,6 +340,14 @@ class PrimitiveValue {
 
   bool operator >(const PrimitiveValue& other) const {
     return CompareTo(other) > 0;
+  }
+
+  bool operator <=(const PrimitiveValue& other) const {
+    return CompareTo(other) <= 0;
+  }
+
+  bool operator >=(const PrimitiveValue& other) const {
+    return CompareTo(other) >= 0;
   }
 
   bool operator==(const PrimitiveValue& other) const;

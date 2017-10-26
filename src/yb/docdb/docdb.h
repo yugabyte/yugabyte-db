@@ -298,6 +298,42 @@ class DocVisitor {
   virtual CHECKED_STATUS EndArray() = 0;
 };
 
+// Denotes one component of a range of primitive values. This component can be the lower/upper
+// bound of the range and can be exclusive or inclusive.
+class SubDocKeyBound : public SubDocKey {
+ public:
+  SubDocKeyBound()
+      : is_exclusive_(false),
+        is_lower_bound_(false) {
+  }
+
+  SubDocKeyBound(const DocKey& doc_key,
+                 const PrimitiveValue& sub_key,
+                 bool is_exclusive,
+                 bool is_lower_bound)
+      : SubDocKey(doc_key, sub_key),
+        is_exclusive_(is_exclusive),
+        is_lower_bound_(is_lower_bound) {
+  }
+
+  // Indicates whether or not the given PrimitiveValue can be included as part of this bound.
+  bool CanInclude(const SubDocKey& other) const {
+    if (is_lower_bound_) {
+      return (is_exclusive_) ? (*this < other) : (*this <= other);
+    } else {
+      return (is_exclusive_) ? (*this > other) : (*this >= other);
+    }
+  }
+
+  bool is_exclusive() const {
+    return is_exclusive_;
+  }
+
+ private:
+  const bool is_exclusive_;
+  const bool is_lower_bound_;
+};
+
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
 // Before the function is called, if is_iter_valid == true, the iterator is expected to be
@@ -322,8 +358,8 @@ yb::Status GetSubDocument(
     const std::vector<PrimitiveValue>* projection = nullptr,
     bool return_type_only = false,
     const bool is_iter_valid = true,
-    const PrimitiveValue& low_subkey = PrimitiveValue(ValueType::kInvalidValueType),
-    const PrimitiveValue& high_subkey = PrimitiveValue(ValueType::kInvalidValueType));
+    const SubDocKeyBound& low_subkey = SubDocKeyBound(),
+    const SubDocKeyBound& high_subkey = SubDocKeyBound());
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
@@ -340,8 +376,8 @@ yb::Status GetSubDocument(
     HybridTime scan_ts = HybridTime::kMax,
     MonoDelta table_ttl = Value::kMaxTtl,
     bool return_type_only = false,
-    const PrimitiveValue& low_subkey = PrimitiveValue(ValueType::kInvalidValueType),
-    const PrimitiveValue& high_subkey = PrimitiveValue(ValueType::kInvalidValueType));
+    const SubDocKeyBound& low_subkey = SubDocKeyBound(),
+    const SubDocKeyBound& high_subkey = SubDocKeyBound());
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

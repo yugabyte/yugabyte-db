@@ -270,6 +270,53 @@ bool VerifyTypeAndSetCode(
   return true;
 }
 
+CHECKED_STATUS AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
+                                                RedisArrayPB* redis_array) {
+  if (value.IsString()) {
+    redis_array->add_elements(value.GetString());
+  } else if (value.IsInt64()) {
+    redis_array->add_elements(std::to_string(value.GetInt64()));
+  } else {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Invalid value type: $0",
+                             static_cast<int>(value.value_type()));
+  }
+  return Status::OK();
+}
+
+template <typename T>
+CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
+                                                 const T& iter_end,
+                                                 RedisResponsePB *response,
+                                                 bool add_keys,
+                                                 bool add_values) {
+  response->set_allocated_array_response(new RedisArrayPB());
+  for (; iter != iter_end; iter++) {
+    const PrimitiveValue& first = iter->first;
+    const PrimitiveValue& second = iter->second;
+    if (add_keys) {
+      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(first, response->mutable_array_response()));
+    }
+    if (add_values) {
+      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(second, response->mutable_array_response()));
+    }
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
+                                    RedisResponsePB *response,
+                                    bool add_keys,
+                                    bool add_values,
+                                    bool reverse = false) {
+  if (reverse) {
+    return PopulateRedisResponseFromInternal(key_values.rbegin(), key_values.rend(), response,
+                                             add_keys, add_values);
+  } else {
+    return PopulateRedisResponseFromInternal(key_values.begin(), key_values.end(), response,
+                                             add_keys, add_values);
+  }
+}
+
 } // anonymous namespace
 
 Status RedisWriteOperation::Apply(
@@ -652,47 +699,6 @@ int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
   return index;
 }
 
-template <typename T>
-CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
-                                                 const T& iter_end,
-                                                 RedisResponsePB *response,
-                                                 bool add_keys,
-                                                 bool add_values) {
-  for (; iter != iter_end; iter++) {
-    const PrimitiveValue& first = iter->first;
-    const PrimitiveValue& second = iter->second;
-    if (add_keys) {
-      if (!first.IsString()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "Key has value type: $0, expected string",
-                                 static_cast<int>(first.value_type()));
-      }
-      response->mutable_array_response()->add_elements(first.GetString());
-    }
-    if (add_values) {
-      if (!second.IsString()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "Value has value type: $0, expected string",
-                                 static_cast<int>(second.value_type()));
-      }
-      response->mutable_array_response()->add_elements(second.GetString());
-    }
-  }
-  return Status::OK();
-}
-
-CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
-                                    RedisResponsePB *response,
-                                    bool add_keys,
-                                    bool add_values,
-                                    bool reverse = false) {
-  if (reverse) {
-    return PopulateRedisResponseFromInternal(key_values.rbegin(), key_values.rend(), response,
-                                             add_keys, add_values);
-  } else {
-    return PopulateRedisResponseFromInternal(key_values.begin(), key_values.end(), response,
-                                             add_keys, add_values);
-  }
-}
-
 Status RedisReadOperation::ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
                                                       HybridTime hybrid_time,
                                                       ValueType value_type,
@@ -725,29 +731,45 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
 
 Status RedisReadOperation::ExecuteCollectionGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
   const RedisKeyValuePB& key_value = request_.key_value();
-  if (!request_.has_key_value() || !key_value.has_key() ||
-      !(key_value.subkey_size() == 2)) {
-    return STATUS(InvalidArgument, "Need to specify key and exactly two subkeys as lower "
-        "bound and upper bound.");
+  if (!request_.has_key_value() || !key_value.has_key() || !request_.has_subkey_range() ||
+      !request_.subkey_range().has_lower_bound() || !request_.subkey_range().has_upper_bound()) {
+    return STATUS(InvalidArgument, "Need to specify the key and the subkey range");
   }
 
   const auto request_type = request_.get_collection_range_request().request_type();
   switch (request_type) {
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
-      if (!key_value.subkey(0).has_timestamp_subkey() ||
-          !key_value.subkey(0).has_timestamp_subkey()) {
-        return STATUS(InvalidArgument, "Need to specify subkeys as timestamps");
-      }
-      int64_t low_timestamp = key_value.subkey(0).timestamp_subkey();
-      int64_t high_timestamp = key_value.subkey(1).timestamp_subkey();
+      const RedisSubKeyBoundPB& lower_bound = request_.subkey_range().lower_bound();
+      const RedisSubKeyBoundPB& upper_bound = request_.subkey_range().upper_bound();
 
-      // Need to switch the order since we store the timestamps in descending order.
-      PrimitiveValue low_subkey(high_timestamp, SortOrder::kDescending);
-      PrimitiveValue high_subkey(low_timestamp, SortOrder::kDescending);
+      if ((lower_bound.has_infinity_type() &&
+          lower_bound.infinity_type() == RedisSubKeyBoundPB_InfinityType_POSITIVE) ||
+          (upper_bound.has_infinity_type() &&
+              upper_bound.infinity_type() == RedisSubKeyBoundPB_InfinityType_NEGATIVE)) {
+        // Return empty response.
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+        RETURN_NOT_OK(PopulateResponseFrom(SubDocument::ObjectContainer(), &response_,
+            /* add_keys */ true, /* add_values */ true));
+        return Status::OK();
+      }
+
+      int64_t low_timestamp = lower_bound.subkey_bound().timestamp_subkey();
+      int64_t high_timestamp = upper_bound.subkey_bound().timestamp_subkey();
 
       // Look for the appropriate subdoc.
       SubDocKey doc_key(
           DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+
+      // Need to switch the order since we store the timestamps in descending order.
+      SubDocKeyBound low_subkey = (upper_bound.has_infinity_type()) ?
+          SubDocKeyBound(): SubDocKeyBound(doc_key.doc_key(),
+                                           PrimitiveValue(high_timestamp, SortOrder::kDescending),
+                                           upper_bound.is_exclusive(), /* is_lower_bound */ true);
+      SubDocKeyBound high_subkey = (lower_bound.has_infinity_type()) ?
+          SubDocKeyBound(): SubDocKeyBound(doc_key.doc_key(),
+                                           PrimitiveValue(low_timestamp, SortOrder::kDescending),
+                                           lower_bound.is_exclusive(), /* is_lower_bound */ false);
+
       SubDocument doc;
       bool doc_found = false;
       RETURN_NOT_OK(GetSubDocument(
@@ -762,7 +784,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange(rocksdb::DB *rocksdb, Hybri
       }
       if (VerifyTypeAndSetCode(ValueType::kRedisTS, doc.value_type(), &response_)) {
         // Need to reverse the order here since we store the timestamps in descending order.
-        RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), &response_, /* add_keys */ false,
+        RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), &response_, /* add_keys */ true,
             /* add_values */ true, /* reverse */ true));
       }
       break;

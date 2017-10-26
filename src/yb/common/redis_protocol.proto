@@ -52,6 +52,24 @@ message RedisReadRequestPB {
   }
 
   optional RedisKeyValuePB key_value = 6;
+  optional RedisSubKeyRangePB subkey_range = 7;
+}
+
+message RedisSubKeyRangePB {
+  optional RedisSubKeyBoundPB lower_bound = 1;
+  optional RedisSubKeyBoundPB upper_bound = 2;
+}
+
+// Wrapper for a subkey which denotes an upper/lower bound for a range request.
+message RedisSubKeyBoundPB {
+  enum InfinityType {
+    POSITIVE = 1;
+    NEGATIVE = 2;
+  }
+
+  optional RedisKeyValueSubKeyPB subkey_bound = 3;
+  optional InfinityType infinity_type = 4;
+  optional bool is_exclusive = 6 [default = false];
 }
 
 enum RedisDataType {
