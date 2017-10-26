@@ -24,7 +24,8 @@ def main():
     out_dir = os.path.join("/home/centos/save/", timestamp)
     os.makedirs(out_dir)
 
-    scp_base = ["sudo", "/usr/bin/scp", "-oStrictHostKeyChecking=no", "-P", "54422", "-i", args.private_key]
+    port = "22" if "onprem" in args.private_key else "54422"
+    scp_base = ["sudo", "/usr/bin/scp", "-oStrictHostKeyChecking=no", "-P", port, "-i", args.private_key]
     user_id = "yugabyte@"
     master_files=":/home/yugabyte/master/logs/yb-master.*log*"
     tserver_files=":/home/yugabyte/tserver/logs/yb-tserver.*log*"
