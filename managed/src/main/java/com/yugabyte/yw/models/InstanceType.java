@@ -11,6 +11,7 @@ import javax.persistence.Entity;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,11 +122,12 @@ public class InstanceType extends Model {
   }
 
   /**
-   * Reset the 'instance_type_details_json' of all rows is this table.
+   * Reset the 'instance_type_details_json' of all rows belonging to a specific provider in this table.
    */
-  public static void resetAllInstanceTypeDetails() {
-    String updateQuery = "UPDATE instance_type SET instance_type_details_json = ''";
-    int modifiedCount = Ebean.execute(Ebean.createSqlUpdate(updateQuery));
+  public static void resetInstanceTypeDetailsForProvider(Common.CloudType providerCode) {
+    String updateQuery = "UPDATE instance_type SET instance_type_details_json = '' WHERE provider_code = :providerCode";
+    SqlUpdate update = Ebean.createSqlUpdate(updateQuery).setParameter("providerCode", providerCode.name());
+    int modifiedCount = Ebean.execute(update);
     LOG.info("Query [" + updateQuery + "] updated " + modifiedCount + " rows");
     if (modifiedCount == 0) {
       LOG.warn("Failed to update any SQL row");

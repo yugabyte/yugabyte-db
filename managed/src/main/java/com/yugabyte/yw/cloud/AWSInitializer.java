@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.PriceComponent;
 import org.slf4j.Logger;
@@ -441,10 +442,10 @@ public class AWSInitializer extends AbstractInitializer {
   private void storeInstanceTypeInfoToDB() {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
-    InstanceType.resetAllInstanceTypeDetails();
+    Common.CloudType provider = Common.CloudType.aws;
+    InstanceType.resetInstanceTypeDetailsForProvider(provider);
 
     for (Map<String, String> productAttrs : ec2AvailableInstances) {
-      String providerCode = "aws";
 
       // Get the instance type.
       String instanceTypeCode = productAttrs.get("instanceType");
@@ -518,12 +519,12 @@ public class AWSInitializer extends AbstractInitializer {
       }
 
       if (enableVerboseLogging) {
-        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}", providerCode,
+        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {}", provider.name(),
                  instanceTypeCode, numCores, memSizeGB, volumeCount, volumeSizeGB, volumeType);
       }
 
       // Create the instance type model. If one already exists, overwrite it.
-      InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
+      InstanceType instanceType = InstanceType.get(provider.name(), instanceTypeCode);
       if (instanceType == null) {
         instanceType = new InstanceType();
       }
@@ -543,7 +544,7 @@ public class AWSInitializer extends AbstractInitializer {
         LOG.debug("Saving {} ({} cores, {}GB) with details {}", instanceType.idKey.toString(),
             instanceType.numCores, instanceType.memSizeGB, Json.stringify(Json.toJson(details)));
       }
-      InstanceType.upsert(providerCode, instanceTypeCode, numCores, memSizeGB, details);
+      InstanceType.upsert(provider.name(), instanceTypeCode, numCores, memSizeGB, details);
     }
   }
 
