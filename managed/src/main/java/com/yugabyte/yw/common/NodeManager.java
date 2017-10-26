@@ -215,7 +215,7 @@ public class NodeManager extends DevopsBase {
           subcommand.add("--replace_gflags");
 
           // Add in the nodeName during configure.
-          Map<String, String> gflags = taskParam.gflags;
+          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
           gflags.put("metric_node_name", taskParam.nodeName);
 
           subcommand.add("--gflags");

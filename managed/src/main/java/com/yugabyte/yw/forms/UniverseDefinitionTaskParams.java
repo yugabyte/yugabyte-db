@@ -149,16 +149,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           provider.equals(other.provider) &&
           providerType == other.providerType &&
           replicationFactor == other.replicationFactor &&
-          isMultiAZ == other.isMultiAZ &&
           compareRegionLists(regionList, other.regionList) &&
           Objects.equals(preferredRegion, other.preferredRegion) &&
           instanceType.equals(other.instanceType) &&
           numNodes == other.numNodes &&
           ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode)) &&
-          spotPrice == other.spotPrice &&
-          masterGFlags.equals(other.masterGFlags) &&
-          tserverGFlags.equals(other.tserverGFlags)) {
+          spotPrice == other.spotPrice) {
          return true;
       }
       return false;
