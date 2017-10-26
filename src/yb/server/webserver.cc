@@ -409,39 +409,47 @@ void Webserver::RegisterPathHandler(const string& path, const string& alias,
 }
 
 const char* const PAGE_HEADER = "<!DOCTYPE html>"
-" <html>"
-"   <head><title>YugaByte Data Fabric</title>"
-" <link href='/bootstrap/css/bootstrap.min.css' rel='stylesheet' media='screen' />"
-" <link href='/yb.css' rel='stylesheet' />"
-" </head>"
-" <body>";
+"<html>"
+"  <head>"
+"    <title>YugaByte DB</title>"
+"    <link rel='shortcut icon' href='/favicon.ico'>"
+"    <link href='/bootstrap/css/bootstrap.min.css' rel='stylesheet' media='screen' />"
+"    <link href='/yb.css' rel='stylesheet' />"
+"  </head>"
+"\n"
+"<body>"
+"\n";
 
 static const char* const NAVIGATION_BAR_PREFIX =
-"<div class='navbar navbar-inverse navbar-fixed-top'>"
-"      <div class='navbar-inner'>"
-"        <div class='container-fluid'>"
-"          <a href='/'>"
-"            <img src=\"/logo.png\" alt=\"YugaByte\" "
-"                 style=\"float:left; height:30px; width:auto; padding:4px\"/>"
-"          </a>"
-"          <div class='nav-collapse collapse'>"
-"            <ul class='nav'>";
+"  <nav class='navbar navbar-inverse navbar-fixed-top'>"
+"    <div class='yb-navbar navbar-inner' style='background: #202951;'>"
+"      <div class='yb-navbar-logo container-fluid'>"
+"        <a href='/'>"
+"          <span class='navbar-brand'>"
+"            <img src='/logo.png' alt='YugaByte DB' class='nav-logo' />"
+"          </span>"
+"        </a>"
+"      </div>"
+"      <div class='nav-collapse collapse'>"
+"        <ul class='nav'>"
+"\n";
 
 static const char* const NAVIGATION_BAR_SUFFIX =
-"            </ul>"
-"          </div>"
-"        </div>"
+"        </ul>"
 "      </div>"
 "    </div>"
-"    <div class='container-fluid'>";
+"  </nav>"
+"\n\n"
+"    <div class='yb-main container-fluid'>";
 
 void Webserver::BootstrapPageHeader(stringstream* output) {
   (*output) << PAGE_HEADER;
   (*output) << NAVIGATION_BAR_PREFIX;
   for (const PathHandlerMap::value_type& handler : path_handlers_) {
     if (handler.second->is_on_nav_bar()) {
-      (*output) << "<li><a href=\"" << handler.first << "\">" << handler.second->alias()
-                << "</a></li>";
+      (*output) << "<li class='nav-item'><a href=\"" << handler.first << "\">"
+                << handler.second->alias()
+                << "</a></li>" << "\n";
     }
   }
   (*output) << NAVIGATION_BAR_SUFFIX;

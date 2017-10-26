@@ -18,24 +18,85 @@
  * under the License.
  */
 
-body {
-  padding-top: 60px;
-}
-
-.navbar-inverse .nav>li>a {
-  color: #eee;
-}
-
-/* Sticky footer styles
--------------------------------------------------- */
 html {
   position: relative;
   min-height: 100%;
 }
 body {
-  /* Margin bottom by footer height */
-  margin-bottom: 60px;
 }
+
+.yb-navbar {
+  padding-bottom: 10px;
+}
+
+.yb-navbar-logo {
+  float:left;
+}
+
+.yb-navbar .navbar-brand {
+    padding: 0;
+}
+
+.navbar-brand {
+    float: left;
+    padding: 15px 15px;
+    font-size: 18px;
+    line-height: 20px;
+}
+
+.yb-navbar .navbar ul {
+  float: none;
+  display: block;
+}
+.yb-navbar .navbar li {
+  float: none;
+  display: block;
+}
+
+.nav-logo {
+    height: 30px;
+    width: auto;
+    display: inline-block;
+    margin-top: 15px;
+}
+
+.nav-bar.scrolled .navbar-text a {
+  color: #f75821;
+}
+
+.nav-bar .navbar-text a {
+  cursor: pointer;
+  color: #f75821;
+  display: inline-block;
+  padding: 6px 8px 8px;
+  margin-bottom: -4px;
+  font-family: "Open Sans", sans-serif;
+  font-weight: 400;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.navbar .nav {
+  padding-top:10px;
+}
+
+.navbar .nav>li>a {
+  float: none;
+  padding: 10px 15px 10px;
+  color: #DDD;
+  text-decoration: none;
+  text-shadow: none;
+}
+
+.nav>li>a hover, .nav>li>a hover focus {
+  padding: 10px 15px 10px;
+  color: #FFF;
+}
+
+.yb-main {
+  margin-top: 70px;
+}
+
 .footer {
   position: absolute;
   bottom: 0;
