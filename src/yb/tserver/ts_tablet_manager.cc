@@ -41,8 +41,9 @@
 #include <boost/optional/optional.hpp>
 
 #include <glog/logging.h>
-#include "yb/rocksdb/memory_monitor.h"
+
 #include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
@@ -50,11 +51,19 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
+
+#include "yb/rocksdb/memory_monitor.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
@@ -62,9 +71,11 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/background_task.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -77,6 +88,8 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+
+using namespace std::literals;
 
 DEFINE_int32(num_tablets_to_open_simultaneously, 0,
              "Number of threads available to open tablets during startup. If this "
@@ -145,7 +158,7 @@ DEFINE_int32(db_block_cache_size_percentage, 50,
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
-constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 60 * 1000; // 1 hour
+constexpr int kTServerYbClientDefaultTimeoutMs = yb::RegularBuildVsSanitizers(5, 60) * 1000;
 
 DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
@@ -244,7 +257,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     server_(server),
     next_report_seq_(0),
     metric_registry_(metric_registry),
-    state_(MANAGER_INITIALIZING) {
+    state_(MANAGER_INITIALIZING),
+    client_future_(client_promise_.get_future()) {
 
   CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
   apply_pool_->SetQueueLengthHistogram(
@@ -253,19 +267,6 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()));
   apply_pool_->SetRunTimeMicrosHistogram(
       METRIC_op_apply_run_time.Instantiate(server_->metric_entity()));
-
-  {
-    // TODO(dtxn): make this client initialization asynchronous and don't delay tserver startup.
-    client::YBClientBuilder client_builder;
-    client_builder.set_client_name("tserver_client");
-    client_builder.default_rpc_timeout(
-        MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
-    auto addresses = *server_->options().GetMasterAddresses();
-    client_builder.add_master_server_addr(HostPort::ToCommaSeparatedString(addresses));
-    client_builder.set_skip_master_leader_resolution(addresses.size() == 1);
-    client_builder.set_metric_entity(server_->metric_entity());
-    CHECK_OK(client_builder.Build(&client_));
-  }
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
@@ -318,6 +319,8 @@ TSTabletManager::~TSTabletManager() {
 
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
+
+  init_client_thread_ = std::thread(std::bind(&TSTabletManager::InitClient, this));
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -384,6 +387,34 @@ Status TSTabletManager::Init() {
   }
 
   return Status::OK();
+}
+
+void TSTabletManager::InitClient() {
+  for (;;) {
+    {
+      boost::shared_lock<rw_spinlock> lock(lock_);
+      if (state_ == MANAGER_QUIESCING || state_ == MANAGER_SHUTDOWN) {
+        break;
+      }
+    }
+    client::YBClientBuilder client_builder;
+    client_builder.set_client_name("tserver_client");
+    client_builder.default_rpc_timeout(
+        MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
+    auto addresses = *server_->options().GetMasterAddresses();
+    client_builder.add_master_server_addr(HostPort::ToCommaSeparatedString(addresses));
+    client_builder.set_skip_master_leader_resolution(addresses.size() == 1);
+    client_builder.set_metric_entity(server_->metric_entity());
+    client::YBClientPtr client;
+    auto status = client_builder.Build(&client);
+    if (status.ok()) {
+      client_promise_.set_value(client);
+      break;
+    }
+
+    LOG(ERROR) << "Failed to initialize client: " << status;
+    std::this_thread::sleep_for(1s);
+  }
 }
 
 Status TSTabletManager::WaitForAllBootstrapsToFinish() {
@@ -867,7 +898,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
-                                    client_,
+                                    client_future_,
                                     scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     log,
@@ -933,6 +964,8 @@ void TSTabletManager::Shutdown() {
 
   // Shut down the bootstrap pool, so new tablets are registered after this point.
   open_tablet_pool_->Shutdown();
+
+  init_client_thread_.join();
 
   // Take a snapshot of the peers list -- that way we don't have to hold
   // on to the lock while shutting them down, which might cause a lock

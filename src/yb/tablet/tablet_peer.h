@@ -33,6 +33,7 @@
 #ifndef YB_TABLET_TABLET_PEER_H_
 #define YB_TABLET_TABLET_PEER_H_
 
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -44,13 +45,14 @@
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/tablet/tablet.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 #include "yb/tablet/prepare_thread.h"
@@ -98,7 +100,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
-                                const client::YBClientPtr &client,
+                                const std::shared_future<client::YBClientPtr> &client_future,
                                 const scoped_refptr<server::Clock> &clock,
                                 const std::shared_ptr<rpc::Messenger> &messenger,
                                 const scoped_refptr<log::Log> &log,
@@ -232,8 +234,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return *clock_;
   }
 
-  const client::YBClientPtr& client() const override {
-    return client_;
+  const std::shared_future<client::YBClientPtr>& client_future() const override {
+    return client_future_;
   }
 
   consensus::Consensus::LeaderStatus LeaderStatus() const override;
@@ -348,8 +350,6 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   scoped_refptr<server::Clock> clock_;
 
-  client::YBClientPtr client_;
-
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
 
   // Function to mark this TabletPeer's tablet as dirty in the TSTabletManager.
@@ -369,6 +369,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   mutable std::string cached_permanent_uuid_;
 
  private:
+  std::shared_future<client::YBClientPtr> client_future_;
+
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
 

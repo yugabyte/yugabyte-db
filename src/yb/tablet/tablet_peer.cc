@@ -145,7 +145,7 @@ TabletPeer::~TabletPeer() {
 }
 
 Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
-                                  const client::YBClientPtr &client,
+                                  const std::shared_future<client::YBClientPtr> &client_future,
                                   const scoped_refptr<server::Clock> &clock,
                                   const shared_ptr<Messenger> &messenger,
                                   const scoped_refptr<Log> &log,
@@ -158,7 +158,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     std::lock_guard<simple_spinlock> lock(lock_);
     CHECK_EQ(BOOTSTRAPPING, state_);
     tablet_ = tablet;
-    client_ = client;
+    client_future_ = client_future;
     clock_ = clock;
     messenger_ = messenger;
     log_ = log;

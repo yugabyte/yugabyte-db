@@ -16,6 +16,7 @@
 #ifndef YB_TABLET_TRANSACTION_COORDINATOR_H
 #define YB_TABLET_TRANSACTION_COORDINATOR_H
 
+#include <future>
 #include <memory>
 
 #include "yb/client/client_fwd.h"
@@ -61,7 +62,7 @@ class UpdateTxnOperationState;
 class TransactionCoordinatorContext {
  public:
   virtual const std::string& tablet_id() const = 0;
-  virtual const client::YBClientPtr& client() const = 0;
+  virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
   virtual server::Clock& clock() const = 0;
   virtual consensus::Consensus::LeaderStatus LeaderStatus() const = 0;
   virtual HybridTime LastCommittedHybridTime() const = 0;

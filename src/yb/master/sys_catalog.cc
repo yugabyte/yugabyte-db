@@ -468,7 +468,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   // handling split in the TS?
 
   RETURN_NOT_OK_PREPEND(tablet_peer_->InitTabletPeer(tablet,
-                                                     nullptr,
+                                                     std::shared_future<client::YBClientPtr>(),
                                                      scoped_refptr<server::Clock>(master_->clock()),
                                                      master_->messenger(),
                                                      log,

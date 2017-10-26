@@ -153,7 +153,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();
     CHECK_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                          nullptr /* client */,
+                                          std::shared_future<client::YBClientPtr>(),
                                           clock(),
                                           messenger,
                                           log,

@@ -341,7 +341,7 @@ class TransactionParticipant::Impl {
       callback(STATUS_FORMAT(NotFound, "Unknown transaction: $1", id));
       return;
     }
-    return it->RequestStatusAt(context_.client().get(), time, std::move(callback), &lock);
+    return it->RequestStatusAt(client(), time, std::move(callback), &lock);
   }
 
   void Abort(const TransactionId& id,
@@ -353,7 +353,7 @@ class TransactionParticipant::Impl {
       callback(STATUS_FORMAT(NotFound, "Unknown transaction: $1", id));
       return;
     }
-    return it->Abort(context_.client().get(), std::move(callback), &lock);
+    return it->Abort(client(), std::move(callback), &lock);
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -387,7 +387,7 @@ class TransactionParticipant::Impl {
         *handle = UpdateTransaction(
             deadline,
             nullptr /* remote_tablet */,
-            context_.client().get(),
+            client(),
             &req,
             [this, handle](const Status& status) {
               rpcs_.Unregister(handle);
@@ -438,6 +438,10 @@ class TransactionParticipant::Impl {
     }
 
     return it;
+  }
+
+  client::YBClient* client() const {
+    return context_.client_future().get().get();
   }
 
   TransactionParticipantContext& context_;

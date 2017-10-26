@@ -16,6 +16,7 @@
 #ifndef YB_TABLET_TRANSACTION_PARTICIPANT_H
 #define YB_TABLET_TRANSACTION_PARTICIPANT_H
 
+#include <future>
 #include <memory>
 
 #include <boost/optional/optional.hpp>
@@ -107,7 +108,7 @@ class TransactionIntentApplier {
 class TransactionParticipantContext {
  public:
   virtual const std::string& tablet_id() const = 0;
-  virtual const client::YBClientPtr& client() const = 0;
+  virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
 
  protected:
   ~TransactionParticipantContext() {}

@@ -32,6 +32,7 @@
 #ifndef YB_TSERVER_TS_TABLET_MANAGER_H
 #define YB_TSERVER_TS_TABLET_MANAGER_H
 
+#include <future>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -379,7 +380,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // running state.
   void InitLocalRaftPeerPB();
 
-  void FlushIfNeeded();
+  void InitClient();
 
   FsManager* const fs_manager_;
 
@@ -434,7 +435,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
 
-  client::YBClientPtr client_;
+  std::promise<client::YBClientPtr> client_promise_;
+  std::shared_future<client::YBClientPtr> client_future_;
+  std::thread init_client_thread_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

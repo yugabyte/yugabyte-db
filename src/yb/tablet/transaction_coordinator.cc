@@ -474,7 +474,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       if (!closing_) {
         closing_ = true;
         if (poll_task_id_ != rpc::kUninitializedScheduledTaskId) {
-          context_.client()->messenger()->scheduler().Abort(poll_task_id_);
+          context_.client_future().get()->messenger()->scheduler().Abort(poll_task_id_);
         }
       }
       cond_.wait(lock, [this] { return poll_task_id_ == rpc::kUninitializedScheduledTaskId; });
@@ -682,7 +682,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         *handle = UpdateTransaction(
             deadline,
             nullptr /* remote_tablet */,
-            context_.client().get(),
+            context_.client_future().get().get(),
             &req,
             [this, handle](const Status& status) {
               rpcs_.Unregister(handle);
@@ -729,7 +729,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void SchedulePoll() {
-    poll_task_id_ = context_.client()->messenger()->scheduler().Schedule(
+    poll_task_id_ = context_.client_future().get()->messenger()->scheduler().Schedule(
         std::bind(&Impl::Poll, this, _1),
         std::chrono::microseconds(FLAGS_transaction_check_interval_usec));
   }
