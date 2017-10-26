@@ -236,7 +236,7 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
 
-        Map<String, String> gflags = configureParams.gflags;
+        Map<String, String> gflags = new HashMap<>(configureParams.gflags);
         gflags.put("metric_node_name", params.nodeName);
 
         if (configureParams.type == Everything) {
