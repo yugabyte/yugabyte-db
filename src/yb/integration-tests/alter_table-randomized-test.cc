@@ -49,6 +49,7 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
+using client::YBTableType;
 using client::YBColumnSchema;
 using client::YBError;
 using client::KuduInsert;
@@ -109,10 +110,9 @@ class AlterTableRandomized : public YBTest {
 
 struct RowState {
   // We use this special value to denote NULL values.
-  // We ensure that we never insert or update to this value except in the case of
-  // NULLable columns.
+  // We ensure that we never insert or update to this value except in the case of NULLable columns.
   static const int32_t kNullValue = 0xdeadbeef;
-  vector<pair<string, int32_t> > cols;
+  vector<pair<string, int32_t>> cols;
 
   string ToString() const {
     string ret = "(";
@@ -145,7 +145,7 @@ struct TableState {
   }
 
   void GenRandomRow(int32_t key, int32_t seed,
-                    vector<pair<string, int32_t> >* row) {
+                    vector<pair<string, int32_t>>* row) {
     if (seed == RowState::kNullValue) {
       seed++;
     }
@@ -162,7 +162,7 @@ struct TableState {
     }
   }
 
-  bool Insert(const vector<pair<string, int32_t> >& data) {
+  bool Insert(const vector<pair<string, int32_t>>& data) {
     DCHECK_EQ("key", data[0].first);
     int32_t key = data[0].second;
     if (ContainsKey(rows_, key)) return false;
@@ -173,7 +173,7 @@ struct TableState {
     return true;
   }
 
-  bool Update(const vector<pair<string, int32_t> >& data) {
+  bool Update(const vector<pair<string, int32_t>>& data) {
     DCHECK_EQ("key", data[0].first);
     int32_t key = data[0].second;
     if (!ContainsKey(rows_, key)) return false;
@@ -249,12 +249,13 @@ struct MirrorTable {
     RETURN_NOT_OK(table_creator->table_name(kTableName)
              .schema(&schema)
              .num_replicas(3)
+             .table_type(YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
              .Create());
     return Status::OK();
   }
 
   bool TryInsert(int32_t row_key, int32_t rand) {
-    vector<pair<string, int32_t> > row;
+    vector<pair<string, int32_t>> row;
     ts_.GenRandomRow(row_key, rand, &row);
     Status s = DoRealOp(row, INSERT);
     if (s.IsAlreadyPresent()) {
@@ -270,18 +271,17 @@ struct MirrorTable {
   void DeleteRandomRow(uint32_t rand) {
     if (ts_.rows_.empty()) return;
     int32_t row_key = ts_.GetRandomRowKey(rand);
-    vector<pair<string, int32_t> > del;
+    vector<pair<string, int32_t>> del;
     del.push_back(make_pair("key", row_key));
-    CHECK_OK(DoRealOp(del, DELETE));
-
     ts_.Delete(row_key);
+    CHECK_OK(DoRealOp(del, DELETE));
   }
 
   void UpdateRandomRow(uint32_t rand) {
     if (ts_.rows_.empty()) return;
     int32_t row_key = ts_.GetRandomRowKey(rand);
 
-    vector<pair<string, int32_t> > update;
+    vector<pair<string, int32_t>> update;
     update.push_back(make_pair("key", row_key));
     for (int i = 1; i < num_columns(); i++) {
       int32_t val = rand * i;
@@ -368,8 +368,7 @@ struct MirrorTable {
     INSERT, UPDATE, DELETE
   };
 
-  Status DoRealOp(const vector<pair<string, int32_t> >& data,
-                  OpType op_type) {
+  Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
     shared_ptr<YBSession> session = client_->NewSession();
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
@@ -429,7 +428,10 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
     // and more occasional table alterations or restarts.
     int r = rng.Uniform(1000);
     if (r < 400) {
-      t.TryInsert(1000000 + rng.Uniform(1000000), rng.Next());
+      bool inserted = t.TryInsert(1000000 + rng.Uniform(1000000), rng.Next());
+      if (!inserted) {
+        continue;
+      }
     } else if (r < 600) {
       t.UpdateRandomRow(rng.Next());
     } else if (r < 920) {
