@@ -871,15 +871,15 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-10", "value1"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-20", "value2"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-30", "value3"});
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "10", "value1"});
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "20", "value2"});
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value3"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "10", "value4"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "20", "value5"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value6"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       strings::Substitute("$0", std::numeric_limits<int64_t>::max()), "valuemax"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       strings::Substitute("$0", std::numeric_limits<int64_t>::min()), "valuemin"});
   SyncClient();
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value4"});
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value7"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_multi", "10", "v1", "20", "v2", "30", "v3", "40", "v4"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_multi", "10", "v5", "50", "v6", "30", "v7", "60", "v8"});
   SyncClient();
@@ -890,9 +890,9 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "-10"}, "value1");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "-20"}, "value2");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "-30"}, "value3");
-  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "10"}, "value1");
-  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "20"}, "value2");
-  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "30"}, "value4");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "10"}, "value4");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "20"}, "value5");
+  DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key", "30"}, "value7");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
       strings::Substitute("$0", std::numeric_limits<int64_t>::max())}, "valuemax");
   DoRedisTestBulkString(__LINE__, {"TSGET", "ts_key",
