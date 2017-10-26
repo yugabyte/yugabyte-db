@@ -1,16 +1,6 @@
 ## Test CQL service
 
-[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line.
-
-### Install cqlsh
-
-- For Linux
-
-For ease of use, the YugaByte DB linux package ships with the 3.10 version of cqlsh in its bin directory.
-
-- For Mac OS
-
-Standard Apache Cassandra binary [download](http://cassandra.apache.org/doc/latest/getting_started/installing.html) has cqlsh in its bin directory. You can move the cqlsh binary from that location to the yugabyte/bin directory for easier access.
+[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line. For ease of use, the YugaByte DB linux package ships with the 3.10 version of cqlsh in its bin directory.
 
 ### Connect with cqlsh
 
@@ -130,19 +120,11 @@ Setup the `redis_keyspace` keyspace and the `.redis` table so that this cluster 
 $ ./bin/yb-ctl setup_redis
 ```
 
-### Install redis-cli
+### Connect with redis-cli
 
 [redis-cli](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. 
 
-- For Linux
-
 For ease of use, the YugaByte DB linux package ships with the 4.0.1 version of redis-cli in its bin directory.
-
-- For Mac OS
-
-Standard redis [download](https://redis.io/download) includes redis-cli as one of its components. You can move it to the yugabyte/bin directory for easier access.
-
-### Connect with redis-cli
 
 ```
 $ ./bin/redis-cli

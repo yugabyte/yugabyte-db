@@ -288,6 +288,7 @@ a {
 .nav-tabs li:before {
   content: "" !important;
 }
+
 .nav-tabs li i,
 .nav-tabs li img {
   font-size: 16px;

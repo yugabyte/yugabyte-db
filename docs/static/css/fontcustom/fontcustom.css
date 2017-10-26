@@ -1,0 +1,37 @@
+@font-face {
+  font-family: "fontcustom";
+  src: url("./fontcustom_cb066050d5b786186aa0e7f121427d8b.eot");
+  src: url("./fontcustom_cb066050d5b786186aa0e7f121427d8b.eot?#iefix") format("embedded-opentype"),
+       url("./fontcustom_cb066050d5b786186aa0e7f121427d8b.woff") format("woff"),
+       url("./fontcustom_cb066050d5b786186aa0e7f121427d8b.ttf") format("truetype"),
+       url("./fontcustom_cb066050d5b786186aa0e7f121427d8b.svg#fontcustom") format("svg");
+  font-weight: normal;
+  font-style: normal;
+}
+
+@media screen and (-webkit-min-device-pixel-ratio:0) {
+  @font-face {
+    font-family: "fontcustom";
+    src: url("./fontcustom_cb066050d5b786186aa0e7f121427d8b.svg#fontcustom") format("svg");
+  }
+}
+
+[data-icon]:before { content: attr(data-icon); }
+
+[data-icon]:before,
+.fa-docker:before {
+  display: inline-block;
+  font-family: "fontcustom";
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  line-height: 1;
+  text-decoration: inherit;
+  text-rendering: optimizeLegibility;
+  text-transform: none;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-smoothing: antialiased;
+}
+
+.fa-docker:before { content: "\f100"; }
