@@ -128,7 +128,7 @@ public enum Type {
       case TIMEUUID:
       case FROZEN:
       case USER_DEFINED_TYPE:
-      // TODO(mihnea) handle the cases above properly after cleaning up Kudu-inherited code
+      // TODO(mihnea) handle the cases above properly after cleaning up inherited code
       case STRING:
       case BINARY: return 8 + 8; // offset then string length
       case BOOL:

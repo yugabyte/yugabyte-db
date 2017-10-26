@@ -182,7 +182,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablets", addr),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
-  ASSERT_STR_CONTAINS(buf.ToString(), "<td>range: [(&lt;start&gt;), (&lt;end&gt;))</td>");
+  ASSERT_STR_CONTAINS(buf.ToString(), "<td>hash_split: [&lt;start&gt;, &lt;end&gt;)</td>");
 
   // Tablet page should include the schema.
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet?id=$1", addr, kTabletId),
@@ -205,7 +205,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     // Check that the tablet entry shows up.
     ASSERT_STR_CONTAINS(buf.ToString(), "\"type\": \"tablet\"");
     ASSERT_STR_CONTAINS(buf.ToString(), "\"id\": \"test-tablet\"");
-    ASSERT_STR_CONTAINS(buf.ToString(), "\"partition\": \"range: [(<start>), (<end>))\"");
+    ASSERT_STR_CONTAINS(buf.ToString(), "\"partition\": \"hash_split: [<start>, <end>)\"");
 
     // Check entity attributes.
     ASSERT_STR_CONTAINS(buf.ToString(), "\"table_name\": \"test-table\"");
@@ -958,9 +958,6 @@ TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
   req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
   req.set_table_id("testtb");
   req.set_tablet_id(kTabletId);
-  PartitionPB* partition = req.mutable_partition();
-  partition->set_partition_key_start(" ");
-  partition->set_partition_key_end(" ");
   req.set_table_name("testtb");
   req.mutable_config()->CopyFrom(mini_server_->CreateLocalConfig());
 
@@ -1200,20 +1197,10 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   PartitionSchema partition_schema;
   CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  YBPartialRow start_row(&schema);
-  ASSERT_OK(start_row.SetInt32("key", 10));
-
-  YBPartialRow end_row(&schema);
-  ASSERT_OK(end_row.SetInt32("key", 20));
-
-  vector<Partition> partitions;
-  ASSERT_OK(partition_schema.CreatePartitions({ start_row, end_row }, schema, &partitions));
-
-  ASSERT_EQ(3, partitions.size());
-
+  Partition partition;
   ASSERT_OK(
     mini_server_->server()->tablet_manager()->CreateNewTablet("TestWriteOutOfBoundsTable", tabletId,
-      partitions[1], tabletId, YQL_TABLE_TYPE, schema, partition_schema,
+      partition, tabletId, YQL_TABLE_TYPE, schema, partition_schema,
       mini_server_->CreateLocalConfig(), nullptr));
 
   ASSERT_OK(WaitForTabletRunning(tabletId));

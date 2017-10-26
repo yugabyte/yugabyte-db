@@ -446,12 +446,6 @@ bool YBScanner::Data::MoreTablets() const {
     return false;
   }
 
-  if (!table_->partition_schema().IsSimplePKRangePartitioning(
-          internal::GetSchema(table_->schema()))) {
-    // We can't do culling yet if the partitioning isn't simple.
-    return true;
-  }
-
   if (spec_.exclusive_upper_bound_key() == nullptr) {
     // No upper bound - keep going!
     return true;

@@ -138,6 +138,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
             .num_replicas(kNumReplicas)
+            .num_tablets(1)
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));
 
@@ -160,7 +161,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
       if (!cur_ts_tablet_peers.empty()) break;
       SleepFor(MonoDelta::FromMilliseconds(10));
     }
-    ASSERT_EQ(1, cur_ts_tablet_peers.size()); // Each TS should only have 1 tablet.
+    ASSERT_EQ(1, cur_ts_tablet_peers.size());
     ASSERT_OK(cur_ts_tablet_peers[0]->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10)));
     tablet_peers.push_back(cur_ts_tablet_peers[0]);
   }

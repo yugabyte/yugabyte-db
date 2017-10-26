@@ -797,8 +797,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
 }
 
-// Test that orphaned blocks are cleared from the superblock when a tablet is
-// tombstoned.
+// Test that orphaned blocks are cleared from the superblock when a tablet is tombstoned.
 TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags, master_flags;
@@ -996,7 +995,6 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
       TestWorkload::kDefaultTableName.namespace_name()));
   const int kNumTablets = 2;
-  vector<const YBPartialRow*> split_rows;
   Schema schema(GetSimpleYqlTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

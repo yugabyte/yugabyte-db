@@ -160,7 +160,6 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   scoped_refptr<TabletPeer> LookupTabletPeer() {
     vector<scoped_refptr<TabletPeer> > peers;
     cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
-    CHECK_EQ(1, peers.size());
     return peers[0];
   }
 
@@ -239,7 +238,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   void WriteThread(QLWriteRequestPB::QLStmtType type);
   void ScannerThread();
 
-  Status CreateSplitTable(const YBTableName& table_name) {
+  Status CreateTable(const YBTableName& table_name) {
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
 
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
@@ -859,7 +858,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   //
   // With more tablets, there's a greater chance that the TS will heartbeat
   // after some but not all tablets have finished altering.
-  ASSERT_OK(CreateSplitTable(kSplitTableName));
+  ASSERT_OK(CreateTable(kSplitTableName));
 
   // Add a column, and immediately try to insert a row including that
   // new column.
@@ -896,7 +895,7 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
   //
   // With more tablets, there's a greater chance that the TS will heartbeat
   // after some but not all tablets have finished altering.
-  ASSERT_OK(CreateSplitTable(kSplitTableName));
+  ASSERT_OK(CreateTable(kSplitTableName));
 
   // Issue a bunch of new alters without waiting for them to finish.
   for (int i = 0; i < kNumNewCols; i++) {

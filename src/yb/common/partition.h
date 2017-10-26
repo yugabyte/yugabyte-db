@@ -54,9 +54,8 @@ class PartitionSchemaPB;
 class TypeInfo;
 
 enum YBHashSchema {
-  kKuduHashSchema = 1, // Used only in some tests, should be removed once they are migrated to YbQL.
-  kMultiColumnHash = 2, // YbQL default hashing.
-  kRedisHash = 3 // Redis default hashing.
+  kMultiColumnHash = 1, // YQL default hashing.
+  kRedisHash = 2 // Redis default hashing.
 };
 
 // A Partition describes the set of rows that a Tablet is responsible for
@@ -97,7 +96,7 @@ class Partition {
   // to be created by the master process.
   static void FromPB(const PartitionPB& pb, Partition* partition);
 
-  bool ConstainsKey(const std::string& partition_key) const {
+  bool ContainsKey(const std::string& partition_key) const {
     return partition_key >= partition_key_start() &&
         (partition_key_end().empty() || partition_key < partition_key_end());
   }
@@ -184,10 +183,9 @@ class PartitionSchema {
 
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
   // the [0, max_partition_key] range equally into the requested number of intervals.
-  CHECKED_STATUS CreatePartitions(
-      int32_t num_tablets,
-      std::vector<Partition>* partitions,
-      int32_t max_partition_key = kMaxPartitionKey) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS CreatePartitions(int32_t num_tablets,
+                                  std::vector<Partition>* partitions,
+                                  int32_t max_partition_key = kMaxPartitionKey) const;
 
   YBHashSchema hash_schema() const {
     return hash_schema_;
@@ -255,13 +253,13 @@ class PartitionSchema {
 
   // Encodes the specified columns of a row into lexicographic sort-order preserving format.
   static CHECKED_STATUS EncodeColumns(const YBPartialRow& row,
-                              const std::vector<ColumnId>& column_ids,
-                              std::string* buf);
+                                      const std::vector<ColumnId>& column_ids,
+                                      std::string* buf);
 
   // Encodes the specified columns of a row into lexicographic sort-order preserving format.
   static CHECKED_STATUS EncodeColumns(const ConstContiguousRow& row,
-                              const std::vector<ColumnId>& column_ids,
-                              std::string* buf);
+                                      const std::vector<ColumnId>& column_ids,
+                                      std::string* buf);
 
   // Hashes a compound string of all columns into a 16-bit integer.
   static uint16_t HashColumnCompoundValue(const string& compound);
@@ -277,14 +275,14 @@ class PartitionSchema {
   // Assigns the row to a hash bucket according to the hash schema.
   template<typename Row>
   static CHECKED_STATUS BucketForRow(const Row& row,
-                             const HashBucketSchema& hash_bucket_schema,
-                             int32_t* bucket);
+                                     const HashBucketSchema& hash_bucket_schema,
+                                     int32_t* bucket);
 
   // Private templated helper for PartitionContainsRow.
   template<typename Row>
   CHECKED_STATUS PartitionContainsRowImpl(const Partition& partition,
-                                  const Row& row,
-                                  bool* contains) const;
+                                          const Row& row,
+                                          bool* contains) const;
 
   // Appends the stringified range partition components of a partial row to a
   // vector.
@@ -306,8 +304,8 @@ class PartitionSchema {
   // Decodes a range partition key into a partial row, with variable-length
   // fields stored in the arena.
   CHECKED_STATUS DecodeRangeKey(Slice* encode_key,
-                        YBPartialRow* partial_row,
-                        Arena* arena) const;
+                                YBPartialRow* partial_row,
+                                Arena* arena) const;
 
   // Decodes the hash bucket component of a partition key into its buckets.
   //
@@ -324,7 +322,7 @@ class PartitionSchema {
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;
-  YBHashSchema hash_schema_ = YBHashSchema::kKuduHashSchema;
+  YBHashSchema hash_schema_ = YBHashSchema::kMultiColumnHash;
 };
 
 } // namespace yb

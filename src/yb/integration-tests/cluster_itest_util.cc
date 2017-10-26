@@ -745,6 +745,7 @@ namespace {
       if (resp->error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
         break;
       }
+      rpc->Reset();
     } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
     return status;
   }

@@ -44,8 +44,8 @@ public class ColumnSchema {
 
   private final Integer id;
   private final String name;
-  // TODO Having both type and yqlType is redundant. After YugaWare is updated and Kudu
-  // dependencies cleaned up, type can be removed.
+  // TODO Having both type and yqlType is redundant. After YugaWare is updated and
+  // inherited dependencies cleaned up, type can be removed.
   private final Type type;
   private final QLType yqlType;
   private final boolean key;

@@ -269,7 +269,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
       case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::REDIS_WRITE: {
         CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
-        partition_contains_row = partition.ConstainsKey(partition_key);
+        partition_contains_row = partition.ContainsKey(partition_key);
         break;
       }
     }

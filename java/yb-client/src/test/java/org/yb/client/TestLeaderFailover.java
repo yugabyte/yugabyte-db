@@ -45,7 +45,7 @@ public class TestLeaderFailover extends BaseYBClientTest {
   protected void afterStartingMiniCluster() throws Exception {
     super.afterStartingMiniCluster();
 
-    CreateTableOptions builder = new CreateTableOptions().setNumReplicas(3);
+    CreateTableOptions builder = new CreateTableOptions().setNumReplicas(3).setNumTablets(1);
     createTable(TABLE_NAME, basicSchema, builder);
 
     table = openTable(TABLE_NAME);

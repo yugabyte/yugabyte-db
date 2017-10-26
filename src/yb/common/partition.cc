@@ -153,9 +153,6 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
       VLOG(3) << "Using redis hash schema for partitioning";
       partition_schema->hash_schema_ = YBHashSchema::kRedisHash;
       return Status::OK();
-
-    case PartitionSchemaPB::KUDU_HASH_SCHEMA:
-      break;
   }
 
   for (const PartitionSchemaPB_HashBucketSchemaPB& hash_bucket_pb : pb.hash_bucket_schemas()) {
@@ -198,9 +195,6 @@ void PartitionSchema::ToPB(PartitionSchemaPB* pb) const {
       break;
     case YBHashSchema::kRedisHash:
       pb->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
-      break;
-    case  YBHashSchema::kKuduHashSchema:
-      pb->set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
       break;
   }
 
@@ -261,8 +255,7 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
       *buf = EncodeMultiColumnHashValue(hash_value);
       return Status::OK();
     }
-    case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
-    case YBHashSchema::kKuduHashSchema:
+    case YBHashSchema::kRedisHash:
       break;
   }
 
@@ -276,8 +269,6 @@ Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
       return EncodeColumns(row, buf);
     case YBHashSchema::kRedisHash:
       return EncodeRedisKey(row, buf);
-    case YBHashSchema::kKuduHashSchema:
-      break;
   }
 
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
@@ -297,8 +288,6 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
       LOG(FATAL) << "Invalid hash schema kRedisHash passed to EncodeKey";
     case YBHashSchema::kMultiColumnHash:
       return EncodeColumns(row, buf);
-    case YBHashSchema::kKuduHashSchema:
-      break;
   }
 
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
@@ -337,7 +326,8 @@ Status PartitionSchema::CreatePartitions(int32_t num_tablets,
 
   LOG(INFO) << "Creating partitions with num_tablets: " << num_tablets;
 
-  if (!num_tablets) {
+  // May be also add an upper bound? TODO.
+  if (num_tablets <= 0) {
     return STATUS_SUBSTITUTE(InvalidArgument, "num_tablets should be greater than 0. Client "
                              "would need to wait for master leader get heartbeats from tserver.");
   }
@@ -512,9 +502,6 @@ Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
 
   string partition_key;
   switch (hash_schema_) {
-    case YBHashSchema::kKuduHashSchema:
-      RETURN_NOT_OK(EncodeColumns(row, range_schema_.column_ids, &partition_key));
-      break;
     case YBHashSchema::kMultiColumnHash:
       RETURN_NOT_OK(EncodeColumns(row, &partition_key));
       break;
@@ -625,8 +612,6 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
       }
       return s;
     }
-    case YBHashSchema::kKuduHashSchema:
-      break;
   }
 
   if (!partition.hash_buckets().empty()) {
@@ -786,8 +771,6 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
       } else {
         return Substitute("hash_code: $0", DecodeMultiColumnHashValue(key));
       }
-    case YBHashSchema::kKuduHashSchema:
-      break;
   }
 
   if (!hash_bucket_schemas_.empty()) {
@@ -845,8 +828,6 @@ string PartitionSchema::DebugString(const Schema& schema) const {
       component_types.push_back(component);
       break;
     }
-    case YBHashSchema::kKuduHashSchema:
-      break;
   }
 
   if (!hash_bucket_schemas_.empty()) {
@@ -891,28 +872,6 @@ bool PartitionSchema::Equals(const PartitionSchema& other) const {
         != other.hash_bucket_schemas_[i].num_buckets) return false;
     if (hash_bucket_schemas_[i].column_ids
         != other.hash_bucket_schemas_[i].column_ids) return false;
-  }
-
-  return true;
-}
-
-bool PartitionSchema::IsSimplePKRangePartitioning(const Schema& schema) const {
-  // If we are using hash based splitting, then we consider this case also as a simple range based
-  // partitioning scheme to leverage most of the tablet location logic.
-  switch (hash_schema_) {
-    case YBHashSchema::kRedisHash:
-      return true;
-    case YBHashSchema::kMultiColumnHash:
-      return true;
-    case YBHashSchema::kKuduHashSchema:
-      break;
-  }
-
-  if (!hash_bucket_schemas_.empty()) return false;
-  if (range_schema_.column_ids.size() != schema.num_key_columns()) return false;
-
-  for (int i = 0; i < schema.num_key_columns(); i++) {
-    if (range_schema_.column_ids[i] != schema.column_id(i)) return false;
   }
 
   return true;
@@ -1037,7 +996,7 @@ Status PartitionSchema::BucketForRow(const ConstContiguousRow& row,
 void PartitionSchema::Clear() {
   hash_bucket_schemas_.clear();
   range_schema_.column_ids.clear();
-  hash_schema_ = YBHashSchema::kKuduHashSchema;
+  hash_schema_ = YBHashSchema::kMultiColumnHash;
 }
 
 Status PartitionSchema::Validate(const Schema& schema) const {

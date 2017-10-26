@@ -1348,15 +1348,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   } else if (schema.num_hash_key_columns() > 0 ||
              req.partition_schema().hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA) {
     req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-  } else {
-    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
   }
 
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   int num_live_tservers = ts_descs.size();
   int num_tablets = req.num_tablets();
-  if (!num_tablets) {
+  if (num_tablets <= 0) {
     // Try to use default: client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
     num_tablets = num_live_tservers * FLAGS_yb_num_shards_per_tserver;
@@ -1373,35 +1371,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     case YBHashSchema::kRedisHash: {
       RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
                                                       kRedisClusterSlots));
-      break;
-    }
-    case YBHashSchema::kKuduHashSchema: {
-      // If the client did not set a partition schema in the create table request,
-      // the default partition schema (no hash bucket components and a range
-      // partitioned on the primary key columns) will be used.
-      if (!s.ok()) {
-        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-      }
-
-      // Decode split rows.
-      vector<YBPartialRow> split_rows;
-
-      RowOperationsPBDecoder decoder(&req.split_rows(), &client_schema, &schema, nullptr);
-      vector<DecodedRowOperation> ops;
-      RETURN_NOT_OK(decoder.DecodeOperations(&ops));
-
-      for (const DecodedRowOperation& op : ops) {
-        if (op.type != RowOperationsPB::SPLIT_ROW) {
-          Status s = STATUS(InvalidArgument,
-                            "Split rows must be specified as RowOperationsPB::SPLIT_ROW");
-          return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
-        }
-
-        split_rows.push_back(*op.split_row);
-      }
-
-      // Create partitions based on specified partition schema and split rows.
-      RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
       break;
     }
   }
@@ -1431,10 +1400,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Verify that the number of replicas isn't larger than the number of live tablet servers.
   if (FLAGS_catalog_manager_check_ts_count_for_create_table && num_replicas > num_live_tservers) {
-    s = STATUS(InvalidArgument,
-               Substitute("Not enough live tablet servers to create a table with the requested "
-                          "replication factor $0. $1 tablet servers are alive.",
-                          num_replicas, num_live_tservers));
+    s = STATUS_FORMAT(InvalidArgument,
+                      "Not enough live tablet servers to create a table with the requested "
+                      "replication factor $0. $1 tablet servers are alive.",
+                      num_replicas, num_live_tservers);
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
   }
 
@@ -1459,8 +1428,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     for (const auto& pb : placement_info.placement_blocks()) {
       minimum_sum += pb.min_num_replicas();
       if (!pb.has_cloud_info()) {
-        s = STATUS(InvalidArgument,
-            Substitute("Got placement info without cloud info set: $0", pb.ShortDebugString()));
+        s = STATUS_FORMAT(InvalidArgument, "Got placement info without cloud info set: $0",
+                          pb.ShortDebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       }
     }
@@ -1468,9 +1437,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // TODO: update this when we get async replica support, as we're checking live_replica on
     // request here, against placement_info, which we've set to live_replicas() above.
     if (minimum_sum > num_replicas) {
-      s = STATUS(InvalidArgument,
-                 Substitute("Sum of required minimum replicas per placement ($0) is greater "
-                            "than num_replicas ($1)", minimum_sum, num_replicas));
+      s = STATUS_FORMAT(InvalidArgument,
+                        "Sum of required minimum replicas per placement ($0) is greater "
+                        "than num_replicas ($1)", minimum_sum, num_replicas);
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
   }

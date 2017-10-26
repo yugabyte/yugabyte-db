@@ -373,6 +373,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
           .schema(&schema_)
           .set_range_partition_columns({ "key" })
           .num_replicas(3)
+          .num_tablets(1)
           .wait(false)
           .Create();
     }

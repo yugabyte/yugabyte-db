@@ -161,16 +161,6 @@ class MasterTest : public YBTest {
     return CreateTable(default_namespace_name, table_name, schema);
   }
 
-  Status CreateTableWithSplits(const NamespaceName& namespace_name,
-                               const TableName& table_name,
-                               const Schema& schema,
-                               const vector<YBPartialRow>& split_rows);
-  Status CreateTableWithSplits(const TableName& table_name,
-                               const Schema& schema,
-                               const vector<YBPartialRow>& split_rows) {
-    return CreateTableWithSplits(default_namespace_name, table_name, schema, split_rows);
-  }
-
   Status DoCreateTable(const NamespaceName& namespace_name,
                        const TableName& table_name,
                        const Schema& schema,
@@ -326,8 +316,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  // Try a heartbeat. The server hasn't heard of us, so should ask us
-  // to re-register.
+  // Try a heartbeat. The server hasn't heard of us, so should ask us to re-register.
   {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
@@ -421,24 +410,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 Status MasterTest::CreateTable(const NamespaceName& namespace_name,
                                const TableName& table_name,
                                const Schema& schema) {
-  YBPartialRow split1(&schema);
-  RETURN_NOT_OK(split1.SetInt32("key", 10));
-
-  YBPartialRow split2(&schema);
-  RETURN_NOT_OK(split2.SetInt32("key", 20));
-
-  return CreateTableWithSplits(namespace_name, table_name, schema, { split1, split2 });
-}
-
-Status MasterTest::CreateTableWithSplits(const NamespaceName& namespace_name,
-                                         const TableName& table_name,
-                                         const Schema& schema,
-                                         const vector<YBPartialRow>& split_rows) {
   CreateTableRequestPB req;
-  RowOperationsPBEncoder encoder(req.mutable_split_rows());
-  for (const YBPartialRow& row : split_rows) {
-    encoder.Add(RowOperationsPB::SPLIT_ROW, row);
-  }
   return DoCreateTable(namespace_name, table_name, schema, &req);
 }
 
@@ -454,6 +426,7 @@ Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
   if (!namespace_name.empty()) {
     request->mutable_namespace_()->set_name(namespace_name);
   }
+  request->set_num_tablets(8);
 
   // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
   // though, as that helps with readability and standardization.
@@ -620,52 +593,12 @@ TEST_F(MasterTest, TestCatalog) {
   }
 }
 
-TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
-  const char *kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32), ColumnSchema("val", INT32) }, 1);
-
-  // No duplicate split rows.
-  {
-    YBPartialRow split1 = YBPartialRow(&kTableSchema);
-    ASSERT_OK(split1.SetInt32("key", 1));
-    YBPartialRow split2(&kTableSchema);
-    ASSERT_OK(split2.SetInt32("key", 2));
-    Status s = CreateTableWithSplits(kTableName, kTableSchema, { split1, split1, split2 });
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(), "Duplicate split row");
-  }
-
-  // No empty split rows.
-  {
-    YBPartialRow split1 = YBPartialRow(&kTableSchema);
-    ASSERT_OK(split1.SetInt32("key", 1));
-    YBPartialRow split2(&kTableSchema);
-    Status s = CreateTableWithSplits(kTableName, kTableSchema, { split1, split2 });
-    ASSERT_TRUE(s.IsInvalidArgument());
-    ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
-                        "Invalid argument: Split rows must contain a value for at "
-                        "least one range partition column");
-  }
-
-  // No non-range columns
-  {
-    YBPartialRow split = YBPartialRow(&kTableSchema);
-    ASSERT_OK(split.SetInt32("key", 1));
-    ASSERT_OK(split.SetInt32("val", 1));
-    Status s = CreateTableWithSplits(kTableName, kTableSchema, { split });
-    ASSERT_TRUE(s.IsInvalidArgument());
-    ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
-                        "Invalid argument: Split rows may only contain values "
-                        "for range partitioned columns: val");
-  }
-}
-
 TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
   const char *kTableName = "testtb";
 
   {
     const Schema kTableSchema({ ColumnSchema("key", BOOL) }, 1);
-    Status s = CreateTableWithSplits(kTableName, kTableSchema, vector<YBPartialRow>());
+    Status s = CreateTable(kTableName, kTableSchema);
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
         "Invalid datatype for primary key column");
@@ -1452,9 +1385,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
     // PartitionSchemaPB partition_schema.
     ASSERT_TRUE(resp.has_partition_schema());
     ASSERT_TRUE(resp.partition_schema().has_range_schema());
-    ASSERT_EQ(1, resp.partition_schema().range_schema().columns_size());
-    ASSERT_EQ(Schema::first_column_id(), resp.partition_schema().range_schema().columns(0).id());
-    ASSERT_EQ(resp.partition_schema().hash_schema(), PartitionSchemaPB::KUDU_HASH_SCHEMA);
+    ASSERT_EQ(resp.partition_schema().hash_schema(), PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
     // ReplicationInfoPB replication_info.
     ASSERT_TRUE(resp.has_replication_info());
     ASSERT_TRUE(resp.replication_info().has_live_replicas());
