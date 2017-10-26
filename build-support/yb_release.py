@@ -26,7 +26,7 @@ from subprocess import call
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.release_manager import ReleaseManager
 from ybops.utils import init_env, log_message, RELEASE_EDITION_ALLOWED_VALUES, \
-    RELEASE_EDITION_ENTERPRISE
+    RELEASE_EDITION_ENTERPRISE, RELEASE_EDITION_COMMUNITY
 from yb.library_packager import LibraryPackager
 
 
@@ -58,8 +58,14 @@ def main():
     yb_distribution_dir = os.path.join(tmp_dir, 'yb_distribution')
 
     os.chdir(repository_root)
-    build_cmd_line = "./yb_build.sh {} --with-assembly --write-build-descriptor {} {}".format(
-            args.build_type, build_desc_path, args.build_args).strip()
+    build_edition = "enterprise" if args.edition == RELEASE_EDITION_ENTERPRISE else "community"
+    build_cmd_list = [
+        "./yb_build.sh", args.build_type, "--with-assembly",
+        "--write-build-descriptor", build_desc_path,
+        "--edition", build_edition,
+        args.build_args
+        ]
+    build_cmd_line = " ".join(build_cmd_list).strip()
     log_message(logging.INFO, "Build command line: {}".format(build_cmd_line))
     if call(build_cmd_line, shell=True) != 0:
         raise RuntimeError('Build failed')
