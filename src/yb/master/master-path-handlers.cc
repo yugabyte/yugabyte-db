@@ -50,8 +50,11 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/webui_util.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/version_info.h"
+#include "yb/util/version_info.pb.h"
 
 namespace yb {
 
@@ -126,11 +129,11 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   vector<std::shared_ptr<TSDescriptor> > descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
 
-  *output << "<h1>Tablet Servers</h1>\n";
+  *output << "<h2>Tablet Servers</h2>\n";
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>UUID</th><th>Time since heartbeat</th><th>Tablet "
-             "Load</th><th>Registration</th></tr>\n";
+  *output << "  <tr><th>Server UUID</th><th>Time since heartbeat</th><th>Load (Num Tablets)</th>"
+             "<th>Registration</th></tr>\n";
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
     TSRegistrationPB reg;
@@ -276,6 +279,94 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   HtmlOutputTasks(table->GetTasks(), output);
 }
 
+void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
+                                     stringstream* output) {
+
+  // First check if we are the master leader. If not, make a curl call to the master leader and
+  // return that as the UI payload.
+  vector<ServerEntryPB> masters;
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  if (!l.first_failed_status().ok()) {
+    do {
+      // List all the masters.
+      Status s = master_->ListMasters(&masters);
+      if (!s.ok()) {
+        s = s.CloneAndPrepend("Unable to list Masters");
+        LOG(WARNING) << s.ToString();
+        *output << "<h2>" << s.ToString() << "</h2>\n";
+        return;
+      }
+
+      // Find the URL of the current master leader.
+      string redirect;
+      for (const ServerEntryPB& master : masters) {
+        if (master.has_error()) {
+          // This will leave redirect empty and thus fail accordingly.
+          break;
+        }
+
+        if (master.role() == consensus::RaftPeerPB::LEADER) {
+          // URI already starts with a /, so none is needed between $1 and $2.
+          redirect = Substitute("http://$0:$1$2$3",
+                                master.registration().http_addresses(0).host(),
+                                master.registration().http_addresses(0).port(),
+                                req.redirect_uri,
+                                req.query_string.empty() ? "" : "?" + req.query_string);
+        }
+      }
+      // Fail if we were not able to find the current master leader.
+      if (redirect.empty()) {
+        break;
+      }
+      // Make a curl call to the current master leader and return that payload as the result of the
+      // web request.
+      EasyCurl curl;
+      faststring buf;
+      s = curl.FetchURL(redirect, &buf);
+      if (s.ok()) {
+        *output << buf.ToString();
+        return;
+      }
+    } while (0);
+
+    *output << "Cannot get Leader information to help you redirect...\n";
+    return;
+  }
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    return;
+  }
+
+  // Display the overview information.
+  *output << "<h2> Overview </h2>\n";
+  *output << "<table class='table table-striped'>\n";
+  VersionInfoPB version_info;
+  VersionInfo::GetVersionInfoPB(&version_info);
+  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+                          "Universe UUID ", config.cluster_uuid());
+  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+                          "Default Replication Factor ", masters.size());
+  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+                          "Num Nodes (TServers) ", master_->ts_manager()->GetCount());
+  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+                          "YugaByte Version ", version_info.version_string());
+  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+                          "Build Type ", version_info.build_type());
+  (*output) << "</table>";
+  (*output) << "<hr/>\n";
+
+  // Display the master info.
+  HandleMasters(req, output);
+  (*output) << "<hr/>\n";
+
+  // Display the tablet server info.
+  HandleTabletServers(req, output);
+  (*output) << "<hr/>\n";
+}
+
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
                                        stringstream* output) {
   vector<ServerEntryPB> masters;
@@ -286,9 +377,9 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     *output << "<h1>" << s.ToString() << "</h1>\n";
     return;
   }
-  *output << "<h1> Masters </h1>\n";
-  *output <<  "<table class='table table-striped'>\n";
-  *output <<  "  <tr><th>Registration</th><th>Role</th></tr>\n";
+  *output << "<h2> Masters </h2>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Master UUID</th><th>Current Role</th><th>Configuration</th></tr>\n";
 
   for (const ServerEntryPB& master : masters) {
     if (master.has_error()) {
@@ -302,8 +393,10 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
-    *output << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n", reg_text,
-                          master.has_role() ?  RaftPeerPB_Role_Name(master.role()) : "N/A");
+    *output << Substitute("  <tr><td>$0</td><td>$1</td><td><code>$2</code></td></tr>\n",
+                          reg_text,
+                          master.has_role() ?  RaftPeerPB_Role_Name(master.role()) : "N/A",
+                          EscapeForHtmlToString(master.registration().ShortDebugString()));
   }
 
   *output << "</table>";
@@ -496,6 +589,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
   // Cannot use auto with callbacks, as they won't properly deduce types with boost magic...
+  server->RegisterPathHandler(
+    "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
+    is_on_nav_bar);
+
   Webserver::PathHandlerCallback cb =
       std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
   server->RegisterPathHandler(
