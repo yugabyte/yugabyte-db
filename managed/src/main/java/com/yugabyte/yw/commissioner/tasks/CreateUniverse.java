@@ -62,6 +62,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
+      // Override master flags if necessary
+      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.MASTER);
+      // Override tserver flags if necessary
+      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
+
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(
           taskParams().nodeDetailsSet);
