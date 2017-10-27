@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/tserver/tablet_server-test-base.h"
 #include "yb/tserver/backup.proxy.h"
 
@@ -50,7 +52,8 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   {
     RpcController rpc;
     SCOPED_TRACE(req.DebugString());
-    ASSERT_NOK(backup_proxy_->CreateTabletSnapshot(req, &resp, &rpc));
+    ASSERT_OK(backup_proxy_->CreateTabletSnapshot(req, &resp, &rpc));
+    ASSERT_NOK(StatusFromPB(resp.error().status()));
   }
 
   req.set_tablet_id(kTabletId);
