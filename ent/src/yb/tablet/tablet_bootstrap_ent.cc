@@ -30,7 +30,7 @@ Status TabletBootstrap::PlayCreateTabletSnapshotRequest(ReplicateMsg* replicate_
                                                         const CommitMsg* commit_msg) {
   CreateTabletSnapshotRequestPB* snapshot = replicate_msg->mutable_snapshot_request();
 
-  SnapshotOperationState tx_state(nullptr, snapshot, nullptr);
+  SnapshotOperationState tx_state(nullptr, snapshot);
 
   RETURN_NOT_OK(tablet_->PrepareForCreateSnapshot(&tx_state));
 

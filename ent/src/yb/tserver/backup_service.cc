@@ -28,6 +28,15 @@ void TabletServiceBackupImpl::CreateTabletSnapshot(const CreateTabletSnapshotReq
     return;
   }
 
+  if (!req->has_tablet_id()) {
+    auto status = STATUS(InvalidArgument, "Tablet id missing");
+    SetupErrorAndRespond(
+        resp->mutable_error(), status, TabletServerErrorPB_Code_UNKNOWN_ERROR, &context);
+    return;
+  }
+
+  server::UpdateClock(*req, tablet_manager_->server()->Clock());
+
   TRACE_EVENT1("tserver", "CreateTabletSnapshot",
                "tablet_id: ", req->tablet_id());
 
@@ -41,10 +50,11 @@ void TabletServiceBackupImpl::CreateTabletSnapshot(const CreateTabletSnapshotReq
     return;
   }
 
-  auto tx_state = std::make_unique<SnapshotOperationState>(tablet_peer.get(), req, resp);
+  auto tx_state = std::make_unique<SnapshotOperationState>(tablet_peer.get(), req);
 
-  tx_state->set_completion_callback(MakeRpcOperationCompletionCallback(std::move(context),
-                                                                       resp));
+  auto clock = tablet_manager_->server()->Clock();
+  tx_state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
   // Submit the create snapshot op. The RPC will be responded to asynchronously.
   tablet_peer->Submit(
