@@ -43,9 +43,9 @@ export default class NodeDetails extends Component {
 
   checkTasksForUniverseCreated() {
     const { universe: { universeTasks }, uuid } = this.props;
-    return universeTasks.data[uuid].find((task) => {
+    return isNonEmptyArray(universeTasks.data[uuid]) ? universeTasks.data[uuid].find((task) => {
       return task.type === 'Create' && task.target === 'Universe' && task.status === 'Success';
-    });
+    }) : null;
   }
 
   deleteNode(node) {
