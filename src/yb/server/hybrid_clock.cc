@@ -303,28 +303,22 @@ void HybridClock::NowWithErrorUnlocked(HybridTime *hybrid_time, uint64_t *max_er
   next_logical_++;
 }
 
-Status HybridClock::Update(const HybridTime& to_update) {
+void HybridClock::Update(const HybridTime& to_update) {
+  if (!to_update.is_valid()) {
+    return;
+  }
+
   std::lock_guard<simple_spinlock> lock(lock_);
   HybridTime now;
   uint64_t error_ignored;
   NowWithErrorUnlocked(&now, &error_ignored);
 
-  if (PREDICT_TRUE(now.CompareTo(to_update) > 0)) return Status::OK();
-
-  uint64_t to_update_physical = GetPhysicalValueMicros(to_update);
-  uint64_t to_update_logical = GetLogicalValue(to_update);
-  uint64_t now_physical = GetPhysicalValueMicros(now);
-
-  // we won't update our clock if to_update is more than 'max_clock_sync_error_usec'
-  // into the future as it might have been corrupted or originated from an out-of-sync
-  // server.
-  if(!CheckClockSyncError(to_update_physical - now_physical).ok()) {
-    return STATUS(InvalidArgument, "Tried to update clock beyond the max. error.");
+  if (PREDICT_TRUE(now.CompareTo(to_update) > 0)) {
+    return;
   }
 
-  last_usec_ = to_update_physical;
-  next_logical_ = to_update_logical + 1;
-  return Status::OK();
+  last_usec_ = GetPhysicalValueMicros(to_update);
+  next_logical_ = GetLogicalValue(to_update) + 1;
 }
 
 bool HybridClock::SupportsExternalConsistencyMode(ExternalConsistencyMode mode) {

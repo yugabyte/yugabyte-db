@@ -67,6 +67,7 @@ class TransactionCoordinatorContext {
   virtual consensus::Consensus::LeaderStatus LeaderStatus() const = 0;
   virtual HybridTime LastCommittedHybridTime() const = 0;
 
+  virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState> state) = 0;

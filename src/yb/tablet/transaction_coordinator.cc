@@ -682,9 +682,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
             nullptr /* remote_tablet */,
             context_.client_future().get().get(),
             &req,
-            [this, handle](const Status& status) {
+            [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
+              if (propagated_hybrid_time.is_valid()) {
+                context_.UpdateClock(propagated_hybrid_time);
+              }
               rpcs_.Unregister(handle);
-              LOG_IF(WARNING, !status.ok()) << "Failed to send apply: " << status.ToString();
+              LOG_IF(WARNING, !status.ok()) << "Failed to send apply: " << status;
             });
         (**handle).SendRpc();
       }

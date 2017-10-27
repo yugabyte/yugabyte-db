@@ -35,9 +35,12 @@
 
 #include <string>
 
+#include "yb/common/clock.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
@@ -56,7 +59,7 @@ namespace server {
 //     i.e. for any two calls, i.e. Now returns timestamp1 and timestamp2, it must
 //     hold that timestamp1 < timestamp2.
 // 2 - Update() must never set the clock backwards (corollary of 1)
-class Clock : public RefCountedThreadSafe<Clock> {
+class Clock : public ClockBase {
  public:
 
   // Initializes the clock.
@@ -85,7 +88,7 @@ class Clock : public RefCountedThreadSafe<Clock> {
   // if elected leader, they are guaranteed to generate timestamps
   // higher than the timestamp of the last transaction accepted from the
   // leader.
-  virtual CHECKED_STATUS Update(const HybridTime& to_update) = 0;
+  virtual void Update(const HybridTime& to_update) = 0;
 
   // Waits until the clock on all machines has advanced past 'then'.
   // Can also be used to implement 'external consistency' in the same sense as
@@ -110,6 +113,18 @@ class Clock : public RefCountedThreadSafe<Clock> {
 
   virtual ~Clock() {}
 };
+
+typedef scoped_refptr<Clock> ClockPtr;
+
+template <class Request>
+void UpdateClock(const Request& request, Clock* clock) {
+  // If the client sent us a hybrid_time, decode it and update the clock so that all future
+  // hybrid_times are greater than the passed hybrid_time.
+  if (!request.has_propagated_hybrid_time()) {
+    return;
+  }
+  clock->Update(HybridTime(request.propagated_hybrid_time()));
+}
 
 } // namespace server
 } // namespace yb

@@ -462,6 +462,8 @@ void AsyncAlterTable::HandleResponse(int attempt) {
     VLOG(1) << "TS " << permanent_uuid() << ": alter complete on tablet " << tablet_->ToString();
   }
 
+  server::UpdateClock(resp_, master_->clock());
+
   if (state() == kStateComplete) {
     // TODO: proper error handling here.
     CHECK_OK(master_->catalog_manager()->HandleTabletSchemaVersionReport(
@@ -480,6 +482,7 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   req.set_new_table_name(l->data().pb.name());
   req.set_schema_version(l->data().pb.version());
   req.mutable_schema()->CopyFrom(l->data().pb.schema());
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
   schema_version_ = l->data().pb.version();
 
   l->Unlock();

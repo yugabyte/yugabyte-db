@@ -19,9 +19,12 @@
 #include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
 #include <boost/uuid/uuid.hpp>
+#include <boost/uuid/nil_generator.hpp>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -94,6 +97,28 @@ struct TransactionOperationContext {
 };
 
 typedef boost::optional<TransactionOperationContext> TransactionOperationContextOpt;
+
+struct TransactionMetadata {
+  TransactionId transaction_id = boost::uuids::nil_uuid();
+  IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
+  TabletId status_tablet;
+  uint64_t priority;
+
+  // Used for snapshot isolation (as read time and for conflict resolution).
+  HybridTime start_time;
+
+  static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
+
+  void ToPB(TransactionMetadataPB* source) const;
+};
+
+bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs);
+
+inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
+  return !(lhs == rhs);
+}
+
+std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
 
 } // namespace yb
 

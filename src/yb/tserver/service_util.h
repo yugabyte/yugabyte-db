@@ -131,10 +131,16 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
 template<class Response>
 class RpcOperationCompletionCallback : public tablet::OperationCompletionCallback {
  public:
-  RpcOperationCompletionCallback(rpc::RpcContext context, Response* const response)
-      : context_(std::move(context)), response_(response) {}
+  RpcOperationCompletionCallback(
+      rpc::RpcContext context,
+      Response* const response,
+      const server::ClockPtr& clock)
+      : context_(std::move(context)), response_(response), clock_(clock) {}
 
   void OperationCompleted() override {
+    if (clock_) {
+      response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
+    }
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, &context_);
     } else {
@@ -150,13 +156,16 @@ class RpcOperationCompletionCallback : public tablet::OperationCompletionCallbac
 
   rpc::RpcContext context_;
   Response* const response_;
+  server::ClockPtr clock_;
 };
 
 template<class Response>
 std::unique_ptr<tablet::OperationCompletionCallback> MakeRpcOperationCompletionCallback(
     rpc::RpcContext context,
-    Response* response) {
-  return std::make_unique<RpcOperationCompletionCallback<Response>>(std::move(context), response);
+    Response* response,
+    const server::ClockPtr& clock) {
+  return std::make_unique<RpcOperationCompletionCallback<Response>>(
+      std::move(context), response, clock);
 }
 
 }  // namespace tserver

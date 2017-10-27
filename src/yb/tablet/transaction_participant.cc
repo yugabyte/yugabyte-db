@@ -48,8 +48,12 @@ namespace {
 
 class RunningTransaction {
  public:
-  explicit RunningTransaction(TransactionMetadata metadata, rpc::Rpcs* rpcs)
-      : metadata_(std::move(metadata)), rpcs_(*rpcs),
+  RunningTransaction(TransactionMetadata metadata,
+                     rpc::Rpcs* rpcs,
+                     TransactionParticipantContext* context)
+      : metadata_(std::move(metadata)),
+        rpcs_(*rpcs),
+        context_(*context),
         get_status_handle_(rpcs->InvalidHandle()),
         abort_handle_(rpcs->InvalidHandle()) {
   }
@@ -97,6 +101,7 @@ class RunningTransaction {
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    req.set_propagated_hybrid_time(context_.Now().ToUint64());
     rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             deadline,
@@ -120,17 +125,14 @@ class RunningTransaction {
     tserver::AbortTransactionRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+    req.set_propagated_hybrid_time(context_.Now().ToUint64());
     rpcs_.RegisterAndStart(
         client::AbortTransaction(
             deadline,
             nullptr /* tablet */,
             client,
             &req,
-            std::bind(&RunningTransaction::AbortReceived,
-                      this,
-                      _1,
-                      _2,
-                      lock->mutex())),
+            std::bind(&RunningTransaction::AbortReceived, this, _1, _2, lock->mutex())),
         &abort_handle_);
   }
 
@@ -160,6 +162,10 @@ class RunningTransaction {
   void StatusReceived(const Status& status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       std::mutex* mutex) const {
+    if (response.has_propagated_hybrid_time()) {
+      context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
+    }
+
     rpcs_.Unregister(&get_status_handle_);
     decltype(status_waiters_) status_waiters;
     HybridTime time;
@@ -218,6 +224,10 @@ class RunningTransaction {
   void AbortReceived(const Status& status,
                      const tserver::AbortTransactionResponsePB& response,
                      std::mutex* mutex) const {
+    if (response.has_propagated_hybrid_time()) {
+      context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
+    }
+
     decltype(abort_waiters_) abort_waiters;
     {
       std::lock_guard<std::mutex> lock(*mutex);
@@ -232,6 +242,7 @@ class RunningTransaction {
 
   TransactionMetadata metadata_;
   rpc::Rpcs& rpcs_;
+  TransactionParticipantContext& context_;
   HybridTime local_commit_time_ = HybridTime::kInvalidHybridTime;
 
   struct StatusWaiter {
@@ -248,33 +259,6 @@ class RunningTransaction {
 };
 
 } // namespace
-
-Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
-  TransactionMetadata result;
-  auto id = FullyDecodeTransactionId(source.transaction_id());
-  RETURN_NOT_OK(id);
-  result.transaction_id = *id;
-  result.isolation = source.isolation();
-  result.status_tablet = source.status_tablet();
-  result.priority = source.priority();
-  result.start_time = HybridTime(source.start_hybrid_time());
-  return result;
-}
-
-bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
-  return lhs.transaction_id == rhs.transaction_id &&
-         lhs.isolation == rhs.isolation &&
-         lhs.status_tablet == rhs.status_tablet &&
-         lhs.priority == rhs.priority &&
-         lhs.start_time == rhs.start_time;
-}
-
-std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
-  return out << Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 "
-                           "start_time: $4",
-                       metadata.transaction_id, IsolationLevel_Name(metadata.isolation),
-                       metadata.status_tablet, metadata.priority, metadata.start_time);
-}
 
 class TransactionParticipant::Impl {
  public:
@@ -298,7 +282,7 @@ class TransactionParticipant::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
-        transactions_.emplace(*metadata, &rpcs_);
+        transactions_.emplace(*metadata, &rpcs_, &context_);
         store = true;
       } else {
         DCHECK_EQ(it->metadata(), *metadata);
@@ -389,9 +373,10 @@ class TransactionParticipant::Impl {
             nullptr /* remote_tablet */,
             client(),
             &req,
-            [this, handle](const Status& status) {
+            [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
+              context_.UpdateClock(propagated_hybrid_time);
               rpcs_.Unregister(handle);
-              LOG_IF(WARNING, !status.ok()) << "Failed to send applied: " << status.ToString();
+              LOG_IF(WARNING, !status.ok()) << "Failed to send applied: " << status;
             });
         (**handle).SendRpc();
       }
@@ -428,7 +413,7 @@ class TransactionParticipant::Impl {
       if (metadata_pb.ParseFromArray(iter->value().cdata(), iter->value().size())) {
         auto metadata = TransactionMetadata::FromPB(metadata_pb);
         if (metadata.ok()) {
-          it = transactions_.emplace(std::move(*metadata), &rpcs_).first;
+          it = transactions_.emplace(std::move(*metadata), &rpcs_, &context_).first;
         } else {
           LOG(DFATAL) << "Loaded bad metadata: " << metadata.status();
         }

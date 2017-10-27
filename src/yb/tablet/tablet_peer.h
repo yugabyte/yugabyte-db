@@ -67,6 +67,7 @@ class LogAnchorRegistry;
 
 namespace tserver {
 class CatchUpServiceTest;
+class UpdateTransactionResponsePB;
 }
 
 class MaintenanceManager;
@@ -133,6 +134,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   CHECKED_STATUS SubmitWrite(std::unique_ptr<WriteOperationState> operation_state);
 
   void Submit(std::unique_ptr<Operation> operation);
+
+  HybridTime Now() override;
+
+  void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
       tserver::TransactionStatePB* request) override;

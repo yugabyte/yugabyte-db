@@ -61,8 +61,8 @@ class MvccTest : public YBTest {
 
   void WaitForSnapshotAtTSThread(MvccManager* mgr, HybridTime ht) {
     MvccSnapshot s;
-    CHECK_OK(mgr->WaitForCleanSnapshotAtHybridTime(ht, &s, MonoTime::Max()));
-    CHECK(s.is_clean()) << "verifying postcondition";
+    ASSERT_OK(mgr->WaitForCleanSnapshotAtHybridTime(ht, &s, MonoTime::Max()));
+    ASSERT_TRUE(s.is_clean()) << "verifying postcondition";
     std::lock_guard<simple_spinlock> lock(lock_);
     result_snapshot_.reset(new MvccSnapshot(s));
   }
@@ -228,7 +228,7 @@ TEST_F(MvccTest, TestOfflineOperations) {
   MvccManager mgr(clock_.get());
 
   // set the clock to some time in the "future"
-  ASSERT_OK(clock_->Update(HybridTime(100)));
+  clock_->Update(HybridTime(100));
 
   // now start a transaction in the "past"
   ASSERT_OK(mgr.StartOperationAtHybridTime(HybridTime(50)));
@@ -543,10 +543,10 @@ TEST_F(MvccTest, TestTxnAbort) {
 TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineOperations) {
 
   MvccManager mgr(clock_.get());
-  CHECK_OK(clock_->Update(HybridTime(20)));
+  clock_->Update(HybridTime(20));
 
-  CHECK_OK(mgr.StartOperationAtHybridTime(HybridTime(10)));
-  CHECK_OK(mgr.StartOperationAtHybridTime(HybridTime(15)));
+  ASSERT_OK(mgr.StartOperationAtHybridTime(HybridTime(10)));
+  ASSERT_OK(mgr.StartOperationAtHybridTime(HybridTime(15)));
   mgr.OfflineAdjustSafeTime(HybridTime(15));
 
   mgr.StartApplyingOperation(HybridTime(15));
@@ -581,7 +581,7 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
     "Trying to commit a transaction with a future hybrid_time|"
     "Trying to remove hybrid_time which isn't in the in-flight set: 1");
 
-  CHECK_OK(clock_->Update(HybridTime(20)));
+  clock_->Update(HybridTime(20));
 
   EXPECT_DEATH({
       mgr.CommitOperation(HybridTime(1));

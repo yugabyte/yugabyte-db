@@ -394,6 +394,14 @@ void TabletPeer::SubmitUpdateTransaction(std::unique_ptr<UpdateTxnOperationState
   Submit(std::make_unique<tablet::UpdateTxnOperation>(std::move(state), consensus::LEADER));
 }
 
+HybridTime TabletPeer::Now() {
+  return clock_->Now();
+}
+
+void TabletPeer::UpdateClock(HybridTime hybrid_time) {
+  clock_->Update(hybrid_time);
+}
+
 std::unique_ptr<UpdateTxnOperationState> TabletPeer::CreateUpdateTransactionState(
     tserver::TransactionStatePB* request) {
   auto result = std::make_unique<UpdateTxnOperationState>(this);
@@ -611,7 +619,7 @@ Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& ro
   state->set_consensus_round(round);
   HybridTime ht(replicate_msg->hybrid_time());
   state->set_hybrid_time(ht);
-  RETURN_NOT_OK(clock_->Update(ht));
+  clock_->Update(ht);
 
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());

@@ -19,11 +19,13 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/yb_op-internal.h"
 
+#include "yb/common/wire_protocol.h"
+#include "yb/common/row_operations.h"
+#include "yb/common/transaction.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/common/row_operations.h"
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
@@ -129,7 +131,7 @@ void AsyncRpc::SendRpcCb(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
     ProcessResponseFromTserver(new_status);
-    batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status);
+    batcher_->RemoveInFlightOpsAfterFlushing(ops_, new_status, PropagatedHybridTime());
     batcher_->CheckForFinishedFlush();
     retained_self_.reset();
   }
@@ -194,8 +196,9 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const auto& transaction = batcher->transaction_metadata();
-  if (transaction.has_transaction_id()) {
-    *req_.mutable_write_batch()->mutable_transaction() = transaction;
+  if (!transaction.transaction_id.is_nil()) {
+    transaction.ToPB(req_.mutable_write_batch()->mutable_transaction());
+    req_.set_propagated_hybrid_time(batcher->propagated_hybrid_time().ToUint64());
   }
 
   switch (batcher->external_consistency_mode()) {
@@ -417,9 +420,10 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
+  req_.set_propagated_hybrid_time(batcher->propagated_hybrid_time().ToUint64());
   const auto& transaction = batcher->transaction_metadata();
-  if (transaction.has_transaction_id()) {
-    *req_.mutable_transaction() = transaction;
+  if (!transaction.transaction_id.is_nil()) {
+    transaction.ToPB(req_.mutable_transaction());
   }
   int ctr = 0;
   for (auto& op : ops_) {

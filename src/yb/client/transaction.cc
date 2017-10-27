@@ -55,14 +55,15 @@ class YBTransaction::Impl final {
   Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
       : manager_(manager),
         transaction_(transaction),
-        isolation_(isolation),
-        priority_(RandomUniformInt<uint64_t>()),
-        id_(GenerateTransactionId()),
-        start_time_(manager->Now()),
-        log_prefix_(Format("$0: ", to_string(id_))),
+        metadata_{GenerateTransactionId(),
+                  isolation,
+                  TabletId(),
+                  RandomUniformInt<uint64_t>(),
+                  manager->Now()},
+        log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
         heartbeat_handle_(manager->rpcs().InvalidHandle()),
         commit_handle_(manager->rpcs().InvalidHandle()) {
-    VLOG_WITH_PREFIX(1) << "Started, isolation level: " << IsolationLevel_Name(isolation_);
+    VLOG_WITH_PREFIX(1) << "Started, isolation level: " << metadata_;
   }
 
   ~Impl() {
@@ -71,7 +72,11 @@ class YBTransaction::Impl final {
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionMetadataPB* metadata) {
+               TransactionMetadata* metadata,
+               HybridTime* propagated_hybrid_time) {
+    CHECK_NOTNULL(metadata);
+    CHECK_NOTNULL(propagated_hybrid_time);
+
     VLOG_WITH_PREFIX(1) << "Prepare";
 
     bool has_tablets_without_parameters = false;
@@ -97,18 +102,19 @@ class YBTransaction::Impl final {
       }
     }
 
-    metadata->set_transaction_id(id_.begin(), id_.size());
+    *propagated_hybrid_time = manager_->Now();
     if (has_tablets_without_parameters) {
-      metadata->set_isolation(isolation_);
-      metadata->set_priority(priority_);
-      metadata->set_status_tablet(status_tablet_->tablet_id());
-      metadata->set_start_hybrid_time(start_time_.ToUint64());
+      *metadata = metadata_;
+    } else {
+      metadata->transaction_id = metadata_.transaction_id;
     }
     return true;
   }
 
-  void Flushed(const internal::InFlightOps& ops, const Status& status) {
+  void Flushed(
+      const internal::InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time) {
     if (status.ok()) {
+      manager_->UpdateClock(propagated_hybrid_time);
       std::lock_guard<std::mutex> lock(mutex_);
       TabletStates::iterator it = tablets_.end();
       for (const auto& op : ops) {
@@ -160,11 +166,11 @@ class YBTransaction::Impl final {
   }
 
   std::string ToString() const {
-    return Format("Transaction: $0", id_);
+    return Format("Transaction: $0", metadata_.transaction_id);
   }
 
   const TransactionId& id() {
-    return id_;
+    return metadata_.transaction_id;
   }
 
  private:
@@ -178,7 +184,7 @@ class YBTransaction::Impl final {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet_->tablet_id());
     auto& state = *req.mutable_state();
-    state.set_transaction_id(id_.begin(), id_.size());
+    state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     state.set_status(TransactionStatus::COMMITTED);
     for (const auto& tablet : tablets_) {
       state.add_tablets(tablet.first);
@@ -190,13 +196,16 @@ class YBTransaction::Impl final {
             status_tablet_.get(),
             manager_->client().get(),
             &req,
-            std::bind(&Impl::CommitDone, this, _1, transaction)),
+            std::bind(&Impl::CommitDone, this, _1, _2, transaction)),
         &commit_handle_);
   }
 
-  void CommitDone(const Status& status, const YBTransactionPtr& transaction) {
-    VLOG_WITH_PREFIX(1) << "Committed: " << status.ToString();
+  void CommitDone(const Status& status,
+                  HybridTime propagated_hybrid_time,
+                  const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Committed: " << status;
 
+    manager_->UpdateClock(propagated_hybrid_time);
     manager_->rpcs().Unregister(&commit_handle_);
     commit_callback_(status);
   }
@@ -232,6 +241,7 @@ class YBTransaction::Impl final {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       status_tablet_ = std::move(status_tablet_holder_);
+      metadata_.status_tablet = status_tablet_->tablet_id();
     }
     SendHeartbeat(TransactionStatus::CREATED, transaction_->shared_from_this());
   }
@@ -243,14 +253,14 @@ class YBTransaction::Impl final {
 
     if (status != TransactionStatus::CREATED &&
         GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
-      HeartbeatDone(Status::OK(), status, transaction);
+      HeartbeatDone(Status::OK(), HybridTime::kInvalidHybridTime, status, transaction);
       return;
     }
 
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet_->tablet_id());
     auto& state = *req.mutable_state();
-    state.set_transaction_id(id_.begin(), id_.size());
+    state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     state.set_status(status);
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
@@ -258,13 +268,15 @@ class YBTransaction::Impl final {
             status_tablet_.get(),
             manager_->client().get(),
             &req,
-            std::bind(&Impl::HeartbeatDone, this, _1, status, transaction)),
+            std::bind(&Impl::HeartbeatDone, this, _1, _2, status, transaction)),
         &heartbeat_handle_);
   }
 
   void HeartbeatDone(const Status& status,
+                     HybridTime propagated_hybrid_time,
                      TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction) {
+    manager_->UpdateClock(propagated_hybrid_time);
     manager_->rpcs().Unregister(&heartbeat_handle_);
 
     if (status.ok()) {
@@ -277,7 +289,7 @@ class YBTransaction::Impl final {
           waiters_.swap(waiters);
         }
         for (const auto& waiter : waiters) {
-          waiter(status);
+          waiter(Status::OK());
         }
       }
       manager_->client()->messenger()->scheduler().Schedule(
@@ -309,12 +321,7 @@ class YBTransaction::Impl final {
   // Transaction related to this impl.
   YBTransaction* const transaction_;
 
-  const IsolationLevel isolation_;
-  const uint64_t priority_;
-  const TransactionId id_;
-
-  // Used for snapshot isolation (as read time and for conflict resolution).
-  HybridTime start_time_;
+  TransactionMetadata metadata_;
 
   const std::string log_prefix_;
   bool requested_status_tablet_ = false;
@@ -353,12 +360,14 @@ YBTransaction::~YBTransaction() {
 
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                             Waiter waiter,
-                            TransactionMetadataPB* metadata) {
-  return impl_->Prepare(ops, std::move(waiter), metadata);
+                            TransactionMetadata* metadata,
+                            HybridTime* propagated_hybrid_time) {
+  return impl_->Prepare(ops, std::move(waiter), metadata, propagated_hybrid_time);
 }
 
-void YBTransaction::Flushed(const internal::InFlightOps& ops, const Status& status) {
-  impl_->Flushed(ops, status);
+void YBTransaction::Flushed(
+    const internal::InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time) {
+  impl_->Flushed(ops, status, propagated_hybrid_time);
 }
 
 void YBTransaction::Commit(CommitCallback callback) {

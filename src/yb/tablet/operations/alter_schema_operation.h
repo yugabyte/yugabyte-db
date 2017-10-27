@@ -58,19 +58,17 @@ class AlterSchemaOperationState : public OperationState {
   }
 
   AlterSchemaOperationState(TabletPeer* tablet_peer,
-                            const tserver::AlterSchemaRequestPB* request = nullptr,
-                            tserver::AlterSchemaResponsePB* response = nullptr)
+                            const tserver::AlterSchemaRequestPB* request = nullptr)
       : OperationState(tablet_peer),
         schema_(nullptr),
-        request_(request),
-        response_(response) {
+        request_(request) {
   }
 
   const tserver::AlterSchemaRequestPB* request() const override { return request_; }
+
   void UpdateRequestFromConsensusRound() override {
     request_ = consensus_round()->replicate_msg()->mutable_alter_schema_request();
   }
-  tserver::AlterSchemaResponsePB* response() override { return response_; }
 
   void set_schema(const Schema* schema) { schema_ = schema; }
   const Schema* schema() const { return schema_; }
@@ -93,12 +91,11 @@ class AlterSchemaOperationState : public OperationState {
   // Crashes if the lock was not already acquired.
   void ReleaseSchemaLock();
 
-  // Note: request_ and response_ are set to NULL after this method returns.
+  // Note: request_ is set to NULL after this method returns.
   void Finish() {
     // Make the request NULL since after this transaction commits
     // the request may be deleted at any moment.
-    request_ = NULL;
-    response_ = NULL;
+    request_ = nullptr;
   }
 
   virtual std::string ToString() const override;
@@ -110,7 +107,6 @@ class AlterSchemaOperationState : public OperationState {
 
   // The original RPC request and response.
   const tserver::AlterSchemaRequestPB *request_;
-  tserver::AlterSchemaResponsePB *response_;
 
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;

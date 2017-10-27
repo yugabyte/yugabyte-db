@@ -61,7 +61,7 @@ TEST_F(LogicalClockTest, TestNow_ValuesIncreaseMonotonically) {
 TEST_F(LogicalClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   HybridTime initial = clock_->Now();
   HybridTime future(initial.value() + 10);
-  ASSERT_OK(clock_->Update(future));
+  clock_->Update(future);
   HybridTime now = clock_->Now();
   // now should be 1 after future
   ASSERT_EQ(initial.value() + 11, now.value());
@@ -71,7 +71,7 @@ TEST_F(LogicalClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
 TEST_F(LogicalClockTest, TestUpdate_LogicalValueDoesNotIncrease) {
   HybridTime ht(1);
   // update the clock to 1, the initial value, should do nothing
-  ASSERT_OK(clock_->Update(ht));
+  clock_->Update(ht);
   HybridTime now = clock_->Now();
   ASSERT_EQ(now.value(), 2);
 }
@@ -90,7 +90,7 @@ TEST_F(LogicalClockTest, TestIsAfter) {
   // handles "IsAfter" properly even when it's running in
   // "logical" mode.
   HybridTime now_increased = HybridTime(1000);
-  ASSERT_OK(clock_->Update(now_increased));
+  clock_->Update(now_increased);
   HybridTime ht2 = clock_->Now();
 
   ASSERT_TRUE(clock_->IsAfter(ht1));

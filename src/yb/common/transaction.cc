@@ -47,4 +47,43 @@ Result<TransactionId> DecodeTransactionId(Slice* slice) {
   return id;
 }
 
+Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
+  TransactionMetadata result;
+  auto id = FullyDecodeTransactionId(source.transaction_id());
+  RETURN_NOT_OK(id);
+  result.transaction_id = *id;
+  if (source.has_isolation()) {
+    result.isolation = source.isolation();
+    result.status_tablet = source.status_tablet();
+    result.priority = source.priority();
+    result.start_time = HybridTime(source.start_hybrid_time());
+  }
+  return result;
+}
+
+void TransactionMetadata::ToPB(TransactionMetadataPB* source) const {
+  source->set_transaction_id(transaction_id.data, transaction_id.size());
+  if (isolation != IsolationLevel::NON_TRANSACTIONAL) {
+    source->set_isolation(isolation);
+    source->set_status_tablet(status_tablet);
+    source->set_priority(priority);
+    source->set_start_hybrid_time(start_time.ToUint64());
+  }
+}
+
+bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
+  return lhs.transaction_id == rhs.transaction_id &&
+         lhs.isolation == rhs.isolation &&
+         lhs.status_tablet == rhs.status_tablet &&
+         lhs.priority == rhs.priority &&
+         lhs.start_time == rhs.start_time;
+}
+
+std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
+  return out << Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 "
+                           "start_time: $4",
+                       metadata.transaction_id, IsolationLevel_Name(metadata.isolation),
+                       metadata.status_tablet, metadata.priority, metadata.start_time);
+}
+
 } // namespace yb

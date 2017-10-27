@@ -137,7 +137,7 @@ struct UpdateTransactionTraits {
 
   static void CallCallback(
       const Callback& callback, const Status& status, const Response& response) {
-    callback(status);
+    callback(status, internal::GetPropagatedHybridTime(response));
   }
 
   static void InvokeAsync(tserver::TabletServerServiceProxy* proxy,

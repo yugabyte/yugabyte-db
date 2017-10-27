@@ -129,7 +129,7 @@ class WriteOperationState : public OperationState {
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
-  tserver::WriteResponsePB *response() override {
+  tserver::WriteResponsePB *response() {
     return response_;
   }
 

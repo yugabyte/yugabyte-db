@@ -21,6 +21,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -31,12 +32,11 @@ namespace yb {
 namespace client {
 
 typedef std::function<void(const Result<std::string>&)> PickStatusTabletCallback;
-typedef std::function<HybridTime()> NowFunctor;
 
 // TransactionManager manages multiple transactions.
 class TransactionManager {
  public:
-  TransactionManager(const YBClientPtr& client, NowFunctor now);
+  TransactionManager(const YBClientPtr& client, const scoped_refptr<ClockBase>& clock);
   ~TransactionManager();
 
   void PickStatusTablet(PickStatusTabletCallback callback);
@@ -45,6 +45,7 @@ class TransactionManager {
   const YBClientPtr& client() const;
 
   HybridTime Now() const;
+  void UpdateClock(HybridTime time);
 
  private:
   class Impl;

@@ -277,7 +277,7 @@ class TabletBootstrap {
 
   // Decodes a HybridTime from the provided string and updates the clock
   // with it.
-  Status UpdateClock(uint64_t hybrid_time);
+  void UpdateClock(uint64_t hybrid_time);
 
   // Removes the recovery directory and all files contained therein.
   // Intended to be invoked after log replay successfully completes.

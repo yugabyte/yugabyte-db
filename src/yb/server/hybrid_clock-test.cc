@@ -113,7 +113,7 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   HybridTime now_increased = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(now_micros,
                                                                                   logical);
 
-  ASSERT_OK(clock_->Update(now_increased));
+  clock_->Update(now_increased);
 
   HybridTime now2 = clock_->Now();
   ASSERT_EQ(logical + 1, HybridClock::GetLogicalValue(now2));
@@ -212,7 +212,7 @@ TEST_F(HybridClockTest, TestIsAfter) {
   // "logical" mode.
   HybridTime now_increased = HybridClock::HybridTimeFromMicroseconds(
     HybridClock::GetPhysicalValueMicros(ht1) + 1 * 1000 * 1000);
-  ASSERT_OK(clock_->Update(now_increased));
+  clock_->Update(now_increased);
   HybridTime ht2 = clock_->Now();
 
   ASSERT_TRUE(clock_->IsAfter(ht1));
@@ -226,13 +226,13 @@ void StresserThread(HybridClock* clock, AtomicBool* stop) {
   HybridTime prev(0);;
   while (!stop->Load()) {
     HybridTime t = clock->Now();
-    CHECK_GT(t.value(), prev.value());
+    ASSERT_GT(t.value(), prev.value());
     prev = t;
 
     // Add a random bit of offset to the clock, and perform an update.
     HybridTime new_ht = HybridClock::AddPhysicalTimeToHybridTime(
         t, MonoDelta::FromMicroseconds(rng.Uniform(10000)));
-    CHECK_OK(clock->Update(new_ht));
+    clock->Update(new_ht);
   }
 }
 

@@ -39,9 +39,13 @@
 #include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+
+#include "yb/common/transaction.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -49,6 +53,7 @@
 #include "yb/util/status.h"
 
 namespace yb {
+
 namespace client {
 
 class YBClient;
@@ -140,8 +145,12 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   YBTransactionPtr transaction() const;
 
-  const TransactionMetadataPB& transaction_metadata() const {
+  const TransactionMetadata& transaction_metadata() const {
     return transaction_metadata_;
+  }
+
+  HybridTime propagated_hybrid_time() const {
+    return propagated_hybrid_time_;
   }
 
  private:
@@ -155,7 +164,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Add an op to the in-flight set and increment the ref-count.
   void AddInFlightOp(const InFlightOpPtr& op);
 
-  void RemoveInFlightOpsAfterFlushing(const InFlightOps& ops, const Status& status);
+  void RemoveInFlightOpsAfterFlushing(
+      const InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time);
 
     // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
@@ -261,7 +271,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
 
-  TransactionMetadataPB transaction_metadata_;
+  TransactionMetadata transaction_metadata_;
+  HybridTime propagated_hybrid_time_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

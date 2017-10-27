@@ -65,7 +65,7 @@ class LogicalClock : public Clock {
   // In the logical clock this call is equivalent to Now();
   virtual HybridTime NowLatest() override;
 
-  virtual CHECKED_STATUS Update(const HybridTime& to_update) override;
+  virtual void Update(const HybridTime& to_update) override;
 
   // The Wait*() functions are not available for this clock.
   virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,

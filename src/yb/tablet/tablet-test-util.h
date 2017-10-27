@@ -116,7 +116,7 @@ class YBTabletTest : public YBTest {
     tserver::AlterSchemaRequestPB req;
     req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
-    AlterSchemaOperationState operation_state(nullptr, &req, nullptr);
+    AlterSchemaOperationState operation_state(nullptr, &req);
     ASSERT_OK(tablet()->CreatePreparedAlterSchema(&operation_state, &schema));
     ASSERT_OK(tablet()->AlterSchema(&operation_state));
     operation_state.Finish();

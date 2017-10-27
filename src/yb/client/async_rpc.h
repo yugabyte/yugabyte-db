@@ -79,6 +79,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // stored in batcher. If there's a callback from the user, it is done in this step.
   virtual void ProcessResponseFromTserver(Status status) = 0;
 
+  // Return latest hybrid time that was present on tserver during processing of this request.
+  virtual HybridTime PropagatedHybridTime() = 0;
+
   void Failed(const Status& status) override;
 
   // Is this a local call?
@@ -122,6 +125,10 @@ class WriteRpc : public AsyncRpc {
 
   void ProcessResponseFromTserver(Status status) override;
 
+  HybridTime PropagatedHybridTime() override {
+    return GetPropagatedHybridTime(resp_);
+  }
+
   // Request body.
   tserver::WriteRequestPB req_;
 
@@ -148,6 +155,10 @@ class ReadRpc : public AsyncRpc {
 
   const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
+  }
+
+  HybridTime PropagatedHybridTime() override {
+    return GetPropagatedHybridTime(resp_);
   }
 
  protected:

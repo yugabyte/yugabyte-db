@@ -157,6 +157,13 @@ class TabletServiceImpl : public TabletServerServiceIf {
                                   rpc::RpcContext* context,
                                   std::shared_ptr<tablet::AbstractTablet>* tablet);
 
+  template<class Req, class Resp>
+  bool PrepareModify(const Req& req,
+                     Resp* resp,
+                     rpc::RpcContext* context,
+                     tablet::TabletPeerPtr* tablet_peer,
+                     tablet::TabletPtr* tablet);
+
   TabletServerIf *const server_;
 };
 

@@ -130,16 +130,21 @@ message ImportDataResponsePB {
 message UpdateTransactionRequestPB {
   optional bytes tablet_id = 1;
   optional TransactionStatePB state = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message UpdateTransactionResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
 }
 
 message GetTransactionStatusRequestPB {
   optional bytes tablet_id = 1;
   optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message GetTransactionStatusResponsePB {
@@ -149,11 +154,14 @@ message GetTransactionStatusResponsePB {
   optional TransactionStatus status = 2;
   // For description of status_hybrid_time see comment in TransactionStatusResult.
   optional fixed64 status_hybrid_time = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
 }
 
 message AbortTransactionRequestPB {
   optional bytes tablet_id = 1;
   optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message AbortTransactionResponsePB {
@@ -163,4 +171,6 @@ message AbortTransactionResponsePB {
   optional TransactionStatus status = 2;
   // For description of status_hybrid_time see comment in TransactionStatusResult.
   optional fixed64 status_hybrid_time = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
 }

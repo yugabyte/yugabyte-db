@@ -28,6 +28,9 @@
 
 namespace yb {
 
+class HybridTime;
+struct TransactionMetadata;
+
 namespace client {
 
 typedef std::function<void(const Status&)> Waiter;
@@ -46,10 +49,12 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // waiter, that will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionMetadataPB* metadata);
+               TransactionMetadata* metadata,
+               HybridTime* propagated_hybrid_time);
 
   // Notifies transaction that specified ops were flushed with some status.
-  void Flushed(const internal::InFlightOps& ops, const Status& status);
+  void Flushed(
+      const internal::InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time);
 
   // Commits this transaction.
   void Commit(CommitCallback callback);

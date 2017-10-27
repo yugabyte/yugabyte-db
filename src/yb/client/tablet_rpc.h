@@ -27,6 +27,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
@@ -129,6 +130,12 @@ class TabletInvoker {
 
 CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
+
+template <class Response>
+HybridTime GetPropagatedHybridTime(const Response& response) {
+  return response.has_propagated_hybrid_time() ? HybridTime(response.propagated_hybrid_time())
+                                               : HybridTime::kInvalidHybridTime;
+}
 
 } // namespace internal
 } // namespace client

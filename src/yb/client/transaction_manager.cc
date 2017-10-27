@@ -121,9 +121,9 @@ constexpr size_t kMaxWorkers = 50;
 
 class TransactionManager::Impl {
  public:
-  explicit Impl(const YBClientPtr& client, NowFunctor now)
+  explicit Impl(const YBClientPtr& client, const scoped_refptr<ClockBase>& clock)
       : client_(client),
-        now_(std::move(now)),
+        clock_(clock),
         thread_pool_("TransactionManager", kQueueLimit, kMaxWorkers),
         tasks_pool_(kQueueLimit) {}
 
@@ -142,12 +142,16 @@ class TransactionManager::Impl {
   }
 
   HybridTime Now() const {
-    return now_();
+    return clock_->Now();
+  }
+
+  void UpdateClock(HybridTime time) {
+    clock_->Update(time);
   }
 
  private:
   YBClientPtr client_;
-  NowFunctor now_;
+  scoped_refptr<ClockBase> clock_;
   std::atomic<bool> status_table_exists_{false};
   std::atomic<bool> closed_{false};
   yb::rpc::ThreadPool thread_pool_; // TODO async operations instead of pool
@@ -155,8 +159,9 @@ class TransactionManager::Impl {
   yb::rpc::Rpcs rpcs_;
 };
 
-TransactionManager::TransactionManager(const YBClientPtr& client, NowFunctor now)
-    : impl_(new Impl(client, std::move(now))) {}
+TransactionManager::TransactionManager(
+    const YBClientPtr& client, const scoped_refptr<ClockBase>& clock)
+    : impl_(new Impl(client, clock)) {}
 
 TransactionManager::~TransactionManager() {
 }
@@ -175,6 +180,10 @@ rpc::Rpcs& TransactionManager::rpcs() {
 
 HybridTime TransactionManager::Now() const {
   return impl_->Now();
+}
+
+void TransactionManager::UpdateClock(HybridTime time) {
+  impl_->UpdateClock(time);
 }
 
 } // namespace client

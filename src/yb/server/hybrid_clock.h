@@ -71,7 +71,7 @@ class HybridClock : public Clock {
   virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) override;
 
   // Updates the clock with a hybrid_time originating on another machine.
-  virtual CHECKED_STATUS Update(const HybridTime& to_update) override;
+  virtual void Update(const HybridTime& to_update) override;
 
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
 

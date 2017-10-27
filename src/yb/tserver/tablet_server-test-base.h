@@ -264,7 +264,7 @@ class TabletServerTestBase : public YBTest {
       }
       CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
       if (write_hybrid_times_collector) {
-        write_hybrid_times_collector->push_back(resp.hybrid_time());
+        write_hybrid_times_collector->push_back(resp.propagated_hybrid_time());
       }
 
       if (resp.has_error() || resp.per_row_errors_size() > 0) {

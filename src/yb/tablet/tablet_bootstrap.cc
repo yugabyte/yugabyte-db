@@ -510,7 +510,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   const ReplicateMsg& replicate = replicate_entry.replicate();
   RETURN_NOT_OK(state->CheckSequentialReplicateId(replicate));
   DCHECK(replicate.has_hybrid_time());
-  CHECK_OK(UpdateClock(replicate.hybrid_time()));
+  UpdateClock(replicate.hybrid_time());
 
   // This sets the monotonic counter to at least replicate.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate.monotonic_counter());
@@ -1074,7 +1074,7 @@ Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(alter_schema->schema(), &schema));
 
-  AlterSchemaOperationState operation_state(nullptr, alter_schema, nullptr);
+  AlterSchemaOperationState operation_state(nullptr, alter_schema);
 
   // TODO(KUDU-860): we should somehow distinguish if an alter table failed on its original
   // attempt (e.g due to being an invalid request, or a request with a too-early
@@ -1127,7 +1127,8 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg
                                                      const CommitMsg* commit_msg) {
   DCHECK(replicate_msg->has_hybrid_time());
 
-  UpdateTxnOperationState operation_state(nullptr, replicate_msg->mutable_transaction_state());
+  UpdateTxnOperationState operation_state(
+      nullptr, replicate_msg->mutable_transaction_state());
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
   operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
@@ -1325,11 +1326,8 @@ Status TabletBootstrap::FilterMutate(WriteOperationState* operation_state,
   return Status::OK();
 }
 
-Status TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
-  HybridTime ht;
-  RETURN_NOT_OK(ht.FromUint64(hybrid_time));
-  RETURN_NOT_OK(data_.clock->Update(ht));
-  return Status::OK();
+void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
+  data_.clock->Update(HybridTime(hybrid_time));
 }
 
 string TabletBootstrap::LogPrefix() const {

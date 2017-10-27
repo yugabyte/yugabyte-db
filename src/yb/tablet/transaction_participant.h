@@ -46,24 +46,6 @@ class TransactionMetadataPB;
 
 namespace tablet {
 
-struct TransactionMetadata {
-  TransactionId transaction_id; // 16 byte uuid
-  IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
-  TabletId status_tablet;
-  uint64_t priority;
-  HybridTime start_time;
-
-  static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
-};
-
-bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs);
-
-inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
-  return !(lhs == rhs);
-}
-
-std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
-
 class TransactionIntentApplier;
 
 struct TransactionApplyData {
@@ -89,6 +71,8 @@ class TransactionParticipantContext {
  public:
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
+  virtual HybridTime Now() = 0;
+  virtual void UpdateClock(HybridTime hybrid_time) = 0;
 
  protected:
   ~TransactionParticipantContext() {}

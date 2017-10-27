@@ -58,9 +58,6 @@ using consensus::DriverType;
 using log::Log;
 using server::Clock;
 
-static const char* kHybridTimeFieldName = "hybrid_time";
-
-
 ////////////////////////////////////////////////////////////
 // OperationDriver
 ////////////////////////////////////////////////////////////
@@ -437,7 +434,6 @@ void OperationDriver::ApplyTask() {
     if (commit_msg) {
       commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
     }
-    SetResponseHybridTime(operation_->state(), operation_->state()->hybrid_time());
 
     // If the client requested COMMIT_WAIT as the external consistency mode
     // calculate the latest that the prepare hybrid_time could be and wait
@@ -463,16 +459,6 @@ void OperationDriver::ApplyTask() {
     }
 
     Finalize();
-  }
-}
-
-void OperationDriver::SetResponseHybridTime(OperationState* operation_state,
-                                            const HybridTime& hybrid_time) {
-  google::protobuf::Message* response = operation_state->response();
-  if (response) {
-    const google::protobuf::FieldDescriptor* ts_field =
-        response->GetDescriptor()->FindFieldByName(kHybridTimeFieldName);
-    response->GetReflection()->SetUInt64(response, ts_field, hybrid_time.ToUint64());
   }
 }
 

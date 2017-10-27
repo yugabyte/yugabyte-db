@@ -405,7 +405,8 @@ void Batcher::FlushBuffersIfReady() {
                                           this,
                                           _1,
                                           BatcherPtr(this)),
-                                &transaction_metadata_)) {
+                                &transaction_metadata_,
+                                &propagated_hybrid_time_)) {
         return;
       }
     }
@@ -506,7 +507,8 @@ void Batcher::AddOpCountMismatchError() {
   DCHECK(false);
 }
 
-void Batcher::RemoveInFlightOpsAfterFlushing(const InFlightOps& ops, const Status& status) {
+void Batcher::RemoveInFlightOpsAfterFlushing(
+    const InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time) {
   {
     std::lock_guard<simple_spinlock> l(lock_);
     for (auto& op : ops) {
@@ -516,7 +518,7 @@ void Batcher::RemoveInFlightOpsAfterFlushing(const InFlightOps& ops, const Statu
   }
   auto transaction = this->transaction();
   if (transaction) {
-    transaction->Flushed(ops, status);
+    transaction->Flushed(ops, status, propagated_hybrid_time);
   }
 }
 
@@ -543,8 +545,8 @@ void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
 void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   ProcessRpcStatus(rpc, s);
 
-  if (s.ok() && rpc.resp().has_hybrid_time()) {
-    client_->data_->UpdateLatestObservedHybridTime(rpc.resp().hybrid_time());
+  if (s.ok() && rpc.resp().has_propagated_hybrid_time()) {
+    client_->data_->UpdateLatestObservedHybridTime(rpc.resp().propagated_hybrid_time());
   }
 
   // Check individual row errors.

@@ -121,7 +121,7 @@ class QLTransactionTest : public QLDmlTestBase {
     FLAGS_log_min_seconds_to_retain = 5;
     scoped_refptr<server::Clock> clock(new server::HybridClock);
     ASSERT_OK(clock->Init());
-    transaction_manager_.emplace(client_, [clock]() { return clock->Now(); });
+    transaction_manager_.emplace(client_, clock);
   }
 
   shared_ptr<YBSession> CreateSession(const bool read_only,

@@ -176,15 +176,20 @@ Status GetTabletRef(const scoped_refptr<TabletPeer>& tablet_peer,
   return Status::OK();
 }
 
+} // namespace
+
 // Prepares modification operation, checks limits, fetches tablet_peer and tablet etc.
-template<class Resp>
-bool PrepareModify(TabletPeerLookupIf* tablet_manager,
-                   const std::string& tablet_id,
-                   Resp* resp,
-                   rpc::RpcContext* context,
-                   tablet::TabletPeerPtr* tablet_peer,
-                   tablet::TabletPtr* tablet) {
-  if (!LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context, tablet_peer)) {
+template<class Req, class Resp>
+bool TabletServiceImpl::PrepareModify(
+    const Req& req,
+    Resp* resp,
+    rpc::RpcContext* context,
+    tablet::TabletPeerPtr* tablet_peer,
+    tablet::TabletPtr* tablet) {
+  UpdateClock(req, server_->Clock());
+
+  if (!LookupTabletPeerOrRespond(
+      server_->tablet_manager(), req.tablet_id(), resp, context, tablet_peer)) {
     return false;
   }
 
@@ -218,8 +223,6 @@ bool PrepareModify(TabletPeerLookupIf* tablet_manager,
   return true;
 }
 
-}  // namespace
-
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
 void SetupErrorAndRespond(TabletServerErrorPB* error,
@@ -243,9 +246,13 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
 class WriteOperationCompletionCallback : public OperationCompletionCallback {
  public:
   WriteOperationCompletionCallback(
-      std::shared_ptr<rpc::RpcContext> context, WriteResponsePB* response,
-      tablet::WriteOperationState* state, bool trace = false)
-      : context_(std::move(context)), response_(response), state_(state), include_trace_(trace) {}
+      std::shared_ptr<rpc::RpcContext> context,
+      WriteResponsePB* response,
+      tablet::WriteOperationState* state,
+      const server::ClockPtr& clock,
+      bool trace = false)
+      : context_(std::move(context)), response_(response), state_(state), clock_(clock),
+        include_trace_(trace) {}
 
   void OperationCompleted() override {
     if (!status_.ok()) {
@@ -272,9 +279,10 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
       if (include_trace_ && Trace::CurrentTrace() != nullptr) {
         response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
       }
+      response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
       context_->RespondSuccess();
     }
-  };
+  }
 
  private:
 
@@ -285,6 +293,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
   const std::shared_ptr<rpc::RpcContext> context_;
   WriteResponsePB* const response_;
   tablet::WriteOperationState* const state_;
+  server::ClockPtr clock_;
   const bool include_trace_;
 };
 
@@ -490,6 +499,8 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
   }
   DVLOG(3) << "Received Alter Schema RPC: " << req->DebugString();
 
+  server::UpdateClock(*req, server_->Clock());
+
   scoped_refptr<TabletPeer> tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
@@ -538,10 +549,10 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
     return;
   }
 
-  auto operation_state = std::make_unique<AlterSchemaOperationState>(tablet_peer.get(), req, resp);
+  auto operation_state = std::make_unique<AlterSchemaOperationState>(tablet_peer.get(), req);
 
   operation_state->set_completion_callback(
-      MakeRpcOperationCompletionCallback(std::move(context), resp));
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
   tablet_peer->Submit(std::make_unique<tablet::AlterSchemaOperation>(
@@ -555,8 +566,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   tablet::TabletPeerPtr tablet_peer;
   tablet::TabletPtr tablet;
-  if (!PrepareModify(server_->tablet_manager(), req->tablet_id(), resp,
-                     &context, &tablet_peer, &tablet)) {
+  if (!PrepareModify(*req, resp, &context, &tablet_peer, &tablet)) {
     return;
   }
 
@@ -571,7 +581,8 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet_peer.get(),
                                                                  &req->state());
-  state->set_completion_callback(MakeRpcOperationCompletionCallback(std::move(context), resp));
+  state->set_completion_callback(MakeRpcOperationCompletionCallback(
+      std::move(context), resp, server_->Clock()));
 
   tablet_peer->tablet()->transaction_coordinator()->Handle(std::move(state));
 }
@@ -580,6 +591,8 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
                                              GetTransactionStatusResponsePB* resp,
                                              rpc::RpcContext context) {
   TRACE("GetTransactionStatus");
+
+  UpdateClock(*req, server_->Clock());
 
   tablet::TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
@@ -592,6 +605,7 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
 
   auto status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
       req->transaction_id(), resp);
+  resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   if (status.ok()) {
     context.RespondSuccess();
   } else {
@@ -605,6 +619,8 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                          rpc::RpcContext context) {
   TRACE("AbortTransaction");
 
+  UpdateClock(*req, server_->Clock());
+
   tablet::TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
                                  req->tablet_id(),
@@ -614,10 +630,12 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
     return;
   }
 
+  server::ClockPtr clock(server_->Clock());
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
   tablet_peer->tablet()->transaction_coordinator()->Abort(
       req->transaction_id(),
-      [resp, context_ptr](Result<TransactionStatusResult> result) {
+      [resp, context_ptr, clock](Result<TransactionStatusResult> result) {
+        resp->set_propagated_hybrid_time(clock->Now().ToUint64());
         if (result.ok()) {
           resp->set_status(result->status);
           if (result->status_time.is_valid()) {
@@ -774,8 +792,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   tablet::TabletPeerPtr tablet_peer;
   tablet::TabletPtr tablet;
-  if (!PrepareModify(server_->tablet_manager(), req->tablet_id(), resp,
-                     &context, &tablet_peer, &tablet)) {
+  if (!PrepareModify(*req, resp, &context, &tablet_peer, &tablet)) {
     return;
   }
 
@@ -787,15 +804,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
                          &context);
     return;
   }
-
-  Status s;
-  // If the client sent us a hybrid_time, decode it and update the clock so that all future
-  // hybrid_times are greater than the passed hybrid_time.
-  if (req->has_propagated_hybrid_time()) {
-    HybridTime ts(req->propagated_hybrid_time());
-    s = server_->Clock()->Update(ts);
-  }
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
 
   if (req->has_write_batch() && req->write_batch().has_transaction()) {
     LOG(INFO) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
@@ -814,7 +822,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   if (!req->has_row_operations() && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
-    RpcOperationCompletionCallback<WriteResponsePB> callback(std::move(context), resp);
+    RpcOperationCompletionCallback<WriteResponsePB> callback(
+        std::move(context), resp, server_->Clock());
     callback.OperationCompleted();
     return;
   }
@@ -824,12 +833,12 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   operation_state->set_completion_callback(
       std::make_unique<WriteOperationCompletionCallback>(
-          context_ptr, resp, operation_state.get(), req->include_trace()));
+          context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
 
-  s = tablet_peer->SubmitWrite(std::move(operation_state));
+  auto status = tablet_peer->SubmitWrite(std::move(operation_state));
 
   // Check that we could submit the write
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context_ptr.get());
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(status, resp, context_ptr.get());
 }
 
 Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer,
@@ -984,7 +993,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
     resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }
-  RpcOperationCompletionCallback<ReadResponsePB> callback(std::move(context), resp);
+  RpcOperationCompletionCallback<ReadResponsePB> callback(
+      std::move(context), resp, server_->Clock());
   callback.OperationCompleted();
   TRACE("Done Read");
 }
@@ -2006,7 +2016,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(
     // 'propagated_hybrid_time'. If 'propagated_hybrid_time' is lower than
     // 'now' this call has no effect. If 'propagated_hybrid_time' is too much
     // into the future this will fail and we abort.
-    RETURN_NOT_OK(server_->Clock()->Update(propagated_hybrid_time));
+    server_->Clock()->Update(propagated_hybrid_time);
   }
 
   HybridTime tmp_snap_hybrid_time;

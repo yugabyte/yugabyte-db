@@ -380,12 +380,12 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   // make sure the server returned a write hybrid_time where only
   // the logical value was increased since he should have updated
   // its clock with the client's value.
-  HybridTime write_hybrid_time(resp.hybrid_time());
+  HybridTime write_hybrid_time(resp.propagated_hybrid_time());
 
   ASSERT_EQ(HybridClock::GetPhysicalValueMicros(current),
             HybridClock::GetPhysicalValueMicros(write_hybrid_time));
 
-  ASSERT_EQ(HybridClock::GetLogicalValue(current) + 1,
+  ASSERT_LE(HybridClock::GetLogicalValue(current) + 1,
             HybridClock::GetLogicalValue(write_hybrid_time));
 }
 
@@ -432,7 +432,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
   uint64_t error_after;
   hclock->NowWithError(&now_after, &error_after);
 
-  HybridTime write_hybrid_time(resp.hybrid_time());
+  HybridTime write_hybrid_time(resp.propagated_hybrid_time());
 
   uint64_t write_took = HybridClock::GetPhysicalValueMicros(now_after) -
       HybridClock::GetPhysicalValueMicros(now_before);
@@ -1059,12 +1059,6 @@ TEST_F(TabletServerTest, TestSnapshotScan__SnapshotInTheFutureBeyondPropagatedHy
   read_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
       HybridClock::GetPhysicalValueMicros(read_hybrid_time) + 60000000);
   scan->set_snap_hybrid_time(read_hybrid_time.ToUint64());
-
-  // send a propagated hybrid_time that is an less than the read hybrid_time (but still
-  // in the future as far the server is concerned).
-  HybridTime propagated_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(read_hybrid_time) - 100000);
-  scan->set_propagated_hybrid_time(propagated_hybrid_time.ToUint64());
 
   // Send the call
   {

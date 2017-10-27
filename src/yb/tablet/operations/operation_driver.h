@@ -251,9 +251,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   static std::string StateString(ReplicationState repl_state,
                                  PrepareState prep_state);
 
-  // Sets the timestamp on the response PB, if there is one.
-  void SetResponseHybridTime(OperationState* operation_state,
-                            const HybridTime& hybrid_time);
   OperationTracker* const operation_tracker_;
   consensus::Consensus* const consensus_;
   log::Log* const log_;

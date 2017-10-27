@@ -59,23 +59,25 @@ HybridTime LogicalClock::NowLatest() {
   return Now();
 }
 
-Status LogicalClock::Update(const HybridTime& to_update) {
-  DCHECK_NE(to_update.value(), HybridTime::kInvalidHybridTime.value())
-      << "Updating the clock with an invalid hybrid time";
+void LogicalClock::Update(const HybridTime& to_update) {
+  if (!to_update.is_valid()) {
+    return;
+  }
   Atomic64 new_value = to_update.value();
 
-  while (true) {
+  for (;;) {
     Atomic64 current_value = NoBarrier_Load(&now_);
     // if the incoming value is less than the current one, or we've failed the
     // CAS because the current clock increased to higher than the incoming value,
     // we can stop the loop now.
-    if (new_value <= current_value) return Status::OK();
+    if (new_value <= current_value) {
+      break;
+    }
     // otherwise try a CAS
     if (PREDICT_TRUE(NoBarrier_CompareAndSwap(&now_, current_value, new_value)
         == current_value))
       break;
   }
-  return Status::OK();
 }
 
 Status LogicalClock::WaitUntilAfter(const HybridTime& then,

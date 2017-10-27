@@ -22,9 +22,12 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
+
+class HybridTime;
 
 namespace tserver {
 
@@ -40,7 +43,7 @@ namespace client {
 
 class RemoteTablet;
 
-typedef std::function<void(const Status&)> UpdateTransactionCallback;
+typedef std::function<void(const Status&, HybridTime)> UpdateTransactionCallback;
 
 // Common arguments for all functions from this header.
 // deadline - operation deadline, i.e. timeout.

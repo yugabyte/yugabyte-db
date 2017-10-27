@@ -162,10 +162,6 @@ class OperationState {
   // the transaction's state has been reset.
   virtual const google::protobuf::Message* request() const { return nullptr; }
 
-  // Returns the response PB associated with this transaction, or NULL.
-  // This will only return a non-null object for leader-side transactions.
-  virtual google::protobuf::Message* response() { return nullptr; }
-
   // Sets the ConsensusRound for this transaction, if this transaction is
   // being executed through the consensus system.
   void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round) {

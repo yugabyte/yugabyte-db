@@ -1569,7 +1569,7 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
   if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
     // TODO Temporary until the leader explicitly propagates the safe hybrid_time.
     // TODO: what if there is a failure here because the updated time is too far in the future?
-    RETURN_NOT_OK(clock_->Update(HybridTime(deduped_req.messages.back()->hybrid_time())));
+    clock_->Update(HybridTime(deduped_req.messages.back()->hybrid_time()));
 
     // This request contains at least one message, and is likely to increase
     // our memory pressure.
