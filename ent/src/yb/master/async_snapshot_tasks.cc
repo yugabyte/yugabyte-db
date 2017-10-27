@@ -42,6 +42,8 @@ string AsyncCreateTabletSnapshot::permanent_uuid() const {
 }
 
 void AsyncCreateTabletSnapshot::HandleResponse(int attempt) {
+  server::UpdateClock(resp_, master_->clock());
+
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -78,6 +80,7 @@ bool AsyncCreateTabletSnapshot::SendRequest(int attempt) {
     req.set_tablet_id(tablet_->tablet_id());
     req.set_snapshot_id(snapshot_id_);
   }
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
   ts_backup_proxy_->CreateTabletSnapshotAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send create tablet snapshot request to " << permanent_uuid()
