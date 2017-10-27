@@ -394,15 +394,14 @@ void CallHome::BuildJsonAndSend() {
 }
 
 void CallHome::DoCallHome() {
-  ScheduleCallHome();
-
   if (server_type_ == ServerType::MASTER &&
       !master()->catalog_manager()->CheckIsLeaderAndReady().ok()) {
     LOG(INFO) << "This master instance is not a leader. Skipping call home";
-    return;
+  } else {
+    BuildJsonAndSend();
   }
 
-  BuildJsonAndSend();
+  ScheduleCallHome(FLAGS_callhome_interval_secs);
 }
 
 void CallHome::SendData(const string& payload) {
@@ -410,14 +409,14 @@ void CallHome::SendData(const string& payload) {
 
   auto status = curl_.PostToURL(FLAGS_callhome_url, payload, "application/json", &reply);
   if (!status.ok()) {
-    LOG(ERROR) << "Error sending data to " << FLAGS_callhome_url;
+    LOG(INFO) << "Unable to send diagnostics data to " << FLAGS_callhome_url;
   }
   VLOG(1) << "Received reply: " << reply;
 }
 
-void CallHome::ScheduleCallHome() {
+void CallHome::ScheduleCallHome(int delay_seconds) {
   scheduler_->Schedule(std::bind(&CallHome::DoCallHome, this),
-                       std::chrono::seconds(FLAGS_callhome_interval_secs));
+                       std::chrono::seconds(delay_seconds));
 }
 
 CollectionLevel CallHome::GetCollectionLevel() {

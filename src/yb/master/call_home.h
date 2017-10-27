@@ -68,7 +68,7 @@ class CallHome {
   ~CallHome();
 
   void DoCallHome();
-  void ScheduleCallHome();
+  void ScheduleCallHome(int delay_seconds = 10);
 
  private:
   FRIEND_TEST(master::MasterTest, TestCallHome);
