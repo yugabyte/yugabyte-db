@@ -22,11 +22,9 @@ class SnapshotOperationState : public OperationState {
   ~SnapshotOperationState() {}
 
   SnapshotOperationState(TabletPeer* tablet_peer,
-                         const tserver::CreateTabletSnapshotRequestPB* request = nullptr,
-                         tserver::CreateTabletSnapshotResponsePB* response = nullptr)
+                         const tserver::CreateTabletSnapshotRequestPB* request = nullptr)
       : OperationState(tablet_peer),
-        request_(request),
-        response_(response) {
+        request_(request) {
   }
 
   const tserver::CreateTabletSnapshotRequestPB* request() const override { return request_; }
@@ -34,8 +32,6 @@ class SnapshotOperationState : public OperationState {
   void UpdateRequestFromConsensusRound() override {
     request_ = consensus_round()->replicate_msg()->mutable_snapshot_request();
   }
-
-  tserver::CreateTabletSnapshotResponsePB* response() override { return response_; }
 
   void AcquireSchemaLock(rw_semaphore* l);
 
@@ -47,8 +43,7 @@ class SnapshotOperationState : public OperationState {
   void Finish() {
     // Make the request NULL since after this operation commits
     // the request may be deleted at any moment.
-    request_ = NULL;
-    response_ = NULL;
+    request_ = nullptr;
   }
 
   std::string ToString() const override;
@@ -57,7 +52,6 @@ class SnapshotOperationState : public OperationState {
 
   // The original RPC request and response.
   const tserver::CreateTabletSnapshotRequestPB *request_;
-  tserver::CreateTabletSnapshotResponsePB *response_;
 
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;
@@ -95,7 +89,8 @@ class SnapshotOperation : public Operation {
   std::string ToString() const override;
 
  private:
-  gscoped_ptr<SnapshotOperationState> state_;
+  std::unique_ptr<SnapshotOperationState> state_;
+
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperation);
 };
 
