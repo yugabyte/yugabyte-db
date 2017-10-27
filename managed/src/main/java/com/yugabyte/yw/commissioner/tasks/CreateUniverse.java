@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.client.YBClient;
 
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -63,9 +64,15 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
       // Override master flags if necessary
-      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.MASTER);
+      SubTaskGroup subTaskGroup = createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.MASTER);
+      if (subTaskGroup != null) {
+        subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+      }
       // Override tserver flags if necessary
-      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
+      subTaskGroup = createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
+      if (subTaskGroup != null) {
+        subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+      }
 
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(
