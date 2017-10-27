@@ -686,12 +686,30 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
 
 void CatalogManager::LoadSysCatalogDataTask() {
   Consensus* consensus = tablet_peer()->consensus();
-  int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
+  const int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
       MonoDelta::FromMilliseconds(FLAGS_master_failover_catchup_timeout_ms));
+
+  int64_t term_after_wait = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
+  if (term_after_wait != term) {
+    // If we got elected leader again while waiting to catch up then we will get another callback to
+    // update state from sys_catalog, so bail now.
+    //
+    // If we failed when waiting, i.e. could not acquire a leader lease, this could be due to us
+    // becoming a follower. If we're not partitioned away, we'll know about a new term soon.
+    LOG(INFO) << "Term change from " << term << " to " << term_after_wait
+              << " while waiting for master leader catchup. Not loading sys catalog metadata. "
+              << "Status of waiting: " << s;
+    return;
+  }
+
   if (!s.ok()) {
+    // This could happen e.g. if we are a partitioned-away leader that failed to acquire a leader
+    // lease.
+    //
+    // TODO: handle this cleanly by transitioning to a follower without crashing.
     WARN_NOT_OK(s, "Failed waiting for node to catch up after master election");
-    // TODO: Abdicate on timeout instead of crashing.
+
     if (s.IsTimedOut()) {
       LOG(FATAL) << "Shutting down due to unavailability of other masters after"
                  << " election. TODO: Abdicate instead.";
@@ -699,27 +717,17 @@ void CatalogManager::LoadSysCatalogDataTask() {
     return;
   }
 
-  {
-    int64_t term_after_wait = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
-    if (term_after_wait != term) {
-      // If we got elected leader again while waiting to catch up then we will
-      // get another callback to update state from sys_catalog, so bail now.
-      LOG(INFO) << "Term change from " << term << " to " << term_after_wait
-                << " while waiting for master leader catchup. Not loading sys catalog metadata";
+  LOG(INFO) << "Loading table and tablet metadata into memory for term " << term;
+  LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
+    Status status = VisitSysCatalog();
+    if (!status.ok() && (consensus->role() != RaftPeerPB::LEADER)) {
+      LOG(INFO) << "Error loading sys catalog; but that's OK as we are not the leader anymore: "
+                << status.ToString();
       return;
     }
-
-    LOG(INFO) << "Loading table and tablet metadata into memory for term " << term;
-    LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
-      Status status = VisitSysCatalog();
-      if (!status.ok() && (consensus->role() != RaftPeerPB::LEADER)) {
-        LOG(INFO) << "Error loading sys catalog; but that's OK as we are not the leader anymore: "
-                  << status.ToString();
-        return;
-      }
-      CHECK_OK(status);
-    }
+    CHECK_OK(status);
   }
+
   std::lock_guard<simple_spinlock> l(state_lock_);
   leader_ready_term_ = term;
   LOG(INFO) << "Completed load of sys catalog in term " << term;

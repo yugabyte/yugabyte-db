@@ -442,4 +442,3 @@ TYPED_TEST(AllTypesItest, TestAllKeyTypes) {
 
 }  // namespace client
 }  // namespace yb
-
