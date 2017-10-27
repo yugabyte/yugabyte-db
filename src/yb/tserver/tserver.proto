@@ -277,6 +277,8 @@ message ReadRequestPB {
 
   optional YBConsistencyLevel consistency_level = 6 [ default = STRONG ];
   // TODO: add hybrid_time in future
+
+  optional TransactionMetadataPB transaction = 7;
 }
 
 message ReadResponsePB {
@@ -390,6 +392,8 @@ message ScanRequestPB {
   optional bool leader_only = 6 [default = false];
 
   optional bool include_trace = 7 [ default = false ];
+
+  optional bytes transaction_id = 8; // 16 byte uuid
 }
 
 message ScanResponsePB {
@@ -437,21 +441,6 @@ message ScannerKeepAliveRequestPB {
 message ScannerKeepAliveResponsePB {
   // The error, if an error occurred with this request.
   optional TabletServerErrorPB error = 1;
-}
-
-enum TransactionStatus {
-  CREATED = 1;
-  PENDING = 2;
-
-  COMMITTED = 4;
-  APPLIED_IN_ALL_INVOLVED_TABLETS = 7;
-
-  ABORTED = 8;
-
-  // All following entries are not used in RAFT, but as events between status tablet and involved
-  // tablets:
-  APPLYING = 20;
-  APPLIED_IN_ONE_OF_INVOLVED_TABLETS = 21;
 }
 
 message TransactionStatePB {

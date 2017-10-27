@@ -39,9 +39,10 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/hexdump.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/transaction.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/transaction.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/row_result.h"
 #include "yb/client/table-internal.h"
@@ -64,7 +65,7 @@ using internal::RemoteTabletServer;
 
 static const int64_t kNoHybridTime = -1;
 
-YBScanner::Data::Data(YBTable* table)
+YBScanner::Data::Data(YBTable* table, const YBTransactionPtr& transaction)
   : open_(false),
     data_in_open_(false),
     has_batch_size_bytes_(false),
@@ -77,7 +78,8 @@ YBScanner::Data::Data(YBTable* table)
     arena_(1024, 1024*1024),
     spec_encoder_(&internal::GetSchema(table->schema()), &arena_),
     timeout_(MonoDelta::FromMilliseconds(kScanTimeoutMillis)),
-    scan_attempts_(0) {
+    scan_attempts_(0),
+    transaction_(transaction) {
   SetProjectionSchema(&internal::GetSchema(table->schema()));
 }
 
@@ -256,6 +258,12 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
   next_req_.clear_scanner_id();
   // Set leader only parameter based on the selection.
   next_req_.set_leader_only(selection_ == YBClient::LEADER_ONLY);
+  if (transaction_) {
+    next_req_.set_transaction_id(transaction_->id().begin(), transaction_->id().size());
+  } else {
+    next_req_.clear_transaction_id();
+  }
+
   NewScanRequestPB* scan = next_req_.mutable_new_scan_request();
   switch (read_mode_) {
     case READ_LATEST: scan->set_read_mode(yb::READ_LATEST); break;

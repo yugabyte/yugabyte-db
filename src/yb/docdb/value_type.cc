@@ -67,6 +67,7 @@ string ToString(ValueType value_type) {
     case ValueType::kLowest: return "-Inf";
     case ValueType::kHighest: return "+Inf";
     case ValueType::kInvalidValueType: return "InvalidValueType";
+    case ValueType::kMaxByte: return "0xff";
     // No default case so that we get a compiler warning (which we treat as an error) if we miss
     // a valid enum value here.
   }

@@ -16,11 +16,14 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/transaction.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/value.h"
 #include "yb/util/slice.h"
 #include "yb/tablet/tablet_options.h"
@@ -47,6 +50,11 @@ Status SeekToValidKvAtTs(
 void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
 
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
+
+// When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
+// this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
+// enough, does not perform a seek.
+void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter);
 
 // A wrapper around the RocksDB seek operation that uses Next() up to the configured number of
 // times to avoid invalidating iterator state. In debug mode it also allows printing detailed
@@ -79,6 +87,17 @@ std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
+
+// Values and transactions committed later than high_ht can be skipped, so we won't spend time
+// for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
+std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
+    rocksdb::DB* rocksdb,
+    BloomFilterMode bloom_filter_mode,
+    const boost::optional<const Slice>& user_key_for_filter,
+    const rocksdb::QueryId query_id,
+    const TransactionOperationContextOpt& transaction_context,
+    HybridTime high_ht,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The

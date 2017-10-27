@@ -19,11 +19,12 @@ namespace yb {
 namespace tablet {
 
 CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
-    HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
+    HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+    const TransactionOperationContextOpt& txn_op_context, QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
 
   // TODO(Robert): verify that all key column values are provided
-  docdb::QLReadOperation doc_op(ql_read_request);
+  docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
   const Schema &schema = SchemaRef();

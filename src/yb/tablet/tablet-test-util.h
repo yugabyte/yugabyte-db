@@ -166,9 +166,10 @@ static inline void CollectRowsForSnapshots(Tablet* tablet,
     DVLOG(1) << "Snapshot: " <<  snapshot.ToString();
     gscoped_ptr<RowwiseIterator> iter;
     ASSERT_OK(tablet->NewRowIterator(schema,
-                                            snapshot,
-                                            Tablet::UNORDERED,
-                                            &iter));
+                                     snapshot,
+                                     Tablet::UNORDERED,
+                                     boost::none,
+                                     &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
     auto collector = new vector<string>();
@@ -194,6 +195,7 @@ static inline void VerifySnapshotsHaveSameResult(Tablet* tablet,
     ASSERT_OK(tablet->NewRowIterator(schema,
                                      snapshot,
                                      Tablet::UNORDERED,
+                                     boost::none,
                                      &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
@@ -226,7 +228,7 @@ static inline CHECKED_STATUS DumpTablet(const Tablet& tablet,
                                         const Schema& projection,
                                         vector<string>* out) {
   gscoped_ptr<RowwiseIterator> iter;
-  RETURN_NOT_OK(tablet.NewRowIterator(projection, &iter));
+  RETURN_NOT_OK(tablet.NewRowIterator(projection, boost::none, &iter));
   ScanSpec scan_spec;
   RETURN_NOT_OK(iter->Init(&scan_spec));
   std::vector<string> rows;

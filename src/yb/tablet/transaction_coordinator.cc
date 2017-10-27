@@ -64,11 +64,10 @@ namespace tablet {
 namespace {
 
 void InvokeAbortCallback(const TransactionAbortCallback& callback,
-                         tserver::TransactionStatus status,
+                         TransactionStatus status,
                          HybridTime time = HybridTime::kInvalidHybridTime) {
-  DCHECK((!time.is_valid()) ||
-         (status == tserver::TransactionStatus::COMMITTED))
-      << "Status: " << tserver::TransactionStatus_Name(status) << ", time: " << time;
+  DCHECK((!time.is_valid()) || (status == TransactionStatus::COMMITTED))
+      << "Status: " << TransactionStatus_Name(status) << ", time: " << time;
   callback(TransactionStatusResult{status, time});
 }
 
@@ -117,7 +116,7 @@ class TransactionState {
   }
 
   // Status of transaction.
-  tserver::TransactionStatus status() const {
+  TransactionStatus status() const {
     return status_;
   }
 
@@ -129,7 +128,7 @@ class TransactionState {
   // Returns debug string this representation of this class.
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 }",
-                  to_string(id_), last_touch_, tserver::TransactionStatus_Name(status_),
+                  to_string(id_), last_touch_, TransactionStatus_Name(status_),
                   unnotified_tablets_);
   }
 
@@ -144,8 +143,8 @@ class TransactionState {
 
   // Whether this transaction has completed.
   bool Completed() const {
-    return status_ == tserver::TransactionStatus::ABORTED ||
-           status_ == tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
+    return status_ == TransactionStatus::ABORTED ||
+           status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
   }
 
   // Applies new state to transaction.
@@ -187,14 +186,14 @@ class TransactionState {
   }
 
   CHECKED_STATUS GetStatus(tserver::GetTransactionStatusResponsePB* response) const {
-    if (status_ == tserver::TransactionStatus::COMMITTED) {
-      response->set_status(tserver::TransactionStatus::COMMITTED);
+    if (status_ == TransactionStatus::COMMITTED) {
+      response->set_status(TransactionStatus::COMMITTED);
       response->set_status_hybrid_time(commit_time_.ToUint64());
-    } else if (status_ == tserver::TransactionStatus::ABORTED) {
-      response->set_status(tserver::TransactionStatus::ABORTED);
+    } else if (status_ == TransactionStatus::ABORTED) {
+      response->set_status(TransactionStatus::ABORTED);
     } else {
-      CHECK_EQ(tserver::TransactionStatus::PENDING, status_);
-      response->set_status(tserver::TransactionStatus::PENDING);
+      CHECK_EQ(TransactionStatus::PENDING, status_);
+      response->set_status(TransactionStatus::PENDING);
       response->set_status_hybrid_time(
           context_.coordinator_context().LastCommittedHybridTime().ToUint64());
     }
@@ -204,12 +203,12 @@ class TransactionState {
   void Abort(TransactionAbortCallback callback, std::unique_lock<std::mutex>* lock) {
     if (ShouldBeCommitted()) {
       lock->unlock();
-      InvokeAbortCallback(callback, tserver::TransactionStatus::COMMITTED);
-    } else if (status_ == tserver::TransactionStatus::ABORTED) {
+      InvokeAbortCallback(callback, TransactionStatus::COMMITTED);
+    } else if (status_ == TransactionStatus::ABORTED) {
       lock->unlock();
-      InvokeAbortCallback(callback, tserver::TransactionStatus::ABORTED);
+      InvokeAbortCallback(callback, TransactionStatus::ABORTED);
     } else {
-      CHECK_EQ(tserver::TransactionStatus::PENDING, status_);
+      CHECK_EQ(TransactionStatus::PENDING, status_);
       abort_waiters_.emplace_back(std::move(callback));
       Abort();
     }
@@ -218,7 +217,7 @@ class TransactionState {
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     VLOG(1) << "Handle: " << request->request()->ShortDebugString();
     if (request->request()->status() ==
-        tserver::TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
+        TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
       auto status = AppliedInOneOfInvolvedTablets(*request->request());
       request->completion_callback()->CompleteWithStatus(status);
       return;
@@ -239,8 +238,8 @@ class TransactionState {
     if (ShouldBeAborted()) {
       return;
     }
-    CHECK_EQ(status_, tserver::TransactionStatus::PENDING);
-    SubmitUpdateStatus(tserver::TransactionStatus::ABORTED);
+    CHECK_EQ(status_, TransactionStatus::PENDING);
+    SubmitUpdateStatus(TransactionStatus::ABORTED);
   }
 
   // Returns logs prefix for this transaction.
@@ -249,9 +248,9 @@ class TransactionState {
   }
 
   void Poll() const {
-    if (status_ == tserver::TransactionStatus::COMMITTED) {
+    if (status_ == TransactionStatus::COMMITTED) {
       DCHECK(!unnotified_tablets_.empty() ||
-             ShouldBeInStatus(tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS));
+             ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS));
       for (auto& tablet : unnotified_tablets_) {
         context_.NotifyApplying({tablet, id_, commit_time_});
       }
@@ -261,48 +260,48 @@ class TransactionState {
  private:
   // Checks whether we in specified status or going to be in this status when replication is
   // finished.
-  bool ShouldBeInStatus(tserver::TransactionStatus status) const {
+  bool ShouldBeInStatus(TransactionStatus status) const {
     return status_ == status ||
            (replicating_ && replicating_->request()->status() == status);
   }
 
   bool ShouldBeCommitted() const {
-    return ShouldBeInStatus(tserver::TransactionStatus::COMMITTED);
+    return ShouldBeInStatus(TransactionStatus::COMMITTED);
   }
 
   bool ShouldBeAborted() const {
-    return ShouldBeInStatus(tserver::TransactionStatus::ABORTED);
+    return ShouldBeInStatus(TransactionStatus::ABORTED);
   }
 
   // Process operation that was replicated in RAFT.
   CHECKED_STATUS DoProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
     switch (data.state.status()) {
-      case tserver::TransactionStatus::ABORTED:
+      case TransactionStatus::ABORTED:
         return AbortedReplicationFinished(data);
-      case tserver::TransactionStatus::COMMITTED:
+      case TransactionStatus::COMMITTED:
         return CommittedReplicationFinished(data);
-      case tserver::TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
-      case tserver::TransactionStatus::PENDING:
+      case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+      case TransactionStatus::PENDING:
         return PendingReplicationFinished(data);
-      case tserver::TransactionStatus::APPLYING:
+      case TransactionStatus::APPLYING:
         // APPLYING is handled separately, because it is received for transactions not managed by
         // this tablet as a transaction status tablet, but tablets that are involved in the data
         // path (receive write intents) for this transactions
-        FATAL_INVALID_ENUM_VALUE(tserver::TransactionStatus, data.state.status());
-      case tserver::TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS:
+        FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
+      case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS:
         // APPLIED_IN_ONE_OF_INVOLVED_TABLETS handled w/o use of RAFT log
-        FATAL_INVALID_ENUM_VALUE(tserver::TransactionStatus, data.state.status());
-      case tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
+        FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
+      case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
         return AppliedInAllInvolvedTabletsReplicationFinished(data);
     }
-    FATAL_INVALID_ENUM_VALUE(tserver::TransactionStatus, data.state.status());
+    FATAL_INVALID_ENUM_VALUE(TransactionStatus, data.state.status());
   }
 
   void DoHandle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     const auto& state = *request->request();
 
     Status status;
-    if (state.status() == tserver::TransactionStatus::COMMITTED) {
+    if (state.status() == TransactionStatus::COMMITTED) {
       status = HandleCommit();
     } else {
       status = Status::OK();
@@ -324,16 +323,16 @@ class TransactionState {
       Abort();
       return STATUS(Expired, "Commit of expired transaction");;
     }
-    if (status_ != tserver::TransactionStatus::PENDING) {
+    if (status_ != TransactionStatus::PENDING) {
       return STATUS_FORMAT(IllegalState,
                            "Transaction in wrong state when starting to commit: $0",
-                           tserver::TransactionStatus_Name(status_));
+                           TransactionStatus_Name(status_));
     }
 
     return Status::OK();
   }
 
-  void SubmitUpdateStatus(tserver::TransactionStatus status) {
+  void SubmitUpdateStatus(TransactionStatus status) {
     tserver::TransactionStatePB state;
     state.set_transaction_id(id_.begin(), id_.size());
     state.set_status(status);
@@ -360,13 +359,13 @@ class TransactionState {
   }
 
   CHECKED_STATUS AbortedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
-    if (status_ != tserver::TransactionStatus::ABORTED &&
-        status_ != tserver::TransactionStatus::PENDING) {
+    if (status_ != TransactionStatus::ABORTED &&
+        status_ != TransactionStatus::PENDING) {
       LOG(DFATAL) << "Invalid status of aborted transaction: "
-                  << tserver::TransactionStatus_Name(status_);
+                  << TransactionStatus_Name(status_);
     }
 
-    status_ = tserver::TransactionStatus::ABORTED;
+    status_ = TransactionStatus::ABORTED;
     first_entry_raft_index_ = data.op_id.index();
     for (auto& waiter : abort_waiters_) {
       InvokeAbortCallback(waiter, status_);
@@ -376,10 +375,10 @@ class TransactionState {
   }
 
   CHECKED_STATUS CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
-    CHECK_EQ(status_, tserver::TransactionStatus::PENDING);
+    CHECK_EQ(status_, TransactionStatus::PENDING);
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
-    status_ = tserver::TransactionStatus::COMMITTED;
+    status_ = TransactionStatus::COMMITTED;
     unnotified_tablets_.insert(data.state.tablets().begin(), data.state.tablets().end());
     for (const auto& tablet : unnotified_tablets_) {
       context_.NotifyApplying({tablet, id_, commit_time_});
@@ -390,9 +389,9 @@ class TransactionState {
 
   CHECKED_STATUS AppliedInAllInvolvedTabletsReplicationFinished(
       const TransactionCoordinator::ReplicatedData& data) {
-    CHECK_EQ(status_, tserver::TransactionStatus::COMMITTED);
+    CHECK_EQ(status_, TransactionStatus::COMMITTED);
     last_touch_ = data.hybrid_time;
-    status_ = tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
+    status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
@@ -404,18 +403,18 @@ class TransactionState {
       Abort();
       return Status::OK();
     }
-    CHECK_EQ(status_, tserver::TransactionStatus::PENDING);
+    CHECK_EQ(status_, TransactionStatus::PENDING);
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
 
   CHECKED_STATUS AppliedInOneOfInvolvedTablets(const tserver::TransactionStatePB& state) {
-    CHECK_EQ(status_, tserver::TransactionStatus::COMMITTED);
+    CHECK_EQ(status_, TransactionStatus::COMMITTED);
     DCHECK_EQ(state.tablets_size(), 1);
     unnotified_tablets_.erase(state.tablets(0));
     if (unnotified_tablets_.empty()) {
-      SubmitUpdateStatus(tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
+      SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
     }
     return Status::OK();
   }
@@ -423,7 +422,7 @@ class TransactionState {
   TransactionStateContext& context_;
   const TransactionId id_;
   const std::string log_prefix_;
-  tserver::TransactionStatus status_ = tserver::TransactionStatus::PENDING;
+  TransactionStatus status_ = TransactionStatus::PENDING;
   HybridTime last_touch_;
   // It should match last_touch_, but it is possible that because of some code errors it
   // would not be so. To add stability we introduce a separate field for it.
@@ -484,7 +483,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   CHECKED_STATUS GetStatus(const std::string& transaction_id,
                            tserver::GetTransactionStatusResponsePB* response) {
-    auto id = DecodeTransactionId(transaction_id);
+    auto id = FullyDecodeTransactionId(transaction_id);
     if (!id.ok()) {
       return std::move(id.status());
     }
@@ -492,14 +491,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     auto it = managed_transactions_.find(*id);
     if (it == managed_transactions_.end()) {
-      response->set_status(tserver::TransactionStatus::ABORTED);
+      response->set_status(TransactionStatus::ABORTED);
       return Status::OK();
     }
     return it->GetStatus(response);
   }
 
   void Abort(const std::string& transaction_id, TransactionAbortCallback callback) {
-    auto id = DecodeTransactionId(transaction_id);
+    auto id = FullyDecodeTransactionId(transaction_id);
     if (!id.ok()) {
       callback(id.status());
       return;
@@ -511,7 +510,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         lock.unlock();
-        InvokeAbortCallback(callback, tserver::TransactionStatus::ABORTED);
+        InvokeAbortCallback(callback, TransactionStatus::ABORTED);
         return;
       }
       postponed_leader_actions_.leader = true;
@@ -531,7 +530,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
-    auto id = DecodeTransactionId(data.state.transaction_id());
+    auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
       return std::move(id.status());
     }
@@ -539,7 +538,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     // APPLY is handled separately, because it is received for transactions not managed by
     // this tablet as a transaction status tablet, but tablets that are involved in the data
     // path (receive write intents) for this transaction.
-    if (data.state.status() == tserver::TransactionStatus::APPLYING) {
+    if (data.state.status() == TransactionStatus::APPLYING) {
       // data.state.tablets contains only status tablet.
       DCHECK_EQ(data.state.tablets_size(), 1);
       HybridTime commit_time(data.state.commit_hybrid_time());
@@ -588,13 +587,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     auto& state = *request->request();
-    auto id = DecodeTransactionId(state.transaction_id());
+    auto id = FullyDecodeTransactionId(state.transaction_id());
     CHECK_OK(id);
 
-    if (state.status() == tserver::TransactionStatus::APPLYING) {
-      std::atomic<double>& atomic_flag = *pointer_cast<std::atomic<double>*>(
-          &FLAGS_transaction_ignore_applying_probability_in_tests);
-      if (RandomActWithProbability(atomic_flag.load())) {
+    if (state.status() == TransactionStatus::APPLYING) {
+      if (RandomActWithProbability(GetAtomicFlag(
+          &FLAGS_transaction_ignore_applying_probability_in_tests))) {
         request->completion_callback()->CompleteWithStatus(Status::OK());
         return;
       }
@@ -608,7 +606,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       postponed_leader_actions_.leader = true;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
-        if (state.status() == tserver::TransactionStatus::CREATED) {
+        if (state.status() == TransactionStatus::CREATED) {
           it = managed_transactions_.emplace(this, *id, context_.clock().Now()).first;
         } else {
           LOG(WARNING) << "Request to unknown transaction " << id << ": "
@@ -674,7 +672,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         req.set_tablet_id(p.tablet);
         auto& state = *req.mutable_state();
         state.set_transaction_id(p.transaction.begin(), p.transaction.size());
-        state.set_status(tserver::TransactionStatus::APPLYING);
+        state.set_status(TransactionStatus::APPLYING);
         state.add_tablets(context_.tablet_id());
         state.set_commit_hybrid_time(p.commit_time.ToUint64());
 
@@ -698,11 +696,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   ManagedTransactions::iterator get(const TransactionId& id,
-                                    tserver::TransactionStatus status,
+                                    TransactionStatus status,
                                     HybridTime hybrid_time) {
     auto it = managed_transactions_.find(id);
     if (it == managed_transactions_.end()) {
-      if (status != tserver::TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
+      if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
         it = managed_transactions_.emplace(this, id, hybrid_time).first;
         LOG(INFO) << Format("Added: $0", *it);
       }
@@ -752,7 +750,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto& index = managed_transactions_.get<LastTouchTag>();
 
       for (auto it = index.begin(); it != index.end() && it->ExpiredAt(now);) {
-        if (it->status() == tserver::TransactionStatus::ABORTED) {
+        if (it->status() == TransactionStatus::ABORTED) {
           it = index.erase(it);
         } else {
           bool modified = index.modify(it, [](TransactionState& state) {

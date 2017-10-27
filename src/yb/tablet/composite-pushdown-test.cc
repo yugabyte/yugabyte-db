@@ -107,7 +107,7 @@ class CompositePushdownTest : public YBTabletTest {
   void ScanTablet(ScanSpec *spec, vector<string> *results, const char *descr) {
     SCOPED_TRACE(descr);
     gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, &iter));
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
     ASSERT_OK(iter->Init(spec));
     ASSERT_TRUE(spec->predicates().empty()) << "Should have accepted all predicates";
     LOG_TIMING(INFO, descr) {

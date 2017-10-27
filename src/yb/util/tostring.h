@@ -23,6 +23,8 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/tti/has_type.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include "yb/gutil/strings/numbers.h"
 
@@ -284,6 +286,10 @@ std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
 
 std::string ToString(const std::chrono::steady_clock::time_point& time_point);
 std::string ToString(const std::chrono::system_clock::time_point& time_point);
+
+inline std::string ToString(const boost::uuids::uuid& uuid) {
+  return boost::uuids::to_string(uuid);
+}
 
 } // namespace yb
 

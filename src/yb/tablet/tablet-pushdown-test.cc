@@ -82,7 +82,7 @@ class TabletPushdownTest : public YBTabletTest {
   // expected rows are returned.
   void TestScanYieldsExpectedResults(ScanSpec spec) {
     gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, &iter));
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
     ASSERT_OK(iter->Init(&spec));
     ASSERT_TRUE(spec.predicates().empty()) << "Should have accepted all predicates";
 
@@ -105,7 +105,7 @@ class TabletPushdownTest : public YBTabletTest {
   void TestCountOnlyScanYieldsExpectedResults(ScanSpec spec) {
     Schema empty_schema(std::vector<ColumnSchema>(), 0);
     gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(empty_schema, &iter));
+    ASSERT_OK(tablet()->NewRowIterator(empty_schema, boost::none, &iter));
     ASSERT_OK(iter->Init(&spec));
     ASSERT_TRUE(spec.predicates().empty()) << "Should have accepted all predicates";
 

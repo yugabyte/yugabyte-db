@@ -367,6 +367,21 @@ enum IsolationLevel {
   SERIALIZABLE_ISOLATION = 2;
 }
 
+enum TransactionStatus {
+  CREATED = 1;
+  PENDING = 2;
+
+  COMMITTED = 4;
+  APPLIED_IN_ALL_INVOLVED_TABLETS = 7;
+
+  ABORTED = 8;
+
+  // All following entries are not used in RAFT, but as events between status tablet and involved
+  // tablets:
+  APPLYING = 20;
+  APPLIED_IN_ONE_OF_INVOLVED_TABLETS = 21;
+}
+
 message TransactionMetadataPB {
   optional bytes transaction_id = 1; // 16 byte uuid
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];

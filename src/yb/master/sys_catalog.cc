@@ -585,7 +585,8 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   spec.AddPredicate(pred_tables);
 
   gscoped_ptr<RowwiseIterator> iter;
-  RETURN_NOT_OK(tablet_peer_->tablet()->NewRowIterator(schema_, &iter));
+  // TODO(dtxn) pass correct transaction ID if needed
+  RETURN_NOT_OK(tablet_peer_->tablet()->NewRowIterator(schema_, boost::none, &iter));
   RETURN_NOT_OK(iter->Init(&spec));
 
   Arena arena(32 * 1024, 256 * 1024);

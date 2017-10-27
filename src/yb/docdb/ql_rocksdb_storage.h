@@ -14,6 +14,8 @@
 #ifndef YB_DOCDB_QL_ROCKSDB_STORAGE_H
 #define YB_DOCDB_QL_ROCKSDB_STORAGE_H
 
+#include <boost/optional.hpp>
+
 #include "yb/rocksdb/db.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_storage_interface.h"
@@ -29,6 +31,7 @@ class QLRocksDBStorage : public common::QLStorageIf {
   CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
+                             const TransactionOperationContextOpt& txn_op_context,
                              HybridTime req_hybrid_time,
                              std::unique_ptr<common::QLRowwiseIteratorIf> *iter) const override;
   CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,

@@ -17,15 +17,33 @@
 
 namespace yb {
 
-Result<TransactionId> DecodeTransactionId(
-  Slice binary_representation_of_transaction_id) {
-  if (binary_representation_of_transaction_id.size() != TransactionId::static_size()) {
-    return STATUS_FORMAT(Corruption,
-                         "Invalid length of transaction id: $0",
-                         binary_representation_of_transaction_id.ToDebugHexString());
+namespace {
+
+// Makes transaction id from its binary representation.
+// If check_exact_size is true, checks that slice contains only TransactionId.
+Result<TransactionId> DoDecodeTransactionId(const Slice &slice, const bool check_exact_size) {
+  if (check_exact_size ? slice.size() != TransactionId::static_size()
+                       : slice.size() < TransactionId::static_size()) {
+    return STATUS_FORMAT(
+        Corruption, "Invalid length of binary data with transaction id '$0': $1 (expected $2$3)",
+        slice.ToDebugHexString(), slice.size(), check_exact_size ? "" : "at least ",
+        TransactionId::static_size());
   }
   TransactionId id;
-  memcpy(id.data, binary_representation_of_transaction_id.data(), TransactionId::static_size());
+  memcpy(id.data, slice.data(), TransactionId::static_size());
+  return id;
+}
+
+} // namespace
+
+Result<TransactionId> FullyDecodeTransactionId(const Slice& slice) {
+  return DoDecodeTransactionId(slice, true);
+}
+
+Result<TransactionId> DecodeTransactionId(Slice* slice) {
+  Result<TransactionId> id = DoDecodeTransactionId(*slice, false);
+  RETURN_NOT_OK(id);
+  slice->remove_prefix(TransactionId::static_size());
   return id;
 }
 

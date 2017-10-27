@@ -347,6 +347,7 @@ class SubDocKey {
   }
 
   int CompareTo(const SubDocKey& other) const;
+  int CompareToIgnoreHt(const SubDocKey& other) const;
 
   HybridTime hybrid_time() const {
     DCHECK(has_hybrid_time());

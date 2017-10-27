@@ -694,7 +694,7 @@ Status LinkedListTester::VerifyLinkedListLocal(const tablet::Tablet* tablet,
   // Cannot use schemas with col indexes in a scan (assertions fire).
   Schema projection(tablet_schema->columns(), tablet_schema->num_key_columns());
   gscoped_ptr<RowwiseIterator> iter;
-  RETURN_NOT_OK_PREPEND(tablet->NewRowIterator(projection, &iter),
+  RETURN_NOT_OK_PREPEND(tablet->NewRowIterator(projection, boost::none, &iter),
                         "Cannot create new row iterator");
   RETURN_NOT_OK_PREPEND(iter->Init(NULL), "Cannot initialize row iterator");
 

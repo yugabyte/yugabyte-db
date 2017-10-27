@@ -14,6 +14,8 @@
 #ifndef YB_COMMON_QL_STORAGE_INTERFACE_H
 #define YB_COMMON_QL_STORAGE_INTERFACE_H
 
+#include <boost/optional.hpp>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
@@ -26,11 +28,13 @@ class QLStorageIf {
  public:
   virtual ~QLStorageIf() {}
 
-  virtual CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
-                                     const Schema& projection,
-                                     const Schema& schema,
-                                     HybridTime req_hybrid_time,
-                                     std::unique_ptr<QLRowwiseIteratorIf>* iter) const = 0;
+  virtual CHECKED_STATUS GetIterator(
+      const QLReadRequestPB& request,
+      const Schema& projection,
+      const Schema& schema,
+      const TransactionOperationContextOpt& txn_op_context,
+      HybridTime req_hybrid_time,
+      std::unique_ptr<QLRowwiseIteratorIf>* iter) const = 0;
   virtual CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,
                                           const HybridTime& hybrid_time,
                                           const Schema& schema,

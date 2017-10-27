@@ -145,7 +145,7 @@ class KeyBytes {
     AppendColumnIdToKey(column_id, &data_);
   }
 
-   void AppendDescendingFloat(float x) {
+  void AppendDescendingFloat(float x) {
     AppendFloatToKey(x, &data_, /* descending */ true);
   }
 
@@ -191,6 +191,10 @@ class KeyBytes {
     data_.assign(slice.cdata(), slice.size());
   }
 
+  void ResetRawBytes(const char* raw_bytes, size_t n) {
+    data_.assign(raw_bytes, n);
+  }
+
   void Clear() {
     data_.clear();
   }
@@ -217,7 +221,7 @@ class KeyBytes {
     return &data_;
   }
 
-  std::string ToShortDebugStr() {
+  std::string ToShortDebugStr() const {
     return yb::docdb::ToShortDebugStr(data_);
   }
 

@@ -27,6 +27,7 @@
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status.h"
@@ -41,6 +42,7 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
+                     const TransactionOperationContextOpt& txn_op_context,
                      rocksdb::DB *db,
                      HybridTime hybrid_time = HybridTime::kMax,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
@@ -123,14 +125,16 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
   // The schema for all columns, not just the columns we're scanning.
   const Schema& schema_;
 
-  HybridTime hybrid_time_;
+  const TransactionOperationContextOpt txn_op_context_;
+
+  const HybridTime hybrid_time_;
   rocksdb::DB* const db_;
 
   // A copy of the exclusive upper bound key of the scan range (if any).
   bool has_upper_bound_key_;
   KeyBytes exclusive_upper_bound_key_;
 
-  std::unique_ptr<rocksdb::Iterator> db_iter_;
+  std::unique_ptr<IntentAwareIterator> db_iter_;
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
   // RocksDB does not get destroyed while the iterator is still in use.

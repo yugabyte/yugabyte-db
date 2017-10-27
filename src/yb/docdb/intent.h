@@ -20,6 +20,38 @@
 namespace yb {
 namespace docdb {
 
+// Decodes intent RocksDB key. intent_prefix should point to slice to hold intent prefix
+// (kIntentPrefix + SubDocKey (no HT).
+// intent_type and doc_ht are optional parameters (could be nullptr) to store decoded
+// intent type and intent doc hybrid time.
+CHECKED_STATUS DecodeIntentKey(const Slice &encoded_intent_key, Slice* intent_prefix,
+                               IntentType* intent_type, DocHybridTime* doc_ht);
+
+// Decodes transaction ID from intent value. Consumes it from intent_value slice.
+Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
+
+enum class IntentKind {
+  kWeak,
+  kStrong
+};
+
+struct IntentTypePair {
+  docdb::IntentType strong;
+  docdb::IntentType weak;
+
+  docdb::IntentType operator[](IntentKind kind) {
+    return kind == IntentKind::kWeak ? weak : strong;
+  }
+};
+
+IntentTypePair GetWriteIntentsForIsolationLevel(IsolationLevel level);
+
+inline void AppendIntentKeySuffix(
+    docdb::IntentType intent_type, const DocHybridTime& doc_ht, KeyBytes* key) {
+  AppendIntentType(intent_type, key);
+  AppendDocHybridTime(doc_ht, key);
+}
+
 // The intent class is a wrapper around transaction id, (optional value) and
 // type of intent (which includes isolation level)
 class Intent {

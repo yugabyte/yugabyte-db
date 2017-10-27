@@ -284,31 +284,31 @@ TEST_F(SharedLockManagerTest, CombineIntentsTest) {
       // strong > weak:
       //   If any of the input intents is strong intent, the combined intent must be strong.
       //   Otherwise, it should be weak intent.
-      if (StrongIntent(i1) || StrongIntent(i2)) {
-        ASSERT_TRUE(StrongIntent(combined));
+      if (IsStrongIntent(i1) || IsStrongIntent(i2)) {
+        ASSERT_TRUE(IsStrongIntent(combined));
       } else {
-        ASSERT_TRUE(WeakIntent(combined));
+        ASSERT_TRUE(IsWeakIntent(combined));
       }
 
       // snapshot isolation > serializable write
       // snapshot isolation > serializable read:
       //   If any of the inputs is snapshot isolation, the combined isolation must be snapshot also.
       //   Otherwise, it can be serializable or snapshot isolation.
-      if (SnapshotIntent(i1) || SnapshotIntent(i1)) {
-        ASSERT_TRUE(SnapshotIntent(combined));
+      if (IsSnapshotIntent(i1) || IsSnapshotIntent(i1)) {
+        ASSERT_TRUE(IsSnapshotIntent(combined));
       } else {
-        ASSERT_TRUE(SerializableIntent(combined) || SnapshotIntent(combined));
+        ASSERT_TRUE(IsSerializableIntent(combined) || IsSnapshotIntent(combined));
       }
 
       // serializable read + serializable write = snapshot isolation
-      if (SerializableIntent(i1) && SerializableIntent(i2) &&
-          (ReadIntent(i1) && WriteIntent(i2) || ReadIntent(i2) && WriteIntent(i1))) {
-        ASSERT_TRUE(SnapshotIntent(combined));
+      if (IsSerializableIntent(i1) && IsSerializableIntent(i2) &&
+          (IsReadIntent(i1) && IsWriteIntent(i2) || IsReadIntent(i2) && IsWriteIntent(i1))) {
+        ASSERT_TRUE(IsSnapshotIntent(combined));
       }
 
       // If any of the input intent is write intent, combined intent must be write intent.
-      if (WriteIntent(i1) || WriteIntent(i2)) {
-        ASSERT_TRUE(WriteIntent(combined));
+      if (IsWriteIntent(i1) || IsWriteIntent(i2)) {
+        ASSERT_TRUE(IsWriteIntent(combined));
       }
 
       // Verify that the combined lock type covers the input intents' conflicts.

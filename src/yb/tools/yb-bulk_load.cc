@@ -28,7 +28,6 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -286,7 +285,11 @@ Status BulkLoadTask::InsertRow(const string &row,
   req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
   // Finally apply the operation to the the doc_write_batch.
-  docdb::QLWriteOperation op(&req, schema, &resp);
+  // TODO(dtxn) pass correct TransactionContext.
+  // Comment from PritamD: Don't need cross shard transaction support in bulk load, but I guess
+  // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
+  // as well.
+  docdb::QLWriteOperation op(&req, schema, &resp, boost::none);
   RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(),
                          HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
   return Status::OK();

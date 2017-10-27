@@ -18,11 +18,13 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <boost/function.hpp>
 
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
@@ -30,6 +32,7 @@
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/intent.h"
 #include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
@@ -88,28 +91,6 @@ enum class ListExtendOrder {
   APPEND = 0,
   PREPEND = 1
 };
-
-enum class IntentKind {
-  kWeak,
-  kStrong
-};
-
-// A pair of weak/strong intent types for a given isolation level.
-struct IntentTypePair {
-  IntentType strong;
-  IntentType weak;
-
-  IntentType operator[](IntentKind kind) {
-    switch (kind) {
-      case IntentKind::kWeak: return weak;
-      case IntentKind::kStrong: return strong;
-    }
-    FATAL_INVALID_ENUM_VALUE(IntentKind, kind);
-  }
-};
-
-// Return a pair of weak/strong intent types for the isolation level.
-IntentTypePair WriteIntentsForIsolationLevel(IsolationLevel level);
 
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix or write (set) or delete operations. It may read from RocksDB while
@@ -182,6 +163,10 @@ class DocWriteBatch {
 
   void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
 
+  // This method has worse performance comparing to MoveToWriteBatchPB and intented to be used in
+  // testing. Consider using MoveToWriteBatchPB in production code.
+  void TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const;
+
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
   int GetAndResetNumRocksDBSeeks();
@@ -250,6 +235,36 @@ Status ApplyDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& 
                               KeyValueWriteBatchPB* write_batch,
                               std::atomic<int64_t>* monotonic_counter);
 
+void PrepareNonTransactionWriteBatch(
+    const docdb::KeyValueWriteBatchPB& put_batch,
+    HybridTime hybrid_time,
+    rocksdb::WriteBatch* rocksdb_write_batch);
+
+// Enumerates intents corresponding to provided key value pairs.
+// For each key in generates a strong intent and for each parent of each it generates a weak one.
+// functor should accept 3 arguments:
+// intent_kind - kind of intent weak or strong
+// value_slice - value of intent
+// key - pointer to key in format kIntentPrefix + SubDocKey (no ht)
+// TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
+// inside DocDB.
+// Note: From https://stackoverflow.com/a/17278470/461529:
+// "As of GCC 4.8.1, the std::function in libstdc++ optimizes only for pointers to functions and
+// methods. So regardless the size of your functor (lambdas included), initializing a std::function
+// from it triggers heap allocation."
+// So, we use boost::function which doesn't have such issue:
+// http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
+CHECKED_STATUS EnumerateIntents(
+    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB> &kv_pairs,
+    boost::function<Status(IntentKind, Slice, KeyBytes*)> functor);
+
+void PrepareTransactionWriteBatch(
+    const docdb::KeyValueWriteBatchPB& put_batch,
+    HybridTime hybrid_time,
+    rocksdb::WriteBatch* rocksdb_write_batch,
+    const TransactionId& transaction_id,
+    IsolationLevel isolation_level);
+
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.
 // We can scan any SubDocument from a node in the document tree.
@@ -283,13 +298,6 @@ class DocVisitor {
   virtual CHECKED_STATUS EndArray() = 0;
 };
 
-// Note: subdocument_key should be an encoded SubDocument without the hybrid_time.
-yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
-                           const KeyBytes &subdocument_key,
-                           DocVisitor *visitor,
-                           const rocksdb::QueryId query_id,
-                           HybridTime scan_ts = HybridTime::kMax);
-
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
 // Before the function is called, if is_iter_valid == true, the iterator is expected to be
@@ -300,7 +308,8 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
 // behavior. TODO: We should have write-id's to make sure timestamps are always unique.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-yb::Status GetSubDocument(rocksdb::Iterator *iterator,
+yb::Status GetSubDocument(
+    IntentAwareIterator *db_iter,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
@@ -312,11 +321,13 @@ yb::Status GetSubDocument(rocksdb::Iterator *iterator,
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
-yb::Status GetSubDocument(rocksdb::DB *db,
+yb::Status GetSubDocument(
+    rocksdb::DB* db,
     const SubDocKey& subdocument_key,
-    SubDocument *result,
-    bool *doc_found,
     const rocksdb::QueryId query_id,
+    const TransactionOperationContextOpt& txn_op_context,
+    SubDocument* result,
+    bool* doc_found,
     HybridTime scan_ts = HybridTime::kMax,
     MonoDelta table_ttl = Value::kMaxTtl,
     bool return_type_only = false);
@@ -329,6 +340,8 @@ yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out, bool include_
 std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, bool include_binary = false);
 
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
+
+void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 
 }  // namespace docdb
 }  // namespace yb

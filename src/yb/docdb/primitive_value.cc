@@ -159,10 +159,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kArray:
       return "[]";
     case ValueType::kTransactionId:
-      return Substitute("TransactionID($0)", uuid_val_.ToString());
+      return Substitute("TransactionId($0)", uuid_val_.ToString());
     case ValueType::kIntentType:
       return Substitute("Intent($0)", docdb::ToString(static_cast<enum IntentType>(uint16_val_)));
-
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
@@ -173,6 +172,8 @@ string PrimitiveValue::ToString() const {
       return "-Inf";
     case ValueType::kHighest:
       return "+Inf";
+    case ValueType::kMaxByte:
+      return "0xff";
   }
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
 }
@@ -182,6 +183,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
   switch (type_) {
     case ValueType::kLowest: return;
     case ValueType::kHighest: return;
+    case ValueType::kMaxByte: return;
     case ValueType::kNullDescending: return;
     case ValueType::kNull: return;
     case ValueType::kFalse: return;
@@ -419,7 +421,8 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest:
+    case ValueType::kHighest: FALLTHROUGH_INTENDED;
+    case ValueType::kMaxByte:
       break;
   }
 
@@ -735,6 +738,8 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
     }
+    case ValueType::kMaxByte:
+      break;
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
@@ -889,10 +894,11 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest:
+    case ValueType::kHighest: FALLTHROUGH_INTENDED;
+    case ValueType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
-  FATAL_INVALID_ENUM_VALUE(ValueType, type_);
+  FATAL_INVALID_ENUM_VALUE(ValueType, value_type);
   return Status::OK();
 }
 
@@ -994,7 +1000,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest: return true;
+    case ValueType::kHighest: FALLTHROUGH_INTENDED;
+    case ValueType::kMaxByte: return true;
 
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
@@ -1055,7 +1062,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
-    case ValueType::kHighest:
+    case ValueType::kHighest: FALLTHROUGH_INTENDED;
+    case ValueType::kMaxByte:
       return 0;
     case ValueType::kStringDescending:
       return other.str_val_.compare(str_val_);

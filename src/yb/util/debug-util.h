@@ -190,6 +190,24 @@ constexpr bool IsDebug() {
 #endif
 }
 
+class ScopeLogger {
+ public:
+  ScopeLogger(const std::string& msg, std::function<void()> on_scope_bounds)
+      : msg_(msg), on_scope_bounds_(std::move(on_scope_bounds)) {
+    LOG(INFO) << ">>> " << msg_;
+    on_scope_bounds_();
+  }
+
+  ~ScopeLogger() {
+    on_scope_bounds_();
+    LOG(INFO) << "<<< " << msg_;
+  }
+
+ private:
+  const std::string msg_;
+  std::function<void()> on_scope_bounds_;
+};
+
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H

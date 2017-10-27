@@ -49,7 +49,10 @@ namespace client {
 
 class YBScanner::Data {
  public:
-  explicit Data(YBTable* table);
+  Data(const Data&) = delete;
+  void operator=(const Data&) = delete;
+
+  Data(YBTable* table, const YBTransactionPtr& transaction);
   ~Data();
 
   CHECKED_STATUS CheckForErrors();
@@ -180,7 +183,7 @@ class YBScanner::Data {
   // TODO: This and the overall scan retry logic duplicates much of RpcRetrier.
   Status last_error_;
 
-  DISALLOW_COPY_AND_ASSIGN(Data);
+  const YBTransactionPtr transaction_;
 };
 
 class YBScanBatch::Data {
@@ -235,4 +238,4 @@ class YBScanBatch::Data {
 } // namespace client
 } // namespace yb
 
-#endif
+#endif  // YB_CLIENT_SCANNER_INTERNAL_H

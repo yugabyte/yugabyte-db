@@ -38,6 +38,7 @@
 #include <boost/type_traits/make_signed.hpp>
 
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
@@ -372,6 +373,11 @@ AtomicUniquePtr<T> MakeAtomicUniquePtr(Args&&... args) {
   return AtomicUniquePtr<T>(new T(std::forward<Args>(args)...));
 }
 
+template <class T>
+T GetAtomicFlag(T* flag) {
+  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
+  return atomic_flag.load(std::memory_order::memory_order_relaxed);
+}
 
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */

@@ -85,7 +85,7 @@ const char* TestOp_names[] = {
 // a single thread, so that it's easy to verify that the tablet always matches the expected
 // state.
 class TestRandomAccess : public YBTabletTest {
-  static const string VALUE_NOT_FOUND;
+  static constexpr auto VALUE_NOT_FOUND = "()";
 
  public:
   TestRandomAccess()
@@ -222,7 +222,9 @@ class TestRandomAccess : public YBTabletTest {
     ScanSpec spec;
     const Schema& schema = this->client_schema_;
     gscoped_ptr<RowwiseIterator> iter;
-    CHECK_OK(this->tablet()->NewRowIterator(schema, &iter));
+
+    // TODO(dtxn) pass correct transaction ID if needed
+    CHECK_OK(this->tablet()->NewRowIterator(schema, boost::none, &iter));
     ColumnRangePredicate pred_one(schema.column(0), &key, &key);
     spec.AddPredicate(pred_one);
     CHECK_OK(iter->Init(&spec));
@@ -272,8 +274,6 @@ class TestRandomAccess : public YBTabletTest {
 
   unsigned int random_seed_ = SeedRandom();
 };
-
-const string TestRandomAccess::VALUE_NOT_FOUND = "()";
 
 TEST_F(TestRandomAccess, Test) {
   scoped_refptr<Thread> flush_thread;

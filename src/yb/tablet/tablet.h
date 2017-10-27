@@ -308,7 +308,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       RedisResponsePB* response) override;
 
   CHECKED_STATUS HandleQLReadRequest(
-      HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
+      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+      const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data) override;
 
   CHECKED_STATUS CreatePagingStateForRead(
@@ -339,7 +340,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
-  CHECKED_STATUS NewRowIterator(const Schema &projection,
+  CHECKED_STATUS NewRowIterator(
+      const Schema &projection,
+      const boost::optional<TransactionId>& transaction_id,
       gscoped_ptr<RowwiseIterator> *iter) const;
 
   // Whether the iterator should return results in order.
@@ -349,9 +352,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   };
 
   // Create a new row iterator for some historical snapshot.
-  CHECKED_STATUS NewRowIterator(const Schema &projection,
+  CHECKED_STATUS NewRowIterator(
+      const Schema &projection,
       const MvccSnapshot &snap,
       const OrderMode order,
+      const boost::optional<TransactionId>& transaction_id,
       gscoped_ptr<RowwiseIterator> *iter) const;
 
   // Flush the current MemRowSet for this tablet to disk. This swaps
@@ -569,7 +574,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return transaction_coordinator_.get();
   }
 
-  TransactionParticipant* transaction_participant() {
+  TransactionParticipant* transaction_participant() const {
     return transaction_participant_.get();
   }
 
@@ -625,6 +630,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS CaptureConsistentIterators(const Schema *projection,
       const MvccSnapshot &snap,
       const ScanSpec *spec,
+      const boost::optional<TransactionId>& transaction_id,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   CHECKED_STATUS KuduColumnarCaptureConsistentIterators(
@@ -637,6 +643,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const Schema *projection,
       const MvccSnapshot &snap,
       const ScanSpec *spec,
+      const boost::optional<TransactionId>& transaction_id,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   CHECKED_STATUS StartDocWriteOperation(
@@ -720,10 +727,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch);
 
-  void PrepareNonTransactionWriteBatch(
-      const docdb::KeyValueWriteBatchPB& put_batch,
-      HybridTime hybrid_time,
-      rocksdb::WriteBatch* rocksdb_write_batch);
+  Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
+      const TransactionMetadataPB& transaction_metadata) const;
+
+  TransactionOperationContextOpt CreateTransactionOperationContext(
+      const boost::optional<TransactionId>& transaction_id) const;
 
   // Lock protecting schema_ and key_schema_.
   //
@@ -938,13 +946,15 @@ class Tablet::Iterator : public RowwiseIterator {
 
   DISALLOW_COPY_AND_ASSIGN(Iterator);
 
-  Iterator(const Tablet* tablet, const Schema& projection, MvccSnapshot snap,
-      const OrderMode order);
+  Iterator(
+      const Tablet* tablet, const Schema& projection, MvccSnapshot snap,
+      const OrderMode order, const boost::optional<TransactionId>& transaction_id);
 
   const Tablet *tablet_;
   Schema projection_;
   const MvccSnapshot snap_;
   const OrderMode order_;
+  const boost::optional<TransactionId> transaction_id_;
   gscoped_ptr<RowwiseIterator> iter_;
 
   // TODO: we could probably share an arena with the Scanner object inside the

@@ -45,6 +45,11 @@ class SystemTablet : public tablet::AbstractTablet {
       HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
+  CHECKED_STATUS HandleQLReadRequest(
+      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+      const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
+      gscoped_ptr<faststring>* rows_data) override;
+
   CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                           const size_t row_count,
                                           QLResponsePB* response) const override;

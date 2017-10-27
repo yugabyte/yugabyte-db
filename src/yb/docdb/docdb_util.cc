@@ -113,30 +113,45 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     HybridTime hybrid_time,
     bool decode_dockey,
     bool increment_write_id) const {
-  IntraTxnWriteId write_id = 0;
   for (const auto& entry : dwb.key_value_pairs()) {
     if (decode_dockey) {
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
       RETURN_NOT_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithoutHybridTime(entry.first),
-                            Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
+          Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
     }
+  }
 
-    string rocksdb_key;
-    if (hybrid_time.is_valid()) {
-      // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
-      const KeyBytes encoded_ht =
-          PrimitiveValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
-      rocksdb_key = entry.first + encoded_ht.data();
-    } else {
-      // Useful when printing out a write batch that does not yet know the HybridTime it will be
-      // committed with.
-      rocksdb_key = entry.first;
+  if (current_txn_id_.is_initialized()) {
+    if (!increment_write_id) {
+      return STATUS(
+          InternalError, "For transactional write only increment_write_id=true is supported");
     }
-    rocksdb_write_batch->Put(rocksdb_key, entry.second);
-    if (increment_write_id) {
-      ++write_id;
+    KeyValueWriteBatchPB kv_write_batch;
+    dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
+    PrepareTransactionWriteBatch(
+        kv_write_batch, hybrid_time, rocksdb_write_batch, *current_txn_id_, txn_isolation_level_);
+  } else {
+    // TODO: this block has common code with docdb::PrepareNonTransactionWriteBatch and probably
+    // can be refactored, so common code is reused.
+    IntraTxnWriteId write_id = 0;
+    for (const auto& entry : dwb.key_value_pairs()) {
+      string rocksdb_key;
+      if (hybrid_time.is_valid()) {
+        // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
+        const KeyBytes encoded_ht =
+            PrimitiveValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
+        rocksdb_key = entry.first + encoded_ht.data();
+      } else {
+        // Useful when printing out a write batch that does not yet know the HybridTime it will be
+        // committed with.
+        rocksdb_key = entry.first;
+      }
+      rocksdb_write_batch->Put(rocksdb_key, entry.second);
+      if (increment_write_id) {
+        ++write_id;
+      }
     }
   }
   return Status::OK();
@@ -161,8 +176,9 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     rocksdb_write_batch.SetUserOpId(op_id_);
   }
 
-  RETURN_NOT_OK(PopulateRocksDBWriteBatch(doc_write_batch, &rocksdb_write_batch, hybrid_time,
-                                          decode_dockey, increment_write_id));
+  RETURN_NOT_OK(PopulateRocksDBWriteBatch(
+      doc_write_batch, &rocksdb_write_batch, hybrid_time, decode_dockey, increment_write_id));
+
   rocksdb::Status rocksdb_write_status = rocksdb_->Write(write_options(), &rocksdb_write_batch);
 
   if (!rocksdb_write_status.ok()) {

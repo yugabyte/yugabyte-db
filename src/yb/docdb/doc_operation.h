@@ -15,6 +15,7 @@
 #define YB_DOCDB_DOC_OPERATION_H_
 
 #include <list>
+#include <boost/optional.hpp>
 
 #include "yb/rocksdb/db.h"
 
@@ -124,7 +125,9 @@ class RedisReadOperation {
 class QLWriteOperation : public DocOperation {
  public:
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  QLWriteOperation(QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response);
+  QLWriteOperation(
+      QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response,
+      const TransactionOperationContextOpt& txn_op_context);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
@@ -173,6 +176,8 @@ class QLWriteOperation : public DocOperation {
 
   QLWriteRequestPB request_;
   QLResponsePB* response_;
+  const TransactionOperationContextOpt txn_op_context_;
+
   // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
   // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column
   // plus the values of all columns referenced in the if-clause if the condition is not satisfied.
@@ -185,7 +190,10 @@ class QLWriteOperation : public DocOperation {
 
 class QLReadOperation {
  public:
-  explicit QLReadOperation(const QLReadRequestPB& request) : request_(request) {}
+  QLReadOperation(
+      const QLReadRequestPB& request,
+      const TransactionOperationContextOpt& txn_op_context)
+      : request_(request), txn_op_context_(txn_op_context) {}
 
   CHECKED_STATUS Execute(const common::QLStorageIf& ql_storage,
                          const HybridTime& hybrid_time,
@@ -199,6 +207,7 @@ class QLReadOperation {
 
  private:
   const QLReadRequestPB& request_;
+  const TransactionOperationContextOpt txn_op_context_;
   QLResponsePB response_;
 };
 

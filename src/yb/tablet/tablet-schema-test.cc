@@ -126,7 +126,7 @@ TEST_F(TestTabletSchema, TestRead) {
   InsertRows(client_schema_, 0, kNumRows);
 
   gscoped_ptr<RowwiseIterator> iter;
-  ASSERT_OK(tablet()->NewRowIterator(projection, &iter));
+  ASSERT_OK(tablet()->NewRowIterator(projection, boost::none, &iter));
 
   Status s = iter->Init(nullptr);
   ASSERT_TRUE(s.IsInvalidArgument());

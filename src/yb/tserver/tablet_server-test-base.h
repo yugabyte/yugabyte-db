@@ -409,7 +409,7 @@ class TabletServerTestBase : public YBTest {
   // Verifies that a set of expected rows (key, value) is present in the tablet.
   void VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
     gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet_peer_->tablet()->NewRowIterator(schema, &iter));
+    ASSERT_OK(tablet_peer_->tablet()->NewRowIterator(schema, boost::none, &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
 

@@ -230,7 +230,6 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
     slice->consume_byte();
   }
 
-
   const ValueType first_value_type = static_cast<ValueType>(*slice->data());
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
@@ -568,15 +567,19 @@ bool SubDocKey::operator ==(const SubDocKey& other) const {
 }
 
 int SubDocKey::CompareTo(const SubDocKey& other) const {
-  int result = doc_key_.CompareTo(other.doc_key_);
-  if (result != 0) return result;
-
-  // We specify reverse_second_component = true to implement inverse hybrid_time ordering.
-  result = CompareVectors<PrimitiveValue>(subkeys_, other.subkeys_);
+  int result = CompareToIgnoreHt(other);
   if (result != 0) return result;
 
   // HybridTimes are sorted in reverse order.
   return -doc_ht_.CompareTo(other.doc_ht_);
+}
+
+int SubDocKey::CompareToIgnoreHt(const SubDocKey& other) const {
+  int result = doc_key_.CompareTo(other.doc_key_);
+  if (result != 0) return result;
+
+  result = CompareVectors(subkeys_, other.subkeys_);
+  return result;
 }
 
 string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
@@ -624,7 +627,7 @@ int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {
 
 KeyBytes SubDocKey::AdvanceOutOfSubDoc() const {
   KeyBytes subdoc_key_no_ts = Encode(/* include_hybrid_time = */ false);
-  subdoc_key_no_ts.AppendRawBytes("\xff", 1);
+  subdoc_key_no_ts.AppendValueType(ValueType::kMaxByte);
   return subdoc_key_no_ts;
 }
 
@@ -653,7 +656,7 @@ KeyBytes SubDocKey::AdvanceOutOfDocKeyPrefix() const {
   // Result: H\0x12\0x34$aa\x00\x00$bb\x00\x00!\xff
   KeyBytes doc_key_encoded = doc_key_.Encode();
   doc_key_encoded.RemoveValueTypeSuffix(ValueType::kGroupEnd);
-  doc_key_encoded.AppendRawBytes("\xff", 1);
+  doc_key_encoded.AppendValueType(ValueType::kMaxByte);
   return doc_key_encoded;
 }
 

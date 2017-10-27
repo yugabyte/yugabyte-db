@@ -43,6 +43,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <boost/optional.hpp>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
@@ -68,6 +69,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent.h"
 #include "yb/docdb/primitive_value.h"
 
 #include "yb/gutil/atomicops.h"
@@ -508,22 +510,24 @@ BloomFilterSizing Tablet::bloom_sizing() const {
 }
 
 Status Tablet::NewRowIterator(const Schema &projection,
+                              const boost::optional<TransactionId>& transaction_id,
                               gscoped_ptr<RowwiseIterator> *iter) const {
   // Yield current rows.
   MvccSnapshot snap(mvcc_);
-  return NewRowIterator(projection, snap, Tablet::UNORDERED, iter);
+  return NewRowIterator(projection, snap, Tablet::UNORDERED, transaction_id, iter);
 }
 
 Status Tablet::NewRowIterator(const Schema &projection,
                               const MvccSnapshot &snap,
                               const OrderMode order,
+                              const boost::optional<TransactionId>& transaction_id,
                               gscoped_ptr<RowwiseIterator> *iter) const {
   CHECK_EQ(state_, kOpen);
   if (metrics_) {
     metrics_->scans_started->Increment();
   }
   VLOG(2) << "Created new Iterator under snap: " << snap.ToString();
-  iter->reset(new Iterator(this, projection, snap, order));
+  iter->reset(new Iterator(this, projection, snap, order, transaction_id));
   return Status::OK();
 }
 
@@ -882,185 +886,22 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
   return Status::OK();
 }
 
-void AddIntent(const TransactionId& transaction_id,
-               Slice key,
-               Slice value,
-               WriteBatch* rocksdb_write_batch) {
-  KeyBytes reverse_key;
-  AppendTransactionKeyPrefix(transaction_id, &reverse_key);
-  int size = 0;
-  CHECK_OK(DocHybridTime::CheckAndGetEncodedSize(key, &size));
-  reverse_key.AppendRawBytes(key.cend() - size, size);
-
-  rocksdb_write_batch->Put(key, value);
-  rocksdb_write_batch->Put(reverse_key.data(), key);
-}
-
-void AppendIntentKeySuffix(docdb::IntentType intent_type,
-                           const DocHybridTime& doc_ht,
-                           KeyBytes* key) {
-  AppendIntentType(intent_type, key);
-  AppendDocHybridTime(doc_ht, key);
-}
-
-void AppendTransactionId(const TransactionId& id, std::string* value) {
-  value->push_back(static_cast<char>(ValueType::kTransactionId));
-  value->append(pointer_cast<const char*>(id.data), id.size());
-}
-
-// Enumerate intents corresponding to provided key value pairs.
-// For each key in generates a strong intent and for each parent of each it generates a weak one.
-// functor should accept 3 arguments:
-// intent_kind - kind of intent weak or strong
-// value_slice - value of intent
-// key - pointer to key in format kIntentPrefix + SubDocKey (no ht)
-template <class Functor>
-CHECKED_STATUS EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
-    Functor functor) {
-  KeyBytes encoded_key;
-
-  for (int index = 0; index < kv_pairs.size(); ++index) {
-    const auto &kv_pair = kv_pairs.Get(index);
-    CHECK(kv_pair.has_key());
-    CHECK(kv_pair.has_value());
-    Slice key = kv_pair.key();
-    auto key_size = DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY);
-    CHECK_OK(key_size);
-
-    encoded_key.Clear();
-    encoded_key.AppendValueType(ValueType::kIntentPrefix);
-    encoded_key.AppendRawBytes(key.cdata(), *key_size);
-    key.remove_prefix(*key_size);
-
-    for (;;) {
-      auto subkey_begin = key.cdata();
-      auto decode_result = SubDocKey::DecodeSubkey(&key);
-      CHECK_OK(decode_result);
-      if (!decode_result.get()) {
-        break;
-      }
-      RETURN_NOT_OK(functor(IntentKind::kWeak, Slice(), &encoded_key));
-      encoded_key.AppendRawBytes(subkey_begin, key.cdata() - subkey_begin);
-    }
-
-    RETURN_NOT_OK(functor(IntentKind::kStrong, kv_pair.value(), &encoded_key));
-  }
-
-  return Status::OK();
-}
-
-// We have the following distinct types of data in this "intent store":
-// Main intent data:
-//   Prefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value of the intent
-// Transaction metadata
-//   TxnId -> status tablet id + isolation level
-// Reverse index by txn id
-//   TxnId + HybridTime -> Main intent data key
-//
-// Where prefix is just a single byte prefix. TxnId, IntentType, HybridTime all prefixed with
-// appropriate value type.
 void Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     WriteBatch* rocksdb_write_batch) {
-
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     transaction_participant()->Add(put_batch.transaction(), rocksdb_write_batch);
   }
-
-  auto transaction_id = DecodeTransactionId(
-      put_batch.transaction().transaction_id());
+  auto transaction_id = FullyDecodeTransactionId(put_batch.transaction().transaction_id());
   CHECK_OK(transaction_id);
-
   auto metadata = transaction_participant()->Metadata(rocksdb_.get(), *transaction_id);
   CHECK(metadata) << "Transaction metadata missing: " << *transaction_id;
 
   auto isolation_level = metadata->isolation;
-  auto intent_types = docdb::WriteIntentsForIsolationLevel(isolation_level);
-
-  // TODO(dtxn) weak & strong intent in one batch
-  std::unordered_set<std::string> weak_intents;
-
-  std::string value;
-
-  IntraTxnWriteId write_id = 0;
-
-  CHECK_OK(EnumerateIntents(put_batch.kv_pairs(),
-                            [&](IntentKind intent_kind, Slice value_slice, KeyBytes* key) {
-      if (intent_kind == IntentKind::kWeak) {
-        weak_intents.insert(key->data());
-        return Status::OK();
-      }
-
-      AppendIntentKeySuffix(intent_types.strong,
-                            DocHybridTime(hybrid_time, write_id++),
-                            key);
-
-      value.clear();
-      value.reserve(1 + transaction_id->size() + value_slice.size());
-      AppendTransactionId(*transaction_id, &value);
-      value.append(value_slice.cdata(), value_slice.size());
-      AddIntent(*transaction_id, key->data(), value, rocksdb_write_batch);
-
-      return Status::OK();
-  }));
-
-  KeyBytes encoded_key;
-  for (const auto& intent : weak_intents) {
-    encoded_key.Clear();
-    encoded_key.AppendRawBytes(intent);
-    AppendIntentKeySuffix(intent_types.weak,
-                          DocHybridTime(hybrid_time, write_id++),
-                          &encoded_key);
-    value.clear();
-    value.reserve(1 + transaction_id->size());
-    AppendTransactionId(*transaction_id, &value);
-    AddIntent(*transaction_id, encoded_key.data(), value, rocksdb_write_batch);
-  }
-}
-
-void Tablet::PrepareNonTransactionWriteBatch(
-    const KeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    WriteBatch* rocksdb_write_batch) {
-  for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
-    const auto& kv_pair = put_batch.kv_pairs(write_id);
-    CHECK(kv_pair.has_key());
-    CHECK(kv_pair.has_value());
-
-#ifndef NDEBUG
-    // Debug-only: ensure all keys we get in Raft replication can be decoded.
-    {
-      docdb::SubDocKey subdoc_key;
-      Status s = subdoc_key.FullyDecodeFromKeyWithoutHybridTime(kv_pair.key());
-      CHECK(s.ok())
-          << "Failed decoding key: " << s.ToString() << "; "
-          << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-          << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
-          << "put_batch:\n" << put_batch.DebugString();
-    }
-#endif
-
-    std::string patched_key;
-    patched_key.reserve(kv_pair.key().size() + kMaxBytesPerEncodedHybridTime);
-    patched_key += kv_pair.key();
-
-    // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
-    // The reason for this is that the HybridTime timestamp is only picked at the time of
-    // appending  an entry to the tablet's Raft log. Also this is a good way to save network
-    // bandwidth.
-    //
-    // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
-    // DocHybridTime encoding) that helps disambiguate between different updates to the
-    // same key (row/column) within a transaction. We set it based on the position of the write
-    // operation in its write batch.
-    patched_key.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
-    DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&patched_key);
-
-    rocksdb_write_batch->Put(patched_key, kv_pair.value());
-  }
+  yb::docdb::PrepareTransactionWriteBatch(
+      put_batch, hybrid_time, rocksdb_write_batch, *transaction_id, isolation_level);
 }
 
 void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
@@ -1156,7 +997,8 @@ Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
 }
 
 Status Tablet::HandleQLReadRequest(
-    HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
+    HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+    const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
@@ -1166,7 +1008,11 @@ Status Tablet::HandleQLReadRequest(
     return Status::OK();
   }
 
-  return AbstractTablet::HandleQLReadRequest(timestamp, ql_read_request, response, rows_data);
+  Result<TransactionOperationContextOpt> txn_op_ctx =
+      CreateTransactionOperationContext(transaction_metadata);
+  RETURN_NOT_OK(txn_op_ctx);
+  return AbstractTablet::HandleQLReadRequest(
+      timestamp, ql_read_request, *txn_op_ctx, response, rows_data);
 }
 
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
@@ -1209,13 +1055,17 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
   auto* ql_write_batch = batch_request.mutable_ql_write_batch();
 
   doc_ops.reserve(ql_write_batch->size());
+
+  Result<TransactionOperationContextOpt> txn_op_ctx =
+      CreateTransactionOperationContext(ql_write_request->write_batch().transaction());
+  RETURN_NOT_OK(txn_op_ctx);
   for (size_t i = 0; i < ql_write_batch->size(); i++) {
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
     QLResponsePB* resp = write_response->add_ql_response_batch();
     if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp));
+      doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp, *txn_op_ctx));
     }
   }
   RETURN_NOT_OK(StartDocWriteOperation(
@@ -1557,7 +1407,7 @@ Result<docdb::IntentType> ExtractIntentType(
   INTENT_KEY_SCHECK(intent_key->size(), GE, 3, "key too short");
   intent_key->remove_suffix(doc_ht_size + 3);
   INTENT_KEY_SCHECK(intent_key->end()[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
-                    "intent type value type exepected");
+                    "intent type value type expected");
   INTENT_KEY_SCHECK(intent_key->end()[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
                     "hybrid time value type expected");
   return static_cast<docdb::IntentType>(intent_key->end()[1]);
@@ -1607,7 +1457,7 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
         auto intent_type = ExtractIntentType(intent_iter.get(), transaction_id_slice, &intent_key);
         RETURN_NOT_OK(intent_type);
 
-        if (StrongIntent(*intent_type)) {
+        if (IsStrongIntent(*intent_type)) {
           Slice intent_value(intent_iter->value());
           INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
                               "prefix expected");
@@ -2520,13 +2370,14 @@ Status Tablet::CaptureConsistentIterators(
     const Schema *projection,
     const MvccSnapshot &snap,
     const ScanSpec *spec,
+    const boost::optional<TransactionId>& transaction_id,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
 
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);
     case TableType::YQL_TABLE_TYPE:
-      return QLCaptureConsistentIterators(projection, snap, spec, iters);
+      return QLCaptureConsistentIterators(projection, snap, spec, transaction_id, iters);
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
   }
@@ -2537,12 +2388,15 @@ Status Tablet::QLCaptureConsistentIterators(
     const Schema *projection,
     const MvccSnapshot &snap,
     const ScanSpec *spec,
+    const boost::optional<TransactionId>& transaction_id,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
+  TransactionOperationContextOpt txn_op_ctx =
+      CreateTransactionOperationContext(transaction_id);
   iters->clear();
   iters->push_back(std::make_shared<DocRowwiseIterator>(
-      *projection, *schema(), rocksdb_.get(), snap.LastCommittedHybridTime(),
+      *projection, *schema(), txn_op_ctx, rocksdb_.get(), snap.LastCommittedHybridTime(),
       // We keep the pending operation counter incremented while the iterator exists so that
       // RocksDB does not get deallocated while we're using it.
       &pending_op_counter_));
@@ -2601,6 +2455,8 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
   return Status::OK();
 }
 
+// TODO(dtxn) TransactionConflictResolver doesn't need to be dependent on tablet module, so
+// it could be extracted to DocDB later or intermediate level above DocDB.
 class TransactionConflictResolver {
  public:
   explicit TransactionConflictResolver(const KeyValueWriteBatchPB& write_batch,
@@ -2610,7 +2466,7 @@ class TransactionConflictResolver {
       : write_batch_(write_batch),
         hybrid_time_(hybrid_time),
         db_(db),
-        transaction_id_(DecodeTransactionId(
+        transaction_id_(FullyDecodeTransactionId(
             write_batch.transaction().transaction_id())),
         intent_iter_(docdb::CreateRocksDBIterator(
             db,
@@ -2637,9 +2493,9 @@ class TransactionConflictResolver {
       metadata_ = std::move(*stored_metadata);
     }
 
-    intent_types_ = docdb::WriteIntentsForIsolationLevel(metadata_.isolation);
+    intent_types_ = docdb::GetWriteIntentsForIsolationLevel(metadata_.isolation);
 
-    RETURN_NOT_OK(EnumerateIntents(
+    RETURN_NOT_OK(docdb::EnumerateIntents(
         write_batch_.kv_pairs(),
         std::bind(&TransactionConflictResolver::ProcessIntent, this, _1, _2, _3)));
 
@@ -2718,15 +2574,15 @@ class TransactionConflictResolver {
     auto write_iterator = transactions_.begin();
     for (const auto& transaction : transactions_) {
       auto status = transaction.status;
-      if (status == tserver::TransactionStatus::COMMITTED) {
+      if (status == TransactionStatus::COMMITTED) {
         RETURN_NOT_OK(CheckConflictWithCommitted(transaction.id, transaction.commit_time));
         continue;
-      } else if (status == tserver::TransactionStatus::APPLYING) {
+      } else if (status == TransactionStatus::APPLYING) {
         return MakeConflictStatus(transaction.id, "applying");
-      } else if (status == tserver::TransactionStatus::ABORTED) {
+      } else if (status == TransactionStatus::ABORTED) {
         continue;
       } else {
-        DCHECK_EQ(tserver::TransactionStatus::PENDING, status);
+        DCHECK_EQ(TransactionStatus::PENDING, status);
       }
       *write_iterator = transaction;
       ++write_iterator;
@@ -2745,7 +2601,7 @@ class TransactionConflictResolver {
 
   // Processes intent generated by EnumerateIntents.
   // I.e. fetches conflicting intents and fills list of conflicting transactions.
-  CHECKED_STATUS ProcessIntent(IntentKind kind, Slice value_slice, const KeyBytes* key) {
+  CHECKED_STATUS ProcessIntent(docdb::IntentKind kind, Slice value_slice, const KeyBytes* key) {
     auto intent_type = intent_types_[kind];
     const auto& conflicts = docdb::kIntentConflicts[static_cast<size_t>(intent_type)];
 
@@ -2790,7 +2646,7 @@ class TransactionConflictResolver {
       auto existing_intent_type = ExtractIntentType(
           intent_iter_.get(), existing_value, &existing_key);
 
-      auto transaction_id = DecodeTransactionId(
+      auto transaction_id = FullyDecodeTransactionId(
           Slice(existing_value.data(), TransactionId::static_size()));
       RETURN_NOT_OK(transaction_id);
 
@@ -2816,7 +2672,7 @@ class TransactionConflictResolver {
               transaction.ProcessStatus(*result);
             } else {
               CHECK(result.status().IsTryAgain()); // TODO(dtxn) Handle errors.
-              transaction.status = tserver::TransactionStatus::PENDING;
+              transaction.status = TransactionStatus::PENDING;
             }
             latch.CountDown();
           });
@@ -2853,13 +2709,13 @@ class TransactionConflictResolver {
 
   struct TransactionData {
     TransactionId id;
-    tserver::TransactionStatus status;
+    TransactionStatus status;
     HybridTime commit_time;
     TransactionMetadata metadata;
 
     void ProcessStatus(const TransactionStatusResult& result) {
       status = result.status;
-      if (status == tserver::TransactionStatus::COMMITTED) {
+      if (status == TransactionStatus::COMMITTED) {
         commit_time = result.status_time;
       }
     }
@@ -3196,11 +3052,13 @@ void Tablet::PrintRSLayout(ostream* o) {
 ////////////////////////////////////////////////////////////
 
 Tablet::Iterator::Iterator(const Tablet* tablet, const Schema& projection,
-                           MvccSnapshot snap, const OrderMode order)
+                           MvccSnapshot snap, const OrderMode order,
+                           const boost::optional<TransactionId>& transaction_id)
     : tablet_(tablet),
       projection_(projection),
       snap_(std::move(snap)),
       order_(order),
+      transaction_id_(transaction_id),
       arena_(256, 4096),
       encoder_(&tablet_->key_schema(), &arena_) {}
 
@@ -3218,7 +3076,8 @@ Status Tablet::Iterator::Init(ScanSpec *spec) {
     VLOG(3) << "After encoding range preds: " << spec->ToString();
   }
 
-  RETURN_NOT_OK(tablet_->CaptureConsistentIterators(&projection_, snap_, spec, &iters));
+  RETURN_NOT_OK(tablet_->CaptureConsistentIterators(
+      &projection_, snap_, spec, transaction_id_, &iters));
 
   switch (order_) {
     case ORDERED:
@@ -3308,6 +3167,41 @@ std::string Tablet::DocDBDumpStrInTest() {
 void Tablet::LostLeadership() {
   if (transaction_coordinator_) {
     transaction_coordinator_->ClearLocks();
+  }
+}
+
+Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
+    const TransactionMetadataPB& transaction_metadata) const {
+  if (metadata_->schema().table_properties().is_transactional()) {
+    if (transaction_metadata.has_transaction_id()) {
+      Result<TransactionId> txn_id = FullyDecodeTransactionId(
+          transaction_metadata.transaction_id());
+      RETURN_NOT_OK(txn_id);
+      return Result<TransactionOperationContextOpt>(boost::make_optional(
+          TransactionOperationContext(*txn_id, transaction_participant())));
+    } else {
+      // We still need context with transaction participant in order to resolve intents during
+      // possible reads.
+      return Result<TransactionOperationContextOpt>(boost::make_optional(
+          TransactionOperationContext(GenerateTransactionId(), transaction_participant())));
+    }
+  } else {
+    return Result<TransactionOperationContextOpt>(boost::none);
+  }
+}
+
+TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
+    const boost::optional<TransactionId>& transaction_id) const {
+  if (metadata_->schema().table_properties().is_transactional()) {
+    if (transaction_id.is_initialized()) {
+      return TransactionOperationContext(transaction_id.get(), transaction_participant());
+    } else {
+      // We still need context with transaction participant in order to resolve intents during
+      // possible reads.
+      return TransactionOperationContext(GenerateTransactionId(), transaction_participant());
+    }
+  } else {
+    return boost::none;
   }
 }
 

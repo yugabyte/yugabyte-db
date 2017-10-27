@@ -74,11 +74,11 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     // Warm up code cache with all the projections we'll be using.
     gscoped_ptr<RowwiseIterator> iter;
-    CHECK_OK(tablet()->NewRowIterator(client_schema_, &iter));
+    CHECK_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
     const Schema* schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
-    CHECK_OK(tablet()->NewRowIterator(valcol_projection_, &iter));
+    CHECK_OK(tablet()->NewRowIterator(valcol_projection_, boost::none, &iter));
 
     ts_collector_.StartDumperThread();
   }
@@ -121,7 +121,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     while (running_insert_count_.count() > 0) {
       gscoped_ptr<RowwiseIterator> iter;
-      CHECK_OK(tablet()->NewRowIterator(client_schema_, &iter));
+      CHECK_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
       ScanSpec scan_spec;
       CHECK_OK(iter->Init(&scan_spec));
 
@@ -178,7 +178,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     while (running_insert_count_.count() > 0) {
       gscoped_ptr<RowwiseIterator> iter;
-      CHECK_OK(tablet()->NewRowIterator(client_schema_, &iter));
+      CHECK_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
       ScanSpec scan_spec;
       CHECK_OK(iter->Init(&scan_spec));
 
@@ -212,7 +212,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     uint64_t sum = 0;
 
     gscoped_ptr<RowwiseIterator> iter;
-    CHECK_OK(tablet()->NewRowIterator(valcol_projection_, &iter));
+    CHECK_OK(tablet()->NewRowIterator(valcol_projection_, boost::none, &iter));
     ScanSpec scan_spec;
     CHECK_OK(iter->Init(&scan_spec));
 

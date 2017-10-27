@@ -164,7 +164,7 @@ class BootstrapTest : public LogTestBase {
     // Unless we explicitly scan at a snapshot including all hybrid_times, we don't
     // see the bootstrapped operation. This is likely due to KUDU-138 -- perhaps
     // we aren't properly setting up the clock after bootstrap.
-    ASSERT_OK(tablet->NewRowIterator(schema_, &iter));
+    ASSERT_OK(tablet->NewRowIterator(schema_, boost::none, &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
     ASSERT_OK(IterateToStringList(iter.get(), results));

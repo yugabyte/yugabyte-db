@@ -67,18 +67,20 @@ class RandomizedDocDBTest : public DocDBTestBase {
   RandomizedDocDBTest() : verify_history_cleanup_(true) {
   }
 
-  void Init(const bool use_hash) {
+  void Init(const bool use_hash, const bool resolve_intents = true) {
     if (load_gen_.get() != nullptr) {
       ClearLogicalSnapshots();
       ASSERT_OK(DestroyRocksDB());
       ASSERT_OK(ReopenRocksDB());
     }
-    load_gen_.reset(new DocDBLoadGenerator(this, kNumDocKeys, kNumUniqueSubKeys, use_hash));
+    load_gen_.reset(new DocDBLoadGenerator(this, kNumDocKeys, kNumUniqueSubKeys, use_hash,
+        resolve_intents));
     SeedRandom();
   }
 
   ~RandomizedDocDBTest() override {}
   void RunWorkloadWithSnaphots(bool enable_history_cleanup);
+  void TestWithFlush(bool resolve_intents);
 
   bool verify_history_cleanup_;
   std::unique_ptr<DocDBLoadGenerator> load_gen_;
@@ -236,6 +238,22 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
             load_gen_->divergent_snapshot_ht_and_cleanup_ht());
 }
 
+void RandomizedDocDBTest::TestWithFlush(const bool resolve_intents) {
+  for (auto use_hash : {false, true}) {
+    Init(use_hash, resolve_intents);
+    // GetSubDocument is slower when trying to resolve intents, so we reduce number of iterations
+    // in order to respect the timeout.
+    const int num_iter = FLAGS_test_num_iter / (resolve_intents ? 2 : 1);
+    while (load_gen_->next_iteration() <= num_iter) {
+      ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration "
+                                                      << load_gen_->next_iteration();
+      if (load_gen_->next_iteration() % 250 == 0) {
+        ASSERT_NO_FATALS(load_gen_->FlushRocksDB());
+      }
+    }
+  }
+}
+
 TEST_F(RandomizedDocDBTest, TestNoFlush) {
   for (auto use_hash : {false, true}) {
     Init(use_hash);
@@ -246,17 +264,12 @@ TEST_F(RandomizedDocDBTest, TestNoFlush) {
   }
 }
 
-TEST_F(RandomizedDocDBTest, TestWithFlush) {
-  for (auto use_hash : {false, true}) {
-    Init(use_hash);
-    while (load_gen_->next_iteration() <= FLAGS_test_num_iter) {
-      ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " <<
-          load_gen_->next_iteration();
-      if (load_gen_->next_iteration() % 250 == 0) {
-        ASSERT_NO_FATALS(load_gen_->FlushRocksDB());
-      }
-    }
-  }
+TEST_F(RandomizedDocDBTest, TestWithFlushDontResolveIntents) {
+  TestWithFlush(false);
+}
+
+TEST_F(RandomizedDocDBTest, TestWithFlushResolveIntents) {
+  TestWithFlush(true);
 }
 
 TEST_F(RandomizedDocDBTest, Snapshots) {

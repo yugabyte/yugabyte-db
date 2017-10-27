@@ -417,6 +417,10 @@ ReadRpc::ReadRpc(
   req_.set_consistency_level(yb_consistency_level);
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
+  const auto& transaction = batcher->transaction_metadata();
+  if (transaction.has_transaction_id()) {
+    *req_.mutable_transaction() = transaction;
+  }
   int ctr = 0;
   for (auto& op : ops_) {
     switch (op->yb_op->type()) {

@@ -53,6 +53,35 @@ using yb::util::FormatBytesAsStr;
 namespace yb {
 namespace docdb {
 
+namespace {
+
+class NonTransactionalStatusProvider: public TransactionStatusProvider {
+ public:
+  HybridTime LocalCommitTime(const TransactionId &id) override {
+    Fail();
+    return HybridTime::kInvalidHybridTime;
+  }
+
+  void RequestStatusAt(const TransactionId &id,
+      HybridTime time,
+      TransactionStatusCallback callback) override {
+    Fail();
+  }
+
+ private:
+  static inline void Fail() {
+    LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";
+  }
+};
+
+NonTransactionalStatusProvider kNonTransactionalStatusProvider;
+
+} // namespace
+
+const TransactionOperationContext kNonTransactionalOperationContext = {
+    boost::uuids::nil_uuid(), &kNonTransactionalStatusProvider
+};
+
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
   static vector<string> kFruit = {
       "Apple",
@@ -252,12 +281,14 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
                                        const int num_doc_keys,
                                        const int num_unique_subkeys,
                                        const bool use_hash,
+                                       const bool resolve_intents,
                                        const int deletion_chance,
                                        const int max_nesting_level,
                                        const uint64 random_seed,
                                        const int verification_frequency)
     : fixture_(fixture),
       doc_keys_(GenRandomDocKeys(&random_, use_hash, num_doc_keys)),
+      resolve_intents_(resolve_intents),
       possible_subkeys_(GenRandomPrimitiveValues(&random_, num_unique_subkeys)),
       iteration_(1),
       deletion_chance_(deletion_chance),
@@ -341,6 +372,10 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   ASSERT_OK(fixture_->WriteToRocksDB(dwb, hybrid_time));
   const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
+  const TransactionOperationContextOpt txn_op_context =
+      resolve_intents_
+          ? boost::make_optional(kNonTransactionalOperationContext)
+          : boost::none;
   // In case we are asked to compact history, we read the document from RocksDB before and after the
   // compaction, and expect to get the same result in both cases.
   for (int do_compaction_now = 0; do_compaction_now <= compact_history; ++do_compaction_now) {
@@ -352,8 +387,9 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     SubDocument doc_from_rocksdb;
     bool doc_found_in_rocksdb = false;
     ASSERT_OK(
-        GetSubDocument(rocksdb(), SubDocKey(doc_key), &doc_from_rocksdb, &doc_found_in_rocksdb,
-                       rocksdb::kDefaultQueryId));
+        GetSubDocument(
+            rocksdb(), SubDocKey(doc_key), rocksdb::kDefaultQueryId, txn_op_context,
+            &doc_from_rocksdb, &doc_found_in_rocksdb));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.
@@ -522,15 +558,6 @@ Status DocDBRocksDBFixtureTest::FormatDocWriteBatch(const DocWriteBatch &dwb, st
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(dwb, &rocksdb_write_batch));
   RETURN_NOT_OK(rocksdb_write_batch.Iterate(&formatter));
   *dwb_str = formatter.str();
-  return Status::OK();
-}
-
-Status DocDBRocksDBFixtureTest::DebugWalkDocument(const KeyBytes& encoded_doc_key,
-                                                  string* doc_str) {
-  DebugDocVisitor doc_visitor;
-  RETURN_NOT_OK(ScanSubDocument(rocksdb(), encoded_doc_key, &doc_visitor,
-                                rocksdb::kDefaultQueryId));
-  *doc_str = doc_visitor.ToString();
   return Status::OK();
 }
 

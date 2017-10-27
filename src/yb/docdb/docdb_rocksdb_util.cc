@@ -15,13 +15,12 @@
 
 #include <memory>
 
+#include "yb/common/transaction.h"
+
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/key_bytes.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
@@ -170,6 +169,12 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
   SeekForward(key_bytes.AsSlice(), iter);
 }
 
+void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
+  KeyBytes key_bytes = sub_doc_key.Encode(/* include_hybrid_time */ false);
+  AppendDocHybridTime(DocHybridTime::kMin, &key_bytes);
+  SeekForward(key_bytes, iter);
+}
+
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,
     const rocksdb::Slice &seek_key,
@@ -195,11 +200,11 @@ void PerformRocksDBSeek(
         SubDocKey subdoc_key;
         const Status subdoc_key_decode_status = subdoc_key.FullyDecodeFrom(
             seek_key, /* require_hybrid_time = */ false);
-        if (!subdoc_key_decode_status.ok() || subdoc_key.has_hybrid_time()) {
-          // Don't crash if we failed to decode the SubDocKey (that is sometimes possible in
-          // special-case seek keys that we construct), or if we decoded it and it had no hybrid
-          // time (which is used in the write-path InternalDocIterator to check if an object init
-          // marker is present).
+        // Don't crash if we failed to decode the SubDocKey (that is sometimes possible in
+        // special-case seek keys that we construct), or if we decoded it and it had no hybrid
+        // time (which is used in the write-path InternalDocIterator to check if an object init
+        // marker is present).
+        if (subdoc_key_decode_status.ok() && subdoc_key.has_hybrid_time()) {
           DCHECK(dht.write_id() == kMaxWriteId || dht == DocHybridTime::kMin)
             << "Trying to seek to a key with a write id that is not maximum possible: "
             << BestEffortDocDBKeyToStr(seek_key)
@@ -255,7 +260,9 @@ void PerformRocksDBSeek(
       seek_count);
 }
 
-unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
+namespace {
+
+rocksdb::ReadOptions PrepareReadOptions(
     rocksdb::DB* rocksdb,
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
@@ -264,13 +271,38 @@ unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
   if (FLAGS_use_docdb_aware_bloom_filter &&
-      bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
+    bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
     DCHECK(user_key_for_filter);
     read_opts.table_aware_file_filter = rocksdb->GetOptions().table_factory->
         NewTableAwareReadFileFilter(read_opts, user_key_for_filter.get());
   }
   read_opts.file_filter = std::move(file_filter);
-  return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
+  return read_opts;
+}
+
+} // namespace
+
+unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
+    rocksdb::DB* rocksdb,
+    BloomFilterMode bloom_filter_mode,
+    const boost::optional<const Slice>& user_key_for_filter,
+    const rocksdb::QueryId query_id,
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
+  return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(PrepareReadOptions(rocksdb,
+      bloom_filter_mode, user_key_for_filter, query_id, std::move(file_filter))));
+}
+
+unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
+    rocksdb::DB* rocksdb,
+    BloomFilterMode bloom_filter_mode,
+    const boost::optional<const Slice>& user_key_for_filter,
+    const rocksdb::QueryId query_id,
+    const TransactionOperationContextOpt& txn_op_context,
+    const HybridTime high_ht,
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
+      user_key_for_filter, query_id, std::move(file_filter));
+  return std::make_unique<IntentAwareIterator>(rocksdb, read_opts, high_ht, txn_op_context);
 }
 
 void InitRocksDBOptions(

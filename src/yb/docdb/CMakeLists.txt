@@ -35,10 +35,11 @@ set(DOCDB_SRCS
     doc_write_batch_cache.cc
     doc_ql_scanspec.cc
     docdb.cc
+    docdb-internal.cc
     docdb_compaction_filter.cc
     docdb_rocksdb_util.cc
-    in_mem_docdb.cc
     intent.cc
+    intent_aware_iterator.cc
     internal_doc_iterator.cc
     key_bytes.cc
     ql_rocksdb_storage.cc
@@ -65,7 +66,8 @@ cotire(yb_docdb)
 # A library with common code shared between DocDB tests.
 set(DOCDB_TEST_COMMON_SRCS
     docdb_test_util.cc
-    docdb_test_base.cc)
+    docdb_test_base.cc
+    in_mem_docdb.cc)
 
 add_library(yb_docdb_test_common ${DOCDB_TEST_COMMON_SRCS})
 target_link_libraries(yb_docdb_test_common
@@ -78,6 +80,7 @@ ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb-test)
+ADD_YB_TEST(docrowwiseiterator-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(shared_lock_manager-test)

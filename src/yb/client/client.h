@@ -1147,7 +1147,7 @@ class YBScanner {
   // Initialize the scanner. The given 'table' object must remain valid
   // for the lifetime of this scanner object.
   // TODO: should table be a const pointer?
-  explicit YBScanner(YBTable* table);
+  explicit YBScanner(YBTable* table, const YBTransactionPtr& transaction = nullptr);
   ~YBScanner();
 
   // Set the projection used for this scanner by passing the column names to read.

@@ -24,13 +24,15 @@ QLRocksDBStorage::QLRocksDBStorage(rocksdb::DB *rocksdb)
 
 }
 
-CHECKED_STATUS QLRocksDBStorage::GetIterator(const QLReadRequestPB& request,
-                                              const Schema& projection,
-                                              const Schema& schema,
-                                              HybridTime req_hybrid_time,
-                                              std::unique_ptr<common::QLRowwiseIteratorIf> *iter)
-                                              const {
-  iter->reset(new DocRowwiseIterator(projection, schema, rocksdb_, req_hybrid_time));
+CHECKED_STATUS QLRocksDBStorage::GetIterator(
+    const QLReadRequestPB& request,
+    const Schema& projection,
+    const Schema& schema,
+    const TransactionOperationContextOpt& txn_op_context,
+    HybridTime req_hybrid_time,
+    std::unique_ptr<common::QLRowwiseIteratorIf> *iter) const {
+  iter->reset(new DocRowwiseIterator(
+      projection, schema, txn_op_context, rocksdb_, req_hybrid_time));
   return Status::OK();
 }
 

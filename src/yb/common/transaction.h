@@ -17,24 +17,83 @@
 #define YB_COMMON_TRANSACTION_H
 
 #include <boost/functional/hash.hpp>
+#include <boost/optional.hpp>
 #include <boost/uuid/uuid.hpp>
 
+#include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 
 using TransactionId = boost::uuids::uuid;
 typedef boost::hash<TransactionId> TransactionIdHash;
 
+inline TransactionId GenerateTransactionId() { return Uuid::Generate(); }
+
 // Processing mode:
 //   LEADER - processing in leader.
 //   NON_LEADER - processing in non leader.
 YB_DEFINE_ENUM(ProcessingMode, (NON_LEADER)(LEADER));
 
-// Makes transaction id from its binary representation string.
-Result<TransactionId> DecodeTransactionId(
-  Slice binary_representation_of_transaction_id);
+// Decodes transaction id from its binary representation.
+// Checks that slice contains only TransactionId.
+Result<TransactionId> FullyDecodeTransactionId(const Slice& slice);
+
+// Decodes transaction id from slice which contains binary encoding. Consumes corresponding bytes
+// from slice.
+Result<TransactionId> DecodeTransactionId(Slice* slice);
+
+struct TransactionStatusResult {
+  TransactionStatus status;
+
+  // Meaning of status_time is related to status value.
+  // PENDING - status_time reflects maximal guaranteed PENDING time, i.e. transaction cannot be
+  // committed before this time.
+  // COMMITTED - status_time is a commit time.
+  // ABORTED - not used.
+  HybridTime status_time;
+};
+
+typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
+
+class TransactionStatusProvider {
+ public:
+  virtual ~TransactionStatusProvider() {}
+
+  // Checks whether this tablet knows that transaction is committed.
+  // In case of success returns commit time of transaction, otherwise returns invalid time.
+  virtual HybridTime LocalCommitTime(const TransactionId& id) = 0;
+
+  // Fetches status of specified transaction at specified time from transaction coordinator.
+  // Callback would be invoked in any case.
+  // There are the following potential cases:
+  // 1. Status tablet knows transaction id and could determine it's status at this time. In this
+  // case status structure is filled with transaction status with corresponding status time.
+  // 2. Status tablet don't know this transaction id, in this case status structure contains
+  // ABORTED status.
+  // 3. Status tablet could not determine transaction status at this time. In this case callback
+  // will be invoked with TryAgain result.
+  // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
+  virtual void RequestStatusAt(const TransactionId& id,
+                               HybridTime time,
+                               TransactionStatusCallback callback) = 0;
+};
+
+struct TransactionOperationContext {
+  TransactionOperationContext(
+      const TransactionId& transaction_id_, TransactionStatusProvider* txn_status_provider_)
+      : transaction_id(transaction_id_),
+        txn_status_provider(*(DCHECK_NOTNULL(txn_status_provider_))) {}
+
+  TransactionId transaction_id;
+  TransactionStatusProvider& txn_status_provider;
+};
+
+typedef boost::optional<TransactionOperationContext> TransactionOperationContextOpt;
 
 } // namespace yb
 

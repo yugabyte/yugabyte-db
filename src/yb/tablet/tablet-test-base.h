@@ -400,7 +400,7 @@ class TabletTestBase : public YBTabletTest {
 
   void VerifyTestRows(int64_t first_row, uint64_t expected_count) {
     gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, &iter));
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
     int batch_size = std::max(
@@ -455,7 +455,8 @@ class TabletTestBase : public YBTabletTest {
   // a very small number of rows.
   CHECKED_STATUS IterateToStringList(vector<string> *out) {
     gscoped_ptr<RowwiseIterator> iter;
-    RETURN_NOT_OK(this->tablet()->NewRowIterator(this->client_schema_, &iter));
+    // TODO(dtxn) pass correct transaction ID if needed
+    RETURN_NOT_OK(this->tablet()->NewRowIterator(this->client_schema_, boost::none, &iter));
     ScanSpec scan_spec;
     RETURN_NOT_OK(iter->Init(&scan_spec));
     return yb::tablet::IterateToStringList(iter.get(), out);

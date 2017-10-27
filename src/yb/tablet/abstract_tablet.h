@@ -38,8 +38,9 @@ class AbstractTablet {
       RedisResponsePB* response) = 0;
 
   virtual CHECKED_STATUS HandleQLReadRequest(
-      HybridTime timestamp, const QLReadRequestPB& ql_read_request, QLResponsePB* response,
-      gscoped_ptr<faststring>* rows_data);
+      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+      const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
+      gscoped_ptr<faststring>* rows_data) = 0;
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,
@@ -48,6 +49,12 @@ class AbstractTablet {
   virtual void RegisterReaderTimestamp(HybridTime read_point) = 0;
   virtual void UnregisterReader(HybridTime read_point) = 0;
   virtual HybridTime SafeTimestampToRead() const = 0;
+
+ protected:
+  CHECKED_STATUS HandleQLReadRequest(
+      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+      const TransactionOperationContextOpt& txn_op_context, QLResponsePB* response,
+      gscoped_ptr<faststring>* rows_data);
 };
 
 }  // namespace tablet

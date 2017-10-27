@@ -30,7 +30,7 @@
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/docdb.h"
 
 #include "yb/rpc/rpc.h"
 
@@ -135,25 +135,25 @@ class RunningTransaction {
   }
 
  private:
-  static boost::optional<tserver::TransactionStatus> GetStatusAt(
+  static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
       HybridTime last_known_status_hybrid_time,
-      tserver::TransactionStatus last_known_status) {
+      TransactionStatus last_known_status) {
     switch (last_known_status) {
-      case tserver::TransactionStatus::ABORTED:
-        return tserver::TransactionStatus::ABORTED;
-      case tserver::TransactionStatus::COMMITTED:
+      case TransactionStatus::ABORTED:
+        return TransactionStatus::ABORTED;
+      case TransactionStatus::COMMITTED:
         // TODO(dtxn) clock skew
         return last_known_status_hybrid_time > time
-            ? tserver::TransactionStatus::PENDING
-            : tserver::TransactionStatus::COMMITTED;
-      case tserver::TransactionStatus::PENDING:
+            ? TransactionStatus::PENDING
+            : TransactionStatus::COMMITTED;
+      case TransactionStatus::PENDING:
         if (last_known_status_hybrid_time >= time) {
-          return tserver::TransactionStatus::PENDING;
+          return TransactionStatus::PENDING;
         }
         return boost::none;
       default:
-        FATAL_INVALID_ENUM_VALUE(tserver::TransactionStatus, last_known_status);
+        FATAL_INVALID_ENUM_VALUE(TransactionStatus, last_known_status);
     }
   }
 
@@ -163,13 +163,13 @@ class RunningTransaction {
     rpcs_.Unregister(&get_status_handle_);
     decltype(status_waiters_) status_waiters;
     HybridTime time;
-    tserver::TransactionStatus transaction_status;
+    TransactionStatus transaction_status;
     {
       std::unique_lock<std::mutex> lock(*mutex);
       status_waiters_.swap(status_waiters);
       if (status.ok()) {
         DCHECK(response.has_status_hybrid_time() ||
-               response.status() == tserver::TransactionStatus::ABORTED);
+               response.status() == TransactionStatus::ABORTED);
         time = response.has_status_hybrid_time()
             ? HybridTime(response.status_hybrid_time())
             : HybridTime::kMax;
@@ -239,7 +239,7 @@ class RunningTransaction {
     HybridTime time;
   };
 
-  mutable tserver::TransactionStatus last_known_status_;
+  mutable TransactionStatus last_known_status_;
   mutable HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
   mutable std::vector<StatusWaiter> status_waiters_;
   mutable rpc::Rpcs::Handle get_status_handle_;
@@ -251,7 +251,7 @@ class RunningTransaction {
 
 Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadataPB& source) {
   TransactionMetadata result;
-  auto id = DecodeTransactionId(source.transaction_id());
+  auto id = FullyDecodeTransactionId(source.transaction_id());
   RETURN_NOT_OK(id);
   result.transaction_id = *id;
   result.isolation = source.isolation();
@@ -380,7 +380,7 @@ class TransactionParticipant::Impl {
         req.set_tablet_id(data.status_tablet);
         auto& state = *req.mutable_state();
         state.set_transaction_id(data.transaction_id.begin(), data.transaction_id.size());
-        state.set_status(tserver::TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
+        state.set_status(TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS);
         state.add_tablets(context_.tablet_id());
 
         auto handle = rpcs_.Prepare();
@@ -485,12 +485,6 @@ void TransactionParticipant::Abort(const TransactionId& id,
 
 CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
   return impl_->ProcessApply(data);
-}
-
-void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out) {
-  out->AppendValueType(docdb::ValueType::kIntentPrefix);
-  out->AppendValueType(docdb::ValueType::kTransactionId);
-  out->AppendRawBytes(Slice(transaction_id.data, transaction_id.size()));
 }
 
 } // namespace tablet

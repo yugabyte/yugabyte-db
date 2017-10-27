@@ -28,14 +28,18 @@ namespace docdb {
 // Changes to this enum may invalidate persistent data.
 enum class ValueType : char {
   // This ValueType is used as -infinity for scanning purposes only.
-  kLowest = ' ', // ASCII code 32
+  kLowest = 19,
+
+  // We use ASCII code 20 in order to have it before all other value types which can occur in key,
+  // so intents will be written in the same order as original keys for which intents are written.
+  kIntentType = 20,
 
   // This indicates the end of the "hashed" or "range" group of components of the primary key. This
   // needs to sort before all other value types, so that a DocKey that has a prefix of the sequence
   // of components of another key sorts before the other key.
   // kGroupEnd is also used as the end marker for a frozen value.
   kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
-  // Note that intents also start with a ! character.
+
   // All intents are stored in the beginning of the keyspace to be able to read them without
   // polluting cache with other values. Later we'll put intents in a separate rocksdb.
   kIntentPrefix = '"', // ASCII code 34
@@ -84,7 +88,6 @@ enum class ValueType : char {
   kInt64Descending = 'b',  // ASCII code 98
   kTimestampDescending = 'c',  // ASCII code 99
   kDecimalDescending = 'd',  // ASCII code 100
-  kIntentType = 'i', // ASCII code 105
   kInt32Descending = 'e',  // ASCII code 101
 
   // Timestamp value in microseconds
@@ -108,7 +111,11 @@ enum class ValueType : char {
   kHighest = '~', // ASCII code 126
 
   // This is used for sanity checking. TODO: rename to kInvalid since this is an enum class.
-  kInvalidValueType = 127
+  kInvalidValueType = 127,
+
+  // ValueType which lexicographically higher than any other byte and is not used for encoding
+  // value type.
+  kMaxByte = '\xff',
 };
 
 constexpr int kWeakIntentFlag         = 0b000;
@@ -119,6 +126,8 @@ constexpr int kWriteIntentFlag        = 0b010;
 
 constexpr int kSerializableIntentFlag = 0b000;
 constexpr int kSnapshotIntentFlag     = 0b100;
+
+constexpr int kStrongWriteIntentFlags = kStrongIntentFlag | kWriteIntentFlag;
 
 // The purpose of different types of intents is to ensure that they conflict
 // in appropriate ways according to the conflict matrix.
@@ -131,28 +140,32 @@ YB_DEFINE_ENUM(IntentType,
     ((kWeakSerializableRead, kWeakIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
 );
 
-inline bool StrongIntent(IntentType intent) {
+inline bool IsStrongIntent(IntentType intent) {
   return (static_cast<int>(intent) & kStrongIntentFlag) != 0;
 }
 
-inline bool WeakIntent(IntentType intent) {
-  return !StrongIntent(intent);
+inline bool IsStrongWriteIntent(IntentType intent_type) {
+  return (static_cast<int>(intent_type) & kStrongWriteIntentFlags) == kStrongWriteIntentFlags;
 }
 
-inline bool WriteIntent(IntentType intent) {
+inline bool IsWeakIntent(IntentType intent) {
+  return !IsStrongIntent(intent);
+}
+
+inline bool IsWriteIntent(IntentType intent) {
   return (static_cast<int>(intent) & kWriteIntentFlag) != 0;
 }
 
-inline bool ReadIntent(IntentType intent) {
-  return !WriteIntent(intent);
+inline bool IsReadIntent(IntentType intent) {
+  return !IsWriteIntent(intent);
 }
 
-inline bool SnapshotIntent(IntentType intent) {
+inline bool IsSnapshotIntent(IntentType intent) {
   return (static_cast<int>(intent) & kSnapshotIntentFlag) != 0;
 }
 
-inline bool SerializableIntent(IntentType intent) {
-  return !SnapshotIntent(intent);
+inline bool IsSerializableIntent(IntentType intent) {
+  return !IsSnapshotIntent(intent);
 }
 
 // All primitive value types fall into this range, but not all value types in this range are

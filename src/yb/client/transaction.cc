@@ -57,7 +57,7 @@ class YBTransaction::Impl final {
         transaction_(transaction),
         isolation_(isolation),
         priority_(RandomUniformInt<uint64_t>()),
-        id_(Uuid::Generate()),
+        id_(GenerateTransactionId()),
         start_time_(manager->Now()),
         log_prefix_(Format("$0: ", to_string(id_))),
         heartbeat_handle_(manager->rpcs().InvalidHandle()),
@@ -163,6 +163,10 @@ class YBTransaction::Impl final {
     return Format("Transaction: $0", id_);
   }
 
+  const TransactionId& id() {
+    return id_;
+  }
+
  private:
   void DoCommit(const Status& status, const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << Format("Commit, tablets: $0, status: $1", tablets_, status);
@@ -175,7 +179,7 @@ class YBTransaction::Impl final {
     req.set_tablet_id(status_tablet_->tablet_id());
     auto& state = *req.mutable_state();
     state.set_transaction_id(id_.begin(), id_.size());
-    state.set_status(tserver::TransactionStatus::COMMITTED);
+    state.set_status(TransactionStatus::COMMITTED);
     for (const auto& tablet : tablets_) {
       state.add_tablets(tablet.first);
     }
@@ -229,16 +233,16 @@ class YBTransaction::Impl final {
       std::lock_guard<std::mutex> lock(mutex_);
       status_tablet_ = std::move(status_tablet_holder_);
     }
-    SendHeartbeat(tserver::TransactionStatus::CREATED, transaction_->shared_from_this());
+    SendHeartbeat(TransactionStatus::CREATED, transaction_->shared_from_this());
   }
 
-  void SendHeartbeat(tserver::TransactionStatus status, const YBTransactionPtr& transaction) {
+  void SendHeartbeat(TransactionStatus status, const YBTransactionPtr& transaction) {
     if (complete_.load(std::memory_order_acquire)) {
       return;
     }
 
-    if (status != tserver::TransactionStatus::CREATED &&
-        FLAGS_transaction_disable_heartbeat_in_tests) {
+    if (status != TransactionStatus::CREATED &&
+        GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
       HeartbeatDone(Status::OK(), status, transaction);
       return;
     }
@@ -259,12 +263,12 @@ class YBTransaction::Impl final {
   }
 
   void HeartbeatDone(const Status& status,
-                     tserver::TransactionStatus transaction_status,
+                     TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction) {
     manager_->rpcs().Unregister(&heartbeat_handle_);
 
     if (status.ok()) {
-      if (transaction_status == tserver::TransactionStatus::CREATED) {
+      if (transaction_status == TransactionStatus::CREATED) {
         std::vector<Waiter> waiters;
         {
           std::lock_guard<std::mutex> lock(mutex_);
@@ -277,7 +281,7 @@ class YBTransaction::Impl final {
         }
       }
       manager_->client()->messenger()->scheduler().Schedule(
-          std::bind(&Impl::SendHeartbeat, this, tserver::TransactionStatus::PENDING, transaction),
+          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING, transaction),
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
@@ -359,6 +363,10 @@ void YBTransaction::Flushed(const internal::InFlightOps& ops, const Status& stat
 
 void YBTransaction::Commit(CommitCallback callback) {
   impl_->Commit(std::move(callback));
+}
+
+const TransactionId& YBTransaction::id() const {
+  return impl_->id();
 }
 
 } // namespace client

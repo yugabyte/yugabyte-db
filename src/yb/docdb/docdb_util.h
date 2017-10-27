@@ -143,6 +143,18 @@ class DocDBRocksDBUtil {
 
   void SetTableTTL(uint64_t ttl_msec);
 
+  void SetCurrentTransactionId(const TransactionId& txn_id) {
+    current_txn_id_ = txn_id;
+  }
+
+  void SetTransactionIsolationLevel(IsolationLevel isolation_level) {
+    txn_isolation_level_ = isolation_level;
+  }
+
+  void ResetCurrentTransactionId() {
+    current_txn_id_.reset();
+  }
+
   CHECKED_STATUS DisableCompactions() {
     rocksdb_options_.compaction_style = rocksdb::kCompactionStyleNone;
     return ReopenRocksDB();
@@ -163,6 +175,8 @@ class DocDBRocksDBUtil {
   std::shared_ptr<FixedHybridTimeRetentionPolicy> retention_policy_;
   rocksdb::WriteOptions write_options_;
   Schema schema_;
+  boost::optional<TransactionId> current_txn_id_;
+  IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
 
  private:
   std::atomic<int64_t> monotonic_counter_{0};

@@ -132,6 +132,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
                               const rpc::RpcContext* rpc_context,
                               const Schema& projection,
                               const std::shared_ptr<tablet::Tablet>& tablet,
+                              const boost::optional<TransactionId>& transaction_id,
                               gscoped_ptr<RowwiseIterator>* iter,
                               HybridTime* snap_hybrid_time);
 

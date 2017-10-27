@@ -43,19 +43,64 @@ DECLARE_uint64(transaction_check_interval_usec);
 namespace yb {
 namespace client {
 
+namespace {
+
 constexpr size_t kNumRows = 5;
+
+YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE));
+
+// We use different sign to distinguish inserted and updated values for testing.
+int32_t GetMultiplier(const WriteOpType op_type) {
+  switch (op_type) {
+    case WriteOpType::INSERT:
+      return 1;
+    case WriteOpType::UPDATE:
+      return -1;
+  }
+  FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
+}
+
+QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
+  switch (op_type) {
+    case WriteOpType::INSERT:
+      return QLWriteRequestPB::QL_STMT_INSERT;
+    case WriteOpType::UPDATE:
+      return QLWriteRequestPB::QL_STMT_UPDATE;
+  }
+  FATAL_INVALID_ENUM_VALUE(WriteOpType, op_type);
+}
 
 int32_t KeyForTransactionAndIndex(size_t transaction, size_t index) {
   return static_cast<int32_t>(transaction * 10 + index);
 }
 
-int32_t ValueForTransactionAndIndex(size_t transaction, size_t index) {
-  return static_cast<int32_t>(transaction * 10 + index + 2);
+int32_t ValueForTransactionAndIndex(size_t transaction, size_t index, const WriteOpType op_type) {
+  return static_cast<int32_t>(transaction * 10 + index + 2) * GetMultiplier(op_type);
 }
 
 void SetIgnoreApplyingProbability(double value) {
   SetAtomicFlag(value, &FLAGS_transaction_ignore_applying_probability_in_tests);
 }
+
+void SetDisableHeartbeatInTests(bool value) {
+  SetAtomicFlag(value, &FLAGS_transaction_disable_heartbeat_in_tests);
+}
+
+void DisableApplyingIntents() {
+  SetIgnoreApplyingProbability(1.0);
+}
+
+void CommitAndResetSync(YBTransactionPtr *txn) {
+  CountDownLatch latch(1);
+  (*txn)->Commit([&latch](const Status& status) {
+    ASSERT_OK(status);
+    latch.CountDown(1);
+  });
+  txn->reset();
+  latch.Wait();
+}
+
+} // namespace
 
 class QLTransactionTest : public QLDmlTestBase {
  protected:
@@ -65,6 +110,9 @@ class QLTransactionTest : public QLDmlTestBase {
     YBSchemaBuilder builder;
     builder.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
     builder.AddColumn("v")->Type(INT32);
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    builder.SetTableProperties(table_properties);
 
     table_.Create(kTableName, client_.get(), &builder);
 
@@ -76,23 +124,45 @@ class QLTransactionTest : public QLDmlTestBase {
     transaction_manager_.emplace(client_, [clock]() { return clock->Now(); });
   }
 
-  // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that
+  shared_ptr<YBSession> CreateSession(const bool read_only,
+                                      const YBTransactionPtr& transaction = nullptr) {
+    auto session = std::make_shared<YBSession>(client_, read_only, transaction);
+    session->SetTimeout(5s);
+    return session;
+  }
+
+  // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
   // has been applied.
-  //   insert into t values (key, value);
-  shared_ptr<YBqlWriteOp> InsertRow(const YBSessionPtr& session, int32_t key, int32_t value) {
-    const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  // is_update = false: insert into t values (key, value);
+  // is_update = true: update t set v=value where k=key;
+  shared_ptr<YBqlWriteOp> WriteRow(
+      const YBSessionPtr& session, int32_t key, int32_t value,
+      const WriteOpType op_type = WriteOpType::INSERT) {
+    VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
+            << yb::ToString(op_type);
+    const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
+    const auto op = table_.NewWriteOp(stmt_type);
     auto* const req = op->mutable_request();
     table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key);
     table_.SetInt32ColumnValue(req->add_column_values(), "v", value);
     CHECK_OK(session->Apply(op));
+    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
+        << op->response().error_message();
     return op;
   }
 
-  void InsertRows(const YBSessionPtr& session, size_t transaction = 0) {
+  shared_ptr<YBqlWriteOp> UpdateRow(const YBSessionPtr& session, int32_t key, int32_t value) {
+    return WriteRow(session, key, value, WriteOpType::UPDATE);
+  }
+
+  void WriteRows(
+      const YBSessionPtr& session, size_t transaction = 0,
+      const WriteOpType op_type = WriteOpType::INSERT) {
     for (size_t r = 0; r != kNumRows; ++r) {
-      InsertRow(session,
-                KeyForTransactionAndIndex(transaction, r),
-                ValueForTransactionAndIndex(transaction, r));
+      WriteRow(session,
+               KeyForTransactionAndIndex(transaction, r),
+               ValueForTransactionAndIndex(transaction, r, op_type),
+               op_type);
     }
   }
 
@@ -105,6 +175,8 @@ class QLTransactionTest : public QLDmlTestBase {
     table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key);
     table_.AddColumns({"v"}, req);
     RETURN_NOT_OK(session->Apply(op));
+    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
+        << op->response().error_message();
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
       return STATUS_FORMAT(NotFound, "Row not found for key $0", key);
@@ -112,13 +184,20 @@ class QLTransactionTest : public QLDmlTestBase {
     return rowblock->row(0).column(0).int32_value();
   }
 
-  void WriteData() {
+  void VerifyRow(const YBSessionPtr& session, int32_t key, int32_t value) {
+    VLOG(4) << "Calling SelectRow";
+    auto row = SelectRow(session, key);
+    ASSERT_OK(row);
+    VLOG(4) << "SelectRow returned: " << *row;
+    ASSERT_EQ(value, *row);
+  }
+
+  void WriteData(const WriteOpType op_type = WriteOpType::INSERT) {
     CountDownLatch latch(1);
     {
       auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-      auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
-      session->SetTimeout(5s);
-      InsertRows(session);
+      auto session = CreateSession(false /* read_only */, tc);
+      WriteRows(session, 0, op_type);
       tc->Commit([&latch](const Status& status) {
           ASSERT_OK(status);
           latch.CountDown(1);
@@ -128,15 +207,13 @@ class QLTransactionTest : public QLDmlTestBase {
     LOG(INFO) << "Committed";
   }
 
-  void VerifyData(size_t num_transactions = 1) {
-    std::this_thread::sleep_for(1s); // TODO(dtxn) wait for intents to apply
-    auto session = client_->NewSession(true /* read_only */);
-    session->SetTimeout(5s);
+  void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT) {
+    VLOG(4) << "Verifying data..." << std::endl;
+    auto session = CreateSession(true /* read_only */);
     for (size_t i = 0; i != num_transactions; ++i) {
       for (size_t r = 0; r != kNumRows; ++r) {
-        auto row = SelectRow(session, KeyForTransactionAndIndex(i, r));
-        ASSERT_OK(row);
-        ASSERT_EQ(ValueForTransactionAndIndex(i, r), *row);
+        VerifyRow(
+            session, KeyForTransactionAndIndex(i, r), ValueForTransactionAndIndex(i, r, op_type));
       }
     }
   }
@@ -189,9 +266,8 @@ TEST_F(QLTransactionTest, Cleanup) {
 TEST_F(QLTransactionTest, Heartbeat) {
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
                                             IsolationLevel::SNAPSHOT_ISOLATION);
-  auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
-  session->SetTimeout(5s);
-  InsertRows(session);
+  auto session = CreateSession(false /* read_only */, tc);
+  WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
   CountDownLatch latch(1);
   tc->Commit([&latch](const Status& status) {
@@ -206,11 +282,10 @@ TEST_F(QLTransactionTest, Expire) {
   DontVerifyClusterBeforeNextTearDown(); // TODO(dtxn) temporary
 
   google::FlagSaver flag_saver;
-  FLAGS_transaction_disable_heartbeat_in_tests = true;
+  SetDisableHeartbeatInTests(true);
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-  auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
-  session->SetTimeout(5s);
-  InsertRows(session);
+  auto session = CreateSession(false /* read_only */, tc);
+  WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
   CountDownLatch latch(1);
   tc->Commit([&latch](const Status& status) {
@@ -225,15 +300,14 @@ TEST_F(QLTransactionTest, Expire) {
 
 TEST_F(QLTransactionTest, PreserveLogs) {
   google::FlagSaver flag_saver;
-  FLAGS_transaction_disable_heartbeat_in_tests = true;
+  SetDisableHeartbeatInTests(true);
   FLAGS_transaction_timeout_usec = std::chrono::microseconds(60s).count();
   std::vector<std::shared_ptr<YBTransaction>> transactions;
   constexpr size_t kTransactions = 20;
   for (size_t i = 0; i != kTransactions; ++i) {
     auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-    auto session = std::make_shared<YBSession>(client_, false /* read_only */, tc);
-    session->SetTimeout(5s);
-    InsertRows(session, i);
+    auto session = CreateSession(false /* read_only */, tc);
+    WriteRows(session, i);
     transactions.push_back(std::move(tc));
     std::this_thread::sleep_for(100ms);
   }
@@ -248,6 +322,10 @@ TEST_F(QLTransactionTest, PreserveLogs) {
     });
   }
   latch.Wait();
+  // TODO(dtxn) - without this sleep "Row not found" could happen. Most probably it has to do with
+  // concurrent removal of intents and replacing them with regular key-value pairs.
+  // Solution should be similar to https://yugabyte.atlassian.net/browse/ENG-2271.
+  std::this_thread::sleep_for(3s); // Wait long enough for transaction to be applied.
   VerifyData(kTransactions);
 }
 
@@ -278,14 +356,11 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   for (size_t i = 0; i != kTotalTransactions; ++i) {
     transactions.push_back(std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
                                                            SNAPSHOT_ISOLATION));
-    auto session = std::make_shared<YBSession>(client_,
-                                               false /* read_only */,
-                                               transactions.back());
+    auto session = CreateSession(false /* read_only */, transactions.back());
     sessions.push_back(session);
-    session->SetTimeout(5s);
     ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
     for (size_t r = 0; r != kNumRows; ++r) {
-      InsertRow(sessions.back(), r, i);
+      WriteRow(sessions.back(), r, i);
     }
     session->FlushAsync(MakeYBStatusFunctorCallback([&latch](const Status& status) {
       latch.CountDown();
@@ -313,9 +388,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
 
   ASSERT_GE(successes.load(std::memory_order_acquire), 1);
 
-  std::this_thread::sleep_for(1s); // TODO(dtxn) wait for intents to apply
-  auto session = client_->NewSession(true /* read_only */);
-  session->SetTimeout(5s);
+  auto session = CreateSession(true /* read_only */);
   std::vector<int32_t> values;
   for (size_t r = 0; r != kNumRows; ++r) {
     auto row = SelectRow(session, r);
@@ -323,8 +396,195 @@ TEST_F(QLTransactionTest, ConflictResolution) {
     values.push_back(*row);
   }
   for (const auto& value : values) {
-    ASSERT_EQ(values.front(), value) << "Values: " << ToString(values);
+    ASSERT_EQ(values.front(), value) << "Values: " << yb::ToString(values);
   }
+}
+
+TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
+  google::FlagSaver flag_saver;
+  DisableApplyingIntents();
+
+  WriteData();
+  VerifyData();
+
+  WriteData(WriteOpType::UPDATE);
+  VerifyData(1, WriteOpType::UPDATE);
+
+  CHECK_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
+  DontVerifyClusterBeforeNextTearDown(); // TODO(dtxn) temporary - uncomment once crash is fixed.
+  google::FlagSaver flag_saver;
+  DisableApplyingIntents();
+
+  // Write { 1 -> 1, 2 -> 2 }.
+  {
+    auto session = CreateSession(false /* read_only */);
+    WriteRow(session, 1, 1);
+    WriteRow(session, 2, 2);
+  }
+
+  CountDownLatch latch(1);
+  {
+    // Start T1.
+    auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+
+    // T1: Update { 1 -> 11, 2 -> 12 }.
+    {
+      auto session = CreateSession(false /* read_only */, txn1);
+      UpdateRow(session, 1, 11);
+      UpdateRow(session, 2, 12);
+    }
+
+    // T1: Should read { 1 -> 11, 2 -> 12 }.
+    {
+      auto session = CreateSession(true /* read_only */, txn1);
+      VerifyRow(session, 1, 11);
+      VerifyRow(session, 2, 12);
+    }
+
+    // T1: Abort.
+    // TODO(dtxn) - temporary workaround to abort the transaction, to be replaced with commented
+    // code below after YBTransaction::Abort is implemented.
+    SetDisableHeartbeatInTests(true);
+    std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
+    txn1->Commit([&latch](const Status& status) {
+      ASSERT_TRUE(status.IsExpired()) << "Bad status: " << status.ToString();
+      latch.CountDown();
+    });
+
+    // TODO(dtxn) - uncomment after YBTransaction::Abort is implemented.
+//    txn->Abort([&latch](const Status& status) {
+//      ASSERT_OK(status);
+//      latch.CountDown(1);
+//    });
+  }
+  latch.Wait();
+
+  // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
+  {
+    auto session = CreateSession(true /* read_only */);
+    VerifyRow(session, 1, 1);
+    VerifyRow(session, 2, 2);
+  }
+
+  // TODO(dtxn) - uncomment once fixed, currently TransactionParticipant doesn't know about the
+  // transaction, however there are intents in DB with this transaction ID.
+  // https://yugabyte.atlassian.net/browse/ENG-2271.
+//  CHECK_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
+  google::FlagSaver flag_saver;
+  DisableApplyingIntents();
+
+  // Write { 1 -> 1, 2 -> 2 }.
+  {
+    auto session = CreateSession(false /* read_only */);
+    WriteRow(session, 1, 1);
+    WriteRow(session, 2, 2);
+  }
+
+  // Start T1.
+  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+
+  // T1: Update { 1 -> 11, 2 -> 12 }.
+  {
+    auto session = CreateSession(false /* read_only */, txn1);
+    UpdateRow(session, 1, 11);
+    UpdateRow(session, 2, 12);
+  }
+
+  // Start T2.
+  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+
+  // T2: Should read { 1 -> 1, 2 -> 2 }.
+  // TODO(dtxn) currently fails with "Cannot determine transaction status". Uncomment once fixed.
+//  {
+//    auto session = CreateSession(true /* read_only */, txn2);
+//    VerifyRow(session, 1, 1);
+//    VerifyRow(session, 2, 2);
+//  }
+
+  // T1: Commit
+  CommitAndResetSync(&txn1);
+
+  // T2: Should still read { 1 -> 1, 2 -> 2 }, because it should read at the time of it's start.
+  // TODO(dtxn) currently fails, because read time selected incorrectly. Uncomment once fixed.
+//  {
+//    auto session = CreateSession(true /* read_only */, txn2);
+//    VerifyRow(session, 1, 1);
+//    VerifyRow(session, 2, 2);
+//  }
+
+  // Simple read should get { 1 -> 11, 2 -> 12 }, since T1 has been already committed.
+  {
+    auto session = CreateSession(true /* read_only */);
+    VerifyRow(session, 1, 11);
+    VerifyRow(session, 2, 12);
+  }
+
+  CommitAndResetSync(&txn2);
+
+  CHECK_OK(cluster_->RestartSync());
+}
+
+// TODO(dtxn) enable test as soon as we support this case.
+TEST_F(QLTransactionTest, DISABLED_ResolveIntentsCheckConsistency) {
+  google::FlagSaver flag_saver;
+  DisableApplyingIntents();
+
+  // Write { 1 -> 1, 2 -> 2 }.
+  {
+    auto session = CreateSession(false /* read_only */);
+    WriteRow(session, 1, 1);
+    WriteRow(session, 2, 2);
+  }
+
+  // Start T1.
+  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+
+  // T1: Update { 1 -> 11, 2 -> 12 }.
+  {
+    auto session = CreateSession(false /* read_only */, txn1);
+    UpdateRow(session, 1, 11);
+    UpdateRow(session, 2, 12);
+  }
+
+  // T1: Request commit.
+  CountDownLatch commit_latch(1);
+  txn1->Commit([&commit_latch](const Status& status) {
+    ASSERT_OK(status);
+    commit_latch.CountDown(1);
+  });
+
+  // Start T2.
+  // TODO - to test efficiently we need T2_start_time > T1_commit_time, but T1 should not be
+  // committed yet when T2 is reading k1.
+  // How can we do that?
+  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+
+  // T2: Should read { 1 -> 1, 2 -> 2 } even in case T1 is committed between reading k1 and k2.
+  {
+    auto session = CreateSession(true /* read_only */, txn2);
+    VerifyRow(session, 1, 1);
+    // Need T1 to be not committed yet at this point.
+    // Wait T1 for commit.
+    commit_latch.Wait();
+    VerifyRow(session, 2, 2);
+  }
+
+  // Simple read should get { 1 -> 11, 2 -> 12 }, since T1 has been already committed.
+  {
+    auto session = CreateSession(true /* read_only */);
+    VerifyRow(session, 1, 11);
+    VerifyRow(session, 2, 12);
+  }
+
+  CommitAndResetSync(&txn2);
+
+  CHECK_OK(cluster_->RestartSync());
 }
 
 } // namespace client

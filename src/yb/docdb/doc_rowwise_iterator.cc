@@ -15,6 +15,7 @@
 
 #include "yb/common/iterator.h"
 #include "yb/common/partition.h"
+#include "yb/common/transaction.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -51,13 +52,16 @@ CHECKED_STATUS ExpectValueType(ValueType expected_value_type,
 
 }  // namespace
 
-DocRowwiseIterator::DocRowwiseIterator(const Schema &projection,
-                                       const Schema &schema,
-                                       rocksdb::DB *db,
-                                       HybridTime hybrid_time,
-                                       yb::util::PendingOperationCounter* pending_op_counter)
+DocRowwiseIterator::DocRowwiseIterator(
+    const Schema &projection,
+    const Schema &schema,
+    const TransactionOperationContextOpt& txn_op_context,
+    rocksdb::DB *db,
+    HybridTime hybrid_time,
+    yb::util::PendingOperationCounter* pending_op_counter)
     : projection_(projection),
       schema_(schema),
+      txn_op_context_(txn_op_context),
       hybrid_time_(hybrid_time),
       db_(db),
       has_upper_bound_key_(false),
@@ -77,16 +81,16 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 Status DocRowwiseIterator::Init(ScanSpec *spec) {
   // TODO(bogdan): refactor this after we completely move away from the old ScanSpec. For now, just
   // default to not using bloom filters on scans for these codepaths.
-  db_iter_ = CreateRocksDBIterator(db_, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none /* user_key_for_filter */, spec->query_id());
+  db_iter_ = CreateIntentAwareIterator(
+      db_, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none /* user_key_for_filter */,
+      spec->query_id(), txn_op_context_, hybrid_time_);
 
   if (spec != nullptr && spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
   } else {
     row_key_ = DocKey();
   }
-  ROCKSDB_SEEK(db_iter_.get(),
-               SubDocKey(row_key_, DocHybridTime(hybrid_time_, kMaxWriteId)).Encode().AsSlice());
+  RETURN_NOT_OK(db_iter_->Seek(row_key_, hybrid_time_));
   row_ready_ = false;
 
   if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
@@ -117,10 +121,11 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
   const KeyBytes row_key_encoded = row_key_.Encode();
   const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
 
-  db_iter_ = CreateRocksDBIterator(db_, mode, row_key_encoded_as_slice,
-      doc_spec.QueryId(), doc_spec.CreateFileFilter());
+  db_iter_ = CreateIntentAwareIterator(
+      db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, hybrid_time_,
+      doc_spec.CreateFileFilter());
 
-  ROCKSDB_SEEK(db_iter_.get(), row_key_encoded_as_slice);
+  RETURN_NOT_OK(db_iter_->SeekWithoutHt(row_key_encoded));
   row_ready_ = false;
 
   // End scan with the upper bound key bytes.
@@ -144,7 +149,7 @@ bool DocRowwiseIterator::HasNext() const {
 
   bool doc_found = false;
   while (!doc_found) {
-    if (!db_iter_->Valid()) {
+    if (!db_iter_->valid()) {
       done_ = true;
       return false;
     }
@@ -175,7 +180,11 @@ bool DocRowwiseIterator::HasNext() const {
       // If doc is not found, decide if some non-projection column exists.
       // Currently we read the whole doc here,
       // may be optimized by exiting on the first column in future.
-      ROCKSDB_SEEK(db_iter_.get(), row_key_.Encode().AsSlice());  // Position it for GetSubDocument.
+      status_ = db_iter_->Seek(row_key_);  // Position it for GetSubDocument.
+      if (!status_.ok()) {
+        // Defer error reporting to NextBlock().
+        return true;
+      }
       status_ = GetSubDocument(db_iter_.get(), SubDocKey(row_key_), &full_row, &doc_found,
           hybrid_time_, TableTTL(schema_));
       if (!status_.ok()) {
@@ -184,7 +193,7 @@ bool DocRowwiseIterator::HasNext() const {
       }
     }
     // GetSubDocument must ensure that iterator is pushed forward, to avoid loops.
-    if (db_iter_->Valid() && old_key.AsSlice().compare(db_iter_->key()) >= 0) {
+    if (db_iter_->valid() && old_key.AsSlice().compare(db_iter_->key()) >= 0) {
       status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
           FormatRocksDBSliceAsStr(old_key.AsSlice()));
       return true;

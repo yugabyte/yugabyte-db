@@ -592,12 +592,12 @@ void TabletServiceImpl::GetTransactionStatus(const GetTransactionStatusRequestPB
 
   auto status = tablet_peer->tablet()->transaction_coordinator()->GetStatus(
       req->transaction_id(), resp);
-  if (PREDICT_FALSE(!status.ok())) {
+  if (status.ok()) {
+    context.RespondSuccess();
+  } else {
     SetupErrorAndRespond(
         resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
   }
-
-  context.RespondSuccess();
 }
 
 void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
@@ -617,7 +617,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
   tablet_peer->tablet()->transaction_coordinator()->Abort(
       req->transaction_id(),
-      [resp, context_ptr](Result<tablet::TransactionStatusResult> result) {
+      [resp, context_ptr](Result<TransactionStatusResult> result) {
         if (result.ok()) {
           resp->set_status(result->status);
           if (result->status_time.is_valid()) {
@@ -961,7 +961,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         int rows_data_sidecar_idx = 0;
         TRACE("Start HandleQLReadRequest");
         s = tablet->HandleQLReadRequest(
-            read_tx.GetReadTimestamp(), ql_read_req, &ql_response, &rows_data);
+            read_tx.GetReadTimestamp(), ql_read_req, req->transaction(), &ql_response, &rows_data);
         TRACE("Done HandleQLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         if (rows_data.get() != nullptr) {
@@ -1649,6 +1649,22 @@ static Status SetupScanSpec(const NewScanRequestPB& scan_pb,
   return Status::OK();
 }
 
+namespace {
+
+Result<boost::optional<TransactionId>> GetTransactionId(const ScanRequestPB &req) {
+  boost::optional<TransactionId> txn_id;
+  if (req.has_transaction_id()) {
+    Result<TransactionId> txn_id_res = FullyDecodeTransactionId(req.transaction_id());
+    RETURN_NOT_OK(txn_id_res);
+    txn_id = *txn_id_res;
+  } else {
+    txn_id = boost::none;
+  }
+  return txn_id;
+}
+
+} // namespace
+
 // Start a new scan.
 Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
                                                const ScanRequestPB* req,
@@ -1753,11 +1769,22 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
         return s;
       }
       case READ_LATEST: {
-        s = tablet->NewRowIterator(projection, &iter);
+        Result<boost::optional<TransactionId>> txn_id = GetTransactionId(*req);
+        if (!txn_id.ok()) {
+          s = txn_id.status();
+          break;
+        }
+        s = tablet->NewRowIterator(projection, *txn_id, &iter);
         break;
       }
       case READ_AT_SNAPSHOT: {
-        s = HandleScanAtSnapshot(scan_pb, rpc_context, projection, tablet, &iter, snap_hybrid_time);
+        Result<boost::optional<TransactionId>> txn_id = GetTransactionId(*req);
+        if (!txn_id.ok()) {
+          s = txn_id.status();
+          break;
+        }
+        s = HandleScanAtSnapshot(
+            scan_pb, rpc_context, projection, tablet, *txn_id, &iter, snap_hybrid_time);
         if (!s.ok()) {
           tmp_error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
         }
@@ -1959,12 +1986,14 @@ Status TabletServiceImpl::HandleContinueScanRequest(const ScanRequestPB* req,
   return Status::OK();
 }
 
-Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
-                                               const RpcContext* rpc_context,
-                                               const Schema& projection,
-                                               const shared_ptr<Tablet>& tablet,
-                                               gscoped_ptr<RowwiseIterator>* iter,
-                                               HybridTime* snap_hybrid_time) {
+Status TabletServiceImpl::HandleScanAtSnapshot(
+    const NewScanRequestPB& scan_pb,
+    const RpcContext* rpc_context,
+    const Schema& projection,
+    const shared_ptr<Tablet>& tablet,
+    const boost::optional<TransactionId>& transaction_id,
+    gscoped_ptr<RowwiseIterator>* iter,
+    HybridTime* snap_hybrid_time) {
 
   // TODO check against the earliest boundary (i.e. how early can we go) right
   // now we're keeping all undos/redos forever!
@@ -2013,7 +2042,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
     case ORDERED: order = tablet::Tablet::ORDERED; break;
     default: LOG(FATAL) << "Unexpected order mode.";
   }
-  RETURN_NOT_OK(tablet->NewRowIterator(projection, snap, order, iter));
+  RETURN_NOT_OK(tablet->NewRowIterator(projection, snap, order, transaction_id, iter));
   *snap_hybrid_time = tmp_snap_hybrid_time;
   return Status::OK();
 }

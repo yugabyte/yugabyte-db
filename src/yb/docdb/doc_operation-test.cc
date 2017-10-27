@@ -98,7 +98,8 @@ class DocOperationTest : public DocDBTestBase {
   void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
                 QLResponsePB* ql_writeresp_pb,
                 const HybridTime& hybrid_time = HybridTime::kMax) {
-    QLWriteOperation ql_write_op(ql_writereq_pb, schema, ql_writeresp_pb);
+    QLWriteOperation ql_write_op(
+        ql_writereq_pb, schema, ql_writeresp_pb, kNonTransactionalOperationContext);
     DocWriteBatch doc_write_batch(rocksdb());
     CHECK_OK(ql_write_op.Apply(&doc_write_batch, rocksdb(), HybridTime()));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
@@ -211,7 +212,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
       col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
-    QLReadOperation read_op(ql_read_req);
+    QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(rocksdb());
     QLResultSet resultset;
     EXPECT_OK(read_op.Execute(ql_storage, read_time, schema, query_schema, &resultset));
@@ -379,7 +380,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
 
   Schema schema = CreateSchema();
   ScanSpec scan_spec;
-  DocRowwiseIterator iter(schema, schema, rocksdb(), HybridTime(3000));
+  DocRowwiseIterator iter(
+      schema, schema, kNonTransactionalOperationContext, rocksdb(), HybridTime(3000));
   ASSERT_OK(iter.Init(&scan_spec));
   ASSERT_FALSE(iter.HasNext());
 
@@ -409,8 +411,9 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, /* request = */ nullptr,
                                rocksdb::kDefaultQueryId);
-  DocRowwiseIterator ql_iter(schema, schema, rocksdb(),
-                              HybridClock::HybridTimeFromMicroseconds(3000));
+  DocRowwiseIterator ql_iter(
+      schema, schema, kNonTransactionalOperationContext, rocksdb(),
+      HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   ASSERT_TRUE(ql_iter.HasNext());
   QLTableRow value_map;
@@ -456,8 +459,9 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, -1, -1, hashed_components_system, nullptr,
                                       rocksdb::kDefaultQueryId);
-  DocRowwiseIterator ql_iter_system(schema, schema, rocksdb(),
-                                     HybridClock::HybridTimeFromMicroseconds(3000));
+  DocRowwiseIterator ql_iter_system(
+      schema, schema, kNonTransactionalOperationContext, rocksdb(),
+      HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   ASSERT_TRUE(ql_iter_system.HasNext());
   QLTableRow value_map_system;
@@ -587,7 +591,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       std::vector<RowData> expected_rows(range.first, range.second);
       DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, &condition,
                                    rocksdb::kDefaultQueryId);
-      DocRowwiseIterator ql_iter(schema, schema, rocksdb(),
+      DocRowwiseIterator ql_iter(schema, schema, boost::none, rocksdb(),
           HybridClock::HybridTimeFromMicroseconds(3000));
       ASSERT_OK(ql_iter.Init(ql_scan_spec));
       LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);

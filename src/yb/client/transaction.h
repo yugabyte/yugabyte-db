@@ -20,12 +20,14 @@
 #include <unordered_set>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/util/status.h"
 
 namespace yb {
+
 namespace client {
 
 typedef std::function<void(const Status&)> Waiter;
@@ -51,6 +53,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Commits this transaction.
   void Commit(CommitCallback callback);
+
+  // Returns transaction ID.
+  const TransactionId& id() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

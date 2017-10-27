@@ -46,6 +46,7 @@
 #include "yb/common/id_mapping.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
@@ -465,9 +466,10 @@ class ContiguousRow;
 
 class TableProperties {
  public:
-  TableProperties() : default_time_to_live_(kNoDefaultTtl), contain_counters_(false),
-      is_transactional_(false) {
-  }
+  TableProperties()
+      : default_time_to_live_(kNoDefaultTtl),
+        contain_counters_(false),
+        is_transactional_(false) {}
 
   TableProperties(const TableProperties& other) {
     default_time_to_live_ = other.default_time_to_live_;

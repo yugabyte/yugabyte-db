@@ -29,8 +29,7 @@
 
 #include "yb/consensus/opid_util.h"
 
-#include "yb/tserver/tserver.pb.h"
-
+#include "yb/util/opid.pb.h"
 #include "yb/util/result.h"
 
 namespace rocksdb {
@@ -44,12 +43,6 @@ namespace yb {
 
 class HybridTime;
 class TransactionMetadataPB;
-
-namespace docdb {
-
-class KeyBytes;
-
-}
 
 namespace tablet {
 
@@ -70,19 +63,6 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
-
-struct TransactionStatusResult {
-  tserver::TransactionStatus status;
-
-  // Meaning of status_time is related to status value.
-  // PENDING - status_time reflects maximal guaranteed PENDING time, i.e. transaction cannot be
-  // committed before this time.
-  // COMMITTED - status_time is a commit time.
-  // ABORTED - not used.
-  HybridTime status_time;
-};
-
-typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 
 class TransactionIntentApplier;
 
@@ -117,21 +97,21 @@ class TransactionParticipantContext {
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
-class TransactionParticipant {
+class TransactionParticipant : public TransactionStatusProvider {
  public:
   explicit TransactionParticipant(TransactionParticipantContext* context);
-  ~TransactionParticipant();
+  virtual ~TransactionParticipant();
 
   // Adds new running transaction.
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
   boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id);
 
-  HybridTime LocalCommitTime(const TransactionId& id);
+  HybridTime LocalCommitTime(const TransactionId& id) override;
 
   void RequestStatusAt(const TransactionId& id,
                        HybridTime time,
-                       TransactionStatusCallback callback);
+                       TransactionStatusCallback callback) override;
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback);
 
@@ -141,8 +121,6 @@ class TransactionParticipant {
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
-
-void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
 
 } // namespace tablet
 } // namespace yb

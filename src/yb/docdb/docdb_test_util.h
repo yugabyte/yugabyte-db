@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <boost/uuid/nil_generator.hpp>
 
 #include "yb/rocksdb/db.h"
 
@@ -40,8 +41,18 @@ using RandomNumberGenerator = std::mt19937_64;
 // Maximum number of components in a randomly-generated DocKey.
 static constexpr int kMaxNumRandomDocKeyParts = 10;
 
-// Maximum number of subkeys in a randomly-geneerated SubDocKey.
+// Maximum number of subkeys in a randomly-generated SubDocKey.
 static constexpr int kMaxNumRandomSubKeys = 10;
+
+// Intended only for testing, when we want to enable transaction aware code path for cases when we
+// really have no transactions. This way we will test that transaction aware code path works
+// correctly in absence of transactions and also doesn't use transaction status provider (it
+// shouldn't because there are no transactions).
+// TODO(dtxn) everywhere(?) in tests code where we use kNonTransactionalOperationContext we need
+// to check both code paths - for transactional tables (passing kNonTransactionalOperationContext)
+// and non-transactional tables (passing boost::none as transaction context).
+// https://yugabyte.atlassian.net/browse/ENG-2177.
+extern const TransactionOperationContext kNonTransactionalOperationContext;
 
 // Note: test data generator methods below are using a non-const reference for the random number
 // generator for simplicity, even though it is against Google C++ Style Guide. If we used a pointer,
@@ -89,9 +100,6 @@ class DocDBRocksDBFixtureTest : public DocDBRocksDBUtil {
   CHECKED_STATUS InitRocksDBOptions() override;
   std::string tablet_id() override;
   CHECKED_STATUS FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
-  // "Walks" the latest state of the given document using using DebugDocVisitor and returns a string
-  // that lists all "events" encountered (document start/end, object start/end/keys/values, etc.)
-  CHECKED_STATUS DebugWalkDocument(const KeyBytes& encoded_doc_key, std::string* doc_str);
 };
 
 // Perform a major compaction on the given database.
@@ -105,6 +113,7 @@ class DocDBLoadGenerator {
                      int num_doc_keys,
                      int num_unique_subkeys,
                      bool use_hash,
+                     bool resolve_intents = true,
                      int deletion_chance = 100,
                      int max_nesting_level = 10,
                      uint64 random_seed = kDefaultRandomSeed,
@@ -172,6 +181,10 @@ class DocDBLoadGenerator {
   DocDBRocksDBFixtureTest* fixture_;
   RandomNumberGenerator random_;  // Using default seed.
   std::vector<DocKey> doc_keys_;
+
+  // Whether we should pass transaction context during reads, so DocDB tries to resolve intents.
+  const bool resolve_intents_;
+
   std::vector<PrimitiveValue> possible_subkeys_;
   int iteration_;
   InMemDocDbState in_mem_docdb_;

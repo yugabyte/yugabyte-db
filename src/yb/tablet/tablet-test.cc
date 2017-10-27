@@ -210,7 +210,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
   // Now iterate over the tablet and make sure the rows show up.
   gscoped_ptr<RowwiseIterator> iter;
   const Schema& schema = this->client_schema_;
-  ASSERT_OK(this->tablet()->NewRowIterator(schema, &iter));
+  ASSERT_OK(this->tablet()->NewRowIterator(schema, boost::none, &iter));
   ScanSpec scan_spec;
   ASSERT_OK(iter->Init(&scan_spec));
   LOG(INFO) << "Created iter: " << iter->ToString();

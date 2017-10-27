@@ -39,6 +39,7 @@ class YQLVirtualTable : public common::QLStorageIf {
   CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
+                             const TransactionOperationContextOpt& txn_op_context,
                              HybridTime req_hybrid_time,
                              std::unique_ptr<common::QLRowwiseIteratorIf>* iter) const override;
   CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,

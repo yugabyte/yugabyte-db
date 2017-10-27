@@ -20,6 +20,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 
@@ -135,8 +136,13 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
     // TODO: It would be good to be able to refer to a slice of the original key whenever we need
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
-    const Status get_doc_status =
-        yb::docdb::GetSubDocument(rocksdb, subdoc_key, &subdoc, &doc_found, query_id, hybrid_time);
+    // TODO(dtxn) Pass real TransactionOperationContext when we need to support cross-shard
+    // transactions write intents resolution during DocDbState capturing.
+    // For now passing kNonTransactionalOperationContext in order to fail if there are any intents,
+    // since this is not supported.
+    const Status get_doc_status = yb::docdb::GetSubDocument(
+        rocksdb, subdoc_key, query_id, kNonTransactionalOperationContext, &subdoc, &doc_found,
+        hybrid_time);
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
       LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);

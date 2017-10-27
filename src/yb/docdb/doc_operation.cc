@@ -140,8 +140,10 @@ Status GetRedisValueType(
     doc_found = true;
     doc = SubDocument(cached_entry->second);
   } else {
+    // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
+    // support for Redis.
     RETURN_NOT_OK(GetSubDocument(
-        rocksdb, subdoc_key, &doc, &doc_found, rocksdb::kDefaultQueryId,
+        rocksdb, subdoc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found,
         hybrid_time, Value::kMaxTtl, /* return_type_only */ true));
   }
 
@@ -200,8 +202,10 @@ CHECKED_STATUS GetRedisValue(
   SubDocument doc;
   bool doc_found = false;
 
-  RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found,
-                               rocksdb::kDefaultQueryId, hybrid_time));
+  // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
+  // support for Redis.
+  RETURN_NOT_OK(GetSubDocument(
+      rocksdb, doc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found, hybrid_time));
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;
@@ -663,8 +667,10 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
       DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
   SubDocument doc;
   bool doc_found = false;
+  // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
+  // support for Redis.
   RETURN_NOT_OK(GetSubDocument(
-  rocksdb, doc_key, &doc, &doc_found, rocksdb::kDefaultQueryId, hybrid_time));
+      rocksdb, doc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found, hybrid_time));
   if (add_keys || add_values) {
     response_.set_allocated_array_response(new RedisArrayPB());
   }
@@ -920,8 +926,10 @@ void JoinStaticRow(
 } // namespace
 
 QLWriteOperation::QLWriteOperation(
-    QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response)
-    : schema_(schema), response_(response), require_read_(RequireRead(*request)) {
+    QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response,
+    const TransactionOperationContextOpt& txn_op_context)
+    : schema_(schema), response_(response), txn_op_context_(txn_op_context),
+      require_read_(RequireRead(*request)) {
   request_.Swap(request);
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
@@ -1026,7 +1034,7 @@ Status QLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_ != nullptr) {
     DocQLScanSpec spec(*static_projection, *hashed_doc_key_, query_id);
-    DocRowwiseIterator iterator(*static_projection, schema_, rocksdb, hybrid_time);
+    DocRowwiseIterator iterator(*static_projection, schema_, txn_op_context_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(*static_projection, table_row));
@@ -1034,7 +1042,8 @@ Status QLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
   }
   if (pk_doc_key_ != nullptr) {
     DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, query_id);
-    DocRowwiseIterator iterator(*non_static_projection, schema_, rocksdb, hybrid_time);
+    DocRowwiseIterator iterator(
+        *non_static_projection, schema_, txn_op_context_, rocksdb, hybrid_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(*non_static_projection, table_row));
@@ -1301,7 +1310,8 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   RETURN_NOT_OK(ql_storage.BuildQLScanSpec(request_, hybrid_time, schema, read_static_columns,
                                              static_projection, &spec, &static_row_spec,
                                              &req_hybrid_time));
-  RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, req_hybrid_time, &iter));
+  RETURN_NOT_OK(ql_storage.GetIterator(request_, query_schema, schema, txn_op_context_,
+                                       req_hybrid_time, &iter));
   RETURN_NOT_OK(iter->Init(*spec));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
@@ -1314,8 +1324,8 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   // spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
     std::unique_ptr<common::QLRowwiseIteratorIf> static_row_iter;
-    RETURN_NOT_OK(ql_storage.GetIterator(request_, static_projection, schema, req_hybrid_time,
-                                          &static_row_iter));
+    RETURN_NOT_OK(ql_storage.GetIterator(request_, static_projection, schema, txn_op_context_,
+                                          req_hybrid_time, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
     if (static_row_iter->HasNext()) {
       RETURN_NOT_OK(static_row_iter->NextRow(static_projection, &static_row));
