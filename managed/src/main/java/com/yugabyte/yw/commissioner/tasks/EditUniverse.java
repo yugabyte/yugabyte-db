@@ -78,6 +78,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         // Configures and deploys software on all the nodes (masters and tservers).
         createConfigureServerTasks(nodesToProvision, true /* isShell */)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+        // Override master flags if necessary
+        SubTaskGroup subTaskGroup = createGFlagsOverrideTasks(nodesToProvision, ServerType.MASTER);
+        if (subTaskGroup != null) {
+          subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+        }
+        // Override tserver flags if necessary
+        subTaskGroup = createGFlagsOverrideTasks(nodesToProvision, ServerType.TSERVER);
+        if (subTaskGroup != null) {
+          subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+        }
       }
 
       newMasters = PlacementInfoUtil.getMastersToProvision(taskParams().nodeDetailsSet);

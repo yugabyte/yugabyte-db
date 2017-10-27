@@ -273,36 +273,44 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       task.initialize(params);
       // Add it to the task list.
       subTaskGroup.addTask(task);
-      if (node.isMaster && !taskParams().userIntent.masterGFlags.isEmpty()) {
-        subTaskGroup.addTask(getGFlagsOverrideTask(node, ServerType.MASTER));
-      }
-      if (node.isTserver && !taskParams().userIntent.tserverGFlags.isEmpty()) {
-        subTaskGroup.addTask(getGFlagsOverrideTask(node, ServerType.TSERVER));
-      }
     }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 
-  public AnsibleConfigureServers getGFlagsOverrideTask(NodeDetails node, ServerType taskType) {
+  public SubTaskGroup createGFlagsOverrideTasks(
+      Collection<NodeDetails> nodes, ServerType taskType) {
+    // Skip if no extra flags for this type server.
+    if (taskType.equals(ServerType.MASTER) && taskParams().userIntent.masterGFlags.isEmpty() ||
+        taskType.equals(ServerType.TSERVER) && taskParams().userIntent.tserverGFlags.isEmpty()) {
+      return null;
+    }
+
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    // Set the cloud name.
-    params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
-    // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = taskParams().userIntent.deviceInfo;
-    // Add the node name.
-    params.nodeName = node.nodeName;
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    // Add the az uuid.
-    params.azUuid = node.azUuid;
-    // Add task type
-    params.type = UpgradeUniverse.UpgradeTaskType.GFlags;
-    params.setProperty("processType", taskType.toString());
-    params.gflags = taskType.equals(ServerType.MASTER) ? taskParams().userIntent.masterGFlags : taskParams().userIntent.tserverGFlags;
-    AnsibleConfigureServers task = new AnsibleConfigureServers();
-    task.initialize(params);
-    return task;
+    for (NodeDetails node : nodes) {
+      // Set the cloud name.
+      params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().userIntent.deviceInfo;
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // Add task type
+      params.type = UpgradeUniverse.UpgradeTaskType.GFlags;
+      params.setProperty("processType", taskType.toString());
+      params.gflags = taskType.equals(ServerType.MASTER)
+        ? taskParams().userIntent.masterGFlags
+        : taskParams().userIntent.tserverGFlags;
+      AnsibleConfigureServers task = new AnsibleConfigureServers();
+      task.initialize(params);
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
