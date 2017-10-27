@@ -35,7 +35,6 @@ message RedisWriteRequestPB {
     RedisInsertRequestPB insert_request = 9;
     RedisPopRequestPB pop_request = 10;
     RedisAddRequestPB add_request = 11;
-    RedisRemoveRequestPB remove_request = 12;
   }
 
   optional RedisKeyValuePB key_value = 13;
@@ -239,11 +238,6 @@ message RedisAddRequestPB {
   // Modify the return value from the number of new elements added,
   // to the total number of elements changed.
   optional bool ch = 3;
-}
-
-// LREM, SREM, ZREM
-message RedisRemoveRequestPB {
-  optional int32 count = 2;                 // Optional for LREM.
 }
 
 message RedisResponsePB {

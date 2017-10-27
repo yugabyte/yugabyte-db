@@ -964,7 +964,8 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "-30", "value3"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "10", "value4"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "20", "value5"});
-  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value6"});
+  // For duplicate keys, the last one is picked up.
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "30", "value100", "30", "value6"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", int64Max_, "valuemax"});
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key", int64Min_, "valuemin"});
   SyncClient();
@@ -1193,6 +1194,81 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestTsRem) {
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "10", "v1",
+      "20", "v2",
+      "30", "v3",
+      "40", "v4",
+      "50", "v5",
+      "60", "v6",
+      "70", "v7",
+      "80", "v8",
+      "90", "v9",
+      "100", "v10",
+  });
+
+  // Try some deletes.
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"TSREM", "ts_key", "20", "40", "70", "90"});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
+                   {"10", "v1", "30", "v3", "50", "v5", "60", "v6", "80", "v8", "100", "v10"});
+  DoRedisTestOk(__LINE__, {"TSREM", "ts_key", "30", "60", "70", "80", "90"});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
+                   {"10", "v1", "50", "v5", "100", "v10"});
+
+  // Now add some data and try some more deletes.
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "25", "v25",
+      "35", "v35",
+      "45", "v45",
+      "55", "v55",
+      "75", "v75",
+      "85", "v85",
+      "95", "v95",
+  });
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
+                   {"10", "v1", "25", "v25", "35", "v35", "45", "v45", "50", "v5", "55", "v55",
+                       "75", "v75", "85", "v85", "95", "v95", "100", "v10"});
+  DoRedisTestOk(__LINE__, {"TSREM", "ts_key", "10", "25", "30", "45", "50", "65", "70", "85",
+      "90"});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
+                   {"35", "v35", "55", "v55", "75", "v75", "95", "v95", "100", "v10"});
+
+  // Delete top level, then add some values and verify.
+  DoRedisTestInt(__LINE__, {"DEL", "ts_key"}, 1);
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
+      "22", "v22",
+      "33", "v33",
+      "44", "v44",
+      "55", "v55",
+      "77", "v77",
+      "88", "v88",
+      "99", "v99",
+  });
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
+                   {"22", "v22", "33", "v33", "44", "v44", "55", "v55", "77", "v77", "88", "v88",
+                       "99", "v99"});
+
+  // Now try invalid commands.
+  DoRedisTestExpectError(__LINE__, {"TSREM", "ts_key"}); // Not enough arguments.
+  DoRedisTestExpectError(__LINE__, {"TSREM", "ts_key", "v1", "10"}); // wrong type for timestamp.
+  DoRedisTestExpectError(__LINE__, {"TSREM", "ts_key", "1.0", "10"}); // wrong type for timestamp.
+  DoRedisTestExpectError(__LINE__, {"HDEL", "ts_key", "22"}); // wrong delete type.
+  DoRedisTestOk(__LINE__, {"HMSET", "hkey", "10", "v1", "20", "v2"});
+  DoRedisTestExpectError(__LINE__, {"TSREM", "hkey", "10", "20"}); // wrong delete type.
+
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestAdditionalCommands) {
 
   // The default value is true, but we explicitly set this here for clarity.
@@ -1277,16 +1353,20 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra1");
 
   DoRedisTestOk(__LINE__, {"HMSET", "map_key", "subkey5", "19", "subkey6", "14"});
+  // The last value for a duplicate key is picked up.
+  DoRedisTestOk(__LINE__, {"HMSET", "map_key", "hashkey1", "v1", "hashkey2", "v2",
+      "hashkey1", "v3"});
 
   SyncClient();
 
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"},
-      {"subkey1", "41", "subkey2", "12", "subkey5", "19", "subkey6", "14"});
+      {"hashkey1", "v3", "hashkey2", "v2", "subkey1", "41", "subkey2", "12", "subkey5", "19",
+          "subkey6", "14"});
   DoRedisTestArray(__LINE__, {"HKEYS", "map_key"},
-                   {"subkey1", "subkey2", "subkey5", "subkey6"});
+                   {"hashkey1", "hashkey2", "subkey1", "subkey2", "subkey5", "subkey6"});
   DoRedisTestArray(__LINE__, {"HVALS", "map_key"},
-                   {"41", "12", "19", "14"});
-  DoRedisTestInt(__LINE__, {"HLEN", "map_key"}, 4);
+                   {"v3", "v2", "41", "12", "19", "14"});
+  DoRedisTestInt(__LINE__, {"HLEN", "map_key"}, 6);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey1"}, 1);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey2"}, 1);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey3"}, 0);
@@ -1305,7 +1385,8 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestInt(__LINE__, {"HDEL", "map_key", "subkey9"}, 0);
   SyncClient();
   DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 1);
-  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey6", "14"});
+  DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"hashkey1", "v3", "hashkey2", "v2",
+      "subkey1", "41", "subkey6", "14"});
   DoRedisTestInt(__LINE__, {"DEL", "map_key"}, 1); // Delete the whole map with a del
   SyncClient();
 

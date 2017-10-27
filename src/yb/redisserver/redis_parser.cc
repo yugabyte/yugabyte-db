@@ -54,6 +54,18 @@ string to_lower_case(Slice slice) {
   return boost::to_lower_copy(slice.ToBuffer());
 }
 
+CHECKED_STATUS add_string_subkey(const string& subkey, RedisKeyValuePB* kv_pb) {
+  kv_pb->add_subkey()->set_string_subkey(subkey);
+  return Status::OK();
+}
+
+CHECKED_STATUS add_timestamp_subkey(const string &subkey, RedisKeyValuePB *kv_pb) {
+  auto timestamp = util::CheckedStoll(subkey);
+  RETURN_NOT_OK(timestamp);
+  kv_pb->add_subkey()->set_timestamp_subkey(*timestamp);
+  return Status::OK();
+}
+
 Result<int64_t> ParseInt64(const Slice& slice, const char* field) {
   auto result = util::CheckedStoll(slice);
   if (!result.ok()) {
@@ -141,10 +153,9 @@ CHECKED_STATUS ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
-template <typename T, typename ArgParser, typename AddSubKey>
+template <typename AddSubKey>
 CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
                                       const RedisDataType& type,
-                                      ArgParser arg_parser,
                                       AddSubKey add_sub_key) {
   if (args.size() < 4 || args.size() % 2 == 1) {
     return STATUS_SUBSTITUTE(InvalidArgument,
@@ -155,7 +166,7 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
   op->mutable_request()->mutable_key_value()->set_type(type);
   op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
   // We remove duplicates from the subkeys here.
-  std::unordered_map<T, string> kv_map;
+  std::unordered_map<string, string> kv_map;
   for (int i = 2; i < args.size(); i += 2) {
     // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.
     if ((args[i] == kExpireAt || args[i] == kExpireIn) && type == REDIS_TYPE_TIMESERIES) {
@@ -176,14 +187,13 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
       // Need to pass ttl in milliseconds, user supplied values are in seconds.
       op->mutable_request()->mutable_set_request()->set_ttl(ttl * MonoTime::kMillisecondsPerSecond);
     } else {
-      auto val = arg_parser(args[i]);
-      RETURN_NOT_OK(val);
-      kv_map[*val] = args[i + 1].ToBuffer();
+      kv_map[args[i].ToBuffer()] = args[i + 1].ToBuffer();
     }
   }
   for (const auto& kv : kv_map) {
-    add_sub_key(kv.first, op->mutable_request()->mutable_key_value());
-    op->mutable_request()->mutable_key_value()->add_value(kv.second);
+    auto req_kv = op->mutable_request()->mutable_key_value();
+    RETURN_NOT_OK(add_sub_key(kv.first, req_kv));
+    req_kv->add_value(kv.second);
   }
   return Status::OK();
 }
@@ -191,31 +201,22 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
 CHECKED_STATUS ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("hmset", to_lower_case(args[0]))
       << "Parsing hmset request where first arg is not hmset.";
-  return ParseHMSetLikeCommands<string>(op, args, REDIS_TYPE_HASH,
-                                        [](Slice arg) -> Result<std::string> {
-                                          return arg.ToBuffer();
-                                        },
-                                        [](const string& subkey, RedisKeyValuePB* kv_pb) {
-                                          kv_pb->add_subkey()->set_string_subkey(subkey);
-                                        }
-  );
+  return ParseHMSetLikeCommands(op, args, REDIS_TYPE_HASH, add_string_subkey);
 }
 
 CHECKED_STATUS ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("tsadd", to_lower_case(args[0]))
     << "Parsing hmset request where first arg is not hmset.";
-  return ParseHMSetLikeCommands<int64_t>(op, args, REDIS_TYPE_TIMESERIES, util::CheckedStoll,
-                                         [](int64_t subkey, RedisKeyValuePB* kv_pb) {
-                                           kv_pb->add_subkey()->set_timestamp_subkey(subkey);
-                                         }
-  );
+  return ParseHMSetLikeCommands(op, args, REDIS_TYPE_TIMESERIES,
+                                add_timestamp_subkey);
 }
 
 
-template <class YBRedisOp>
+template <typename YBRedisOp, typename AddSubKey>
 CHECKED_STATUS ParseCollection(YBRedisOp *op,
                                const RedisClientCommand& args,
                                boost::optional<RedisDataType> type,
+                               AddSubKey add_sub_key,
                                bool remove_duplicates = true) {
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
@@ -229,12 +230,12 @@ CHECKED_STATUS ParseCollection(YBRedisOp *op,
       subkey_set.insert(string(args[i].cdata(), args[i].size()));
     }
     for (const auto &val : subkey_set) {
-      op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(val);
+      RETURN_NOT_OK(add_sub_key(val, op->mutable_request()->mutable_key_value()));
     }
   } else {
     for (size_t i = 2; i < args.size(); i++) {
-      op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(args[i].cdata(),
-                                                                                  args[i].size());
+      RETURN_NOT_OK(add_sub_key(string(args[i].cdata(), args[i].size()),
+                                op->mutable_request()->mutable_key_value()));
     }
   }
   return Status::OK();
@@ -242,17 +243,22 @@ CHECKED_STATUS ParseCollection(YBRedisOp *op,
 
 CHECKED_STATUS ParseHDel(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
-  return ParseCollection(op, args, REDIS_TYPE_HASH);
+  return ParseCollection(op, args, REDIS_TYPE_HASH, add_string_subkey);
+}
+
+CHECKED_STATUS ParseTsRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
+  return ParseCollection(op, args, REDIS_TYPE_TIMESERIES, add_timestamp_subkey);
 }
 
 CHECKED_STATUS ParseSAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_add_request(new RedisAddRequestPB());
-  return ParseCollection(op, args, REDIS_TYPE_SET);
+  return ParseCollection(op, args, REDIS_TYPE_SET, add_string_subkey);
 }
 
 CHECKED_STATUS ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
-  return ParseCollection(op, args, REDIS_TYPE_SET);
+  return ParseCollection(op, args, REDIS_TYPE_SET, add_string_subkey);
 }
 
 CHECKED_STATUS ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
@@ -325,7 +331,7 @@ CHECKED_STATUS ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   op->mutable_request()->mutable_get_request()->set_request_type(request_type);
 
-  return ParseCollection(op, args, boost::none, remove_duplicates);
+  return ParseCollection(op, args, boost::none, add_string_subkey, remove_duplicates);
 }
 
 // TODO: Support MGET

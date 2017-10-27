@@ -132,6 +132,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((srem, SRem, -3, WRITE)) \
     ((tsadd, TsAdd, -4, WRITE)) \
     ((tsrangebytime, TsRangeByTime, 4, READ)) \
+    ((tsrem, TsRem, -3, WRITE)) \
     ((getset, GetSet, 3, WRITE)) \
     ((append, Append, 3, WRITE)) \
     ((del, Del, 2, WRITE)) \

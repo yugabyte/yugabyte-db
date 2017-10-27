@@ -64,6 +64,10 @@ void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel
 
 namespace {
 
+bool EmulateRedisResponse(const RedisDataType& data_type) {
+  return FLAGS_emulate_redis_responses && data_type != REDIS_TYPE_TIMESERIES;
+}
+
 CHECKED_STATUS PrimitiveValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb,
                                         PrimitiveValue *primitive_value) {
   switch (subkey_pb.subkey_case()) {
@@ -86,6 +90,9 @@ CHECKED_STATUS PrimitiveValueFromSubKeyStrict(const RedisKeyValueSubKeyPB &subke
                                               const RedisDataType &data_type,
                                               PrimitiveValue *primitive_value) {
   switch (data_type) {
+    case REDIS_TYPE_LIST: FALLTHROUGH_INTENDED;
+    case REDIS_TYPE_SET: FALLTHROUGH_INTENDED;
+    case REDIS_TYPE_SORTEDSET: FALLTHROUGH_INTENDED;
     case REDIS_TYPE_HASH:
       if (!subkey_pb.has_string_subkey()) {
         return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of string type",
@@ -342,8 +349,6 @@ Status RedisWriteOperation::Apply(
       return ApplyPop(doc_write_batch);
     case RedisWriteRequestPB::RequestCase::kAddRequest:
       return ApplyAdd(doc_write_batch);
-    case RedisWriteRequestPB::RequestCase::kRemoveRequest:
-      return ApplyRemove(doc_write_batch);
     case RedisWriteRequestPB::RequestCase::REQUEST_NOT_SET: break;
   }
   return STATUS(Corruption,
@@ -382,8 +387,7 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
         // For an HSET command (which has only one subkey), we need to read the subkey to find out
         // if the key already existed, and return 0 or 1 accordingly. This read is unnecessary for
         // HMSET and TSADD.
-        if (kv.subkey_size() == 1 && FLAGS_emulate_redis_responses &&
-            kv.type() != REDIS_TYPE_TIMESERIES) {
+        if (kv.subkey_size() == 1 && EmulateRedisResponse(kv.type())) {
           RedisDataType type;
           RETURN_NOT_OK(GetRedisValueType(
               doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, doc_write_batch, 0));
@@ -502,7 +506,8 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
     num_keys = data_type == REDIS_TYPE_NONE ? 0 : 1;
   } else {
     num_keys = kv.subkey_size(); // We know the subkeys are distinct.
-    if (FLAGS_emulate_redis_responses) {
+    // Avoid reads for redis timeseries type.
+    if (EmulateRedisResponse(kv.type())) {
       for (int i = 0; i < kv.subkey_size(); i++) {
         RedisDataType type;
         RETURN_NOT_OK(GetRedisValueType(
@@ -517,16 +522,18 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
       }
     } else {
       for (int i = 0; i < kv.subkey_size(); i++) {
-        values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
-                        SubDocument(ValueType::kTombstone));
+        PrimitiveValue primitive_value;
+        RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), data_type, &primitive_value));
+        values.SetChild(primitive_value, SubDocument(ValueType::kTombstone));
       }
     }
   }
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(doc_path, values, InitMarkerBehavior::REQUIRED));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-  if (FLAGS_emulate_redis_responses) {
-    // If the flag is true, we respond with the number of keys actually being deleted.
+  if (EmulateRedisResponse(kv.type())) {
+    // If the flag is true, we respond with the number of keys actually being deleted. We don't
+    // report this number for the redis timeseries type to avoid reads.
     response_.set_int_response(num_keys);
   }
   return Status::OK();
