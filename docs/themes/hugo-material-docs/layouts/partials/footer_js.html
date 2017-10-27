@@ -61,6 +61,25 @@
           });
         }
       </script>
+
+
+      <script>
+        window.onbeforeunload = function(event) {
+          sessionStorage.setItem('previousPageHash', window.location.hash);
+        }
+
+        $('.nav-tabs a').on('shown.bs.tab', function (e) {
+            window.location.hash = e.target.hash;
+            sessionStorage.setItem('previousPageHash', e.target.hash);
+        });
+
+        let previousPageHash = sessionStorage.getItem('previousPageHash');
+        if (previousPageHash) {
+          window.location.hash = previousPageHash;
+          $('.nav-tabs a[href="'+ previousPageHash +'"]').tab('show');
+        }
+      </script>
+
     {{ end }}
 
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.8.0/highlight.min.js"></script>
