@@ -35,7 +35,6 @@
 #include <vector>
 
 #include "yb/server/server_base_options.h"
-#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace tserver {

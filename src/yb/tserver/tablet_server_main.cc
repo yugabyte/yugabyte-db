@@ -107,8 +107,8 @@ static int TabletServerMain(int argc, char** argv) {
     RedisServerOptions redis_server_options;
     redis_server_options.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
     redis_server_options.webserver_opts.port = FLAGS_redis_proxy_webserver_port;
-    redis_server_options.master_addresses_flag =
-        yb::HostPort::ToCommaSeparatedString(*tablet_server_options.GetMasterAddresses());
+    redis_server_options.master_addresses_flag = tablet_server_options.master_addresses_flag;
+    redis_server_options.SetMasterAddresses(tablet_server_options.GetMasterAddresses());
     redis_server_options.dump_info_path =
         (tablet_server_options.dump_info_path.empty()
              ? ""
@@ -125,8 +125,8 @@ static int TabletServerMain(int argc, char** argv) {
     cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
     cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
     cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
-    cql_server_options.master_addresses_flag =
-        yb::HostPort::ToCommaSeparatedString(*tablet_server_options.GetMasterAddresses());
+    cql_server_options.master_addresses_flag = tablet_server_options.master_addresses_flag;
+    cql_server_options.SetMasterAddresses(tablet_server_options.GetMasterAddresses());
     cql_server_options.dump_info_path =
         (tablet_server_options.dump_info_path.empty()
              ? ""

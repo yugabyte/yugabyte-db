@@ -30,7 +30,7 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
                   " system.local table");
 DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
-DEFINE_string(cqlserver_master_addrs, "127.0.0.1:7051",
+DEFINE_string(cqlserver_master_addrs, "127.0.0.1:7100",
               "Comma-separated addresses of the masters the CQL server to connect to.");
 TAG_FLAG(cqlserver_master_addrs, stable);
 

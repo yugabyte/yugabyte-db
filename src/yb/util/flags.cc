@@ -71,7 +71,7 @@ DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_string(tserver_master_addrs, "127.0.0.1:7051",
+DEFINE_string(tserver_master_addrs, "127.0.0.1:7100",
               "Comma separated addresses of the masters which the "
               "tablet server should connect to. The CQL proxy reads this flag as well to "
               "determine the new set of masters");

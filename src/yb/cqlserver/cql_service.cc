@@ -13,9 +13,9 @@
 
 #include "yb/cqlserver/cql_service.h"
 
+#include <mutex>
 #include <thread>
 
-#include "yb/client/client.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/cqlserver/cql_processor.h"
@@ -55,13 +55,15 @@ using yb::rpc::InboundCall;
 CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
     : CQLServerServiceIf(server->metric_entity()),
       server_(server),
+      async_client_init_(
+          "cql_ybclient", FLAGS_cql_ybclient_reactor_threads, kRpcTimeoutSec,
+          server->tserver() ? server->tserver()->permanent_uuid() : "",
+          &opts, server->metric_entity()),
       next_available_processor_(processors_.end()),
       messenger_(server->messenger()),
       cql_rpcserver_env_(new CQLRpcServerEnv(server->first_rpc_address().address().to_string(),
                                              opts.broadcast_rpc_address)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
-  // Setup client.
-  SetUpYBClient(opts, server->metric_entity());
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
 
   // Setup prepared statements' memory tracker. Add garbage-collect function to delete least
@@ -79,31 +81,32 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       Substitute("SELECT $0 FROM system_auth.roles WHERE role = ?", kRoleColumnNameSaltedHash));
 }
 
-void CQLServiceImpl::SetUpYBClient(
-    const CQLServerOptions& opts, const scoped_refptr<MetricEntity>& metric_entity) {
-  // Build cloud_info_pb.
-  CloudInfoPB cloud_info_pb;
-  cloud_info_pb.set_placement_cloud(opts.placement_cloud);
-  cloud_info_pb.set_placement_region(opts.placement_region);
-  cloud_info_pb.set_placement_zone(opts.placement_zone);
+const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
+  auto& client = async_client_init_.client();
+  if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
+    std::lock_guard<std::mutex> l(metadata_init_mutex_);
+    if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
+      // Add proxy to call local tserver if available.
+      if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
+        client->AddTabletServerProxy(
+            server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
+      }
+      // Create and save the metadata cache object.
+      metadata_cache_ = std::make_shared<YBMetaDataCache>(client);
+      is_metadata_initialized_.store(std::memory_order_release);
+    }
+  }
+  return client;
+}
 
-  YBClientBuilder client_builder;
-  client_builder.set_client_name("cql_ybclient");
-  if (server_->tserver()) {
-    client_builder.set_tserver_uuid(server_->tserver()->permanent_uuid());
-  }
-  client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
-  client_builder.add_master_server_addr(opts.master_addresses_flag);
-  client_builder.set_metric_entity(metric_entity);
-  client_builder.set_num_reactors(FLAGS_cql_ybclient_reactor_threads);
-  client_builder.set_cloud_info_pb(cloud_info_pb);
-  CHECK_OK(client_builder.Build(&client_));
-  // Add proxy to call local tserver if available.
-  if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
-    client_->AddTabletServerProxy(
-        server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
-  }
-  metadata_cache_ = std::make_shared<YBMetaDataCache>(client_);
+const std::shared_ptr<client::YBMetaDataCache>& CQLServiceImpl::metadata_cache() const {
+  // Call client to wait for client and initialize metadata_cache if not already done.
+  (void)client();
+  return metadata_cache_;
+}
+
+void CQLServiceImpl::Shutdown() {
+  async_client_init_.Shutdown();
 }
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {

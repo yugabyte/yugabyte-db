@@ -31,6 +31,7 @@
 #
 
 set(CLIENT_SRCS
+  async_initializer.cc
   async_rpc.cc
   batcher.cc
   client.cc
@@ -63,6 +64,7 @@ set(CLIENT_LIBS
   master_proto
   master_rpc
   master_util
+  server_process
   tserver_proto
   tserver_service_proto
   yb_util

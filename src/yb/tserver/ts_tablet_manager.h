@@ -32,7 +32,6 @@
 #ifndef YB_TSERVER_TS_TABLET_MANAGER_H
 #define YB_TSERVER_TS_TABLET_MANAGER_H
 
-#include <future>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -45,6 +44,7 @@
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
+#include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"
@@ -380,8 +380,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // running state.
   void InitLocalRaftPeerPB();
 
-  void InitClient();
-
   FsManager* const fs_manager_;
 
   TabletServer* server_;
@@ -435,9 +433,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;
 
-  std::promise<client::YBClientPtr> client_promise_;
-  std::shared_future<client::YBClientPtr> client_future_;
-  std::thread init_client_thread_;
+  yb::client::AsyncClientInitialiser async_client_init_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

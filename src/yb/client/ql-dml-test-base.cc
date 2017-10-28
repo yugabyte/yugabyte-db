@@ -163,9 +163,7 @@ void QLDmlTestBase::SetUp() {
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.
-  ASSERT_OK(YBClientBuilder()
-      .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-      .Build(&client_));
+  ASSERT_OK(cluster_->CreateClient(nullptr, &client_));
 
   // Create test table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));

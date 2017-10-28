@@ -258,7 +258,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     next_report_seq_(0),
     metric_registry_(metric_registry),
     state_(MANAGER_INITIALIZING),
-    client_future_(client_promise_.get_future()) {
+    async_client_init_(
+        "tserver_client", 0 /* num_reactors */,
+        FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
+        &server->options(), server->metric_entity()) {
 
   CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
   apply_pool_->SetQueueLengthHistogram(
@@ -319,8 +322,6 @@ TSTabletManager::~TSTabletManager() {
 
 Status TSTabletManager::Init() {
   CHECK_EQ(state(), MANAGER_INITIALIZING);
-
-  init_client_thread_ = std::thread(std::bind(&TSTabletManager::InitClient, this));
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -387,34 +388,6 @@ Status TSTabletManager::Init() {
   }
 
   return Status::OK();
-}
-
-void TSTabletManager::InitClient() {
-  for (;;) {
-    {
-      boost::shared_lock<rw_spinlock> lock(lock_);
-      if (state_ == MANAGER_QUIESCING || state_ == MANAGER_SHUTDOWN) {
-        break;
-      }
-    }
-    client::YBClientBuilder client_builder;
-    client_builder.set_client_name("tserver_client");
-    client_builder.default_rpc_timeout(
-        MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
-    auto addresses = *server_->options().GetMasterAddresses();
-    client_builder.add_master_server_addr(HostPort::ToCommaSeparatedString(addresses));
-    client_builder.set_skip_master_leader_resolution(addresses.size() == 1);
-    client_builder.set_metric_entity(server_->metric_entity());
-    client::YBClientPtr client;
-    auto status = client_builder.Build(&client);
-    if (status.ok()) {
-      client_promise_.set_value(client);
-      break;
-    }
-
-    LOG(ERROR) << "Failed to initialize client: " << status;
-    std::this_thread::sleep_for(1s);
-  }
 }
 
 Status TSTabletManager::WaitForAllBootstrapsToFinish() {
@@ -898,7 +871,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
-                                    client_future_,
+                                    async_client_init_.get_client_future(),
                                     scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     log,
@@ -934,6 +907,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 }
 
 void TSTabletManager::Shutdown() {
+  async_client_init_.Shutdown();
 
   if(background_task_) {
     background_task_->Shutdown();
@@ -964,8 +938,6 @@ void TSTabletManager::Shutdown() {
 
   // Shut down the bootstrap pool, so new tablets are registered after this point.
   open_tablet_pool_->Shutdown();
-
-  init_client_thread_.join();
 
   // Take a snapshot of the peers list -- that way we don't have to hold
   // on to the lock while shutting them down, which might cause a lock

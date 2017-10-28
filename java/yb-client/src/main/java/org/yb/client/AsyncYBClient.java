@@ -2301,7 +2301,7 @@ public class AsyncYBClient implements AutoCloseable {
    * All the parameters beyond those in the constructors are optional.
    */
   public final static class AsyncYBClientBuilder {
-    private static final int DEFAULT_MASTER_PORT = 7051;
+    private static final int DEFAULT_MASTER_PORT = 7100;
     private static final int DEFAULT_BOSS_COUNT = 1;
     private static final int DEFAULT_WORKER_COUNT = 2 * Runtime.getRuntime().availableProcessors();
 

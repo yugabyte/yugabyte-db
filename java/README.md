@@ -75,11 +75,11 @@ you need to use a command line like this one:
 $ mvn test -DstartCluster=false
 
 If you choose to not start a cluster, the tests will look for
-a master running on localhost:7051. If you would like to run
+a master running on localhost:7100. If you would like to run
 against a remote cluster, you can override this using
 -DmasterAddress:
 
-$ mvn test -DstartCluster=false -DmasterAddress=foo.example.com:7051
+$ mvn test -DstartCluster=false -DmasterAddress=foo.example.com:7100
 
 If for some reason you would like to start a cluster, but use
 binaries other than the ones in build/latest/, you can pass

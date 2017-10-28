@@ -39,6 +39,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
+#include "yb/util/net/net_util.h"
 
 using std::vector;
 

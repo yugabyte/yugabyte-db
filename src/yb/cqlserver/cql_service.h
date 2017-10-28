@@ -29,6 +29,7 @@
 
 #include "yb/util/string_case.h"
 
+#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 
 namespace yb {
@@ -51,6 +52,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
  public:
   // Constructor.
   CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts);
+
+  void Shutdown() override;
 
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCallPtr call) override;
@@ -76,10 +79,10 @@ class CQLServiceImpl : public CQLServerServiceIf {
   }
 
   // Return the YBClient to communicate with either master or tserver.
-  std::shared_ptr<client::YBClient> client() const { return client_; }
+  const std::shared_ptr<client::YBClient>& client() const;
 
   // Return the YBClientCache.
-  std::shared_ptr<client::YBMetaDataCache> metadata_cache() const { return metadata_cache_; }
+  const std::shared_ptr<client::YBMetaDataCache>& metadata_cache() const;
 
   // Return the CQL metrics.
   std::shared_ptr<CQLMetrics> cql_metrics() const { return cql_metrics_; }
@@ -92,10 +95,6 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
-
-  // Setup YBClient.
-  void SetUpYBClient(
-      const CQLServerOptions& opts, const scoped_refptr<MetricEntity>& metric_entity);
 
   // Either gets an available processor or creates a new one.
   CQLProcessor *GetProcessor();
@@ -119,9 +118,12 @@ class CQLServiceImpl : public CQLServerServiceIf {
   CQLServer* const server_;
 
   // YBClient is to communicate with either master or tserver.
-  std::shared_ptr<client::YBClient> client_;
+  yb::client::AsyncClientInitialiser async_client_init_;
+
   // A cache to reduce opening tables or (user-defined) types again and again.
-  std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
+  mutable std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
+  mutable std::atomic<bool> is_metadata_initialized_ = { false };
+  mutable std::mutex metadata_init_mutex_;
 
   // List of CQL processors (in-use and available). In-use ones are at the beginning and available
   // ones at the end.
