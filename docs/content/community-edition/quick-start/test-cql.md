@@ -58,7 +58,7 @@ Create a table named 'stock_market' which can store stock prices at various time
 ```sql
 CREATE TABLE myapp.stock_market (
   stock_symbol text,
-  ts timestamp,
+  ts text,
   current_price float,
   PRIMARY KEY (stock_symbol, ts)
 );
@@ -72,16 +72,16 @@ Let us insert some data for a few stock symbols into our newly created 'stock_ma
 
 ```sql
 // Insert some values for the AAPL stock symbol.
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00.000000+0000',157.41);
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00.000000+0000',157);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 
 // Next insert some values for the FB stock symbol.
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00.000000+0000',170.63);
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00.000000+0000',170.1);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
 
 // Next insert some values for the GOOG stock symbol.
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00.000000+0000',972.56);
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00.000000+0000',971.91);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
+INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
 
 ## Query the table
@@ -91,10 +91,10 @@ Query all the values we have inserted into the database for the stock symbol 'AA
 ```sql
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
- stock_symbol | ts                              | current_price
---------------+---------------------------------+---------------
-         AAPL | 2017-10-25 12:00:00.000000+0000 |        158.14
-         AAPL | 2017-10-25 13:00:00.000000+0000 |     158.10001
+ stock_symbol | ts                  | current_price
+--------------+---------------------+---------------
+         AAPL | 2017-10-26 09:00:00 |        157.41
+         AAPL | 2017-10-26 10:00:00 |           157
 
 (2 rows)
 ```
@@ -105,12 +105,12 @@ Query all the values for 'FB' and 'GOOG' as follows.
 ```sql
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
- stock_symbol | ts                              | current_price
---------------+---------------------------------+---------------
-         GOOG | 2017-10-25 12:00:00.000000+0000 |     972.73999
-         GOOG | 2017-10-25 13:00:00.000000+0000 |     973.51001
-           FB | 2017-10-25 12:00:00.000000+0000 |     170.74001
-           FB | 2017-10-25 13:00:00.000000+0000 |     171.50999
+ stock_symbol | ts                  | current_price
+--------------+---------------------+---------------
+         GOOG | 2017-10-26 09:00:00 |        972.56
+         GOOG | 2017-10-26 10:00:00 |     971.90997
+           FB | 2017-10-26 09:00:00 |        170.63
+           FB | 2017-10-26 10:00:00 |     170.10001
 
 (4 rows)
 ```
