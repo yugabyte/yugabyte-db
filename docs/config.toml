@@ -80,13 +80,13 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name = "3. Test YugaByte CQL"
 	parent = "community-quick-start"
-	url = "community-edition/quick-start/test-yugabyte-cql/"
+	url = "community-edition/quick-start/test-cql/"
 	weight = 7
 
 [[menu.main]]
 	name = "4. Test YugaByte Redis"
 	parent = "community-quick-start"
-	url = "community-edition/quick-start/test-yugabyte-redis/"
+	url = "community-edition/quick-start/test-redis/"
 	weight = 8
 
 [[menu.main]]

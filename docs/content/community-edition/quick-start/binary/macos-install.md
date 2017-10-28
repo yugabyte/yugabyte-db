@@ -1,6 +1,8 @@
 ## Prerequisites
 
-You must have `python` installed on your localhost.
+a) macOS 10.12 (Sierra) or higher
+
+b) You must have `python` installed on your localhost.
 
 ## Download
 

@@ -4,11 +4,11 @@ title: Test YugaByte CQL
 weight: 7
 ---
 
-After [creating a local cluster](/community-edition/quick-start/create-local-cluster/), follow the instructions below to test its CQL service.
+After [creating a local cluster](/community-edition/quick-start/create-local-cluster/), follow the instructions below to test YugaByte's CQL service.
 
-[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line. For ease of use, the YugaByte DB container ships with the 3.10 version of cqlsh in its bin directory.
+[**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line. For ease of use, YugaByte DB ships with the 3.10 version of cqlsh in its bin directory.
 
-## Connect To YugaByte Using cqlsh
+## Connect with cqlsh
 
 <ul class="nav nav-tabs">
   <li class="active">
@@ -33,13 +33,13 @@ After [creating a local cluster](/community-edition/quick-start/create-local-clu
 
 <div class="tab-content">
   <div id="docker" class="tab-pane fade in active">
-    {{% includeMarkdown "community-edition/quick-start/docker/test-yugabyte-cql.md" /%}}
+    {{% includeMarkdown "community-edition/quick-start/docker/test-cql.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
-    {{% includeMarkdown "community-edition/quick-start/binary/macos-test-yugabyte-cql.md" /%}}
+    {{% includeMarkdown "community-edition/quick-start/binary/test-cql.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade">
-    {{% includeMarkdown "community-edition/quick-start/binary/linux-test-yugabyte-cql.md" /%}}
+    {{% includeMarkdown "community-edition/quick-start/binary/test-cql.md" /%}}
   </div> 
 </div>
 

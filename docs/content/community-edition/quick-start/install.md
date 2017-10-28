@@ -7,7 +7,7 @@ weight: 5
 <ul class="nav nav-tabs">
   <li class="active">
     <a data-toggle="tab" href="#docker">
-      <i class="fa fa-docker" aria-hidden="true"></i>
+      <i class="icon-docker"></i>
       <b>Docker</b>
     </a>
   </li>

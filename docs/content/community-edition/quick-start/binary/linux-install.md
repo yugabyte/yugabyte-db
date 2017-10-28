@@ -2,7 +2,7 @@
 
 a) Supported operating systems are
 
-- Centos 7 or higher
+<i class="icon-centos"></i> Centos 7+
 
 b) You must have `python` installed on your localhost.
 

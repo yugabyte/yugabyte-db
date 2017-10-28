@@ -27,7 +27,7 @@ $ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel file
 
 ### Download
 
-Download the YugaByte CE package [here](http://www.yugabyte.com#download). Thereafter, follow the instructions below.
+Download the YugaByte CE binary package as described in the [Quick Start section](/community-edition/quick-start/install/).
 
 ### Install
 For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. As noted in the [default ports reference](/community-edition/deploy/#default-ports-reference) section, YB-Masters will run on port 7100 and YB-TServers will run on port 9100 of these instances. On each of these instances, run the following steps.

@@ -1,12 +1,12 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Test YugaByte Redis
-weight: 7
+weight: 8
 ---
 
-After [creating a local cluster](/community-edition/quick-start/create-local-cluster/), follow the instructions below to test its Redis service.
+After [creating a local cluster](/community-edition/quick-start/create-local-cluster/), follow the instructions below to test YugaByte's Redis service.
 
-[**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, the YugaByte DB package ships with the 4.0.1 version of redis-cli in its bin directory.
+[**redis-cli**](https://redis.io/topics/rediscli) is a command line interface to interact with a Redis server. For ease of use, YugaByte DB ships with the 4.0.1 version of redis-cli in its bin directory.
 
 
 ## Connect with redis-cli
@@ -34,13 +34,13 @@ After [creating a local cluster](/community-edition/quick-start/create-local-clu
 
 <div class="tab-content">
   <div id="docker" class="tab-pane fade in active">
-    {{% includeMarkdown "community-edition/quick-start/docker/test-yugabyte-redis.md" /%}}
+    {{% includeMarkdown "community-edition/quick-start/docker/test-redis.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
-    {{% includeMarkdown "community-edition/quick-start/binary/macos-test-yugabyte-redis.md" /%}}
+    {{% includeMarkdown "community-edition/quick-start/binary/test-redis.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade">
-    {{% includeMarkdown "community-edition/quick-start/binary/linux-test-yugabyte-redis.md" /%}}
+    {{% includeMarkdown "community-edition/quick-start/binary/test-redis.md" /%}}
   </div> 
 </div>
 
