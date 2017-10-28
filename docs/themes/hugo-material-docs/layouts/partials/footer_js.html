@@ -64,19 +64,35 @@
 
 
       <script>
+        $(function() {
+          if (window.location.href.includes("quick-start")) {
+            $('.download-btn').hide();
+          } else {
+            $('.download-btn').show();
+          }
+        });
+        
         window.onbeforeunload = function(event) {
-          sessionStorage.setItem('previousPageHash', window.location.hash);
+          if (window.location.hash) {
+            sessionStorage.setItem('previousPageHash', window.location.hash);
+          }
         }
 
         $('.nav-tabs a').on('shown.bs.tab', function (e) {
             window.location.hash = e.target.hash;
             sessionStorage.setItem('previousPageHash', e.target.hash);
+            setTimeout(function() {
+                $("html, body").animate({ scrollTop: 0 });
+            }, 5);
         });
 
         let previousPageHash = sessionStorage.getItem('previousPageHash');
-        if (previousPageHash) {
+        if (previousPageHash && $('.nav-tabs a').length > 0) {
           window.location.hash = previousPageHash;
           $('.nav-tabs a[href="'+ previousPageHash +'"]').tab('show');
+        } else {
+          delete sessionStorage.previousPageHash;
+          history.pushState('', document.title, window.location.pathname);
         }
       </script>
 
