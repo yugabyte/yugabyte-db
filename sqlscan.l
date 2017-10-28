@@ -15,8 +15,6 @@
 
 #endif
 
-#undef yyparse  /* don't need it now and solve problems with 8.1 */
-
 #include "parser/gramparse.h"
 /* Not needed now that this file is compiled as part of gram.y */
 /* #include "parser/parse.h" */
@@ -50,7 +48,7 @@ static bool extended_string = false;
 
 static YY_BUFFER_STATE scanbufhandle;
 
-#define SET_YYLLOC()  (yylval.val.lloc = yylloc = yytext - scanbuf)                                                                                              
+#define SET_YYLLOC()  (orafce_sql_yylval.val.lloc = orafce_sql_yylloc = yytext - scanbuf)                                                                                              
                                                                                                                                                
 /* Handles to the buffer that the lexer uses internally */                                                                                     
 static char *scanbuf;       
@@ -58,8 +56,6 @@ static char *scanbuf;
 /* flex 2.5.4 doesn't bother with a decl for this */
 
 int orafce_sql_yylex(void);
-
-extern YYSTYPE yylval;
 
 void orafce_sql_scanner_init(const char *str);
 void orafce_sql_scanner_finish(void);
@@ -904,7 +900,7 @@ lexer_errposition(void)
  * be misleading!
  */
 void
-yyerror(List **result, const char *message)
+orafce_sql_yyerror(List **result, const char *message)
 {
 	const char *loc = scanbuf + yylloc;
 

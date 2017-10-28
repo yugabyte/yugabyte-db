@@ -4323,3 +4323,21 @@ DETAIL:  Pipename may not be NULL.
 select plunit.assert_not_equals(1,2,3);
 ERROR:  plunit.assert_not_equal exception
 DETAIL:  Plunit.assertation fails (assert_not_equals).
+--
+-- lexer text
+--
+SELECT pos, token, class, mod FROM plvlex.tokens('select * from a.b.c join d on x=y', true, true);
+ pos | token  |  class  | mod  
+-----+--------+---------+------
+   0 | select | KEYWORD | 
+   7 | *      | OTHERS  | self
+   9 | from   | KEYWORD | 
+  14 | a.b.c  | IDENT   | 
+  20 | join   | KEYWORD | 
+  25 | d      | IDENT   | 
+  27 | on     | KEYWORD | 
+  30 | x      | IDENT   | 
+  31 | =      | OTHERS  | self
+  32 | y      | IDENT   | 
+(10 rows)
+

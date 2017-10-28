@@ -8,10 +8,6 @@ DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config
 
-# version as a number, e.g. 9.1.4 -> 901
-VERSION := $(shell $(PG_CONFIG) --version | awk '{print $$2}')
-INTVERSION := $(shell echo $$(($$(echo $(VERSION) | sed 's/\([[:digit:]]\{1,\}\)\.\([[:digit:]]\{1,\}\).*/\1*100+\2/' ))))
-
 # make "all" the default target
 all:
 
@@ -72,7 +68,3 @@ distprep: $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
 
 maintainer-clean:
 	rm -f $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
-
-ifndef MAJORVERSION
-MAJORVERSION := $(basename $(VERSION))
-endif

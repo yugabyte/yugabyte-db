@@ -984,3 +984,8 @@ SELECT oracle.round(1.234::float, 2), oracle.trunc(1.234::float, 2);
 select dbms_random.string(null, 42);
 select dbms_pipe.create_pipe(null);
 select plunit.assert_not_equals(1,2,3);
+
+--
+-- lexer text
+--
+SELECT pos, token, class, mod FROM plvlex.tokens('select * from a.b.c join d on x=y', true, true);

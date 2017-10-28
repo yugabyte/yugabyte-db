@@ -1,3 +1,5 @@
+%define api.prefix {orafce_sql_yy}
+
 %{
 
 #define YYDEBUG 1
@@ -45,32 +47,28 @@ static int	scanbuflen;
 void orafce_sql_yyerror(List **result, const char *message);
 
 
-#define YYLTYPE		int
+#define ORAFCE_SQL_YYLTYPE		int
 #define YYMALLOC	malloc	/* XXX: should use palloc? */
 #define YYFREE		free	/* XXX: should use pfree? */
 
 %}
 
-
-%name-prefix="orafce_sql_yy" 
 %locations
 %parse-param {List **result}
 
 %union
 {
-    int 	ival;
-    orafce_lexnode	*node;
-    List		*list;
-    struct
-    {
-	    char 	*str;
-	    int		keycode;
-	    int		lloc;
-	    char	*sep;
-	    char *modificator;
-    }				val;
-
-
+	int 	ival;
+	orafce_lexnode	*node;
+	List		*list;
+	struct
+	{
+		char 	*str;
+		int		keycode;
+		int		lloc;
+		char	*sep;
+		char *modificator;
+	}				val;
 }
 
 /* BISON Declarations */
@@ -108,6 +106,6 @@ anyelement:
 	;
 %%
 
-
+#undef YYLTYPE
 
 #include "sqlscan.c"
