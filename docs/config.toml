@@ -48,11 +48,6 @@ googleAnalytics = "UA-104956980-1"
 	weight = 1
 
 [[menu.main]]
-	name   = "FAQs"
-	url    = "faq/"
-	weight = 2
-
-[[menu.main]]
 	name = "Community Edition"
 	identifier = "community-edition"
 	url = "community-edition/"
@@ -90,53 +85,59 @@ googleAnalytics = "UA-104956980-1"
 	weight = 8
 
 [[menu.main]]
+	name = "5. Run Sample Apps"
+	parent = "community-quick-start"
+	url = "community-edition/quick-start/run-sample-apps/"
+	weight = 9
+
+[[menu.main]]
 	name = "Explore Core Features"
 	identifier = "community-explore"
 	parent = "community-edition"
 	url = "community-edition/explore/"
-	weight = 9
+	weight = 20
 
 [[menu.main]]
 	name = "Fault Tolerance"
 	parent = "community-explore"
 	url = "community-edition/explore/fault-tolerance/"
-	weight = 10
+	weight = 21
 
 [[menu.main]]
 	name = "Auto Rebalancing"
 	parent = "community-explore"
 	url = "community-edition/explore/auto-rebalancing/"
-	weight = 11
+	weight = 22
 
 [[menu.main]]
 	name   = "Develop Apps"
 	parent = "community-edition"
 	url    = "community-edition/develop/"
-	weight = 12
+	weight = 30
 
 [[menu.main]]
 	name   = "Deploy"
 	parent = "community-edition"
 	url    = "community-edition/deploy/"
-	weight = 20
+	weight = 40
 
 [[menu.main]]
 	name = "Enterprise Edition"
 	identifier = "enterprise-edition"
 	url = "enterprise-edition/"
-	weight = 40
+	weight = 50
 
 [[menu.main]]
 	name = "Deploy Admin Console"
 	parent = "enterprise-edition"
 	url = "enterprise-edition/deploy/"
-	weight = 50
+	weight = 51
 
 [[menu.main]]
 	name   = "Administer"
 	parent = "enterprise-edition"
 	url    = "enterprise-edition/admin/"
-	weight = 60
+	weight = 52
 
 [[menu.main]]
 	name   = "Architecture"
@@ -173,6 +174,11 @@ googleAnalytics = "UA-104956980-1"
 	parent = "architecture"
 	url = "architecture/comparisons/"
 	weight = 110
+
+[[menu.main]]
+	name   = "FAQs"
+	url    = "faq/"
+	weight = 115
 
 [[menu.main]]
 	name   = "Client API Reference"

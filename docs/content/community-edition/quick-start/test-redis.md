@@ -88,7 +88,7 @@ OK
 You can create a Redis Hash data type as follows. This models the data for user id 1000 with the following attributes {username : antirez, birthyear : 1977, verified : 1}.
 
 ```
-hmset user:1000 username antirez birthyear 1977 verified 1
+127.0.0.1:6379> hmset user:1000 username antirez birthyear 1977 verified 1
 ```
 
 You can retrieve specific attributes for user id 1000 as follows.
