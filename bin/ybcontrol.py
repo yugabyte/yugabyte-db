@@ -49,6 +49,7 @@ class ClusterManager(object):
         self.tserver_ips = ClusterManager.get_arg(args, 'tserver_ips')
         default_pem = os.path.join(os.environ["HOME"], ".yugabyte/yugabyte-dev-aws-keypair.pem")
         self.pem_file = ClusterManager.get_arg(args, 'pem_file', default_pem)
+        self.user = ClusterManager.get_arg(args, 'user', 'centos')
         self.repo = ClusterManager.get_arg(args, 'repo',
                                            os.path.join(os.environ["HOME"], 'code/yugabyte'))
         default_tar_prefix = "yugabyte-ee-{0}-{1}-release-{2}-{3}".format(
@@ -82,6 +83,7 @@ class ClusterManager(object):
                             help="tar file prefix (e.g., "
                                  "yugabyte.2bdf48724db5869d0c88c85e0fa65e9ac3a21511-release)")
         parser.add_argument('--port', type=int, nargs='?', help="ssh port")
+        parser.add_argument('--user', nargs='?', help='remote user to ssh or scp as')
 
     def service_hosts(self, service):
         return getattr(self, service + "_hosts")
@@ -92,7 +94,7 @@ class ClusterManager(object):
                         self.pem_file,
                         '-p',
                         str(self.port),
-                        'centos@{0}'.format(host),
+                        '{0}@{1}'.format(self.user, host),
                         command]
         return subprocess.Popen(command_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
@@ -176,9 +178,9 @@ class CopyProcedure(Procedure):
     def __init__(self, manager, upload, host, src_path, dst_path):
         if upload:
             self.src_path = src_path
-            self.dst_path = '{0}:{1}'.format(host, dst_path)
+            self.dst_path = '{0}@{1}:{2}'.format(manager.user, host, dst_path)
         else:
-            self.src_path = '{0}:{1}'.format(host, src_path)
+            self.src_path = '{0}@{1}:{2}'.format(manager.user, host, src_path)
             self.dst_path = '{0}.{1}'.format(dst_path, host)
         self.process = manager.scp(self.src_path, self.dst_path)
         self.host = host
@@ -252,7 +254,7 @@ class CopyTarProcedure(Procedure):
         self.step = 0
         print("Copy tar to {0}".format(self.host))
         self.process = manager.scp("{0}/build/{1}.tar.gz".format(manager.repo, manager.tar_prefix),
-                                   'centos@{0}:/tmp'.format(host))
+                                   '{0}@{1}:/tmp'.format(manager.user, host))
 
     def check(self):
         if self.step == 3:
