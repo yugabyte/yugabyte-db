@@ -228,6 +228,7 @@ redis_ops_latency:
   metric: "rpc_latency.avg"
   function: "rate|avg"
   operator: "/ 1000 > 0"
+  range: "1m"
   filters:
     server_type: "yb_redisserver"
     service_type: "RedisServerService"
