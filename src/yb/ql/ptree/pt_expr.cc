@@ -209,6 +209,17 @@ CHECKED_STATUS PTLiteralString::ToDecimal(string *value, bool negate) const {
   return Status::OK();
 }
 
+CHECKED_STATUS PTLiteralString::ToVarInt(string *value, bool negate) const {
+  util::VarInt v;
+  if (negate) {
+    RETURN_NOT_OK(v.FromString(string("-") + value_->c_str()));
+  } else {
+    RETURN_NOT_OK(v.FromString(value_->c_str()));
+  }
+  *value = v.EncodeToComparable();
+  return Status::OK();
+}
+
 CHECKED_STATUS PTLiteralString::ToString(string *value) const {
   *value = value_->c_str();
   return Status::OK();

@@ -679,6 +679,96 @@ Status ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
   return STATUS(RuntimeError, "Not yet implemented");
 }
 
+//--------------------------------------------------------------------------------------------------
+// The following functions are for conversions from VarInt to the other numeric types.
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToI8(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    int64_t val;
+    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    if (val < INT8_MIN || val > INT8_MAX) {
+      return STATUS(InvalidArgument, "VarInt cannot be converted to int8 due to overflow");
+    }
+    target->set_int8_value(val);
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToI16(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    int64_t val;
+    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    if (val < INT16_MIN || val > INT16_MAX) {
+      return STATUS(InvalidArgument, "VarInt cannot be converted to int16 due to overflow");
+    }
+    target->set_int16_value(val);
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToI32(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    int64_t val;
+    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    if (val < INT32_MIN || val > INT32_MAX) {
+      return STATUS(InvalidArgument, "VarInt cannot be converted to int32 due to overflow");
+    }
+    target->set_int32_value(val);
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToI64(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    int64_t val;
+    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    target->set_int64_value(val);
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    // This may lose precision, it should return the closest float value to the input number.
+    util::Decimal val;
+    RETURN_NOT_OK(val.FromVarInt(source->varint_value()));
+    auto dbl = val.ToDouble();
+    RETURN_NOT_OK(dbl);
+    target->set_float_value(static_cast<float>(*dbl));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    // This may lose precision, it should return the closest double value to the input number.
+    util::Decimal val;
+    RETURN_NOT_OK(val.FromVarInt(source->varint_value()));
+    auto dbl = val.ToDouble();
+    RETURN_NOT_OK(dbl);
+    target->set_double_value(*dbl);
+  }
+  return Status::OK();
+}
+
 } // namespace bfql
 } // namespace yb
 

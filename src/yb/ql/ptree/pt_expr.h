@@ -645,6 +645,7 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   CHECKED_STATUS ToDouble(long double *value, bool negate) const;
   CHECKED_STATUS ToDecimal(util::Decimal *value, bool negate) const;
   CHECKED_STATUS ToDecimal(std::string *value, bool negate) const;
+  CHECKED_STATUS ToVarInt(std::string *value, bool negate) const;
 
   CHECKED_STATUS ToString(std::string *value) const;
   CHECKED_STATUS ToTimestamp(int64_t *value) const;
@@ -655,11 +656,11 @@ using PTConstText = PTExprConst<InternalType::kStringValue,
                                 DataType::STRING,
                                 MCSharedPtr<MCString>,
                                 PTLiteralString>;
-using PTConstVarInt = PTExprConst<InternalType::kStringValue,
+using PTConstVarInt = PTExprConst<InternalType::kVarintValue,
                                   DataType::VARINT,
                                   MCSharedPtr<MCString>,
                                   PTLiteralString>;
-using PTConstDecimal = PTExprConst<InternalType::kStringValue,
+using PTConstDecimal = PTExprConst<InternalType::kDecimalValue,
                                    DataType::DECIMAL,
                                    MCSharedPtr<MCString>,
                                    PTLiteralString>;

@@ -239,6 +239,13 @@ const vector<BFDecl> kBFDirectory = {
 
   { "ServerOperator", "min", ANYTYPE, {ANYTYPE}, TSOpcode::kMin, false },
   { "ServerOperator", "max", ANYTYPE, {ANYTYPE}, TSOpcode::kMax, false },
+
+  { "ConvertVarintToI8",       "cast", INT8,   {VARINT, INT8} },
+  { "ConvertVarintToI16",      "cast", INT16,  {VARINT, INT16} },
+  { "ConvertVarintToI32",      "cast", INT32,  {VARINT, INT32} },
+  { "ConvertVarintToI64",      "cast", INT64,  {VARINT, INT64} },
+  { "ConvertVarintToFloat",    "cast", FLOAT,  {VARINT, FLOAT} },
+  { "ConvertVarintToDouble",   "cast", DOUBLE, {VARINT, DOUBLE} },
 };
 
 } // namespace bfql

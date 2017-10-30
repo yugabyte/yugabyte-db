@@ -78,7 +78,7 @@ CHECKED_STATUS YQLExpression::Evaluate(const QLExpressionPB &ql_expr,
       }
 
       // Execute the builtin call associated with the given opcode.
-      QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.opcode()), &args, result);
+      RETURN_NOT_OK(QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.opcode()), &args, result));
       break;
     }
 

@@ -25,6 +25,7 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 #include "yb/util/yb_partition.h"
+#include "yb/util/varint.h"
 
 namespace yb {
 
@@ -70,6 +71,7 @@ class QLValue {
   virtual const QLSeqValuePB& frozen_value() const = 0;
   virtual Uuid uuid_value() const = 0;
   virtual Uuid timeuuid_value() const = 0;
+  virtual util::VarInt varint_value() const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -91,6 +93,7 @@ class QLValue {
   virtual void set_inetaddress_value(const InetAddress& val) = 0;
   virtual void set_uuid_value(const Uuid& val) = 0;
   virtual void set_timeuuid_value(const Uuid& val) = 0;
+  virtual void set_varint_value(const util::VarInt& val) = 0;
 
   //--------------------------------- mutable value methods ---------------------------------
   virtual std::string* mutable_decimal_value() = 0;
@@ -239,6 +242,13 @@ class QLValue {
     return timeuuid;
   }
 
+  static util::VarInt varint_value(const QLValuePB& v) {
+    util::VarInt varint;
+    size_t num_decoded_bytes;
+    CHECK_OK(varint.DecodeFromComparable(v.varint_value(), &num_decoded_bytes));
+    return varint;
+  }
+
 #undef QL_GET_VALUE
 
   static CHECKED_STATUS AppendToKeyBytes(const QLValuePB &value_pb, string *bytes);
@@ -285,6 +295,11 @@ class QLValue {
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));
     v->set_timeuuid_value(bytes);
+  }
+
+  static void set_varint_value(const util::VarInt& val, QLValuePB *v) {
+    std::string bytes = val.EncodeToComparable();
+    v->set_varint_value(bytes);
   }
 
   static void set_timestamp_value(const int64_t val, QLValuePB *v) { v->set_timestamp_value(val); }
@@ -438,9 +453,9 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   virtual const QLSeqValuePB& frozen_value() const override {
     return QLValue::frozen_value(value());
   }
-
   virtual Uuid uuid_value() const override { return QLValue::uuid_value(value()); }
   virtual Uuid timeuuid_value() const override { return QLValue::timeuuid_value(value()); }
+  virtual util::VarInt varint_value() const override { return QLValue::varint_value(value()); }
 
   //----------------------------------- set value methods -----------------------------------
   virtual void set_int8_value(const int8_t val) override {
@@ -490,6 +505,9 @@ class QLValueWithPB : public QLValue, public QLValuePB {
   }
   virtual void set_timeuuid_value(const Uuid& val) override {
     QLValue::set_timeuuid_value(val, mutable_value());
+  }
+  virtual void set_varint_value(const util::VarInt& val) override {
+    QLValue::set_varint_value(val, mutable_value());
   }
   virtual void set_binary_value(const std::string& val) override {
     QLValue::set_binary_value(val, mutable_value());

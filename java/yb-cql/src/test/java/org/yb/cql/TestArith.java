@@ -79,7 +79,6 @@ public class TestArith extends BaseCQLTest {
     }
 
     // Update: c1 = c1 + seed where c1 is null.
-    boolean return_null = false;
     Long test_seed = 77L;
     String update_stmt = String.format("UPDATE test_%s SET c1 = c1 %s %d WHERE h1 = 1;",
                                        yqltype, yqlop, test_seed);
@@ -134,6 +133,34 @@ public class TestArith extends BaseCQLTest {
       row_count++;
     }
     assertEquals(1, row_count);
+
+    // Update: c1 = c1 + -seed where c1 == 2 * seed (Test counting op with negative values).
+    update_stmt =
+        String.format("UPDATE test_%s SET c1 = c1 %s %d WHERE h1 = 1;", yqltype, yqlop, -test_seed);
+    session.execute(update_stmt);
+
+    // Select data from the test table and check.
+    rs = session.execute(select_stmt);
+    row_count = 0;
+    iter = rs.iterator();
+    while (iter.hasNext()) {
+      Row row = iter.next();
+      assertEquals(1, row.getInt(0));
+      c1_value = op.Eval(c1_value, -test_seed);
+      assertEquals(c1_value.longValue(), row.getLong(1));
+      row_count++;
+    }
+    assertEquals(1, row_count);
+
+    // Update with out-of-range values: positive value (Check overflow).
+    update_stmt = String.format("UPDATE test_%s SET c1 = c1 %s 9223372036854775808 WHERE h1 = 1;",
+        yqltype, yqlop);
+    runInvalidStmt(update_stmt);
+
+    // Update with out-of-range values: negative value (Check overflow).
+    update_stmt = String.format("UPDATE test_%s SET c1 = c1 %s -9223372036854775809 WHERE h1 = 1;",
+        yqltype, yqlop);
+    runInvalidStmt(update_stmt);
   }
 
   public void EvalBigIntOp(String yqlop, MathOperator op) throws Exception {

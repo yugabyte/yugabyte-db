@@ -54,13 +54,9 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
       break;
     }
     case DataType::VARINT: {
-      DCHECK(const_pt->internal_type() == InternalType::kStringValue)
-        << "Expecting internal type to be string from the parser";
       return PTExprToPB(static_cast<const PTConstVarInt*>(const_pt), const_pb, negate);
     }
     case DataType::DECIMAL: {
-      DCHECK(const_pt->internal_type() == InternalType::kStringValue)
-        << "Expecting internal type to be string from the parser";
       return PTExprToPB(static_cast<const PTConstDecimal*>(const_pt), const_pb, negate);
     }
     case DataType::INT64: { // Might be an obsolete case.
@@ -169,6 +165,10 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
       const_pb->set_timestamp_value(DateTime::TimestampFromInt(value).ToInt64());
       break;
     }
+    case InternalType::kVarintValue: {
+      return const_pt->ToVarInt(const_pb->mutable_varint_value(), negate);
+    }
+
     default:
       LOG(FATAL) << "Illegal datatype conversion";
   }
