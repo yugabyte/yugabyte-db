@@ -1287,6 +1287,9 @@ public class PlacementInfoUtil {
                 masterAlive = masterAlive || upData.asText().equals("1");
               }
               break;
+            case CQL_EXPORT: // Ignore results from the CQL port
+            case REDIS_EXPORT: // Ignore results from the Redis port
+              break;
             default:
               LOG.error("Invalid port " + name[1]);
               break;
