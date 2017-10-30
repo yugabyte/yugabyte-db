@@ -4,7 +4,6 @@ package com.yugabyte.yw.cloud;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -63,7 +62,6 @@ public class UniverseResourceDetails {
 
   public void addPrice(UniverseDefinitionTaskParams params) {
     Provider provider = Provider.get(UUID.fromString(params.userIntent.provider));
-    InstanceType instanceType = InstanceType.get(provider.code, params.userIntent.instanceType);
 
     // Calculate price
     double hourlyPrice = 0.0;
@@ -80,8 +78,7 @@ public class UniverseResourceDetails {
       if (params.cloud.equals(Common.CloudType.aws) && params.userIntent.spotPrice > 0.0) {
         hourlyPrice += params.userIntent.spotPrice;
       } else {
-        PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
-            instanceType.getInstanceTypeCode());
+        PriceComponent instancePrice = PriceComponent.get(provider.code, region.code, params.userIntent.instanceType);
         if (instancePrice == null) {
           continue;
         }

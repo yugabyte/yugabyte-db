@@ -23,17 +23,20 @@ public class ResourceUtil {
   																				String azCode,
   																				UniverseResourceDetails universeResourceDetails) {
     // Get the instance type object.
+    double memSizeGB = 0;
+    int numCores = 0;
     InstanceType instanceType = InstanceType.get(cloudType.toString(), instanceTypeCode);
     if (instanceType == null) {
-      String msg = "Couldn't find instance type " + instanceTypeCode + " for provider " +
-          cloudType.toString();
+      String msg = "Couldn't find instance type " + instanceTypeCode + " for provider " + cloudType.toString();
       LOG.error(msg);
-      throw new RuntimeException(msg);
+    } else {
+      memSizeGB = instanceType.memSizeGB;
+      numCores = instanceType.numCores;
     }
     universeResourceDetails.addVolumeCount(deviceInfo.numVolumes);
     universeResourceDetails.addVolumeSizeGB(deviceInfo.volumeSize * deviceInfo.numVolumes);
-    universeResourceDetails.addMemSizeGB(instanceType.memSizeGB);
+    universeResourceDetails.addMemSizeGB(memSizeGB);
     universeResourceDetails.addAz(azCode);
-    universeResourceDetails.addNumCores(instanceType.numCores);
+    universeResourceDetails.addNumCores(numCores);
   }
 }
