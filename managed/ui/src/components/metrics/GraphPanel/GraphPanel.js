@@ -33,7 +33,7 @@ const panelTypes = {
       "lsm_rocksdb_compaction_time",
       "lsm_rocksdb_compaction_numfiles"]},
   proxies:   { title: "Apache Cassandra and Redis",
-    metrics: ["cql_server_rpc_per_second",  "cql_sql_latency", "memory_usage_all", "redis_rpcs_per_sec", "redis_ops_latency"]},
+    metrics: ["cql_server_rpc_per_second",  "cql_sql_latency", "redis_rpcs_per_sec", "redis_ops_latency"]},
   redis:   { title: "Redis Advanced Graphs",
     metrics: ["redis_yb_local_vs_remote", "redis_yb_latency", "redis_reactor_latency"]},
   cql:     { title: "Apache Cassandra Advanced Graphs",
