@@ -80,17 +80,6 @@ memory_usage:
         "node_memory_Buffers": "buffered"
         "node_memory_MemFree": "free"
 
-memory_usage_all:
-  metric: "node_memory_MemFree"
-  function: "avg"
-  layout:
-    title: "Memory Free (bytes)"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "node_memory_MemFree": "free"
-
 network_bytes:
   metric: ""
   function: "rate|avg"
