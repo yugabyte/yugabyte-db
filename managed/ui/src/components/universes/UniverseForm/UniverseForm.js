@@ -35,7 +35,7 @@ const initialState = {
   accessKeyCode: 'yugabyte-default',
   maxNumNodes: -1, // Maximum Number of nodes currently in use OnPrem case
   useSpotPrice: IN_DEVELOPMENT_MODE,
-  spotPrice: '0.0',
+  spotPrice: normalizeToPositiveFloat('0.00'),
   gettingSuggestedSpotPrice: false
 };
 
