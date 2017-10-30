@@ -147,7 +147,7 @@ public abstract class Operation extends YRpc<OperationResponse> implements YRpc.
       error = builder.getPerRowErrors(0);
     }
     OperationResponse response = new OperationResponse(deadlineTracker.getElapsedMillis(), tsUUID,
-        builder.getHybridTime(), this, error);
+        builder.getPropagatedHybridTime(), this, error);
     return new Pair<OperationResponse, Object>(
         response, builder.hasError() ? builder.getError() : null);
   }
