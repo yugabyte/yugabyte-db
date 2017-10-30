@@ -48,19 +48,19 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const shared_ptr<client::YBTable>& table
     }
 
     const ColumnDesc *col_desc = col.desc();
-    QLColumnValuePB* col_pb;
-
-    if (col_desc->is_hash()) {
-      col_pb = req->add_hashed_column_values();
-    } else if (col_desc->is_primary()) {
-      col_pb = req->add_range_column_values();
-    } else {
-      col_pb = req->add_column_values();
-    }
+    QLExpressionPB *expr_pb;
 
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
-    col_pb->set_column_id(col_desc->id());
-    QLExpressionPB *expr_pb = col_pb->mutable_expr();
+    if (col_desc->is_hash()) {
+      expr_pb = req->add_hashed_column_values();
+    } else if (col_desc->is_primary()) {
+      expr_pb = req->add_range_column_values();
+    } else {
+      QLColumnValuePB* col_pb = req->add_column_values();
+      col_pb->set_column_id(col_desc->id());
+      expr_pb = col_pb->mutable_expr();
+    }
+
     RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
     // null values not allowed for primary key: checking here catches nulls introduced by bind
     if (col_desc->is_primary() && expr_pb->has_value() && QLValue::IsNull(expr_pb->value())) {

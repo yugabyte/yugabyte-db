@@ -91,16 +91,14 @@ class SysCatalogWriter {
       // Add the metadata column.
       QLColumnValuePB* metadata = ql_write->add_column_values();
       RETURN_NOT_OK(SetColumnId(kSysCatalogTableColMetadata, metadata));
-      SetBinaryValue(metadata_buf.ToString(), metadata);
+      SetBinaryValue(metadata_buf.ToString(), metadata->mutable_expr());
     }
     // Add column type.
-    QLColumnValuePB* entity_type = ql_write->add_range_column_values();
-    RETURN_NOT_OK(SetColumnId(kSysCatalogTableColType, entity_type));
+    QLExpressionPB* entity_type = ql_write->add_range_column_values();
     SetInt8Value(PersistentDataEntryClass::type(), entity_type);
 
     // Add column id.
-    QLColumnValuePB* entity_id = ql_write->add_range_column_values();
-    RETURN_NOT_OK(SetColumnId(kSysCatalogTableColId, entity_id));
+    QLExpressionPB* entity_id = ql_write->add_range_column_values();
     SetBinaryValue(item->id(), entity_id);
 
     return Status::OK();
@@ -115,12 +113,12 @@ class SysCatalogWriter {
     return Status::OK();
   }
 
-  void SetBinaryValue(const std::string& binary_value, QLColumnValuePB* col_pb) {
-    QLValue::set_binary_value(binary_value, col_pb->mutable_expr()->mutable_value());
+  void SetBinaryValue(const std::string& binary_value, QLExpressionPB* expr_pb) {
+    QLValue::set_binary_value(binary_value, expr_pb->mutable_value());
   }
 
-  void SetInt8Value(const int8_t int8_value, QLColumnValuePB* col_pb) {
-    QLValue::set_int8_value(int8_value, col_pb->mutable_expr()->mutable_value());
+  void SetInt8Value(const int8_t int8_value, QLExpressionPB* expr_pb) {
+    QLValue::set_int8_value(int8_value, expr_pb->mutable_value());
   }
 
   const Schema& schema_;

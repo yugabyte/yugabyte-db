@@ -28,7 +28,7 @@ namespace docdb {
 // Add primary key column values to the component group. Verify that they are in the same order
 // as in the table schema.
 CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<QLColumnValuePB> &column_values,
+    const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
     vector<PrimitiveValue> *components);
 

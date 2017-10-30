@@ -49,7 +49,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1);
+    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.SetInt32ColumnValue(req->add_column_values(), "c1", 1);
     table_.SetStringColumnValue(req->add_column_values(), "c2", "yuga-hello");
     req->set_ttl(2 * 1000);
@@ -63,7 +63,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // insert into t (k, c3, c4) values (1, 2, "yuga-hi") using ttl 4;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1);
+    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.SetInt32ColumnValue(req->add_column_values(), "c3", 2);
     table_.SetStringColumnValue(req->add_column_values(), "c4", "yuga-hi");
     req->set_ttl(4 * 1000);
@@ -77,7 +77,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // select * from t where k = 1;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1);
+    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.AddColumns(kAllColumns, req);
 
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
@@ -102,7 +102,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // select * from t where k = 1;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1);
+    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.AddColumns(kAllColumns, req);
 
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
@@ -127,7 +127,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // select * from t where k = 1;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1);
+    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.AddColumns(kAllColumns, req);
 
     const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));

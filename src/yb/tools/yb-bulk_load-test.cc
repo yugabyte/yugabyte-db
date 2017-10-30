@@ -172,23 +172,18 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     auto it = tokenizer.begin();
     // Set hash columns.
     // hash_key .
-    QLColumnValuePB* hashed_column = req->add_hashed_column_values();
-    hashed_column->mutable_expr()->mutable_value()->set_int64_value(
-        std::stol(*it++));
-    hashed_column->set_column_id(kFirstColumnId);
+    QLExpressionPB* hashed_column = req->add_hashed_column_values();
+    hashed_column->mutable_value()->set_int64_value(std::stol(*it++));
 
     // hash_key_timestamp.
     Timestamp ts;
     RETURN_NOT_OK(TimestampFromString(*it++, &ts));
     hashed_column = req->add_hashed_column_values();
-    hashed_column->mutable_expr()->mutable_value()->set_timestamp_value(
-        ts.ToInt64());
-    hashed_column->set_column_id(kFirstColumnId + 1);
+    hashed_column->mutable_value()->set_timestamp_value(ts.ToInt64());
 
     // hash_key_string.
     hashed_column = req->add_hashed_column_values();
-    hashed_column->mutable_expr()->mutable_value()->set_string_value(*it++);
-    hashed_column->set_column_id(kFirstColumnId + 2);
+    hashed_column->mutable_value()->set_string_value(*it++);
 
     // Set range column.
     QLConditionPB* condition = req->mutable_where_expr()->mutable_condition();
@@ -258,23 +253,17 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
       req.set_tablet_id(tablet_id);
       QLWriteRequestPB* ql_write = req.add_ql_write_batch();
-      QLColumnValuePB* hash_column = ql_write->add_hashed_column_values();
-
-      hash_column->set_column_id(kFirstColumnId);
-      hash_column->mutable_expr()->mutable_value()->set_int64_value(random_.Next64());
+      QLExpressionPB* hash_column = ql_write->add_hashed_column_values();
+      hash_column->mutable_value()->set_int64_value(random_.Next64());
 
       hash_column = ql_write->add_hashed_column_values();
-      hash_column->set_column_id(kFirstColumnId + 1);
-      hash_column->mutable_expr()->mutable_value()->set_timestamp_value(random_.Next32());
+      hash_column->mutable_value()->set_timestamp_value(random_.Next32());
 
       hash_column = ql_write->add_hashed_column_values();
-      hash_column->set_column_id(kFirstColumnId + 2);
-      hash_column->mutable_expr()->mutable_value()->set_string_value(
-          std::to_string(random_.Next32()));
+      hash_column->mutable_value()->set_string_value(std::to_string(random_.Next32()));
 
-      QLColumnValuePB* range_column = ql_write->add_range_column_values();
-      range_column->set_column_id(kFirstColumnId + 3);
-      range_column->mutable_expr()->mutable_value()->set_timestamp_value(random_.Next64());
+      QLExpressionPB* range_column = ql_write->add_range_column_values();
+      range_column->mutable_value()->set_timestamp_value(random_.Next64());
 
       ASSERT_OK(tserver_proxy_->Write(req, &resp, &controller));
       ASSERT_FALSE(resp.has_error());

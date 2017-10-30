@@ -39,21 +39,14 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
 
   // If hashed column values are specified, filter by the hash key.
   if (!request.hashed_column_values().empty()) {
-
-    std::vector<int> hashed_column_indices;
-    for (const QLColumnValuePB& hashed_column : request.hashed_column_values()) {
-      const ColumnId column_id(hashed_column.column_id());
-      hashed_column_indices.emplace_back(schema_.find_column_by_id(column_id));
-    }
+    const size_t num_hash_key_columns = schema_.num_hash_key_columns();
     const auto& hashed_column_values = request.hashed_column_values();
-
     std::vector<QLRow>& rows = vtable->rows();
     auto excluded_rows = std::remove_if(
         rows.begin(), rows.end(),
-        [&hashed_column_indices, &hashed_column_values](const QLRow& row) -> bool {
-          for (size_t i = 0; i < hashed_column_values.size(); i++) {
-            if (hashed_column_values.Get(i).expr().value() !=
-                row.column(hashed_column_indices[i])) {
+        [num_hash_key_columns, &hashed_column_values](const QLRow& row) -> bool {
+          for (size_t i = 0; i < num_hash_key_columns; i++) {
+            if (hashed_column_values.Get(i).value() != row.column(i)) {
               return true;
             }
           }

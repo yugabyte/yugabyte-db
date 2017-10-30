@@ -169,7 +169,7 @@ class PartitionSchema {
 
   CHECKED_STATUS EncodeRedisKey(const Slice& slice, std::string* buf) const WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& hash_values,
+  CHECKED_STATUS EncodeKey(const google::protobuf::RepeatedPtrField<QLExpressionPB>& hash_values,
                            std::string* buf) const WARN_UNUSED_RESULT;
 
       // Appends the row's encoded partition key into the provided buffer.

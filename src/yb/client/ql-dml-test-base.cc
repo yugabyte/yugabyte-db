@@ -77,16 +77,22 @@ std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp() {
 
 void TableHandle::SetInt32ColumnValue(
     QLColumnValuePB *column_value, const string &column_name, const int32_t value) {
-
   column_value->set_column_id(ColumnId(column_name));
   column_value->mutable_expr()->mutable_value()->set_int32_value(value);
 }
 
 void TableHandle::SetStringColumnValue(
     QLColumnValuePB *column_value, const string &column_name, const string &value) {
-
   column_value->set_column_id(ColumnId(column_name));
   column_value->mutable_expr()->mutable_value()->set_string_value(value);
+}
+
+void TableHandle::SetInt32Expression(QLExpressionPB *expr, const int32_t value) {
+  expr->mutable_value()->set_int32_value(value);
+}
+
+void TableHandle::SetStringExpression(QLExpressionPB *expr, const string &value) {
+  expr->mutable_value()->set_string_value(value);
 }
 
 void TableHandle::SetColumn(QLColumnValuePB *column_value, const string &column_name) {

@@ -143,7 +143,7 @@ class QLTransactionTest : public QLDmlTestBase {
     const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
     const auto op = table_.NewWriteOp(stmt_type);
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key);
+    table_.SetInt32Expression(req->add_hashed_column_values(), key);
     table_.SetInt32ColumnValue(req->add_column_values(), "v", value);
     CHECK_OK(session->Apply(op));
     CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
@@ -172,7 +172,7 @@ class QLTransactionTest : public QLDmlTestBase {
   Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key) {
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32ColumnValue(req->add_hashed_column_values(), "k", key);
+    table_.SetInt32Expression(req->add_hashed_column_values(), key);
     table_.AddColumns({"v"}, req);
     RETURN_NOT_OK(session->Apply(op));
     CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())

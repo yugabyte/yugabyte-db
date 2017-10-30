@@ -87,38 +87,32 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
     DataType column_type = schema.column(i).type_info()->type();
     int32_t int_val;
     int64_t long_val;
-    auto* col_pb = ql_read->add_hashed_column_values();
+    auto* col_expr_pb = ql_read->add_hashed_column_values();
 
     switch(column_type) {
       case DataType::INT8:
         RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        col_pb->set_column_id(i);
-        col_pb->mutable_expr()->mutable_value()->set_int8_value(int_val);
+        col_expr_pb->mutable_value()->set_int8_value(int_val);
         break;
       case DataType::INT16:
         RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        col_pb->set_column_id(i);
-        col_pb->mutable_expr()->mutable_value()->set_int16_value(int_val);
+        col_expr_pb->mutable_value()->set_int16_value(int_val);
         break;
       case DataType::INT32:
         RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        col_pb->set_column_id(i);
-        col_pb->mutable_expr()->mutable_value()->set_int32_value(int_val);
+        col_expr_pb->mutable_value()->set_int32_value(int_val);
         break;
       case DataType::INT64:
         RETURN_NOT_OK(util::CheckedStoll(*it, &long_val));
-        col_pb->set_column_id(i);
-        col_pb->mutable_expr()->mutable_value()->set_int64_value(long_val);
+        col_expr_pb->mutable_value()->set_int64_value(long_val);
         break;
       case DataType::STRING:
-        col_pb->set_column_id(i);
-        col_pb->mutable_expr()->mutable_value()->set_string_value(*it);
+        col_expr_pb->mutable_value()->set_string_value(*it);
         break;
       case DataType::TIMESTAMP: {
         Timestamp ts;
         RETURN_NOT_OK(TimestampFromString(*it, &ts));
-        col_pb->set_column_id(i);
-        col_pb->mutable_expr()->mutable_value()->set_timestamp_value(ts.ToInt64());
+        col_expr_pb->mutable_value()->set_timestamp_value(ts.ToInt64());
         break;
       }
       case DataType::BOOL: FALLTHROUGH_INTENDED;

@@ -1223,9 +1223,9 @@ TEST_F(TestQLQuery, TestScanWithBounds) {
   std::vector<std::tuple<int64_t, int, string, int, int>> rows;
   for (int i = 0; i < 10; i++) {
     std::string i_str = std::to_string(i);
-    google::protobuf::RepeatedPtrField<QLColumnValuePB> row;
-    row.Add()->mutable_expr()->mutable_value()->set_int32_value(i);
-    row.Add()->mutable_expr()->mutable_value()->set_string_value(i_str);
+    google::protobuf::RepeatedPtrField<QLExpressionPB> row;
+    row.Add()->mutable_value()->set_int32_value(i);
+    row.Add()->mutable_value()->set_string_value(i_str);
 
     std::string part_key;
     CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));

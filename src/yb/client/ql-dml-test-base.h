@@ -63,6 +63,9 @@ class TableHandle {
   void SetStringColumnValue(
       QLColumnValuePB *column_value, const std::string &column_name, const std::string &value);
 
+  void SetInt32Expression(QLExpressionPB *expr, const int32_t value);
+  void SetStringExpression(QLExpressionPB *expr, const std::string &value);
+
   // Set a column id without value - for DELETE
   void SetColumn(QLColumnValuePB *column_value, const string &column_name);
 

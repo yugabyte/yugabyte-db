@@ -248,27 +248,20 @@ Status PartitionSchema::EncodeRedisKey(const Slice& slice, string* buf) const {
   return Status::OK();
 }
 
-Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLColumnValuePB>& hash_values,
+Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_col_values,
                                   string* buf) const {
 
   switch (hash_schema_) {
     case YBHashSchema::kMultiColumnHash: {
       string tmp;
-      for (const auto &col_pb : hash_values) {
-        RETURN_NOT_OK(QLValue::AppendToKeyBytes(col_pb.expr().value(), &tmp));
+      for (const auto &col_expr_pb : hash_col_values) {
+        RETURN_NOT_OK(QLValue::AppendToKeyBytes(col_expr_pb.value(), &tmp));
       }
       const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
       *buf = EncodeMultiColumnHashValue(hash_value);
       return Status::OK();
     }
-    case YBHashSchema::kRedisHash: {
-      if (hash_values.size() != 1 || hash_values.Get(0).expr().value().has_string_value()) {
-        return STATUS(InvalidArgument, "Invalid Redis hash key");
-      }
-      Slice slice(hash_values.Get(0).expr().value().string_value());
-      return EncodeRedisKey(slice, buf);
-    }
-
+    case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
     case YBHashSchema::kKuduHashSchema:
       break;
   }

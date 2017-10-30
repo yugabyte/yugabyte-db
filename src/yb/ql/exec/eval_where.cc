@@ -29,32 +29,19 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
   // Setup the key columns.
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    QLColumnValuePB *col_pb;
+    QLExpressionPB *col_expr_pb;
     if (col_desc->is_hash()) {
-      col_pb = req->add_hashed_column_values();
+      col_expr_pb = req->add_hashed_column_values();
     } else if (col_desc->is_primary()) {
-      col_pb = req->add_range_column_values();
+      col_expr_pb = req->add_range_column_values();
     } else {
       LOG(FATAL) << "Unexpected non primary key column in this context";
     }
-    VLOG(3) << "WRITE request, column id = " << col_desc->id();
-    col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
+    RETURN_NOT_OK(PTExprToPB(op.expr(), col_expr_pb));
   }
 
   // Setup the rest of the columns.
   CHECK(where_ops.empty()) << "Server doesn't support range operation yet";
-  for (const auto& op : where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    QLColumnValuePB *col_pb;
-    if (col_desc->is_primary()) {
-      col_pb = req->add_range_column_values();
-    } else {
-      col_pb = req->add_column_values();
-    }
-    col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
-  }
 
   for (const auto& op : subcol_where_ops) {
     const ColumnDesc *col_desc = op.desc();
@@ -128,23 +115,21 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   bool key_ops_are_set = true;
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    QLColumnValuePB *col_pb;
+    QLExpressionPB *col_pb;
     CHECK(col_desc->is_hash()) << "Unexpected non partition column in this context";
     col_pb = req->add_hashed_column_values();
     VLOG(3) << "READ request, column id = " << col_desc->id();
-    col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
+    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
     if (op.yb_op() == QL_OP_IN) {
-      int in_size = col_pb->expr().value().list_value().elems_size();
+      int in_size = col_pb->value().list_value().elems_size();
       if (in_size == 0) {
         // Empty 'IN' condition guarantees no results.
         *no_results = true;
         return Status::OK();
       } else if (in_size == 1) {
         // 'IN' condition with one element is treated as equality for efficiency.
-        QLValuePB* value_pb =
-            col_pb->mutable_expr()->mutable_value()->mutable_list_value()->mutable_elems(0);
-        col_pb->mutable_expr()->mutable_value()->Swap(value_pb);
+        QLValuePB* value_pb = col_pb->mutable_value()->mutable_list_value()->mutable_elems(0);
+        col_pb->mutable_value()->Swap(value_pb);
       } else {
         // For now doing filtering in this case TODO(Mihnea) optimize this later.
         key_ops_are_set = false;

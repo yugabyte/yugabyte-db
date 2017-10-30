@@ -93,7 +93,7 @@ class BulkLoadTask : public Runnable {
  private:
   CHECKED_STATUS PopulateColumnValue(const string &column,
                                      const DataType data_type,
-                                     QLColumnValuePB *column_value);
+                                     QLExpressionPB *column_value);
   CHECKED_STATUS InsertRow(const string &row,
                            const Schema &schema,
                            BulkLoadDocDBUtil *const db_fixture,
@@ -182,8 +182,8 @@ void BulkLoadTask::Run() {
 
 Status BulkLoadTask::PopulateColumnValue(const string &column,
                                          const DataType data_type,
-                                         QLColumnValuePB *column_value) {
-  auto ql_valuepb = column_value->mutable_expr()->mutable_value();
+                                         QLExpressionPB *column_value) {
+  auto ql_valuepb = column_value->mutable_value();
   int32_t int_val;
   int64_t long_val;
   long double double_val;
@@ -252,16 +252,14 @@ Status BulkLoadTask::InsertRow(const string &row,
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    QLColumnValuePB *column_value = nullptr;
+    QLExpressionPB *column_value = nullptr;
     if (schema.is_hash_key_column(i)) {
       column_value = req.add_hashed_column_values();
     } else {
       column_value = req.add_range_column_values();
     }
 
-    column_value->set_column_id(kFirstColumnId + i);
-    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
-                                          column_value));
+    RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(), column_value));
   }
 
   // Finally process the regular columns.
@@ -273,7 +271,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       column_value->mutable_expr()->mutable_value();
     } else {
       RETURN_NOT_OK(PopulateColumnValue(*it, schema.column(i).type_info()->type(),
-                                            column_value));
+                                        column_value->mutable_expr()));
     }
   }
 

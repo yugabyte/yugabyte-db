@@ -73,15 +73,11 @@ class DocOperationTest : public DocDBTestBase {
   }
 
   void AddPrimaryKeyColumn(yb::QLWriteRequestPB* ql_writereq_pb, int32_t value) {
-    auto hashed_column = ql_writereq_pb->add_hashed_column_values();
-    hashed_column->set_column_id(0);
-    hashed_column->mutable_expr()->mutable_value()->set_int32_value(value);
+    ql_writereq_pb->add_hashed_column_values()->mutable_value()->set_int32_value(value);
   }
 
-  void AddRangeKeyColumn(int32_t column_id, int32_t value, yb::QLWriteRequestPB* ql_writereq_pb) {
-    auto hashed_column = ql_writereq_pb->add_range_column_values();
-    hashed_column->set_column_id(column_id);
-    hashed_column->mutable_expr()->mutable_value()->set_int32_value(value);
+  void AddRangeKeyColumn(int32_t value, yb::QLWriteRequestPB* ql_writereq_pb) {
+    ql_writereq_pb->add_range_column_values()->mutable_value()->set_int32_value(value);
   }
 
   void AddColumnValues(const Schema& schema,
@@ -179,7 +175,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
       if (i < schema.num_hash_key_columns()) {
         AddPrimaryKeyColumn(&ql_writereq_pb, column_values[i]);
       } else {
-        AddRangeKeyColumn(i, column_values[i], &ql_writereq_pb);
+        AddRangeKeyColumn(column_values[i], &ql_writereq_pb);
       }
     }
     std::vector<int32_t> values(column_values.begin() + schema.num_key_columns(),
@@ -193,10 +189,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
 
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
     QLReadRequestPB ql_read_req;
-    QLColumnValuePB* hash_column = ql_read_req.add_hashed_column_values();
-    hash_column->set_column_id(schema.column_id(0));
-    QLValuePB* value_pb = hash_column->mutable_expr()->mutable_value();
-    value_pb->set_int32_value(primary_key);
+    ql_read_req.add_hashed_column_values()->mutable_value()->set_int32_value(primary_key);
 
     QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));

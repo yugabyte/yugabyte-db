@@ -227,8 +227,8 @@ message QLWriteRequestPB {
   // recomputed by tserver also, but since the client already calculates this to look up the
   // correct tablet server, it is passed in.
   optional uint32 hash_code = 5;
-  repeated QLColumnValuePB hashed_column_values = 6;
-  repeated QLColumnValuePB range_column_values = 7;
+  repeated QLExpressionPB hashed_column_values = 6;
+  repeated QLExpressionPB range_column_values = 7;
 
   // Column values to insert/update/delete - required
   // Note: DELETE statement has no column value.
@@ -277,7 +277,7 @@ message QLReadRequestPB {
   // specified in the WHERE clause of the SELECT statement, "hashed_column_values" will be empty
   // and we will do a full-table query across tablets.
   optional uint32 hash_code = 4;
-  repeated QLColumnValuePB hashed_column_values = 5;
+  repeated QLExpressionPB hashed_column_values = 5;
 
   // Where clause condition
   optional QLExpressionPB where_expr = 6;
