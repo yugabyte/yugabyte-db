@@ -9,9 +9,9 @@ import { YBLabel } from 'components/common/descriptors';
 
 export class YBControlledSelect extends Component {
   render() {
-    const {selectVal, input, options, onInputChanged} = this.props;
+    const {selectVal, input, options, onInputChanged, isReadOnly} = this.props;
     return (
-      <select {...input} className="form-control" onChange={onInputChanged} value={selectVal}>
+      <select {...input} className="form-control" onChange={onInputChanged} value={selectVal} disabled={isReadOnly}>
         {options}
       </select>
     );
