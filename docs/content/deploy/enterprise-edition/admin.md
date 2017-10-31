@@ -20,7 +20,7 @@ You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.co
 
 ### Private cloud or on-premises data centers
 
-The prerequisites here are same as that of the [Community Edition](/community-edition/deploy/#prerequisites/).
+The prerequisites here are same as that of the [Community Edition](/deploy/community-edition/#prerequisites).
 
 ## Configure cloud providers
 
@@ -34,7 +34,7 @@ YugaWare ensures that YugaByte nodes run inside your own AWS account and are sec
 
 1. Retrieves the regions/AZs as well as the available instance types configured for this AWS account and initializes its own Amazon cloud provider.
 
-2. Creates a new [AWS Key Pair](s://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html) to be used to SSH into the YugaByte instances. The private key will be available for download later from the YugaWare UI.
+2. Creates a new [AWS Key Pair](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html) to be used to SSH into the YugaByte instances. The private key will be available for download later from the YugaWare UI.
 
 3. Creates a new [AWS VPC](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-vpc.html) for YugaByte instances and then peers them with YugaWare's own VPC
 
@@ -46,7 +46,7 @@ Now we are ready to create a YugaByte universe on AWS.
 
 ### Docker Platform
 
-The [local node](/get-started/local-node/) is a great way to get started in a developer's localhost environment and the [local cluster] (/get-started/local-cluster/)  approach is great for testing operational scenarios including YugaByte clustering. The same local cluster approach is also possible in the highly available version of YugaWare.
+The [local cluster] (/quick-start/install/) approach is great for testing operational scenarios including fault-tolerance and auto rebalancing. The same local cluster approach is also possible in YugaWare.
 
 Go to the Docker tab in the Configuration section and click Setup to initialize Docker as a cloud provider. Note that Docker Platform is already installed on the YugaWare host when you installed Replicated.
 
@@ -92,7 +92,7 @@ If there are no universes created yet, the Dashboard page will look like the fol
 
 ![Dashboard with No Universes](/images/no-univ-dashboard.png)
 
-Click on "Create Universe" to enter your intent for the universe. The **Provider**, **Regions** and **Instance Type** fields were initialized based on the [cloud providers configured](/admin/#configure-cloud-providers). As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed. 
+Click on "Create Universe" to enter your intent for the universe. The **Provider**, **Regions** and **Instance Type** fields were initialized based on the [cloud providers configured](/deploy/enterprise-edition/admin/#configure-cloud-providers). As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed. 
 
 Here's how to create a universe on the [AWS](#amazon-web-services) cloud provider.
 ![Create Universe on AWS](/images/create-univ.png)

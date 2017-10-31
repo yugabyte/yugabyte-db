@@ -44,11 +44,11 @@ YugaWare first needs to be installed on any machine. The next step is to configu
 
 ### What are the OS requirements and permissions to run YugaWare, the YugaByte admin console?
 
-Prerequisites for YugaWare are listed [here](/enterprise-edition/deploy/#prerequisites)
+Prerequisites for YugaWare are listed [here](/deploy/enterprise-edition/admin-console/#prerequisites).
 
 ### What are the OS requirements and permissions to run the YugaByte data nodes?
 
-Prerequisites for the YugaByte data nodes are listed [here](/enterprise-edition/admin/#prerequisites-for-data-nodes)
+Prerequisites for the YugaByte data nodes are listed [here](/deploy/enterprise-edition/admin/#prerequisites).
 
 ### How are the build artifacts packaged and where are they stored?
 
