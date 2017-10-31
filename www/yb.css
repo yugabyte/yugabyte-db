@@ -44,20 +44,20 @@ body {
     line-height: 20px;
 }
 
-.yb-navbar .navbar ul {
+.sidebar-nav ul {
   float: none;
   display: block;
 }
-.yb-navbar .navbar li {
-  float: none;
+.sidebar-nav>li {
+  float: none !important;
   display: block;
 }
 
 .nav-logo {
-    height: 30px;
-    width: auto;
     display: inline-block;
-    margin-top: 15px;
+    height: 39px;
+    margin: 10px auto;
+    padding-left: 30px;
 }
 
 .nav-bar.scrolled .navbar-text a {
@@ -80,20 +80,20 @@ body {
   padding-top:10px;
 }
 
-.navbar .nav>li>a {
+.sidebar-nav .navbar .nav>li>a {
   float: none;
   padding: 10px 15px 10px;
   color: #DDD;
   text-decoration: none;
-  text-shadow: none;
+  text-shadow: none !important;
 }
 
 .nav>li>a hover, .nav>li>a hover focus {
   padding: 10px 15px 10px;
-  color: #FFF;
 }
 
 .yb-main {
+  margin-left: 170px;
 }
 
 .footer {
@@ -107,5 +107,17 @@ body {
 }
 
 .yb-footer {
-  margin-left: 20px;
+  margin-left: 180px;
+}
+
+.sidebar-wrapper {
+  background: #151838;
+  height: 100%;
+  left: 220px;
+  margin-left: -220px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: all 0.5s ease;
+  width: 150px;
+  z-index: 1000;
 }

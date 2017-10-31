@@ -412,23 +412,13 @@ const char* const PAGE_HEADER = "<!DOCTYPE html>"
 "\n";
 
 static const char* const NAVIGATION_BAR_PREFIX =
-"  <nav class='navbar navbar-inverse'>"
-"    <div class='yb-navbar navbar-inner' style='background: #202951;'>"
-"      <div class='yb-navbar-logo container-fluid'>"
-"        <a href='/'>"
-"          <span class='navbar-brand'>"
-"            <img src='/logo.png' alt='YugaByte DB' class='nav-logo' />"
-"          </span>"
-"        </a>"
-"      </div>"
-"      <div class='nav-collapse collapse'>"
-"        <ul class='nav'>"
+"  <nav class=\"navbar navbar-fixed-top navbar-inverse sidebar-wrapper\" role=\"navigation\">"
+"    <ul class=\"nav sidebar-nav\">"
+"      <li><a href='/'><img src='/logo.png' alt='YugaByte DB' class='nav-logo' /></a></li>"
 "\n";
 
 static const char* const NAVIGATION_BAR_SUFFIX =
-"        </ul>"
-"      </div>"
-"    </div>"
+"    </ul>"
 "  </nav>"
 "\n\n"
 "    <div class='yb-main container-fluid'>";
