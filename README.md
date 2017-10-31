@@ -87,22 +87,22 @@ if you've installed Maven into `~/tools/apache-maven-3.5.0`.
 
 For building YugaByte Java code, you'll need to install Java and Apache Maven.
 
-### Cassandra Java Driver
+### Java Driver
 
-Build and install [our modified version
-](https://github.com/YugaByte/datastax-cassandra-java-driver) of Datastax's Apache Cassandra Java
-driver. Clients using the unmodified driver will still work, but will be less efficient, because
-YugaByte and Apache Cassandra use different approaches to splitting data between nodes. In order to
+YugaByte and Apache Cassandra use different approaches to split data between nodes. In order to
 route client requests to the right server without extra hops, we provide a [custom
-LoadBalancingPolicy](https://goo.gl/At7kvu) in our version of the driver.
+LoadBalancingPolicy](https://goo.gl/At7kvu) in [our modified version
+](https://github.com/yugabyte/cassandra-java-driver) of Datastax's Apache Cassandra Java driver.
+
+The latest version of our driver is available on Maven Central. You can build your application
+using our driver by adding the following Maven dependency to your application:
 
 ```
-mkdir -p ~/code
-cd ~/code
-git clone https://github.com/YugaByte/datastax-cassandra-java-driver
-cd datastax-cassandra-java-driver
-git checkout 3.2.0-yb-5
-mvn -DskipTests -Dmaven.javadoc.skip install
+<dependency>
+  <groupId>com.yugabyte</groupId>
+  <artifactId>cassandra-driver-core</artifactId>
+  <version>3.2.0-yb-8</version>
+</dependency>
 ```
 
 ## Building YugaByte code

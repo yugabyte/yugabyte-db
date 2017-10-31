@@ -87,7 +87,7 @@
           <artifactId>netty-all</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>com.datastax.cassandra</groupId>
+          <groupId>com.yugabyte</groupId>
           <artifactId>cassandra-driver-core</artifactId>
         </exclusion>
         <exclusion>

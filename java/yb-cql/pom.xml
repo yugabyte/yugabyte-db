@@ -27,7 +27,7 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.datastax.cassandra</groupId>
+      <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
       <version>${cassandra-driver-core.version}</version>
     </dependency>
