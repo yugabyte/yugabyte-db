@@ -132,29 +132,45 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   *output << "<h2>Tablet Servers</h2>\n";
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Server UUID</th><th>Time since heartbeat</th><th>Load (Num Tablets)</th>"
-             "<th>Registration</th></tr>\n";
+  *output << "  <tr>\n"
+          << "    <th>Server</th>\n"
+          << "    <th>Time since heartbeat</th>\n"
+          << "    <th>Load (Num Tablets)</th>\n"
+          << "    <th>Cloud</th>\n"
+          << "    <th>Region</th>\n"
+          << "    <th>Zone</th>\n"
+          << "    <th>TServer UUID</th>\n"
+          << "  </tr>\n";
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
     TSRegistrationPB reg;
     desc->GetRegistration(&reg);
-    *output << Substitute(
-        "<tr><th>$0</th><td>$1</td><td>$2</td><td><code>$3</code></td></tr>\n",
-        RegistrationToHtml(reg.common(), desc->permanent_uuid()), time_since_hb,
-        desc->num_live_replicas(), EscapeForHtmlToString(reg.ShortDebugString()));
+    string host_port = Substitute("$0:$1",
+                                  reg.common().rpc_addresses(0).host(),
+                                  reg.common().rpc_addresses(0).port());
+    *output << "  <tr>\n";
+    *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
+    *output << "    <td>" << time_since_hb << "</td>";
+    *output << "    <td>" << desc->num_live_replicas() << "</td>";
+    *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
+    *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
+    *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
+    *output << "    <td>" << desc->permanent_uuid() << "</td>";
+    *output << "  </tr>\n";
   }
   *output << "</table>\n";
 }
 
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
-                                              stringstream* output) {
+                                              stringstream* output,
+                                              bool skip_system_tables) {
   *output << "<h1>Tables</h1>\n";
 
   vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Table Name</th><th>Table Id</th><th>State</th></tr>\n";
+  *output << "  <tr><th>Keyspace</th><th>Table Name</th><th>State</th><th>UUID</th></tr>\n";
   typedef map<string, string> StringMap;
   StringMap ordered_tables;
   for (const scoped_refptr<TableInfo>& table : tables) {
@@ -163,16 +179,22 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       continue;
     }
 
+    // Skip system tables if we should.
+    if (skip_system_tables && master_->catalog_manager()->IsSystemTable(*table)) {
+      continue;
+    }
+
     const TableName long_table_name = TableLongName(
         master_->catalog_manager()->GetNamespaceName(table->namespace_id()), l->data().name());
-
+    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     ordered_tables[long_table_name] = Substitute(
-        "<tr><th>$0</th><td><a href=\"/table?id=$1\">$1</a></td><td>$2 $3</td></tr>\n",
-        EscapeForHtmlToString(long_table_name),
-        EscapeForHtmlToString(table->id()),
+        "<tr><td>$0</td><td><a href=\"/table?id=$3\">$1</a></td><td>$2</td><td>$3 $4</td></tr>\n",
+        EscapeForHtmlToString(keyspace),
+        EscapeForHtmlToString(l->data().name()),
         state,
+        EscapeForHtmlToString(table->id()),
         EscapeForHtmlToString(l->data().pb.state_msg()));
   }
   for (const StringMap::value_type& table : ordered_tables) {
@@ -341,6 +363,18 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
     return;
   }
 
+  // Get all the tables.
+  vector<scoped_refptr<TableInfo> > tables;
+  master_->catalog_manager()->GetAllTables(&tables);
+
+  // Get the list of user tables.
+  vector<scoped_refptr<TableInfo> > user_tables;
+  for (scoped_refptr<TableInfo> table : tables) {
+    if (!master_->catalog_manager()->IsSystemTable(*table)) {
+      user_tables.push_back(table);
+    }
+  }
+
   // Display the overview information.
   *output << "<h2> Overview </h2>\n";
   *output << "<table class='table table-striped'>\n";
@@ -349,16 +383,21 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Universe UUID ", config.cluster_uuid());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "Default Replication Factor ",
+                          "Replication Factor ",
                           master_->opts().GetMasterAddresses().get()->size());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Num Nodes (TServers) ", master_->ts_manager()->GetCount());
+  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+                          "Num User Tables ", user_tables.size());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "YugaByte Version ", version_info.version_string());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Build Type ", version_info.build_type());
   (*output) << "</table>";
   (*output) << "<hr/>\n";
+
+  // Display the user tables.
+  HandleCatalogManager(req, output, true /* skip_system_tables */);
 
   // Display the master info.
   HandleMasters(req, output);
@@ -381,24 +420,44 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
   }
   *output << "<h2> Masters </h2>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Master UUID</th><th>Current Role</th><th>Configuration</th></tr>\n";
+  *output << "  <tr>\n"
+          << "    <th>Server</th>\n"
+          << "    <th>Current Role</th>"
+          << "    <th>Cloud</th>"
+          << "    <th>Region</th>"
+          << "    <th>Zone</th>"
+          << "    <th>Master UUID</th>\n"
+          << "  </tr>\n";
 
   for (const ServerEntryPB& master : masters) {
     if (master.has_error()) {
       Status error = StatusFromPB(master.error());
-      *output << Substitute("  <tr><td colspan=2><font color='red'><b>$0</b></font></td></tr>\n",
+      *output << "  <tr>\n";
+      *output << Substitute("    <td colspan=2><font color='red'><b>$0</b></font></td>\n",
                             EscapeForHtmlToString(error.ToString()));
+      *output << "  </tr>\n";
       continue;
     }
-    string reg_text = RegistrationToHtml(master.registration(),
-                                         master.instance_id().permanent_uuid());
+    string host_port = Substitute("$0:$1",
+                                  master.registration().rpc_addresses(0).host(),
+                                  master.registration().rpc_addresses(0).port());
+    string reg_text = RegistrationToHtml(master.registration(), host_port);
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
-    *output << Substitute("  <tr><td>$0</td><td>$1</td><td><code>$2</code></td></tr>\n",
-                          reg_text,
-                          master.has_role() ?  RaftPeerPB_Role_Name(master.role()) : "N/A",
-                          EscapeForHtmlToString(master.registration().ShortDebugString()));
+    string raft_role = master.has_role() ?  RaftPeerPB_Role_Name(master.role()) : "N/A";
+    string cloud = master.registration().cloud_info().placement_cloud();
+    string region = master.registration().cloud_info().placement_region();
+    string zone = master.registration().cloud_info().placement_zone();
+
+    *output << "  <tr>\n";
+    *output << "    <td>" << reg_text << "</td>\n";
+    *output << "    <td>" << raft_role << "</td>\n";
+    *output << "    <td>" << cloud << "</td>\n";
+    *output << "    <td>" << region << "</td>\n";
+    *output << "    <td>" << zone << "</td>\n";
+    *output << "    <td>" << master.instance_id().permanent_uuid() << "</td>\n";
+    *output << "  </tr>\n";
   }
 
   *output << "</table>";
@@ -601,7 +660,8 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManager, this, _1, _2);
+  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
+                 this, _1, _2, false /* skip_system_tables */);
   server->RegisterPathHandler(
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,

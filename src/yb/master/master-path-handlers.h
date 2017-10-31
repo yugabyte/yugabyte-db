@@ -71,7 +71,8 @@ class MasterPathHandlers {
   void HandleTabletServers(const Webserver::WebRequest& req,
                            std::stringstream* output);
   void HandleCatalogManager(const Webserver::WebRequest& req,
-                            std::stringstream* output);
+                            std::stringstream* output,
+                            bool skip_system_tables = false);
   void HandleTablePage(const Webserver::WebRequest& req,
                        std::stringstream *output);
   void HandleMasters(const Webserver::WebRequest& req,
