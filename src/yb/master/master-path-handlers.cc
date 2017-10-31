@@ -311,7 +311,8 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                                 master.registration().http_addresses(0).host(),
                                 master.registration().http_addresses(0).port(),
                                 req.redirect_uri,
-                                req.query_string.empty() ? "" : "?" + req.query_string);
+                                req.query_string.empty() ? "?raw" :
+                                                           "?" + req.query_string + "&raw");
         }
       }
       // Fail if we were not able to find the current master leader.
@@ -348,7 +349,8 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Universe UUID ", config.cluster_uuid());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "Default Replication Factor ", masters.size());
+                          "Default Replication Factor ",
+                          master_->opts().GetMasterAddresses().get()->size());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Num Nodes (TServers) ", master_->ts_manager()->GetCount());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",

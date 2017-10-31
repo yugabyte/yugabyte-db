@@ -412,7 +412,7 @@ const char* const PAGE_HEADER = "<!DOCTYPE html>"
 "\n";
 
 static const char* const NAVIGATION_BAR_PREFIX =
-"  <nav class='navbar navbar-inverse navbar-fixed-top'>"
+"  <nav class='navbar navbar-inverse'>"
 "    <div class='yb-navbar navbar-inner' style='background: #202951;'>"
 "      <div class='yb-navbar-logo container-fluid'>"
 "        <a href='/'>"
@@ -465,7 +465,7 @@ void Webserver::BootstrapPageFooter(stringstream* output) {
   boost::shared_lock<boost::shared_mutex> l(lock_);
   *output << "</div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
-    *output << "<footer class=\"footer\"><div class=\"container text-muted\">";
+    *output << "<footer class=\"footer\"><div class=\"yb-footer container text-muted\">";
     *output << footer_html_;
     *output << "</div></footer>";
   }

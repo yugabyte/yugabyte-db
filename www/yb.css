@@ -94,7 +94,6 @@ body {
 }
 
 .yb-main {
-  margin-top: 50px;
 }
 
 .footer {
@@ -107,4 +106,8 @@ body {
 }
 .footer pre {
   border: none;
+}
+
+.yb-footer {
+  margin-left: 20px;
 }
