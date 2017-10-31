@@ -705,6 +705,30 @@ googleAnalytics = "UA-104956980-1"
 	url = "api/redis/strlen/"
 
 [[menu.main]]
+	name = "TSADD"
+	weight = 233
+	parent = "api-redis"
+	url = "api/redis/tsadd/"
+
+[[menu.main]]
+	name = "TSGET"
+	weight = 234
+	parent = "api-redis"
+	url = "api/redis/tsget/"
+
+[[menu.main]]
+	name = "TSRANGEBYTIME"
+	weight = 235
+	parent = "api-redis"
+	url = "api/redis/tsrangebytime/"
+
+[[menu.main]]
+	name = "TSREM"
+	weight = 236
+	parent = "api-redis"
+	url = "api/redis/tsrem/"
+
+[[menu.main]]
 	name   = "Admin Reference"
 	weight = 240
 	url = "admin/"
