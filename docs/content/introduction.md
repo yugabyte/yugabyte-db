@@ -55,7 +55,7 @@ Given the use of distributed consensus where reads are either served only by one
 ![Tunably consistent reads](/images/tunably-consistent-reads.png)
 
 ### Multi-datacenter ready with sync and async replication options
-YugaByte can be easily deployed across multiple datacenters with sync replication for primary data (where replicas act as voting members) and async replication for timeline consistent data (where replicas act as non-voting/observing members). Note that async replication is a feature restricted to [YugaByte Enterprise Edition](/#product-editions).
+YugaByte can be easily deployed across multiple datacenters with sync replication for primary data (where replicas act as voting members) and async replication for timeline consistent data (where replicas act as non-voting/observing members). Note that async replication is a feature restricted to [YugaByte Enterprise Edition](https://www.yugabyte.com/product/).
 
 ### Multi-API
 YugaByte currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is in the works.
@@ -85,5 +85,5 @@ YugaByte is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/
 
 ## Get started 
 
-The easiest way to get started with YugaByte is to quick start a Community Edition local cluster using the instructions provided [here](/community-edition/quick-start/).
+The easiest way to get started with YugaByte is to quick start a Community Edition local cluster using the instructions provided [here](/quick-start/).
 

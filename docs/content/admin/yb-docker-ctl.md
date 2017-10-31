@@ -132,3 +132,11 @@ The command below destroys the cluster which includes deleting the data director
 ```sh
 $ ./bin/yb-docker-ctl destroy
 ```
+
+## Upgrade container image
+
+The command below upgrades the YugaByte DB image to the latest version.
+
+```sh
+$ docker pull yugabytedb/yugabyte
+```

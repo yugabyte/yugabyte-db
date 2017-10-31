@@ -14,7 +14,7 @@ googleAnalytics = "UA-104956980-1"
 	author = "Team YugaByte"
 	description = "YugaByte Product Documentation"
 	copyright = "YugaByte Inc."
-	block_indexing = true
+	block_indexing = false
 
 	version = "Beta"
 	logo = "/images/logo.png"
@@ -48,114 +48,152 @@ googleAnalytics = "UA-104956980-1"
 	weight = 1
 
 [[menu.main]]
-	name = "Community Edition"
-	identifier = "community-edition"
-	url = "community-edition/"
-	weight = 3
-
-[[menu.main]]
 	name = "Quick Start"
-	identifier = "community-quick-start"
-	parent = "community-edition"
-	url = "community-edition/quick-start/"
+	identifier = "quick-start"
+	url = "quick-start/"
 	weight = 4
 
 [[menu.main]]
 	name = "1. Install YugaByte DB"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/install/"
+	parent = "quick-start"
+	url = "quick-start/install/"
 	weight = 5
 
 [[menu.main]]
 	name = "2. Create Local Cluster"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/create-local-cluster/"
+	parent = "quick-start"
+	url = "quick-start/create-local-cluster/"
 	weight = 6
 
 [[menu.main]]
 	name = "3. Test YugaByte CQL"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/test-cql/"
+	parent = "quick-start"
+	url = "quick-start/test-cql/"
 	weight = 7
 
 [[menu.main]]
 	name = "4. Test YugaByte Redis"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/test-redis/"
+	parent = "quick-start"
+	url = "quick-start/test-redis/"
 	weight = 8
 
 [[menu.main]]
 	name = "5. Run Sample Apps"
-	parent = "community-quick-start"
-	url = "community-edition/quick-start/run-sample-apps/"
+	parent = "quick-start"
+	url = "quick-start/run-sample-apps/"
 	weight = 9
 
 [[menu.main]]
 	name = "Explore Core Features"
-	identifier = "community-explore"
-	parent = "community-edition"
-	url = "community-edition/explore/"
-	weight = 20
+	identifier = "explore"
+	url = "explore/"
+	weight = 10
 
 [[menu.main]]
 	name = "Fault Tolerance"
-	parent = "community-explore"
-	url = "community-edition/explore/fault-tolerance/"
-	weight = 21
+	parent = "explore"
+	url = "explore/fault-tolerance/"
+	weight = 11
 
 [[menu.main]]
 	name = "Auto Rebalancing"
-	parent = "community-explore"
-	url = "community-edition/explore/auto-rebalancing/"
-	weight = 22
-
-[[menu.main]]
-	name   = "Develop Apps"
-	parent = "community-edition"
-	url    = "community-edition/develop/"
-	weight = 30
-
-[[menu.main]]
-	name   = "Deploy"
-	parent = "community-edition"
-	url    = "community-edition/deploy/"
-	weight = 40
-
-[[menu.main]]
-	name = "Enterprise Edition"
-	identifier = "enterprise-edition"
-	url = "enterprise-edition/"
-	weight = 50
-
-[[menu.main]]
-	name = "Deploy Admin Console"
-	parent = "enterprise-edition"
-	url = "enterprise-edition/deploy/"
-	weight = 51
-
-[[menu.main]]
-	name   = "Administer"
-	parent = "enterprise-edition"
-	url    = "enterprise-edition/admin/"
-	weight = 52
+	parent = "explore"
+	url = "explore/auto-rebalancing/"
+	weight = 12
 
 [[menu.main]]
 	name   = "Architecture"
 	identifier = "architecture"
 	url = "architecture/"
-	weight = 70
+	weight = 20
 
 [[menu.main]]
 	name   = "Concepts"
 	parent = "architecture"
+	identifier = "concepts"
 	url = "architecture/concepts/"
-	weight = 80
+	weight = 21
+
+[[menu.main]]
+	name   = "Overview"
+	parent = "concepts"
+	url = "architecture/concepts/overview/"
+	weight = 22
+
+[[menu.main]]
+	name   = "Universe, YB-TServer, YB-Master"
+	parent = "concepts"
+	url = "architecture/concepts/universe/"
+	weight = 23
+
+[[menu.main]]
+	name   = "Sharding"
+	parent = "concepts"
+	url = "architecture/concepts/sharding/"
+	weight = 24
+
+[[menu.main]]
+	name   = "Replication"
+	parent = "concepts"
+	url = "architecture/concepts/replication/"
+	weight = 25
+
+[[menu.main]]
+	name   = "Persistence"
+	parent = "concepts"
+	url = "architecture/concepts/persistence/"
+	weight = 26
+
+
+[[menu.main]]
+	name   = "Query Layer"
+	parent = "concepts"
+	url = "architecture/concepts/yql/"
+	weight = 27
+
+
+[[menu.main]]
+	name   = "Acknowledgements"
+	parent = "concepts"
+	url = "architecture/concepts/acknowledgements/"
+	weight = 28
 
 [[menu.main]]
 	name   = "Core Functions"
 	parent = "architecture"
+	identifier = "core-functions"
 	url = "architecture/core-functions/"
-	weight = 90
+	weight = 29
+
+[[menu.main]]
+	name   = "Universe Creation"
+	parent = "core-functions"
+	url = "architecture/core-functions/universe-creation/"
+	weight = 30
+
+[[menu.main]]
+	name   = "Table Creation"
+	parent = "core-functions"
+	url = "architecture/core-functions/table-creation/"
+	weight = 31
+
+[[menu.main]]
+	name   = "Write IO Path"
+	parent = "core-functions"
+	url = "architecture/core-functions/write-path/"
+	weight = 32
+
+[[menu.main]]
+	name   = "Read IO Path"
+	parent = "core-functions"
+	url = "architecture/core-functions/read-path/"
+	weight = 33
+
+[[menu.main]]
+	name   = "High Availability"
+	parent = "core-functions"
+	url = "architecture/core-functions/high-availability/"
+	weight = 34
 
 #[[menu.main]]
 #	name   = "Operations"
@@ -172,13 +210,77 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "Comparisons"
 	parent = "architecture"
+	identifier = "comparisons"
 	url = "architecture/comparisons/"
-	weight = 110
+	weight = 40
 
 [[menu.main]]
-	name   = "FAQs"
-	url    = "faq/"
-	weight = 115
+	name   = "Apache Cassandra"
+	parent = "comparisons"
+	url = "architecture/comparisons/cassandra/"
+	weight = 41
+
+[[menu.main]]
+	name   = "Redis"
+	parent = "comparisons"
+	url = "architecture/comparisons/redis/"
+	weight = 42
+
+[[menu.main]]
+	name   = "Apache HBase"
+	parent = "comparisons"
+	url = "architecture/comparisons/hbase/"
+	weight = 43
+
+[[menu.main]]
+	name   = "Develop"
+	identifier = "develop"
+	url    = "develop/"
+	weight = 50
+
+[[menu.main]]
+	name = "CQL Apps"
+	parent = "develop"
+	url = "develop/cql/"
+	weight = 51
+
+[[menu.main]]
+	name = "Redis Apps"
+	parent = "develop"
+	url = "develop/redis/"
+	weight = 52
+
+[[menu.main]]
+	name   = "Deploy"
+	identifier = "deploy"
+	url    = "deploy/"
+	weight = 60
+
+[[menu.main]]
+	name = "Community Edition"
+	parent = "deploy"
+	identifier = "community-edition"
+	url = "deploy/community-edition/"
+	weight = 61
+
+[[menu.main]]
+	name = "Enterprise Edition"
+	parent = "deploy"
+	identifier = "enterprise-edition"
+	url = "deploy/enterprise-edition/"
+	weight = 62
+
+[[menu.main]]
+	name = "Install Admin Console"
+	parent = "enterprise-edition"
+	url = "deploy/enterprise-edition/admin-console/"
+	weight = 63
+
+[[menu.main]]
+	name   = "Administer"
+	parent = "enterprise-edition"
+	url    = "deploy/enterprise-edition/admin/"
+	weight = 64
 
 [[menu.main]]
 	name   = "Client API Reference"
@@ -635,6 +737,11 @@ googleAnalytics = "UA-104956980-1"
 	identifier = "yb-tserver"
 	parent = "admin"
 	url = "admin/yb-tserver/"
+
+[[menu.main]]
+	name   = "FAQs"
+	url    = "faq/"
+	weight = 245
 
 [blackfriday]
 	smartypants	= true
