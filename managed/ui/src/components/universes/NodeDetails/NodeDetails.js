@@ -19,7 +19,6 @@ export default class NodeDetails extends Component {
     this.state = { universeCreated: false };
   }
 
-
   componentWillReceiveProps(nextProps) {
     if (isValidObject(this.refs.nodeDetailTable)) {
       this.refs.nodeDetailTable.handleSort('asc', 'name');
@@ -113,13 +112,9 @@ export default class NodeDetails extends Component {
       }
     };
 
-    const nodeIPs = nodeDetailRows.map(function(node) {
-      if (isDefinedNotNull(node.privateIP) && isDefinedNotNull(node.publicIP)) {
-        return { privateIP: node.privateIP, publicIP: node.publicIP };
-      } else {
-        return null;
-      }
-    }).filter(Boolean);
+    const nodeIPs = nodeDetailRows
+      .filter((node) => isDefinedNotNull(node.privateIP) && isDefinedNotNull(node.publicIP))
+      .map((node) => ({ privateIP: node.privateIP, publicIP: node.publicIP }));
 
     const getNodeNameLink = function(cell, row) {
       if (row.cloudInfo.cloud === "aws") {
@@ -138,7 +133,7 @@ export default class NodeDetails extends Component {
 
     return (
       <YBPanelItem name="Nodes">
-        { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} />}
+        { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} providerUUID={currentUniverse.data.provider.uuid} />}
         <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
           <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
