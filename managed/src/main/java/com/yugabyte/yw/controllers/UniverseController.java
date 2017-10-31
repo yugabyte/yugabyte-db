@@ -360,14 +360,13 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found for customer with ID: " + customerUUID);
     }
-    try {
-      for (Universe universe : universeSet) {
+    for (Universe universe : universeSet) {
+      try {
         response.add(Json.toJson(UniverseResourceDetails.create(universe.getNodes(),
             universe.getUniverseDetails())));
+      } catch (Exception e) {
+        LOG.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
       }
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR,
-        "Error getting cost for customer " + customerUUID);
     }
     return ApiResponse.success(response);
   }
