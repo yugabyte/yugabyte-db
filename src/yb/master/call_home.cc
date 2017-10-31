@@ -33,7 +33,9 @@ static const char* kHighLevel = "high";
 DEFINE_bool(callhome_enabled, true,
             "Enables callhome feature that sends analytics data to yugabyte");
 DEFINE_int32(callhome_interval_secs, 3600, "How often to run callhome");
-DEFINE_string(callhome_url, "https://diagnostics.yugabyte.com",
+// TODO: We need to change this to https, it involves updating our libcurl
+// implementation to support SSL.
+DEFINE_string(callhome_url, "http://diagnostics.yugabyte.com",
               "URL of callhome server");
 DEFINE_string(callhome_collection_level, kMediumLevel, "Level of details sent by callhome");
 
