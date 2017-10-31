@@ -444,10 +444,13 @@ class UniverseForm extends Component {
   }
 
   toggleSpotPrice(event) {
-    this.setState({useSpotPrice: event.target.checked});
+    const nextState = {useSpotPrice: event.target.checked};
     if (event.target.checked) {
       this.getSuggestedSpotPrice(this.state.instanceTypeSelected, this.state.regionList);
+    } else {
+      nextState['spotPrice'] = initialState.spotPrice;
     }
+    this.setState(nextState);
   }
 
   spotPriceChanged(val, normalize) {
