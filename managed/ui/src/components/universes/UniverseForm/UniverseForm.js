@@ -274,7 +274,8 @@ class UniverseForm extends Component {
   getSuggestedSpotPrice(instanceType, regions) {
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     const regionUUIDs = regions.map(region => region.value);
-    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws" && isNonEmptyArray(regionUUIDs)) {
+    if (this.props.type !== "Edit" && isDefinedNotNull(currentProvider) && currentProvider.code === "aws"
+        && isNonEmptyArray(regionUUIDs)) {
       this.props.getSuggestedSpotPrice(this.state.providerSelected, instanceType, regionUUIDs);
       this.setState({gettingSuggestedSpotPrice: true});
     }
@@ -778,7 +779,7 @@ class UniverseForm extends Component {
               <div className="form-right-aligned-labels">
                 <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
                        options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
-                       onInputChanged={this.instanceTypeChanged}/>
+                       onInputChanged={this.instanceTypeChanged} isReadOnly={isFieldReadOnly && this.state.useSpotPrice}/>
                 {spotPriceToggle}
                 {spotPriceField}
               </div>
