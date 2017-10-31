@@ -7,13 +7,14 @@ import { YBModal, YBButton } from '../../common/forms/fields';
 import { isEmptyArray } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import { connect } from 'react-redux';
+import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 
 import './NodeConnectModal.scss';
 
 class NodeConnectModal extends Component {
   static propTypes = {
     nodeIPs: PropTypes.array.isRequired
-  }
+  };
 
   constructor(props) {
     super(props);
@@ -26,16 +27,20 @@ class NodeConnectModal extends Component {
   }
 
   render() {
-    const { nodeIPs, hostInfo, accessKeys } = this.props;
-    if (isEmptyArray(nodeIPs) || !getPromiseState(accessKeys).isSuccess())
-     {
+    const { nodeIPs, hostInfo, accessKeys, providerUUID } = this.props;
+    if (isEmptyArray(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
       return <span />;
     }
-    if (!hostInfo || hostInfo.error) {
-      return <span/>;
+
+    let fromAdminMsg = "From Admin host: ";
+    if (hostInfo && !hostInfo.error) {
+      fromAdminMsg += hostInfo.privateIp;
     }
 
-    const accessKey = accessKeys.data[0];
+    const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
+    if (!isNonEmptyObject(accessKey)) {
+      return <span/>;
+    }
     const accessKeyCode = accessKey.idKey.keyCode;
     const accessKeyInfo = accessKey.keyInfo;
     const privateSSHCommand = nodeIPs.map(function(nodeIP, idx) {
@@ -60,7 +65,7 @@ class NodeConnectModal extends Component {
                  visible={this.state.showConnectModal}
                  onHide={this.toggleConnectModal}
                  showCancelButton={true} cancelLabel={"Ok"}>
-          <h4>From Admin host: { hostInfo.privateIp }</h4>
+          <h4>{ fromAdminMsg }</h4>
           Connect to your cluster using Private IP:
           <pre className={"node-command"}>{ privateSSHCommand }</pre>
           <h4>From localhost: (<i>Not recommended for production</i>)</h4>
