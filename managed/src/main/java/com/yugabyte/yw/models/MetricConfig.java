@@ -118,7 +118,7 @@ public class MetricConfig extends Model {
       String metricPrefix = metric.substring(0, metric.length() - 4);
       String sumQuery = getQuery(metricPrefix + "_sum", additionalFilters);
       String countQuery = getQuery(metricPrefix + "_count", additionalFilters);
-      return sumQuery + " / " + countQuery;
+      return "(" + sumQuery + ") / (" + countQuery + ")";
     }
 
     String queryStr;

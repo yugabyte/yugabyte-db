@@ -12,6 +12,9 @@ cpu_usage_user:
     title: "CPU Usage (User)"
     xaxis:
       type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
 cpu_usage_system:
   metric: "node_cpu"
   function: "irate|avg"
@@ -22,6 +25,8 @@ cpu_usage_system:
     title: "CPU Usage (System)"
     xaxis:
       type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
 cpu_usage:
   metric: "node_cpu"
   function: "irate|avg"
@@ -31,9 +36,12 @@ cpu_usage:
     mode: "user|system"
   group_by: "mode"
   layout:
-    title: "CPU Usage (pct)"
+    title: "CPU Usage"
     xaxis:
       type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
 disk_iops:
   metric: ""
   function: "rate|avg"
@@ -67,11 +75,12 @@ tserver_rpcs_per_sec_by_universe:
 memory_usage:
   metric: ""
   function: "avg"
+  operator: "/ 1073741824"
   filters:
     saved_name: "node_memory_Cached|node_memory_Buffers|node_memory_MemFree"
   group_by: "saved_name"
   layout:
-    title: "Memory Usage (bytes)"
+    title: "Memory Usage"
     xaxis:
       type: "date"
     yaxis:
@@ -79,12 +88,13 @@ memory_usage:
         "node_memory_Cached": "cached"
         "node_memory_Buffers": "buffered"
         "node_memory_MemFree": "free"
+      ticksuffix: "&nbsp;GB"
 
 network_bytes:
   metric: ""
   function: "rate|avg"
   range: "1m"
-  operator: "/ 10"
+  #operator: "/ 10"
   filters:
     saved_name: "node_network_receive_bytes|node_network_transmit_bytes"
     device: "eth0"
@@ -102,7 +112,9 @@ network_packets:
   metric: ""
   function: "rate|avg"
   range: "1m"
-  operator: "/ 10"
+  #operator: "/ 10"
+  # TODO. FIXME: This is off by a factor of 2 on GCP.
+  # When compared to what's reported by GCP Console.
   filters:
     saved_name: "node_network_receive_packets|node_network_transmit_packets"
     device: "eth0"
@@ -154,6 +166,9 @@ disk_bytes_per_second_per_node:
   filters:
     saved_name: "node_disk_bytes_read|node_disk_bytes_written"
   group_by: "saved_name"
+  # TODO: FIXME.
+  # This is off by a factor of 3 (number of disks) when compared to what
+  # is reported by GCP console. This is expected though.
   range: "1m"
   function: "rate|avg"
   layout:
@@ -216,7 +231,8 @@ redis_rpcs_per_sec:
 redis_ops_latency:
   metric: "rpc_latency.avg"
   function: "rate|avg"
-  operator: "/ 1000 > 0"
+  # operator: "/ 1000 > 0"
+  operator: " > 0"
   range: "1m"
   filters:
     server_type: "yb_redisserver"
@@ -227,7 +243,8 @@ redis_ops_latency:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;ms"
+      #ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
       alias:
         "get": "Get"
         "set": "Set"
@@ -338,43 +355,8 @@ tserver_ops_latency:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;ms"
-
-tserver_write_latency:
-  metric: "rpc_latency.avg"
-  function: "irate|avg"
-  range: "1m"
-  # operator: "/ 1000"
-  filters:
-    export_type: "tserver_export"
-    server_type: "yb_tserver"
-    service_type: "TabletServerService"
-    service_method: "Write"
-  layout:
-    title: "YugaByte Write Latency"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        rpc_latency.avg: "Write Latency"
-
-tserver_read_latency:
-  metric: "rpc_latency.avg"
-  function: "irate|avg"
-  # operator: "/ 1000"
-  range: "1m"
-  filters:
-    export_type: "tserver_export"
-    server_type: "yb_tserver"
-    service_type: "TabletServerService"
-    service_method: "Read"
-  layout:
-    title: "YugaByte Read Latency"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        rpc_latency.avg: "Read Latency"
+        #ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_handler_latency:
   metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
@@ -392,7 +374,8 @@ tserver_handler_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
-      ticksuffix: "&nbsp;ms"
+      #ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_rpcs_per_sec:
   metric: "rpc_latency_count"
@@ -420,7 +403,7 @@ tserver_consensus_rpcs_per_sec:
     service_method: "UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   layout:
-    title: "Consensus Rpc Ops (Sum) per Sec"
+    title: "Consensus Rpc Ops / Sec (Sum across nodes)"
     xaxis:
       type: "date"
     yaxis:
@@ -438,7 +421,7 @@ tserver_change_config:
     service_method: "ChangeConfig|RunLeaderElection|LeaderStepDown|LeaderElectionLost"
   group_by: "service_method"
   layout:
-    title: "Change Config Ops (Sum) per Sec"
+    title: "Change Config Ops / Sec (Sum across nodes)"
     xaxis:
       type: "date"
 
@@ -473,6 +456,8 @@ tserver_consensus_rpcs_latency:
     title: "Consensus Rpc latencies"
     xaxis:
       type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_change_config_latency:
   metric: "rpc_latency.avg"
@@ -489,6 +474,8 @@ tserver_change_config_latency:
     title: "Change Config Latency"
     xaxis:
       type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_threads:
   metric: ""
@@ -598,10 +585,11 @@ tserver_log_ops_second:
         "log_group_commit_latency_count": "Commit"
         "log_append_latency_count": "Append"
         "log_sync_latency_count": "Sync"
-      ticksuffix: "&nbsp;ops"
+
 tserver_tc_malloc_stats:
   metric: ""
   function: "avg"
+  operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
     saved_name: "tcmalloc_current_total_thread_cache_bytes|tcmalloc_max_total_thread_cache_bytes|
@@ -617,10 +605,12 @@ tserver_tc_malloc_stats:
         "tcmalloc_max_total_thread_cache_bytes": "Usage"
         "tcmalloc_pageheap_free_bytes": "Free"
         "tcmalloc_pageheap_unmapped_bytes": "Small"
+      ticksuffix: "&nbsp;MB"
 
 tserver_log_stats:
   metric: ""
   function: "avg"
+  operator: "/ 1024"
   filters:
     export_type: "tserver_export"
     saved_name: "log_reader_bytes_read|log_cache_size"
@@ -633,7 +623,7 @@ tserver_log_stats:
       alias:
         "log_reader_bytes_read": "Log Bytes Read"
         "log_cache_size": "Log Cache Size"
-      ticksuffix: "&nbsp;KiB"
+      ticksuffix: "&nbsp;KB"
 
 tserver_cache_reader_num_ops:
   metric: "log_cache_num_ops"
@@ -677,7 +667,7 @@ lsm_rocksdb_num_seeks_per_node:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Seeks per node per sec / Table"
+    title: "LSM-DB Seeks / Sec / Node / Table"
     xaxis:
       type: "date"
     yaxis:
@@ -708,12 +698,13 @@ lsm_rocksdb_latencies_get:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Get latencies (\u00B5s) / Table"
+    title: "LSM-DB Get latencies / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_db_get_micros.avg": "Get"
+      ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_latencies_write:
   metric: "rocksdb_db_write_micros.avg"
@@ -722,24 +713,26 @@ lsm_rocksdb_latencies_write:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Write latencies (\u00B5s) / Table"
+    title: "LSM-DB Write latencies / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_db_write_micros.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_latencies_seek:
   metric: "rocksdb_db_seek_micros.avg"
   function: "rate|avg"
   range: "1m"
   layout:
-    title: "LSM-DB Seek latencies (\u00B5s) / Table"
+    title: "LSM-DB Seek latencies / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_db_seek_micros.avg": "Seek"
+      ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_latencies_mutex:
   metric: "rocksdb_db_mutex_wait_micros.avg"
@@ -748,12 +741,13 @@ lsm_rocksdb_latencies_mutex:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Mutex Wait latencies (\u00B5s) / Table"
+    title: "LSM-DB Mutex Wait latencies / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_db_mutex_wait_micros.avg": "Mutex"
+      ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
@@ -764,7 +758,7 @@ lsm_rocksdb_block_cache_hit_miss:
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
-    title: "Cache Hit & Miss / Table / Sec"
+    title: "Cache Hit & Miss / Table"
     xaxis:
       type: "date"
     yaxis:
@@ -775,19 +769,20 @@ lsm_rocksdb_block_cache_hit_miss:
 lsm_rocksdb_block_cache_usage:
   metric: ""
   function: "avg"
-  operator: "/ 1048576"
+  operator: "/ 1073741824"
   filters:
     saved_name: "block_cache_single_touch_usage|block_cache_multi_touch_usage"
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
-    title: "Block cache usage MB"
+    title: "Block cache usage"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "block_cache_single_touch_usage": "Single Touch"
         "block_cache_multi_touch_usage": "Multi Touch"
+      ticksuffix: "&nbsp;GB"
 
 lsm_rocksdb_block_cache_add:
   metric: ""
@@ -814,41 +809,46 @@ lsm_rocksdb_stalls:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Stalls (\u00B5s) / Table"
+    title: "Stalls / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_stall_micros": "Stalls"
+      ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
   function: "rate|avg"
   range: "1m"
+  operator: "/ 1048576"
   layout:
-    title: "Flush write (bytes) / Table"
+    title: "Flush write / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_flush_write_bytes": "Flush"
+      ticksuffix: "&nbsp;MB"
 
 lsm_rocksdb_compaction:
   metric: ""
   function: "rate|avg"
   range: "1m"
+  operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
   group_by: "saved_name"
   layout:
-    title: "Compaction (bytes) / Table"
+    title: "Compaction / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rocksdb_compact_read_bytes": "Bytes Read"
         "rocksdb_compact_write_bytes": "Bytes Written"
+      ticksuffix: "&nbsp;MB"
 
 lsm_rocksdb_compaction_numfiles:
   metric: "rocksdb_numfiles_in_singlecompaction.avg"
@@ -868,21 +868,24 @@ lsm_rocksdb_compaction_time:
   metric: "rocksdb_compaction_times_micros.avg"
   function: "irate|avg"
   range: "1m"
-  operator: "/ 1000000"
+  #operator: "/ 1000000"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Compaction time (sec) / Table"
+      #title: "Compaction time (sec) / Table"
+    title: "Compaction time / Table"
     xaxis:
       type: "date"
     yaxis:
       alias:
           "rocksdb_compaction_times_micros.avg": "Avg"
+      ticksuffix: "&nbsp;\u00B5s"
 
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_latency_count"
   function: "irate|sum"
+  # operator: "/ 1000"
   range : "1m"
   filters:
     server_type: "yb_cqlserver"
@@ -904,6 +907,7 @@ cql_server_rpc_per_second:
 cql_sql_latency:
   metric: "rpc_latency.avg"
   function: "irate|avg"
+  # operator: "/ 1000"
   range : "1m"
   filters:
     server_type: "yb_cqlserver"
@@ -911,7 +915,7 @@ cql_sql_latency:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
   group_by: "service_method"
   layout:
-    title: "CQL Op Execute Latencies Avg"
+    title: "CQL Op Latency"
     xaxis:
       type: "date"
     yaxis:
@@ -921,6 +925,7 @@ cql_sql_latency:
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
+      #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
 cql_sql_latency_breakdown:
@@ -1001,7 +1006,8 @@ cql_reactor_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
-      ticksuffix: "&nbsp;ms"
+      #ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
 
 response_sizes:
   metric: "rpc_latency.avg"
