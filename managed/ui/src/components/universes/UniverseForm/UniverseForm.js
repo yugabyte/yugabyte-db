@@ -559,7 +559,7 @@ class UniverseForm extends Component {
 
   render() {
     const self = this;
-    const {handleSubmit, universe, softwareVersions, cloud, accessKeys } = this.props;
+    const {handleSubmit, universe, softwareVersions, cloud, accessKeys, type } = this.props;
     let universeProviderList = [];
     let currentProviderCode = "";
     if (isNonEmptyArray(cloud.providers.data)) {
@@ -827,10 +827,10 @@ class UniverseForm extends Component {
               <h4>G-Flags</h4>
             </Col>
             <Col md={6}>
-              <FieldArray component={GFlagArrayComponent} name="masterGFlags" type="master"/>
+              <FieldArray component={GFlagArrayComponent} name="masterGFlags" flagType="master" operationType={type}/>
             </Col>
             <Col lg={6}>
-              <FieldArray component={GFlagArrayComponent} name="tserverGFlags" type="tserver"/>
+              <FieldArray component={GFlagArrayComponent} name="tserverGFlags" flagType="tserver" operationType={type}/>
             </Col>
           </Row>
           <div className="form-action-button-container">
