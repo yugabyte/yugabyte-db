@@ -35,6 +35,8 @@
 #include <algorithm>
 #include <vector>
 
+#include <boost/optional.hpp>
+
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/stl_util.h"
@@ -330,8 +332,8 @@ void WriteOperationState::UpdateMetricsForOp(const RowOp& op) {
 }
 
 void WriteOperationState::ReleaseDocDbLocks(Tablet* tablet) {
-  // Free docdb multi-level locks.
-  tablet->shared_lock_manager()->Unlock(docdb_locks_);
+  // Free DocDB multi-level locks.
+  docdb_locks_.Reset();
 
   if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // The code below is kudu-only and will be removed, along with the tablet parameter.

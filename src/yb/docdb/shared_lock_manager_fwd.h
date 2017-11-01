@@ -21,7 +21,7 @@
 namespace yb {
 namespace docdb {
 
-typedef std::map<std::string, IntentType> LockBatch;
+class LockBatch;
 typedef std::bitset<kIntentTypeMapSize> LockState;
 
 class SharedLockManager;

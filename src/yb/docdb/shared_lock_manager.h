@@ -21,9 +21,8 @@
 #include <vector>
 
 #include "yb/docdb/shared_lock_manager_fwd.h"
-
+#include "yb/docdb/lock_batch.h"
 #include "yb/gutil/spinlock.h"
-
 #include "yb/util/cross_thread_mutex.h"
 
 namespace yb {
@@ -38,24 +37,16 @@ namespace docdb {
 class SharedLockManager {
  public:
 
-  // Attempt to lock the key with certain type. The call may be blocked waiting for other
-  // locks to be released. If LockEntry doesn't exist, it creates a LockEntry.
-  void Lock(std::string key, IntentType lock_type) {
-    Lock({ {std::move(key), lock_type} });
-  }
-
-  // Attempt to lock a batch of keys. The call may be blocked waiting for other locks to
-  // be released. If the entries don't exist, they are created.
-  void Lock(const LockBatch& batch);
+  // Attempt to lock a batch of keys. The call may be blocked waiting for other locks to be
+  // released. If the entries don't exist, they are created. The lock batch gets associated with
+  // this lock manager, which makes it auto-unlock on destruction.
+  void Lock(const KeyToIntentTypeMap& key_to_intent_type);
 
   // Release the batch of locks. Requires that the locks are held.
-  void Unlock(const LockBatch& batch);
+  void Unlock(const KeyToIntentTypeMap& key_to_intent_type);
 
-  // Release one lock of the specified type. Requires that the lock is held by the specified
-  // type. If all locks are released, the LockEntry is deallocated.
-  void Unlock(std::string key, IntentType lock_type) {
-    Unlock({ {std::move(key), lock_type} });
-  }
+  void LockInTest(const std::string& key, IntentType intent_type);
+  void UnlockInTest(const std::string& key, IntentType intent_type);
 
   // Combine two intents and return the strongest lock type that covers both.
   static IntentType CombineIntents(IntentType i1, IntentType i2);
@@ -93,10 +84,10 @@ class SharedLockManager {
   // Make sure the entries exist in the locks_ map and return pointers so we can access
   // them without holding the global lock. Returns a vector with pointers in the same order
   // as the keys in the batch.
-  std::vector<LockEntry*> Reserve(const LockBatch& batch);
+  std::vector<LockEntry*> Reserve(const KeyToIntentTypeMap& batch);
 
   // Update refcounts and maybe collect garbage.
-  void Cleanup(const LockBatch& batch);
+  void Cleanup(const KeyToIntentTypeMap& key_to_intent_type);
 
   // The global mutex should be taken only for very short duration, with no blocking wait.
   std::mutex global_mutex_;

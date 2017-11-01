@@ -106,6 +106,8 @@ Options:
     third-party code multiple times.
   --mvn-opts <maven_options>
     Specify additional Maven options for Java build/tests.
+  --java-only
+    Only build Java code
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -114,7 +116,7 @@ Build types:
 EOT
 }
 
-setup_vars_for_cxx_test() {
+set_cxx_test_name() {
   expect_num_args 1 "$@"
   if [[ $cxx_test_name == $1 ]]; then
     # Duplicate test name specified, ignore.
@@ -124,9 +126,11 @@ setup_vars_for_cxx_test() {
     fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
   fi
   cxx_test_name=$1
-  test_binary_name=${cxx_test_name#*_}
-  make_targets+=( $test_binary_name )
   build_java=false
+}
+
+set_vars_for_cxx_test() {
+  make_targets+=( $cxx_test_name )
 
   # This is necessary to avoid failures if we are just building one test.
   test_existence_check=false
@@ -187,6 +191,7 @@ forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
 java_with_assembly=false
 mvn_opts=""
+java_only=false
 
 export YB_EXTRA_GTEST_FLAGS=""
 
@@ -265,7 +270,7 @@ while [ $# -gt 0 ]; do
       no_tcmalloc=true
     ;;
     --cxx-test|--ct)
-      setup_vars_for_cxx_test "$2"
+      set_cxx_test_name "$2"
       shift
     ;;
     --ctest)
@@ -273,7 +278,7 @@ while [ $# -gt 0 ]; do
     ;;
     --ctest-args)
       should_run_ctest=true
-      ctest_args+="$2"
+      ctest_args+=$2
       shift
     ;;
     --no-rebuild-thirdparty|--nrtp|--nr3p|--nbtp|--nb3p)
@@ -313,6 +318,10 @@ while [ $# -gt 0 ]; do
     --skip-cxx-build|--scb)
       build_cxx=false
     ;;
+    --java-only)
+      build_cxx=false
+      java_only=true
+    ;;
     --num-repetitions|--num-reps|-n)
       num_test_repetitions=$2
       shift
@@ -351,7 +360,7 @@ while [ $# -gt 0 ]; do
     ;;
     [a-z]*test)
       log "'$1' looks like a C++ test name, assuming --cxx-test"
-      setup_vars_for_cxx_test "$1"
+      set_cxx_test_name "$1"
     ;;
     master|yb-master)
       make_targets+=( "yb-master" )
@@ -424,6 +433,11 @@ if [[ ${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-} == "1" && \
     "YB_PREFER_PREBUILT_THIRDPARTY (--prebuilt-thirdparty) are incompatible."
 fi
 
+if "$java_only" && ! "$build_java"; then
+  fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
+        "--cxx-test or --skip-java-build."
+fi
+
 configure_remote_build
 detect_edition
 
@@ -457,6 +471,7 @@ if "$verbose"; then
 fi
 
 set_build_root
+set_vars_for_cxx_test
 
 validate_cmake_build_type "$cmake_build_type"
 
@@ -588,6 +603,8 @@ if "$build_cxx"; then
 fi
 
 if [[ -n $cxx_test_name ]]; then
+  fix_cxx_test_name
+
   if [[ $num_test_repetitions -eq 1 ]]; then
     (
       set_asan_tsan_options

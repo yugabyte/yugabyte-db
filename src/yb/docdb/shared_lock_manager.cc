@@ -20,12 +20,16 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/trace.h"
+#include "yb/util/tostring.h"
 
 using std::string;
-using yb::util::to_underlying;
 
 namespace yb {
 namespace docdb {
+
+using util::to_underlying;
 
 namespace {
 
@@ -224,24 +228,27 @@ void SharedLockManager::LockEntry::Unlock(IntentType lock_type) {
   }
 }
 
-void SharedLockManager::Lock(const LockBatch& batch) {
-  std::vector<SharedLockManager::LockEntry*> reserved = Reserve(batch);
+void SharedLockManager::Lock(const KeyToIntentTypeMap& key_to_intent_type) {
+  TRACE("Locking a batch of $0 keys", key_to_intent_type.size());
+  std::vector<SharedLockManager::LockEntry*> reserved = Reserve(key_to_intent_type);
   size_t idx = 0;
-  for (const auto& item : batch) {
-    VLOG(4) << "Locking " << docdb::ToString(item.second) << ": "
-            << util::FormatBytesAsStr(item.first);
-    reserved[idx]->Lock(item.second);
+  for (const auto& key_and_intent_type : key_to_intent_type) {
+    const auto intent_type = key_and_intent_type.second;
+    VLOG(4) << "Locking " << docdb::ToString(intent_type) << ": "
+            << util::FormatBytesAsStr(key_and_intent_type.first);
+    reserved[idx]->Lock(intent_type);
     idx++;
   }
 }
 
-std::vector<SharedLockManager::LockEntry*> SharedLockManager::Reserve(const LockBatch& batch) {
+std::vector<SharedLockManager::LockEntry*> SharedLockManager::Reserve(
+    const KeyToIntentTypeMap& key_to_intent_type) {
   std::vector<SharedLockManager::LockEntry*> reserved;
-  reserved.reserve(batch.size());
+  reserved.reserve(key_to_intent_type.size());
   {
     std::lock_guard<std::mutex> lock(global_mutex_);
-    for (const auto& item : batch) {
-      auto it = locks_.emplace(item.first, std::make_unique<LockEntry>()).first;
+    for (const auto& key_and_intent_type : key_to_intent_type) {
+      auto it = locks_.emplace(key_and_intent_type.first, std::make_unique<LockEntry>()).first;
       it->second->num_using++;
       reserved.push_back(&*it->second);
     }
@@ -249,18 +256,27 @@ std::vector<SharedLockManager::LockEntry*> SharedLockManager::Reserve(const Lock
   return reserved;
 }
 
-void SharedLockManager::Unlock(const LockBatch& batch) {
+void SharedLockManager::Unlock(const KeyToIntentTypeMap& key_to_intent_type) {
+  TRACE("Unlocking a batch of $0 keys", key_to_intent_type.size());
   std::lock_guard<std::mutex> lock(global_mutex_);
-  for (const auto& item : boost::adaptors::reverse(batch)) {
-    VLOG(4) << "Unlocking " << docdb::ToString(item.second) << ": "
-            << util::FormatBytesAsStr(item.first);
-    locks_[item.first]->Unlock(item.second);
+  for (const auto& key_and_intent_type : boost::adaptors::reverse(key_to_intent_type)) {
+    VLOG(4) << "Unlocking " << docdb::ToString(key_and_intent_type.second) << ": "
+            << util::FormatBytesAsStr(key_and_intent_type.first);
+    locks_[key_and_intent_type.first]->Unlock(key_and_intent_type.second);
   }
-  Cleanup(batch);
+  Cleanup(key_to_intent_type);
 }
 
-void SharedLockManager::Cleanup(const LockBatch& batch) {
-  for (const auto& item : batch) {
+void SharedLockManager::LockInTest(const string& key, IntentType intent_type) {
+  Lock({{key, intent_type}});
+}
+
+void SharedLockManager::UnlockInTest(const string& key, IntentType intent_type) {
+  Unlock({{key, intent_type}});
+}
+
+void SharedLockManager::Cleanup(const KeyToIntentTypeMap& key_to_intent_type) {
+  for (const auto& item : key_to_intent_type) {
     auto it = locks_.find(item.first);
     it->second->num_using--;
     if (it->second->num_using == 0) {

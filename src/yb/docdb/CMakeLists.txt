@@ -46,6 +46,7 @@ set(DOCDB_SRCS
     primitive_value.cc
     subdocument.cc
     shared_lock_manager.cc
+    lock_batch.cc
     value.cc
     value_type.cc
 )

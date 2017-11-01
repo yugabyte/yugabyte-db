@@ -44,6 +44,7 @@
 
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
+#include "yb/docdb/lock_batch.h"
 
 #include "yb/gutil/macros.h"
 
@@ -208,7 +209,9 @@ class WriteOperationState : public OperationState {
     return &ql_write_ops_;
   }
 
-  void ReplaceDocDBLocks(LockBatch docdb_locks) {
+  // Moves the given lock batch into this object so it can be unlocked when the operation is
+  // complete.
+  void ReplaceDocDBLocks(LockBatch&& docdb_locks) {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     docdb_locks_ = std::move(docdb_locks);
   }
@@ -249,7 +252,8 @@ class WriteOperationState : public OperationState {
   // after the transaction completes.
   std::vector<std::unique_ptr<docdb::QLWriteOperation>> ql_write_ops_;
 
-  // Store the ids that have been locked for docdb transaction. They need to be released on commit.
+  // Store the ids that have been locked for DocDB transaction. They need to be released on commit
+  // or if an error happens.
   LockBatch docdb_locks_;
 
   // The MVCC transaction, set up during PREPARE phase

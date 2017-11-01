@@ -93,7 +93,9 @@ void AppendTransactionId(const TransactionId& id, std::string* value) {
   value->append(pointer_cast<const char*>(id.data), id.size());
 }
 
-void ApplyIntent(LockBatch *keys_locked, const string& lock_string, const IntentType intent) {
+void ApplyIntent(const string& lock_string,
+                 const IntentType intent,
+                 KeyToIntentTypeMap *keys_locked) {
   auto itr = keys_locked->find(lock_string);
   if (itr == keys_locked->end()) {
     keys_locked->emplace(lock_string, intent);
@@ -121,6 +123,7 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
                               LockBatch *keys_locked,
                               bool *need_read_snapshot,
                               const scoped_refptr<Histogram>& write_lock_latency) {
+  KeyToIntentTypeMap key_to_lock_type;
   *need_read_snapshot = false;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     list<DocPath> doc_paths;
@@ -131,17 +134,17 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
     for (const auto& doc_path : doc_paths) {
       KeyBytes current_prefix = doc_path.encoded_doc_key();
       for (int i = 0; i < doc_path.num_subkeys(); i++) {
-        ApplyIntent(keys_locked, current_prefix.AsStringRef(), intent_types.weak);
+        ApplyIntent(current_prefix.AsStringRef(), intent_types.weak, &key_to_lock_type);
         doc_path.subkey(i).AppendToKey(&current_prefix);
       }
-      ApplyIntent(keys_locked, current_prefix.AsStringRef(), intent_types.strong);
+      ApplyIntent(current_prefix.AsStringRef(), intent_types.strong, &key_to_lock_type);
     }
     if (doc_op->RequireReadSnapshot()) {
       *need_read_snapshot = true;
     }
   }
   const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::FineNow() : MonoTime();
-  lock_manager->Lock(*keys_locked);
+  *keys_locked = LockBatch(lock_manager, std::move(key_to_lock_type));
   if (write_lock_latency != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time);
     write_lock_latency->Increment(elapsed_time.ToMicroseconds());

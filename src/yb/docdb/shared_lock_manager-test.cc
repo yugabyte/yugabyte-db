@@ -40,6 +40,9 @@ class SharedLockManagerTest : public YBTest {
 
   void Run(size_t num_keys, int num_threads);
 
+ protected:
+  SharedLockManager lm_;
+
  private:
   static constexpr size_t kMaxNumKeys = 10;
 
@@ -48,8 +51,6 @@ class SharedLockManagerTest : public YBTest {
 
   // Maximum amount of random delay when the delay function(s) are called.
   static constexpr double kMaxDelayInMs = 10.0;
-
-  SharedLockManager lm_;
 
   // Used for vals_
   std::mutex mutex_;
@@ -93,13 +94,13 @@ void SharedLockManagerTest::Lock(int thread_id, int op_id, int key, IntentType l
   type.resize(16, ' ');
   if (kLogOps)
     LOG(INFO) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\tattempt";
-  lm_.Lock("key" + std::to_string(key), lt);
+  lm_.LockInTest("key" + std::to_string(key), lt);
   if (kLogOps)
     LOG(INFO) << "\t" << thread_id << "\t" << op_id << "\t" << type << "\t" << key << "\ttaken";
 }
 
 IntentType SharedLockManagerTest::Unlock(int thread_id, int op_id, int key, IntentType lt) {
-  lm_.Unlock("key" + std::to_string(key), lt);
+  lm_.UnlockInTest("key" + std::to_string(key), lt);
   string type(ToString(lt));
   type.resize(16, ' ');
   if (kLogOps)
@@ -329,6 +330,57 @@ TEST_F(SharedLockManagerTest, CombineIntentsTest) {
       }
     }
   }
+}
+
+TEST_F(SharedLockManagerTest, LockBatchAutoUnlockTest) {
+  for (int i = 0; i < 2; ++i) {
+    LockBatch lb(&lm_, {
+        {"foo", IntentType::kStrongSnapshotWrite},
+        {"bar", IntentType::kStrongSnapshotWrite}});
+    EXPECT_EQ(2, lb.size());
+    EXPECT_FALSE(lb.empty());
+    // The locks get unlocked on scope exit.
+  }
+}
+
+TEST_F(SharedLockManagerTest, LockBatchMoveConstructor) {
+  LockBatch lb(&lm_, {
+      {"foo", IntentType::kStrongSnapshotWrite},
+      {"bar", IntentType::kStrongSnapshotWrite}});
+  EXPECT_EQ(2, lb.size());
+  EXPECT_FALSE(lb.empty());
+
+  LockBatch lb2(std::move(lb));
+  EXPECT_EQ(2, lb2.size());
+  EXPECT_FALSE(lb2.empty());
+
+  // lb has been moved from and is now empty
+  EXPECT_EQ(0, lb.size());
+  EXPECT_TRUE(lb.empty());
+}
+
+TEST_F(SharedLockManagerTest, LockBatchMoveAssignment) {
+  LockBatch lb(&lm_, {
+      {"foo", IntentType::kStrongSnapshotWrite},
+      {"bar", IntentType::kStrongSnapshotWrite}});
+
+  LockBatch lb2 = std::move(lb);
+  EXPECT_EQ(2, lb2.size());
+  EXPECT_FALSE(lb2.empty());
+
+  // lb has been moved from and is now empty
+  EXPECT_EQ(0, lb.size());
+  EXPECT_TRUE(lb.empty());
+}
+
+TEST_F(SharedLockManagerTest, LockBatchReset) {
+  LockBatch lb(&lm_, {
+      {"foo", IntentType::kStrongSnapshotWrite},
+      {"bar", IntentType::kStrongSnapshotWrite}});
+  lb.Reset();
+
+  EXPECT_EQ(0, lb.size());
+  EXPECT_TRUE(lb.empty());
 }
 
 } // namespace docdb

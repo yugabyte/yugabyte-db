@@ -71,6 +71,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/lock_batch.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
@@ -167,6 +168,7 @@ using yb::docdb::DocDBCompactionFilterFactory;
 using yb::docdb::KuduWriteOperation;
 using yb::docdb::IntentKind;
 using yb::docdb::IntentTypePair;
+using yb::docdb::KeyToIntentTypeMap;
 
 // Make sure RocksDB does not disappear while we're using it. This is used at the top level of
 // functions that perform RocksDB operations (directly or indirectly). Once a function is using
@@ -959,7 +961,7 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
 
 Status Tablet::KeyValueBatchFromRedisWriteBatch(
     WriteRequestPB* redis_write_request,
-    LockBatch *keys_locked,
+    LockBatch* keys_locked,
     vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
@@ -1120,9 +1122,16 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
       }
     }
     if (invalid_table_type) {
-      LOG(FATAL) << "Invalid table type: " << table_type_;
+      FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
     }
+    // If there is a non-zero number of operations, we expect to be holding locks. The reverse is
+    // not always true, because we could decide to avoid writing based on results of reading.
+    DCHECK(!locks_held.empty() ||
+           key_value_write_request->write_batch().kv_pairs_size() == 0)
+        << "Expect to be holding locks for a non-zero number of write operations: "
+        << key_value_write_request->write_batch().DebugString();
     state->ReplaceDocDBLocks(std::move(locks_held));
+
     DCHECK(!key_value_write_request->has_schema()) << "Schema not empty in key-value batch";
     DCHECK(!key_value_write_request->has_row_operations())
         << "Rows operations not empty in key-value batch";
@@ -2759,7 +2768,7 @@ Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &do
                                          transaction_participant_.get());
     auto result = resolver.Resolve();
     if (!result.ok()) {
-      shared_lock_manager()->Unlock(*keys_locked);
+      *keys_locked = LockBatch();  // Unlock the keys.
       return result;
     }
   }

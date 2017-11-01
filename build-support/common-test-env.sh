@@ -1172,6 +1172,49 @@ check_test_existence() {
   return $ctest_exit_code
 }
 
+# Validate and adjust the cxx_test_name variable if necessary, by adding a prefix based on the
+# directory name. Also sets test_binary_name.
+fix_cxx_test_name() {
+  local dir_prefix=${cxx_test_name%%_*}
+  test_binary_name=${cxx_test_name#*_}
+  local possible_corrections=()
+  local possible_binary_paths=()
+  if [[ ! -f $BUILD_ROOT/tests-$dir_prefix/$test_binary_name ]]; then
+    local tests_dir
+    for tests_dir in $BUILD_ROOT/tests-*; do
+      local test_binary_path=$tests_dir/$cxx_test_name
+      if [[ -f $test_binary_path ]]; then
+        local new_cxx_test_name=${tests_dir##*/tests-}_$cxx_test_name
+        possible_corrections+=( "$new_cxx_test_name" )
+        possible_binary_paths+=( "$test_binary_path" )
+      fi
+    done
+    case ${#possible_corrections[@]} in
+      0)
+        log "$cxx_test_name does not look like a valid test name, but we could not auto-detect" \
+            "the right directory prefix (based on files in $BUILD_ROOT/tests-*) to put in front" \
+            "of it."
+      ;;
+      1)
+        log "Auto-correcting $cxx_test_name -> ${possible_corrections[0]}"
+        cxx_test_name=${possible_corrections[0]}
+      ;;
+      *)
+        local most_recent_binary_path=$( ls -t "${possible_binary_paths[@]}" | head -1 )
+        if [[ ! -f $most_recent_binary_path ]]; then
+          fatal "Failed to detect the most recently modified file out of:" \
+                "${possible_binary_paths[@]}"
+        fi
+        new_cxx_test_dir=${most_recent_binary_path%/*}
+        new_cxx_test_name=${new_cxx_test_dir##*/tests-}_$cxx_test_name
+        log "Ambiguous ways to correct $cxx_test_name: ${possible_corrections[*]}," \
+            "using the one corresponding to the most recent file: $new_cxx_test_name"
+        cxx_test_name=$new_cxx_test_name
+      ;;
+    esac
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
