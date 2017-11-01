@@ -65,6 +65,8 @@ public class MiniYBCluster implements AutoCloseable {
   // a host:port pair for each node given just the host.
   private static final int CQL_PORT = 9042;
 
+  private static final int REDIS_PORT = 6379;
+
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
 
@@ -97,6 +99,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<String> pathsToDelete = new ArrayList<>();
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
+  private final List<InetSocketAddress> redisContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private final YBClient syncClient;
@@ -306,7 +309,6 @@ public class MiniYBCluster implements AutoCloseable {
 
     final int rpcPort = TestUtils.findFreePort(tserverBindAddress);
     final int webPort = TestUtils.findFreePort(tserverBindAddress);
-    final int redisPort = TestUtils.findFreePort(tserverBindAddress);
     final int redisWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
 
@@ -321,7 +323,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--local_ip_for_outbound_sockets=" + tserverBindAddress,
         "--rpc_bind_addresses=" + tserverBindAddress + ":" + rpcPort,
         "--webserver_port=" + webPort,
-        "--redis_proxy_bind_address=" + tserverBindAddress + ":" + redisPort,
+        "--redis_proxy_bind_address=" + tserverBindAddress + ":" + REDIS_PORT,
         "--redis_proxy_webserver_port=" + redisWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
         "--yb_num_shards_per_tserver=" + numShardsPerTserver,
@@ -342,6 +344,7 @@ public class MiniYBCluster implements AutoCloseable {
         tserverBindAddress, rpcPort, webPort, cqlWebPort, redisWebPort);
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
+    redisContactPoints.add(new InetSocketAddress(tserverBindAddress, REDIS_PORT));
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -583,6 +586,7 @@ public class MiniYBCluster implements AutoCloseable {
       return;
     }
     assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
+    assert(redisContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), REDIS_PORT)));
     destroyDaemonAndWait(ts);
   }
 
@@ -714,6 +718,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<InetSocketAddress> getCQLContactPoints() {
     return cqlContactPoints;
+  }
+
+  /**
+   * Returns a list of REDIS contact points.
+   * @return REDIS contact points
+   */
+  public List<InetSocketAddress> getRedisContactPoints() {
+    return redisContactPoints;
   }
 
   /**

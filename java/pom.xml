@@ -98,6 +98,7 @@
     <module>yb-cli</module>
     <module>yb-cql</module>
     <module>yb-loadtester</module>
+    <module>yb-jedis-tests</module>
   </modules>
 
   <build>
