@@ -152,6 +152,8 @@ a {
   color: #fff !important;
   background: #151838;
   white-space: pre !important;
+  word-wrap: normal;
+  word-break: keep-all;
 }
 .palette-primary-orange .article pre code .hljs-comment {
   color: #afb5c7;
