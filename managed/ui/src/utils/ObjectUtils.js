@@ -206,19 +206,15 @@ export function insertSpacesFromCamelCase(string) {
   return string;
 }
 
-// Sorting such that 0.0.19.14 > 0.0.3.1 > A > B
+// Official Version string is x.x.x.x-bx
 export function sortVersionStrings(arr) {
-  return arr.sort((a,b) => {
-    const aValue = parseInt(a.replace(/\./g, ""), 10);
-    const bValue = parseInt(b.replace(/\./g, ""), 10);
-    if (isNaN(aValue) && isNaN(bValue)) {
-      return a < b;
-    } else if (isNaN(aValue) && !isNaN(bValue)) {
-      return 1;
-    } else if (!isNaN(aValue) && isNaN(bValue)) {
-      return -1;
-    } else {
-      return aValue < bValue;
+  const regExp = /(\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?/;
+  return arr.sort((a, b) => {
+    let a_arr = a.split(regExp)
+    let b_arr = b.split(regExp)
+    for(let idx = 0; idx < a_arr.length; idx++) {
+      if (a_arr[idx] !== b_arr[idx])
+        return b_arr[idx] - a_arr[idx]
     }
   });
 }
