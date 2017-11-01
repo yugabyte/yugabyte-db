@@ -9,7 +9,8 @@ import PropTypes from 'prop-types';
 export default class GFlagArrayComponent extends Component {
 
   static propTypes = {
-    type: PropTypes.oneOf(['master', 'tserver']).isRequired
+    flagType: PropTypes.oneOf(['master', 'tserver']).isRequired,
+    operationType: PropTypes.oneOf(['Create', 'Edit']).isRequired
   };
 
   constructor(props) {
@@ -25,18 +26,25 @@ export default class GFlagArrayComponent extends Component {
   }
 
   addRow() {
-    this.props.fields.push({});
+    const {operationType} = this.props;
+    if (operationType !== "Edit") {
+      this.props.fields.push({});
+    }
   }
 
   removeRow(idx) {
-    this.props.fields.remove(idx);
+    const {operationType} = this.props;
+    if (operationType !== "Edit") {
+      this.props.fields.remove(idx);
+    }
   }
 
   render() {
-    const {fields, type} = this.props;
+    const {fields, flagType, operationType} = this.props;
+    const isReadOnly = operationType === "Edit";
     const self = this;
     let currentLabel = <span/>;
-    if (type === "tserver") {
+    if (flagType === "tserver") {
       currentLabel = "T-Server";
     } else {
       currentLabel = "Master";
@@ -46,9 +54,8 @@ export default class GFlagArrayComponent extends Component {
         <label>{currentLabel}</label>
         {
           fields.map(function(field, idx){
-            const isReadOnly = fields.get(idx).readOnly;
             return (
-              <Row key={`${type}${idx}`} className="gflag-row">
+              <Row key={`${flagType}${idx}`} className="gflag-row">
                 <Col md={5}>
                   <Field name={`${field}name`} component={YBTextInput} isReadOnly={isReadOnly}/>
                 </Col>
@@ -66,7 +73,8 @@ export default class GFlagArrayComponent extends Component {
           })
         }
         <Col md={12}>
-          <i className="fa fa-plus-circle flag-button add-flag-button" onClick={self.addRow}/>
+          {isReadOnly ? <span/>: <i className="fa fa-plus-circle flag-button add-flag-button" onClick={self.addRow}/>
+          }
         </Col>
       </div>
     );
