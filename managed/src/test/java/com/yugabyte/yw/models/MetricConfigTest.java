@@ -61,7 +61,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     String query = metricConfig.getQuery(new HashMap<>());
-    assertThat(query, allOf(notNullValue(), equalTo("avg(irate(log_sync_latency_sum{export_type=\"tserver_export\"}[1m])) / avg(irate(log_sync_latency_count{export_type=\"tserver_export\"}[1m]))")));
+    assertThat(query, allOf(notNullValue(), equalTo("(avg(irate(log_sync_latency_sum{export_type=\"tserver_export\"}[1m]))) / (avg(irate(log_sync_latency_count{export_type=\"tserver_export\"}[1m])))")));
   }
 
   @Test
