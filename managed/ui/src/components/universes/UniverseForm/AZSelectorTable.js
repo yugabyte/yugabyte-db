@@ -163,8 +163,8 @@ export default class AZSelectorTable extends Component {
         regionItem.azList.forEach(function(azItem) {
           uniConfigArray.forEach(function(configArrayItem) {
             if (configArrayItem.value === azItem.uuid) {
-              groupsArray.push({value: azItem.uuid, count: configArrayItem.count, 
-                                isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized});
+              groupsArray.push({value: azItem.uuid, count: configArrayItem.count,
+                isAffinitized: azItem.isAffinitized === undefined ? true : azItem.isAffinitized});
               if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
                 uniqueRegions.push(regionItem.uuid);
               }
