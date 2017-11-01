@@ -15,36 +15,42 @@ export default class NodeDetails extends Component {
   constructor(props) {
     super(props);
     this.deleteNode = this.deleteNode.bind(this);
+    this.isNodeStatusLoadingOrInit = this.isNodeStatusLoadingOrInit.bind(this);
     this.checkTasksForUniverseCreated = this.checkTasksForUniverseCreated.bind(this);
     this.state = { universeCreated: false };
   }
 
   componentWillReceiveProps(nextProps) {
+    const { universe: { universeMasterLeader }, uuid } = this.props;
     if (isValidObject(this.refs.nodeDetailTable)) {
       this.refs.nodeDetailTable.handleSort('asc', 'name');
+    }
+    if (this.isNodeStatusLoadingOrInit() && !this.state.universeCreated) {
+      const universeCreated = this.checkTasksForUniverseCreated();
+      this.setState({universeCreated: universeCreated});
+      if (getPromiseState(universeMasterLeader).isInit() && universeCreated) {
+        this.props.getMasterLeader(uuid);
+      }
     }
   }
 
   componentWillMount() {
-    const { universe: { universeMasterLeader } } = this.props;
-    let uuid = this.props.uuid;
-    if (typeof this.props.universeSelectionId !== "undefined") {
-      uuid = this.props.universeUUID;
-    }
-    if (this.checkTasksForUniverseCreated()) {
-      this.setState({universeCreated: true});
-      if (isDefinedNotNull(universeMasterLeader) && getPromiseState(universeMasterLeader).isInit()) {
-        this.props.getMasterLeader(uuid);
-      }
-    }
+    const { universeSelectionId, universeUUID } = this.props;
+    const uuid = isDefinedNotNull(universeSelectionId) ? universeUUID : this.props.uuid;
     this.props.getUniversePerNodeStatus(uuid);
+  }
+
+  isNodeStatusLoadingOrInit() {
+    const { universe: { universePerNodeStatus } } = this.props;
+    const promiseState = getPromiseState(universePerNodeStatus);
+    return (promiseState.isLoading() || promiseState.isInit());
   }
 
   checkTasksForUniverseCreated() {
     const { universe: { universeTasks }, uuid } = this.props;
-    return isNonEmptyArray(universeTasks.data[uuid]) ? universeTasks.data[uuid].find((task) => {
+    return isNonEmptyArray(universeTasks.data[uuid]) ? universeTasks.data[uuid].some((task) => {
       return task.type === 'Create' && task.target === 'Universe' && task.status === 'Success';
-    }) : null;
+    }) : false;
   }
 
   deleteNode(node) {
@@ -61,8 +67,7 @@ export default class NodeDetails extends Component {
       return <span />;
     }
 
-    const promiseState = getPromiseState(universePerNodeStatus);
-    const inLoadingOrInitState = promiseState.isLoading() || promiseState.isInit();
+    const inLoadingOrInitState = this.isNodeStatusLoadingOrInit();
     const loadingIcon = <i className="fa fa-spinner fa-spin" />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
