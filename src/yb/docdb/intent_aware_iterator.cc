@@ -292,8 +292,6 @@ Status IntentAwareIterator::ProcessIntent(const HybridTime& high_ht) {
   Slice intent_prefix;
   Slice intent_value;
   DocHybridTime value_time;
-  // TODO(dtxn) - don't decode SubDocKey of intent, we only need its prefix
-  // (kIntentPrefix + encoded SubDocKey (no HybridTime)) instead.
   RETURN_NOT_OK(DecodeStrongWriteIntent(
       txn_op_context_.get(), high_ht, intent_iter_.get(), &intent_prefix, &intent_value,
       &value_time));

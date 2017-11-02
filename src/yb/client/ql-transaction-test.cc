@@ -133,9 +133,9 @@ class QLTransactionTest : public QLDmlTestBase {
 
   // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
   // has been applied.
-  // is_update = false: insert into t values (key, value);
-  // is_update = true: update t set v=value where k=key;
-  shared_ptr<YBqlWriteOp> WriteRow(
+  // op_type == WriteOpType::INSERT: insert into t values (key, value);
+  // op_type == WriteOpType::UPDATE: update t set v=value where k=key;
+  Result<shared_ptr<YBqlWriteOp>> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
       const WriteOpType op_type = WriteOpType::INSERT) {
     VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
@@ -145,13 +145,15 @@ class QLTransactionTest : public QLDmlTestBase {
     auto* const req = op->mutable_request();
     table_.SetInt32Expression(req->add_hashed_column_values(), key);
     table_.SetInt32ColumnValue(req->add_column_values(), "v", value);
-    CHECK_OK(session->Apply(op));
-    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
-        << op->response().error_message();
+    RETURN_NOT_OK(session->Apply(op));
+    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
+      return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
+    }
     return op;
   }
 
-  shared_ptr<YBqlWriteOp> UpdateRow(const YBSessionPtr& session, int32_t key, int32_t value) {
+  Result<shared_ptr<YBqlWriteOp>> UpdateRow(
+      const YBSessionPtr& session, int32_t key, int32_t value) {
     return WriteRow(session, key, value, WriteOpType::UPDATE);
   }
 
@@ -159,10 +161,10 @@ class QLTransactionTest : public QLDmlTestBase {
       const YBSessionPtr& session, size_t transaction = 0,
       const WriteOpType op_type = WriteOpType::INSERT) {
     for (size_t r = 0; r != kNumRows; ++r) {
-      WriteRow(session,
-               KeyForTransactionAndIndex(transaction, r),
-               ValueForTransactionAndIndex(transaction, r, op_type),
-               op_type);
+      ASSERT_OK(WriteRow(session,
+          KeyForTransactionAndIndex(transaction, r),
+          ValueForTransactionAndIndex(transaction, r, op_type),
+          op_type));
     }
   }
 
@@ -175,8 +177,9 @@ class QLTransactionTest : public QLDmlTestBase {
     table_.SetInt32Expression(req->add_hashed_column_values(), key);
     table_.AddColumns({"v"}, req);
     RETURN_NOT_OK(session->Apply(op));
-    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
-        << op->response().error_message();
+    if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
+      return STATUS_FORMAT(QLError, "Error selecting row: $0", op->response().error_message());
+    }
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
       return STATUS_FORMAT(NotFound, "Row not found for key $0", key);
@@ -360,7 +363,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
     sessions.push_back(session);
     ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
     for (size_t r = 0; r != kNumRows; ++r) {
-      WriteRow(sessions.back(), r, i);
+      ASSERT_OK(WriteRow(sessions.back(), r, i));
     }
     session->FlushAsync(MakeYBStatusFunctorCallback([&latch](const Status& status) {
       latch.CountDown();
@@ -421,8 +424,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
   // Write { 1 -> 1, 2 -> 2 }.
   {
     auto session = CreateSession(false /* read_only */);
-    WriteRow(session, 1, 1);
-    WriteRow(session, 2, 2);
+    ASSERT_OK(WriteRow(session, 1, 1));
+    ASSERT_OK(WriteRow(session, 2, 2));
   }
 
   CountDownLatch latch(1);
@@ -433,8 +436,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
     // T1: Update { 1 -> 11, 2 -> 12 }.
     {
       auto session = CreateSession(false /* read_only */, txn1);
-      UpdateRow(session, 1, 11);
-      UpdateRow(session, 2, 12);
+      ASSERT_OK(UpdateRow(session, 1, 11));
+      ASSERT_OK(UpdateRow(session, 2, 12));
     }
 
     // T1: Should read { 1 -> 11, 2 -> 12 }.
@@ -482,8 +485,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   // Write { 1 -> 1, 2 -> 2 }.
   {
     auto session = CreateSession(false /* read_only */);
-    WriteRow(session, 1, 1);
-    WriteRow(session, 2, 2);
+    ASSERT_OK(WriteRow(session, 1, 1));
+    ASSERT_OK(WriteRow(session, 2, 2));
   }
 
   // Start T1.
@@ -492,8 +495,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   // T1: Update { 1 -> 11, 2 -> 12 }.
   {
     auto session = CreateSession(false /* read_only */, txn1);
-    UpdateRow(session, 1, 11);
-    UpdateRow(session, 2, 12);
+    ASSERT_OK(UpdateRow(session, 1, 11));
+    ASSERT_OK(UpdateRow(session, 2, 12));
   }
 
   // Start T2.
@@ -538,8 +541,8 @@ TEST_F(QLTransactionTest, DISABLED_ResolveIntentsCheckConsistency) {
   // Write { 1 -> 1, 2 -> 2 }.
   {
     auto session = CreateSession(false /* read_only */);
-    WriteRow(session, 1, 1);
-    WriteRow(session, 2, 2);
+    ASSERT_OK(WriteRow(session, 1, 1));
+    ASSERT_OK(WriteRow(session, 2, 2));
   }
 
   // Start T1.
@@ -548,8 +551,8 @@ TEST_F(QLTransactionTest, DISABLED_ResolveIntentsCheckConsistency) {
   // T1: Update { 1 -> 11, 2 -> 12 }.
   {
     auto session = CreateSession(false /* read_only */, txn1);
-    UpdateRow(session, 1, 11);
-    UpdateRow(session, 2, 12);
+    ASSERT_OK(UpdateRow(session, 1, 11));
+    ASSERT_OK(UpdateRow(session, 2, 12));
   }
 
   // T1: Request commit.

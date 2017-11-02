@@ -44,6 +44,8 @@ static constexpr int kMaxNumRandomDocKeyParts = 10;
 // Maximum number of subkeys in a randomly-generated SubDocKey.
 static constexpr int kMaxNumRandomSubKeys = 10;
 
+YB_DEFINE_ENUM(ResolveIntentsDuringRead, (kNo)(kYes));
+
 // Intended only for testing, when we want to enable transaction aware code path for cases when we
 // really have no transactions. This way we will test that transaction aware code path works
 // correctly in absence of transactions and also doesn't use transaction status provider (it
@@ -113,7 +115,7 @@ class DocDBLoadGenerator {
                      int num_doc_keys,
                      int num_unique_subkeys,
                      bool use_hash,
-                     bool resolve_intents = true,
+                     ResolveIntentsDuringRead resolve_intents = ResolveIntentsDuringRead::kYes,
                      int deletion_chance = 100,
                      int max_nesting_level = 10,
                      uint64 random_seed = kDefaultRandomSeed,
@@ -182,8 +184,9 @@ class DocDBLoadGenerator {
   RandomNumberGenerator random_;  // Using default seed.
   std::vector<DocKey> doc_keys_;
 
-  // Whether we should pass transaction context during reads, so DocDB tries to resolve intents.
-  const bool resolve_intents_;
+  // Whether we should pass transaction context during reads, so DocDB tries to resolve write
+  // intents.
+  const ResolveIntentsDuringRead resolve_intents_;
 
   std::vector<PrimitiveValue> possible_subkeys_;
   int iteration_;
@@ -220,6 +223,8 @@ class DocDBLoadGenerator {
   // divergent_snapshot_ht_and_cleanup_ht_, so we can later verify that some snapshots have become
   // invalid after history cleanup.
   void RecordSnapshotDivergence(const InMemDocDbState &snapshot, HybridTime cleanup_ht);
+
+  TransactionOperationContextOpt GetReadOperationTransactionContext();
 };
 
 }  // namespace docdb

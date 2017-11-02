@@ -62,26 +62,39 @@ void RemoveEntriesWithSecondComponentHigherThan(vector<pair<int, int>> *v,
 
 }  // anonymous namespace
 
-class RandomizedDocDBTest : public DocDBTestBase {
+class RandomizedDocDBTest : public DocDBTestBase,
+    public ::testing::WithParamInterface<ResolveIntentsDuringRead> {
  protected:
   RandomizedDocDBTest() : verify_history_cleanup_(true) {
   }
 
-  void Init(const bool use_hash, const bool resolve_intents = true) {
+  void Init(const bool use_hash) {
     if (load_gen_.get() != nullptr) {
       ClearLogicalSnapshots();
       ASSERT_OK(DestroyRocksDB());
       ASSERT_OK(ReopenRocksDB());
     }
     load_gen_.reset(new DocDBLoadGenerator(this, kNumDocKeys, kNumUniqueSubKeys, use_hash,
-        resolve_intents));
+        resolve_intents_));
     SeedRandom();
   }
 
   ~RandomizedDocDBTest() override {}
   void RunWorkloadWithSnaphots(bool enable_history_cleanup);
-  void TestWithFlush(bool resolve_intents);
 
+  int num_iterations_divider() {
+    // GetSubDocument is slower when trying to resolve intents, so we reduce number of iterations
+    // in order to respect the timeout.
+    switch (resolve_intents_) {
+      case ResolveIntentsDuringRead::kYes:
+        return 2;
+      case ResolveIntentsDuringRead::kNo:
+        return 1;
+    }
+    FATAL_INVALID_ENUM_VALUE(ResolveIntentsDuringRead, resolve_intents_);
+  }
+
+  ResolveIntentsDuringRead resolve_intents_ = ResolveIntentsDuringRead::kYes;
   bool verify_history_cleanup_;
   std::unique_ptr<DocDBLoadGenerator> load_gen_;
 };
@@ -103,7 +116,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
 
   HybridTime max_history_cleanup_ht(0);
 
-  const int kNumIter = FLAGS_snapshot_verification_test_num_iter;
+  const int kNumIter = FLAGS_snapshot_verification_test_num_iter / num_iterations_divider();
 
   while (load_gen_->next_iteration() <= kNumIter) {
     const int current_iteration = load_gen_->next_iteration();
@@ -238,12 +251,23 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
             load_gen_->divergent_snapshot_ht_and_cleanup_ht());
 }
 
-void RandomizedDocDBTest::TestWithFlush(const bool resolve_intents) {
+TEST_P(RandomizedDocDBTest, TestNoFlush) {
+  resolve_intents_ = GetParam();
+  const int num_iter = FLAGS_test_num_iter / num_iterations_divider();
   for (auto use_hash : {false, true}) {
-    Init(use_hash, resolve_intents);
-    // GetSubDocument is slower when trying to resolve intents, so we reduce number of iterations
-    // in order to respect the timeout.
-    const int num_iter = FLAGS_test_num_iter / (resolve_intents ? 2 : 1);
+    Init(use_hash);
+    while (load_gen_->next_iteration() <= num_iter) {
+      ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " <<
+          load_gen_->next_iteration();
+    }
+  }
+}
+
+TEST_P(RandomizedDocDBTest, TestWithFlush) {
+  resolve_intents_ = GetParam();
+  const int num_iter = FLAGS_test_num_iter / num_iterations_divider();
+  for (auto use_hash : {false, true}) {
+    Init(use_hash);
     while (load_gen_->next_iteration() <= num_iter) {
       ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration "
                                                       << load_gen_->next_iteration();
@@ -254,32 +278,16 @@ void RandomizedDocDBTest::TestWithFlush(const bool resolve_intents) {
   }
 }
 
-TEST_F(RandomizedDocDBTest, TestNoFlush) {
-  for (auto use_hash : {false, true}) {
-    Init(use_hash);
-    while (load_gen_->next_iteration() <= FLAGS_test_num_iter) {
-      ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " <<
-          load_gen_->next_iteration();
-    }
-  }
-}
-
-TEST_F(RandomizedDocDBTest, TestWithFlushDontResolveIntents) {
-  TestWithFlush(false);
-}
-
-TEST_F(RandomizedDocDBTest, TestWithFlushResolveIntents) {
-  TestWithFlush(true);
-}
-
-TEST_F(RandomizedDocDBTest, Snapshots) {
+TEST_P(RandomizedDocDBTest, Snapshots) {
+  resolve_intents_ = GetParam();
   for (auto use_hash : {false, true}) {
     Init(use_hash);
     RunWorkloadWithSnaphots(/* enable_history_cleanup = */ false);
   }
 }
 
-TEST_F(RandomizedDocDBTest, SnapshotsWithHistoryCleanup) {
+TEST_P(RandomizedDocDBTest, SnapshotsWithHistoryCleanup) {
+  resolve_intents_ = GetParam();
   for (auto use_hash : {false, true}) {
     Init(use_hash);
     // Don't verify history cleanup in case we use hashed components, since hardcoded expected
@@ -289,6 +297,9 @@ TEST_F(RandomizedDocDBTest, SnapshotsWithHistoryCleanup) {
     RunWorkloadWithSnaphots(/* enable_history_cleanup = */ true);
   }
 }
+
+INSTANTIATE_TEST_CASE_P(bool, RandomizedDocDBTest, ::testing::Values(
+    ResolveIntentsDuringRead::kNo, ResolveIntentsDuringRead::kYes));
 
 // This is a bit different from SnapshotsWithHistoryCleanup. Here, we perform history cleanup within
 // DocDBLoadGenerator::PerformOperation itself, reading the document being modified both before

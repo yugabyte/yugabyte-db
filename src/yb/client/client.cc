@@ -1609,7 +1609,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
 ////////////////////////////////////////////////////////////
 
 YBScanner::YBScanner(YBTable* table, const YBTransactionPtr& transaction)
-  : data_(new YBScanner::Data(table, transaction)) {
+    : data_(new YBScanner::Data(table, transaction)) {
 }
 
 YBScanner::~YBScanner() {

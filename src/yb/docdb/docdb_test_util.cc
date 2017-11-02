@@ -281,7 +281,7 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
                                        const int num_doc_keys,
                                        const int num_unique_subkeys,
                                        const bool use_hash,
-                                       const bool resolve_intents,
+                                       const ResolveIntentsDuringRead resolve_intents,
                                        const int deletion_chance,
                                        const int max_nesting_level,
                                        const uint64 random_seed,
@@ -372,10 +372,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   ASSERT_OK(fixture_->WriteToRocksDB(dwb, hybrid_time));
   const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
-  const TransactionOperationContextOpt txn_op_context =
-      resolve_intents_
-          ? boost::make_optional(kNonTransactionalOperationContext)
-          : boost::none;
+  TransactionOperationContextOpt txn_op_context = GetReadOperationTransactionContext();
+
   // In case we are asked to compact history, we read the document from RocksDB before and after the
   // compaction, and expect to get the same result in both cases.
   for (int do_compaction_now = 0; do_compaction_now <= compact_history; ++do_compaction_now) {
@@ -536,6 +534,16 @@ void DocDBLoadGenerator::RecordSnapshotDivergence(const InMemDocDbState &snapsho
     divergent_snapshot_ht_and_cleanup_ht_.emplace_back(snapshot.captured_at().value(),
                                                        cleanup_ht.value());
   }
+}
+
+TransactionOperationContextOpt DocDBLoadGenerator::GetReadOperationTransactionContext() {
+  switch (resolve_intents_) {
+    case ResolveIntentsDuringRead::kYes:
+      return kNonTransactionalOperationContext;
+    case ResolveIntentsDuringRead::kNo:
+      return boost::none;
+  }
+  FATAL_INVALID_ENUM_VALUE(ResolveIntentsDuringRead, resolve_intents_);
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -28,7 +28,7 @@ namespace docdb {
 // Changes to this enum may invalidate persistent data.
 enum class ValueType : char {
   // This ValueType is used as -infinity for scanning purposes only.
-  kLowest = 19,
+  kLowest = 0,
 
   // We use ASCII code 20 in order to have it before all other value types which can occur in key,
   // so intents will be written in the same order as original keys for which intents are written.
