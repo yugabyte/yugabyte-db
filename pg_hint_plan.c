@@ -1655,7 +1655,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			char   *keyword = parser->keyword;
 			Hint   *hint;
 
-			if (strcasecmp(buf.data, keyword) != 0)
+			if (pg_strcasecmp(buf.data, keyword) != 0)
 				continue;
 
 			hint = parser->create_func(head, keyword, parser->hint_keyword);
@@ -2468,9 +2468,9 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 	if (length == 3)
 	{
 		const char *modeparam = (const char *)list_nth(name_list, 2);
-		if (strcasecmp(modeparam, "hard") == 0)
+		if (pg_strcasecmp(modeparam, "hard") == 0)
 			force_parallel = true;
-		else if (strcasecmp(modeparam, "soft") != 0)
+		else if (pg_strcasecmp(modeparam, "soft") != 0)
 		{
 			hint_ereport(modeparam,
 						 ("enforcement must be soft or hard: %s",
