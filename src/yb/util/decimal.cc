@@ -126,8 +126,8 @@ string Decimal::ToString() const {
   }
 }
 
-Status Decimal::ToDouble(long double* double_val) const {
-  return CheckedStold(ToString(), double_val);
+Result<long double> Decimal::ToDouble() const {
+  return CheckedStold(ToString());
 }
 
 Status Decimal::ToVarInt(VarInt *varint_value, const int max_length) const {

@@ -274,6 +274,27 @@ std::ostream& operator<<(std::ostream& out, const Result<TValue>& result) {
   return result.ok() ? out << *result : out << result.status().ToString();
 }
 
+template <class Functor>
+class ResultToStatusAdaptor {
+ public:
+  explicit ResultToStatusAdaptor(const Functor& functor) : functor_(functor) {}
+
+  template <class Output, class... Args>
+  CHECKED_STATUS operator()(Output* output, Args&&... args) {
+    auto result = functor_(std::forward<Args>(args)...);
+    RETURN_NOT_OK(result);
+    *output = std::move(*result);
+    return Status::OK();
+  }
+ private:
+  Functor functor_;
+};
+
+template <class Functor>
+ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
+  return ResultToStatusAdaptor<Functor>(functor);
+}
+
 } // namespace yb
 
 #endif // YB_UTIL_RESULT_H

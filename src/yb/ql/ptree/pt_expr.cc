@@ -176,20 +176,17 @@ PTLiteralString::~PTLiteralString() {
 }
 
 CHECKED_STATUS PTLiteralString::ToInt64(int64_t *value, bool negate) const {
-  if (negate) {
-    RETURN_NOT_OK(util::CheckedStoll(string("-") + value_->c_str(), value));
-  } else {
-    RETURN_NOT_OK(util::CheckedStoll(value_->c_str(), value));
-  }
+  auto temp = negate ? util::CheckedStoll(string("-") + value_->c_str())
+                     : util::CheckedStoll(*value_);
+  RETURN_NOT_OK(temp);
+  *value = *temp;
   return Status::OK();
 }
 
 CHECKED_STATUS PTLiteralString::ToDouble(long double *value, bool negate) const {
-  if (negate) {
-    RETURN_NOT_OK(util::CheckedStold(string("-") + value_->c_str(), value));
-  } else {
-    RETURN_NOT_OK(util::CheckedStold(value_->c_str(), value));
-  }
+  auto temp = util::CheckedStold(*value_);
+  RETURN_NOT_OK(temp);
+  *value = negate ? -*temp : *temp;
   return Status::OK();
 }
 
@@ -218,9 +215,9 @@ CHECKED_STATUS PTLiteralString::ToString(string *value) const {
 }
 
 CHECKED_STATUS PTLiteralString::ToTimestamp(int64_t *value) const {
-  Timestamp ts;
-  RETURN_NOT_OK(DateTime::TimestampFromString(value_->c_str(), &ts));
-  *value = ts.ToInt64();
+  auto ts = DateTime::TimestampFromString(value_->c_str());
+  RETURN_NOT_OK(ts);
+  *value = ts->ToInt64();
   return Status::OK();
 }
 

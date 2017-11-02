@@ -26,14 +26,13 @@ constexpr const char* kNullStringEscaped = "\\n";
 typedef boost::tokenizer< boost::escaped_list_separator<char> , std::string::const_iterator,
     std::string> CsvTokenizer;
 
-CHECKED_STATUS TimestampFromString(const std::string& str, Timestamp* ts) {
-  int64_t val;
-  if (util::CheckedStoll(str, &val).ok()) {
-    *ts = DateTime::TimestampFromInt(val);
-  } else {
-    return DateTime::TimestampFromString(str, ts);
+Result<Timestamp> TimestampFromString(const std::string& str) {
+  auto val = util::CheckedStoll(str);
+  if (val.ok()) {
+    return DateTime::TimestampFromInt(*val);
   }
-  return Status::OK();
+
+  return DateTime::TimestampFromString(str);
 }
 
 bool IsNull(std::string str) {

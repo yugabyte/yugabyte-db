@@ -80,9 +80,10 @@ class Slice {
     size_(n) { }
 
   // Create a slice that refers to the contents of "s"
-  Slice(const std::string& s) : // NOLINT(runtime/explicit)
-    data_(reinterpret_cast<const uint8_t *>(s.data())),
-    size_(s.size()) { }
+  template <class CharTraits, class Allocator>
+  Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
+      : data_(util::to_uchar_ptr(s.data())),
+        size_(s.size()) { }
 
   // Create a slice that refers to s[0,strlen(s)-1]
   Slice(const char* s) : // NOLINT(runtime/explicit)

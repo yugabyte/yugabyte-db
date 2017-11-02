@@ -20,70 +20,67 @@ namespace util {
 class StolUtilsTest : public YBTest {
  protected:
   void TestStoi(const std::string& str, const int32_t int_val) {
-    int32_t decoded_int;
-    ASSERT_OK(CheckedStoi(str, &decoded_int));
-    ASSERT_EQ(int_val, decoded_int);
+    auto decoded_int = CheckedStoi(str);
+    ASSERT_OK(decoded_int);
+    ASSERT_EQ(int_val, *decoded_int);
   }
 
   void TestStoll(const std::string& str, const int64_t int_val) {
-    int64_t decoded_int;
-    ASSERT_OK(CheckedStoll(str, &decoded_int));
-    ASSERT_EQ(int_val, decoded_int);
+    auto decoded_int = CheckedStoll(str);
+    ASSERT_OK(decoded_int);
+    ASSERT_EQ(int_val, *decoded_int);
   }
 
   void TestStold(const std::string& str, const long double double_val) {
-    long double decoded_double;
-    ASSERT_OK(CheckedStold(str, &decoded_double));
-    ASSERT_DOUBLE_EQ(double_val, decoded_double);
+    auto decoded_double = CheckedStold(str);
+    ASSERT_OK(decoded_double);
+    ASSERT_DOUBLE_EQ(double_val, *decoded_double);
   }
 };
 
 TEST_F(StolUtilsTest, TestCheckedStoild) {
-  int32_t int_val;
   TestStoi("123", 123);
   TestStoi("-123", -123);
   TestStoi("2147483647", 2147483647);
   TestStoi("-2147483648", -2147483648);
-  ASSERT_NOK(CheckedStoi("abcd", &int_val));
-  ASSERT_NOK(CheckedStoi(" 123", &int_val));
-  ASSERT_NOK(CheckedStoi("123abc", &int_val));
-  ASSERT_NOK(CheckedStoi("123.1", &int_val));
-  ASSERT_NOK(CheckedStoi("123456789011", &int_val));
-  ASSERT_NOK(CheckedStoi("123-abc", &int_val));
-  ASSERT_NOK(CheckedStoi("123 123", &int_val));
-  ASSERT_NOK(CheckedStoi("2147483648", &int_val));
-  ASSERT_NOK(CheckedStoi("-2147483649", &int_val));
-  ASSERT_NOK(CheckedStoi("", &int_val));
-  ASSERT_NOK(CheckedStoi("123 ", &int_val));
+  ASSERT_NOK(CheckedStoi("abcd"));
+  ASSERT_NOK(CheckedStoi(" 123"));
+  ASSERT_NOK(CheckedStoi("123abc"));
+  ASSERT_NOK(CheckedStoi("123.1"));
+  ASSERT_NOK(CheckedStoi("123456789011"));
+  ASSERT_NOK(CheckedStoi("123-abc"));
+  ASSERT_NOK(CheckedStoi("123 123"));
+  ASSERT_NOK(CheckedStoi("2147483648"));
+  ASSERT_NOK(CheckedStoi("-2147483649"));
+  ASSERT_NOK(CheckedStoi(""));
+  ASSERT_NOK(CheckedStoi("123 "));
 
-  int64_t long_val;
   TestStoll("123", 123);
   TestStoll("-123", -123);
   TestStoll("9223372036854775807", 9223372036854775807LL);
   TestStoll("-9223372036854775808", -9223372036854775808ULL);
-  ASSERT_NOK(CheckedStoll("abcd", &long_val));
-  ASSERT_NOK(CheckedStoll(" 123", &long_val));
-  ASSERT_NOK(CheckedStoll("123abc", &long_val));
-  ASSERT_NOK(CheckedStoll("-9223372036854775809", &long_val));
-  ASSERT_NOK(CheckedStoll("9223372036854775808", &long_val));
-  ASSERT_NOK(CheckedStoll("123.1", &long_val));
-  ASSERT_NOK(CheckedStoll("123456789123456789123456789", &long_val));
-  ASSERT_NOK(CheckedStoll("123 123", &long_val));
-  ASSERT_NOK(CheckedStoll("", &long_val));
+  ASSERT_NOK(CheckedStoll("abcd"));
+  ASSERT_NOK(CheckedStoll(" 123"));
+  ASSERT_NOK(CheckedStoll("123abc"));
+  ASSERT_NOK(CheckedStoll("-9223372036854775809"));
+  ASSERT_NOK(CheckedStoll("9223372036854775808"));
+  ASSERT_NOK(CheckedStoll("123.1"));
+  ASSERT_NOK(CheckedStoll("123456789123456789123456789"));
+  ASSERT_NOK(CheckedStoll("123 123"));
+  ASSERT_NOK(CheckedStoll(""));
 
-  long double double_val;
   TestStold("123", 123);
   TestStold("-123", -123);
   TestStold("123.1", 123.1);
   TestStold("1.7e308", 1.7e308);
   TestStold("-1.7e308", -1.7e308);
-  ASSERT_NOK(CheckedStold("abcd", &double_val));
-  ASSERT_NOK(CheckedStold(" 123", &double_val));
-  ASSERT_NOK(CheckedStold("123abc", &double_val));
-  ASSERT_NOK(CheckedStold("123 123", &double_val));
-  ASSERT_NOK(CheckedStold("9223372036854775808e9223372036854775808", &double_val));
-  ASSERT_NOK(CheckedStold("-9223372036854775808.8e9223372036854775808", &double_val));
-  ASSERT_NOK(CheckedStold("", &double_val));
+  ASSERT_NOK(CheckedStold("abcd"));
+  ASSERT_NOK(CheckedStold(" 123"));
+  ASSERT_NOK(CheckedStold("123abc"));
+  ASSERT_NOK(CheckedStold("123 123"));
+  ASSERT_NOK(CheckedStold("9223372036854775808e9223372036854775808"));
+  ASSERT_NOK(CheckedStold("-9223372036854775808.8e9223372036854775808"));
+  ASSERT_NOK(CheckedStold(""));
 }
 
 } // namespace util

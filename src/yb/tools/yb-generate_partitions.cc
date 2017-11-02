@@ -85,34 +85,20 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
     }
 
     DataType column_type = schema.column(i).type_info()->type();
-    int32_t int_val;
-    int64_t long_val;
-    auto* col_expr_pb = ql_read->add_hashed_column_values();
+    auto* value_pb = ql_read->add_hashed_column_values()->mutable_value();
 
     switch(column_type) {
-      case DataType::INT8:
-        RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        col_expr_pb->mutable_value()->set_int8_value(int_val);
-        break;
-      case DataType::INT16:
-        RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        col_expr_pb->mutable_value()->set_int16_value(int_val);
-        break;
-      case DataType::INT32:
-        RETURN_NOT_OK(util::CheckedStoi(*it, &int_val));
-        col_expr_pb->mutable_value()->set_int32_value(int_val);
-        break;
-      case DataType::INT64:
-        RETURN_NOT_OK(util::CheckedStoll(*it, &long_val));
-        col_expr_pb->mutable_value()->set_int64_value(long_val);
-        break;
+      YB_SET_INT_VALUE(value_pb, *it, 8);
+      YB_SET_INT_VALUE(value_pb, *it, 16);
+      YB_SET_INT_VALUE(value_pb, *it, 32);
+      YB_SET_INT_VALUE(value_pb, *it, 64);
       case DataType::STRING:
-        col_expr_pb->mutable_value()->set_string_value(*it);
+        value_pb->set_string_value(*it);
         break;
       case DataType::TIMESTAMP: {
-        Timestamp ts;
-        RETURN_NOT_OK(TimestampFromString(*it, &ts));
-        col_expr_pb->mutable_value()->set_timestamp_value(ts.ToInt64());
+        auto ts = TimestampFromString(*it);
+        RETURN_NOT_OK(ts);
+        value_pb->set_timestamp_value(ts->ToInt64());
         break;
       }
       case DataType::BOOL: FALLTHROUGH_INTENDED;

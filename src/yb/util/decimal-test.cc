@@ -151,49 +151,49 @@ TEST_F(DecimalTest, IsIntegerTest) {
 }
 
 TEST_F(DecimalTest, TestDoubleConversions) {
-  long double dbl;
   // Note: Rounding errors are expected
 
-  EXPECT_OK(Decimal("12.301").ToDouble(&dbl));
-  EXPECT_EQ("1.2301000000000000156e+1", Decimal(dbl).ToString());
+  auto dbl = Decimal("12.301").ToDouble();
+  EXPECT_OK(dbl);
+  EXPECT_EQ("1.2301000000000000156e+1", Decimal(*dbl).ToString());
 
-  EXPECT_OK(Decimal("-0").ToDouble(&dbl));
-  EXPECT_EQ("0", Decimal(dbl).ToString());
+  EXPECT_OK(dbl = Decimal("-0").ToDouble());
+  EXPECT_EQ("0", Decimal(*dbl).ToString());
 
-  EXPECT_OK(Decimal("1236.8642261937127309271040921").ToDouble(&dbl));
-  EXPECT_EQ("1.2368642261937127387e+3", Decimal(dbl).ToString());
+  EXPECT_OK(dbl = Decimal("1236.8642261937127309271040921").ToDouble());
+  EXPECT_EQ("1.2368642261937127387e+3", Decimal(*dbl).ToString());
 
-  EXPECT_OK(Decimal("1.236864226e3").ToDouble(&dbl));
-  EXPECT_EQ("1.2368642259999999169e+3", Decimal(dbl).ToString());
+  EXPECT_OK(dbl = Decimal("1.236864226e3").ToDouble());
+  EXPECT_EQ("1.2368642259999999169e+3", Decimal(*dbl).ToString());
 
   // Test large exponent
-  EXPECT_OK(Decimal("1.236864226e-33").ToDouble(&dbl));
-  EXPECT_EQ("1.2368642260000000385e-33", Decimal(dbl).ToString());
+  EXPECT_OK(dbl = Decimal("1.236864226e-33").ToDouble());
+  EXPECT_EQ("1.2368642260000000385e-33", Decimal(*dbl).ToString());
 
   // Exponent too large
-  EXPECT_FALSE(Decimal("1.236864226e-782323").ToDouble(&dbl).ok());
+  EXPECT_NOT_OK(Decimal("1.236864226e-782323").ToDouble());
 
   Decimal decimal;
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::epsilon()));
-  EXPECT_OK(decimal.ToDouble(&dbl));
-  EXPECT_EQ(std::numeric_limits<double>::epsilon(), dbl);
+  EXPECT_OK(dbl = decimal.ToDouble());
+  EXPECT_EQ(std::numeric_limits<double>::epsilon(), *dbl);
   EXPECT_EQ("2.2204460492503130808e-16", decimal.ToString());
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::lowest()));
-  EXPECT_OK(decimal.ToDouble(&dbl));
-  EXPECT_EQ(std::numeric_limits<double>::lowest(), dbl);
+  EXPECT_OK(dbl = decimal.ToDouble());
+  EXPECT_EQ(std::numeric_limits<double>::lowest(), *dbl);
   EXPECT_EQ("-1.7976931348623157081e+308", decimal.ToString());
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::max()));
-  EXPECT_OK(decimal.ToDouble(&dbl));
-  EXPECT_EQ(std::numeric_limits<double>::max(), dbl);
+  EXPECT_OK(dbl = decimal.ToDouble());
+  EXPECT_EQ(std::numeric_limits<double>::max(), *dbl);
   EXPECT_EQ("1.7976931348623157081e+308", decimal.ToString());
 
   // Can convert from denorm values.
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::denorm_min()));
   // Can convert to denorm values.
-  EXPECT_OK(decimal.ToDouble(&dbl));
+  EXPECT_OK(decimal.ToDouble());
   EXPECT_EQ("4.9406564584124654418e-324", decimal.ToString());
 
   EXPECT_TRUE(decimal.FromDouble(std::numeric_limits<double>::infinity()).IsCorruption());

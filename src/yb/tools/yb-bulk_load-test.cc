@@ -176,10 +176,10 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     hashed_column->mutable_value()->set_int64_value(std::stol(*it++));
 
     // hash_key_timestamp.
-    Timestamp ts;
-    RETURN_NOT_OK(TimestampFromString(*it++, &ts));
+    auto ts = TimestampFromString(*it++);
+    RETURN_NOT_OK(ts);
     hashed_column = req->add_hashed_column_values();
-    hashed_column->mutable_value()->set_timestamp_value(ts.ToInt64());
+    hashed_column->mutable_value()->set_timestamp_value(ts->ToInt64());
 
     // hash_key_string.
     hashed_column = req->add_hashed_column_values();
@@ -189,8 +189,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     QLConditionPB* condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(QLOperator::QL_OP_EQUAL);
     condition->add_operands()->set_column_id(kFirstColumnId + 3);
-    RETURN_NOT_OK(TimestampFromString(*it++, &ts));
-    condition->add_operands()->mutable_value()->set_timestamp_value(ts.ToInt64());
+    RETURN_NOT_OK(ts = TimestampFromString(*it++));
+    condition->add_operands()->mutable_value()->set_timestamp_value(ts->ToInt64());
 
     // Set all column ids.
     QLRSRowDescPB *rsrow_desc = req->mutable_rsrow_desc();
@@ -211,13 +211,13 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     // Get individual columns.
     CsvTokenizer tokenizer = Tokenize(row);
     auto it = tokenizer.begin();
-    Timestamp ts;
     ASSERT_EQ(std::stol(*it++), ql_row.column(0).int64_value());
-    ASSERT_OK(TimestampFromString(*it++, &ts));
-    ASSERT_EQ(ts, ql_row.column(1).timestamp_value());
+    auto ts = TimestampFromString(*it++);
+    ASSERT_OK(ts);
+    ASSERT_EQ(*ts, ql_row.column(1).timestamp_value());
     ASSERT_EQ(*it++, ql_row.column(2).string_value());
-    ASSERT_OK(TimestampFromString(*it++, &ts));
-    ASSERT_EQ(ts, ql_row.column(3).timestamp_value());
+    ASSERT_OK(ts = TimestampFromString(*it++));
+    ASSERT_EQ(*ts, ql_row.column(3).timestamp_value());
     ASSERT_EQ(*it++, ql_row.column(4).string_value());
     ASSERT_EQ(std::stoi(*it++), ql_row.column(5).int32_value());
     ASSERT_FLOAT_EQ(std::stof(*it++), ql_row.column(6).float_value());

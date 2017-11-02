@@ -77,9 +77,8 @@ locale DateTimeOutputFormat::output_locale() const {
   return output_locale_;
 }
 
-Status DateTime::TimestampFromString(const string& str,
-                                     Timestamp* timestamp,
-                                     const DateTimeInputFormat input_format) {
+Result<Timestamp> DateTime::TimestampFromString(const string& str,
+                                                const DateTimeInputFormat input_format) {
   local_date_time ldt(not_a_date_time);
   std::smatch m;
   bool matched = false;
@@ -111,9 +110,8 @@ Status DateTime::TimestampFromString(const string& str,
       local_date_time epoch(input_format.epoch_start(), GetUtcTimezone());
       time_duration diff = ldt - epoch;
       int64_t ts = diff.total_microseconds();
-      timestamp->set_value(ts);
-      return Status::OK();
-    } catch (std::exception e) {
+      return Timestamp(ts);
+    } catch (std::exception& e) {
       return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
     }
   } else {

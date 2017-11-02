@@ -53,13 +53,12 @@ string to_lower_case(Slice slice) {
 }
 
 Result<int64_t> ParseInt64(const Slice& slice, const char* field) {
-  int64_t val;
-  Status s = util::CheckedStoll(slice, &val);
-  if (!s.ok()) {
+  auto result = util::CheckedStoll(slice);
+  if (!result.ok()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
-        "$0 field $1 is not parsable as a valid number", field, slice.ToDebugString());
+        "$0 field $1 is not a valid number", field, slice.ToDebugString());
   }
-  return val;
+  return *result;
 }
 
 Result<int32_t> ParseInt32(const Slice& slice, const char* field) {
@@ -162,14 +161,11 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
         return STATUS_SUBSTITUTE(InvalidArgument, "$0 should be at the end of the command",
                                  string(args[i].cdata(), args[i].size()));
       }
-      int64_t ttl;
-      if (args[i] == kExpireIn) {
-        RETURN_NOT_OK(util::CheckedStoll(args[i + 1], &ttl));
-      } else {
-        int64_t unix_timestamp;
-        RETURN_NOT_OK(util::CheckedStoll(args[i + 1], &unix_timestamp));
-        ttl = unix_timestamp - GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
-      }
+      auto temp = util::CheckedStoll(args[i + 1]);
+      RETURN_NOT_OK(temp);
+      auto ttl = args[i] == kExpireIn
+          ? *temp
+          : *temp - GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
 
       if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSeconds) {
         return STATUS_SUBSTITUTE(InvalidArgument, "TTL: $0 needs be in the range [$1, $2]", ttl,
@@ -178,9 +174,9 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
       // Need to pass ttl in milliseconds, user supplied values are in seconds.
       op->mutable_request()->mutable_set_request()->set_ttl(ttl * MonoTime::kMillisecondsPerSecond);
     } else {
-      T val;
-      RETURN_NOT_OK(arg_parser(string(args[i].cdata(), args[i].size()), &val));
-      kv_map[val] = string(args[i + 1].cdata(), args[i + 1].size());
+      auto val = arg_parser(args[i]);
+      RETURN_NOT_OK(val);
+      kv_map[*val] = args[i + 1].ToBuffer();
     }
   }
   for (const auto& kv : kv_map) {
@@ -194,9 +190,8 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("hmset", to_lower_case(args[0]))
       << "Parsing hmset request where first arg is not hmset.";
   return ParseHMSetLikeCommands<string>(op, args, REDIS_TYPE_HASH,
-                                        [](const string& arg, string* val) -> Status {
-                                          *val =  arg;
-                                          return Status::OK();
+                                        [](Slice arg) -> Result<std::string> {
+                                          return arg.ToBuffer();
                                         },
                                         [](const string& subkey, RedisKeyValuePB* kv_pb) {
                                           kv_pb->add_subkey()->set_string_subkey(subkey);
@@ -207,13 +202,7 @@ Status ParseHMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 Status ParseTsAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
   DCHECK_EQ("tsadd", to_lower_case(args[0]))
     << "Parsing hmset request where first arg is not hmset.";
-  return ParseHMSetLikeCommands<int64_t>(op, args, REDIS_TYPE_TIMESERIES,
-                                         [](const string& arg, int64_t* val) -> Status {
-                                           int64_t timestamp;
-                                           RETURN_NOT_OK(util::CheckedStoll(arg, &timestamp));
-                                           *val =  timestamp;
-                                           return Status::OK();
-                                         },
+  return ParseHMSetLikeCommands<int64_t>(op, args, REDIS_TYPE_TIMESERIES, util::CheckedStoll,
                                          [](int64_t subkey, RedisKeyValuePB* kv_pb) {
                                            kv_pb->add_subkey()->set_timestamp_subkey(subkey);
                                          }
@@ -353,18 +342,18 @@ Status ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
       RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME);
 
   const auto& key = args[1];
-  int64_t lower_bound;
-  int64_t upper_bound;
-  RETURN_NOT_OK(util::CheckedStoll(args[2], &lower_bound));
-  RETURN_NOT_OK(util::CheckedStoll(args[3], &upper_bound));
-  if (lower_bound > upper_bound) {
-    return STATUS(InvalidArgument, "Lower bound of range needs to be less than or equal to "
-        "upper bound");
+  auto lower_bound = util::CheckedStoll(args[2]);
+  RETURN_NOT_OK(lower_bound);
+  auto upper_bound = util::CheckedStoll(args[3]);
+  RETURN_NOT_OK(upper_bound);
+  if (*lower_bound > *upper_bound) {
+    return STATUS(InvalidArgument,
+                  "Lower bound of range needs to be less than or equal to upper bound");
   }
 
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(lower_bound);
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(upper_bound);
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*lower_bound);
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*upper_bound);
   return Status::OK();
 }
 
@@ -375,9 +364,9 @@ Status ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
 
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  int64_t timestamp;
-  RETURN_NOT_OK(util::CheckedStoll(args[2], &timestamp));
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(timestamp);
+  auto timestamp = util::CheckedStoll(args[2]);
+  RETURN_NOT_OK(timestamp);
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*timestamp);
 
   return Status::OK();
 }
@@ -626,27 +615,18 @@ Status RedisParser::ParseNumber(char prefix,
                              prefix,
                              static_cast<char>(*token_begin_));
   }
-  auto number_begin = pointer_cast<const char*>(token_begin_ + 1);
-  if (!isdigit(*number_begin)) { // disable skip of space characters by strtoll
-    return STATUS_FORMAT(Corruption, "Number starts with invalid character: $0", *number_begin);
-  }
-  char* token_end;
-  auto parsed_number = std::strtoll(number_begin, &token_end, 10);
-  static_assert(sizeof(parsed_number) == sizeof(*out), "Expected size");
-  const char* expected_stop = pointer_cast<const char*>(pos_ - kLineEndLength);
-  if (token_end != expected_stop) {
-    return STATUS_SUBSTITUTE(Corruption,
-                             "$0 was failed to parse, extra data after number: $1",
-                             name,
-                             Slice(token_end, expected_stop).ToDebugString());
-  }
-  SCHECK_BOUNDS(parsed_number,
+  auto number_begin = token_begin_ + 1;
+  auto expected_stop = pos_ - kLineEndLength;
+  auto parsed_number = util::CheckedStoll(Slice(number_begin, expected_stop));
+  RETURN_NOT_OK(parsed_number);
+  static_assert(sizeof(*parsed_number) == sizeof(*out), "Expected size");
+  SCHECK_BOUNDS(*parsed_number,
                 min,
                 max,
                 Corruption,
                 yb::Format("$0 out of expected range [$1, $2] : $3",
-                           name, min, max, parsed_number));
-  *out = static_cast<ptrdiff_t>(parsed_number);
+                           name, min, max, *parsed_number));
+  *out = static_cast<ptrdiff_t>(*parsed_number);
   return Status::OK();
 }
 

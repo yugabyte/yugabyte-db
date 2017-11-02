@@ -27,6 +27,8 @@
 #include <regex>
 #include <boost/date_time/local_time/local_time.hpp>
 #include <boost/date_time/gregorian/gregorian.hpp>
+
+#include "yb/util/result.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {
@@ -79,9 +81,9 @@ class DateTime {
   static DateTimeInputFormat CqlDateTimeInputFormat;
   static DateTimeOutputFormat CqlDateTimeOutputFormat;
 
-  static Status TimestampFromString(const std::string& str,
-                                    Timestamp* timestamp,
-                                    DateTimeInputFormat input_format = CqlDateTimeInputFormat);
+  static Result<Timestamp> TimestampFromString(
+      const string& str,
+      const DateTimeInputFormat input_format = CqlDateTimeInputFormat);
   static Timestamp TimestampFromInt(int64_t val,
                                     DateTimeInputFormat input_format = CqlDateTimeInputFormat);
   static std::string TimestampToString(

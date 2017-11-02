@@ -4235,12 +4235,11 @@ AexprConst:
 ;
 
 Iconst: ICONST {
-  int64_t val;
-  Status s = util::CheckedStoll($1->c_str(), &val);
-  if (!s.ok()) {
+  auto val = util::CheckedStoll($1->c_str());
+  if (!val.ok()) {
     PARSER_CQL_INVALID_MSG(@1, "invalid integer");
   } else {
-    $$ = val;
+    $$ = *val;
   }
 };
 

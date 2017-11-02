@@ -14,20 +14,32 @@
 #ifndef YB_UTIL_STOL_UTILS_H
 #define YB_UTIL_STOL_UTILS_H
 
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace util {
 
-template <typename T>
-CHECKED_STATUS CheckedSton(Slice slice, std::function<T(const char*, char **str_end, int)> StrToNum,
-                           T* val);
+Result<int64_t> CheckedStoll(Slice slice);
 
-CHECKED_STATUS CheckedStoi(const std::string& str, int32_t* val);
+template <class Int>
+Result<Int> CheckedStoInt(Slice slice) {
+  auto long_value = CheckedStoll(slice);
+  RETURN_NOT_OK(long_value);
+  auto result = static_cast<Int>(*long_value);
+  if (result != *long_value) {
+    return STATUS_FORMAT(InvalidArgument,
+                         "$0 is out of range: [$1; $2]",
+                         std::numeric_limits<Int>::min(),
+                         std::numeric_limits<Int>::max());
+  }
+  return result;
+}
 
-CHECKED_STATUS CheckedStoll(const Slice& slice, int64_t* val);
+inline Result<int32_t> CheckedStoi(Slice slice) {
+  return CheckedStoInt<int32_t>(slice);
+}
 
-CHECKED_STATUS CheckedStold(const Slice& slice, long double* val);
+Result<long double> CheckedStold(Slice slice);
 
 } // namespace util
 } // namespace yb

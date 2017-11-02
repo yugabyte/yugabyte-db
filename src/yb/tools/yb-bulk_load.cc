@@ -184,41 +184,28 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
                                          const DataType data_type,
                                          QLExpressionPB *column_value) {
   auto ql_valuepb = column_value->mutable_value();
-  int32_t int_val;
-  int64_t long_val;
-  long double double_val;
   switch (data_type) {
-    case DataType::INT8:
-      RETURN_NOT_OK(util::CheckedStoi(column, &int_val));
-      ql_valuepb->set_int8_value(int_val);
-      break;
-    case DataType::INT16:
-      RETURN_NOT_OK(util::CheckedStoi(column, &int_val));
-      ql_valuepb->set_int16_value(int_val);
-      break;
-    case DataType::INT32:
-      RETURN_NOT_OK(util::CheckedStoi(column, &int_val));
-      ql_valuepb->set_int32_value(int_val);
-      break;
-    case DataType::INT64:
-      RETURN_NOT_OK(util::CheckedStoll(column, &long_val));
-      ql_valuepb->set_int64_value(long_val);
-      break;
-    case DataType::FLOAT:
-      RETURN_NOT_OK(util::CheckedStold(column, &double_val));
-      ql_valuepb->set_float_value(double_val);
-      break;
-    case DataType::DOUBLE:
-      RETURN_NOT_OK(util::CheckedStold(column, &double_val));
-      ql_valuepb->set_double_value(double_val);
-      break;
+    YB_SET_INT_VALUE(ql_valuepb, column, 8);
+    YB_SET_INT_VALUE(ql_valuepb, column, 16);
+    YB_SET_INT_VALUE(ql_valuepb, column, 32);
+    YB_SET_INT_VALUE(ql_valuepb, column, 64);
+    case DataType::FLOAT: {
+      auto value = util::CheckedStold(column);
+      RETURN_NOT_OK(value);
+      ql_valuepb->set_float_value(*value);
+    } break;
+    case DataType::DOUBLE: {
+      auto value = util::CheckedStold(column);
+      RETURN_NOT_OK(value);
+      ql_valuepb->set_double_value(*value);
+    } break;
     case DataType::STRING:
       ql_valuepb->set_string_value(column);
       break;
     case DataType::TIMESTAMP: {
-      Timestamp ts;
-      RETURN_NOT_OK(TimestampFromString(column, &ts));
-      ql_valuepb->set_timestamp_value(ts.ToInt64());
+      auto ts = TimestampFromString(column);
+      RETURN_NOT_OK(ts);
+      ql_valuepb->set_timestamp_value(ts->ToInt64());
       break;
     }
     default:

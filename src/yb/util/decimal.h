@@ -16,7 +16,7 @@
 
 #include <vector>
 
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/varint.h"
 
@@ -101,7 +101,7 @@ class Decimal {
   std::string ToString() const;
   // Note: We are using decimal -> string -> double using std::stod() function.
   // In future, it may be better to write a direct conversion function.
-  CHECKED_STATUS ToDouble(long double* int64_value) const;
+  Result<long double> ToDouble() const;
 
   // Note: The length of the varint is limited by kDefaultMaxLength by default to make sure we don't
   // get stuck with large exponents. May be overriden.

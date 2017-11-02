@@ -54,7 +54,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
       DCHECK(expr->ql_type_id() == DataType::VARINT);
       str_val = std::dynamic_pointer_cast<PTConstVarInt>(expr)->Eval();
     }
-    return util::CheckedStoll(str_val->c_str(), val);
+    return ResultToStatus(&util::CheckedStoll)(val, *str_val);
   } else if (QLType::IsInteger(expr->ql_type_id())) {
     *val = std::dynamic_pointer_cast<PTConstInt>(expr)->Eval();
     return Status::OK();
@@ -68,7 +68,7 @@ Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
   DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
-    return STATUS(InvalidArgument, Substitute("Invalid float value for '$0'", property_name));
+    return STATUS_FORMAT(InvalidArgument, "Invalid float value for '$0'", property_name);
   }
   if (QLType::IsNumeric(expr->ql_type_id())) {
     if (QLType::IsInteger(expr->ql_type_id())) {
@@ -81,10 +81,9 @@ Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
     return Status::OK();
   } else if (expr->ql_type_id() == DataType::STRING) {
     auto str_val = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    RETURN_NOT_OK(util::CheckedStold(str_val->c_str(), val));
-    return Status::OK();
+    return ResultToStatus(&util::CheckedStold)(val, *str_val);
   }
-  return STATUS(InvalidArgument, Substitute("Invalid float value for '$0'", property_name));
+  return STATUS_FORMAT(InvalidArgument, "Invalid float value for '$0'", property_name);
 }
 
 Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,

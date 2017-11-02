@@ -80,16 +80,16 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   string numeric_val;
   if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
                      &numeric_val)) {
-    long double placeholder;
-    return util::CheckedStold(numeric_val, &placeholder);
+    RETURN_NOT_OK(util::CheckedStold(numeric_val));
+    return Status::OK();
   }
 
   if (StringEndsWith(val, common::kSpeculativeRetryPercentile,
                      common::kSpeculativeRetryPercentileLen, &numeric_val)) {
-    long double percentile;
-    RETURN_NOT_OK(util::CheckedStold(numeric_val, &percentile));
+    auto percentile = util::CheckedStold(numeric_val);
+    RETURN_NOT_OK(percentile);
 
-    if (percentile < 0.0 || percentile > 100.0) {
+    if (*percentile < 0.0 || *percentile > 100.0) {
       return STATUS(InvalidArgument, Substitute(
           "Invalid value $0 for PERCENTILE option 'speculative_retry': "
           "must be between 0.0 and 100.0", numeric_val));
