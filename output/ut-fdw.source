@@ -30,9 +30,9 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1
    ->  Nested Loop
          Join Filter: (ft_1.id = ft_2.id)
          ->  Foreign Scan on ft1 ft_1
-               Foreign File: /home/horiguti/work/pg_hint_plan/pg_hint_plan/data/data.csv
+               Foreign File: @abs_srcdir@/data/data.csv
          ->  Foreign Scan on ft1 ft_2
-               Foreign File: /home/horiguti/work/pg_hint_plan/pg_hint_plan/data/data.csv
+               Foreign File: @abs_srcdir@/data/data.csv
    ->  Index Scan using t1_i1 on t1
          Index Cond: (c1 = ft_2.id)
 
