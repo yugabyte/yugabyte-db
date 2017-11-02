@@ -17,7 +17,7 @@ ADD target/docker/packages/devops/devops*.tar.gz /opt/yugabyte/devops
 RUN export USER=root && /opt/yugabyte/devops/bin/install_python_requirements.sh
 RUN export USER=root && /opt/yugabyte/devops/bin/install_ansible_requirements.sh
 ADD target/docker/packages/yugabyte /opt/yugabyte/releases/
-ADD target/docker/packages/java/yb-sample-apps.jar /opt/yugabyte/utils/
-ADD target/docker/packages/java/yb-sample-apps-sources.jar /opt/yugabyte/utils/
+ADD target/docker/packages/yb-sample-apps.jar /opt/yugabyte/utils/
+ADD target/docker/packages/yb-sample-apps-sources.jar /opt/yugabyte/utils/
 ADD docker /etc/yugaware
 

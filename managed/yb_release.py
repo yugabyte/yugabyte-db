@@ -95,6 +95,7 @@ try:
             log_message(logging.INFO, "Get yb-sample-apps jar from yugabyte tarfile")
             for archive_file in yugabyte_tarfile.getmembers():
                 if "yb-sample-apps" in archive_file.name:
+                    archive_file.name = os.path.basename(archive_file.name)
                     yugabyte_tarfile.extract(archive_file, packages_folder)
                     log_message(logging.INFO, archive_file.name)
 
