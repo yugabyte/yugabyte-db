@@ -52,6 +52,7 @@
 
 DECLARE_bool(use_leader_leases);
 DECLARE_int32(leader_lease_duration_ms);
+DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
@@ -76,6 +77,8 @@ class ReplicaState;
 struct ElectionResult;
 
 typedef std::function<void()> LostLeadershipListener;
+
+constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
 class RaftConsensus : public Consensus,
                       public PeerMessageQueueObserver {
@@ -194,13 +197,15 @@ class RaftConsensus : public Consensus,
   // Updates the committed_index and triggers the Apply()s for whatever
   // operations were pending.
   // This is idempotent.
-  void UpdateMajorityReplicated(const OpId& majority_replicated,
-                                MonoTime majority_replicated_leader_lease_expiration,
+  void UpdateMajorityReplicated(const MajorityReplicatedData& data,
                                 OpId* committed_index) override;
 
   void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
                                        OpId *committed_index) {
-    UpdateMajorityReplicated(majority_replicated, MonoTime::kMin, committed_index);
+    UpdateMajorityReplicated({ majority_replicated,
+                               MonoTime::kMin,
+                               HybridTime::kMin.GetPhysicalValueMicros() },
+                             committed_index);
   }
 
   virtual void NotifyTermChange(int64_t term) override;
@@ -525,10 +530,8 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS WaitWritesUnlocked(const LeaderRequest& deduped_req,
                                     Synchronizer* log_synchronizer);
 
-  // Rollback the id gen. so that we reuse these ids later, when we can actually append to the
-  // state machine. This makes the state machine have continuous ids for the same term, even if
-  // the queue refused to add any more operations.
-  void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg);
+  // See comment for ReplicaState::CancelPendingOperation
+  void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
 
   // Threadpool for constructing requests to peers, handling RPC callbacks,
   // etc.

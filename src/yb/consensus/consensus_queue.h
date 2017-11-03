@@ -40,15 +40,21 @@
 #include <utility>
 #include <vector>
 
+#include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/ref_counted_replicate.h"
+
+#include "yb/server/clock.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
-#include "yb/common/entity_ids.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -65,6 +71,7 @@ class AsyncLogReader;
 
 namespace consensus {
 class PeerMessageQueueObserver;
+struct MajorityReplicatedData;
 
 // The id for the server-wide consensus queue MemTracker.
 extern const char kConsensusQueueParentTrackerId[];
@@ -132,6 +139,12 @@ class PeerMessageQueue {
     // (last_leader_lease_expiration_sent_to_follower) when we receive the follower's response.
     MonoTime last_leader_lease_expiration_received_by_follower;
 
+    MicrosTime last_ht_lease_expiration_sent_to_follower =
+        HybridTime::kMin.GetPhysicalValueMicros();
+
+    MicrosTime last_ht_lease_expiration_received_by_follower =
+        HybridTime::kMin.GetPhysicalValueMicros();
+
     // Whether the follower was detected to need remote bootstrap.
     bool needs_remote_bootstrap = false;
 
@@ -148,7 +161,8 @@ class PeerMessageQueue {
   PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_entity,
                    const scoped_refptr<log::Log>& log,
                    const RaftPeerPB& local_peer_pb,
-                   const std::string& tablet_id);
+                   const std::string& tablet_id,
+                   const server::ClockPtr& clock);
 
   // Initialize the queue.
   virtual void Init(const OpId& last_locally_replicated);
@@ -186,7 +200,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
-  virtual CHECKED_STATUS AppendOperation(const ReplicateMsgPtr& msg);
+  CHECKED_STATUS AppendOperation(const ReplicateMsgPtr& msg);
 
   // Appends a vector of messages to be replicated to the peers.  Returns OK unless the message
   // could not be added to the queue for some reason (e.g. the queue reached max size). Calls
@@ -226,7 +240,7 @@ class PeerMessageQueue {
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
   // bootstrap, returns a non-OK status.  On success, also internally resets
   // peer->needs_remote_bootstrap to false.
-  virtual CHECKED_STATUS GetRemoteBootstrapRequestForPeer(
+  CHECKED_STATUS GetRemoteBootstrapRequestForPeer(
       const std::string& uuid,
       StartRemoteBootstrapRequestPB* req);
 
@@ -246,25 +260,25 @@ class PeerMessageQueue {
   virtual void Close();
 
   // Returns the last message replicated by all peers, for tests.
-  virtual OpId GetAllReplicatedIndexForTests() const;
+  OpId GetAllReplicatedIndexForTests() const;
 
-  virtual OpId GetCommittedIndexForTests() const;
+  OpId GetCommittedIndexForTests() const;
 
   // Returns the current majority replicated OpId, for tests.
-  virtual OpId GetMajorityReplicatedOpIdForTests() const;
+  OpId GetMajorityReplicatedOpIdForTests() const;
 
   // Returns a copy of the TrackedPeer with 'uuid' or crashes if the peer is not being tracked.
-  virtual TrackedPeer GetTrackedPeerForTests(std::string uuid);
+  TrackedPeer GetTrackedPeerForTests(std::string uuid);
 
-  virtual std::string ToString() const;
+  std::string ToString() const;
 
-  virtual void DumpToHtml(std::ostream& out) const;
+  void DumpToHtml(std::ostream& out) const;
 
-  virtual void RegisterObserver(PeerMessageQueueObserver* observer);
+  void RegisterObserver(PeerMessageQueueObserver* observer);
 
-  virtual CHECKED_STATUS UnRegisterObserver(PeerMessageQueueObserver* observer);
+  CHECKED_STATUS UnRegisterObserver(PeerMessageQueueObserver* observer);
 
-  virtual bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
+  bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
   struct Metrics {
     // Keeps track of the number of ops. that are completed by a majority but still need
@@ -347,13 +361,9 @@ class PeerMessageQueue {
   // If the log cache returns some error other than NotFound, crashes with a fatal error.
   bool IsOpInLog(const OpId& desired_op) const;
 
-  void NotifyObserversOfMajorityReplOpChange(
-      OpId new_majority_replicated_op,
-      MonoTime majority_replicated_leader_lease_expiration);
+  void NotifyObserversOfMajorityReplOpChange(const MajorityReplicatedData& data);
 
-  void NotifyObserversOfMajorityReplOpChangeTask(
-      OpId new_majority_replicated_op,
-      MonoTime majority_replicated_leader_lease_expiration);
+  void NotifyObserversOfMajorityReplOpChangeTask(const MajorityReplicatedData& data);
 
   void NotifyObserversOfTermChange(int64_t term);
   void NotifyObserversOfTermChangeTask(int64_t term);
@@ -392,15 +402,18 @@ class PeerMessageQueue {
                                const StatusCallback& callback,
                                const Status& status);
 
-  // Advances 'watermark' to the smallest op id that 'num_peers_required' have.
-  void AdvanceQueueWatermark(const char* type,
-                             OpId* watermark,
-                             const OpId& replicated_before,
-                             const OpId& replicated_after,
-                             int num_peers_required,
-                             const TrackedPeer* who_caused);
+  // Updates op id replicated on each node.
+  void UpdateAllReplicatedOpId(OpId* result);
+
+  // Policy is responsible for tuning of watermark calculation.
+  // I.e. simple leader lease or hybrid time leader lease etc.
+  // It should provide result type and a function for extracting a value from a peer.
+  template <class Policy>
+  typename Policy::result_type GetWatermark();
 
   MonoTime LeaderLeaseExpirationWatermark();
+  MicrosTime HybridTimeLeaseExpirationWatermark();
+  OpId OpIdWatermark();
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
@@ -429,6 +442,8 @@ class PeerMessageQueue {
   LogCache log_cache_;
 
   Metrics metrics_;
+
+  server::ClockPtr clock_;
 };
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode) {
@@ -438,6 +453,12 @@ inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode)
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::State state) {
   return out << PeerMessageQueue::StateToStr(state);
 }
+
+struct MajorityReplicatedData {
+  OpId op_id;
+  MonoTime leader_lease_expiration;
+  MicrosTime ht_lease_expiration;
+};
 
 // The interface between RaftConsensus and the PeerMessageQueue.
 class PeerMessageQueueObserver {
@@ -450,8 +471,7 @@ class PeerMessageQueueObserver {
   //
   // The implementation is idempotent, i.e. independently of the ordering of calls to this method
   // only non-triggered applys will be started.
-  virtual void UpdateMajorityReplicated(const OpId& majority_replicated,
-                                        MonoTime majority_replicated_leader_lease_expiration,
+  virtual void UpdateMajorityReplicated(const MajorityReplicatedData& data,
                                         OpId* committed_index) = 0;
 
   // Notify the Consensus implementation that a follower replied with a term higher than that

@@ -461,10 +461,10 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
 
 void ReplicaState::DumpPendingOperationsUnlocked() {
   DCHECK(update_lock_.is_locked());
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_txns_.size()
+  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_operations_.size()
                                  << " pending operations.";
-  for (const auto &txn : pending_txns_) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << txn.second->replicate_msg()->ShortDebugString();
+  for (const auto &operation : pending_operations_) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << operation.second->replicate_msg()->ShortDebugString();
   }
 }
 
@@ -475,17 +475,17 @@ Status ReplicaState::CancelPendingOperations() {
     if (state_ != kShuttingDown) {
       return STATUS(IllegalState, "Can only wait for pending commits on kShuttingDown state.");
     }
-    if (pending_txns_.empty()) {
+    if (pending_operations_.empty()) {
       return Status::OK();
     }
 
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_txns_.size()
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_operations_.size()
                                    << " pending operations.";
-    for (const auto& txn : pending_txns_) {
-      const scoped_refptr<ConsensusRound>& round = txn.second;
+    for (const auto& operation : pending_operations_) {
+      const scoped_refptr<ConsensusRound>& round = operation.second;
       // We cancel only operations whose applies have not yet been triggered.
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting operation as it isn't in flight: "
-                                     << txn.second->replicate_msg()->ShortDebugString();
+                                     << operation.second->replicate_msg()->ShortDebugString();
       round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted"));
     }
   }
@@ -500,11 +500,11 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   DCHECK_GE(new_preceding_idx, 0);
   OpId new_preceding;
 
-  auto iter = pending_txns_.lower_bound(new_preceding_idx);
+  auto iter = pending_operations_.lower_bound(new_preceding_idx);
 
   // Either the new preceding id is in the pendings set or it must be equal to the
   // committed index since we can't truncate already committed operations.
-  if (iter != pending_txns_.end() && (*iter).first == new_preceding_idx) {
+  if (iter != pending_operations_.end() && (*iter).first == new_preceding_idx) {
     new_preceding = (*iter).second->replicate_msg()->id();
     ++iter;
   } else {
@@ -518,13 +518,13 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   last_received_op_id_current_leader_ = last_received_op_id_;
   next_index_ = new_preceding.index() + 1;
 
-  for (; iter != pending_txns_.end();) {
+  for (; iter != pending_operations_.end();) {
     const scoped_refptr<ConsensusRound>& round = (*iter).second;
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting uncommitted operation due to leader change: "
                                    << round->replicate_msg()->id();
     round->NotifyReplicationFinished(STATUS(Aborted, "Operation aborted by new leader"));
     // Erase the entry from pendings.
-    pending_txns_.erase(iter++);
+    pending_operations_.erase(iter++);
   }
 
   return Status::OK();
@@ -532,17 +532,36 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
 
 Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& round) {
   DCHECK(update_lock_.is_locked());
+
+  auto op_type = round->replicate_msg()->op_type();
   if (PREDICT_FALSE(state_ != kRunning)) {
     // Special case when we're configuring and this is a config change, refuse
     // everything else.
     // TODO: Don't require a NO_OP to get to kRunning state
-    if (round->replicate_msg()->op_type() != NO_OP) {
+    if (op_type != NO_OP) {
       return STATUS(IllegalState, "Cannot trigger prepare. Replica is not in kRunning state.");
     }
   }
 
+  // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
+  // NO_OP - because even empty heartbeat messages could be used to obtain the lease.
+  // CHANGE_CONFIG_OP - because we should be able to update consensus even w/o lease.
+  // Both of them are safe, since they don't affect user reads or writes.
+  if (GetActiveRoleUnlocked() == RaftPeerPB::LEADER &&
+      op_type != NO_OP &&
+      op_type != CHANGE_CONFIG_OP) {
+    auto lease_status = GetHybridTimeLeaseStatusAtUnlocked(
+        HybridTime(round->replicate_msg()->hybrid_time()).GetPhysicalValueMicros());
+    static_assert(LeaderLeaseStatus_ARRAYSIZE == 3, "Please update logic below to adapt new state");
+    if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
+      return STATUS_FORMAT(LeaderHasNoLease,
+                           "Old leader may have hybrid time lease, while adding: $0",
+                           OperationType_Name(op_type));
+    }
+  }
+
   // Mark pending configuration.
-  if (PREDICT_FALSE(round->replicate_msg()->op_type() == CHANGE_CONFIG_OP)) {
+  if (PREDICT_FALSE(op_type == CHANGE_CONFIG_OP)) {
     DCHECK(round->replicate_msg()->change_config_record().has_old_config());
     DCHECK(round->replicate_msg()->change_config_record().old_config().has_opid_index());
     DCHECK(round->replicate_msg()->change_config_record().has_new_config());
@@ -575,13 +594,13 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     }
   }
 
-  InsertOrDie(&pending_txns_, round->replicate_msg()->id().index(), round);
+  InsertOrDie(&pending_operations_, round->replicate_msg()->id().index(), round);
   return Status::OK();
 }
 
 scoped_refptr<ConsensusRound> ReplicaState::GetPendingOpByIndexOrNullUnlocked(int64_t index) {
   DCHECK(update_lock_.is_locked());
-  return FindPtrOrNull(pending_txns_, index);
+  return FindPtrOrNull(pending_operations_, index);
 }
 
 Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
@@ -650,8 +669,9 @@ Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
         committed_index);
   }
 
-  if (!pending_txns_.empty() && committed_index.index() >= pending_txns_.begin()->first) {
-    auto status = ApplyPendingOperationsUnlocked(pending_txns_.begin(), committed_index);
+  if (!pending_operations_.empty() &&
+      committed_index.index() >= pending_operations_.begin()->first) {
+    auto status = ApplyPendingOperationsUnlocked(pending_operations_.begin(), committed_index);
     if (!status.ok()) {
       return status;
     }
@@ -664,15 +684,15 @@ Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
 
 Status ReplicaState::CheckOperationExist(const OpId& committed_index,
                                          IndexToRoundMap::iterator* end_iter) {
-  auto prev = pending_txns_.upper_bound(committed_index.index());
-  if (prev == pending_txns_.begin()) {
+  auto prev = pending_operations_.upper_bound(committed_index.index());
+  if (prev == pending_operations_.begin()) {
     return STATUS_FORMAT(
         NotFound,
         "No pending entries before committed index: $0 => $1, stack: $2, pending: $3",
         last_committed_index_,
         committed_index,
         GetStackTrace(),
-        pending_txns_);
+        pending_operations_);
   }
   *end_iter = prev;
   --prev;
@@ -683,7 +703,7 @@ Status ReplicaState::CheckOperationExist(const OpId& committed_index,
         last_committed_index_,
         committed_index,
         GetStackTrace(),
-        pending_txns_);
+        pending_operations_);
   }
   return Status::OK();
 }
@@ -705,7 +725,7 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
     return Status::OK();
   }
 
-  if (pending_txns_.empty()) {
+  if (pending_operations_.empty()) {
     VLOG_WITH_PREFIX_UNLOCKED(1) << "No operations to mark as committed up to: "
                                  << committed_index.ShortDebugString();
     return STATUS_SUBSTITUTE(
@@ -718,8 +738,8 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   }
 
   // Start at the operation after the last committed one.
-  auto iter = pending_txns_.upper_bound(last_committed_index_.index());
-  CHECK(iter != pending_txns_.end());
+  auto iter = pending_operations_.upper_bound(last_committed_index_.index());
+  CHECK(iter != pending_operations_.end());
 
   auto status = ApplyPendingOperationsUnlocked(iter, committed_index);
   if (!status.ok()) {
@@ -760,7 +780,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
       CHECK_OK(CheckOpInSequence(prev_id, current_id));
     }
 
-    pending_txns_.erase(iter++);
+    pending_operations_.erase(iter++);
     // Set committed configuration.
     if (PREDICT_FALSE(round->replicate_msg()->op_type() == CHANGE_CONFIG_OP)) {
       DCHECK(round->replicate_msg()->change_config_record().has_old_config());
@@ -850,8 +870,8 @@ const OpId& ReplicaState::GetLastReceivedOpIdCurLeaderUnlocked() const {
 
 OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
   DCHECK(update_lock_.is_locked());
-  return pending_txns_.empty()
-      ? MinimumOpId() : (--pending_txns_.end())->second->id();
+  return pending_operations_.empty()
+      ? MinimumOpId() : (--pending_operations_.end())->second->id();
 }
 
 void ReplicaState::NewIdUnlocked(OpId* id) {
@@ -860,7 +880,7 @@ void ReplicaState::NewIdUnlocked(OpId* id) {
   id->set_index(next_index_++);
 }
 
-void ReplicaState::CancelPendingOperation(const OpId& id) {
+void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
   OpId previous = id;
   previous.set_index(previous.index() - 1);
   DCHECK(update_lock_.is_locked());
@@ -875,8 +895,12 @@ void ReplicaState::CancelPendingOperation(const OpId& id) {
   // This is only ok if we do _not_ release the lock after calling
   // NewIdUnlocked() (which we don't in RaftConsensus::Replicate()).
   last_received_op_id_ = previous;
-  scoped_refptr<ConsensusRound> round = EraseKeyReturnValuePtr(&pending_txns_, id.index());
-  DCHECK(round);
+  auto round = EraseKeyReturnValuePtr(&pending_operations_, id.index());
+  if (should_exist) {
+    DCHECK(round);
+  } else {
+    DCHECK(!round);
+  }
 }
 
 string ReplicaState::LogPrefix() {
@@ -943,23 +967,25 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
   return Status::OK();
 }
 
-void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(MonoDelta lease_duration) {
-  old_leader_lease_expiration_.MakeAtLeast(MonoTime::FineNow() + lease_duration);
+void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
+    MonoDelta lease_duration,
+    MicrosTime ht_lease_expiration) {
+  // Update both leader leases, i.e. regular and hybrid time.
+  UpdateOldLeaderLeaseExpirationUnlocked(MonoTime::FineNow() + lease_duration, ht_lease_expiration);
 }
 
-void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(MonoTime lease_expiration) {
+void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
+    MonoTime lease_expiration,
+    MicrosTime ht_lease_expiration) {
   old_leader_lease_expiration_.MakeAtLeast(lease_expiration);
+  old_leader_ht_lease_expiration_ = std::max(ht_lease_expiration, old_leader_ht_lease_expiration_);
 }
 
-LeaderLeaseStatus ReplicaState::GetLeaderLeaseStatusUnlocked(
-    MonoDelta* remaining_old_leader_lease) const {
+template <class Policy>
+LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
   DCHECK_EQ(GetActiveRoleUnlocked(), RaftPeerPB_Role_LEADER);
 
-  if (remaining_old_leader_lease) {
-    *remaining_old_leader_lease = MonoDelta();
-  }
-
-  if (!FLAGS_use_leader_leases) {
+  if (!policy.Enabled()) {
     return LeaderLeaseStatus::HAS_LEASE;
   }
 
@@ -969,51 +995,115 @@ LeaderLeaseStatus ReplicaState::GetLeaderLeaseStatusUnlocked(
     return LeaderLeaseStatus::HAS_LEASE;
   }
 
-  // We will query the current time at most once in this function, and only if necessary.
+  if (!policy.OldLeaderLeaseExpired()) {
+    return LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE;
+  }
+
+  if (policy.MajorityReplicatedLeaseExpired()) {
+    return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  }
+
+  return LeaderLeaseStatus::HAS_LEASE;
+}
+
+struct GetLeaderLeaseStatusPolicy {
+  const ReplicaState* replica_state;
+  MonoDelta* remaining_old_leader_lease;
   MonoTime now;
 
-  if (old_leader_lease_expiration_) {
-    const auto remaining_old_leader_lease_duration = RemainingOldLeaderLeaseDuration(&now);
+  explicit GetLeaderLeaseStatusPolicy(
+      const ReplicaState* replica_state_, MonoDelta* remaining_old_leader_lease_)
+      : replica_state(replica_state_), remaining_old_leader_lease(remaining_old_leader_lease_) {
+    if (remaining_old_leader_lease) {
+      *remaining_old_leader_lease = MonoDelta();
+    }
+  }
+
+  bool OldLeaderLeaseExpired() {
+    const auto remaining_old_leader_lease_duration =
+        replica_state->RemainingOldLeaderLeaseDuration(&now);
     if (remaining_old_leader_lease_duration) {
       if (remaining_old_leader_lease) {
         *remaining_old_leader_lease = remaining_old_leader_lease_duration;
       }
-      return LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE;
+      return false;
     }
+    return true;
   }
 
+  bool MajorityReplicatedLeaseExpired() {
+    return replica_state->MajorityReplicatedLeaderLeaseExpired(&now);
+  }
+
+  bool Enabled() {
+    return FLAGS_use_leader_leases;
+  }
+};
+
+bool ReplicaState::MajorityReplicatedLeaderLeaseExpired(MonoTime* now) const {
   if (!majority_replicated_lease_expiration_) {
-    return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+    return true;
   }
 
-  if (!now) {
-    now = MonoTime::FineNow();
+  if (!*now) {
+    *now = MonoTime::FineNow();
   }
 
-  if (now >= majority_replicated_lease_expiration_) {
-    return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
-  } else {
-    return LeaderLeaseStatus::HAS_LEASE;
+  return *now >= majority_replicated_lease_expiration_;
+}
+
+LeaderLeaseStatus ReplicaState::GetLeaderLeaseStatusUnlocked(
+    MonoDelta* remaining_old_leader_lease) const {
+  return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(this, remaining_old_leader_lease));
+}
+
+bool ReplicaState::MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const {
+  return hybrid_time >= majority_replicated_ht_lease_expiration_;
+}
+
+struct GetHybridTimeLeaseStatusAtPolicy {
+  const ReplicaState* replica_state;
+  MicrosTime micros_time;
+
+  GetHybridTimeLeaseStatusAtPolicy(const ReplicaState* rs, MicrosTime ht)
+      : replica_state(rs), micros_time(ht) {}
+
+  bool OldLeaderLeaseExpired() {
+    return micros_time > replica_state->old_leader_ht_lease_expiration();
   }
+
+  bool MajorityReplicatedLeaseExpired() {
+    return replica_state->MajorityReplicatedHybridTimeLeaseExpiredAt(micros_time);
+  }
+
+  bool Enabled() {
+    return FLAGS_use_leader_leases && FLAGS_ht_lease_duration_ms != 0;
+  }
+};
+
+LeaderLeaseStatus ReplicaState::GetHybridTimeLeaseStatusAtUnlocked(
+    MicrosTime micros_time) const {
+  return GetLeaseStatusUnlocked(GetHybridTimeLeaseStatusAtPolicy(this, micros_time));
 }
 
 MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
-  MonoTime now_local;
-  if (!now) {
-    now = &now_local;
-  }
-  *now = MonoTime::FineNow();
-
+  MonoDelta result;
   if (old_leader_lease_expiration_) {
+    MonoTime now_local;
+    if (!now) {
+      now = &now_local;
+    }
+    *now = MonoTime::FineNow();
+
     if (*now > old_leader_lease_expiration_) {
       // Reset the old leader lease expiration time so that we don't have to check it anymore.
       old_leader_lease_expiration_ = MonoTime::kMin;
-      return MonoDelta();
     } else {
-      return old_leader_lease_expiration_.GetDeltaSince(*now);
+      result = old_leader_lease_expiration_.GetDeltaSince(*now);
     }
   }
-  return MonoDelta();
+
+  return result;
 }
 
 }  // namespace consensus

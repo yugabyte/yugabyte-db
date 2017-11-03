@@ -68,6 +68,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(flush_threshold_mb);
 DECLARE_bool(use_hybrid_clock);
+DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
@@ -111,6 +112,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
     FLAGS_use_hybrid_clock = false;
+    FLAGS_ht_lease_duration_ms = 0;
     ANNOTATE_BENIGN_RACE(&FLAGS_flush_threshold_mb,
                          "safe to change at runtime");
     ANNOTATE_BENIGN_RACE(&FLAGS_enable_maintenance_manager,

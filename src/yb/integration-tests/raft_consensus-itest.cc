@@ -68,6 +68,7 @@ DEFINE_int64(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
+DECLARE_int32(ht_lease_duration_ms);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(operation_memory_pressure_rejections);

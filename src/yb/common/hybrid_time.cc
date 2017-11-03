@@ -58,7 +58,7 @@ void HybridTime::AppendAsUint64To(std::string* dst) const {
 }
 
 string HybridTime::ToString() const {
-  return strings::Substitute("$0", v);
+  return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), GetLogicalValue());
 }
 
 string HybridTime::ToDebugString() const {

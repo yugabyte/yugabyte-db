@@ -131,11 +131,13 @@ PeerMessageQueue::Metrics::Metrics(const scoped_refptr<MetricEntity>& metric_ent
 PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_entity,
                                    const scoped_refptr<log::Log>& log,
                                    const RaftPeerPB& local_peer_pb,
-                                   const string& tablet_id)
+                                   const string& tablet_id,
+                                   const server::ClockPtr& clock)
     : local_peer_pb_(local_peer_pb),
       tablet_id_(tablet_id),
       log_cache_(metric_entity, log, local_peer_pb.permanent_uuid(), tablet_id),
-      metrics_(metric_entity) {
+      metrics_(metric_entity),
+      clock_(clock) {
   DCHECK(local_peer_pb_.has_permanent_uuid());
   DCHECK(local_peer_pb_.has_last_known_addr());
   CHECK_OK(ThreadPoolBuilder("queue-observers-pool").set_min_threads(1)
@@ -315,9 +317,13 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     if (FLAGS_use_leader_leases) {
+      auto ht_lease_expiration_micros = clock_->Now().GetPhysicalValueMicros() +
+                                        FLAGS_ht_lease_duration_ms * 1000;
       request->set_leader_lease_duration_ms(FLAGS_leader_lease_duration_ms);
+      request->set_ht_lease_expiration(ht_lease_expiration_micros);
       peer->last_leader_lease_expiration_sent_to_follower =
           MonoTime::FineNow() + MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms);
+      peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
     }
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
@@ -453,100 +459,149 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   return Status::OK();
 }
 
-void PeerMessageQueue::AdvanceQueueWatermark(const char* type,
-                                             OpId* watermark,
-                                             const OpId& replicated_before,
-                                             const OpId& replicated_after,
-                                             int num_peers_required,
-                                             const TrackedPeer* peer) {
+void PeerMessageQueue::UpdateAllReplicatedOpId(OpId* result) {
+  OpId new_op_id = MaximumOpId();
 
-  if (VLOG_IS_ON(2)) {
-    VLOG_WITH_PREFIX_UNLOCKED(2) << "Updating " << type << " watermark: "
-        << "Peer (" << peer->ToString() << ") changed from "
-        << replicated_before << " to " << replicated_after << ". "
-        << "Current value: " << watermark->ShortDebugString();
-  }
-
-  // Go through the peer's watermarks, we want the highest watermark that
-  // 'num_peers_required' of peers has replicated. To find this we do the
-  // following:
-  // - Store all the peer's 'last_received' in a vector
-  // - Sort the vector
-  // - Find the vector.size() - 'num_peers_required' position, this
-  //   will be the new 'watermark'.
-  vector<const OpId*> watermarks;
-  for (const PeersMap::value_type& peer : peers_map_) {
-    if (peer.second->is_last_exchange_successful) {
-      watermarks.push_back(&peer.second->last_received);
+  for (const auto& peer : peers_map_) {
+    if (!peer.second->is_last_exchange_successful) {
+      return;
+    }
+    if (peer.second->last_received.index() < new_op_id.index()) {
+      new_op_id = peer.second->last_received;
     }
   }
 
-  // If we haven't enough peers to calculate the watermark return.
-  if (watermarks.size() < num_peers_required) {
-    return;
-  }
-
-  std::sort(watermarks.begin(), watermarks.end(), OpIdIndexLessThanPtrFunctor());
-
-  OpId new_watermark = *watermarks[watermarks.size() - num_peers_required];
-  OpId old_watermark = *watermark;
-  watermark->CopyFrom(new_watermark);
-
-  VLOG_WITH_PREFIX_UNLOCKED(1) << "Updated " << type << " watermark "
-      << "from " << old_watermark << " to " << new_watermark;
-  if (VLOG_IS_ON(3)) {
-    VLOG_WITH_PREFIX_UNLOCKED(3) << "Peers: ";
-    for (const PeersMap::value_type& peer : peers_map_) {
-      VLOG_WITH_PREFIX_UNLOCKED(3) << "Peer: " << peer.second->ToString();
-    }
-    VLOG_WITH_PREFIX_UNLOCKED(3) << "Sorted watermarks:";
-    for (const OpId* watermark : watermarks) {
-      VLOG_WITH_PREFIX_UNLOCKED(3) << "Watermark: " << watermark->ShortDebugString();
-    }
-  }
+  CHECK_NE(MaximumOpId().index(), new_op_id.index());
+  *result = new_op_id;
 }
 
-MonoTime PeerMessageQueue::LeaderLeaseExpirationWatermark() {
+template <class Policy>
+typename Policy::result_type PeerMessageQueue::GetWatermark() {
   DCHECK(queue_lock_.is_locked());
   const int num_peers_required = queue_state_.majority_size_;
   if (num_peers_required == kUninitializedMajoritySize) {
     // We don't even know the quorum majority size yet.
-    return MonoTime();
+    return Policy::Min();
   }
   CHECK_GE(num_peers_required, 0);
-  constexpr int kMaxPracticalReplicationFactor = 5;
-  boost::container::small_vector<MonoTime, kMaxPracticalReplicationFactor> watermarks;
-  const int num_peers = peers_map_.size();
+
+  const size_t num_peers = peers_map_.size();
   if (num_peers < num_peers_required) {
-    return MonoTime();
+    return Policy::Min();
   }
-  watermarks.reserve(num_peers);
+
+  if (num_peers_required == 1) {
+    // We give "infinite lease" to ourselves.
+    return Policy::Max();
+  }
+
+  constexpr size_t kMaxPracticalReplicationFactor = 5;
+  boost::container::small_vector<
+      typename Policy::result_type, kMaxPracticalReplicationFactor> watermarks;
+  watermarks.reserve(num_peers - 1);
   for (const PeersMap::value_type &peer_map_entry : peers_map_) {
     const TrackedPeer &peer = *peer_map_entry.second;
     if (peer.uuid == local_peer_pb_.permanent_uuid()) {
-      // For the purpose of watermark tracking we can assume we've replicated an infinite lease to
-      // ourselves. As long as there is at least one more peer, and num_peers_required is the
-      // majority (i.e. it is at least 2), we won't return this to the caller.
-      watermarks.push_back(MonoTime::kMax);
       continue;
     }
     if (peer.is_last_exchange_successful) {
-      MonoTime lease_exp = peer.last_leader_lease_expiration_received_by_follower;
-      watermarks.push_back(lease_exp.Initialized() ? lease_exp : MonoTime::kMin);
+      watermarks.push_back(Policy::ExtractValue(peer));
     }
   }
   VLOG(1) << "Leader lease expiration watermarks by peer: " << ::yb::ToString(watermarks)
           << ", num_peers_required=" << num_peers_required;
-  if (watermarks.size() < num_peers_required) {
+
+  // We always assume that local peer has most recent information.
+  const size_t num_responsive_peers = watermarks.size() + 1;
+
+  if (num_responsive_peers < num_peers_required) {
     // There are not enough peers with which the last message exchange was successful.
-    return MonoTime();
+    return Policy::Min();
   }
 
-  const int index_of_interest = watermarks.size() - num_peers_required;
-  std::partial_sort(watermarks.begin(),
-                    watermarks.begin() + (index_of_interest + 1),
-                    watermarks.end());
-  return watermarks[index_of_interest];
+  // For example:
+  // If there are 5 peers (and num_peers_required is 3), and we have successfully replicated
+  // something to 3 of them and 4th is our local peer, then we're interested in the value at
+  // index 4 - 3 = 1 of the four-value watermarks vector. Values at indexes 2 and 3 are both
+  // greater than or equal to this, and this is the maximum value successfully replicated to
+  // 3 servers.
+  const size_t index_of_interest = num_responsive_peers - num_peers_required;
+  DCHECK_LT(index_of_interest, watermarks.size());
+
+  auto nth = watermarks.begin() + index_of_interest;
+  std::nth_element(watermarks.begin(), nth, watermarks.end(), typename Policy::Comparator());
+  return *nth;
+}
+
+MonoTime PeerMessageQueue::LeaderLeaseExpirationWatermark() {
+  struct Policy {
+    typedef MonoTime result_type;
+    // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
+    __attribute__((unused)) typedef std::less<result_type> Comparator;
+
+    static result_type Min() {
+      return result_type::kMin;
+    }
+
+    static result_type Max() {
+      return result_type::kMax;
+    }
+
+    static result_type ExtractValue(const TrackedPeer& peer) {
+      MonoTime lease_exp = peer.last_leader_lease_expiration_received_by_follower;
+      return lease_exp.Initialized() ? lease_exp : MonoTime::kMin;
+    }
+  };
+
+  return GetWatermark<Policy>();
+}
+
+MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
+  struct Policy {
+    typedef MicrosTime result_type;
+    // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
+    __attribute__((unused)) typedef std::less<result_type> Comparator;
+
+    static result_type Min() {
+      return HybridTime::kMin.GetPhysicalValueMicros();
+    }
+
+    static result_type Max() {
+      return HybridTime::kMax.GetPhysicalValueMicros();
+    }
+
+    static result_type ExtractValue(const TrackedPeer& peer) {
+      return peer.last_ht_lease_expiration_received_by_follower;
+    }
+  };
+
+  return GetWatermark<Policy>();
+}
+
+OpId PeerMessageQueue::OpIdWatermark() {
+  struct Policy {
+    typedef OpId result_type;
+
+    static result_type Min() {
+      return MinimumOpId();
+    }
+
+    static result_type Max() {
+      return MaximumOpId();
+    }
+
+    static result_type ExtractValue(const TrackedPeer& peer) {
+      return peer.last_received;
+    }
+
+    struct Comparator {
+      bool operator()(const OpId& lhs, const OpId& rhs) {
+        return lhs.index() < rhs.index();
+      }
+    };
+  };
+
+  return GetWatermark<Policy>();
 }
 
 void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& peer_uuid) {
@@ -562,9 +617,8 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   DCHECK(response.IsInitialized()) << "Error: Uninitialized: "
       << response.InitializationErrorString() << ". Response: " << response.ShortDebugString();
 
-  OpId updated_majority_replicated_opid;
+  MajorityReplicatedData majority_replicated;
   Mode mode_copy;
-  MonoTime majority_replicated_leader_lease_expiration;
   {
     LockGuard scoped_lock(queue_lock_);
     DCHECK_NE(State::kQueueConstructed, queue_state_.state);
@@ -712,29 +766,28 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     mode_copy = queue_state_.mode;
     if (mode_copy == Mode::LEADER) {
-      // Advance the majority replicated index.
-      AdvanceQueueWatermark("majority_replicated",
-                            &queue_state_.majority_replicated_opid,
-                            previous.last_received,
-                            peer->last_received,
-                            queue_state_.majority_size_,
-                            peer);
-
-      updated_majority_replicated_opid = queue_state_.majority_replicated_opid;
+      auto new_majority_replicated_opid = OpIdWatermark();
+      if (!OpIdEquals(new_majority_replicated_opid, MinimumOpId())) {
+        if (new_majority_replicated_opid.index() == MaximumOpId().index()) {
+          queue_state_.majority_replicated_opid = queue_state_.last_appended;
+        } else {
+          queue_state_.majority_replicated_opid = new_majority_replicated_opid;
+        }
+      }
+      majority_replicated.op_id = queue_state_.majority_replicated_opid;
 
       peer->last_leader_lease_expiration_received_by_follower =
           peer->last_leader_lease_expiration_sent_to_follower;
 
-      majority_replicated_leader_lease_expiration = LeaderLeaseExpirationWatermark();
+      peer->last_ht_lease_expiration_received_by_follower =
+          peer->last_ht_lease_expiration_sent_to_follower;
+
+      majority_replicated.leader_lease_expiration = LeaderLeaseExpirationWatermark();
+
+      majority_replicated.ht_lease_expiration = HybridTimeLeaseExpirationWatermark();
     }
 
-    // Advance the all replicated index.
-    AdvanceQueueWatermark("all_replicated",
-                          &queue_state_.all_replicated_opid,
-                          previous.last_received,
-                          peer->last_received,
-                          peers_map_.size(),
-                          peer);
+    UpdateAllReplicatedOpId(&queue_state_.all_replicated_opid);
 
     log_cache_.EvictThroughOp(queue_state_.all_replicated_opid.index());
 
@@ -742,8 +795,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   }
 
   if (mode_copy == Mode::LEADER) {
-    NotifyObserversOfMajorityReplOpChange(updated_majority_replicated_opid,
-                                          majority_replicated_leader_lease_expiration);
+    NotifyObserversOfMajorityReplOpChange(majority_replicated);
   }
 }
 
@@ -874,14 +926,13 @@ bool PeerMessageQueue::IsOpInLog(const OpId& desired_op) const {
 }
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
-    const OpId new_majority_replicated_op,
-    const MonoTime majority_replicated_leader_lease_expiration) {
+    const MajorityReplicatedData& majority_replicated_data) {
   WARN_NOT_OK(observers_pool_->SubmitClosure(
       Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
-           Unretained(this), new_majority_replicated_op,
-           majority_replicated_leader_lease_expiration)),
-           LogPrefixUnlocked() + "Unable to notify RaftConsensus of "
-                                 "majority replicated op change.");
+           Unretained(this),
+           majority_replicated_data)),
+      LogPrefixUnlocked() + "Unable to notify RaftConsensus of "
+                           "majority replicated op change.");
 }
 
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
@@ -892,8 +943,7 @@ void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
 }
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
-    const OpId new_majority_replicated_op,
-    const MonoTime majority_replicated_leader_lease_expiration) {
+    const MajorityReplicatedData& majority_replicated_data) {
   std::vector<PeerMessageQueueObserver*> copy;
   {
     LockGuard lock(queue_lock_);
@@ -904,9 +954,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   // consensus at all, but that requires a bit more work.
   OpId new_committed_index;
   for (PeerMessageQueueObserver* observer : copy) {
-    observer->UpdateMajorityReplicated(new_majority_replicated_op,
-                                       majority_replicated_leader_lease_expiration,
-                                       &new_committed_index);
+    observer->UpdateMajorityReplicated(majority_replicated_data, &new_committed_index);
   }
 
   {

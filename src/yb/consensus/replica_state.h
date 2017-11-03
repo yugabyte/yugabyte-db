@@ -40,6 +40,7 @@
 #include <utility>
 #include <vector>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -309,8 +310,12 @@ class ReplicaState {
 
   // Used when, for some reason, an operation that failed before it could be considered
   // a part of the state machine. Basically restores the id gen to the state it was before
-  // generating 'id'.
-  void CancelPendingOperation(const OpId& id);
+  // generating 'id'. So that we reuse these ids later, when we can actually append to the
+  // state machine. This makes the state machine have continuous ids for the same term, even if
+  // the queue refused to add any more operations.
+  // should_exists indicates whether we expect that this operation is already added.
+  // Used for debugging purposes only.
+  void CancelPendingOperation(const OpId& id, bool should_exist);
 
   // Accessors for pending election op id. These must be called under a lock.
   const OpId& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
@@ -343,11 +348,15 @@ class ReplicaState {
 
   // Update the point in time we have to wait until before starting to act as a leader in case
   // we win an election.
-  void UpdateOldLeaderLeaseExpirationUnlocked(MonoDelta lease_duration);
-  void UpdateOldLeaderLeaseExpirationUnlocked(MonoTime lease_expiration);
+  void UpdateOldLeaderLeaseExpirationUnlocked(
+      MonoDelta lease_duration, MicrosTime ht_lease_expiration);
+  void UpdateOldLeaderLeaseExpirationUnlocked(
+      MonoTime lease_expiration, MicrosTime ht_lease_expiration);
 
-  void SetMajorityReplicatedLeaseExpirationUnlocked(MonoTime majority_replicated_lease_expiration) {
-    majority_replicated_lease_expiration_ = majority_replicated_lease_expiration;
+  void SetMajorityReplicatedLeaseExpirationUnlocked(
+      const MajorityReplicatedData& majority_replicated_data) {
+    majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
+    majority_replicated_ht_lease_expiration_ = majority_replicated_data.ht_lease_expiration;
   }
 
   // Checks two conditions:
@@ -356,15 +365,28 @@ class ReplicaState {
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(
       MonoDelta* remaining_old_leader_lease = nullptr) const;
 
+  LeaderLeaseStatus GetHybridTimeLeaseStatusAtUnlocked(MicrosTime micros_time) const;
+
   // Get the remaining duration of the old leader's lease. Optionally, return the current time in
   // the "now" output parameter. In case the old leader's lease has already expired or is not known,
   // returns an uninitialized MonoDelta value.
   MonoDelta RemainingOldLeaderLeaseDuration(MonoTime* now = nullptr) const;
 
+  MicrosTime old_leader_ht_lease_expiration() const {
+    return old_leader_ht_lease_expiration_;
+  }
+
   // A lock-free way to read role and term atomically.
   std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
 
+  bool MajorityReplicatedLeaderLeaseExpired(MonoTime* now = nullptr) const;
+
+  bool MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const;
+
  private:
+
+  template <class Policy>
+  LeaderLeaseStatus GetLeaseStatusUnlocked(Policy policy) const;
 
   // To maintain safety, we need to check that the committed entry is actually
   // present in our log (and as a result, is either already committed locally, which means there
@@ -405,7 +427,7 @@ class ReplicaState {
   // Index=>Round map that manages pending ops, i.e. operations for which we've
   // received a replicate message from the leader but have yet to be committed.
   // The key is the index of the replicate operation.
-  IndexToRoundMap pending_txns_;
+  IndexToRoundMap pending_operations_;
 
   // When we receive a message from a remote peer telling us to start a operation, we use
   // this factory to start it.
@@ -445,11 +467,17 @@ class ReplicaState {
   // deadline has passed, so that we avoid querying the clock unnecessarily from that point on.
   mutable MonoTime old_leader_lease_expiration_;
 
+  mutable MicrosTime old_leader_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
+
   // LEADER only: the latest committed lease expiration deadline for the current leader. The leader
   // is allowed to serve up-to-date reads and accept writes only while the current time is less than
   // this. However, the leader might manage to replicate a lease extension without losing its
   // leadership.
   MonoTime majority_replicated_lease_expiration_;
+
+  // LEADER only: the latest committed hybrid time lease expiration deadline for the current leader.
+  // The leader is allowed to add new log entries only when lease of old leader is expired.
+  MicrosTime majority_replicated_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
 };
 
 }  // namespace consensus

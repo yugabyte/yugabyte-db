@@ -23,6 +23,7 @@
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(use_mock_wall_clock);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
@@ -33,6 +34,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void SetUp() override {
     FLAGS_use_mock_wall_clock = true;
+    FLAGS_ht_lease_duration_ms = 0;
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
 
@@ -89,7 +91,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
       column->set_column_id(kFirstColumnId + 1);
       column->mutable_expr()->mutable_value()->set_int64_value(val);
       EXPECT_OK(session->Apply(ql_write));
-      EXPECT_EQ(ql_write->response().status(), QLResponsePB::YQL_STATUS_OK);
+      EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, ql_write->response().status());
     }
   }
 

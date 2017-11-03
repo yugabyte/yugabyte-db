@@ -157,7 +157,8 @@ class RaftConsensusQuorumTest : public YBTest {
       gscoped_ptr<PeerMessageQueue> queue(new PeerMessageQueue(metric_entity_,
                                                                logs_[i],
                                                                local_peer_pb,
-                                                               kTestTablet));
+                                                               kTestTablet,
+                                                               clock_));
 
       gscoped_ptr<ThreadPool> thread_pool;
       CHECK_OK(ThreadPoolBuilder(Substitute("$0-raft", options_.tablet_id.substr(0, 6)))

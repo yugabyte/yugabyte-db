@@ -174,6 +174,10 @@ class HybridTime {
 
   inline bool is_valid() const { return v != kInvalidHybridTimeValue; }
 
+  void MakeAtLeast(const HybridTime& rhs) {
+    v = std::max(v, rhs.v);
+  }
+
  private:
 
   HybridTimeRepr v;

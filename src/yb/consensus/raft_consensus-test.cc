@@ -80,8 +80,10 @@ typedef std::map<OpId, Status, OpIdCompareFunctor> StatusesMap;
 
 class MockQueue : public PeerMessageQueue {
  public:
-  explicit MockQueue(const scoped_refptr<MetricEntity>& metric_entity, log::Log* log)
-    : PeerMessageQueue(metric_entity, log, FakeRaftPeerPB(kLocalPeerUuid), kTestTablet) {}
+  explicit MockQueue(const scoped_refptr<MetricEntity>& metric_entity, log::Log* log,
+                     const server::ClockPtr& clock)
+      : PeerMessageQueue(metric_entity, log, FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock) {}
+
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
   MOCK_METHOD3(SetLeaderMode, void(const OpId& committed_opid,
                                    int64_t current_term,
@@ -219,7 +221,7 @@ class RaftConsensusTest : public YBTest {
                        NULL,
                        &log_));
 
-    queue_ = new MockQueue(metric_entity_, log_.get());
+    queue_ = new MockQueue(metric_entity_, log_.get(), clock_);
     peer_manager_ = new MockPeerManager;
     operation_factory_.reset(new MockOperationFactory);
 

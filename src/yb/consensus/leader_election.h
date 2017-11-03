@@ -38,6 +38,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/hybrid_time.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/callback.h"
@@ -116,7 +119,8 @@ struct ElectionResult {
  public:
   ElectionResult(ConsensusTerm election_term,
                  ElectionVote decision,
-                 MonoTime old_leader_lease_expiration);
+                 MonoTime old_leader_lease_expiration,
+                 MicrosTime old_leader_ht_lease_expiration);
 
   ElectionResult(ConsensusTerm election_term,
                  ElectionVote decision,
@@ -137,6 +141,8 @@ struct ElectionResult {
   const std::string message;
 
   const MonoTime old_leader_lease_expiration;
+
+  const MicrosTime old_leader_ht_lease_expiration;
 };
 
 // Driver class to run a leader election.
@@ -229,8 +235,7 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   Lock lock_;
 
   // The result returned by the ElectionDecisionCallback.
-  // NULL if not yet known.
-  gscoped_ptr<ElectionResult> result_;
+  boost::optional<ElectionResult> result_;
 
   // Whether we have responded via the callback yet.
   bool has_responded_;
@@ -255,6 +260,8 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   VoterStateMap voter_state_;
 
   MonoTime old_leader_lease_expiration_;
+
+  MicrosTime old_leader_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
 };
 
 } // namespace consensus

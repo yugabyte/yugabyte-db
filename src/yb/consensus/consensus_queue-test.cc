@@ -97,7 +97,8 @@ class ConsensusQueueTest : public YBTest {
     queue_.reset(new PeerMessageQueue(metric_entity_,
                                       log_.get(),
                                       FakeRaftPeerPB(kLeaderUuid),
-                                      kTestTablet));
+                                      kTestTablet,
+                                      clock_));
   }
 
   void TearDown() override {
@@ -269,7 +270,8 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     OpId* committed_index = page_size_estimator.mutable_committed_index();
     OpId* preceding_id = page_size_estimator.mutable_preceding_id();
     // The actual leader lease duration does not matter here, we just want it to be set.
-    page_size_estimator.set_leader_lease_duration_ms(2000);
+    page_size_estimator.set_leader_lease_duration_ms(kDefaultLeaderLeaseDurationMs);
+    page_size_estimator.set_ht_lease_expiration(1000);
     committed_index->CopyFrom(MinimumOpId());
     preceding_id->CopyFrom(MinimumOpId());
 

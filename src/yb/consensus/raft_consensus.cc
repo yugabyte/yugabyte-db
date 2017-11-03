@@ -164,11 +164,17 @@ DEFINE_bool(use_leader_leases, true,
             "Enables leader leases for guaranteed up-to-date reads in case of network "
             "partitions.");
 
-DEFINE_int32(leader_lease_duration_ms, 2000,
+DEFINE_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
              "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
              "lease of this duration has definitely expired on the old leader's side.");
+
+DEFINE_int32(ht_lease_duration_ms, 2000,
+             "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
+             "extending the existing one with every UpdateConsensus. A new server is not allowed "
+             "to add entries to RAFT log until a lease of the old leader is expired. 0 to disable."
+             );
 
 DEFINE_int32(min_leader_stepdown_retry_interval_ms,
              20 * 1000,
@@ -234,7 +240,8 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
   gscoped_ptr<PeerMessageQueue> queue(new PeerMessageQueue(metric_entity,
                                                            log,
                                                            local_peer_pb,
-                                                           options.tablet_id));
+                                                           options.tablet_id,
+                                                           clock));
 
   gscoped_ptr<ThreadPool> thread_pool;
   CHECK_OK(ThreadPoolBuilder(Substitute("$0-raft", options.tablet_id.substr(0, 6)))
@@ -933,9 +940,12 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
       // Iterate rounds in the reverse order and release ids. We add one to the iterator before
       // converting to a reverse iterator to get a reverse iterator staring with the current
       // element.
-      for (auto riter = std::reverse_iterator<decltype(iter)>(iter + 1);
-           riter != rounds.rbegin(); ++riter) {
-        RollbackIdAndDeleteOpId((*riter)->replicate_msg());
+      for (;;) {
+        RollbackIdAndDeleteOpId((**iter).replicate_msg(), false /* should_exists */);
+        if (iter == rounds.begin()) {
+          break;
+        }
+        --iter;
       }
       return s;
     }
@@ -952,7 +962,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
   // TODO: what are we doing about other errors here? Should we also release OpIds in those cases?
   if (PREDICT_FALSE(s.IsServiceUnavailable())) {
     for (auto iter = replicate_msgs.rbegin(); iter != replicate_msgs.rend(); ++iter) {
-      RollbackIdAndDeleteOpId(*iter);
+      RollbackIdAndDeleteOpId(*iter, true /* should_exists */);
       LOG_WITH_PREFIX_UNLOCKED(WARNING) << ": Could not append replicate request "
                    << "to the queue. Queue is Full. "
                    << "Queue metrics: " << queue_->ToString();
@@ -968,8 +978,7 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 }
 
 void RaftConsensus::UpdateMajorityReplicated(
-    const OpId& majority_replicated,
-    MonoTime majority_replicated_leader_lease_expiration,
+    const MajorityReplicatedData& majority_replicated_data,
     OpId* committed_index) {
   ReplicaState::UniqueLock lock;
   Status s = state_->LockForMajorityReplicatedIndexUpdate(&lock);
@@ -980,18 +989,18 @@ void RaftConsensus::UpdateMajorityReplicated(
     return;
   }
 
-  state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_leader_lease_expiration);
+  state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data);
   leader_lease_wait_cond_.Broadcast();
 
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking majority replicated up to "
-      << majority_replicated.ShortDebugString();
-  TRACE("Marking majority replicated up to $0", majority_replicated.ShortDebugString());
+      << majority_replicated_data.op_id.ShortDebugString();
+  TRACE("Marking majority replicated up to $0", majority_replicated_data.op_id.ShortDebugString());
   bool committed_index_changed = false;
-  s = state_->UpdateMajorityReplicatedUnlocked(majority_replicated, committed_index,
-                                               &committed_index_changed);
+  s = state_->UpdateMajorityReplicatedUnlocked(
+      majority_replicated_data.op_id, committed_index, &committed_index_changed);
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("Unable to mark committed up to $0: $1",
-                            majority_replicated.ShortDebugString(),
+                            majority_replicated_data.op_id.ShortDebugString(),
                             s.ToString());
     TRACE(msg);
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << msg;
@@ -1488,7 +1497,8 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     // a leader, it can wait out the time interval while the old leader might still be active.
     if (FLAGS_use_leader_leases && request->has_leader_lease_duration_ms()) {
       state_->UpdateOldLeaderLeaseExpirationUnlocked(
-          MonoDelta::FromMilliseconds(request->leader_lease_duration_ms()));
+          MonoDelta::FromMilliseconds(request->leader_lease_duration_ms()),
+          request->ht_lease_expiration());
     }
 
     // Also prohibit voting for anyone for the minimum election timeout.
@@ -1841,9 +1851,15 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // election.
   state_->ClearPendingElectionOpIdUnlocked();
 
-  MonoDelta remaining_old_leader_lease = state_->RemainingOldLeaderLeaseDuration();
+  auto remaining_old_leader_lease = state_->RemainingOldLeaderLeaseDuration();
   if (remaining_old_leader_lease.Initialized()) {
-    response->set_remaining_leader_lease_duration_ms(remaining_old_leader_lease.ToMilliseconds());
+    response->set_remaining_leader_lease_duration_ms(
+        remaining_old_leader_lease.ToMilliseconds());
+  }
+
+  auto old_leader_ht_lease_expiration = state_->old_leader_ht_lease_expiration();
+  if (old_leader_ht_lease_expiration != HybridTime::kMin.GetPhysicalValueMicros()) {
+    response->set_leader_ht_lease_expiration(old_leader_ht_lease_expiration);
   }
 
   // Passed all our checks. Vote granted.
@@ -1874,7 +1890,7 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
     return STATUS(IllegalState, Substitute("Leader is not ready for Config Change, can try again. "
                                            "Num peers in transit = $0. Type=$1. Has opid=$2.\n"
                                            "  Committed config: $3.\n  Pending config: $4.",
-                                           servers_in_transition, type,
+                                           servers_in_transition, ChangeConfigType_Name(type),
                                            active_config.has_opid_index(),
                                            state_->GetCommittedConfigUnlocked().ShortDebugString(),
                                            state_->IsConfigChangePendingUnlocked() ?
@@ -2400,7 +2416,15 @@ Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateMsgPtr& repli
 
   // Set as pending.
   RETURN_NOT_OK(RefreshConsensusQueueAndPeersUnlocked());
-  return AppendNewRoundToQueueUnlocked(round);
+  auto status = AppendNewRoundToQueueUnlocked(round);
+  if (!status.ok()) {
+    // We could just cancel pending config, because there is could be only one pending config.
+    auto clear_status = state_->ClearPendingConfigUnlocked();
+    if (!clear_status.ok()) {
+      LOG(WARNING) << "Could not clear pending config: " << clear_status;
+    }
+  }
+  return status;
 }
 
 Status RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
@@ -2601,7 +2625,9 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
 
   if (result.old_leader_lease_expiration) {
     // Voters told us about the old leader's lease that we have to wait out.
-    state_->UpdateOldLeaderLeaseExpirationUnlocked(result.old_leader_lease_expiration);
+    state_->UpdateOldLeaderLeaseExpirationUnlocked(
+        result.old_leader_lease_expiration,
+        result.old_leader_ht_lease_expiration);
   }
 
   // Convert role to LEADER.
@@ -2796,10 +2822,10 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   return Status::OK();
 }
 
-void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg) {
-  OpId* op_id = replicate_msg->release_id();
-  state_->CancelPendingOperation(*op_id);
-  delete op_id;
+void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg,
+                                            bool should_exists) {
+  std::unique_ptr<OpId> op_id(replicate_msg->release_id());
+  state_->CancelPendingOperation(*op_id, should_exists);
 }
 
 }  // namespace consensus

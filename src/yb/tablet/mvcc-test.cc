@@ -85,7 +85,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 
   // Initial state should not have any committed transactions.
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 1}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 1 }}]", snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(HybridTime(1)));
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 
@@ -95,7 +95,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 
   // State should still have no committed transactions, since 1 is in-flight.
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 1}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 1 }}]", snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(HybridTime(1)));
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 
@@ -110,7 +110,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 
   // State should show 0 as committed, 1 as uncommitted.
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 2}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 2 }}]", snap.ToString());
   ASSERT_TRUE(snap.IsCommitted(HybridTime(1)));
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 }
@@ -128,7 +128,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // State should still have no committed transactions, since both are in-flight.
 
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 1}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 1 }}]", snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_FALSE(snap.IsCommitted(t2));
 
@@ -139,7 +139,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // State should show 2 as committed, 1 as uncommitted.
   mgr.TakeSnapshot(&snap);
   ASSERT_EQ("MvccSnapshot[committed="
-            "{T|T < 1 or (T in {2})}]",
+            "{T|T < { physical: 0 logical: 1 } or (T in {2})}]",
             snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
@@ -151,7 +151,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // State should show 2 as committed, 1 and 4 as uncommitted.
   mgr.TakeSnapshot(&snap);
   ASSERT_EQ("MvccSnapshot[committed="
-            "{T|T < 1 or (T in {2})}]",
+            "{T|T < { physical: 0 logical: 1 } or (T in {2})}]",
             snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
@@ -164,7 +164,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // 2 and 3 committed
   mgr.TakeSnapshot(&snap);
   ASSERT_EQ("MvccSnapshot[committed="
-            "{T|T < 1 or (T in {2,3})}]",
+            "{T|T < { physical: 0 logical: 1 } or (T in {2,3})}]",
             snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
@@ -176,7 +176,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
 
   // all committed
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 4}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 4 }}]", snap.ToString());
   ASSERT_TRUE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
   ASSERT_TRUE(snap.IsCommitted(t3));
@@ -554,7 +554,8 @@ TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineOperations) {
 
   mgr.StartApplyingOperation(HybridTime(10));
   mgr.OfflineCommitOperation(HybridTime(10));
-  ASSERT_EQ(mgr.cur_snap_.ToString(), "MvccSnapshot[committed={T|T < 16}]");
+  ASSERT_EQ(mgr.cur_snap_.ToString(),
+            "MvccSnapshot[committed={T|T < { physical: 0 logical: 16 }}]");
 }
 
 // Various death tests which ensure that we can only transition in one of the following
@@ -570,7 +571,8 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
 
   EXPECT_DEATH({
       mgr.StartApplyingOperation(HybridTime(1));
-    }, "Cannot mark hybrid_time 1 as APPLYING: not in the in-flight map");
+    }, "Cannot mark hybrid_time \\{ physical: 0 logical: 1 \\} as APPLYING: "
+       "not in the in-flight map");
 
   // Depending whether this is a DEBUG or RELEASE build, the error message
   // could be different for this case -- the "future hybrid_time" check is only
@@ -579,13 +581,15 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
       mgr.CommitOperation(HybridTime(1));
     },
     "Trying to commit a transaction with a future hybrid_time|"
-    "Trying to remove hybrid_time which isn't in the in-flight set: 1");
+    "Trying to remove hybrid_time which isn't in the in-flight set: "
+    "\\{ physical: 0 logical: 1 \\}");
 
   clock_->Update(HybridTime(20));
 
   EXPECT_DEATH({
       mgr.CommitOperation(HybridTime(1));
-    }, "Trying to remove hybrid_time which isn't in the in-flight set: 1");
+    }, "Trying to remove hybrid_time which isn't in the in-flight set: "
+       "\\{ physical: 0 logical: 1 \\}");
 
   // Start a transaction, and try committing it without having moved to "Applying"
   // state.
@@ -600,7 +604,8 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
   // Aborting a second time should fail
   EXPECT_DEATH({
       mgr.AbortOperation(t);
-    }, "Trying to remove hybrid_time which isn't in the in-flight set: 21");
+    }, "Trying to remove hybrid_time which isn't in the in-flight set: "
+       "\\{ physical: 0 logical: 21 \\}");
 
   // Start a new transaction. This time, mark it as Applying.
   t = mgr.StartOperation();
@@ -609,12 +614,12 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
   // Can only call StartApplying once.
   EXPECT_DEATH({
       mgr.StartApplyingOperation(t);
-    }, "Cannot mark hybrid_time 22 as APPLYING: wrong state: 1");
+    }, "Cannot mark hybrid_time \\{ physical: 0 logical: 22 \\} as APPLYING: wrong state: 1");
 
   // Cannot Abort() a transaction once we start applying it.
   EXPECT_DEATH({
       mgr.AbortOperation(t);
-    }, "transaction with hybrid_time 22 cannot be aborted in state 1");
+    }, "transaction with hybrid_time \\{ physical: 0 logical: 22 \\} cannot be aborted in state 1");
 
   // We can commit it successfully.
   mgr.CommitOperation(t);

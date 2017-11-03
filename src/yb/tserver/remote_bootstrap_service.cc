@@ -99,6 +99,9 @@ DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
                  "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
                  "server it is remote bootstrapping, but before it sends a success response.");
 
+DEFINE_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
+              "Timeout for change role operation during remote bootstrap.");
+
 namespace yb {
 namespace tserver {
 
@@ -388,17 +391,22 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
 
     MAYBE_FAULT(FLAGS_fault_crash_leader_before_changing_role);
 
-    Status s = session->ChangeRole();
-    if (!s.ok()) {
+    MonoTime deadline =
+        MonoTime::FineNow() +
+        MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_change_role_timeout_ms);
+    for (;;) {
+      Status status = session->ChangeRole();
+      if (status.ok()) {
+        LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
+        MAYBE_FAULT(FLAGS_fault_crash_leader_after_changing_role);
+        break;
+      }
       LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
-                   << ", error : " << s.ToString();
-      // Reset the timer for this session, and don't remove it from sessions_ so it doesn't get
-      // destroyed. EndExpiredSessions will call this function again and we will retry ChangeRole.
-      ResetSessionExpirationUnlocked(session_id);
-      return Status::OK();
-    } else {
-      LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
-      MAYBE_FAULT(FLAGS_fault_crash_leader_after_changing_role);
+                   << ", error : " << status;
+      if (!status.IsLeaderHasNoLease() || MonoTime::FineNow() >= deadline) {
+        ResetSessionExpirationUnlocked(session_id);
+        return Status::OK();
+      }
     }
   } else {
     LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()

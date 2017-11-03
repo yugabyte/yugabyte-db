@@ -143,23 +143,28 @@ bool VoteCounter::AreAllVotesIn() const {
 // ElectionResult
 ///////////////////////////////////////////////////
 
-ElectionResult::ElectionResult(ConsensusTerm election_term,
-                               ElectionVote decision,
-                               MonoTime old_leader_lease_expiration)
-  : election_term(election_term),
-    decision(decision),
+ElectionResult::ElectionResult(ConsensusTerm election_term_,
+                               ElectionVote decision_,
+                               MonoTime old_leader_lease_expiration_,
+                               MicrosTime old_leader_ht_lease_expiration_)
+  : election_term(election_term_),
+    decision(decision_),
     has_higher_term(false),
     higher_term(kMinimumTerm),
-    old_leader_lease_expiration(old_leader_lease_expiration) {
+    old_leader_lease_expiration(old_leader_lease_expiration_),
+    old_leader_ht_lease_expiration(old_leader_ht_lease_expiration_) {
 }
 
-ElectionResult::ElectionResult(ConsensusTerm election_term, ElectionVote decision,
-                               ConsensusTerm higher_term, const std::string& message)
+ElectionResult::ElectionResult(ConsensusTerm election_term,
+                               ElectionVote decision,
+                               ConsensusTerm higher_term,
+                               const std::string& message)
   : election_term(election_term),
     decision(decision),
     has_higher_term(true),
     higher_term(higher_term),
-    message(message) {
+    message(message),
+    old_leader_ht_lease_expiration(HybridTime::kMin.GetPhysicalValueMicros()) {
   CHECK_EQ(VOTE_DENIED, decision);
   CHECK_GT(higher_term, election_term);
   DCHECK(!message.empty());
@@ -269,7 +274,10 @@ void LeaderElection::CheckForDecision() {
       CHECK_OK(vote_counter_->GetDecision(&decision));
       LOG_WITH_PREFIX(INFO) << "Election decided. Result: candidate "
                 << ((decision == VOTE_GRANTED) ? "won." : "lost.");
-      result_.reset(new ElectionResult(election_term(), decision, old_leader_lease_expiration_));
+      result_.emplace(election_term(),
+                      decision,
+                      old_leader_lease_expiration_,
+                      old_leader_ht_lease_expiration_);
     }
     // Check whether to respond. This can happen as a result of either getting
     // a majority vote or of something invalidating the election, like
@@ -356,8 +364,7 @@ void LeaderElection::HandleHigherTermUnlocked(const string& voter_uuid, const Vo
 
   if (!result_) {
     LOG_WITH_PREFIX(INFO) << "Cancelling election due to peer responding with higher term";
-    result_.reset(new ElectionResult(election_term(), VOTE_DENIED,
-                                     state.response.responder_term(), msg));
+    result_.emplace(election_term(), VOTE_DENIED, state.response.responder_term(), msg);
   }
 }
 
@@ -368,6 +375,12 @@ void LeaderElection::HandleVoteGrantedUnlocked(const string& voter_uuid, const V
   if (state.response.has_remaining_leader_lease_duration_ms()) {
     old_leader_lease_expiration_.MakeAtLeast(MonoTime::FineNow() +
         MonoDelta::FromMilliseconds(state.response.remaining_leader_lease_duration_ms()));
+  }
+
+  if (state.response.has_leader_ht_lease_expiration()) {
+    old_leader_ht_lease_expiration_ = std::max(
+        old_leader_ht_lease_expiration_,
+        state.response.leader_ht_lease_expiration());
   }
 
   LOG_WITH_PREFIX(INFO) << "Vote granted by peer " << voter_uuid;

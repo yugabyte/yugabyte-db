@@ -320,6 +320,11 @@ message VoteResponsePB {
   // before it can start serving read and write requests.
   optional int32 remaining_leader_lease_duration_ms = 4;
 
+  // An upper bound on the deadline of the old hybrid time leader's lease that the new leader has
+  // to wait out before it can start serving read and write requests.
+  // Contains only physical part of hybrid time.
+  optional fixed64 leader_ht_lease_expiration = 5;
+
   // TODO: Migrate ConsensusService to the AppStatusPB RPC style and merge these errors.
   // Error message from the consensus implementation.
   optional ConsensusErrorPB consensus_error = 998;
@@ -373,6 +378,10 @@ message ConsensusRequestPB {
   // consensus request. Due to potential clock skew, we are not sending a timestamp, but an amount
   // of time followers have to wait.
   optional int32 leader_lease_duration_ms = 8;
+
+  // Leader lease expiration, physical part of hybrid time. A new leader cannot add new
+  // entries to RAFT log until hybrid time passes this expiration.
+  optional fixed64 ht_lease_expiration = 9;
 }
 
 message ConsensusResponsePB {
