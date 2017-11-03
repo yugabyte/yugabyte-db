@@ -13,12 +13,19 @@
 # under the License.
 #
 import argparse
+import exceptions
 import os
 import pipes
 import platform
+import re
 import subprocess
 import sys
 import time
+
+VERSION_STRING_RE = "^\d+\.\d+\.\d+\.\d+$"
+YB_HOME_DIR = "/home/yugabyte"
+YB_SOFTWARE_DIR = "/home/yugabyte/yb-software"
+YB_SOFTWARE_TEMP_DIR = "/home/yugabyte/yb-software/TEMPORARY"
 
 
 def list_command(service):
@@ -26,7 +33,7 @@ def list_command(service):
 
 
 def service_command(service, command):
-    return "sudo -u yugabyte /home/yugabyte/bin/yb-server-ctl.sh {0} {1}".format(service, command)
+    return "sudo -u yugabyte {0}/bin/yb-server-ctl.sh {1} {2}".format(YB_HOME_DIR, service, command)
 
 
 def stop_command(service):
@@ -52,10 +59,13 @@ class ClusterManager(object):
         self.user = ClusterManager.get_arg(args, 'user', 'centos')
         self.repo = ClusterManager.get_arg(args, 'repo',
                                            os.path.join(os.environ["HOME"], 'code/yugabyte'))
+        self.version_string = file("version.txt").read().strip().split("-")[0]
+        if not re.match(VERSION_STRING_RE, self.version_string):
+            raise ValueError("Invalid version format {}".format(self.version_string))
         default_tar_prefix = "yugabyte-ee-{0}-{1}-release-{2}-{3}".format(
-            file("version.txt").read().strip(),
+            self.version_string,
             subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip(),
-            platform.system().lower(),
+            platform.linux_distribution(full_distribution_name=False)[0].lower(),
             platform.machine().lower())
         self.tar_prefix = ClusterManager.get_arg(args, 'tar_prefix', default_tar_prefix)
         self.port = ClusterManager.get_arg(args, 'port', 54422)
@@ -254,7 +264,7 @@ class CopyTarProcedure(Procedure):
         self.step = 0
         print("Copy tar to {0}".format(self.host))
         self.process = manager.scp("{0}/build/{1}.tar.gz".format(manager.repo, manager.tar_prefix),
-                                   '{0}@{1}:/tmp'.format(manager.user, host))
+                                   '{0}@{1}:/tmp/'.format(manager.user, host))
 
     def check(self):
         if self.step == 3:
@@ -271,13 +281,21 @@ class CopyTarProcedure(Procedure):
             tar_prefix = self.manager.tar_prefix
             if self.step == 1:
                 print("Tar copied to {0}".format(self.host))
-                command = "sudo -u yugabyte mkdir -p /home/yugabyte/releases/{0}".format(tar_prefix)
+                command = "sudo -u yugabyte rm -rf {0}/{1}".format(
+                    YB_SOFTWARE_DIR, tar_prefix)
                 self.process = self.manager.remote_launch(self.host, command)
             elif self.step == 2:
                 print("Extracting tar at {0}".format(self.host))
-                command = "{0} tar xvf /tmp/{1}.tar.gz -C /home/yugabyte/releases/{1} && " \
-                          "{0} /home/yugabyte/releases/{1}/bin/post_install.sh".format(
-                              "sudo -u yugabyte", tar_prefix)
+                command = "sudo chown yugabyte /tmp/{1}.tar.gz && " \
+                          "{0} mv /tmp/{1}.tar.gz {4}/ && " \
+                          "{0} tar xvf {4}/{1}.tar.gz -C {4}/ && " \
+                          "{0} mv {4}/yugabyte-{2} {3}/{1} && " \
+                          "{0} {3}/{1}/bin/post_install.sh".format(
+                              "sudo -u yugabyte",
+                              tar_prefix,
+                              self.manager.version_string,
+                              YB_SOFTWARE_DIR,
+                              YB_SOFTWARE_TEMP_DIR)
                 self.process = self.manager.remote_launch(self.host, command)
             else:
                 print("Tar extracted at {0}".format(self.host))
@@ -330,18 +348,18 @@ class RollTask:
 
     def execute(self):
         print(self.description)
-        wait_all([StopProcedure(self.manager, self.host, self.service)], self.timeout)
         if self.upgrade:
             pattern = "for dir in $({0} ls {1}/{3}); do " \
-                      "{0} ln -sfn {1}/{3}/$dir /home/yugabyte/{2}/$dir;" \
+                      "{0} ln -sfn {1}/{3}/$dir {4}/{2}/$dir;" \
                       "done"
-            self.__execute(
-                pattern.format(
+            command = pattern.format(
                     "sudo -u yugabyte",
-                    "/home/yugabyte/releases",
+                    YB_SOFTWARE_DIR,
                     self.service,
-                    self.manager.tar_prefix),
-                "Update link")
+                    self.manager.tar_prefix,
+                    YB_HOME_DIR)
+            self.__execute(command, "Update link")
+        wait_all([StopProcedure(self.manager, self.host, self.service)], self.timeout)
         self.__execute(service_command(self.service, 'start'), "Start {0}".format(self.service))
 
     def __execute(self, command, title):
@@ -427,7 +445,9 @@ class YBControl:
         self.manager.execute_service_commands(services, ['start'], self.__timeout(15))
 
     def clean_services(self, services):
-        self.manager.execute_service_commands(services, ['clean', 'clean-logs'], self.__timeout(15))
+        # We can just do a top-level clean, since the logs are now in the yb-data dir, which gets
+        # removed by clean per master/tserver.
+        self.manager.execute_service_commands(services, ['clean-no-conf'], self.__timeout(15))
 
     def execute(self):
         parameters = self.parameters
