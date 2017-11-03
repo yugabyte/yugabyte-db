@@ -41,8 +41,8 @@ class PTDeleteStmt : public PTDmlStmt {
                YBLocation::SharedPtr loc,
                PTExprListNode::SharedPtr target,
                PTTableRef::SharedPtr relation,
-               TreeNode::SharedPtr using_clause,
-               PTExpr::SharedPtr where_clause,
+               PTDmlUsingClause::SharedPtr using_clause = nullptr,
+               PTExpr::SharedPtr where_clause = nullptr,
                PTExpr::SharedPtr if_clause = nullptr);
   virtual ~PTDeleteStmt();
 

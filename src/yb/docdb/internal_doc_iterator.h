@@ -157,7 +157,10 @@ class InternalDocIterator {
 
   // A helper method that seeks the RocksDB iterator to the current document/subdocument
   // key prefix (which is assumed not to end with a generation hybrid_time), and checks whether or
-  // not that document/subdocument actually exists.
+  // not that document/subdocument actually exists. There is an important assumption that this
+  // method makes in terms of seeking for subkeys. If we are seeking for a key prefix a.b.c, this
+  // method assumes that we have performed a seek for a and a.b immediately before this seek or
+  // haven't performed any seeks at all.
   CHECKED_STATUS SeekToKeyPrefix();
 
   rocksdb::Iterator* iterator() {

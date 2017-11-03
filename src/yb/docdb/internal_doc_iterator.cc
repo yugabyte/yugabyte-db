@@ -86,6 +86,7 @@ string InternalDocIterator::ToDebugString() {
 Status InternalDocIterator::SeekToKeyPrefix() {
   const auto prev_subdoc_exists = subdoc_exists_;
   const auto prev_subdoc_ht = subdoc_ht_;
+  const auto prev_key_prefix_only_lacks_ht = found_exact_key_prefix_;
 
   subdoc_exists_ = Trilean::kFalse;
   subdoc_type_ = ValueType::kInvalidValueType;
@@ -141,7 +142,8 @@ Status InternalDocIterator::SeekToKeyPrefix() {
         // operation in the same DocWriteBatch.
         DOCDB_DEBUG_LOG("Writing to DocWriteBatchCache: $0",
                         BestEffortDocDBKeyToStr(key_prefix_));
-        if (prev_subdoc_exists != Trilean::kUnknown && prev_subdoc_ht > subdoc_ht_) {
+        if (prev_subdoc_exists != Trilean::kUnknown && prev_subdoc_ht > subdoc_ht_ &&
+            prev_key_prefix_only_lacks_ht) {
           // We already saw an object init marker or a tombstone one level higher with a higher
           // hybrid_time, so just ignore this key/value pair. This had to be added when we switched
           // from a format with intermediate hybrid_times to our current format without them.

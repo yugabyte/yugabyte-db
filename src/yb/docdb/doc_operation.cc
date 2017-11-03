@@ -1407,8 +1407,27 @@ Status QLWriteOperation::Apply(
                                                         user_timestamp));
           }
         } else {
-          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
-              *pk_doc_path_, InitMarkerBehavior::OPTIONAL, user_timestamp));
+          if (user_timestamp != Value::kInvalidUserTimestamp) {
+            // If user_timestamp is provided, we need to add a tombstone for each individual
+            // column in the schema since we don't want to analyze this on the read path.
+            for (int i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
+              const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
+                                     PrimitiveValue(schema_.column_id(i)));
+              RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
+                                                          user_timestamp));
+            }
+
+            // Delete the liveness column as well.
+            const DocPath liveness_column(
+                pk_doc_path_->encoded_doc_key(),
+                PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
+                                                        InitMarkerBehavior::OPTIONAL,
+                                                        user_timestamp));
+          } else {
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
+                *pk_doc_path_, InitMarkerBehavior::OPTIONAL, user_timestamp));
+          }
         }
         break;
       }

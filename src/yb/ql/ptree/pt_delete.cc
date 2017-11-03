@@ -27,10 +27,10 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            PTExprListNode::SharedPtr target,
                            PTTableRef::SharedPtr relation,
-                           TreeNode::SharedPtr using_clause,
+                           PTDmlUsingClause::SharedPtr using_clause,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause)
-    : PTDmlStmt(memctx, loc, true, where_clause, if_clause),
+    : PTDmlStmt(memctx, loc, true, where_clause, if_clause, using_clause),
       target_(target),
       relation_(relation) {
 }
@@ -59,6 +59,15 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
+
+  // Run error checking on USING clause.
+  RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
+
+  if (using_clause_ != nullptr && using_clause_->has_ttl_seconds()) {
+    // Delete only supports TIMESTAMP as part of the using clause.
+    return sem_context->Error(this, "DELETE statement cannot have TTL",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
 
   return Status::OK();
 }

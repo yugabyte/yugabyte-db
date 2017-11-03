@@ -210,7 +210,7 @@ using namespace yb::ql;
                           opt_on_conflict opt_conf_expr
 
                           // Delete.
-                          DeleteStmt using_clause
+                          DeleteStmt
 
                           // Update.
                           UpdateStmt
@@ -2562,22 +2562,16 @@ DeleteStmt:
     $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $6);
   }
   | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  using_clause opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $7);
+  using_ttl_timestamp_clause opt_where_or_current_clause returning_clause {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7);
   }
   | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
   where_or_current_clause if_clause {
     $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $6, $7);
   }
   | opt_with_clause DELETE_P opt_target_list FROM relation_expr_opt_alias
-  using_clause where_or_current_clause if_clause {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, nullptr, $7, $8);
-  }
-;
-
-using_clause:
-  USING from_list {
-    PARSER_NOCODE(@1);
+  using_ttl_timestamp_clause where_or_current_clause if_clause {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, $3, $5, $6, $7, $8);
   }
 ;
 

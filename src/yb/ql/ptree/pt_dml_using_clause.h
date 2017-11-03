@@ -54,6 +54,10 @@ class PTDmlUsingClause: public TreeListNode<PTDmlUsingClauseElement> {
     return user_timestamp_usec_ != nullptr;
   }
 
+  bool has_ttl_seconds() const {
+    return ttl_seconds_ != nullptr;
+  }
+
  private:
   PTExpr::SharedPtr ttl_seconds_;
   PTExpr::SharedPtr user_timestamp_usec_;

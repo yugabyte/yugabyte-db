@@ -640,10 +640,10 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   QLWriteRequestPB *req = insert_op->mutable_request();
 
   // Set the ttl
-  RETURN_NOT_OK(TtlToPB(tnode, insert_op->mutable_request()));
+  RETURN_NOT_OK(TtlToPB(tnode, req));
 
   // Set the timestamp
-  RETURN_NOT_OK(TimestampToPB(tnode, insert_op->mutable_request()));
+  RETURN_NOT_OK(TimestampToPB(tnode, req));
 
   // Set the values for columns.
   Status s = ColumnArgsToPB(table, tnode, req);
@@ -676,6 +676,9 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> delete_op(table->NewQLDelete());
   QLWriteRequestPB *req = delete_op->mutable_request();
+
+  // Set the timestamp
+  RETURN_NOT_OK(TimestampToPB(tnode, req));
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
@@ -724,10 +727,10 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   }
 
   // Set the ttl
-  RETURN_NOT_OK(TtlToPB(tnode, update_op->mutable_request()));
+  RETURN_NOT_OK(TtlToPB(tnode, req));
 
   // Set the timestamp
-  RETURN_NOT_OK(TimestampToPB(tnode, update_op->mutable_request()));
+  RETURN_NOT_OK(TimestampToPB(tnode, req));
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(table, tnode, update_op->mutable_request());

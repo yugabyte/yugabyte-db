@@ -381,4 +381,139 @@ public class TestUsingTimestamp extends BaseCQLTest {
         "TIMESTAMP %d", tableName, writeTime - 1));
     assertEquals(0, runSelectStmt(10, 20, tableName).all().size());
   }
+
+  private void insertColumnsWithDifferentTimestamps(String tableName, int initValue, long initTs,
+                                                    int c3Update, int c4Update, int c5Update,
+                                                    long c3Ts, long c4Ts, long c5Ts) {
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (%d, %d, %d, %d, " +
+        "%d) USING TIMESTAMP %d", tableName, initValue, initValue * 2, initValue * 3, initValue
+        * 4, initValue * 5, initTs));
+    session.execute(String.format("UPDATE %s USING TIMESTAMP %d SET c3 = %d WHERE c1 = %d AND " +
+        "c2 = %d", tableName, c3Ts, c3Update, initValue, initValue * 2));
+    session.execute(String.format("UPDATE %s USING TIMESTAMP %d SET c4 = %d WHERE c1 = %d AND " +
+        "c2 = %d", tableName, c4Ts, c4Update, initValue, initValue * 2));
+    session.execute(String.format("UPDATE %s USING TIMESTAMP %d SET c5 = %d WHERE c1 = %d AND " +
+        "c2 = %d", tableName, c5Ts, c5Update, initValue, initValue * 2));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = %d and c2 = %d",
+        tableName, initValue, initValue * 2)), new Integer[]{initValue, initValue * 2, c3Update,
+        c4Update, c5Update});
+  }
+
+  private void deleteAndVerifyColumns(String tableName, Integer c1, Integer c2, Integer c3,
+                                      Integer c4, Integer c5, long deleteTs) {
+    session.execute(String.format("DELETE FROM %s USING TIMESTAMP %d WHERE c1 = %d and c2 = %d ",
+        tableName, deleteTs, c1, c2));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = %d and c2 = %d",
+        tableName, c1, c2)), new Integer[]{c1, c2, c3, c4, c5});
+  }
+
+  @Test
+  public void testDeleteUsingTimestamp() throws Exception {
+    String tableName = "testDeleteUsingTimestamp";
+    createTimestampTable(tableName);
+
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TIMESTAMP " +
+      "5000", tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)), new Integer[]{1, 2, 3});
+
+    // Delete at lower timestamp.
+    session.execute(String.format("DELETE FROM %s USING TIMESTAMP 4000 WHERE c1 = 1 and c2 = 2 ",
+      tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)), new Integer[]{1, 2, 3});
+
+    // Delete at higher timestamp.
+    session.execute(String.format("DELETE FROM %s USING TIMESTAMP 6000 WHERE c1 = 1 and c2 = 2 ",
+      tableName));
+    assertEquals(0, session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)).getAvailableWithoutFetching());
+
+    // Regular insert and delete at very high timestamp.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3)", tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)), new Integer[]{1, 2, 3});
+
+    session.execute(String.format("DELETE FROM %s USING TIMESTAMP %d WHERE c1 = 1 and c2 = 2 ",
+      tableName, Long.MAX_VALUE));
+    assertEquals(0, session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)).getAvailableWithoutFetching());
+
+    // Inserts with lower timestamp don't work, but an insert without a timestamp works.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TIMESTAMP " +
+      "%d", tableName, Long.MAX_VALUE - 1));
+    assertEquals(0, session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)).getAvailableWithoutFetching());
+
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3)", tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)), new Integer[]{1, 2, 3});
+
+    // Insert with a very high timestamp, hidden with a regular delete.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (10, 20, 30) USING " +
+      "TIMESTAMP %d", tableName, Long.MAX_VALUE));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 10 and c2 = 20",
+      tableName)), new Integer[]{10, 20, 30});
+
+    // Delete at lower timestamp than insert will not have any effect.
+    session.execute(String.format("DELETE FROM %s USING TIMESTAMP %d WHERE c1 = 1 and c2 = 2 ",
+      tableName, Long.MAX_VALUE - 1));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 10 and c2 = 20",
+      tableName)), new Integer[]{10, 20, 30});
+
+    // Delete without using timestamp (but effectively at a much lower timestamp), successfully
+    // deletes the row.
+    session.execute(String.format("DELETE FROM %s WHERE c1 = 10 and c2 = 20 ", tableName));
+    assertEquals(0, session.execute(String.format("SELECT * FROM %s WHERE c1 = 10 and c2 = 20",
+      tableName)).getAvailableWithoutFetching());
+
+    // Test with a different table schema.
+    session.execute(String.format("DROP TABLE %s", tableName));
+    session.execute(String.format(
+      "CREATE TABLE %s (c1 int, c2 int, c3 int, c4 int, c5 int, PRIMARY KEY((c1), c2));",
+      tableName));
+
+    // Different time for each column.
+    insertColumnsWithDifferentTimestamps(tableName, 1, 5000, 30, 40, 50, 6000, 7000, 8000);
+
+    // Now try deletes.
+    deleteAndVerifyColumns(tableName, 1, 2, 30, 40, 50, 5500);
+
+    // c3 should be deleted.
+    deleteAndVerifyColumns(tableName, 1, 2, null, 40, 50, 6500);
+
+    // c4 should be deleted.
+    deleteAndVerifyColumns(tableName, 1, 2, null, null, 50, 7500);
+
+    // Everything null, since the liveness column is gone too.
+    session.execute(String.format("DELETE FROM %s USING TIMESTAMP 8500 WHERE c1 = 1 and c2 = 2 ",
+      tableName));
+    assertEquals(0, session.execute(String.format("SELECT * FROM %s WHERE c1 = 1 and c2 = 2",
+      tableName)).getAvailableWithoutFetching());
+
+    // Try to delete individual columns and verify the liveness column still exists.
+    insertColumnsWithDifferentTimestamps(tableName, 100, 5000, 3000, 4000, 5000, 6000, 7000, 8000);
+
+    // Delete c3.
+    session.execute(String.format("DELETE c3 FROM %s USING TIMESTAMP 6500 WHERE c1 = 100 and c2 =" +
+        " 200 ", tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 100 and c2 = 200",
+        tableName)), new Integer[]{100, 200, null, 4000, 5000});
+
+    // Delete c4.
+    session.execute(String.format("DELETE c4 FROM %s USING TIMESTAMP 7500 WHERE c1 = 100 and c2 =" +
+        " 200 ", tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 100 and c2 = 200",
+        tableName)), new Integer[]{100, 200, null, null, 5000});
+
+    // Delete c5, row still exists due to primary key column.
+    session.execute(String.format("DELETE c5 FROM %s USING TIMESTAMP 8500 WHERE c1 = 100 and c2 =" +
+        " 200 ", tableName));
+    assertRow(session.execute(String.format("SELECT * FROM %s WHERE c1 = 100 and c2 = 200",
+        tableName)), new Integer[]{100, 200, null, null, null});
+
+    // USING TTL is not supported with delete.
+    runInvalidStmt(String.format("DELETE FROM %s USING TTL 1000 WHERE c1 = 1 and c2 = 2",
+      tableName));
+  }
 }
