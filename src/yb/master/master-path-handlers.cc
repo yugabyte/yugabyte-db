@@ -164,13 +164,13 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               stringstream* output,
                                               bool skip_system_tables) {
-  *output << "<h1>Tables</h1>\n";
-
   vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
+  string title = skip_system_tables ? "User Tables" : "All Tables";
 
-  *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Keyspace</th><th>Table Name</th><th>State</th><th>UUID</th></tr>\n";
+  (*output) << "<div class='panel panel-default'>\n"
+            << "<div class='panel-heading'><h2 class='panel-title'>" << title << "</h2></div>\n";
+  (*output) << "<div class='panel-body'>";
   typedef map<string, string> StringMap;
   StringMap ordered_tables;
   for (const scoped_refptr<TableInfo>& table : tables) {
@@ -197,10 +197,18 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
         EscapeForHtmlToString(table->id()),
         EscapeForHtmlToString(l->data().pb.state_msg()));
   }
-  for (const StringMap::value_type& table : ordered_tables) {
-    *output << table.second;
+  if (ordered_tables.size() == 0) {
+    (*output) << "You do not have any tables.";
+  } else {
+    *output << "<table class='table table-striped'>\n";
+    *output << "  <tr><th>Keyspace</th><th>Table Name</th><th>State</th><th>UUID</th></tr>\n";
+    for (const StringMap::value_type &table : ordered_tables) {
+      *output << table.second;
+    }
+    (*output) << "</table>\n";
   }
-  *output << "</table>\n";
+  (*output) << "</div> <!-- panel-body -->\n";
+  (*output) << "</div> <!-- panel -->\n";
 }
 
 namespace {
@@ -374,39 +382,83 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
       user_tables.push_back(table);
     }
   }
-
-  // Display the overview information.
-  *output << "<h2> Overview </h2>\n";
-  *output << "<table class='table table-striped'>\n";
+  // Get the version info.
   VersionInfoPB version_info;
   VersionInfo::GetVersionInfoPB(&version_info);
-  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "Universe UUID ", config.cluster_uuid());
-  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "Replication Factor ",
-                          master_->opts().GetMasterAddresses().get()->size());
-  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "Num Nodes (TServers) ", master_->ts_manager()->GetCount());
-  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "Num User Tables ", user_tables.size());
-  (*output) << Substitute("  <tr><td>$0</td><td>$1-b$2</td></tr>\n",
-                          "YugaByte Version ", version_info.version_number(),
-                          version_info.build_number());
-  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
+
+  // Display the overview information.
+  (*output) << "<h1>YugaByte DB</h1>\n";
+
+  (*output) << "<div class='row dashboard-content'>\n";
+
+  (*output) << "<div class='col-xs-12 col-md-8 col-lg-6'>\n";
+  (*output) << "<div class='panel panel-default'>\n"
+            << "<div class='panel-heading'><h2 class='panel-title'> Overview</h2></div>\n";
+  (*output) << "<div class='panel-body'>";
+  (*output) << "<table class='table'>\n";
+  (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
+                          "<i class='fa fa-database yb-dashboard-icon' aria-hidden='true'></i>",
+                          "Universe UUID ",
+                          config.cluster_uuid());
+
+  // Replication factor.
+  (*output) << "  <tr>";
+  (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
+                          "<i class='fa fa-files-o yb-dashboard-icon' aria-hidden='true'></i>",
+                          "Replication Factor ");
+  (*output) << Substitute(" <td>$0</td>", master_->opts().GetMasterAddresses().get()->size());
+  (*output) << "  </tr>\n";
+
+  // Tserver count.
+  (*output) << "  <tr>";
+  (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
+                          "<i class='fa fa-server yb-dashboard-icon' aria-hidden='true'></i>",
+                          "Num Nodes (TServers) ");
+  (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
+                          master_->ts_manager()->GetCount(),
+                          "/tablet-servers",
+                          "See all nodes &raquo;");
+  (*output) << "  </tr>\n";
+
+  // Num user tables.
+  (*output) << "  <tr>";
+  (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>",
+                          "<i class='fa fa-table yb-dashboard-icon' aria-hidden='true'></i>",
+                          "Num User Tables ");
+  (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
+                          user_tables.size(),
+                          "/tables",
+                          "See all tables &raquo;");
+  (*output) << "  </tr>\n";
+
+  // Build version and type.
+  (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
+                          "<i class='fa fa-code-fork yb-dashboard-icon' aria-hidden='true'></i>",
+                          "YugaByte Version ", version_info.version_number());
+  (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
+                          "<i class='fa fa-terminal yb-dashboard-icon' aria-hidden='true'></i>",
                           "Build Type ", version_info.build_type());
   (*output) << "</table>";
-  (*output) << "<hr/>\n";
-
-  // Display the user tables.
-  HandleCatalogManager(req, output, true /* skip_system_tables */);
+  (*output) << "</div> <!-- panel-body -->\n";
+  (*output) << "</div> <!-- panel -->\n";
+  (*output) << "</div> <!-- col-xs-12 col-md-8 col-lg-6 -->\n";
 
   // Display the master info.
+  (*output) << "<div class='col-xs-12 col-md-8 col-lg-6'>\n";
   HandleMasters(req, output);
-  (*output) << "<hr/>\n";
+  (*output) << "</div> <!-- col-xs-12 col-md-8 col-lg-6 -->\n";
+
+  // Display the user tables if any.
+  (*output) << "<div class='col-md-12 col-lg-12'>\n";
+  HandleCatalogManager(req, output, true /* skip_system_tables */);
+  (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
 
   // Display the tablet server info.
+  (*output) << "<div class='col-md-12 col-lg-12'>\n";
   HandleTabletServers(req, output);
-  (*output) << "<hr/>\n";
+  (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
+
+  (*output) << "</div> <!-- row dashboard-content -->\n";
 }
 
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
@@ -419,16 +471,15 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     *output << "<h1>" << s.ToString() << "</h1>\n";
     return;
   }
-  *output << "<h2> Masters </h2>\n";
-  *output << "<table class='table table-striped'>\n";
-  *output << "  <tr>\n"
-          << "    <th>Server</th>\n"
-          << "    <th>Current Role</th>"
-          << "    <th>Cloud</th>"
-          << "    <th>Region</th>"
-          << "    <th>Zone</th>"
-          << "    <th>Master UUID</th>\n"
-          << "  </tr>\n";
+  (*output) << "<div class='panel panel-default'>\n"
+            << "<div class='panel-heading'><h2 class='panel-title'>Masters</h2></div>\n";
+  (*output) << "<div class='panel-body'>";
+  (*output) << "<table class='table'>\n";
+  (*output) << "  <tr>\n"
+            << "    <th>Server</th>\n"
+            << "    <th>RAFT Role</th>"
+            << "    <th>Details</th>\n"
+            << "  </tr>\n";
 
   for (const ServerEntryPB& master : masters) {
     if (master.has_error()) {
@@ -451,17 +502,21 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     string region = master.registration().cloud_info().placement_region();
     string zone = master.registration().cloud_info().placement_zone();
 
-    *output << "  <tr>\n";
-    *output << "    <td>" << reg_text << "</td>\n";
-    *output << "    <td>" << raft_role << "</td>\n";
-    *output << "    <td>" << cloud << "</td>\n";
-    *output << "    <td>" << region << "</td>\n";
-    *output << "    <td>" << zone << "</td>\n";
-    *output << "    <td>" << master.instance_id().permanent_uuid() << "</td>\n";
-    *output << "  </tr>\n";
+    *output << "  <tr>\n"
+            << "    <td>" << reg_text << "</td>\n"
+            << "    <td>" << raft_role << "</td>\n"
+            << "    <td><div><span class='yb-overview'>CLOUD: </span>" << cloud << "</div>\n"
+            << "        <div><span class='yb-overview'>REGION: </span>" << region << "</div>\n"
+            << "        <div><span class='yb-overview'>ZONE: </span>" << zone << "</div>\n"
+            << "        <div><span class='yb-overview'>UUID: </span>"
+            << master.instance_id().permanent_uuid()
+            << "</div></td>\n"
+            << "  </tr>\n";
   }
 
-  *output << "</table>";
+  (*output) << "</table>";
+  (*output) << "</div> <!-- panel-body -->\n";
+  (*output) << "</div> <!-- panel -->\n";
 }
 
 namespace {

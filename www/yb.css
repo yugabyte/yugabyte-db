@@ -94,6 +94,7 @@ body {
 
 .yb-main {
   margin-left: 170px;
+  margin-top:25px;
 }
 
 .footer {
@@ -120,4 +121,27 @@ body {
   transition: all 0.5s ease;
   width: 150px;
   z-index: 1000;
+}
+
+.dashboard-content {
+  margin-top: 25px;
+}
+
+.table > tbody > tr:first-child > td {
+  border: none;
+}
+
+.table > tbody > tr > td {
+  padding: 26px;
+}
+
+.yb-dashboard-icon {
+  padding-right: 10px;
+  font-size: 16px;
+  color: #f75821;
+}
+
+.yb-overview {
+  color: #555;
+  font-size: 12px;
 }
