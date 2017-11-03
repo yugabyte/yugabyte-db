@@ -115,9 +115,20 @@ public class CassandraKeyValue extends AppBase {
 
   @Override
   public synchronized void resetClients() {
-    preparedInsert = null;
-    preparedSelect = null;
+    synchronized (prepareInitLock) {
+      preparedInsert = null;
+      preparedSelect = null;
+    }
     super.resetClients();
+  }
+
+  @Override
+  public synchronized void destroyClients() {
+    synchronized (prepareInitLock) {
+      preparedInsert = null;
+      preparedSelect = null;
+    }
+    super.destroyClients();
   }
 
   @Override

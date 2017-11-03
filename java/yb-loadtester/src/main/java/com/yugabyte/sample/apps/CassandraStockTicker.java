@@ -208,10 +208,22 @@ public class CassandraStockTicker extends AppBase {
 
   @Override
   public synchronized void resetClients() {
-    preparedInsertMin = null;
-    preparedInsertRaw = null;
-    preparedSelectLatest = null;
+    synchronized (prepareInitLock) {
+      preparedInsertMin = null;
+      preparedInsertRaw = null;
+      preparedSelectLatest = null;
+    }
     super.resetClients();
+  }
+
+  @Override
+  public synchronized void destroyClients() {
+    synchronized (prepareInitLock) {
+      preparedInsertMin = null;
+      preparedInsertRaw = null;
+      preparedSelectLatest = null;
+    }
+    super.destroyClients();
   }
 
   @Override
