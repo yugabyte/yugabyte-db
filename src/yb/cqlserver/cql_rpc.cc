@@ -164,7 +164,32 @@ void CQLInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
                                     const Status& status) {
-  response_msg_buf_ = RefCntBuffer(status.message().data(), status.message().size());
+  faststring msg;
+  switch (error_code) {
+    case rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY: {
+      // Return OVERLOADED error to redirect CQL client to the next host.
+      ErrorResponse(stream_id_, ErrorResponse::Code::OVERLOADED, "CQL service queue full")
+          .Serialize(&msg);
+      break;
+    }
+    case rpc::ErrorStatusPB::ERROR_APPLICATION: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::ERROR_INVALID_REQUEST: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::FATAL_INVALID_RPC_HEADER: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::FATAL_DESERIALIZING_REQUEST: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::FATAL_VERSION_MISMATCH: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::FATAL_UNAUTHORIZED: FALLTHROUGH_INTENDED;
+    case rpc::ErrorStatusPB::FATAL_UNKNOWN: {
+      LOG(ERROR) << "Unexpected error status: "
+                 << rpc::ErrorStatusPB::RpcErrorCodePB_Name(error_code);
+      ErrorResponse(stream_id_, ErrorResponse::Code::SERVER_ERROR, "Server error")
+          .Serialize(&msg);
+      break;
+    }
+  }
+  response_msg_buf_ = RefCntBuffer(msg);
 
   QueueResponse(false);
 }
