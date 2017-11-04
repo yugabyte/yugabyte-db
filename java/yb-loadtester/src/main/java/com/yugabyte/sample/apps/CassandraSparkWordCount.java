@@ -73,9 +73,9 @@ public class CassandraSparkWordCount extends AppBase {
       useCassandraInput = false;
       LOG.info("Using wordcount_input_file: " + inputFile);
     } else if (commandLine.hasOption("wordcount_input_table")) {
-        inputTableName = commandLine.getOptionValue("wordcount_input_table");
-        useCassandraInput = true;
-        LOG.info("Using wordcount_input_table: " + inputTableName);
+      inputTableName = commandLine.getOptionValue("wordcount_input_table");
+      useCassandraInput = true;
+      LOG.info("Using wordcount_input_table: " + inputTableName);
     } else { // defaults
       LOG.info("No input given, will create sample table and use it as input.");
       inputTableName = defaultInputTableName;
@@ -85,9 +85,8 @@ public class CassandraSparkWordCount extends AppBase {
       Session session = getCassandraClient();
 
       // Drop the sample table if it already exists.
-      if (!configuration.getReuseExistingTable()) {
-        dropCassandraTable(inputTableName);
-      }
+      dropCassandraTable(inputTableName);
+
       // Create the input table.
       executeAndLog(session, "CREATE TABLE IF NOT EXISTS " +  inputTableName +
               " (id int, line varchar, primary key(id));");
@@ -158,12 +157,11 @@ public class CassandraSparkWordCount extends AppBase {
     String outTable = getKeyspace() + "." + outputTableName;
 
     // Drop the output table if it already exists.
-    if (!this.configuration.getReuseExistingTable()) {
-      dropCassandraTable(outTable);
-    }
+    dropCassandraTable(outTable);
+
     // Create the output table.
     session.execute("CREATE TABLE IF NOT EXISTS " + outTable +
-            " (word VARCHAR PRIMARY KEY, count INT);");
+                    " (word VARCHAR PRIMARY KEY, count INT);");
 
     // Save the output to the CQL table.
     javaFunctions(counts).writerBuilder(getKeyspace(),

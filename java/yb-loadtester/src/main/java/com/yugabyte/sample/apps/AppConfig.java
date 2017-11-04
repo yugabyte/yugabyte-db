@@ -101,5 +101,9 @@ public class AppConfig {
   // Does the table need to be dropped.
   public boolean shouldDropTable = false;
 
+  // Skip running workloads. These might be operations independent of workload.
+  // For example, if we only need to drop a table, or any such DDL/non-CRUD op.
+  public boolean skipWorkload = false;
+
   public String localDc;
 }

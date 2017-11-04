@@ -142,16 +142,16 @@ public class Main {
         return;
       }
 
-      // Only drop the table if that option is present in the command line.
+      // Drop the table if that option is present in the command line.
       if (cmdLineOpts.shouldDropTable()) {
         app.dropTable();
+      }
+
+      // Exit if workload is not expected to be run
+      if (cmdLineOpts.skipWorkload()) {
         System.exit(0);
       }
 
-      // Create the table if needed.
-      if (!cmdLineOpts.getReuseExistingTable()) {
-        app.dropTable();
-      }
       app.createTablesIfNeeded();
 
       // For 100% read case, do a pre-setup to write a bunch of keys and enable metrics tracking

@@ -63,7 +63,6 @@ public class CmdLineOpts {
   int numReaderThreads;
   // The number of writer threads to spawn for OLTP apps.
   int numWriterThreads;
-  boolean reuseExistingTable = false;
   boolean readOnly = false;
   boolean localReads = false;
   // Random number generator.
@@ -86,15 +85,25 @@ public class CmdLineOpts {
 
     // Get the workload.
     AppName appName = AppName.valueOf(commandLine.getOptionValue("workload"));
-    // Get the proxy nodes.
-    List<String> hostPortList = Arrays.asList(commandLine.getOptionValue("nodes").split(","));
-    // Get the workload class.
     appClass = getAppClass(appName);
     LOG.info("App: " + appClass.getSimpleName());
+
+    if (commandLine.hasOption("skip_workload")) {
+      AppBase.appConfig.skipWorkload = true;
+      // For now, drop table is the only op that is permitted without workload.
+      if (!commandLine.hasOption("drop_table_name")) {
+        LOG.error("Table name to be dropped is expected when skipping workload run.");
+        System.exit(1);
+      }
+    }
+
+    // Get the proxy nodes.
+    List<String> hostPortList = Arrays.asList(commandLine.getOptionValue("nodes").split(","));
     for (String hostPort : hostPortList) {
       LOG.info("Adding node: " + hostPort);
       this.nodes.add(Node.fromHostPort(hostPort));
     }
+
     // This check needs to be done before initializeThreadCount is called.
     if (commandLine.hasOption("read_only")) {
       AppBase.appConfig.readOnly = true;
@@ -105,16 +114,13 @@ public class CmdLineOpts {
         System.exit(1);
       }
     }
+
     // Set the number of threads.
     initializeThreadCount(commandLine);
     // Initialize num keys.
     initializeNumKeys(commandLine);
     // Initialize table properties.
     initializeTableProperties(commandLine);
-    // Check if we should drop existing tables.
-    if (commandLine.hasOption("reuse_table")) {
-      reuseExistingTable = true;
-    }
     if (commandLine.hasOption("local_reads")) {
       AppBase.appConfig.localReads = true;
       localReads = true;
@@ -202,16 +208,16 @@ public class CmdLineOpts {
     return readOnly;
   }
 
-  public boolean getReuseExistingTable() {
-    return reuseExistingTable;
-  }
-
   public boolean doErrorChecking() {
     return AppBase.appConfig.sanityCheckAtEnd;
   }
 
   public boolean shouldDropTable() {
     return AppBase.appConfig.shouldDropTable;
+  }
+
+  public boolean skipWorkload() {
+    return AppBase.appConfig.skipWorkload;
   }
 
   private static Class<? extends AppBase> getAppClass(AppName workloadType)
@@ -362,9 +368,7 @@ public class CmdLineOpts {
                       "Do not use a UUID. Keys will be key:1, key:2, key:3, "
                           + "instead of <uuid>:1, <uuid>:2, <uuid>:3 etc.");
     options.addOption("create_table_name", true, "The name of the CQL table to create.");
-    options.addOption("drop_table_name", true, "The name of the CQL table to drop. " +
-                      "No other operations are performed.");
-    options.addOption("reuse_table", false, "Reuse table if it already exists.");
+    options.addOption("drop_table_name", true, "The name of the CQL table to drop.");
     options.addOption("read_only", false, "Read-only workload. " +
         "Values must have been written previously and uuid must be provided. " +
         "num_threads_write will be ignored.");
@@ -390,6 +394,7 @@ public class CmdLineOpts {
       "Print all exceptions encountered on the client, instead of sampling.");
     options.addOption("refresh_partition_metadata_seconds", true,
       "The interval (in seconds) after which we should refresh the partition metadata.");
+    options.addOption("skip_workload", false, "Skip running workload.");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");
