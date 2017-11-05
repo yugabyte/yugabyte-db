@@ -13,6 +13,10 @@ Revision history for pgTAP
   for the patch.
 * Improved foreign tables test to account for varying message order for
   diagnostic output. Thanks to Erik Rijkers for the patch.
+* Clarified the use of the `:schema` parameter to the extension-testing
+  functions in the documentation. Required since extensions do not belong to
+  schemas, but their objects may be specifically created in a schema. Thanks to
+  @decibel for the report (#121)!
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------

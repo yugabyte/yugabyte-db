@@ -2560,7 +2560,7 @@ missing operators, like so:
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find extensions.
+: Name of a schema associated with the extensions.
 
 `:extensions`
 : An array of extension names.
@@ -2568,11 +2568,14 @@ missing operators, like so:
 `:description`
 : A short description of the test.
 
-This function tests that all of the extensions in the named schema, or that
-are visible in the search path, are only the extensions that *should* be
-there. If the `:schema` argument is omitted, all extensions will be checked.
-If the description is omitted, a generally useful default description will be
-generated. Example:
+This function tests all of the extensions that should be present. If `:schema`
+is specified, it will test only for extensions associated the named schema (via
+the `schema` parameter in the extension's control file, ov the `WITH SCHEMA`
+clause of the
+[CREATE EXTENSION](https://www.postgresql.org/docs/current/static/extend-extensions.html)
+statement). Otherwise it will check for all extension in the database,
+including pgTAP itself. If the description is omitted, a generally useful
+default description will be generated. Example:
 
     SELECT extensions_are(
         'myschema',
@@ -3836,7 +3839,7 @@ procedural language.
 **Parameters**
 
 `:schema`
-: Schema in which to find the table.
+: Schema in which the extension's objects were installed.
 
 `:extension`
 : Name of an extension.
@@ -3844,13 +3847,12 @@ procedural language.
 `:description`
 : A short description of the test.
 
-This function tests whether or not an extension exists in the
-database. The first argument is the schema name, the second the
-extension name, and the third the test description. If the schema is
-omitted, the extension must be visible in the search path. If the test
-description is omitted, it will be set to "Extension `:extension`
-should exist".
-Example:
+This function tests whether or not an extension exists in the database. The
+first argument is the schema in which the extension objects were installed, the
+second the extension name, and the third the test description. If the schema is
+omitted, the may be associated with any schema or no schema. If the test
+description is omitted, it will be set to "Extension `:extension` should
+exist". Example:
 
     SELECT has_extension('public', 'pgtap');
 
@@ -3864,7 +3866,7 @@ Example:
 **Parameters**
 
 `:schema`
-: Schema in which to find the table.
+: Schema in which the extension's objects would be installed.
 
 `:extension`
 : Name of an extension.
