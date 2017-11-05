@@ -5,8 +5,6 @@ before_install:
   - sudo sh ./apt.postgresql.org.sh
   - sudo rm -vf /etc/apt/sources.list.d/pgdg-source.list
 env:
-  - PGVERSION=8.2
-  - PGVERSION=8.3
   - PGVERSION=8.4
   - PGVERSION=9.0
   - PGVERSION=9.1
@@ -15,4 +13,5 @@ env:
   - PGVERSION=9.4
   - PGVERSION=9.5
   - PGVERSION=9.6
+  - PGVERSION=10
 script: bash ./pg-travis-test.sh
