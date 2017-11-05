@@ -17,6 +17,11 @@ Revision history for pgTAP
   functions in the documentation. Required since extensions do not belong to
   schemas, but their objects may be specifically created in a schema. Thanks to
   @decibel for the report (#121)!
+* Updated the table-testing functions to recognized partitioned tables:
+    + `has_table()`
+    + `hasnt_table()`
+    + `tables_are()`
+    + `table_owner_is()`
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
@@ -59,7 +64,7 @@ Revision history for pgTAP
 
 0.95.0 2015-03-20T20:31:41Z
 ---------------------------
-* Added materialized-view testing assertions functions:
+* Added materialized view-testing assertion functions:
     + `materialized_views_are()`
     + `has_materialized_view()`
     + `hasnt_materialized_view()`

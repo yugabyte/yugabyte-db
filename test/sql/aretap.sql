@@ -13,9 +13,22 @@ CREATE TABLE public.fou(
     numb    NUMERIC(10, 2),
     "myInt" NUMERIC(8)
 );
-CREATE TABLE public.foo(
-    id    INT NOT NULL PRIMARY KEY
-);
+-- Create a partition.
+CREATE FUNCTION mkpart() RETURNS SETOF TEXT AS $$
+BEGIN
+    IF pg_version_num() >= 100000 THEN
+        EXECUTE $E$
+            CREATE TABLE public.foo (dt DATE NOT NULL) PARTITION BY RANGE (dt);
+        $E$;
+    ELSE
+    EXECUTE $E$
+        CREATE TABLE public.foo (dt DATE NOT NULL);
+    $E$;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM mkpart();
 
 CREATE RULE ins_me AS ON INSERT TO public.fou DO NOTHING;
 CREATE RULE upd_me AS ON UPDATE TO public.fou DO NOTHING;

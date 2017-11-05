@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(384);
+SELECT plan(411);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -14,6 +14,23 @@ CREATE TABLE public.sometab(
 );
 
 CREATE INDEX idx_hey ON public.sometab(numb);
+
+-- Create a partition.
+CREATE FUNCTION mkpart() RETURNS SETOF TEXT AS $$
+BEGIN
+    IF pg_version_num() >= 100000 THEN
+        EXECUTE $E$
+            CREATE TABLE public.apart (dt DATE NOT NULL) PARTITION BY RANGE (dt);
+        $E$;
+    ELSE
+    EXECUTE $E$
+        CREATE TABLE public.apart (dt DATE NOT NULL);
+    $E$;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM mkpart();
 
 CREATE VIEW public.someview AS SELECT * FROM public.sometab;
 
@@ -169,6 +186,64 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test relation_owner_is() with a partition.
+SELECT * FROM check_test(
+    relation_owner_is('public', 'apart', current_user, 'mumble'),
+	true,
+    'relation_owner_is(sch, part, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    relation_owner_is('public', 'apart', current_user),
+	true,
+    'relation_owner_is(sch, part, user)',
+    'Relation public.apart should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    relation_owner_is('__not__public', 'apart', current_user, 'mumble'),
+	false,
+    'relation_owner_is(non-sch, part, user)',
+    'mumble',
+    '    Relation __not__public.apart does not exist'
+);
+
+SELECT * FROM check_test(
+    relation_owner_is('public', '__not__apart', current_user, 'mumble'),
+	false,
+    'relation_owner_is(sch, non-part, user)',
+    'mumble',
+    '    Relation public.__not__apart does not exist'
+);
+
+SELECT * FROM check_test(
+    relation_owner_is('apart', current_user, 'mumble'),
+	true,
+    'relation_owner_is(part, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    relation_owner_is('apart', current_user),
+	true,
+    'relation_owner_is(part, user)',
+    'Relation apart should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    relation_owner_is('__not__apart', current_user, 'mumble'),
+	false,
+    'relation_owner_is(non-part, user)',
+    'mumble',
+    '    Relation __not__apart does not exist'
+);
+
+/****************************************************************************/
 -- Test relation_owner_is() with a schema.
 SELECT * FROM check_test(
     relation_owner_is('public', 'someseq', current_user, 'mumble'),
@@ -299,6 +374,23 @@ SELECT * FROM check_test(
     'table_owner_is(seq, user, desc)',
     'mumble',
     '    Table someseq does not exist'
+);
+
+-- But not a partition.
+SELECT * FROM check_test(
+    table_owner_is('public', 'apart', current_user, 'mumble'),
+	true,
+    'table_owner_is(sch, part, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    table_owner_is('apart', current_user, 'mumble'),
+	true,
+    'table_owner_is(part, user, desc)',
+    'mumble',
+    ''
 );
 
 /****************************************************************************/
@@ -1397,4 +1489,3 @@ SELECT * from test_materialized_view_owner_is();
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(830);
+SELECT plan(842);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -12,6 +12,23 @@ CREATE TABLE public.sometab(
     numb    NUMERIC(10, 2),
     "myInt" NUMERIC(8)
 );
+
+-- Create a partition.
+CREATE FUNCTION mkpart() RETURNS SETOF TEXT AS $$
+BEGIN
+    IF pg_version_num() >= 100000 THEN
+        EXECUTE $E$
+            CREATE TABLE public.apart (dt DATE NOT NULL) PARTITION BY RANGE (dt);
+        $E$;
+    ELSE
+    EXECUTE $E$
+        CREATE TABLE public.apart (dt DATE NOT NULL);
+    $E$;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM mkpart();
 
 CREATE TYPE public.sometype AS (
     id    INT,
@@ -231,6 +248,23 @@ SELECT * FROM check_test(
     ''
 );
 
+-- But not partitions.
+SELECT * FROM check_test(
+    has_table( 'public', 'apart', 'have apart' ),
+    true,
+    'has_table(sch, part, desc)',
+    'have apart',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_table( 'apart', 'have apart' ),
+    true,
+    'has_table(part, desc)',
+    'have apart',
+    ''
+);
+
 /****************************************************************************/
 -- Test hasnt_table().
 
@@ -279,6 +313,22 @@ SELECT * FROM check_test(
     false,
     'hasnt_table(sch, tab, desc)',
     'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( 'apart', 'got apart' ),
+    false,
+    'hasnt_table(part, desc)',
+    'got apart',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( 'public', 'apart', 'got apart' ),
+    false,
+    'hasnt_table(sch, part, desc)',
+    'got apart',
     ''
 );
 
@@ -2662,4 +2712,3 @@ SELECT * FROm test_hasnt_materialized_views_are();
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-
