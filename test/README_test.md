@@ -30,16 +30,16 @@ Partitioning in PostgreSQL 10
 =============================
 pgtap currently does not have any tests for natively partitioned tables. The below two functions should be installed to the same schema as pgtap to allow the native partitioning tests to work. Once pgtap adds this support in itself, this will no longer be needed
 
-create or replace function has_partition(name, name, text)
-returns text
-language sql
-as $$
-SELECT ok(_rexists('p', $1, $2), $3);
-$$;
+    create or replace function has_partition(name, name, text)
+    returns text
+    language sql
+    as $$
+    SELECT ok(_rexists('p', $1, $2), $3);
+    $$;
 
-create or replace function hasnt_partition(name, name, text)
-returns text
-language sql
-as $$
-SELECT ok( NOT _rexists('p', $1, $2), $3);
-$$;
+    create or replace function hasnt_partition(name, name, text)
+    returns text
+    language sql
+    as $$
+    SELECT ok( NOT _rexists('p', $1, $2), $3);
+    $$;
