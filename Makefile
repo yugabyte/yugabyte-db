@@ -82,6 +82,8 @@ endif
 # Determine the OS. Borrowed from Perl's Configure.
 OSNAME := $(shell $(SHELL) ./getos.sh)
 
+.PHONY: test
+
 # Make sure we build these.
 EXTRA_CLEAN += $(_IN_PATCHED)
 all: $(_IN_PATCHED) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
