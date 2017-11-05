@@ -265,6 +265,24 @@ class DocDBTest: public DocDBTestBase {
         InitMarkerBehavior::OPTIONAL));
   }
 
+  // Inserts a bunch of subkeys starting with the provided doc key. It also, fills out the
+  // expected_docdb_str with the expected state of DocDB after the operation.
+  void AddSubKeys(const KeyBytes& encoded_doc_key, int num_subkeys, int base,
+                  string* expected_docdb_str) {
+    *expected_docdb_str = "";
+    for (int i = 0; i < num_subkeys; i++) {
+      string subkey = "subkey" + std::to_string(base + i);
+      string value = "value" + std::to_string(i);
+      MicrosTime hybrid_time = (i + 1) * 1000;
+      ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(subkey)),
+                             Value(PrimitiveValue(value)), HybridTime::FromMicros(hybrid_time),
+                             InitMarkerBehavior::OPTIONAL));
+      *expected_docdb_str += strings::Substitute(
+          R"#(SubDocKey(DocKey([], ["key"]), ["$0"; HT(p=$1)]) -> "$2")#",
+          subkey, hybrid_time, value);
+      *expected_docdb_str += "\n";
+    }
+  }
 };
 
 class DocDBTestWithoutBlockCache: public DocDBTest {
@@ -1814,6 +1832,104 @@ TEST_F(DocDBTest, TestCompactionWithUserTimestamp) {
       SubDocKey(DocKey([], ["k1"]), ["s1"; HT(p=3000)]) -> "v13"; user_timestamp: 4000
       SubDocKey(DocKey([], ["k1"]), ["s2"; HT(p=3000)]) -> "v13"; user_timestamp: 2000
       )#");
+}
+
+void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb::DB* rocksdb,
+                 SubDocument* doc_from_rocksdb, bool* subdoc_found,
+                 const SubDocKey& subdoc_to_search) {
+  HybridTime ht = HybridTime::FromMicros(1000000);
+  SubDocKeyBound lower_bound(doc_key,
+                             PrimitiveValue("subkey" + std::to_string(base + lower)),
+                             /* is_exclusive */ false,
+                             /* is_lower_bound */ true);
+  SubDocKeyBound upper_bound(doc_key,
+                             PrimitiveValue("subkey" + std::to_string(base + upper)),
+                             /* is_exclusive */ false,
+                             /* is_lower_bound */ false);
+  EXPECT_OK(GetSubDocument(
+      rocksdb, subdoc_to_search, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
+      doc_from_rocksdb, subdoc_found, ht, Value::kMaxTtl,
+      false, lower_bound, upper_bound));
+}
+
+void VerifyBounds(SubDocument* doc_from_rocksdb, int lower, int upper, int base) {
+  EXPECT_EQ(upper - lower + 1, doc_from_rocksdb->object_num_keys());
+
+  for (int i = lower; i <= upper; i++) {
+    SubDocument* subdoc = doc_from_rocksdb->GetChild(
+        PrimitiveValue("subkey" + std::to_string(base + i)));
+    ASSERT_TRUE(subdoc != nullptr);
+    EXPECT_EQ("value" + std::to_string(i), subdoc->GetString());
+  }
+}
+
+void QueryBoundsAndVerify(const DocKey& doc_key, int lower, int upper, int base,
+                          rocksdb::DB* rocksdb, const SubDocKey& subdoc_to_search) {
+  SubDocument doc_from_rocksdb;
+  bool subdoc_found = false;
+  QueryBounds(doc_key, lower, upper, base, rocksdb, &doc_from_rocksdb, &subdoc_found,
+              subdoc_to_search);
+  EXPECT_TRUE(subdoc_found);
+  VerifyBounds(&doc_from_rocksdb, lower, upper, base);
+}
+
+TEST_F(DocDBTest, TestBuildSubDocumentBounds) {
+  const DocKey doc_key(PrimitiveValues("key"));
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  const int nsubkeys = 100;
+  const int base = 11000; // To ensure ints can be compared lexicographically.
+  string expected_docdb_str;
+  AddSubKeys(encoded_doc_key, nsubkeys, base, &expected_docdb_str);
+
+  AssertDocDbDebugDumpStrEq(expected_docdb_str);
+
+  const SubDocKey subdoc_to_search(doc_key);
+
+  QueryBoundsAndVerify(doc_key, 25, 75, base, rocksdb(), subdoc_to_search);
+  QueryBoundsAndVerify(doc_key, 50, 60, base, rocksdb(), subdoc_to_search);
+  QueryBoundsAndVerify(doc_key, 0, nsubkeys - 1, base, rocksdb(), subdoc_to_search);
+
+  SubDocument doc_from_rocksdb;
+  bool subdoc_found = false;
+  QueryBounds(doc_key, -100, 200, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+              subdoc_to_search);
+  EXPECT_TRUE(subdoc_found);
+  VerifyBounds(&doc_from_rocksdb, 0, nsubkeys - 1, base);
+
+  QueryBounds(doc_key, -100, 50, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+              subdoc_to_search);
+  EXPECT_TRUE(subdoc_found);
+  VerifyBounds(&doc_from_rocksdb, 0, 50, base);
+
+  QueryBounds(doc_key, 50, 150, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+              subdoc_to_search);
+  EXPECT_TRUE(subdoc_found);
+  VerifyBounds(&doc_from_rocksdb, 50, nsubkeys - 1, base);
+
+  QueryBounds(doc_key, -100, -50, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+              subdoc_to_search);
+  EXPECT_FALSE(subdoc_found);
+
+  QueryBounds(doc_key, 101, 150, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+              subdoc_to_search);
+  EXPECT_FALSE(subdoc_found);
+
+  // Try bounds without appropriate doc key.
+  QueryBounds(DocKey(PrimitiveValues("abc")), 0, nsubkeys - 1, base, rocksdb(), &doc_from_rocksdb,
+              &subdoc_found, subdoc_to_search);
+  EXPECT_FALSE(subdoc_found);
+
+  // Try bounds different from doc key.
+  QueryBounds(doc_key, 0, 99, base, rocksdb(), &doc_from_rocksdb, &subdoc_found,
+              SubDocKey(DocKey(PrimitiveValues("abc"))));
+  EXPECT_FALSE(subdoc_found);
+
+  // Try with bounds pointing to wrong doc key.
+  DocKey doc_key_xyz(PrimitiveValues("xyz"));
+  AddSubKeys(doc_key_xyz.Encode(), nsubkeys, base, &expected_docdb_str);
+  QueryBounds(doc_key_xyz, 0, nsubkeys - 1, base, rocksdb(), &doc_from_rocksdb,
+              &subdoc_found, subdoc_to_search);
+  EXPECT_FALSE(subdoc_found);
 }
 
 }  // namespace docdb
