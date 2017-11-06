@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(830);
+SELECT plan(884);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -12,6 +12,23 @@ CREATE TABLE public.sometab(
     numb    NUMERIC(10, 2),
     "myInt" NUMERIC(8)
 );
+
+-- Create a partition.
+CREATE FUNCTION mkpart() RETURNS SETOF TEXT AS $$
+BEGIN
+    IF pg_version_num() >= 100000 THEN
+        EXECUTE $E$
+            CREATE TABLE public.apart (dt DATE NOT NULL) PARTITION BY RANGE (dt);
+        $E$;
+    ELSE
+    EXECUTE $E$
+        CREATE TABLE public.apart (dt DATE NOT NULL);
+    $E$;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM mkpart();
 
 CREATE TYPE public.sometype AS (
     id    INT,
@@ -231,6 +248,23 @@ SELECT * FROM check_test(
     ''
 );
 
+-- But not partitions.
+SELECT * FROM check_test(
+    has_table( 'public', 'apart', 'have apart' ),
+    true,
+    'has_table(sch, part, desc)',
+    'have apart',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_table( 'apart', 'have apart' ),
+    true,
+    'has_table(part, desc)',
+    'have apart',
+    ''
+);
+
 /****************************************************************************/
 -- Test hasnt_table().
 
@@ -282,6 +316,22 @@ SELECT * FROM check_test(
     ''
 );
 
+SELECT * FROM check_test(
+    hasnt_table( 'apart', 'got apart' ),
+    false,
+    'hasnt_table(part, desc)',
+    'got apart',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( 'public', 'apart', 'got apart' ),
+    false,
+    'hasnt_table(sch, part, desc)',
+    'got apart',
+    ''
+);
+
 /****************************************************************************/
 -- Test has_view().
 
@@ -304,7 +354,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_view( 'foo', '__SDFSDFD__', 'desc' ),
     false,
-    'has_view(sch, non-existtent view, desc)',
+    'has_view(sch, non-existent view, desc)',
     'desc',
     ''
 );
@@ -347,7 +397,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
     true,
-    'hasnt_view(sch, non-existtent view, desc)',
+    'hasnt_view(sch, non-existent view, desc)',
     'desc',
     ''
 );
@@ -390,7 +440,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_sequence( 'foo', '__SDFSDFD__', 'desc' ),
     false,
-    'has_sequence(sch, non-existtent sequence, desc)',
+    'has_sequence(sch, non-existent sequence, desc)',
     'desc',
     ''
 );
@@ -441,7 +491,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     hasnt_sequence( 'foo', '__SDFSDFD__', 'desc' ),
     true,
-    'hasnt_sequence(sch, non-existtent sequence, desc)',
+    'hasnt_sequence(sch, non-existent sequence, desc)',
     'desc',
     ''
 );
@@ -2459,7 +2509,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             has_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
             false,
-            'has_materialized_view(sch, non-existtent materialized_view, desc)',
+            'has_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2510,7 +2560,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             has_view( 'foo', '__SDFSDFD__', 'desc' ),
             false,
-            'has_materialized_view(sch, non-existtent materialized_view, desc)',
+            'has_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2536,11 +2586,10 @@ BEGIN
         ) AS b LOOP
             RETURN NEXT tap.b;
         END LOOP;
-        
-    end if;
-
-    return;
-end; $$language PLPGSQL;
+    END IF;
+    RETURN;
+END;
+$$ language PLPGSQL;
 
 /****************************************************************************/
 -- Test hasnt_materialized_view().
@@ -2573,7 +2622,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             hasnt_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
             true,
-            'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+            'hasnt_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2623,7 +2672,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
             true,
-            'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+            'hasnt_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2649,17 +2698,321 @@ BEGIN
         ) AS b LOOP
             RETURN NEXT tap.b;
         END LOOP;
-    end if;
-
-    return;
-end; $$language PLPGSQL;
+    END IF;
+    RETURN;
+END;
+$$ language PLPGSQL;
 
 SELECT * FROM test_has_materialized_view();
-
 SELECT * FROm test_hasnt_materialized_views_are();
+
+/****************************************************************************/
+-- Test is_partitioned().
+CREATE FUNCTION test_is_partitioned() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 100000 THEN
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( '__SDFSDFD__' ),
+            false,
+            'is_partitioned(non-existent part)',
+            'Table "__SDFSDFD__" should be partitioned',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( '__SDFSDFD__', 'howdy' ),
+            false,
+            'is_partitioned(non-existent part, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( 'foo', '__SDFSDFD__', 'desc' ),
+            false,
+            'is_partitioned(sch, non-existent part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( 'public', 'apart', 'desc' ),
+            true,
+            'is_partitioned(sch, part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( 'public', 'apart'::name ),
+            true,
+            'is_partitioned(sch, part)',
+            'Table public.apart should be partitioned',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( 'apart', 'yowza' ),
+            true,
+            'is_partitioned(part, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            is_partitioned( 'apart' ),
+            true,
+            'is_partitioned(part)',
+            'Table apart should be partitioned',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+    ELSE
+        FOR tap IN SELECT * FROM check_test(
+            has_view( '__SDFSDFD__' ),
+            false,
+            'is_partitioned(non-existent part)',
+            'View "__SDFSDFD__" should exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( '__SDFSDFD__', 'howdy' ),
+            false,
+            'is_partitioned(non-existent part, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'foo', '__SDFSDFD__', 'desc' ),
+            false,
+            'is_partitioned(sch, non-existent part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'information_schema', 'tables', 'desc' ),
+            true,
+            'is_partitioned(sch, part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'information_schema', 'tables', 'desc' ),
+            true,
+            'is_partitioned(sch, part)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'information_schema', 'tables', 'desc' ),
+            true,
+            'is_partitioned(part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+        
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'pg_tables' ),
+            true,
+            'is_partitioned(part)',
+            'View pg_tables should exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ language PLPGSQL;
+
+/****************************************************************************/
+-- Test isnt_partitioned().
+CREATE FUNCTION test_isnt_partitioned() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 100000 THEN
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( '__SDFSDFD__' ),
+            true,
+            'isnt_partitioned(non-existent part)',
+            'Table "__SDFSDFD__" should not be partitioned',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( '__SDFSDFD__', 'howdy' ),
+            true,
+            'isnt_partitioned(non-existent part, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( 'foo', '__SDFSDFD__', 'desc' ),
+            true,
+            'isnt_partitioned(sch, non-existent part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( 'public', 'apart', 'desc' ),
+            false,
+            'isnt_partitioned(sch, part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( 'public', 'apart'::name ),
+            false,
+            'isnt_partitioned(sch, part)',
+            'Table public.apart should not be partitioned',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( 'apart', 'yowza'::text ),
+            false,
+            'isnt_partitioned(part, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            isnt_partitioned( 'apart' ),
+            false,
+            'isnt_partitioned(part)',
+            'Table apart should not be partitioned',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    else
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( '__SDFSDFD__' ),
+            true,
+            'isnt_partitioned(non-existent part)',
+            'View "__SDFSDFD__" should not exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( '__SDFSDFD__', 'howdy' ),
+            true,
+            'isnt_partitioned(non-existent part, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
+            true,
+            'isnt_partitioned(sch, non-existent part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'information_schema', 'tables', 'desc' ),
+            false,
+            'isnt_partitioned(sch, part, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'information_schema', 'tables', 'desc' ),
+            false,
+            'isnt_partitioned(sch, part)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'pg_tables', 'yowza' ),
+            false,
+            'isnt_partitioned(part, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'pg_tables', 'yowza' ),
+            false,
+            'isnt_partitioned(part)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ language PLPGSQL;
+
+SELECT * FROM test_is_partitioned();
+SELECT * FROM test_isnt_partitioned();
 
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-

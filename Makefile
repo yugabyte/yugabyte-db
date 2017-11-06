@@ -79,6 +79,12 @@ TESTS   := $(filter-out test/sql/enumtap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out enumtap valueset,$(REGRESS))
 endif
 
+# Partition tests tests not supported by 9.x and earlier.
+ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
+TESTS   := $(filter-out test/sql/partitions.sql,$(TESTS))
+REGRESS := $(filter-out partitions,$(REGRESS))
+endif
+
 # Determine the OS. Borrowed from Perl's Configure.
 OSNAME := $(shell $(SHELL) ./getos.sh)
 
@@ -106,6 +112,9 @@ endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
+ifeq ($(shell echo $(VERSION) | grep -qE "[98][.]" && echo yes || echo no),yes)
+	patch -p0 < compat/install-9.6.patch
+endif
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.4.patch
 endif
@@ -133,7 +142,14 @@ endif
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 	mv sql/pgtap.tmp sql/pgtap.sql
 
-# Ugly hack for now...
+# Ugly hacks for now...
+EXTRA_CLEAN += sql/pgtap--0.97.0--0.98.0.sql
+sql/pgtap--0.97.0--0.98.0.sql: sql/pgtap--0.97.0--0.98.0.sql.in
+	cp $< $@
+ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
+	patch -p0 < compat/9.6/pgtap--0.97.0--0.98.0.patch
+endif
+
 EXTRA_CLEAN += sql/pgtap--0.96.0--0.97.0.sql
 sql/pgtap--0.96.0--0.97.0.sql: sql/pgtap--0.96.0--0.97.0.sql.in
 	cp $< $@
@@ -143,6 +159,7 @@ endif
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.]0|8[.][1234]" && echo yes || echo no),yes)
 	patch -p0 < compat/9.0/pgtap--0.96.0--0.97.0.patch
 endif
+
 EXTRA_CLEAN += sql/pgtap--0.95.0--0.96.0.sql
 sql/pgtap--0.95.0--0.96.0.sql: sql/pgtap--0.95.0--0.96.0.sql.in
 	cp $< $@

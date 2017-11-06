@@ -1838,6 +1838,61 @@ missing tables, like so:
     #         users
     #         widgets
 
+### `partitions_are()` ###
+
+    SELECT partitions_are( :schema, :table, :partitions :description );
+    SELECT partitions_are( :schema, :table, :partitions );
+    SELECT partitions_are( :table, :partitions :description );
+    SELECT partitions_are( :table, :partitions );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the partitioned table.
+
+`:table`
+: Name of a partitioned table.
+
+`:partitions`
+: An array of partition table names.
+
+`:description`
+: A short description of the test.
+
+This function tests that the named table has all of the specified partitions,
+and those are its only partitions. The test casts partition names to the
+`regclass` type; therefore, partition names should be specified relative to the
+search path. Those in the search path should not be schema-qualified, while
+those outside the search path should be schema-qualified. Partition names and
+schemas should be appropriately quoted as identifiers where appropriate.
+
+If the `:schema` argument is omitted, the partitioned table must be visible the
+search path. If the description is omitted, a generally useful default
+description will be generated. Example:
+
+    SELECT partitions_are(
+        'myschema', 'mylog',
+        ARRAY[ 'log1', 'log2', 'log3', 'log4' ]
+    );
+
+Example for partitions outside the search path and requiring identifier-quoting:
+
+    SELECT partitions_are(
+        'myschema', 'MyLog',
+        ARRAY[ 'hidden."Log 1"', 'hidden."Log 2"' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing partitions, like so:
+
+    # Failed test 12: "Table myschema should have the correct partitions"
+    #     Extra partitions:
+    #         part4
+    #         hidden."Part 5"
+    #     Missing partitions:
+    #         part5
+    #         part6
+
 ### `foreign_tables_are()` ###
 
     SELECT foreign_tables_are( :schema, :foreign_tables, :description );
@@ -1937,11 +1992,12 @@ missing views, like so:
 `:description`
 : A short description of the test.
 
-This function tests that all of the materialized views in the named schema, or that are
-visible in the search path, are only the materialized views that *should* be there. If the
-`:schema` argument is omitted, materialized views will be sought in the search path,
-excluding `pg_catalog` and `information_schema` If the description is omitted,
-a generally useful default description will be generated. Example:
+This function tests that all of the materialized views in the named schema, or
+that are visible in the search path, are only the materialized views that
+*should* be there. If the `:schema` argument is omitted, materialized views
+will be sought in the search path, excluding `pg_catalog` and
+`information_schema` If the description is omitted, a generally useful default
+description will be generated. Example:
 
     SELECT materialized_views_are(
         'myschema',
@@ -2333,10 +2389,10 @@ missing opclasses, like so:
 : A short description of the test.
 
 This function tests that all of the rules on the named relation are only the
-rules that *should* be on that relation (a table, view or a materialized view). If the `:schema`
-argument is omitted, the rules must be visible in the search path, excluding
-`pg_catalog` and `information_schema`. If the description is omitted, a
-generally useful default description will be generated. Example:
+rules that *should* be on that relation (a table, view or a materialized view).
+If the `:schema` argument is omitted, the rules must be visible in the search
+path, excluding `pg_catalog` and `information_schema`. If the description is
+omitted, a generally useful default description will be generated. Example:
 
     SELECT rules_are(
         'myschema',
@@ -2695,11 +2751,11 @@ specified schema does *not* exist.
 `:description`
 : A short description of the test.
 
-This function tests whether or not a relation exists in the database.
-Relations are tables, views, materialized views, seqences, composite types, foreign tables, and
-toast tables. The first argument is a schema name, the second is a relation
-name, and the third is the test description. If you omit the schema, the
-relation must be visible in the search path. Example:
+This function tests whether or not a relation exists in the database. Relations
+are tables, views, materialized views, seqences, composite types, foreign
+tables, and toast tables. The first argument is a schema name, the second is a
+relation name, and the third is the test description. If you omit the schema,
+the relation must be visible in the search path. Example:
 
     SELECT has_relation('myschema', 'somerelation');
 
@@ -2842,10 +2898,10 @@ specified view does *not* exist.
 `:description`
 : A short description of the test.
 
-This function tests whether or not a materialized view exists in the database. The first
-argument is a schema name, the second is a materialized view name, and the third is the
-test description. If you omit the schema, the materialized view must be visible in the
-search path. Example:
+This function tests whether or not a materialized view exists in the database.
+The first argument is a schema name, the second is a materialized view name,
+and the third is the test description. If you omit the schema, the materialized
+view must be visible in the search path. Example:
 
     SELECT has_materialized_view('myschema', 'some_materialized_view');
 
@@ -3907,10 +3963,10 @@ So we have the assertions to validate 'em.
 `:description`
 : A short description of the test.
 
-Tests whether or not a column exists in a given table, view, materialized view or composite
-type. The first argument is the schema name, the second the table name, the
-third the column name, and the fourth is the test description. If the schema
-is omitted, the table must be visible in the search path. If the test
+Tests whether or not a column exists in a given table, view, materialized view
+or composite type. The first argument is the schema name, the second the table
+name, the third the column name, and the fourth is the test description. If the
+schema is omitted, the table must be visible in the search path. If the test
 description is omitted, it will be set to "Column `:table.:column` should
 exist".
 
@@ -3935,8 +3991,8 @@ exist".
 : A short description of the test.
 
 This function is the inverse of `has_column()`. The test passes if the
-specified column does *not* exist in the specified table, view, materialized view or composite
-type.
+specified column does *not* exist in the specified table, view, materialized
+view or composite type.
 
 ### `col_not_null()` ###
 
@@ -4668,6 +4724,83 @@ Tests whether an index is unique.
 : A short description of the test.
 
 Tests whether an index is on a primary key.
+
+### `is_partitioned()` ###
+
+    SELECT is_partitioned( :schema, :table, :description );
+    SELECT is_partitioned( :schema, :table );
+    SELECT is_partitioned( :table, :description);
+    SELECT is_partitioned( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the partitioned table.
+
+`:table`
+: Name of a partitioned table.
+
+`:description`
+: A short description of the test.
+
+Tests whether a table is partitioned. The first argument is the schema name,
+the second the table name, the the third is the test description. If the schema
+is omitted, the table must be visible in the search path. If the test
+description is omitted, it will be set to "Table `:table` should be
+partitioned". Note that this test will fail if the table in question does not
+exist.
+
+### `isnt_partitioned()` ###
+
+    SELECT isnt_partitioned( :schema, :table, :description );
+    SELECT isnt_partitioned( :schema, :table );
+    SELECT isnt_partitioned( :table, :description);
+    SELECT isnt_partitioned( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_partitioned()`. The test passes if the
+specified table is *not* partitioned, or if it does not exist.
+
+### `is_partition_of()` ###
+
+    SELECT is_parent( :child_schema, :child, :parent_schema, :parent_table, :description );
+    SELECT is_parent( :child_schema, :child, :parent_schema, :parent_table );
+    SELECT is_parent( :child, :parent_table, :description );
+    SELECT is_parent( :child, :parent_table );
+
+**Parameters**
+
+`:child_schema`
+: Schema in which to find the partition table.
+
+`:child`
+: Name of a partition table.
+
+`:parent_schema`
+: Schema in which to find the partitioned table.
+
+`:parent_table`
+: Name of a partitioned table.
+
+`:description`
+: A short description of the test.
+
+Tests that one table is a partition of another table. The partition (or child)
+table is specified first, the partitioned (or parent) table second. Without the
+schema parameters, both tables must be visible in the search path. If the
+test description is omitted, it will be set to "Table `:child_table` should be
+a partition of `:parent_table`". Note that this test will fail if either table
+does not exist.
 
 ### `is_clustered()` ###
 
@@ -5798,9 +5931,10 @@ the diagnostics will look something like:
 `:description`
 : A short description of the test.
 
-Tests the ownership of a relation. Relations are tables, views, materialized views, seqences,
-composite types, foreign tables, and toast tables. If the `:description`
-argument is omitted, an appropriate description will be created. Examples:
+Tests the ownership of a relation. Relations are tables, views, materialized
+views, sequences, composite types, foreign tables, and toast tables. If the
+`:description` argument is omitted, an appropriate description will be created.
+Examples:
 
     SELECT relation_owner_is(
         'public', 'mytable', 'someuser',
@@ -5934,24 +6068,24 @@ diagnostics will look something like:
 `:description`
 : A short description of the test.
 
-Tests the ownership of a materialized view. If the `:description` argument is omitted, an
-appropriate description will be created. Examples:
+Tests the ownership of a materialized view. If the `:description` argument is
+omitted, an appropriate description will be created. Examples:
 
     SELECT view_owner_is(
-        'public', 'mymaterializedview', 'someuser',
-        'mymaterializedview should be owned by someuser'
+        'public', 'my_matview', 'someuser',
+        'my_matview should be owned by someuser'
     );
     SELECT materialized_view_owner_is( 'widgets', current_user );
 
-In the event that the test fails because the materialized view in question does not
-actually exist or is not visible, you will see an appropriate diagnostic such
-as:
+In the event that the test fails because the materialized view in question does
+not actually exist or is not visible, you will see an appropriate diagnostic
+such as:
 
     # Failed test 16: "Materialized view foo should be owned by www"
     #     Materialized view foo does not exist
 
-If the test fails because the materialized view is not owned by the specified user, the
-diagnostics will look something like:
+If the test fails because the materialized view is not owned by the specified
+user, the diagnostics will look something like:
 
     # Failed test 17: "Materialized view bar should be owned by root"
     #         have: postgres
