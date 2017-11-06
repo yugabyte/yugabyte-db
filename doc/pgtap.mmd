@@ -7924,10 +7924,15 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
-9.5 and Up
-----------
+10 and Up
+---------
 
 No changes. Everything should just work.
+
+9.6 and Down
+------------
+* The partition-testing functions are not available, because partitions were
+  not introduced until 10.
 
 9.4 and Down
 ------------
@@ -8024,7 +8029,7 @@ comments, suggestions, and bug reports are welcomed there.
 Author
 ------
 
-[David E. Wheeler](http://justatheory.com/)
+[David E. Wheeler](http://theory.pm/)
 
 Credits
 -------
