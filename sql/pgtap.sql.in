@@ -9972,6 +9972,7 @@ RETURNS SETOF NAME AS $$
       JOIN pg_catalog.pg_inherits i ON c.oid = i.inhparent
      WHERE n.nspname = $1
        AND c.relname = $2
+       AND c.relkind = 'p'
 $$ LANGUAGE SQL;
 
 -- _parts(table)
@@ -9981,6 +9982,7 @@ RETURNS SETOF NAME AS $$
       FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_inherits i ON c.oid = i.inhparent
      WHERE c.relname = $1
+       AND c.relkind = 'p'
        AND pg_catalog.pg_table_is_visible(c.oid)
 $$ LANGUAGE SQL;
 
@@ -9996,7 +9998,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- partitions_are( schema, table, partitions )
-CREATE OR REPLACE FUNCTION partitions_are( NAME, NAME, NAME[], TEXT )
+CREATE OR REPLACE FUNCTION partitions_are( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT partitions_are(
         $1, $2, $3,

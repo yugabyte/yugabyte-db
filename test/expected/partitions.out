@@ -1,5 +1,5 @@
 \unset ECHO
-1..66
+1..102
 ok 1 - is_partition_of( csch, ctab, psch, ptab, desc ) should pass
 ok 2 - is_partition_of( csch, ctab, psch, ptab, desc ) should have the proper description
 ok 3 - is_partition_of( csch, ctab, psch, ptab, desc ) should have the proper diagnostics
@@ -66,3 +66,39 @@ ok 63 - is_partition_of( csch, non-ctab, psch, ptab, desc ) should have the prop
 ok 64 - is_partition_of( non-ctab, ptab, desc ) should fail
 ok 65 - is_partition_of( non-ctab, ptab, desc ) should have the proper description
 ok 66 - is_partition_of( non-ctab, ptab, desc ) should have the proper diagnostics
+ok 67 - partitions_are( sch, tab, parts, desc ) should pass
+ok 68 - partitions_are( sch, tab, parts, desc ) should have the proper description
+ok 69 - partitions_are( sch, tab, parts, desc ) should have the proper diagnostics
+ok 70 - partitions_are( sch, tab, parts ) should pass
+ok 71 - partitions_are( sch, tab, parts ) should have the proper description
+ok 72 - partitions_are( sch, tab, parts ) should have the proper diagnostics
+ok 73 - partitions_are( tab, parts, desc ) should pass
+ok 74 - partitions_are( tab, parts, desc ) should have the proper description
+ok 75 - partitions_are( tab, parts, desc ) should have the proper diagnostics
+ok 76 - partitions_are( tab, parts ) should pass
+ok 77 - partitions_are( tab, parts ) should have the proper description
+ok 78 - partitions_are( tab, parts ) should have the proper diagnostics
+ok 79 - partitions_are( sch, tab, bad parts, desc ) should fail
+ok 80 - partitions_are( sch, tab, bad parts, desc ) should have the proper description
+ok 81 - partitions_are( sch, tab, bad parts, desc ) should have the proper diagnostics
+ok 82 - partitions_are( tab, bad parts, desc ) should fail
+ok 83 - partitions_are( tab, bad parts, desc ) should have the proper description
+ok 84 - partitions_are( tab, bad parts, desc ) should have the proper diagnostics
+ok 85 - partitions_are( hidden sch, tab, parts, desc ) should pass
+ok 86 - partitions_are( hidden sch, tab, parts, desc ) should have the proper description
+ok 87 - partitions_are( hidden sch, tab, parts, desc ) should have the proper diagnostics
+ok 88 - partitions_are( hidden tab, parts, desc ) should fail
+ok 89 - partitions_are( hidden tab, parts, desc ) should have the proper description
+ok 90 - partitions_are( hidden tab, parts, desc ) should have the proper diagnostics
+ok 91 - partitions_are( sch, non-parted tab, inherited tab, desc ) should fail
+ok 92 - partitions_are( sch, non-parted tab, inherited tab, desc ) should have the proper description
+ok 93 - partitions_are( sch, non-parted tab, inherited tab, desc ) should have the proper diagnostics
+ok 94 - partitions_are( non-parted tab, inherited tab, desc ) should fail
+ok 95 - partitions_are( non-parted tab, inherited tab, desc ) should have the proper description
+ok 96 - partitions_are( non-parted tab, inherited tab, desc ) should have the proper diagnostics
+ok 97 - partitions_are( sch, non-existent tab, parts, desc ) should fail
+ok 98 - partitions_are( sch, non-existent tab, parts, desc ) should have the proper description
+ok 99 - partitions_are( sch, non-existent tab, parts, desc ) should have the proper diagnostics
+ok 100 - partitions_are( non-existent tab, parts, desc ) should fail
+ok 101 - partitions_are( non-existent tab, parts, desc ) should have the proper description
+ok 102 - partitions_are( non-existent tab, parts, desc ) should have the proper diagnostics

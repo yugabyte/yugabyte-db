@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(66);
+SELECT plan(102);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -217,6 +217,130 @@ SELECT * FROM check_test(
     'is_partition_of( non-ctab, ptab, desc )',
     'whatevs',
     ''
+);
+
+/****************************************************************************/
+-- Test partitions_are().
+SELECT * FROM check_test(
+    partitions_are( 'public', 'parted', '{part1,part2,hide.part3}', 'hi' ),
+    true,
+    'partitions_are( sch, tab, parts, desc )',
+    'hi',
+    ''
+);
+
+SELECT * FROM check_test(
+    partitions_are( 'public', 'parted', '{part1,part2,hide.part3}'::name[] ),
+    true,
+    'partitions_are( sch, tab, parts )',
+    'Table public.parted should have the correct partitions',
+    ''
+);
+
+SELECT * FROM check_test(
+    partitions_are( 'parted', '{part1,part2,hide.part3}'::name[], 'hi' ),
+    true,
+    'partitions_are( tab, parts, desc )',
+    'hi',
+    ''
+);
+
+SELECT * FROM check_test(
+    partitions_are( 'parted', '{part1,part2,hide.part3}' ),
+    true,
+    'partitions_are( tab, parts )',
+    'Table parted should have the correct partitions',
+    ''
+);
+
+-- Test diagnostics.
+SELECT * FROM check_test(
+    partitions_are( 'public', 'parted', '{part1,part2of2,hide.part3}', 'hi' ),
+    false,
+    'partitions_are( sch, tab, bad parts, desc )',
+    'hi',
+    '    Extra partitions:
+        part2
+    Missing partitions:
+        part2of2'
+);
+
+SELECT * FROM check_test(
+    partitions_are( 'parted', '{part1,part2of2,hide.part3}'::name[], 'hi' ),
+    false,
+    'partitions_are( tab, bad parts, desc )',
+    'hi',
+    '    Extra partitions:
+        part2
+    Missing partitions:
+        part2of2'
+);
+
+-- Test with the hidden schema.
+SELECT * FROM check_test(
+    partitions_are(
+        'hide', 'hidden_parted',
+        '{hide.hidden_part1,hide.hidden_part2,not_hidden_part3}',
+        'hi'
+    ),
+    true,
+    'partitions_are( hidden sch, tab, parts, desc )',
+    'hi',
+    ''
+);
+
+-- Should fail for partitioned table outside search path.
+SELECT * FROM check_test(
+    partitions_are(
+        'hidden_parted',
+        '{hide.hidden_part1,hide.hidden_part2,not_hidden_part3}'::name[],
+        'hi'
+    ),
+    false,
+    'partitions_are( hidden tab, parts, desc )',
+    'hi',
+    '    Missing partitions:
+        not_hidden_part3
+        "hide.hidden_part2"
+        "hide.hidden_part1"'
+);
+
+-- Should not work for unpartitioned but inherited table
+SELECT * FROM check_test(
+    partitions_are( 'public', 'parent', '{child}', 'hi' ),
+    false,
+    'partitions_are( sch, non-parted tab, inherited tab, desc )',
+    'hi',
+    '    Missing partitions:
+        child'
+);
+
+SELECT * FROM check_test(
+    partitions_are( 'parent', '{child}'::name[], 'hi' ),
+    false,
+    'partitions_are( non-parted tab, inherited tab, desc )',
+    'hi',
+    '    Missing partitions:
+        child'
+);
+
+-- Should not work for non-existent table.
+SELECT * FROM check_test(
+    partitions_are( 'public', 'nonesuch', '{part1}', 'hi' ),
+    false,
+    'partitions_are( sch, non-existent tab, parts, desc )',
+    'hi',
+    '    Missing partitions:
+        part1'
+);
+
+SELECT * FROM check_test(
+    partitions_are( 'nonesuch', '{part1}'::name[], 'hi' ),
+    false,
+    'partitions_are( non-existent tab, parts, desc )',
+    'hi',
+    '    Missing partitions:
+        part1'
 );
 
 /****************************************************************************/
