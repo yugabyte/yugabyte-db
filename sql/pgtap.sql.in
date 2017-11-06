@@ -9895,3 +9895,70 @@ RETURNS TEXT AS $$
         'Table ' || quote_ident($1) || ' should not be partitioned'
     );
 $$ LANGUAGE sql;
+
+-- _partof( child_schema, child_table, parent_schema, parent_table )
+CREATE OR REPLACE FUNCTION _partof ( NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_namespace cn
+          JOIN pg_catalog.pg_class cc ON cn.oid = cc.relnamespace
+          JOIN pg_catalog.pg_inherits i ON cc.oid = i.inhrelid
+          JOIN pg_catalog.pg_class pc ON i.inhparent = pc.oid
+          JOIN pg_catalog.pg_namespace pn ON pc.relnamespace = pn.oid
+         WHERE cn.nspname = $1
+           AND cc.relname = $2
+           AND cc.relispartition
+           AND pn.nspname = $3
+           AND pc.relname = $4
+           AND pc.relkind = 'p'
+    )
+$$ LANGUAGE sql;
+
+-- _partof( child_table, parent_table )
+CREATE OR REPLACE FUNCTION _partof ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_class cc
+          JOIN pg_catalog.pg_inherits i ON cc.oid = i.inhrelid
+          JOIN pg_catalog.pg_class pc ON i.inhparent = pc.oid
+         WHERE cc.relname = $1
+           AND cc.relispartition
+           AND pc.relname = $2
+           AND pc.relkind = 'p'
+           AND pg_catalog.pg_table_is_visible(cc.oid)
+           AND pg_catalog.pg_table_is_visible(pc.oid)
+    )
+$$ LANGUAGE sql;
+
+-- is_partition_of( child_schema, child_table, parent_schema, parent_table, description )
+CREATE OR REPLACE FUNCTION is_partition_of ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _partof($1, $2, $3, $4), $5);
+$$ LANGUAGE sql;
+
+-- is_partition_of( child_schema, child_table, parent_schema, parent_table )
+CREATE OR REPLACE FUNCTION is_partition_of ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _partof($1, $2, $3, $4),
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should be a partition of'
+        || quote_ident($3) || '.' || quote_ident($4)
+    );
+$$ LANGUAGE sql;
+
+-- is_partition_of( child_table, parent_table, description )
+CREATE OR REPLACE FUNCTION is_partition_of ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _partof($1, $2), $3);
+$$ LANGUAGE sql;
+
+-- is_partition_of( child_table, parent_table )
+CREATE OR REPLACE FUNCTION is_partition_of ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _partof($1, $2),
+        'Table ' || quote_ident($1) || ' should be a partition of' || quote_ident($2)
+    );
+$$ LANGUAGE sql;
