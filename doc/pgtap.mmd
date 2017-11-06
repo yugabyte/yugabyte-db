@@ -1860,10 +1860,11 @@ missing tables, like so:
 : A short description of the test.
 
 This function tests that the named table has all of the specified partitions,
-and those are its only partitions. Partition names should be specified relative
-to the search path; those in the search path should not be schema-qualified,
-while those outside the search path should be schema-qualified. Partition names
-and schemas should be appropriately quoted as identifiers where appropriate.
+and those are its only partitions. The test casts partition names to the
+`regclass` type; therefore, partition names should be specified relative to the
+search path. Those in the search path should not be schema-qualified, while
+those outside the search path should be schema-qualified. Partition names and
+schemas should be appropriately quoted as identifiers where appropriate.
 
 If the `:schema` argument is omitted, the partitioned table must be visible the
 search path. If the description is omitted, a generally useful default
