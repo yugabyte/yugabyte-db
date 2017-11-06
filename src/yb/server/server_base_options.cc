@@ -46,9 +46,12 @@
 //
 // These are currently for use in a cloud-based deployment, but could be retrofitted to work for
 // an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
-DEFINE_string(placement_cloud, "", "The cloud in which this instance is started.");
-DEFINE_string(placement_region, "", "The cloud region in which this instance is started.");
-DEFINE_string(placement_zone, "", "The cloud availability zone in which this instance is started.");
+DEFINE_string(placement_cloud, "cloud1",
+              "The cloud in which this instance is started.");
+DEFINE_string(placement_region, "datacenter1",
+              "The cloud region in which this instance is started.");
+DEFINE_string(placement_zone, "rack1",
+              "The cloud availability zone in which this instance is started.");
 
 namespace yb {
 namespace server {
