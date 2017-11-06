@@ -2,7 +2,7 @@
 +++ sql/pgtap.sql
 @@ -781,10 +781,6 @@
      RETURN ok( TRUE, descr );
- EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
+ EXCEPTION WHEN OTHERS THEN
      -- There should have been no exception.
 -    GET STACKED DIAGNOSTICS
 -        detail  = PG_EXCEPTION_DETAIL,
@@ -11,7 +11,7 @@
      RETURN ok( FALSE, descr ) || E'\n' || diag(
             '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
      );
-@@ -6342,10 +6338,6 @@
+@@ -6372,10 +6368,6 @@
                  -- Something went wrong. Record that fact.
                  errstate := SQLSTATE;
                  errmsg := SQLERRM;
