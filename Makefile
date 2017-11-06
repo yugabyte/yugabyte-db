@@ -170,24 +170,24 @@ endif
 sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
 	grep '^CREATE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE (OR REPLACE)?/DROP/; print "$$_;\n" }' > sql/uninstall_pgtap.sql
 
-sql/pgtap-core.sql: sql/pgtap.sql.in
+sql/pgtap-static.sql: sql/pgtap.sql.in
 	cp $< $@
-	sed -e 's,sql/pgtap,sql/pgtap-core,g' compat/install-8.4.patch | patch -p0
-	sed -e 's,sql/pgtap,sql/pgtap-core,g' compat/install-8.3.patch | patch -p0
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap-core.sql > sql/pgtap-core.tmp
-	$(PERL) compat/gencore 0 sql/pgtap-core.tmp > sql/pgtap-core.sql
-	rm sql/pgtap-core.tmp
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.6.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.4.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.2.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.1.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-9.0.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-8.4.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-static,g' compat/install-8.3.patch | patch -p0
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' $@ > sql/pgtap-static.tmp
+	mv sql/pgtap-static.tmp $@
+EXTRA_CLEAN += sql/pgtap-static.sql
 
-sql/pgtap-schema.sql: sql/pgtap.sql.in
-	cp $< $@
-	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.2.patch | patch -p0
-	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.1.patch | patch -p0
-	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.0.patch | patch -p0
-	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.4.patch | patch -p0
-	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.3.patch | patch -p0
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap-schema.sql > sql/pgtap-schema.tmp
-	$(PERL) compat/gencore 1 sql/pgtap-schema.tmp > sql/pgtap-schema.sql
-	rm sql/pgtap-schema.tmp
+sql/pgtap-core.sql: sql/pgtap-static.sql
+	$(PERL) compat/gencore 0 sql/pgtap-static.sql > sql/pgtap-core.sql
+
+sql/pgtap-schema.sql: sql/pgtap-static.sql
+	$(PERL) compat/gencore 1 sql/pgtap-static.sql > sql/pgtap-schema.sql
 
 # Make sure that we build the regression tests.
 installcheck: test/setup.sql
