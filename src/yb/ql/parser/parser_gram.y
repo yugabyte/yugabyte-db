@@ -73,6 +73,7 @@
 #include "yb/ql/ptree/pt_alter_table.h"
 #include "yb/ql/ptree/pt_create_table.h"
 #include "yb/ql/ptree/pt_create_type.h"
+#include "yb/ql/ptree/pt_create_index.h"
 #include "yb/ql/ptree/pt_drop.h"
 #include "yb/ql/ptree/pt_type.h"
 #include "yb/ql/ptree/pt_name.h"
@@ -226,6 +227,9 @@ using namespace yb::ql;
                           // User-defined types.
                           CreateTypeStmt
 
+                          // Index.
+                          IndexStmt
+
 %type <PCollection>       // Select can be either statement or expression of collection types.
                           SelectStmt select_no_parens select_with_parens select_clause
 
@@ -251,6 +255,9 @@ using namespace yb::ql;
                           addColumnDefList dropColumnList alterPropertyList
                           renameColumnList alterColumnTypeList
                           alter_table_op alter_table_ops
+
+                          // Create index clauses.
+                          index_params opt_covering_clause
 
 %type <PExpr>             // Expressions.
                           a_expr b_expr ctext_expr c_expr AexprConst bindvar
@@ -300,6 +307,7 @@ using namespace yb::ql;
 %type <PTableProperty>    column_ordering property_map_list_element
 %type <PTablePropertyMap> property_map_list property_map
 %type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
+                          opt_index_options
 
 %type <PTypeField>         TypeField
 %type <PTypeFieldListNode> TypeFieldList
@@ -394,7 +402,7 @@ using namespace yb::ql;
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
                           DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
-                          GrantStmt GrantRoleStmt ImportForeignSchemaStmt IndexStmt
+                          GrantStmt GrantRoleStmt ImportForeignSchemaStmt
                           ListenStmt LoadStmt LockStmt NotifyStmt ExplainableStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
@@ -485,7 +493,7 @@ using namespace yb::ql;
                           aggr_args aggr_args_list func_as createfunc_opt_list alterfunc_opt_list
                           old_aggr_definition old_aggr_list oper_argtypes RuleActionList
                           RuleActionMulti opt_column_list opt_name_list
-                          index_params name_list role_list
+                          name_list role_list
                           opt_array_bounds qualified_name_list
                           type_name_list any_operator expr_list
                           multiple_set_clause def_list
@@ -527,8 +535,8 @@ using namespace yb::ql;
                           CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER CLUSTERING
                           COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT COMMITTED
                           COMPACT CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
-                          CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER CREATE
-                          CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE
+                          CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER COVERING
+                          CREATE CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE
                           CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
                           DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
@@ -758,6 +766,9 @@ stmt:
     $$ = $1;
   }
   | AlterTableStmt {
+    $$ = $1;
+  }
+  | IndexStmt {
     $$ = $1;
   }
   | SelectStmt {
@@ -5273,7 +5284,6 @@ inactive_stmt:
   | GrantStmt
   | GrantRoleStmt
   | ImportForeignSchemaStmt
-  | IndexStmt
   | ListenStmt
   | RefreshMatViewStmt
   | LoadStmt
@@ -5471,8 +5481,7 @@ DropUserStmt:
  *  statement (in addition to by themselves).
  */
 inactive_schema_stmt:
-  IndexStmt
-  | CreateSeqStmt
+  CreateSeqStmt
   | CreateTrigStmt
   | GrantStmt
   | ViewStmt
@@ -7702,36 +7711,64 @@ defacl_privilege_target:
 
 IndexStmt:
   CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_reloptions OptTableSpace opt_where_clause {
+  access_method_clause '(' index_params ')' opt_index_options opt_covering_clause OptTableSpace
+  opt_where_clause {
+    $$ = MAKE_NODE(@1, PTCreateIndex, $5, $7, $10, false, $12, $13);
   }
-  | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_reloptions OptTableSpace opt_where_clause {
+  | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON qualified_name
+  access_method_clause '(' index_params ')' opt_index_options opt_covering_clause OptTableSpace
+  opt_where_clause {
+    $$ = MAKE_NODE(@1, PTCreateIndex, $8, $10, $13, true, $15, $16);
   }
 ;
 
 opt_unique:
-  UNIQUE                            { $$ = true; }
-  | /*EMPTY*/                       { $$ = false; }
+  UNIQUE                            { PARSER_UNSUPPORTED(@1); }
+  | /*EMPTY*/                       { }
 ;
 
 opt_concurrently:
-  CONCURRENTLY                      { $$ = true; }
-  | /*EMPTY*/                       { $$ = false; }
+  CONCURRENTLY                      { PARSER_UNSUPPORTED(@1); }
+  | /*EMPTY*/                       { }
 ;
 
 opt_index_name:
   index_name                        { $$ = $1; }
-  | /*EMPTY*/                       { $$ = nullptr; }
+  | /*EMPTY*/                       { PARSER_UNSUPPORTED(@0); }
 ;
 
 access_method_clause:
-  USING access_method               { $$ = $2; }
+  USING access_method               { PARSER_UNSUPPORTED(@1); }
   | /*EMPTY*/                       { }
 ;
 
 index_params:
-  index_elem                        { }
-  | index_params ',' index_elem     { }
+  NestedColumnList                  {
+    // Wrap the index column list as a primary key definition for index table creation purpose.
+    PTPrimaryKey::SharedPtr pk = MAKE_NODE(@1, PTPrimaryKey, $1);
+    $$ = MAKE_NODE(@1, PTListNode, pk);
+  }
+;
+
+opt_index_options:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | WITH CLUSTERING ORDER BY '(' orderingList ')' {
+    $$ = $6;
+  }
+  | WITH reloptions {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+opt_covering_clause:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | COVERING '(' columnList ')' {
+    $$ = $3;
+  }
 ;
 
 /*

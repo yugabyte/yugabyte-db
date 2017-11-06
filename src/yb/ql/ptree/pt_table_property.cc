@@ -237,9 +237,14 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
       }
       case PropertyType::kClusteringOrder: {
         const auto &column_name = tnode->name().c_str();
+        const PTColumnDefinition *col = sem_context->GetColumnDefinition(tnode->name());
+        if (col == nullptr || !col->is_primary_key() || col->is_hash_key()) {
+          return sem_context->Error(tnode, "Not a clustering key column",
+                                    ErrorCode::INVALID_TABLE_PROPERTY);
+        }
         // Insert column_name only the first time we see it.
         if (order_tnodes.find(column_name) == order_tnodes.end()) {
-          order_columns.push_back(tnode->name().c_str());
+          order_columns.push_back(column_name);
         }
         // If a column ordering was set more than once, we use the last order provided.
         order_tnodes[column_name] = tnode;
@@ -256,19 +261,18 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
     const auto &tnode = order_tnodes[*order_column_iter];
     if (strcmp(pc->yb_name(), order_column_iter->c_str()) != 0) {
       string msg;
-      // If we can bind pc->yb_name() in the order by list, it means the order of the columns is
+      // If we can find pc->yb_name() in the order-by list, it means the order of the columns is
       // incorrect.
       if (order_tnodes.find(pc->yb_name()) != order_tnodes.end()) {
-        msg = Substitute("Bad Request: The order of columns in the CLUSTERING "
-            "ORDER directive must be the one of the clustering key ($0 must appear before $1)",
-            pc->yb_name(), *order_column_iter);
+        msg = Substitute("Columns in the CLUSTERING ORDER directive must be in same order as "
+                         "the clustering key columns order ($0 must appear before $1)",
+                         pc->yb_name(), *order_column_iter);
       } else {
-        msg = Substitute("Bad Request: Missing CLUSTERING ORDER for column $0",
-                                  pc->yb_name());
+        msg = Substitute("Missing CLUSTERING ORDER for column $0", pc->yb_name());
       }
       return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
     }
-    if(tnode->direction() == PTOrderBy::Direction::kASC) {
+    if (tnode->direction() == PTOrderBy::Direction::kASC) {
       pc->set_sorting_type(ColumnSchema::SortingType::kAscending);
     } else if (tnode->direction() == PTOrderBy::Direction::kDESC) {
       pc->set_sorting_type(ColumnSchema::SortingType::kDescending);
@@ -277,9 +281,9 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   }
   if (order_column_iter != order_columns.end()) {
     const auto &tnode = order_tnodes[*order_column_iter];
-    auto msg = Substitute(
-        "Bad Request: Only clustering key columns can be defined in CLUSTERING ORDER directive");
-    return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
+    return sem_context->Error(tnode,
+                              "Only clustering key columns can be defined in "
+                              "CLUSTERING ORDER directive", ErrorCode::INVALID_TABLE_PROPERTY);
   }
   return Status::OK();
 }

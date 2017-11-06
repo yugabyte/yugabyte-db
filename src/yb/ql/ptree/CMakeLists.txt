@@ -24,10 +24,11 @@ add_library(ql_ptree
             pt_create_table.cc
             pt_alter_table.cc
             pt_create_type.cc
-            pt_dml_using_clause.cc
-            pt_dml_using_clause_element.cc
+            pt_create_index.cc
             pt_drop.cc
             pt_dml.cc
+            pt_dml_using_clause.cc
+            pt_dml_using_clause_element.cc
             pt_select.cc
             pt_insert.cc
             pt_delete.cc

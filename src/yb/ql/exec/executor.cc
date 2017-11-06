@@ -422,11 +422,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
 
   bool no_results = false;
-  Status st = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-                              tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
-                              tnode->func_ops(), &no_results);
-  if (PREDICT_FALSE(!st.ok())) {
-    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
+                             tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
+                             tnode->func_ops(), &no_results);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
@@ -443,11 +443,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tnode->selected_exprs()) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
-      st = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
+      s = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
     } else {
-      st = PTExprToPB(expr, req->add_selected_exprs());
-      if (PREDICT_FALSE(!st.ok())) {
-        return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+      s = PTExprToPB(expr, req->add_selected_exprs());
+      if (PREDICT_FALSE(!s.ok())) {
+        return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
       }
 
       // Add the expression metadata (rsrow descriptor).
@@ -458,9 +458,9 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // Setup the column values that need to be read.
-  st = ColumnRefsToPB(tnode, req->mutable_column_refs());
-  if (PREDICT_FALSE(!st.ok())) {
-    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+  s = ColumnRefsToPB(tnode, req->mutable_column_refs());
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.

@@ -280,11 +280,17 @@ class PTCreateTable : public TreeNode {
     return create_if_not_exists_;
   }
 
-  CHECKED_STATUS AppendColumn(SemContext *sem_context, PTColumnDefinition *column);
+  CHECKED_STATUS AppendColumn(SemContext *sem_context,
+                              PTColumnDefinition *column,
+                              bool check_duplicate = false);
 
-  CHECKED_STATUS AppendPrimaryColumn(SemContext *sem_context, PTColumnDefinition *column);
+  CHECKED_STATUS AppendPrimaryColumn(SemContext *sem_context,
+                                     PTColumnDefinition *column,
+                                     bool check_duplicate = false);
 
-  CHECKED_STATUS AppendHashColumn(SemContext *sem_context, PTColumnDefinition *column);
+  CHECKED_STATUS AppendHashColumn(SemContext *sem_context,
+                                  PTColumnDefinition *column,
+                                  bool check_duplicate = false);
 
   static CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
@@ -305,7 +311,7 @@ class PTCreateTable : public TreeNode {
 
   CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
 
- private:
+ protected:
   PTQualifiedName::SharedPtr relation_;
   PTListNode::SharedPtr elements_;
 

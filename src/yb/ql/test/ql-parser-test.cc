@@ -175,5 +175,25 @@ TEST_F(QLTestParser, TestStaticColumn) {
                      "PRIMARY KEY ((bldg_num), room_num));");
 }
 
+TEST_F(QLTestParser, TestCreateIndex) {
+  // Valid statement: CREATE INDEX.
+  PARSE_VALID_STMT("CREATE INDEX i ON t (c1, c2, c3, c4);");
+  // Valid statement: CREATE INDEX with keyspace-qualified indexed table.
+  PARSE_VALID_STMT("CREATE INDEX i ON k.t ((c1, c2), c3, c4);");
+  // Valid statement: CREATE INDEX IF NOT EXISTS.
+  PARSE_VALID_STMT("CREATE INDEX IF NOT EXISTS i ON k.t ((c1, c2), c3, c4);");
+  // Valid statement: CREATE INDEX WITH CLUSTERING ORDER BY
+  PARSE_VALID_STMT("CREATE INDEX i ON k.t ((c1, c2), c3, c4) "
+                   "WITH CLUSTERING ORDER BY (c3 DESC, c4 ASC);");
+  // Valid statement: CREATE INDEX WITH CLUSTERING ORDER BY and COVERING.
+  PARSE_VALID_STMT("CREATE INDEX IF NOT EXISTS i ON k.t ((c1, c2), c3, c4) "
+                   "WITH CLUSTERING ORDER BY (c3 DESC, c4 ASC) COVERING (c5, c6);");
+
+  // Invalid statement: mandatory index name missing.
+  PARSE_INVALID_STMT("CREATE INDEX ON k.t (c1, c2, c3, c4);");
+  // Invalid statement: index name must be simple name without keyspace qualifier.
+  PARSE_INVALID_STMT("CREATE INDEX k.i ON k.t (c1, c2, c3, c4);");
+}
+
 }  // namespace ql
 }  // namespace yb

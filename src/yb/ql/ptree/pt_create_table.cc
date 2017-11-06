@@ -65,7 +65,7 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   sem_state.set_processing_column_definition(false);
   RETURN_NOT_OK(elements_->Analyze(sem_context));
 
-  // Move the all partition and primary columns from columns list to appropriate list.
+  // Move the all partition and primary key columns from columns list to appropriate list.
   int32_t order = 0;
   MCList<PTColumnDefinition *>::iterator iter = columns_.begin();
   while (iter != columns_.end()) {
@@ -95,16 +95,13 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
     }
   }
 
-  // When partition or primary keys are not defined, the first column must be partition key.
+  // When partition key is not defined, the first column is assumed to be the partition key.
   if (hash_columns_.empty()) {
-    if (!primary_columns_.empty()) {
-      // First primary column must be a partition key.
-      RETURN_NOT_OK(AppendHashColumn(sem_context, primary_columns_.front()));
-      primary_columns_.pop_front();
-    } else {
-      // ERROR: Primary key is not defined.
+    if (primary_columns_.empty()) {
       return sem_context->Error(elements_, ErrorCode::MISSING_PRIMARY_KEY);
     }
+    RETURN_NOT_OK(AppendHashColumn(sem_context, primary_columns_.front()));
+    primary_columns_.pop_front();
   }
 
   // After primary key columns are fully analyzed, return error if the table contains no range
@@ -134,8 +131,21 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context, PTColumnDefinition *column) {
+namespace {
+
+bool ColumnExists(const MCList<PTColumnDefinition *>& columns, const PTColumnDefinition* column) {
+  return std::find(columns.begin(), columns.end(), column) != columns.end();
+}
+
+} // namespace
+
+CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context,
+                                           PTColumnDefinition *column,
+                                           const bool check_duplicate) {
   RETURN_NOT_OK(CheckType(sem_context, column->datatype()));
+  if (check_duplicate && ColumnExists(columns_, column)) {
+    return sem_context->Error(column, ErrorCode::DUPLICATE_COLUMN);
+  }
   columns_.push_back(column);
 
   if (column->is_counter()) {
@@ -145,15 +155,25 @@ CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context, PTColumnDefi
 }
 
 CHECKED_STATUS PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
-                                                  PTColumnDefinition *column) {
+                                                  PTColumnDefinition *column,
+                                                  const bool check_duplicate) {
   RETURN_NOT_OK(CheckPrimaryType(sem_context, column->datatype()));
+  if (check_duplicate && ColumnExists(primary_columns_, column)) {
+    return sem_context->Error(column, ErrorCode::DUPLICATE_COLUMN);
+  }
+  column->set_is_primary_key();
   primary_columns_.push_back(column);
   return Status::OK();
 }
 
 CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
-                                               PTColumnDefinition *column) {
+                                               PTColumnDefinition *column,
+                                               const bool check_duplicate) {
   RETURN_NOT_OK(CheckPrimaryType(sem_context, column->datatype()));
+  if (check_duplicate && ColumnExists(hash_columns_, column)) {
+    return sem_context->Error(column, ErrorCode::DUPLICATE_COLUMN);
+  }
+  column->set_is_hash_key();
   hash_columns_.push_back(column);
   return Status::OK();
 }
@@ -190,8 +210,19 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
   sem_output += yb_table_name().ToString().c_str();
   sem_output += "(";
 
-  bool is_first = true;
+  MCList<PTColumnDefinition *> columns(sem_context->PTempMem());
+  for (auto column : hash_columns_) {
+    columns.push_back(column);
+  }
+  for (auto column : primary_columns_) {
+    columns.push_back(column);
+  }
   for (auto column : columns_) {
+    columns.push_back(column);
+  }
+
+  bool is_first = true;
+  for (auto column : columns) {
     if (is_first) {
       is_first = false;
     } else {
@@ -199,9 +230,15 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
     }
     sem_output += column->yb_name();
     if (column->is_hash_key()) {
-      sem_output += " <Shard-hash key, Type = ";
+      sem_output += " <Hash key, Type = ";
     } else if (column->is_primary_key()) {
-      sem_output += " <Primary key, Type = ";
+      sem_output += " <Primary key, ";
+      switch (column->sorting_type()) {
+        case ColumnSchema::SortingType::kNotSpecified: sem_output += "None"; break;
+        case ColumnSchema::SortingType::kAscending: sem_output += "Asc"; break;
+        case ColumnSchema::SortingType::kDescending: sem_output += "Desc"; break;
+      }
+      sem_output += ", Type = ";
     } else {
       sem_output += " <Type = ";
     }
@@ -295,7 +332,6 @@ CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
   if (columns_ == nullptr) {
     // Decorate the current processing name node as this is a column constraint.
     PTColumnDefinition *column = sem_context->current_column();
-    column->set_is_hash_key();
     RETURN_NOT_OK(table->AppendHashColumn(sem_context, column));
   } else {
     // Decorate all name node of this key as this is a table constraint.

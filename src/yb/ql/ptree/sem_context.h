@@ -104,7 +104,9 @@ class SemContext : public ProcessContext {
   CHECKED_STATUS LookupTable(client::YBTableName name, std::shared_ptr<client::YBTable>* table,
                              MCVector<ColumnDesc>* table_columns,
                              int* num_key_columns, int* num_hash_key_columns,
-                             bool* is_system, bool write_only, const YBLocation& loc);
+                             bool* is_system, bool write_only, const YBLocation& loc,
+                             bool with_column_definition = false,
+                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
 
   //------------------------------------------------------------------------------------------------
   // Access functions to current processing table and column.

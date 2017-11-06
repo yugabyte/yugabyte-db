@@ -55,6 +55,15 @@ TEST_F(QLTestAnalyzer, TestCreateTableAnalyze) {
 
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;
+
+  // Duplicate hash and cluster columns.
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+      "((c1, c1)))", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+      "((c1), c1))", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
+      "((c1), c2, c2))", &parse_tree);
+
   ANALYZE_INVALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
       "(c1)) WITH default_time_to_live = 1000 AND default_time_to_live = 2000", &parse_tree);
   ANALYZE_VALID_STMT("CREATE TABLE foo (c1 int, c2 int, c3 int, PRIMARY KEY "
@@ -176,6 +185,50 @@ TEST_F(QLTestAnalyzer, TestBindVariableAnalyzer) {
   ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
 
   CHECK_OK(processor->Run("DROP TABLE t;"));
+}
+
+TEST_F(QLTestAnalyzer, TestCreateIndex) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, "
+                          "PRIMARY KEY ((h1, h2), r1, r2));"));
+
+  // Analyze the sql statement.
+  ParseTree::UniPtr parse_tree;
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((r1), r2);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((r1, r2), h1, h2);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((h1, h2), r1, r2);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (h1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1) COVERING (c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1, h1, h2) WITH CLUSTERING ORDER BY "
+                     "(r1 DESC, h1 DESC, h2 ASC) COVERING (c1);", &parse_tree);
+
+  // Duplicate primary key columns.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r1);", &parse_tree);
+  // Duplicate covered columns.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) COVERING (r1);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) COVERING (r2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2, c1) COVERING (c1);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2) COVERING (c1, c1);", &parse_tree);
+  // Non-clustering key column in order by.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r2, r1) WITH CLUSTERING ORDER BY (r2 DESC, r1 ASC) "
+                       "COVERING (c1);", &parse_tree);
+
+  // Non-existent table.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2);", &parse_tree);
+
+  // Index on system table cannot be created.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON system_schema.tables (id);", &parse_tree);
+
+
+  CHECK_OK(processor->Run("CREATE TABLE t2 (h1 int, h2 text, r1 int, r2 text, c list<int>, "
+                          "PRIMARY KEY ((h1, h2), r1, r2));"));
+  // Unsupported complex type.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (c);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 ((r1), c);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2) COVERING (c);", &parse_tree);
 }
 
 TEST_F(QLTestAnalyzer, TestMisc) {

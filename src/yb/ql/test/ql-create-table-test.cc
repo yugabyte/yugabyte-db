@@ -232,22 +232,21 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
   EXEC_VALID_STMT(CreateStmt(table5));
 
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
-      "Invalid Table Property. Bad Request: The order of columns in the CLUSTERING ORDER "
-      "directive must be the one of the clustering key (first_name must appear before last_name)");
+      "Invalid Table Property. Columns in the CLUSTERING ORDER directive must be in same order "
+      "as the clustering key columns order (first_name must appear before last_name)");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
-      "Invalid Table Property. Bad Request: The order of columns in the CLUSTERING ORDER "
-      "directive must be the one of the clustering key (first_name must appear before last_name)");
+      "Invalid Table Property. Columns in the CLUSTERING ORDER directive must be in same order "
+      "as the clustering key columns order (first_name must appear before last_name)");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
-      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column first_name");
+      "Invalid Table Property. Missing CLUSTERING ORDER for column first_name");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
-      "Invalid Table Property. Bad Request: Only clustering key columns can be defined in "
-      "CLUSTERING ORDER directive");
+      "Invalid Table Property. Not a clustering key colum");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
-      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column last_name");
+      "Invalid Table Property. Not a clustering key colum");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
-      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column last_name");
+      "Invalid Table Property. Not a clustering key colum");
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
-      "Invalid Table Property. Bad Request: Missing CLUSTERING ORDER for column last_name");
+      "Invalid Table Property. Not a clustering key colum");
 }
 
 } // namespace ql

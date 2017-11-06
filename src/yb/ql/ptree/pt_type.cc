@@ -22,6 +22,49 @@ namespace yb {
 namespace ql {
 
 //--------------------------------------------------------------------------------------------------
+PTBaseType::SharedPtr PTBaseType::FromQLType(MemoryContext *memctx,
+                                             const std::shared_ptr<QLType>& ql_type) {
+  switch (ql_type->main()) {
+    case DataType::INT8: return PTTinyInt::MakeShared(memctx);
+    case DataType::INT16: return PTSmallInt::MakeShared(memctx);
+    case DataType::INT32: return PTInt::MakeShared(memctx);
+    case DataType::INT64: return PTBigInt::MakeShared(memctx);
+    case DataType::STRING: return PTVarchar::MakeShared(memctx);
+    case DataType::BOOL: return PTBoolean::MakeShared(memctx);
+    case DataType::FLOAT: return PTFloat::MakeShared(memctx);
+    case DataType::DOUBLE: return PTDouble::MakeShared(memctx);
+    case DataType::BINARY: return PTBlob::MakeShared(memctx);
+    case DataType::TIMESTAMP: return PTTimestamp::MakeShared(memctx);
+    case DataType::DECIMAL: return PTDecimal::MakeShared(memctx);
+    case DataType::VARINT: return PTVarInt::MakeShared(memctx);
+    case DataType::INET: return PTInet::MakeShared(memctx);
+    case DataType::UUID: return PTUuid::MakeShared(memctx);
+    case DataType::TIMEUUID: return PTTimeUuid::MakeShared(memctx);
+
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::FROZEN:
+      // TODO: support conversion of complex type from ql_type to PT type.
+      return nullptr;
+
+    case DataType::DATE: FALLTHROUGH_INTENDED;
+    case DataType::TIME: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::UINT8: FALLTHROUGH_INTENDED;
+    case DataType::UINT16: FALLTHROUGH_INTENDED;
+    case DataType::UINT32: FALLTHROUGH_INTENDED;
+    case DataType::UINT64: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+    case DataType::NULL_VALUE_TYPE:
+      FATAL_INVALID_ENUM_VALUE(DataType, ql_type->main());
+  }
+  FATAL_INVALID_ENUM_VALUE(DataType, ql_type->main());
+}
+
+//--------------------------------------------------------------------------------------------------
 
 PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
     : PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, true>(memctx, loc),

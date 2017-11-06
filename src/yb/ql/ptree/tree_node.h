@@ -40,6 +40,7 @@ enum class TreeNodeOpcode {
   kPTCreateTable,
   kPTAlterTable,
   kPTCreateType,
+  kPTCreateIndex,
   kPTDropStmt,
   kPTSelectStmt,
   kPTInsertStmt,
@@ -82,9 +83,12 @@ class TreeNode : public MCBase {
   // Run semantics analysis on this node.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 
-  // Access function to this node location.
+  // Access functions to this node location.
   const YBLocation& loc() const {
     return *loc_;
+  }
+  void set_loc(const TreeNode& other) {
+    loc_ = other.loc_;
   }
 
  protected:

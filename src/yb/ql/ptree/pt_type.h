@@ -56,6 +56,9 @@ class PTBaseType : public TreeNode {
 
   virtual InternalType internal_type() const = 0;
   virtual std::shared_ptr<QLType> ql_type() const = 0;
+
+  static PTBaseType::SharedPtr FromQLType(MemoryContext *memctx,
+                                          const std::shared_ptr<QLType>& ql_type);
 };
 
 template<InternalType itype_, DataType data_type_, bool applicable_for_primary_key_>
@@ -136,7 +139,7 @@ class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT, 
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
 
   explicit PTFloat(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
+                   YBLocation::SharedPtr loc = nullptr,
                    int8_t precision = 24);
   virtual ~PTFloat();
 
@@ -159,7 +162,7 @@ class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBL
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
 
   explicit PTDouble(MemoryContext *memctx,
-                    YBLocation::SharedPtr loc,
+                    YBLocation::SharedPtr loc = nullptr,
                     int8_t precision = 24);
   virtual ~PTDouble();
 

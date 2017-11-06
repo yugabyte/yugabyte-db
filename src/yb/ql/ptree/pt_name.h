@@ -47,6 +47,7 @@ class PTName : public TreeNode {
 
   CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context);
   CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context);
+  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context);
 
   const MCString& name() const {
     return *name_;
