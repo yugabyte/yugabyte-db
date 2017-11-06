@@ -4716,6 +4716,37 @@ exist.
 This function is the inverse of `is_partitioned()`. The test passes if the
 specified table is *not* partitioned, or if it does not exist.
 
+### `is_partition_of()` ###
+
+    SELECT is_parent( :child_schema, :child, :parent_schema, :parent_table, :description );
+    SELECT is_parent( :child_schema, :child, :parent_schema, :parent_table );
+    SELECT is_parent( :child, :parent_table, :description );
+    SELECT is_parent( :child, :parent_table );
+
+**Parameters**
+
+`:child_schema`
+: Schema in which to find the partition table.
+
+`:child`
+: Name of a partition table.
+
+`:parent_schema`
+: Schema in which to find the partitioned table.
+
+`:parent_table`
+: Name of a partitioned table.
+
+`:description`
+: A short description of the test.
+
+Tests that one table is a partition of another table. The partition (or child)
+table is specified first, the partitioned (or parent) table second. Without the
+schema parameters, both tables must be visible in the search path. If the
+test description is omitted, it will be set to "Table `:child_table` should be
+a partition of `:parent_table`". Note that this test will fail if either table
+does not exist.
+
 ### `is_clustered()` ###
 
     SELECT is_clustered( :schema, :table, :index, :description );
