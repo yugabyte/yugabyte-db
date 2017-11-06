@@ -1643,7 +1643,7 @@ test fails.
 : A short description of the test.
 
 Compares the contents of a single row to a record. Due to the limitations of
-non-C functions in PostgreSQL, a bar `RECORD` value cannot be passed to the
+non-C functions in PostgreSQL, a bare `RECORD` value cannot be passed to the
 function. You must instead pass in a valid composite type value, and cast the
 record argument (the second argument) to the same type. Both explicitly
 created composite types and table types are supported. Thus, you can do this:
