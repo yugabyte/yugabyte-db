@@ -4670,6 +4670,52 @@ Tests whether an index is unique.
 
 Tests whether an index is on a primary key.
 
+### `is_partitioned()` ###
+
+    SELECT is_partitioned( :schema, :table, :description );
+    SELECT is_partitioned( :schema, :table );
+    SELECT is_partitioned( :table, :description);
+    SELECT is_partitioned( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the partitioned table.
+
+`:table`
+: Name of a partitioned table.
+
+`:description`
+: A short description of the test.
+
+Tests whether a table is partitioned. The first argument is the schema name,
+the second the table name, the the third is the test description. If the schema
+is omitted, the table must be visible in the search path. If the test
+description is omitted, it will be set to "Table `:table` should be
+partitioned". Note that this test will fail if the table in question does not
+exist.
+
+### `isnt_partitioned()` ###
+
+    SELECT isnt_partitioned( :schema, :table, :description );
+    SELECT isnt_partitioned( :schema, :table );
+    SELECT isnt_partitioned( :table, :description);
+    SELECT isnt_partitioned( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_partitioned()`. The test passes if the
+specified table is *not* partitioned, or if it does not exist.
+
 ### `is_clustered()` ###
 
     SELECT is_clustered( :schema, :table, :index, :description );

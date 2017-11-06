@@ -22,6 +22,9 @@ Revision history for pgTAP
     + `hasnt_table()`
     + `tables_are()`
     + `table_owner_is()`
+* Added partition-testing assert functions:
+    + `is_partitioned()`
+    + `isnt_partitioned()`
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------

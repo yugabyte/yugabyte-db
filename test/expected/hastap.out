@@ -1,5 +1,5 @@
 \unset ECHO
-1..842
+1..884
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -842,3 +842,45 @@ ok 839 - hasnt_materialized_view(materialized_view, desc) should have the proper
 ok 840 - hasnt_materialized_view(sch, materialized_view, desc) should fail
 ok 841 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper description
 ok 842 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper diagnostics
+ok 843 - is_partitioned(non-existent part) should fail
+ok 844 - is_partitioned(non-existent part) should have the proper description
+ok 845 - is_partitioned(non-existent part) should have the proper diagnostics
+ok 846 - is_partitioned(non-existent part, desc) should fail
+ok 847 - is_partitioned(non-existent part, desc) should have the proper description
+ok 848 - is_partitioned(non-existent part, desc) should have the proper diagnostics
+ok 849 - is_partitioned(sch, non-existtent part, desc) should fail
+ok 850 - is_partitioned(sch, non-existtent part, desc) should have the proper description
+ok 851 - is_partitioned(sch, non-existtent part, desc) should have the proper diagnostics
+ok 852 - is_partitioned(sch, part, desc) should pass
+ok 853 - is_partitioned(sch, part, desc) should have the proper description
+ok 854 - is_partitioned(sch, part, desc) should have the proper diagnostics
+ok 855 - is_partitioned(sch, part) should pass
+ok 856 - is_partitioned(sch, part) should have the proper description
+ok 857 - is_partitioned(sch, part) should have the proper diagnostics
+ok 858 - is_partitioned(part, desc) should pass
+ok 859 - is_partitioned(part, desc) should have the proper description
+ok 860 - is_partitioned(part, desc) should have the proper diagnostics
+ok 861 - is_partitioned(part) should pass
+ok 862 - is_partitioned(part) should have the proper description
+ok 863 - is_partitioned(part) should have the proper diagnostics
+ok 864 - isnt_partitioned(non-existent partition) should pass
+ok 865 - isnt_partitioned(non-existent partition) should have the proper description
+ok 866 - isnt_partitioned(non-existent partition) should have the proper diagnostics
+ok 867 - isnt_partitioned(non-existent partition, desc) should pass
+ok 868 - isnt_partitioned(non-existent partition, desc) should have the proper description
+ok 869 - isnt_partitioned(non-existent partition, desc) should have the proper diagnostics
+ok 870 - isnt_partitioned(sch, non-existtent partition, desc) should pass
+ok 871 - isnt_partitioned(sch, non-existtent partition, desc) should have the proper description
+ok 872 - isnt_partitioned(sch, non-existtent partition, desc) should have the proper diagnostics
+ok 873 - isnt_partitioned(sch, part, desc) should fail
+ok 874 - isnt_partitioned(sch, part, desc) should have the proper description
+ok 875 - isnt_partitioned(sch, part, desc) should have the proper diagnostics
+ok 876 - isnt_partitioned(sch, part) should fail
+ok 877 - isnt_partitioned(sch, part) should have the proper description
+ok 878 - isnt_partitioned(sch, part) should have the proper diagnostics
+ok 879 - isnt_partitioned(part, desc) should fail
+ok 880 - isnt_partitioned(part, desc) should have the proper description
+ok 881 - isnt_partitioned(part, desc) should have the proper diagnostics
+ok 882 - isnt_partitioned(part) should fail
+ok 883 - isnt_partitioned(part) should have the proper description
+ok 884 - isnt_partitioned(part) should have the proper diagnostics

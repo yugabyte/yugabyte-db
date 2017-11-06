@@ -232,3 +232,63 @@ BEGIN
     RETURN is(owner, $3, $4);
 END;
 $$ LANGUAGE plpgsql;
+
+-- is_partitioned( schema, table, description )
+CREATE OR REPLACE FUNCTION is_partitioned ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists('p', $1, $2), $3);
+$$ LANGUAGE sql;
+
+-- is_partitioned( schema, table )
+CREATE OR REPLACE FUNCTION is_partitioned ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _rexists('p', $1, $2),
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should be partitioned'
+    );
+$$ LANGUAGE sql;
+
+-- is_partitioned( table, description )
+CREATE OR REPLACE FUNCTION is_partitioned ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists('p', $1), $2);
+$$ LANGUAGE sql;
+
+-- is_partitioned( table )
+CREATE OR REPLACE FUNCTION is_partitioned ( NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _rexists('p', $1),
+        'Table ' || quote_ident($1) || ' should be partitioned'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_partitioned( schema, table, description )
+CREATE OR REPLACE FUNCTION isnt_partitioned ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists('p', $1, $2), $3);
+$$ LANGUAGE sql;
+
+-- isnt_partitioned( schema, table )
+CREATE OR REPLACE FUNCTION isnt_partitioned ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _rexists('p', $1, $2),
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should not be partitioned'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_partitioned( table, description )
+CREATE OR REPLACE FUNCTION isnt_partitioned ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists('p', $1), $2);
+$$ LANGUAGE sql;
+
+-- isnt_partitioned( table )
+CREATE OR REPLACE FUNCTION isnt_partitioned ( NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _rexists('p', $1),
+        'Table ' || quote_ident($1) || ' should not be partitioned'
+    );
+$$ LANGUAGE sql;
