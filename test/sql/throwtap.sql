@@ -345,7 +345,7 @@ BEGIN
             'throws_ok does not accept passing assert',
             'threw P0004',
             '      caught: no exception
-              wanted: P0004'
+      wanted: P0004'
         ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
@@ -367,11 +367,11 @@ BEGIN
             'lives_ok with check_assert(false)',
             '',
             '    died: P0004: assert description
-                CONTEXT:
-                    PL/pgSQL function check_assert(boolean) line 3 at ASSERT
-                    SQL statement "SELECT check_assert(false)"
-                    PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE
-                    PL/pgSQL function test_assert() line 38 at FOR over SELECT rows'
+        CONTEXT:
+            PL/pgSQL function check_assert(boolean) line 3 at ASSERT
+            SQL statement "SELECT check_assert(false)"
+            PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE
+            PL/pgSQL function test_assert() line 38 at FOR over SELECT rows'
         ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
