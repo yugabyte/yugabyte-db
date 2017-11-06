@@ -15,9 +15,6 @@ REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
 PG_CONFIG   ?= pg_config
 
-# sort is necessary to remove dupes so install won't complain
-DATA         = $(BASE_FILES) # Set to something to make PGXS happy
-
 ifdef NO_PGXS
 top_builddir = ../..
 PG_CONFIG := $(top_builddir)/src/bin/pg_config/pg_config
@@ -37,6 +34,30 @@ endif
 # Compile the C code only if we're on 8.3 or older.
 ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
 MODULES = src/pgtap
+endif
+
+# Make sure we build these.
+EXTRA_CLEAN += $(_IN_PATCHED)
+all: $(_IN_PATCHED) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
+
+# Add extension build targets on 9.1 and up.
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
+all: sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+
+sql/$(MAINEXT)--$(EXTVERSION).sql: sql/$(MAINEXT).sql
+	cp $< $@
+
+sql/$(MAINEXT)-core--$(EXTVERSION).sql: sql/$(MAINEXT)-core.sql
+	cp $< $@
+
+sql/$(MAINEXT)-schema--$(EXTVERSION).sql: sql/$(MAINEXT)-schema.sql
+	cp $< $@
+
+# sort is necessary to remove dupes so install won't complain
+DATA = $(sort $(wildcard sql/*--*.sql) $(BASE_FILES) $(VERSION_FILES) $(_IN_PATCHED))
+else
+# No extension support, just install the base files.
+DATA = $(BASE_FILES)
 endif
 
 # Load PGXS now that we've set all the variables it might need.
@@ -89,26 +110,6 @@ endif
 OSNAME := $(shell $(SHELL) ./getos.sh)
 
 .PHONY: test
-
-# Make sure we build these.
-EXTRA_CLEAN += $(_IN_PATCHED)
-all: $(_IN_PATCHED) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
-
-# Add extension build targets on 9.1 and up.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
-all: sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
-
-sql/$(MAINEXT)--$(EXTVERSION).sql: sql/$(MAINEXT).sql
-	cp $< $@
-
-sql/$(MAINEXT)-core--$(EXTVERSION).sql: sql/$(MAINEXT)-core.sql
-	cp $< $@
-
-sql/$(MAINEXT)-schema--$(EXTVERSION).sql: sql/$(MAINEXT)-schema.sql
-	cp $< $@
-
-DATA         = $(sort $(wildcard sql/*--*.sql) $(BASE_FILES) $(VERSION_FILES) $(_IN_PATCHED))
-endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
