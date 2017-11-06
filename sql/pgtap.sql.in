@@ -9943,7 +9943,7 @@ CREATE OR REPLACE FUNCTION is_partition_of ( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _partof($1, $2, $3, $4),
-        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should be a partition of'
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should be a partition of '
         || quote_ident($3) || '.' || quote_ident($4)
     );
 $$ LANGUAGE sql;
@@ -9959,6 +9959,6 @@ CREATE OR REPLACE FUNCTION is_partition_of ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _partof($1, $2),
-        'Table ' || quote_ident($1) || ' should be a partition of' || quote_ident($2)
+        'Table ' || quote_ident($1) || ' should be a partition of ' || quote_ident($2)
     );
 $$ LANGUAGE sql;

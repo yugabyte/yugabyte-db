@@ -79,6 +79,12 @@ TESTS   := $(filter-out test/sql/enumtap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out enumtap valueset,$(REGRESS))
 endif
 
+# Partition tests tests not supported by 9.x and earlier.
+ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
+TESTS   := $(filter-out test/sql/partitions.sql,$(TESTS))
+REGRESS := $(filter-out partitions,$(REGRESS))
+endif
+
 # Determine the OS. Borrowed from Perl's Configure.
 OSNAME := $(shell $(SHELL) ./getos.sh)
 

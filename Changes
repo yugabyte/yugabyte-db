@@ -25,6 +25,7 @@ Revision history for pgTAP
 * Added partition-testing assert functions:
     + `is_partitioned()`
     + `isnt_partitioned()`
+    + `is_partition_of()`
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
