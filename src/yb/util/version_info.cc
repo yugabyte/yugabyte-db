@@ -51,18 +51,21 @@ string VersionInfo::GetGitHash() {
 }
 
 string VersionInfo::GetShortVersionString() {
-  return strings::Substitute("version $0 (build_type $1)",
-                             YB_VERSION_STRING,
+  return strings::Substitute("version $0 build $1 build_type $2",
+                             YB_VERSION_NUMBER,
+                             YB_BUILD_NUMBER,
                              YB_BUILD_TYPE);
 }
 
 string VersionInfo::GetAllVersionInfo() {
   string ret = strings::Substitute(
       "version $0\n"
-      "revision $1\n"
-      "build_type $2\n"
-      "built by $3 at $4 on $5",
-      YB_VERSION_STRING,
+      "build $1"
+      "revision $2\n"
+      "build_type $3\n"
+      "built by $4 at $5 on $6",
+      YB_VERSION_NUMBER,
+      YB_BUILD_NUMBER,
       GetGitHash(),
       YB_BUILD_TYPE,
       YB_BUILD_USERNAME,
@@ -88,7 +91,8 @@ void VersionInfo::GetVersionInfoPB(VersionInfoPB* pb) {
   pb->set_build_clean_repo(YB_BUILD_CLEAN_REPO);
   pb->set_build_id(YB_BUILD_ID);
   pb->set_build_type(YB_BUILD_TYPE);
-  pb->set_version_string(YB_VERSION_STRING);
+  pb->set_version_number(YB_VERSION_NUMBER);
+  pb->set_build_number(YB_BUILD_NUMBER);
 }
 
 } // namespace yb

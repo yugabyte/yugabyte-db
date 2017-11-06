@@ -42,5 +42,6 @@ message VersionInfoPB {
   optional bool build_clean_repo = 5;
   optional string build_id = 6;
   optional string build_type = 7;
-  optional string version_string = 8;
+  optional string version_number = 9;
+  optional string build_number = 10;
 }

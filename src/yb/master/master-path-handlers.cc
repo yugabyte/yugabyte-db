@@ -389,8 +389,9 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                           "Num Nodes (TServers) ", master_->ts_manager()->GetCount());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Num User Tables ", user_tables.size());
-  (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
-                          "YugaByte Version ", version_info.version_string());
+  (*output) << Substitute("  <tr><td>$0</td><td>$1-b$2</td></tr>\n",
+                          "YugaByte Version ", version_info.version_number(),
+                          version_info.build_number());
   (*output) << Substitute("  <tr><td>$0</td><td>$1</td></tr>\n",
                           "Build Type ", version_info.build_type());
   (*output) << "</table>";

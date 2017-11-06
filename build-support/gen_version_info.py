@@ -107,6 +107,12 @@ def main():
       clean_repo = "true"
 
   version_string = opts.version
+  match = re.match("(\d+\.\d+\.\d+\.\d+)-b(\d+)", version_string)
+  if not match:
+      parser.error("Invalid version specified: {}".format(version_string))
+      sys.exit(1)
+  version_number = match.group(1)
+  build_number = match.group(2)
   build_type = opts.build_type
 
   # Add the Jenkins build ID
@@ -159,7 +165,8 @@ def main():
 #define YB_BUILD_CLEAN_REPO %(clean_repo)s
 #define YB_BUILD_ID "%(build_id)s"
 #define YB_BUILD_TYPE "%(build_type)s"
-#define YB_VERSION_STRING "%(version_string)s"
+#define YB_VERSION_NUMBER "%(version_number)s"
+#define YB_BUILD_NUMBER "%(build_number)s"
 #endif
 """ % locals()
 
