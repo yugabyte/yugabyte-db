@@ -3,7 +3,6 @@
  * core.c
  *	  Routines copied from PostgreSQL core distribution.
  *
-
  * The main purpose of this files is having access to static functions in core.
  * Another purpose is tweaking functions behavior by replacing part of them by
  * macro definitions. See at the end of pg_hint_plan.c for details. Anyway,
@@ -40,7 +39,6 @@
  *     join_is_legal()
  *     has_join_restriction()
  *     is_dummy_rel()
- *     mark_dummy_rel()
  *     restriction_is_constant_false()
  *
  *
@@ -1400,50 +1398,6 @@ static bool
 is_dummy_rel(RelOptInfo *rel)
 {
 	return IS_DUMMY_REL(rel);
-}
-
-
-/*
- * Mark a relation as proven empty.
- *
- * During GEQO planning, this can get invoked more than once on the same
- * baserel struct, so it's worth checking to see if the rel is already marked
- * dummy.
- *
- * Also, when called during GEQO join planning, we are in a short-lived
- * memory context.  We must make sure that the dummy path attached to a
- * baserel survives the GEQO cycle, else the baserel is trashed for future
- * GEQO cycles.  On the other hand, when we are marking a joinrel during GEQO,
- * we don't want the dummy path to clutter the main planning context.  Upshot
- * is that the best solution is to explicitly make the dummy path in the same
- * context the given RelOptInfo is in.
- */
-static void
-mark_dummy_rel(RelOptInfo *rel)
-{
-	MemoryContext oldcontext;
-
-	/* Already marked? */
-	if (is_dummy_rel(rel))
-		return;
-
-	/* No, so choose correct context to make the dummy path in */
-	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(rel));
-
-	/* Set dummy size estimate */
-	rel->rows = 0;
-
-	/* Evict any previously chosen paths */
-	rel->pathlist = NIL;
-	rel->partial_pathlist = NIL;
-
-	/* Set up the dummy path */
-	add_path(rel, (Path *) create_append_path(rel, NIL, NULL, 0, NIL));
-
-	/* Set or update cheapest_total_path and related fields */
-	set_cheapest(rel);
-
-	MemoryContextSwitchTo(oldcontext);
 }
 
 
