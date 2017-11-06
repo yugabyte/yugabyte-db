@@ -385,7 +385,7 @@ class UniverseForm extends Component {
   }
 
   ebsTypeChanged(event) {
-    const currentDeviceInfo = this.state.deviceInfo;
+    const currentDeviceInfo = _.clone(this.state.deviceInfo);
     currentDeviceInfo.ebsType = event.target.value;
     if (currentDeviceInfo.ebsType === "IO1" && currentDeviceInfo.diskIops == null) {
       currentDeviceInfo.diskIops = 1000;
@@ -396,22 +396,16 @@ class UniverseForm extends Component {
   }
 
   numVolumesChanged(val) {
-    const currentDeviceInfo = this.state.deviceInfo;
-    currentDeviceInfo.numVolumes = val;
-    this.setState({deviceInfo: currentDeviceInfo});
+    this.setState({deviceInfo: {...this.state.deviceInfo, numVolumes: val}});
   }
 
   volumeSizeChanged(val) {
-    const currentDeviceInfo = this.state.deviceInfo;
-    currentDeviceInfo.volumeSize = val;
-    this.setState({deviceInfo: currentDeviceInfo});
+    this.setState({deviceInfo: {...this.state.deviceInfo, volumeSize: val}});
   }
 
   diskIopsChanged(val) {
     if (this.state.deviceInfo.ebsType === "IO1") {
-      const currentDeviceInfo = this.state.deviceInfo;
-      currentDeviceInfo.diskIops = val;
-      this.setState({deviceInfo: currentDeviceInfo});
+      this.setState({deviceInfo: {...this.state.deviceInfo, diskIops: val}});
     }
   }
 
