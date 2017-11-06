@@ -1838,6 +1838,60 @@ missing tables, like so:
     #         users
     #         widgets
 
+### `partitions_are()` ###
+
+    SELECT partitions_are( :schema, :table, :partitions :description );
+    SELECT partitions_are( :schema, :table, :partitions );
+    SELECT partitions_are( :table, :partitions :description );
+    SELECT partitions_are( :table, :partitions );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the partitioned table.
+
+`:table`
+: Name of a partitioned table.
+
+`:partitions`
+: An array of partition table names.
+
+`:description`
+: A short description of the test.
+
+This function tests that the named table has all of the specified partitions,
+and those are its only partitions. Partition names should be specified relative
+to the search path; those in the search path should not be schema-qualified,
+while those outside the search path should be schema-qualified. Partition names
+and schemas should be appropriately quoted as identifiers where appropriate.
+
+If the `:schema` argument is omitted, the partitioned table must be visible the
+search path. If the description is omitted, a generally useful default
+description will be generated. Example:
+
+    SELECT partitions_are(
+        'myschema', 'mylog',
+        ARRAY[ 'log1', 'log2', 'log3', 'log4' ]
+    );
+
+Example for partitions outside the search path and requiring identifier-quoting:
+
+    SELECT partitions_are(
+        'myschema', 'MyLog',
+        ARRAY[ 'hidden."Log 1"', 'hidden."Log 2"' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing partitions, like so:
+
+    # Failed test 12: "Table myschema should have the correct partitions"
+    #     Extra partitions:
+    #         part4
+    #         hidden."Part 5"
+    #     Missing partitions:
+    #         part5
+    #         part6
+
 ### `foreign_tables_are()` ###
 
     SELECT foreign_tables_are( :schema, :foreign_tables, :description );
