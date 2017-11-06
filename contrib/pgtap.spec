@@ -1,13 +1,16 @@
 Summary:	Unit testing suite for PostgreSQL
 Name:		pgtap
-Version:	0.93.0
+Version:	0.98.0
 Release:	1%{?dist}
 Group:		Applications/Databases
 License:	PostgreSQL
 URL:		http://pgtap.org/
 Source0:	http://master.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
- 
+Provides:   %{name}
+Provides:   %{name}-core
+Provides:   %{name}-schema
+
 %description
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
 PL/SQL. It includes a comprehensive collection of TAP-emitting assertion
@@ -16,6 +19,7 @@ frameworks. It can also be used in the xUnit testing style.
 
 %define postgresver %(pg_config --version|awk '{print $2}'| cut -d. -f1,2)
 Requires:       postgresql-server = %{postgresver}, perl-Test-Harness >= 3.0
+Requires:       perl(TAP::Parser::SourceHandler::pgTAP)
 BuildRequires:	postgresql-devel = %{postgresver}
 
 %if "%{postgresver}" != "8.4"
@@ -44,11 +48,16 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
-* Tue Jan 15 2013 David E. Wheeler <david@justatheory.com> 0.92.0-1
-- Upgraded to pgTAP 0.92.0
+* Mon Nov 6 2017 David E. Wheeler <david@justatheory.com> 0.98.0-1
+- Update to v0.98.0.
+- Added pgTAP harness Perl module requirement.
+- Added explicit list of provided features.
 
 * Mon Jan 28 2013 David Wheeler <david@justatheory.com> 0.93.0
 - Upgraded to pgTAP 0.93.0
+
+* Tue Jan 15 2013 David E. Wheeler <david@justatheory.com> 0.92.0-1
+- Upgraded to pgTAP 0.92.0
 
 * Tue Aug 23 2011 David Wheeler <david@justatheory.com> 0.91.0
 - Removed USE_PGXS from Makefile; it has not been supported in some time.

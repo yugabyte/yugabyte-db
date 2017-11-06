@@ -29,6 +29,7 @@ Revision history for pgTAP
     + `partitions_are()`
 * Added the materialized view-testing assertion functions to the v0.95.0 upgrade
   script; they were inadvertently omitted from the v0.95.0 release.
+* Fixed faling tests on Postgres 8.1.
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
