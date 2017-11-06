@@ -326,98 +326,98 @@ $exec$
 
 CREATE FUNCTION test_assert() RETURNS SETOF text LANGUAGE plpgsql AS $body$
 DECLARE
-  t text;
+    tap record;
 BEGIN
-IF pg_version_num() >= 90500 THEN
-FOR t IN SELECT * FROM check_test(
-    throws_ok( 'SELECT check_assert(false)', 'P0004', 'assert description' ),
-    true,
-    'throws_ok catches assert',
-    'threw P0004: assert description',
-    ''
-) LOOP
-    RETURN NEXT t;
-END LOOP;
+    IF pg_version_num() >= 90500 THEN
+        FOR tap IN SELECT * FROM check_test(
+            throws_ok( 'SELECT check_assert(false)', 'P0004', 'assert description' ),
+            true,
+            'throws_ok catches assert',
+            'threw P0004: assert description',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-FOR t IN SELECT * FROM check_test(
-    throws_ok( 'SELECT check_assert(true)', 'P0004' ),
-    false,
-    'throws_ok does not accept passing assert',
-    'threw P0004',
-    '      caught: no exception
-      wanted: P0004'
-) LOOP
-    RETURN NEXT t;
-END LOOP;
+        FOR tap IN SELECT * FROM check_test(
+            throws_ok( 'SELECT check_assert(true)', 'P0004' ),
+            false,
+            'throws_ok does not accept passing assert',
+            'threw P0004',
+            '      caught: no exception
+              wanted: P0004'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-FOR t IN SELECT * FROM check_test(
-    lives_ok( 'SELECT check_assert(true)' ),
-    true,
-    'lives_ok calling check_assert(true)',
-    '',
-    ''
-) LOOP
-    RETURN NEXT t;
-END LOOP;
+        FOR tap IN SELECT * FROM check_test(
+            lives_ok( 'SELECT check_assert(true)' ),
+            true,
+            'lives_ok calling check_assert(true)',
+            '',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
--- Check its diagnostics when there is an exception.
-FOR t IN SELECT * FROM check_test(
-    lives_ok( 'SELECT check_assert(false)' ),
-    false,
-    'lives_ok with check_assert(false)',
-    '',
-    '    died: P0004: assert description
-        CONTEXT:
-            PL/pgSQL function check_assert(boolean) line 3 at ASSERT
-            SQL statement "SELECT check_assert(false)"
-            PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE
-            PL/pgSQL function test_assert() line 38 at FOR over SELECT rows'
-) LOOP
-    RETURN NEXT t;
-END LOOP;
-ELSE
-FOR t IN SELECT * FROM check_test(
-    pass(''),
-    true,
-    'throws_ok catches assert',
-    '',
-    ''
-) LOOP
-    RETURN NEXT t;
-END LOOP;
+        -- Check its diagnostics when there is an exception.
+        FOR tap IN SELECT * FROM check_test(
+            lives_ok( 'SELECT check_assert(false)' ),
+            false,
+            'lives_ok with check_assert(false)',
+            '',
+            '    died: P0004: assert description
+                CONTEXT:
+                    PL/pgSQL function check_assert(boolean) line 3 at ASSERT
+                    SQL statement "SELECT check_assert(false)"
+                    PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE
+                    PL/pgSQL function test_assert() line 38 at FOR over SELECT rows'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    ELSE
+        FOR tap IN SELECT * FROM check_test(
+            pass(''),
+            true,
+            'throws_ok catches assert',
+            '',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-FOR t IN SELECT * FROM check_test(
-    fail(''),
-    false,
-    'throws_ok does not accept passing assert',
-    '',
-    ''
-) LOOP
-    RETURN NEXT t;
-END LOOP;
+        FOR tap IN SELECT * FROM check_test(
+            fail(''),
+            false,
+            'throws_ok does not accept passing assert',
+            '',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-FOR t IN SELECT * FROM check_test(
-    pass(''),
-    true,
-    'lives_ok calling check_assert(true)',
-    '',
-    ''
-) LOOP
-    RETURN NEXT t;
-END LOOP;
+        FOR tap IN SELECT * FROM check_test(
+            pass(''),
+            true,
+            'lives_ok calling check_assert(true)',
+            '',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
--- Check its diagnostics when there is an exception.
-FOR t IN SELECT * FROM check_test(
-    fail(''),
-    false,
-    'lives_ok with check_assert(false)',
-    '',
-    ''
-) LOOP
-    RETURN NEXT t;
-END LOOP;
-END IF;
-END
+        -- Check its diagnostics when there is an exception.
+        FOR tap IN SELECT * FROM check_test(
+            fail(''),
+            false,
+            'lives_ok with check_assert(false)',
+            '',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+END;
 $body$;
 
 SELECT * FROM test_assert();
