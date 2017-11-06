@@ -27,6 +27,8 @@ Revision history for pgTAP
     + `isnt_partitioned()`
     + `is_partition_of()`
     + `partitions_are()`
+* Added the materialized view-testing assertion functions to the v0.95.0 upgrade
+  script; they were inadvertently omitted from the v0.95.0 release.
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
