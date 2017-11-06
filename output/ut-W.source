@@ -942,7 +942,7 @@ error hint:
                ->  Sample Scan on p1_c1_c1 s1
                      Sampling: system ('10'::real)
                ->  Foreign Scan on ft1
-                     Foreign File: /home/horiguti/work/pg_hint_plan/pg_hint_plan/data/data.csv
+                     Foreign File: @abs_srcdir@/data/data.csv
                ->  CTE Scan on cte1
                      CTE cte1
                        ->  Gather
