@@ -1,11 +1,11 @@
 Revision history for pgTAP
 ==========================
 
-0.98.0
+0.98.0 2017-11-06T22:30:54Z
 ---------------------------
 * `make install` once again properly installs the versioned SQL file required
-  by `CREATE EXTENSION`. Thanks to Keith Fiske for the report (Issue #131) and
-  Jim Nasby for the fix (Issue #132).
+  by `CREATE EXTENSION`. Thanks to Keith Fiske for the reports (Issue #131,
+  Issue #143) and Jim Nasby for the fix (Issue #132).
 * Removed references to the Epic test framework, since its domain
   (`epictest.org`) has expired and the project appears to no longer be
   available online. Thanks to Andreas Brekken for the report (#140).
@@ -16,8 +16,8 @@ Revision history for pgTAP
 * Clarified the use of the `:schema` parameter to the extension-testing
   functions in the documentation. Required since extensions do not belong to
   schemas, but their objects may be specifically created in a schema. Thanks to
-  @decibel for the report (#121)!
-* Updated the table-testing functions to recognized partitioned tables:
+  Jim Nasby for the report (#121)!
+* Updated the table-testing functions to also recognize partitioned tables:
     + `has_table()`
     + `hasnt_table()`
     + `tables_are()`
@@ -28,7 +28,7 @@ Revision history for pgTAP
     + `is_partition_of()`
     + `partitions_are()`
 * Added the materialized view-testing assertion functions to the v0.95.0 upgrade
-  script; they were inadvertently omitted from the v0.95.0 release.
+  script; they were inadvertently omitted in the v0.95.0 release.
 * Fixed faling tests on Postgres 8.1.
 
 0.97.0 2016-11-28T22:18:29Z
