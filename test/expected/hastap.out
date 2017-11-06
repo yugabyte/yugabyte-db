@@ -108,9 +108,9 @@ ok 105 - has_view(non-existent view) should have the proper diagnostics
 ok 106 - has_view(non-existent view, desc) should fail
 ok 107 - has_view(non-existent view, desc) should have the proper description
 ok 108 - has_view(non-existent view, desc) should have the proper diagnostics
-ok 109 - has_view(sch, non-existtent view, desc) should fail
-ok 110 - has_view(sch, non-existtent view, desc) should have the proper description
-ok 111 - has_view(sch, non-existtent view, desc) should have the proper diagnostics
+ok 109 - has_view(sch, non-existent view, desc) should fail
+ok 110 - has_view(sch, non-existent view, desc) should have the proper description
+ok 111 - has_view(sch, non-existent view, desc) should have the proper diagnostics
 ok 112 - has_view(view, desc) should pass
 ok 113 - has_view(view, desc) should have the proper description
 ok 114 - has_view(view, desc) should have the proper diagnostics
@@ -123,9 +123,9 @@ ok 120 - hasnt_view(non-existent view) should have the proper diagnostics
 ok 121 - hasnt_view(non-existent view, desc) should pass
 ok 122 - hasnt_view(non-existent view, desc) should have the proper description
 ok 123 - hasnt_view(non-existent view, desc) should have the proper diagnostics
-ok 124 - hasnt_view(sch, non-existtent view, desc) should pass
-ok 125 - hasnt_view(sch, non-existtent view, desc) should have the proper description
-ok 126 - hasnt_view(sch, non-existtent view, desc) should have the proper diagnostics
+ok 124 - hasnt_view(sch, non-existent view, desc) should pass
+ok 125 - hasnt_view(sch, non-existent view, desc) should have the proper description
+ok 126 - hasnt_view(sch, non-existent view, desc) should have the proper diagnostics
 ok 127 - hasnt_view(view, desc) should fail
 ok 128 - hasnt_view(view, desc) should have the proper description
 ok 129 - hasnt_view(view, desc) should have the proper diagnostics
@@ -138,9 +138,9 @@ ok 135 - has_sequence(non-existent sequence) should have the proper diagnostics
 ok 136 - has_sequence(non-existent sequence, desc) should fail
 ok 137 - has_sequence(non-existent sequence, desc) should have the proper description
 ok 138 - has_sequence(non-existent sequence, desc) should have the proper diagnostics
-ok 139 - has_sequence(sch, non-existtent sequence, desc) should fail
-ok 140 - has_sequence(sch, non-existtent sequence, desc) should have the proper description
-ok 141 - has_sequence(sch, non-existtent sequence, desc) should have the proper diagnostics
+ok 139 - has_sequence(sch, non-existent sequence, desc) should fail
+ok 140 - has_sequence(sch, non-existent sequence, desc) should have the proper description
+ok 141 - has_sequence(sch, non-existent sequence, desc) should have the proper diagnostics
 ok 142 - has_sequence(sequence, desc) should pass
 ok 143 - has_sequence(sequence, desc) should have the proper description
 ok 144 - has_sequence(sequence, desc) should have the proper diagnostics
@@ -155,9 +155,9 @@ ok 152 - hasnt_sequence(non-existent sequence) should have the proper diagnostic
 ok 153 - hasnt_sequence(non-existent sequence, desc) should pass
 ok 154 - hasnt_sequence(non-existent sequence, desc) should have the proper description
 ok 155 - hasnt_sequence(non-existent sequence, desc) should have the proper diagnostics
-ok 156 - hasnt_sequence(sch, non-existtent sequence, desc) should pass
-ok 157 - hasnt_sequence(sch, non-existtent sequence, desc) should have the proper description
-ok 158 - hasnt_sequence(sch, non-existtent sequence, desc) should have the proper diagnostics
+ok 156 - hasnt_sequence(sch, non-existent sequence, desc) should pass
+ok 157 - hasnt_sequence(sch, non-existent sequence, desc) should have the proper description
+ok 158 - hasnt_sequence(sch, non-existent sequence, desc) should have the proper diagnostics
 ok 159 - hasnt_sequence(sequence, desc) should fail
 ok 160 - hasnt_sequence(sequence, desc) should have the proper description
 ok 161 - hasnt_sequence(sequence, desc) should have the proper diagnostics
@@ -818,9 +818,9 @@ ok 815 - has_materialized_view(non-existent materialized_view) should have the p
 ok 816 - has_materialized_view(non-existent materialized_view, desc) should fail
 ok 817 - has_materialized_view(non-existent materialized_view, desc) should have the proper description
 ok 818 - has_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
-ok 819 - has_materialized_view(sch, non-existtent materialized_view, desc) should fail
-ok 820 - has_materialized_view(sch, non-existtent materialized_view, desc) should have the proper description
-ok 821 - has_materialized_view(sch, non-existtent materialized_view, desc) should have the proper diagnostics
+ok 819 - has_materialized_view(sch, non-existent materialized_view, desc) should fail
+ok 820 - has_materialized_view(sch, non-existent materialized_view, desc) should have the proper description
+ok 821 - has_materialized_view(sch, non-existent materialized_view, desc) should have the proper diagnostics
 ok 822 - has_materialized_view(materialized_view, desc) should pass
 ok 823 - has_materialized_view(materialized_view, desc) should have the proper description
 ok 824 - has_materialized_view(materialized_view, desc) should have the proper diagnostics
@@ -833,9 +833,9 @@ ok 830 - hasnt_materialized_view(non-existent materialized_view) should have the
 ok 831 - hasnt_materialized_view(non-existent materialized_view, desc) should pass
 ok 832 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper description
 ok 833 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
-ok 834 - hasnt_materialized_view(sch, non-existtent materialized_view, desc) should pass
-ok 835 - hasnt_materialized_view(sch, non-existtent materialized_view, desc) should have the proper description
-ok 836 - hasnt_materialized_view(sch, non-existtent materialized_view, desc) should have the proper diagnostics
+ok 834 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should pass
+ok 835 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should have the proper description
+ok 836 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should have the proper diagnostics
 ok 837 - hasnt_materialized_view(materialized_view, desc) should fail
 ok 838 - hasnt_materialized_view(materialized_view, desc) should have the proper description
 ok 839 - hasnt_materialized_view(materialized_view, desc) should have the proper diagnostics
@@ -848,9 +848,9 @@ ok 845 - is_partitioned(non-existent part) should have the proper diagnostics
 ok 846 - is_partitioned(non-existent part, desc) should fail
 ok 847 - is_partitioned(non-existent part, desc) should have the proper description
 ok 848 - is_partitioned(non-existent part, desc) should have the proper diagnostics
-ok 849 - is_partitioned(sch, non-existtent part, desc) should fail
-ok 850 - is_partitioned(sch, non-existtent part, desc) should have the proper description
-ok 851 - is_partitioned(sch, non-existtent part, desc) should have the proper diagnostics
+ok 849 - is_partitioned(sch, non-existent part, desc) should fail
+ok 850 - is_partitioned(sch, non-existent part, desc) should have the proper description
+ok 851 - is_partitioned(sch, non-existent part, desc) should have the proper diagnostics
 ok 852 - is_partitioned(sch, part, desc) should pass
 ok 853 - is_partitioned(sch, part, desc) should have the proper description
 ok 854 - is_partitioned(sch, part, desc) should have the proper diagnostics
@@ -863,15 +863,15 @@ ok 860 - is_partitioned(part, desc) should have the proper diagnostics
 ok 861 - is_partitioned(part) should pass
 ok 862 - is_partitioned(part) should have the proper description
 ok 863 - is_partitioned(part) should have the proper diagnostics
-ok 864 - isnt_partitioned(non-existent partition) should pass
-ok 865 - isnt_partitioned(non-existent partition) should have the proper description
-ok 866 - isnt_partitioned(non-existent partition) should have the proper diagnostics
-ok 867 - isnt_partitioned(non-existent partition, desc) should pass
-ok 868 - isnt_partitioned(non-existent partition, desc) should have the proper description
-ok 869 - isnt_partitioned(non-existent partition, desc) should have the proper diagnostics
-ok 870 - isnt_partitioned(sch, non-existtent partition, desc) should pass
-ok 871 - isnt_partitioned(sch, non-existtent partition, desc) should have the proper description
-ok 872 - isnt_partitioned(sch, non-existtent partition, desc) should have the proper diagnostics
+ok 864 - isnt_partitioned(non-existent part) should pass
+ok 865 - isnt_partitioned(non-existent part) should have the proper description
+ok 866 - isnt_partitioned(non-existent part) should have the proper diagnostics
+ok 867 - isnt_partitioned(non-existent part, desc) should pass
+ok 868 - isnt_partitioned(non-existent part, desc) should have the proper description
+ok 869 - isnt_partitioned(non-existent part, desc) should have the proper diagnostics
+ok 870 - isnt_partitioned(sch, non-existent part, desc) should pass
+ok 871 - isnt_partitioned(sch, non-existent part, desc) should have the proper description
+ok 872 - isnt_partitioned(sch, non-existent part, desc) should have the proper diagnostics
 ok 873 - isnt_partitioned(sch, part, desc) should fail
 ok 874 - isnt_partitioned(sch, part, desc) should have the proper description
 ok 875 - isnt_partitioned(sch, part, desc) should have the proper diagnostics

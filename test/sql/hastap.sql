@@ -354,7 +354,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_view( 'foo', '__SDFSDFD__', 'desc' ),
     false,
-    'has_view(sch, non-existtent view, desc)',
+    'has_view(sch, non-existent view, desc)',
     'desc',
     ''
 );
@@ -397,7 +397,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
     true,
-    'hasnt_view(sch, non-existtent view, desc)',
+    'hasnt_view(sch, non-existent view, desc)',
     'desc',
     ''
 );
@@ -440,7 +440,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_sequence( 'foo', '__SDFSDFD__', 'desc' ),
     false,
-    'has_sequence(sch, non-existtent sequence, desc)',
+    'has_sequence(sch, non-existent sequence, desc)',
     'desc',
     ''
 );
@@ -491,7 +491,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     hasnt_sequence( 'foo', '__SDFSDFD__', 'desc' ),
     true,
-    'hasnt_sequence(sch, non-existtent sequence, desc)',
+    'hasnt_sequence(sch, non-existent sequence, desc)',
     'desc',
     ''
 );
@@ -2509,7 +2509,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             has_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
             false,
-            'has_materialized_view(sch, non-existtent materialized_view, desc)',
+            'has_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2560,7 +2560,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             has_view( 'foo', '__SDFSDFD__', 'desc' ),
             false,
-            'has_materialized_view(sch, non-existtent materialized_view, desc)',
+            'has_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2622,7 +2622,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             hasnt_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
             true,
-            'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+            'hasnt_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2672,7 +2672,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
             true,
-            'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+            'hasnt_materialized_view(sch, non-existent materialized_view, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2713,14 +2713,6 @@ DECLARE
     tap record;
 BEGIN
     IF pg_version_num() >= 100000 THEN
-        EXECUTE $E$
-            CREATE TABLE public.somepart (
-                logdate         date not null,
-                peaktemp        int,
-                unitsales       int
-            ) PARTITION BY RANGE (logdate);
-        $E$;
-
         FOR tap IN SELECT * FROM check_test(
             is_partitioned( '__SDFSDFD__' ),
             false,
@@ -2744,7 +2736,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             is_partitioned( 'foo', '__SDFSDFD__', 'desc' ),
             false,
-            'is_partitioned(sch, non-existtent part, desc)',
+            'is_partitioned(sch, non-existent part, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2752,7 +2744,7 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            is_partitioned( 'public', 'somepart', 'desc' ),
+            is_partitioned( 'public', 'apart', 'desc' ),
             true,
             'is_partitioned(sch, part, desc)',
             'desc',
@@ -2762,17 +2754,17 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            is_partitioned( 'public', 'somepart'::name ),
+            is_partitioned( 'public', 'apart'::name ),
             true,
             'is_partitioned(sch, part)',
-            'Table public.somepart should be partitioned',
+            'Table public.apart should be partitioned',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            is_partitioned( 'somepart', 'yowza' ),
+            is_partitioned( 'apart', 'yowza' ),
             true,
             'is_partitioned(part, desc)',
             'yowza',
@@ -2782,10 +2774,10 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            is_partitioned( 'somepart' ),
+            is_partitioned( 'apart' ),
             true,
             'is_partitioned(part)',
-            'Table somepart should be partitioned',
+            'Table apart should be partitioned',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;
@@ -2856,7 +2848,7 @@ BEGIN
             has_view( 'pg_tables' ),
             true,
             'is_partitioned(part)',
-            'View pg_tables should exist'
+            'View pg_tables should exist',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;
@@ -2876,7 +2868,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             isnt_partitioned( '__SDFSDFD__' ),
             true,
-            'isnt_partitioned(non-existent partition)',
+            'isnt_partitioned(non-existent part)',
             'Table "__SDFSDFD__" should not be partitioned',
             ''
         ) AS b LOOP
@@ -2886,7 +2878,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             isnt_partitioned( '__SDFSDFD__', 'howdy' ),
             true,
-            'isnt_partitioned(non-existent partition, desc)',
+            'isnt_partitioned(non-existent part, desc)',
             'howdy',
             ''
         ) AS b LOOP
@@ -2896,7 +2888,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             isnt_partitioned( 'foo', '__SDFSDFD__', 'desc' ),
             true,
-            'isnt_partitioned(sch, non-existtent partition, desc)',
+            'isnt_partitioned(sch, non-existent part, desc)',
             'desc',
             ''
         ) AS b LOOP
@@ -2904,7 +2896,7 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            isnt_partitioned( 'public', 'somepart', 'desc' ),
+            isnt_partitioned( 'public', 'apart', 'desc' ),
             false,
             'isnt_partitioned(sch, part, desc)',
             'desc',
@@ -2914,17 +2906,17 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            isnt_partitioned( 'public', 'somepart'::name ),
+            isnt_partitioned( 'public', 'apart'::name ),
             false,
             'isnt_partitioned(sch, part)',
-            'Table public.somepart should not be partitioned',
+            'Table public.apart should not be partitioned',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            isnt_partitioned( 'somepart', 'yowza'::text ),
+            isnt_partitioned( 'apart', 'yowza'::text ),
             false,
             'isnt_partitioned(part, desc)',
             'yowza',
@@ -2934,10 +2926,10 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            isnt_partitioned( 'somepart' ),
+            isnt_partitioned( 'apart' ),
             false,
             'isnt_partitioned(part)',
-            'Table somepart should not be partitioned',
+            'Table apart should not be partitioned',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;
