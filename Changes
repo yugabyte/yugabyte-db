@@ -1,6 +1,9 @@
 Revision history for pgTAP
 ==========================
 
+0.99.0
+---------------------------
+
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------
 * `make install` once again properly installs the versioned SQL file required
