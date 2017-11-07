@@ -50,6 +50,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/tserver/tablet_service.h"
 
 namespace yb {
 
@@ -137,6 +138,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   std::string cluster_uuid() const;
 
+  TabletServiceImpl* tablet_server_service();
+
+  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMetricIndexes metric);
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -180,7 +185,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // List of tservers that are alive from the master's perspective.
   std::vector<master::TSInformationPB> live_tservers_;
 
-  // Lock to protect live_tservers_ and cluster_uuid_.
+  // Lock to protect live_tservers_, cluster_uuid_.
   mutable simple_spinlock lock_;
 
   // Proxy to call this tablet server locally.
@@ -188,6 +193,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Cluster uuid. This is sent by the master leader during the first hearbeat.
   std::string cluster_uuid_;
+
+  // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
+  // is shut down.
+  TabletServiceImpl* tablet_server_service_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TabletServer);

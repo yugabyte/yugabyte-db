@@ -113,7 +113,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       scanner_manager_(new ScannerManager(metric_entity())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0) {
+      master_config_index_(0),
+      tablet_server_service_(nullptr) {
 }
 
 TabletServer::~TabletServer() {
@@ -233,7 +234,8 @@ void TabletServer::AutoInitServiceFlags() {
 }
 
 Status TabletServer::RegisterServices() {
-  std::unique_ptr<ServiceIf> ts_service(new TabletServiceImpl(this));
+  tablet_server_service_ = new TabletServiceImpl(this);
+  std::unique_ptr<ServiceIf> ts_service(tablet_server_service_);
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
                                                      std::move(ts_service)));
 
@@ -279,6 +281,10 @@ void TabletServer::Shutdown() {
   if (initted_) {
     maintenance_manager_->Shutdown();
     WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
+    {
+      std::lock_guard<simple_spinlock> l(lock_);
+      tablet_server_service_ = nullptr;
+    }
     RpcAndWebServerBase::Shutdown();
     scanner_manager_.reset();
     tablet_manager_->Shutdown();
@@ -306,6 +312,11 @@ void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
 std::string TabletServer::cluster_uuid() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return cluster_uuid_;
+}
+
+TabletServiceImpl* TabletServer::tablet_server_service() {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return tablet_server_service_;
 }
 
 }  // namespace tserver

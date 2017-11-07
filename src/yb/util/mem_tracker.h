@@ -46,6 +46,8 @@
 #include "yb/util/mutex.h"
 #include "yb/util/random.h"
 
+#include <gperftools/malloc_extension.h> // NOLINT
+
 namespace yb {
 
 class Status;
@@ -55,7 +57,7 @@ class MemTracker;
 // arranged into a tree structure such that the consumption tracked by a
 // MemTracker is also tracked by its ancestors.
 //
-// The MemTracker hierarchy is rooted in a single static MemTracker whose limit
+// The MemTracker hierarchy is rooted in a single static MemTracker whose limi
 // is set via gflag. The root MemTracker always exists, and it is the common
 // ancestor to all MemTrackers. All operations that discover MemTrackers begin
 // at the root and work their way down the tree, while operations that deal
@@ -110,6 +112,24 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   typedef std::function<void()> GcFunction;
 
   ~MemTracker();
+
+  #ifdef TCMALLOC_ENABLED
+  static int64_t GetTCMallocProperty(const char* prop) {
+    size_t value;
+    if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
+      LOG(DFATAL) << "Failed to get tcmalloc property " << prop;
+    }
+    return value;
+  }
+
+  static int64_t GetTCMallocCurrentAllocatedBytes() {
+    return GetTCMallocProperty("generic.current_allocated_bytes");
+  }
+
+  static int64_t GetTCMallocCurrentHeapSizeBytes() {
+    return GetTCMallocProperty("generic.heap_size");
+  }
+  #endif
 
   // Removes this tracker from its parent's children. This tracker retains its
   // link to its parent. Must be called on a tracker with a parent.

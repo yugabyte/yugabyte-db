@@ -780,6 +780,9 @@ class DB {
   // path relative to the db directory. eg. 000001.sst, /archive/000003.log
   virtual Status DeleteFile(std::string name) = 0;
 
+  // Returns the total combined size of all the SST Files in the rocksdb instance.
+  virtual uint64_t GetTotalSSTFileSize() { return 0; }
+
   // Returns a list of all table files with their level, start key
   // and end key
   virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}

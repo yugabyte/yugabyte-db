@@ -55,12 +55,15 @@ class TSRegistrationPB;
 class MasterPathHandlers {
  public:
   explicit MasterPathHandlers(Master* master)
-    : master_(master) {
+    : master_(master),
+      output_precision_(3) {
   }
 
   ~MasterPathHandlers();
 
   CHECKED_STATUS Register(Webserver* server);
+
+  string BytesToHumanReadable (uint64_t bytes);
 
  private:
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
@@ -99,6 +102,8 @@ class MasterPathHandlers {
       const ServerRegistrationPB& reg, const std::string& link_text) const;
 
   Master* master_;
+
+  const int output_precision_;
   DISALLOW_COPY_AND_ASSIGN(MasterPathHandlers);
 };
 

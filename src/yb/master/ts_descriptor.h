@@ -135,16 +135,56 @@ class TSDescriptor {
   double RecentReplicaCreations();
 
   // Set the number of live replicas (i.e. running or bootstrapping).
-  void set_num_live_replicas(int n) {
-    DCHECK_GE(n, 0);
+  void set_num_live_replicas(int num_live_replicas) {
+    DCHECK_GE(num_live_replicas, 0);
     std::lock_guard<simple_spinlock> l(lock_);
-    num_live_replicas_ = n;
+    num_live_replicas_ = num_live_replicas;
   }
 
   // Return the number of live replicas (i.e running or bootstrapping).
   int num_live_replicas() const {
     std::lock_guard<simple_spinlock> l(lock_);
     return num_live_replicas_;
+  }
+
+  void set_total_memory_usage(uint64_t total_memory_usage) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    total_memory_usage_ = total_memory_usage;
+  }
+
+  uint64_t total_memory_usage() {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return total_memory_usage_;
+  }
+
+  void set_total_sst_file_size (uint64_t total_sst_file_size) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    total_sst_file_size_ = total_sst_file_size;
+  }
+
+  uint64_t total_sst_file_size() {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return total_sst_file_size_;
+  }
+
+  void set_read_ops_per_sec(double read_ops_per_sec) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    read_ops_per_sec_ = read_ops_per_sec;
+  }
+
+  double read_ops_per_sec() {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return read_ops_per_sec_;
+  }
+
+  void set_write_ops_per_sec(double write_ops_per_sec) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    write_ops_per_sec_ = write_ops_per_sec;
+  }
+
+  double write_ops_per_sec() {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return write_ops_per_sec_;
   }
 
   // Set of methods to keep track of pending tablet deletes for a tablet server. We use them to
@@ -171,6 +211,16 @@ class TSDescriptor {
   void DecayRecentReplicaCreationsUnlocked();
 
   mutable simple_spinlock lock_;
+
+  // Stores the total RAM usage of a tserver that is sent in every heartbeat.
+  uint64_t total_memory_usage_;
+
+  // Stores the total size of all the sst files in a tserver
+  uint64_t total_sst_file_size_;
+
+  double read_ops_per_sec_;
+
+  double write_ops_per_sec_;
 
   const std::string permanent_uuid_;
   int64_t latest_seqno_;

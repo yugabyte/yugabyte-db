@@ -134,20 +134,6 @@ static bool dummy[] __attribute__((unused)) = {
 #endif
 };
 
-#ifdef TCMALLOC_ENABLED
-static int64_t GetTCMallocProperty(const char* prop) {
-  size_t value;
-  if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
-    LOG(DFATAL) << "Failed to get tcmalloc property " << prop;
-  }
-  return value;
-}
-
-static int64_t GetTCMallocCurrentAllocatedBytes() {
-  return GetTCMallocProperty("generic.current_allocated_bytes");
-}
-#endif
-
 void MemTracker::CreateRootTracker() {
   DCHECK_ONLY_NOTNULL(dummy);
   int64_t limit = FLAGS_memory_limit_hard_bytes;

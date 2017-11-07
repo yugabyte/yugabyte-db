@@ -55,7 +55,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
-
+#include "yb/util/mem_tracker.h"
 DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
              "Timeout used for the TS->Master heartbeat RPCs.");
 TAG_FLAG(heartbeat_rpc_timeout_ms, advanced);
@@ -187,6 +187,15 @@ class Heartbeater::Thread {
   bool should_run_;
   bool heartbeat_asap_;
 
+  // The interval for sending tserver metrics in the heartbeat.
+  const int tserver_metrics_interval_sec_;
+  // stores the granularity for updating file sizes and current read/write
+  MonoTime prev_tserver_metrics_submission_;
+
+  // Stores the total read and writes ops for computing iops
+  uint64_t prev_reads_;
+  uint64_t prev_writes_;
+
   DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
@@ -220,7 +229,11 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
     consecutive_failed_heartbeats_(0),
     cond_(&mutex_),
     should_run_(false),
-    heartbeat_asap_(false) {
+    heartbeat_asap_(false),
+    tserver_metrics_interval_sec_(5),
+    prev_tserver_metrics_submission_(MonoTime::FineNow()),
+    prev_reads_(0),
+    prev_writes_(0) {
   CHECK_NOTNULL(master_addresses_.get());
   CHECK(!master_addresses_->empty());
   VLOG(1) << "Initializing heartbeater thread with master addresses: "
@@ -366,6 +379,61 @@ Status Heartbeater::Thread::TryHeartbeat() {
       req.mutable_tablet_report());
   }
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
+
+
+  if (prev_tserver_metrics_submission_ +
+      MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::FineNow()) {
+
+    // Get the total memory used.
+    rusage ru;
+    if (getrusage(RUSAGE_SELF, &ru) == -1) {
+      LOG(ERROR) << "Could not get the memory usage; getrusage() failed";
+    } else {
+      req.mutable_metrics()->set_total_ram_usage(ru.ru_maxrss);
+      VLOG(4) << "Total Memory Usage: " << ru.ru_maxrss;
+    }
+    // Get the Total SST file sizes and set it in the proto buf
+    std::vector<scoped_refptr<yb::tablet::TabletPeer> > tablet_peers;
+    uint64_t total_file_sizes = 0;
+    server_->tablet_manager()->GetTabletPeers(&tablet_peers);
+    for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
+      scoped_refptr<yb::tablet::TabletPeer> tablet_peer = *it;
+      if (tablet_peer) {
+        shared_ptr<yb::tablet::TabletClass> tablet_class = tablet_peer->shared_tablet();
+        total_file_sizes += (tablet_class) ? tablet_class->GetTotalSSTFileSizes() : 0;
+      }
+    }
+    req.mutable_metrics()->set_total_sst_file_size(total_file_sizes);
+
+    // Get the total number of read and write operations.
+    scoped_refptr<Histogram> reads_hist = server_->GetMetricsHistogram
+        (TabletServerServiceIf::RpcMetricIndexes::kMetricIndexRead);
+    uint64_t  num_reads = (reads_hist != nullptr) ? reads_hist->TotalCount() : 0;
+
+    scoped_refptr<Histogram> writes_hist = server_->GetMetricsHistogram
+        (TabletServerServiceIf::RpcMetricIndexes::kMetricIndexWrite);
+    uint64_t num_writes = (writes_hist != nullptr) ? writes_hist->TotalCount() : 0;
+
+    // Calculate the read and write ops per second.
+    MonoDelta diff = MonoTime::FineNow() - prev_tserver_metrics_submission_;
+    double_t div = diff.ToSeconds();
+
+    double rops_per_sec = (div > 0 && num_reads > 0) ?
+        (static_cast<double>(num_reads - prev_reads_) / div) : 0;
+
+    double wops_per_sec = (div > 0 && num_writes > 0) ?
+        (static_cast<double>(num_writes - prev_writes_) / div) : 0;
+
+    prev_reads_ = num_reads;
+    prev_writes_ = num_writes;
+    req.mutable_metrics()->set_read_ops_per_sec(rops_per_sec);
+    req.mutable_metrics()->set_write_ops_per_sec(wops_per_sec);
+    prev_tserver_metrics_submission_ = MonoTime::FineNow();
+
+    VLOG(4) << "Read Ops per second: " << rops_per_sec;
+    VLOG(4) << "Write Ops per second: " << wops_per_sec;
+    VLOG(4) << "Total SST File Sizes: "<< total_file_sizes;
+  }
 
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(10));

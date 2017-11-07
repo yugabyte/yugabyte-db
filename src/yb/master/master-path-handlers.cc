@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <iomanip>
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -70,7 +71,26 @@ using namespace std::placeholders;
 
 namespace master {
 
+constexpr int64_t kBytesPerGB = 1000000000;
+constexpr int64_t kBytesPerMB = 1000000;
+constexpr int64_t kBytesPerKB = 1000;
+
 MasterPathHandlers::~MasterPathHandlers() {
+}
+
+string MasterPathHandlers::BytesToHumanReadable(uint64_t bytes) {
+  std::ostringstream op_stream;
+  op_stream <<std::setprecision(output_precision_);
+  if (bytes >= kBytesPerGB) {
+    op_stream << kBytesPerGB << " GB";
+  } else if (bytes >= kBytesPerMB) {
+    op_stream << bytes/kBytesPerMB << " MB";
+  } else if (bytes >= kBytesPerKB) {
+    op_stream << bytes/kBytesPerKB << " KB";
+  } else {
+    op_stream << bytes << " B";
+  }
+  return op_stream.str();
 }
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
@@ -139,19 +159,23 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
                                              stringstream* output) {
   vector<std::shared_ptr<TSDescriptor> > descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
-
+  *output << std::setprecision(output_precision_);
   *output << "<h2>Tablet Servers</h2>\n";
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr>\n"
-          << "    <th>Server</th>\n"
-          << "    <th>Time since heartbeat</th>\n"
-          << "    <th>Load (Num Tablets)</th>\n"
-          << "    <th>Cloud</th>\n"
-          << "    <th>Region</th>\n"
-          << "    <th>Zone</th>\n"
-          << "    <th>TServer UUID</th>\n"
-          << "  </tr>\n";
+  *output << "    <tr>\n"
+          << "      <th>Server</th>\n"
+          << "      <th>Time since heartbeat</th>\n"
+          << "      <th>Load (Num Tablets)</th>\n"
+          << "      <th>RAM Used</th>\n"
+          << "      <th>Total SST File Sizes</th>\n"
+          << "      <th>Read ops/sec</th>\n"
+          << "      <th>Write ops/sec</th>\n"
+          << "      <th>Cloud</th>\n"
+          << "      <th>Region</th>\n"
+          << "      <th>Zone</th>\n"
+          << "      <th>UUID</th>\n"
+          << "    </tr>\n";
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
     TSRegistrationPB reg;
@@ -163,6 +187,12 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
     *output << "    <td>" << time_since_hb << "</td>";
     *output << "    <td>" << desc->num_live_replicas() << "</td>";
+    *output << "    <td>" << BytesToHumanReadable
+                             (desc->total_memory_usage()) << "</td>";
+    *output << "    <td>" << BytesToHumanReadable
+                             (desc->total_sst_file_size()) << "</td>";
+    *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
+    *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
     *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
     *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
     *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";

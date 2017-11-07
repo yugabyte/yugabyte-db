@@ -165,6 +165,16 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   ts_desc->UpdateHeartbeatTime();
   ts_desc->set_num_live_replicas(req->num_live_tablets());
 
+  // Set the TServer metrics in TS Descriptor
+  if (req->has_metrics()) {
+    if (req->metrics().has_total_ram_usage()) {
+      ts_desc->set_total_memory_usage(req->metrics().total_ram_usage());
+    }
+    ts_desc->set_total_sst_file_size(req->metrics().total_sst_file_size());
+    ts_desc->set_write_ops_per_sec(req->metrics().write_ops_per_sec());
+    ts_desc->set_read_ops_per_sec(req->metrics().read_ops_per_sec());
+  }
+
   if (req->has_tablet_report()) {
     s = server_->catalog_manager()->ProcessTabletReport(
       ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), &rpc);

@@ -591,6 +591,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void LostLeadership();
 
+  uint64_t GetTotalSSTFileSizes() const;
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;

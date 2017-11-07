@@ -210,6 +210,7 @@ class DBImpl : public DB {
                             const Slice* begin, const Slice* end);
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
+
   OpId GetFlushedOpId() override;
 
   // Obtains the meta data of the specified column family of the DB.
@@ -606,6 +607,9 @@ class DBImpl : public DB {
   // This is different from HandleTotalSSTFileSizes since the later
   // looks into the version set and not necessarily computes
   // all the live file sizes.
+
+  uint64_t GetTotalSSTFileSize() override;
+
   void SetTotalSSTFileSizeTicker();
 
   void PrintStatistics();

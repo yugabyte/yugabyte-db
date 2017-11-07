@@ -2915,6 +2915,14 @@ void Tablet::LostLeadership() {
   }
 }
 
+uint64_t Tablet::GetTotalSSTFileSizes() const {
+  std::lock_guard<rw_spinlock> lock(component_lock_);
+  if (!rocksdb_) {
+    return 0;
+  }
+  return rocksdb_->GetTotalSSTFileSize();
+}
+
 Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata) const {
   if (metadata_->schema().table_properties().is_transactional()) {

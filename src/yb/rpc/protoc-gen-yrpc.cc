@@ -391,27 +391,34 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       }
 
       Print(printer, *subs,
-        "\n"
-        " private:\n"
-      );
-
-
-      Print(printer, *subs,
-        "  enum RpcMetricIndexes {\n"
+            "  enum RpcMetricIndexes {\n"
       );
       for (int method_idx = 0; method_idx < service->method_count();
-           ++method_idx) {
+          ++method_idx) {
         const MethodDescriptor *method = service->method(method_idx);
         subs->PushMethod(method);
 
         Print(printer, *subs,
-          "    $metric_enum_key$,\n"
+              "    $metric_enum_key$,\n"
         );
 
         subs->Pop();
       }
+
       Print(printer, *subs,
-        "  };\n" // enum
+            "  };\n" // enum
+      );
+
+      Print(printer, *subs,
+            "\n"
+                "  ::yb::rpc::RpcMethodMetrics GetMetric(RpcMetricIndexes index) {\n"
+                "    return metrics_[index];\n"
+                "  }\n"
+      );
+
+      Print(printer, *subs,
+        "\n"
+        " private:\n"
       );
 
       Print(printer, *subs,

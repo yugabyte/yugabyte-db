@@ -1614,13 +1614,18 @@ Status DBImpl::FlushMemTableToOutputFile(
   return s;
 }
 
-void DBImpl::SetTotalSSTFileSizeTicker() {
+uint64_t DBImpl::GetTotalSSTFileSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t total_sst_file_size = 0;
   for (const auto &meta : file_metadata) {
     total_sst_file_size += meta.total_size;
   }
+  return total_sst_file_size;
+}
+
+void DBImpl::SetTotalSSTFileSizeTicker() {
+  uint64_t total_sst_file_size = GetTotalSSTFileSize();
   SetTickerCount(stats_, TOTAL_SST_FILE_SIZE, total_sst_file_size);
 }
 
