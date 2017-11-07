@@ -63,8 +63,8 @@ try:
                 raise YBOpsRuntimeError("Required packages {} not specified".format(REQUIRED_PACKAGES))
         elif args.tag:
             log_message(logging.INFO, "Download packages based on the release tag")
-            packages = [p.get("package") for p in get_package_info(args.tag)]
-
+            packages = [p.get("package") for p in get_package_info(args.tag)
+                        if 'yugabyte-ce' not in p.get("package")]
         packages_folder = os.path.join(script_dir, "target", "docker", "packages")
 
         try:
@@ -91,7 +91,7 @@ try:
                     download_release(args.tag, package_name, download_folder, S3_RELEASE_BUCKET)
 
             # Get the YB Load tester tar alone
-            yugabyte_tarfile = tarfile.open(yugabyte_package)
+            yugabyte_tarfile = tarfile.open(os.path.join(args.tag, yugabyte_package))
             log_message(logging.INFO, "Get yb-sample-apps jar from yugabyte tarfile")
             for archive_file in yugabyte_tarfile.getmembers():
                 if "yb-sample-apps" in archive_file.name:
@@ -140,7 +140,7 @@ try:
             for release in releases['releases']:
                 release_channels = [channel for channel in release['ActiveChannels']
                                     if channel['Name'] == "Beta"]
-                print release_channels
+
                 if len(release_channels) >= 1:
                     current_beta_release = release_channels[0]['ReleaseLabel']
                     beta_channel_id = release_channels[0]['Id']
