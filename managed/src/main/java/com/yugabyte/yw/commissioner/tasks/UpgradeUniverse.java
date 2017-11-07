@@ -39,15 +39,6 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   public static class Params extends RollingRestartParams {}
 
-  public static List<NodeDetails> filterByNodeName (List<NodeDetails> nodeDetails, List<String> nodeNames) {
-    if (nodeNames == null || nodeNames.isEmpty()) {
-      return nodeDetails;
-    }
-
-    Predicate<NodeDetails> nodeNameFilter = p -> nodeNames.contains(p.nodeName);
-    return nodeDetails.stream().filter(nodeNameFilter).collect(Collectors.toList());
-  }
-
   @Override
   protected RollingRestartParams taskParams() {
     return (RollingRestartParams)taskParams;
@@ -63,8 +54,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      List<NodeDetails> tServerNodes = filterByNodeName(universe.getTServers(), taskParams().nodeNames);
-      List<NodeDetails> masterNodes  = filterByNodeName(universe.getMasters(), taskParams().nodeNames);
+      List<NodeDetails> tServerNodes = universe.getTServers();
+      List<NodeDetails> masterNodes  = universe.getMasters();
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
         if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
@@ -74,8 +65,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
           throw new IllegalArgumentException("Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
 
-        LOG.info("Upgrading software version to {} for {} nodes in universe {}",
-                 taskParams().ybSoftwareVersion, taskParams().nodeNames.size(), universe.name);
+        LOG.info("Upgrading software version to {} in universe {}",
+                 taskParams().ybSoftwareVersion, universe.name);
       } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
         LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
           taskParams().masterGFlags, masterNodes.size(), universe.name);
@@ -213,7 +204,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     // Set the cloud name.
     params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = taskParams().userIntent.deviceInfo;
+    params.deviceInfo = Universe.get(taskParams().universeUUID).getUniverseDetails().deviceInfo;
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
