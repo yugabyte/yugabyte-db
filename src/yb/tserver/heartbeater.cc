@@ -130,8 +130,9 @@ class Heartbeater::Thread {
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
-  Status DoHeartbeat();
-  Status SetupRegistration(master::TSRegistrationPB* reg);
+  CHECKED_STATUS DoHeartbeat();
+  CHECKED_STATUS TryHeartbeat();
+  CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
 
@@ -345,19 +346,7 @@ int Heartbeater::Thread::GetMillisUntilNextHeartbeat() const {
   return FLAGS_heartbeat_interval_ms;
 }
 
-Status Heartbeater::Thread::DoHeartbeat() {
-  if (PREDICT_FALSE(server_->fail_heartbeats_for_tests())) {
-    return STATUS(IOError, "failing all heartbeats for tests");
-  }
-
-  CHECK(IsCurrentThread());
-
-  if (!proxy_) {
-    VLOG(1) << "No valid master proxy. Connecting...";
-    RETURN_NOT_OK(ConnectToMaster());
-    DCHECK(proxy_);
-  }
-
+Status Heartbeater::Thread::TryHeartbeat() {
   master::TSHeartbeatRequestPB req;
 
   SetupCommonField(req.mutable_common());
@@ -400,6 +389,9 @@ Status Heartbeater::Thread::DoHeartbeat() {
     return STATUS(ServiceUnavailable, "master is no longer the leader");
   }
   last_hb_response_.Swap(&resp);
+  if (last_hb_response_.needs_full_tablet_report()) {
+    return STATUS(TryAgain, "");
+  }
 
   if (resp.has_cluster_uuid() && !resp.cluster_uuid().empty()) {
     server_->set_cluster_uuid(resp.cluster_uuid());
@@ -415,7 +407,29 @@ Status Heartbeater::Thread::DoHeartbeat() {
   server_->tablet_manager()->MarkTabletReportAcknowledged(req.tablet_report());
 
   // Update the live tserver list.
-  RETURN_NOT_OK(server_->PopulateLiveTServers(resp));
+  return server_->PopulateLiveTServers(resp);
+}
+
+Status Heartbeater::Thread::DoHeartbeat() {
+  if (PREDICT_FALSE(server_->fail_heartbeats_for_tests())) {
+    return STATUS(IOError, "failing all heartbeats for tests");
+  }
+
+  CHECK(IsCurrentThread());
+
+  if (!proxy_) {
+    VLOG(1) << "No valid master proxy. Connecting...";
+    RETURN_NOT_OK(ConnectToMaster());
+    DCHECK(proxy_);
+  }
+
+  for (;;) {
+    auto status = TryHeartbeat();
+    if (!status.ok() && status.IsTryAgain()) {
+      continue;
+    }
+    return status;
+  }
 
   return Status::OK();
 }

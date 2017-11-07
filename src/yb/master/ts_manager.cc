@@ -113,7 +113,8 @@ void TSManager::GetAllDescriptors(vector<shared_ptr<TSDescriptor> > *descs) cons
 }
 
 bool TSManager::IsTSLive(const shared_ptr<TSDescriptor>& ts) const {
-  return ts->TimeSinceHeartbeat().ToMilliseconds() < FLAGS_tserver_unresponsive_timeout_ms;
+  return ts->TimeSinceHeartbeat().ToMilliseconds() <
+         GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms);
 }
 
 void TSManager::GetAllLiveDescriptors(vector<shared_ptr<TSDescriptor> > *descs) const {

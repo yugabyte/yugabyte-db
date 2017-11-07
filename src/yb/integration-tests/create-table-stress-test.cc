@@ -355,15 +355,15 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
   // the master to mistakenly think that the tablet servers are dead. To avoid this
   // increase the TS unresponsive timeout so that the leader correctly thinks that
   // they are alive.
-  FLAGS_tserver_unresponsive_timeout_ms = 5 * 60 * 1000;
+  SetAtomicFlag(5 * 60 * 1000, &FLAGS_tserver_unresponsive_timeout_ms);
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
       CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->VisitSysCatalog());
       // Give table creation a chance to run.
-      SleepFor(MonoDelta::FromMilliseconds(1));
+      SleepFor(MonoDelta::FromMilliseconds(yb::NonTsanVsTsan(1, 5)));
     }
-    });
+  });
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
     YBTableName table_name("my_keyspace", Substitute("test-$0", num_tables_created));

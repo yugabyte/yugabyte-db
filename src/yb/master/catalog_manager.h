@@ -185,6 +185,13 @@ struct TabletReplica {
   TSDescriptor* ts_desc;
   tablet::TabletStatePB state;
   consensus::RaftPeerPB::Role role;
+
+  std::string ToString() const {
+    return Format("{ ts_desc: $0 state: $1 role: $2 }",
+                  ts_desc->permanent_uuid(),
+                  tablet::TabletStatePB_Name(state),
+                  consensus::RaftPeerPB_Role_Name(role));
+  }
 };
 
 // The information about a single tablet which exists in the cluster,
@@ -218,7 +225,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
-  void SetReplicaLocations(const ReplicaMap& replica_locations);
+  void SetReplicaLocations(ReplicaMap replica_locations);
   void GetReplicaLocations(ReplicaMap* replica_locations) const;
 
   // Adds the given replica to the replica_locations_ map.
@@ -270,12 +277,14 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   ReplicaMap replica_locations_;
 
   // Reported schema version (in-memory only).
-  uint32_t reported_schema_version_;
+  uint32_t reported_schema_version_ = 0;
 
   LeaderStepDownFailureTimes leader_stepdown_failure_times_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
+
+typedef scoped_refptr<TabletInfo> TabletInfoPtr;
 
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
@@ -1037,10 +1046,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Populates locs_pb and returns true on success.
   // Returns Status::ServiceUnavailable if tablet is not running.
   CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
-                                 TabletLocationsPB* locs_pb);
+                                         TabletLocationsPB* locs_pb);
 
   CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
-                   scoped_refptr<TableInfo>* table_info);
+                           scoped_refptr<TableInfo>* table_info);
 
   // Handle one of the tablets in a tablet reported.
   // Requires that the lock is already held.

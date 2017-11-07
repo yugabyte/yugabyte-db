@@ -298,7 +298,11 @@ class TabletLoader : public Visitor<PersistentTabletInfo> {
     l->mutable_data()->pb.CopyFrom(metadata);
 
     // Add the tablet to the tablet manager
-    catalog_manager_->tablet_map_[tablet->tablet_id()] = tablet;
+    auto inserted = catalog_manager_->tablet_map_.emplace(tablet->tablet_id(), tablet).second;
+    if (!inserted) {
+      return STATUS_FORMAT(
+          IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
+    }
 
     if (table == nullptr) {
       // if the table is missing and the tablet is in "preparing" state
@@ -794,6 +798,12 @@ Status CatalogManager::RunLoaders() {
 
   // Clear the roles mapping.
   roles_map_.clear();
+
+  std::vector<std::shared_ptr<TSDescriptor>> descs;
+  master_->ts_manager()->GetAllDescriptors(&descs);
+  for (const auto& ts_desc : descs) {
+    ts_desc->set_has_tablet_report(false);
+  }
 
   // Visit tables and tablets, load them into memory.
   LOG(INFO) << __func__ << ": Loading tables into memory.";
@@ -2333,7 +2343,8 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
     string msg = "Received an incremental tablet report when a full one was needed";
     LOG(WARNING) << "Invalid tablet report from " << RequestorString(rpc) << ": "
                  << msg;
-    return STATUS(IllegalState, msg);
+    // We should respond with success in order to send reply that we need full report.
+    return Status::OK();
   }
 
   // TODO: on a full tablet report, we may want to iterate over the tablets we think
@@ -3072,7 +3083,7 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
     NewReplica(ts_desc.get(), report, &replica);
     InsertOrDie(&replica_locations, replica.ts_desc->permanent_uuid(), replica);
   }
-  tablet->SetReplicaLocations(replica_locations);
+  tablet->SetReplicaLocations(std::move(replica_locations));
 
   if (FLAGS_master_tombstone_evicted_tablet_replicas) {
     unordered_set<string> current_member_uuids;
@@ -4594,10 +4605,10 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table,
 TabletInfo::~TabletInfo() {
 }
 
-void TabletInfo::SetReplicaLocations(const ReplicaMap& replica_locations) {
+void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
   std::lock_guard<simple_spinlock> l(lock_);
   last_update_time_ = MonoTime::Now(MonoTime::FINE);
-  replica_locations_ = replica_locations;
+  replica_locations_ = std::move(replica_locations);
 }
 
 void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
