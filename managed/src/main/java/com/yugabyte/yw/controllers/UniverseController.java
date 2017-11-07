@@ -519,9 +519,6 @@ public class UniverseController extends AuthenticatedController {
     Map<String, String> masterGFlagsMap = serializeGFlagListToMap(formData, "masterGFlags");
     Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(formData, "tserverGFlags");
 
-    // Nodes Option for RollingRestartParams will no longer be supported.
-    formData.remove("nodeNames");
-
     taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
     taskParams.masterGFlags = masterGFlagsMap;
     taskParams.tserverGFlags = tserverGFlagsMap;

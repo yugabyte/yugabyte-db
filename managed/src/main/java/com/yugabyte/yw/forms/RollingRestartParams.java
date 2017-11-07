@@ -26,10 +26,6 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
   public Map<String, String> masterGFlags = new HashMap<String, String>();
   public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
-  // The nodes that we want to perform the operation and the subsequent rolling restart on.
-  @Constraints.Required()
-  public List<String> nodeNames;
-
   public Integer sleepAfterMasterRestartMillis = 180000;
   public Integer sleepAfterTServerRestartMillis = 180000;
 }
