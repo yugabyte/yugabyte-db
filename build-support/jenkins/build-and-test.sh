@@ -149,6 +149,8 @@ set_build_root --no-readonly
 
 set_common_test_paths
 
+check_python_script_syntax
+
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}

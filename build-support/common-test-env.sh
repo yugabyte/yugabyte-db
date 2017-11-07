@@ -71,7 +71,7 @@ readonly TEST_DESCRIPTOR_SEPARATOR=":::"
 #
 readonly LIST_OF_TESTS_DIR_NAME="list_of_tests"
 
-readonly JENKINS_NFS_BUILD_STATS_DIR="/n/jenkins/build_stats"
+readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/n/jenkins/build_stats"
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -1135,9 +1135,10 @@ run_tests_on_spark() {
   local run_tests_args=(
     --build-root "$BUILD_ROOT"
     --build-type "$build_type"
+    --save_report_to_build_dir
   )
-  if is_jenkins && [[ -d "$JENKINS_NFS_BUILD_STATS_DIR" ]]; then
-    run_tests_args+=( "--stats-dir" "$JENKINS_NFS_BUILD_STATS_DIR" --write_stats )
+  if is_jenkins && [[ -d "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" ]]; then
+    run_tests_args+=( "--reports-dir" "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" --write_report )
   fi
 
   set +e

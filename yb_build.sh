@@ -215,6 +215,7 @@ while [ $# -gt 0 ]; do
     ;;
     --verbose)
       verbose=true
+      export YB_VERBOSE=1
     ;;
     --force-run-cmake|--frcm)
       force_run_cmake=true
@@ -517,6 +518,8 @@ mkdir_safe "thirdparty/installed/uninstrumented/include"
 mkdir_safe "thirdparty/installed-deps/include"
 
 cd "$BUILD_ROOT"
+
+check_python_script_syntax
 
 if "$clean_thirdparty"; then
   log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"

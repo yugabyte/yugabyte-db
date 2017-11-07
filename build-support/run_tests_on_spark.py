@@ -15,19 +15,35 @@
 
 """
 Run YugaByte tests on Spark using PySpark.
+
+Example (mostly useful during testing this script):
+
+cd ~/code/yugabyte
+spark-submit --driver-cores 8 \
+  build-support/run_tests_on_spark.py \
+  --build-root build/debug-gcc-dynamic-community \
+  --cpp \
+  --verbose \
+  --reports-dir /tmp \
+  --cpp_test_program_regexp '.*redisserver.*' \
+  --write_report \
+  --save_report_to_build_dir
+
 """
 
 import argparse
+import getpass
 import glob
+import gzip
 import json
 import logging
 import os
+import pwd
 import random
 import re
 import socket
 import sys
 import time
-import pwd
 from collections import defaultdict
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -38,12 +54,25 @@ from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
 
 
-# Environment variables propagated to tasks running in a distributed way on Spark.
-PROPAGATED_ENV_VARS = [
-        'BUILD_ID',
-        'BUILD_URL',
-        'JOB_NAME',
-        ]
+# Special Jenkins environment variables. They are propagated to tasks running in a distributed way
+# on Spark.
+JENKINS_ENV_VARS = [
+    "BUILD_ID",
+    "BUILD_NUMBER",
+    "BUILD_TAG",
+    "BUILD_URL",
+    "CVS_BRANCH",
+    "EXECUTOR_NUMBER",
+    "GIT_BRANCH",
+    "GIT_COMMIT",
+    "GIT_URL",
+    "JAVA_HOME",
+    "JENKINS_URL",
+    "JOB_NAME",
+    "NODE_NAME",
+    "SVN_REVISION",
+    "WORKSPACE",
+    ]
 
 # In addition, all variables with names starting with the following prefix are propagated.
 PROPAGATED_ENV_VAR_PREFIX = 'YB_'
@@ -82,7 +111,9 @@ SPARK_TASK_MAX_FAILURES = 32
 verbose = False
 
 
-def init_spark_context():
+# Initializes the spark context. The details list will be incorporated in the Spark application
+# name visible in the Spark web UI.
+def init_spark_context(details=[]):
     global spark_context
     if spark_context:
         return
@@ -95,7 +126,15 @@ def init_spark_context():
     #       is just for the resilience of the test framework itself.
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
     spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', DEFAULT_SPARK_MASTER_URL)
-    spark_context = SparkContext(spark_master_url, "YB tests (build type: {})".format(build_type))
+    details += [
+        'user: {}'.format(getpass.getuser()),
+        'build type: {}'.format(build_type)
+        ]
+
+    if 'BUILD_URL' in os.environ:
+        details.append('URL: {}'.format(os.environ['BUILD_URL']))
+
+    spark_context = SparkContext(spark_master_url, "YB tests ({})".format(', '.join(details)))
     spark_context.addPyFile(yb_dist_tests.__file__)
 
 
@@ -222,55 +261,97 @@ def get_jenkins_job_name_path_component():
         return "unknown_jenkins_job"
 
 
-def get_stats_parent_dir(stats_base_dir):
+def get_report_parent_dir(report_base_dir):
     """
-    @return a directory to store build stats, relative to the given base directory. Path components
+    @return a directory to store build report, relative to the given base directory. Path components
             are based on build type, Jenkins job name, etc.
     """
-    return os.path.join(stats_base_dir,
+    return os.path.join(report_base_dir,
                         yb_dist_tests.global_conf.build_type,
                         get_jenkins_job_name_path_component())
 
 
-def save_stats(stats_base_dir, results, total_elapsed_time_sec):
+def save_json_to_paths(short_description, json_data, output_paths, should_gzip=False):
+    """
+    Saves the given JSON-friendly data structure to the list of paths (exact copy at each path),
+    optionally gzipping the output.
+    """
+    json_data_str = json.dumps(json_data, sort_keys=True, indent=2) + "\n"
+
+    for output_path in output_paths:
+        if output_path is None:
+            continue
+
+        assert output_path.endswith('.json'), \
+            "Expected output path to end with .json: {}".format(output_path)
+        final_output_path = output_path + ('.gz' if should_gzip else '')
+        logging.info("Saving {} to {}".format(short_description, final_output_path))
+        if should_gzip:
+            with gzip.open(final_output_path, 'wb') as output_file:
+                output_file.write(json_data_str)
+        else:
+            with open(final_output_path, 'w') as output_file:
+                output_file.write(json_data_str)
+
+
+def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeeded,
+                save_to_build_dir=False):
     global_conf = yb_dist_tests.global_conf
 
-    stats_parent_dir = get_stats_parent_dir(stats_base_dir)
-    if not os.path.isdir(stats_parent_dir):
-        try:
-            os.makedirs(stats_parent_dir)
-        except OSError as exc:
-            if exc.errno == errno.EEXIST and os.path.isdir(stats_parent_dir):
-                pass
-            raise
+    if report_base_dir:
+        historical_report_parent_dir = get_report_parent_dir(report_base_dir)
 
-    stats_path = os.path.join(
-            stats_parent_dir,
-            '{}_{}__user_{}__build_{}.json'.format(
-                global_conf.build_type,
-                time.strftime('%Y-%m-%dT%H_%M_%S'),
-                get_username(),
-                get_jenkins_job_name_path_component(),
-                os.environ.get('BUILD_ID', 'unknown')))
-    logging.info("Saving test stats to {}".format(stats_path))
-    test_stats = {}
+        if not os.path.isdir(historical_report_parent_dir):
+            try:
+                os.makedirs(historical_report_parent_dir)
+            except OSError as exc:
+                if exc.errno == errno.EEXIST and os.path.isdir(historical_report_parent_dir):
+                    pass
+                raise
+
+        historical_report_path = os.path.join(
+                historical_report_parent_dir,
+                '{}_{}__user_{}__build_{}.json'.format(
+                    global_conf.build_type,
+                    time.strftime('%Y-%m-%dT%H_%M_%S'),
+                    get_username(),
+                    get_jenkins_job_name_path_component(),
+                    os.environ.get('BUILD_ID', 'unknown')))
+
+    test_reports_by_descriptor = {}
     for result in results:
         test_descriptor = result.test_descriptor
-        test_stats_dict = dict(
+        test_report_dict = dict(
             elapsed_time_sec=result.elapsed_time_sec,
             exit_code=result.exit_code,
             language=test_descriptor.language
         )
-        test_stats[test_descriptor.descriptor_str] = test_stats_dict
+        test_reports_by_descriptor[test_descriptor.descriptor_str] = test_report_dict
         if test_descriptor.error_output_path and os.path.isfile(test_descriptor.error_output_path):
-            test_stats_dict['error_output_path'] = test_descriptor.error_output_path
+            test_report_dict['error_output_path'] = test_descriptor.error_output_path
 
-    stats = dict(
-        tests=test_stats,
-        total_elapsed_time_sec=total_elapsed_time_sec)
-    with open(stats_path, 'w') as output_file:
-        output_file.write(json.dumps(stats, sort_keys=True, indent=2))
-        output_file.write("\n")
+    jenkins_env_var_values = {}
+    for jenkins_env_var_name in JENKINS_ENV_VARS:
+        if jenkins_env_var_name in os.environ:
+            jenkins_env_var_values[jenkins_env_var_name] = os.environ[jenkins_env_var_name]
+
+    report = dict(
+        conf=vars(yb_dist_tests.global_conf),
+        total_elapsed_time_sec=total_elapsed_time_sec,
+        spark_succeeded=spark_succeeded,
+        jenkins_env_vars=jenkins_env_var_values,
+        tests=test_reports_by_descriptor
+        )
+
+    full_report_paths = [historical_report_path]
+    if save_to_build_dir:
+        full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
+
+    save_json_to_paths('full build report', report, full_report_paths, should_gzip=True)
+    if save_to_build_dir:
+        del report['tests']
+        short_report_path = os.path.join(global_conf.build_root, 'short_build_report.json')
+        save_json_to_paths('short build report', report, [short_report_path], should_gzip=False)
 
 
 def is_one_shot_test(rel_binary_path):
@@ -320,10 +401,18 @@ def collect_cpp_tests(max_tests, cpp_test_program_re_str):
         random.shuffle(test_programs)
         test_programs = test_programs[:max_tests]
 
+    if not test_programs:
+        logging.info("Found no test programs")
+        return []
+
     logging.info("Collecting gtest tests for {} test programs".format(len(test_programs)))
 
     start_time_sec = time.time()
-    init_spark_context()
+    if len(test_programs) <= 3:
+        app_name_details = ['test programs: [{}]'.format(', '.join(test_programs))]
+    else:
+        app_name_details = ['{} test programs'.format(len(test_programs))]
+    init_spark_context(app_name_details)
     set_global_conf_for_spark_jobs()
 
     # Use fewer "slices" (tasks) than there are test programs, in hope to get some batching.
@@ -358,10 +447,6 @@ def collect_tests(args):
     cpp_test_descriptors = []
     if args.run_cpp_tests:
         cpp_test_descriptors = collect_cpp_tests(args.max_tests, args.cpp_test_program_regexp)
-        if not cpp_test_descriptors:
-            logging.error(
-                    ("No C++ tests found in '{}'. To re-generate test list files, run the "
-                     "following: YB_LIST_TESTS_ONLY ctest -j<parallelism>.").format(build_root))
 
     java_test_descriptors = []
     yb_src_root = yb_dist_tests.global_conf.yb_src_root
@@ -402,7 +487,7 @@ def load_test_list(test_list_path):
 
 
 def propagate_env_vars():
-    for env_var_name in PROPAGATED_ENV_VARS:
+    for env_var_name in JENKINS_ENV_VARS:
         if env_var_name in os.environ:
             propagated_env_vars[env_var_name] = os.environ[env_var_name]
 
@@ -423,7 +508,7 @@ def main():
     parser.add_argument('--all', dest='run_all_tests', action='store_true',
                         help='Run tests in all languages')
     parser.add_argument('--test_list',
-                        help='A file with a list of tests to run. Useful when e.g. re-running ' +
+                        help='A file with a list of tests to run. Useful when e.g. re-running '
                              'failed tests using a file produced with --failed_test_list.')
     parser.add_argument('--build-root', dest='build_root', required=True,
                         help='Build root (e.g. ~/code/yugabyte/build/debug-gcc-dynamic-community)')
@@ -436,12 +521,17 @@ def main():
     parser.add_argument('--sleep_after_tests', action='store_true',
                         help='Sleep for a while after test are done before destroying '
                              'SparkContext. This allows to examine the Spark app UI.')
-    parser.add_argument('--stats-dir', dest='stats_dir',
-                        help='A directory for storing build statistics (such as per-test run ' +
-                             'times.)')
-    parser.add_argument('--write_stats', action='store_true',
-                        help='Actually enable writing build statistics. If this is not ' +
-                             'specified, we will only read previous stats to sort tests better.')
+    parser.add_argument('--reports-dir', dest='report_base_dir',
+                        help='A parent directory for storing build reports (such as per-test '
+                             'run times and whether the Spark job succeeded.)')
+    parser.add_argument('--write_report', action='store_true',
+                        help='Actually enable writing build reports. If this is not '
+                             'specified, we will only read previous test reports to sort tests '
+                             'better.')
+    parser.add_argument('--save_report_to_build_dir', action='store_true',
+                        help='Save a test report to the build directory directly, in addition '
+                             'to any reports saved in the common reports directory. This should '
+                             'work even if neither --reports-dir or --write_report are specified.')
     parser.add_argument('--cpp_test_program_regexp',
                         help='A regular expression to filter C++ test program names on.')
     parser.add_argument('--num_repetitions', type=int, default=1,
@@ -449,6 +539,9 @@ def main():
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')
+    parser.add_argument('--allow_no_tests', action='store_true',
+                        help='Allow running with filters that yield no tests to run. Useful when '
+                             'debugging.')
 
     args = parser.parse_args()
 
@@ -465,7 +558,7 @@ def main():
     log_level = logging.INFO
     logging.basicConfig(
         level=log_level,
-        format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
+        format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
 
     global_conf = yb_dist_tests.set_global_conf_from_args(args)
     build_root = global_conf.build_root
@@ -474,18 +567,18 @@ def main():
     if not args.run_cpp_tests and not args.run_java_tests:
         fatal_error("At least one of --java or --cpp has to be specified")
 
-    stats_dir = args.stats_dir
-    write_stats = args.write_stats
-    if stats_dir and not os.path.isdir(stats_dir):
-        fatal_error("Stats directory '{}' does not exist".format(stats_dir))
+    report_base_dir = args.report_base_dir
+    write_report = args.write_report
+    if report_base_dir and not os.path.isdir(report_base_dir):
+        fatal_error("Report base directory '{}' does not exist".format(report_base_dir))
 
-    if write_stats and not stats_dir:
-        fatal_error("--write_stats specified but the stats directory (--stats-dir) is not")
+    if write_report and not report_base_dir:
+        fatal_error("--write_report specified but the reports directory (--reports-dir) is not")
 
-    if write_stats and not is_writable(stats_dir):
+    if write_report and not is_writable(report_base_dir):
         fatal_error(
-            "--write_stats specified but the stats directory ('{}') is not writable".format(
-                stats_dir))
+            "--write_report specified but the reports directory ('{}') is not writable".format(
+                report_base_dir))
 
     if args.num_repetitions < 1:
         fatal_error("--num_repetitions must be at least 1, got: {}".format(args.num_repetitions))
@@ -509,14 +602,12 @@ def main():
     else:
         test_descriptors = collect_tests(args)
 
-    if not test_descriptors:
+    if not test_descriptors and not args.allow_no_tests:
         logging.info("No tests to run")
         return
 
     propagate_env_vars()
 
-    # We're only importing PySpark here so that we can debug the part of this script above this line
-    # without depending on PySpark libraries.
     num_tests = len(test_descriptors)
 
     if args.max_tests and num_tests > args.max_tests:
@@ -542,25 +633,54 @@ def main():
             for i in xrange(1, num_repetitions + 1)
         ]
 
-    init_spark_context()
+    app_name_details = ['{} tests total'.format(total_num_tests)]
+    if num_repetitions > 1:
+        app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, num_tests)]
+    init_spark_context(app_name_details)
+
     set_global_conf_for_spark_jobs()
 
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
-    test_names_rdd = spark_context.parallelize(
-            [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
-            numSlices=total_num_tests)
+    global_exit_code = None
+    spark_succeeded = False
+    if test_descriptors:
+        logging.info("Running {} tasks on Spark".format(total_num_tests))
+        assert total_num_tests == len(test_descriptors), \
+            "total_num_tests={}, len(test_descriptors)={}".format(
+                    total_num_tests, len(test_descriptors))
 
-    results = test_names_rdd.map(parallel_run_test).collect()
-    exit_codes = set([result.exit_code for result in results])
+        test_names_rdd = spark_context.parallelize(
+                [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
+                numSlices=total_num_tests)
 
-    if exit_codes == set([0]):
-        global_exit_code = 0
+        spark_succeeded = False
+        try:
+            results = test_names_rdd.map(parallel_run_test).collect()
+            spark_succeeded = True
+        except py4j.protocol.Py4JJavaError:
+            traceback.print_exc()
+            # This is EX_UNAVAILABLE from the standard sysexits.h header, which contains an attempt
+            # to categorize exit codes. In this case the Spark cluster is probably unavailable.
+            global_exit_code = 69
+
+        if not spark_succeeded:
+            logging.error("Spark job failed to run! Jenkins should probably restart this build.")
+
     else:
-        global_exit_code = 1
+        # Allow running zero tests, for testing the reporting logic.
+        results = []
+
+    test_exit_codes = set([result.exit_code for result in results])
+
+    if not global_exit_code:
+        if test_exit_codes == set([0]):
+            global_exit_code = 0
+        else:
+            global_exit_code = 1
 
     logging.info("Tests are done, set of exit codes: {}, will return exit code {}".format(
-        sorted(exit_codes), global_exit_code))
+        sorted(test_exit_codes), global_exit_code))
     failures_by_language = defaultdict(int)
     failed_test_desc_strs = []
     for result in results:
@@ -579,8 +699,9 @@ def main():
 
     total_elapsed_time_sec = time.time() - global_start_time
     logging.info("Total elapsed time: {} sec".format(total_elapsed_time_sec))
-    if stats_dir and write_stats:
-        save_stats(stats_dir, results, total_elapsed_time_sec)
+    if report_base_dir and write_report or args.save_report_to_build_dir:
+        save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeeded,
+                    save_to_build_dir=args.save_report_to_build_dir)
 
     if args.sleep_after_tests:
         # This can be used as a way to keep the Spark app running during debugging while examining

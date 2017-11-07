@@ -1194,6 +1194,27 @@ set_yb_src_root() {
   YB_COMPILER_WRAPPER_CXX=$YB_SRC_ROOT/build-support/compiler-wrappers/c++
 }
 
+# Checks syntax of all Python scripts in the repository.
+check_python_script_syntax() {
+  if [[ -n ${YB_VERBOSE:-} ]]; then
+    log "Checking syntax of Python scripts"
+  fi
+  pushd "$YB_SRC_ROOT"
+  local IFS=$'\n'
+  local file_list=$( git ls-files '*.py' )
+  local file_path
+  for file_path in $file_list; do
+    (
+      if [[ -n ${YB_VERBOSE:-} ]]; then
+        log "Checking Python syntax of $file_path"
+        set -x
+      fi
+      "$YB_SRC_ROOT/build-support/check_python_syntax.py" "$file_path"
+    )
+  done
+  popd
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
