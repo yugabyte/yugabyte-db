@@ -3,8 +3,8 @@
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
-import { YBButton, YBModal, YBInputField, YBCheckBox, YBSelectWithLabel } from '../fields';
-import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { YBButton, YBModal, YBInputField, YBSelectWithLabel } from '../fields';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
 
 class FlagInput extends Component {
@@ -62,15 +62,8 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet, userIntent},
-      universeUUID}}}, reset} = this.props;
-    const nodeNames = [];
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent}, universeUUID}}}, reset} = this.props;
     const payload = {};
-    nodeDetailsSet.forEach((item) => {
-      if (!isValidObject(values[item.nodeName]) || values[item.nodeName] !== false) {
-        nodeNames.push(item.nodeName);
-      }
-    });
     if (visibleModal === "softwareUpgradesModal") {
       payload.taskType = "Software";
     } else if (visibleModal === "gFlagsModal") {
@@ -79,7 +72,6 @@ export default class RollingUpgradeForm extends Component {
       return;
     }
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
-    payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
     payload.userIntent = userIntent;
     let masterGFlagList = [];
@@ -112,7 +104,7 @@ export default class RollingUpgradeForm extends Component {
   render() {
     const self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
-      error, currentUniverse: {data: {universeDetails}}}, resetRollingUpgrade, softwareVersions} = this.props;
+      error}, resetRollingUpgrade, softwareVersions} = this.props;
 
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     let title = "";
@@ -154,41 +146,11 @@ export default class RollingUpgradeForm extends Component {
         </div>
       );
     }
-    let itemList = <span/>;
-    if (isDefinedNotNull(universeDetails) && isNonEmptyArray(universeDetails.nodeDetailsSet)) {
-      itemList = <ItemList nodeList={universeDetails.nodeDetailsSet}/>;
-    }
     return (
       <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
                onHide={formCloseAction} title={title} onFormSubmit={submitAction} error={error}>
         {formBody}
-        <Col lg={12} className="form-section-title">
-          Nodes
-        </Col>
-        {itemList}
       </YBModal>
-    );
-  }
-}
-
-class ItemList extends Component {
-  render() {
-    const {nodeList} = this.props;
-    let nodeCheckList = <Field name={"check"} component={YBCheckBox}/>;
-    if (isNonEmptyArray(nodeList)) {
-      nodeCheckList =
-        nodeList.map(function (item, idx) {
-          return (
-            <Col lg={4} key={idx}>
-              <Field name={item.nodeName} component={YBCheckBox} label={item.nodeName} checkState={true}/>
-            </Col>
-          );
-        });
-    }
-    return (
-      <div>
-        {nodeCheckList}
-      </div>
     );
   }
 }
