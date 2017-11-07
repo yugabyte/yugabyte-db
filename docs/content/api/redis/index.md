@@ -7,7 +7,7 @@ weight: 200
 ## Introduction
 YugaByte supports an automatically sharded, clustered & elastic Redis-as-a-Database in a Redis driver compatible manner. A Redis client can connect, send request, and receive result from YugaByte servers.
 
-## Data Structures
+## Data Types
 The following datatypes can be read and written via Redis service. All data are on-disk persistent in YugaByte system.<br>
 
 DataType | Development Status |
@@ -17,6 +17,7 @@ hash | Supported |
 set | Supported |
 sorted set | Not yet supported |
 list | Not yet supported |
+time series | New datatype in YugaByte! |
 
 ## Commands
 Redis-cli or any Redis applications can access YugaByte database system. The following Redis commands are accepted.
@@ -55,3 +56,7 @@ Command | Description |
 [`SMEMBERS`](smembers/) | Read all members of a set |
 [`SREM`](srem/) | Remove members from a set |
 [`STRLEN`](strlen/) | Read the length of a string|
+[`TSADD`](tsadd/) | Add a time series entry|
+[`TSGET`](tsget/) | Retrieve a time series entry|
+[`TSRANGEBYTIME`](tsrangebytime/) | Retrieve time series entries for a given time range|
+[`TSREM`](tsrem/) | Delete a time series entry|
