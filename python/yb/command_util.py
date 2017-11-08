@@ -33,7 +33,14 @@ ProgramResult = namedtuple('ProgramResult',
                             'program_path'])
 
 
-def run_program(args, error_ok=False):
+def trim_output(output, max_lines):
+    lines = output.split("\n")
+    if len(lines) <= max_lines:
+        return output
+    return "\n".join(lines[:max_lines] + ['({} lines skipped)'.format(len(lines) - max_lines)])
+
+
+def run_program(args, error_ok=False, max_error_lines=100, cwd=None):
     """
     Run the given program identified by its argument list, and return a ProgramResult object.
 
@@ -45,7 +52,8 @@ def run_program(args, error_ok=False):
         program_subprocess = subprocess.Popen(
             args,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            stderr=subprocess.PIPE,
+            cwd=cwd)
     except OSError:
         logging.error("Failed to run program {}".format(args))
         raise
@@ -55,7 +63,8 @@ def run_program(args, error_ok=False):
     if program_subprocess.returncode != 0:
         error_msg = "Non-zero exit code {} from: {}, stdout: '{}', stderr: '{}'".format(
                 program_subprocess.returncode, args,
-                program_stdout.strip(), program_stderr.strip())
+                trim_output(program_stdout.strip(), max_error_lines),
+                trim_output(program_stderr.strip(), max_error_lines))
         if not error_ok:
             raise RuntimeError(error_msg)
     return ProgramResult(cmd_line=args,
@@ -64,3 +73,18 @@ def run_program(args, error_ok=False):
                          stdout=program_stdout.strip(),
                          stderr=program_stderr.strip(),
                          error_msg=error_msg)
+
+
+def mkdir_p(d):
+    """
+    Similar to the "mkdir -p ..." shell command. Creates the given directory and all enclosing
+    directories. No-op if the directory already exists.
+    """
+    if os.path.isdir(d):
+        return
+    try:
+        os.makedirs(d)
+    except OSError, e:
+        if os.path.isdir(d):
+            return
+        raise e

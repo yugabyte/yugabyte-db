@@ -24,7 +24,7 @@
           "thirdparty/build/common/cqlsh/bin/*"],
   "lib"      : ["thirdparty/build/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/build/common/cqlsh/pylib/*"],
-  "java"     : ["java/yb-cli/target/yb-cli-0.8.0-SNAPSHOT.jar",
+  "java"     : ["java/yb-cli/target/yb-cli-${project.version}.jar",
                 "java/yb-loadtester/target/yb-sample-apps.jar",
                 "java/yb-loadtester/target/yb-sample-apps-sources.jar"],
   "java/lib" : ["java/yb-cli/target/lib/*.jar",

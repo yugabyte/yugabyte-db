@@ -208,7 +208,7 @@ while [ $# -gt 0 ]; do
     continue
   fi
 
-  case "$1" in
+  case "${1//_/-}" in
     -h|--help)
       show_help >&2
       exit 1
@@ -371,6 +371,11 @@ while [ $# -gt 0 ]; do
     ;;
     daemons|yb-daemons)
       make_targets+=( "yb-master" "yb-tserver" )
+    ;;
+    packaged-targets)
+      for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
+        make_targets+=( "$packaged_target" )
+      done
     ;;
     --skip-build|--sb)
       build_cxx=false

@@ -58,6 +58,11 @@
 #   YB_TRACK_REGRESSIONS
 #   Default: 0
 #     Track regressions by re-running failed tests multiple times on the previous git commit.
+#     The implementation of this feature is unfinished.
+#
+#   YB_COMPILE_ONLY
+#   Default: 0
+#     Compile the code and build a package, but don't run tests.
 #
 # Portions Copyright (c) YugaByte, Inc.
 
@@ -163,6 +168,7 @@ else
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-1}
 fi
 SKIP_CPP_MAKE=${SKIP_CPP_MAKE:-0}
+YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
 
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
@@ -447,13 +453,20 @@ if [[ $YB_BUILD_JAVA == "1" ]]; then
 
   # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
   # into ~/.m2/repository.
-  yb_java_project_version=yugabyte-jenkins-$( date +%Y%m%dT%H%M%S ).$RANDOM.$RANDOM.$$
+  random_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
+  yb_java_project_version=yugabyte-jenkins-$random_id
+
+  yb_new_group_id=org.yb$random_id
+  find . -name "pom.xml" \
+         -exec sed -i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" {} \;
 
   (
     set -x
     mvn versions:set -DnewVersion="$yb_java_project_version"
     git add -A .
-    git commit -m "Updating version to $yb_java_project_version during testing"
+    commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
+    commit_msg+="during testing"
+    git commit -m "$commit_msg"
   )
 
   java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
@@ -466,67 +479,75 @@ if [[ $YB_BUILD_JAVA == "1" ]]; then
   popd
 fi
 
-if spark_available; then
-  if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
-    log "Will run tests on Spark"
-    extra_args=""
-    if [[ $YB_BUILD_JAVA == "1" ]]; then
-      extra_args+="--java"
+# -------------------------------------------------------------------------------------------------
+# Run tests, either on Spark or locally.
+# If YB_COMPILE_ONLY is set to 1, we skip running all tests (Java and C++).
+
+if [[ $YB_COMPILE_ONLY != "1" ]]; then
+  if spark_available; then
+    if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
+      log "Will run tests on Spark"
+      extra_args=""
+      if [[ $YB_BUILD_JAVA == "1" ]]; then
+        extra_args+="--java"
+      fi
+      if [[ $YB_BUILD_CPP == "1" ]]; then
+        extra_args+=" --cpp"
+      fi
+      if ! run_tests_on_spark $extra_args; then
+        EXIT_STATUS=1
+        FAILURES+=$'Distributed tests on Spark (C++ and/or Java) failed\n'
+        log "Some tests that were run on Spark failed"
+      fi
+      unset extra_args
+    else
+      log "Neither C++ or Java tests are enabled, nothing to run on Spark."
     fi
-    if [[ $YB_BUILD_CPP == "1" ]]; then
-      extra_args+=" --cpp"
-    fi
-    if ! run_tests_on_spark $extra_args; then
-      EXIT_STATUS=1
-      FAILURES+=$'Distributed tests on Spark (C++ and/or Java) failed\n'
-      log "Some tests that were run on Spark failed"
-    fi
-    unset extra_args
   else
-    log "Neither C++ or Java tests are enabled, nothing to run on Spark."
-  fi
-else
-  # A single-node way of running tests (without Spark).
+    # A single-node way of running tests (without Spark).
 
-  if [[ $YB_BUILD_CPP == "1" ]]; then
-    log "Run C++ tests in a non-distributed way"
-    export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
+    if [[ $YB_BUILD_CPP == "1" ]]; then
+      log "Run C++ tests in a non-distributed way"
+      export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
 
-    if ! spark_available; then
-      log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
-      set +e
-      time ctest -j$NUM_PARALLEL_TESTS ${EXTRA_TEST_FLAGS:-} \
-          --output-log "$CTEST_FULL_OUTPUT_PATH" \
-          --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
-      if [ $? -ne 0 ]; then
-        EXIT_STATUS=1
-        FAILURES+=$'C++ tests failed\n'
+      if ! spark_available; then
+        log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
+        set +e
+        time ctest -j$NUM_PARALLEL_TESTS ${EXTRA_TEST_FLAGS:-} \
+            --output-log "$CTEST_FULL_OUTPUT_PATH" \
+            --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
+        if [ $? -ne 0 ]; then
+          EXIT_STATUS=1
+          FAILURES+=$'C++ tests failed\n'
+        fi
+        set -e
       fi
-      set -e
-    fi
-    log "Finished running C++ tests (see timing information above)"
+      log "Finished running C++ tests (see timing information above)"
 
-    if [[ $DO_COVERAGE == "1" ]]; then
-      heading "Generating coverage report..."
-      if ! $YB_SRC_ROOT/thirdparty/gcovr-3.0/scripts/gcovr -r $YB_SRC_ROOT --xml \
-          > $BUILD_ROOT/coverage.xml ; then
-        EXIT_STATUS=1
-        FAILURES+=$'Coverage report failed\n'
+      if [[ $DO_COVERAGE == "1" ]]; then
+        heading "Generating coverage report..."
+        if ! $YB_SRC_ROOT/thirdparty/gcovr-3.0/scripts/gcovr -r $YB_SRC_ROOT --xml \
+            > $BUILD_ROOT/coverage.xml ; then
+          EXIT_STATUS=1
+          FAILURES+=$'Coverage report failed\n'
+        fi
       fi
     fi
-  fi
 
-  if [[ $YB_BUILD_JAVA == "1" ]]; then
-    pushd "$YB_SRC_ROOT/java"
-    log "Running Java tests in a non-distributed way"
-    if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" verify 2>&1; then
-      EXIT_STATUS=1
-      FAILURES+=$'Java tests failed\n'
+    if [[ $YB_BUILD_JAVA == "1" ]]; then
+      pushd "$YB_SRC_ROOT/java"
+      log "Running Java tests in a non-distributed way"
+      if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" verify 2>&1; then
+        EXIT_STATUS=1
+        FAILURES+=$'Java tests failed\n'
+      fi
+      log "Finished running Java tests (see timing information above)"
+      popd
     fi
-    log "Finished running Java tests (see timing information above)"
-    popd
   fi
 fi
+
+# Finished running tests.
 
 if [[ $YB_BUILD_CPP == "1" ]] && using_linuxbrew; then
   # -----------------------------------------------------------------------------------------------
@@ -537,7 +558,7 @@ if [[ $YB_BUILD_CPP == "1" ]] && using_linuxbrew; then
   rm -rf "$packaged_dest_dir"
   log "Testing creating a distribution in '$packaged_dest_dir'"
   export PYTHONPATH=${PYTHONPATH:-}:$YB_SRC_ROOT/python
-  "$YB_SRC_ROOT/python/yb/library_packager.py" \
+  python "$YB_SRC_ROOT/python/yb/library_packager.py" \
     --build-dir "$BUILD_ROOT" \
     --dest-dir "$packaged_dest_dir"
   rm -rf "$packaged_dest_dir"

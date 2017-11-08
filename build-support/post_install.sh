@@ -38,7 +38,7 @@ if [[ ! -x $ld_path ]]; then
 fi
 
 cd "$bin_dir"
-for f in *; do
+for f in ../lib/unwrapped/*; do
   if [[ -x $f && $(file -b $f) =~ $ELF_FILE_PATTERN && $f != patchelf ]]; then
     ( set -x; "$patchelf_path" --set-interpreter "$ld_path" "$f" )
   fi

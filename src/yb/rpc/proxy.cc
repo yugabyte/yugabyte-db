@@ -82,6 +82,11 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
     LOG(WARNING) << "Proxy for " << service_name_ << ": Unable to get logged-in user name: "
                  << s.ToString() << " before connecting to remote: " << remote;
   }
+  if (real_user.empty()) {
+    static const char* kDefaultUser = "yugabyte-user";
+    VLOG(4) << "Warning: logged-in user is empty, setting to '" << kDefaultUser << "'";
+    real_user = kDefaultUser;
+  }
 
   conn_id_.set_remote(remote);
   conn_id_.mutable_user_credentials()->set_real_user(real_user);

@@ -32,5 +32,6 @@ fi
 
 . "$DEVOPS_HOME/bin/common.sh"
 activate_virtualenv
-export PYTHONPATH+=:$YB_SRC_ROOT/python
+
+export PYTHONPATH=$YB_SRC_ROOT/python:$PYTHONPATH
 "$YB_SRC_ROOT"/build-support/yb_release.py "$@"
