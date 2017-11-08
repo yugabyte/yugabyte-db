@@ -558,6 +558,12 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
                            "Old leader may have hybrid time lease, while adding: $0",
                            OperationType_Name(op_type));
     }
+    lease_status = GetLeaderLeaseStatusUnlocked(nullptr);
+    if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
+      return STATUS_FORMAT(LeaderHasNoLease,
+                           "Old leader may have lease, while adding: $0",
+                           OperationType_Name(op_type));
+    }
   }
 
   // Mark pending configuration.
@@ -1036,7 +1042,7 @@ struct GetLeaderLeaseStatusPolicy {
   }
 
   bool Enabled() {
-    return FLAGS_use_leader_leases;
+    return true;
   }
 };
 
@@ -1077,7 +1083,7 @@ struct GetHybridTimeLeaseStatusAtPolicy {
   }
 
   bool Enabled() {
-    return FLAGS_use_leader_leases && FLAGS_ht_lease_duration_ms != 0;
+    return FLAGS_ht_lease_duration_ms != 0;
   }
 };
 

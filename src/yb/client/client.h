@@ -360,6 +360,14 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // This is a fully local operation (no RPCs or blocking).
   std::shared_ptr<YBSession> NewSession(bool read_only = false);
 
+  std::shared_ptr<YBSession> NewReadSession() {
+    return NewSession(true /* read_only */);
+  }
+
+  std::shared_ptr<YBSession> NewWriteSession() {
+    return NewSession(false /* read_only */);
+  }
+
   // Return the socket address of the master leader for this client
   CHECKED_STATUS SetMasterLeaderSocket(Endpoint* leader_socket);
 

@@ -5,7 +5,6 @@
 
 #include "yb/util/enums.h"
 
-DECLARE_bool(use_leader_leases);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(ht_lease_duration_ms);
 

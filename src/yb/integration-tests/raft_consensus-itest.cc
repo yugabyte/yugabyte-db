@@ -2486,10 +2486,6 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   vector<string> flags;
   flags.push_back("--tablet_operation_memory_limit_mb=2");
 
-  // We can't use leader leases in this test, because requests will get rejected right away with two
-  // dead followers instead of being queued in the leader.
-  flags.push_back("--use_leader_leases=false");
-
   ASSERT_NO_FATALS(BuildAndStart(flags));
 
   // Kill both followers.

@@ -316,15 +316,13 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
-    if (FLAGS_use_leader_leases) {
-      auto ht_lease_expiration_micros = clock_->Now().GetPhysicalValueMicros() +
-                                        FLAGS_ht_lease_duration_ms * 1000;
-      request->set_leader_lease_duration_ms(FLAGS_leader_lease_duration_ms);
-      request->set_ht_lease_expiration(ht_lease_expiration_micros);
-      peer->last_leader_lease_expiration_sent_to_follower =
-          MonoTime::FineNow() + MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms);
-      peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
-    }
+    auto ht_lease_expiration_micros = clock_->Now().GetPhysicalValueMicros() +
+                                      FLAGS_ht_lease_duration_ms * 1000;
+    request->set_leader_lease_duration_ms(FLAGS_leader_lease_duration_ms);
+    request->set_ht_lease_expiration(ht_lease_expiration_micros);
+    peer->last_leader_lease_expiration_sent_to_follower =
+        MonoTime::FineNow() + MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms);
+    peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
     request->mutable_ops()->ExtractSubrange(0, request->ops_size(), nullptr);

@@ -160,10 +160,6 @@ METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           "Current Term of the Raft Consensus algorithm. This number increments "
                           "each time a leader election is started.");
 
-DEFINE_bool(use_leader_leases, true,
-            "Enables leader leases for guaranteed up-to-date reads in case of network "
-            "partitions.");
-
 DEFINE_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
@@ -1495,7 +1491,7 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
 
     // Update the expiration time of the current leader's lease, so that when this follower becomes
     // a leader, it can wait out the time interval while the old leader might still be active.
-    if (FLAGS_use_leader_leases && request->has_leader_lease_duration_ms()) {
+    if (request->has_leader_lease_duration_ms()) {
       state_->UpdateOldLeaderLeaseExpirationUnlocked(
           MonoDelta::FromMilliseconds(request->leader_lease_duration_ms()),
           request->ht_lease_expiration());

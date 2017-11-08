@@ -36,6 +36,7 @@
 using namespace std::literals; // NOLINT
 
 DECLARE_uint64(initial_seqno);
+DECLARE_int32(leader_lease_duration_ms);
 
 namespace yb {
 namespace client {
@@ -353,17 +354,22 @@ TEST_F(QLTabletTest, OverlappedImport) {
   ASSERT_NOK(Import());
 }
 
+void StepDownAllTablets(MiniCluster* cluster) {
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    std::vector<tablet::TabletPeerPtr> peers;
+    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    for (const auto& peer : peers) {
+      consensus::LeaderStepDownRequestPB req;
+      req.set_tablet_id(peer->tablet_id());
+      consensus::LeaderStepDownResponsePB resp;
+      ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+    }
+  }
+}
+
 void DoStepDowns(MiniCluster* cluster) {
   for (int j = 0; j != 5; ++j) {
-    for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-      std::vector<tablet::TabletPeerPtr> peers;
-      cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
-      for (const auto& peer : peers) {
-        consensus::LeaderStepDownRequestPB req;
-        consensus::LeaderStepDownResponsePB resp;
-        ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
-      }
-    }
+    StepDownAllTablets(cluster);
     std::this_thread::sleep_for(5s);
   }
 }
@@ -408,6 +414,34 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
 
   DoStepDowns(cluster_.get());
   VerifyLogIndicies(cluster_.get());
+}
+
+TEST_F(QLTabletTest, LeaderLease) {
+  google::FlagSaver saver;
+
+  TableHandle table;
+  CreateTable(kTable1Name, &table);
+
+  LOG(INFO) << "Filling table";
+  FillTable(0, kTotalKeys, &table);
+
+  auto old_lease_ms = FLAGS_leader_lease_duration_ms;
+  FLAGS_leader_lease_duration_ms = 60 * 1000;
+  // Wait for lease to sync
+  std::this_thread::sleep_for(2ms * old_lease_ms);
+
+  LOG(INFO) << "Step down";
+  StepDownAllTablets(cluster_.get());
+
+  LOG(INFO) << "Write value";
+  auto session = client_->NewWriteSession();
+  session->SetTimeout(15s);
+  const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto* const req = op->mutable_request();
+  table.SetInt32Expression(req->add_hashed_column_values(), 1);
+  table.SetInt32ColumnValue(req->add_column_values(), kValue, 1);
+  auto status = session->Apply(op);
+  ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }
 
 } // namespace client

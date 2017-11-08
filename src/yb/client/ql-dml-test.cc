@@ -154,6 +154,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     // Test inserting a row.
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
+    session->SetTimeout(10s);
     const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
