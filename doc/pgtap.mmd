@@ -10,6 +10,8 @@ used in the xUnit testing style.
 Synopsis
 ========
 
+    CREATE EXTENSION IF NOT EXISTS pgtap;
+
     SELECT plan( 23 );
     -- or SELECT * from no_plan();
 
@@ -96,28 +98,6 @@ You need to run the test suite using a super user, such as the default
 
     make installcheck PGUSER=postgres
 
-Once pgTAP is installed, you can add it to a database. If you're running
-PostgreSQL 9.1.0 or greater, it's a simple as connecting to a database as a
-super user and running:
-
-    CREATE EXTENSION pgtap;
-
-If you've upgraded your cluster to PostgreSQL 9.1 and already had pgTAP
-installed, you can upgrade it to a properly packaged extension with:
-
-    CREATE EXTENSION pgtap FROM unpackaged;
-
-For versions of PostgreSQL less than 9.1.0, you'll need to run the
-installation script:
-
-    psql -d mydb -f /path/to/pgsql/share/contrib/pgtap.sql
-
-If you want to install pgTAP and all of its supporting objects into a
-specific schema, use the `PGOPTIONS` environment variable to specify the
-schema, like so:
-
-    PGOPTIONS=--search_path=tap psql -d mydb -f pgTAP.sql
-
 Testing pgTAP with pgTAP
 ------------------------
 
@@ -142,15 +122,36 @@ You can use it to run the test suite as a database super user like so:
 Adding pgTAP to a Database
 --------------------------
 
-Once pgTAP has been built and tested, you can install it into a
-PL/pgSQL-enabled database:
+Once pgTAP is installed, you can add it to a database. If you're running
+PostgreSQL 9.1.0 or greater, it's a simple as connecting to a database as a
+super user and running:
 
-    psql -d dbname -f pgtap.sql
+    CREATE EXTENSION IF NOT EXISTS pgtap;
+
+If you've upgraded your cluster to PostgreSQL 9.1 and already had pgTAP
+installed, you can upgrade it to a properly packaged extension with:
+
+    CREATE EXTENSION pgtap FROM unpackaged;
 
 If you want pgTAP to be available to all new databases, install it into the
 "template1" database:
 
-    psql -d template1 -f pgtap.sql
+    psql -d template1 -C "CREATE EXTENSION pgtap"
+
+To uninstall pgTAP, use `DROP EXTENSION`:
+
+    DROP EXTENSION IF EXISTS pgtap;
+
+For versions of PostgreSQL less than 9.1.0, you'll need to run the
+installation script:
+
+    psql -d mydb -f /path/to/pgsql/share/contrib/pgtap.sql
+
+If you want to install pgTAP and all of its supporting objects into a
+specific schema, use the `PGOPTIONS` environment variable to specify the
+schema, like so:
+
+    PGOPTIONS=--search_path=tap psql -d mydb -f pgTAP.sql
 
 If you want to remove pgTAP from a database, run the `uninstall_pgtap.sql`
 script:
@@ -175,23 +176,22 @@ variables to keep the tests quiet, start a transaction, load the functions in
 your test script, and then rollback the transaction at the end of the script.
 Here's an example:
 
-    \set ECHO
+    \unset ECHO
     \set QUIET 1
     -- Turn off echo and keep things quiet.
 
     -- Format the output for nice TAP.
     \pset format unaligned
     \pset tuples_only true
-    \pset pager
+    \pset pager off
 
     -- Revert all changes on failure.
     \set ON_ERROR_ROLLBACK 1
     \set ON_ERROR_STOP true
-    \set QUIET 1
 
     -- Load the TAP functions.
     BEGIN;
-        \i pgtap.sql
+    \i pgtap.sql
 
     -- Plan the tests.
     SELECT plan(1);
@@ -202,16 +202,6 @@ Here's an example:
     -- Finish the tests and clean up.
     SELECT * FROM finish();
     ROLLBACK;
-
-Of course, if you already have the pgTAP functions in your testing database,
-you should skip `\i pgtap.sql` at the beginning of the script.
-
-The only other limitation is that the `pg_typeof()` function, which is
-written in C, will not be available in 8.3 and lower. You'll want to
-comment out its declaration in the bundled copy of `pgtap.sql` and then avoid
-using `cmp_ok()`, since that function relies on `pg_typeof()`. Note that
-`pg_typeof()` is included in PostgreSQL 8.4, so you won't need to avoid it on
-that version or higher.
 
 Now you're ready to run your test script!
 
@@ -270,12 +260,12 @@ Using pgTAP
 ===========
 
 The purpose of pgTAP is to provide a wide range of testing utilities that
-output TAP. TAP, or the "Test Anything Protocol", is an emerging standard for
-representing the output from unit tests. It owes its success to its format as
-a simple text-based interface that allows for practical machine parsing and
-high legibility for humans. TAP started life as part of the test harness for
-Perl but now has implementations in C/C++, Python, PHP, JavaScript, Perl, and
-now PostgreSQL.
+output TAP. TAP, or the "Test Anything Protocol", is a standard for
+representing the output from unit tests. It owes its success to its format as a
+simple text-based interface that allows for practical machine parsing and high
+legibility for humans. TAP started life as part of the test harness for Perl
+but now has implementations in C/C++, Python, PHP, JavaScript, Perl, and, of
+course, PostgreSQL.
 
 There are two ways to use pgTAP: 1) In simple test scripts that use a plan to
 describe the tests in the script; or 2) In xUnit-style test functions that you
@@ -291,7 +281,7 @@ many tests your script is going to run to protect against premature failure.
 The preferred way to do this is to declare a plan by calling the `plan()`
 function:
 
-    SELECT plan( 42 );
+    SELECT plan(42);
 
 There are rare cases when you will not know beforehand how many tests your
 script is going to run. In this case, you can declare that you have no plan.
@@ -344,12 +334,12 @@ Each test function will run within its own transaction, and rolled back when
 the function completes (or after any teardown functions have run). The TAP
 results will be sent to your client.
 
-Test names
-----------
+Test Descriptions
+-----------------
 
 By convention, each test is assigned a number in order. This is largely done
-automatically for you. However, it's often very useful to assign a name to
-each test. Would you rather see this?
+automatically for you. However, it's often very useful to deascribe each test.
+Would you rather see this?
 
       ok 4
       not ok 5
@@ -364,32 +354,31 @@ Or this?
 The latter gives you some idea of what failed. It also makes it easier to find
 the test in your script, simply search for "simple exponential".
 
-All test functions take a name argument. It's optional, but highly suggested
-that you use it.
+All test functions take a description argument. It's optional, but highly
+suggested that you use it.
 
-Sometimes it's useful to extract test function names from pgtap output, especially when using xUnit style with Continuous Integration Server like Hudson or TeamCity.
-By default pgTAP displays this names as "comment", but you're able to change this behavior by overriding function `diag_test_name`:
+### xUnit Function Names ###
 
-### `diag_test_name()` ###
+Sometimes it's useful to extract xUnit test function names from TAP output,
+especially when using xUnit style with Continuous Integration Server like
+Hudson or TeamCity. By default pgTAP displays these names as comments, but
+you're able to change this behavior by overriding the function `diag_test_name`.
+For example:
 
     CREATE OR REPLACE FUNCTION diag_test_name(TEXT)
     RETURNS TEXT AS $$
         SELECT diag('test: ' || $1 );
     $$ LANGUAGE SQL;
 
-**Parameters**
-
-`:test_name`
-: A test name.
-
 This will show
 
     # test: my_example_test_function_name
+
 instead of
 
     # my_example_test_function_name()
 
-This makes easy handling test name and differing test names from comments.
+This simplifies parsing test names from TAP comments.
 
 I'm ok, you're not ok
 ---------------------
