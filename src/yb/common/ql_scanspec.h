@@ -41,7 +41,7 @@ class QLScanRange {
   // Return the inclusive lower and upper range values to scan.
   std::vector<QLValuePB> range_values(bool lower_bound) const;
 
-  // Interact / union / complement operators.
+  // Intersect / union / complement operators.
   QLScanRange& operator&=(const QLScanRange& other);
   QLScanRange& operator|=(const QLScanRange& other);
   QLScanRange& operator~();

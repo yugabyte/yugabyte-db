@@ -87,11 +87,11 @@ DEFINE_int32(leader_failure_monitor_check_stddev_ms, -1,
              "half of the mean check interval.");
 TAG_FLAG(leader_failure_monitor_check_stddev_ms, experimental);
 
-DEFINE_double(leader_failure_max_missed_heartbeat_periods, 3.0,
-             "Maximum heartbeat periods that the leader can fail to heartbeat in before we "
-             "consider the leader to be failed. The total failure timeout in milliseconds is "
-             "raft_heartbeat_interval_ms times leader_failure_max_missed_heartbeat_periods. "
-             "The value passed to this flag may be fractional.");
+DEFINE_double(leader_failure_max_missed_heartbeat_periods, 6.0,
+              "Maximum heartbeat periods that the leader can fail to heartbeat in before we "
+              "consider the leader to be failed. The total failure timeout in milliseconds is "
+              "raft_heartbeat_interval_ms times leader_failure_max_missed_heartbeat_periods. "
+              "The value passed to this flag may be fractional.");
 TAG_FLAG(leader_failure_max_missed_heartbeat_periods, advanced);
 
 DEFINE_int32(leader_failure_exp_backoff_max_delta_ms, 20 * 1000,
