@@ -383,16 +383,19 @@ By default pgTAP displays this names as "comment", but you're able to change thi
 : A test name.
 
 This will show
+
     # test: my_example_test_function_name
 instead of
+
     # my_example_test_function_name()
+
 This makes easy handling test name and differing test names from comments.
 
 I'm ok, you're not ok
 ---------------------
 
-The basic purpose of pgTAP--and of any TAP-emitting test framework, for that
-matter--is to print out either "ok #" or "not ok #", depending on whether a
+The basic purpose of pgTAP---and of any TAP-emitting test framework, for that
+matter---is to print out either "ok #" or "not ok #", depending on whether a
 given test succeeded or failed. Everything else is just gravy.
 
 All of the following functions return "ok" or "not ok" depending on whether
@@ -1419,7 +1422,7 @@ are *not* the same. The two queries can as usual be the names of prepared
 statements or strings containing an SQL query (see the
 [summary](#Pursuing+Your+Query) for query argument details), or even one of
 each. The two queries, however, must return results that are directly
-comparable -- that is, with the same number and types of columns in the same
+comparable --- that is, with the same number and types of columns in the same
 orders. If it happens that the query you're testing returns a single column,
 the second argument may be an array.
 
@@ -1536,7 +1539,7 @@ are *not* the same, including duplicates. The two queries can as usual be the
 names of prepared statements or strings containing an SQL query (see the
 [summary](#Pursuing+Your+Query) for query argument details), or even one of
 each. The two queries, however, must return results that are directly
-comparable -- that is, with the same number and types of columns in the same
+comparable --- that is, with the same number and types of columns in the same
 orders. If it happens that the query you're testing returns a single column,
 the second argument may be an array.
 
@@ -4935,7 +4938,7 @@ defined in `:schema` are not exactly the functions defined in `:functions`.
 If `:schema` is omitted, then `can()` will look for functions defined in
 schemas defined in the search path. No matter how many functions are listed in
 `:functions`, a single call to `can()` counts as one test. If you want
-otherwise, call `can()` once for each function -- or better yet, use
+otherwise, call `can()` once for each function --- or better yet, use
 `has_function()`. Example:
 
     SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
@@ -6441,8 +6444,8 @@ user, the diagnostics will look something like:
     #         have: postgres
     #         want: root
 
-Prvileged Access
-----------------
+Privileged Access
+-----------------
 
 So we know who owns the objects. But what about other roles? Can they access
 database objects? Let's find out!
@@ -8040,7 +8043,7 @@ Credits
 Copyright and License
 ---------------------
 
-Copyright (c) 2008-2016 David E. Wheeler. Some rights reserved.
+Copyright (c) 2008-2017 David E. Wheeler. Some rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
