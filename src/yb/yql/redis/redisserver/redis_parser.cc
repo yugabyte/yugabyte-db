@@ -25,8 +25,8 @@
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/redisserver/redis_constants.h"
-#include "yb/redisserver/redis_parser.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 
 #include "yb/util/split.h"
 #include "yb/util/status.h"

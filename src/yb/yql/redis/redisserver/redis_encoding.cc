@@ -13,7 +13,7 @@
 //
 //
 
-#include "yb/redisserver/redis_encoding.h"
+#include "yb/yql/redis/redisserver/redis_encoding.h"
 
 #include <google/protobuf/repeated_field.h>
 
@@ -23,7 +23,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/ref_cnt_buffer.h"
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 namespace yb {
 namespace redisserver {

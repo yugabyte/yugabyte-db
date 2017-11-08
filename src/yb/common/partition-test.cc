@@ -42,7 +42,7 @@
 #include "yb/common/row.h"
 #include "yb/common/scan_predicate.h"
 #include "yb/common/schema.h"
-#include "yb/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/test_util.h"
 

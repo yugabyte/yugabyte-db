@@ -1,3 +1,4 @@
+//
 // Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -10,20 +11,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+//
 
-#include "yb/redisserver/redis_server_options.h"
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_FWD_H
+#define YB_YQL_REDIS_REDISSERVER_REDIS_FWD_H
 
-#include "yb/redisserver/redis_rpc.h"
-#include "yb/redisserver/redis_server.h"
+#include <boost/container/container_fwd.hpp>
 
 namespace yb {
+
+class Slice;
+
 namespace redisserver {
 
-RedisServerOptions::RedisServerOptions() {
-  server_type = "tserver";
-  rpc_opts.default_port = RedisServer::kDefaultPort;
-  connection_context_factory = &std::make_unique<RedisConnectionContext>;
-}
+// Command arguments. The memory is owned by RedisInboundCall.
+using RedisClientCommand = boost::container::small_vector<Slice, 8>;
+using RedisClientBatch = boost::container::small_vector<RedisClientCommand, 16>;
 
 } // namespace redisserver
 } // namespace yb
+
+#endif // YB_YQL_REDIS_REDISSERVER_REDIS_FWD_H

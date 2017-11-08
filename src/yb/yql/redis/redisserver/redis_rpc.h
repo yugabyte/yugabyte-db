@@ -13,10 +13,10 @@
 //
 //
 
-#ifndef YB_REDISSERVER_REDIS_RPC_H
-#define YB_REDISSERVER_REDIS_RPC_H
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
+#define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 
-#include "yb/redisserver/redis_fwd.h"
+#include "yb/yql/redis/redisserver/redis_fwd.h"
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/rpc/connection.h"
@@ -96,4 +96,4 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 } // namespace redisserver
 } // namespace yb
 
-#endif // YB_REDISSERVER_REDIS_RPC_H
+#endif // YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H

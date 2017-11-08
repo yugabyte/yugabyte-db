@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/redisserver/redis_service.h"
+#include "yb/yql/redis/redisserver/redis_service.h"
 
 #include <thread>
 
@@ -35,11 +35,11 @@
 
 #include "yb/common/redis_protocol.pb.h"
 
-#include "yb/redisserver/redis_constants.h"
-#include "yb/redisserver/redis_encoding.h"
-#include "yb/redisserver/redis_parser.h"
-#include "yb/redisserver/redis_rpc.h"
-#include "yb/redisserver/redis_server.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_encoding.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
+#include "yb/yql/redis/redisserver/redis_rpc.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/rpc/rpc_context.h"
 

@@ -105,7 +105,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/util/crypt.h"
 #include "yb/util/debug/trace_event.h"

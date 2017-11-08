@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_REDISSERVER_REDIS_PARSER_H_
-#define YB_REDISSERVER_REDIS_PARSER_H_
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_PARSER_H_
+#define YB_YQL_REDIS_REDISSERVER_REDIS_PARSER_H_
 
 #include <memory>
 #include <string>
@@ -21,7 +21,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client_builder-internal.h"
 
-#include "yb/redisserver/redis_fwd.h"
+#include "yb/yql/redis/redisserver/redis_fwd.h"
 
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -134,4 +134,4 @@ class RedisParser {
 }  // namespace redisserver
 }  // namespace yb
 
-#endif  // YB_REDISSERVER_REDIS_PARSER_H_
+#endif  // YB_YQL_REDIS_REDISSERVER_REDIS_PARSER_H_

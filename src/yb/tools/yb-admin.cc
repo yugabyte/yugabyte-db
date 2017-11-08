@@ -49,7 +49,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/env.h"

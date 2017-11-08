@@ -21,8 +21,8 @@
 
 #include "yb/client/client.h"
 #include "yb/common/partition.h"
-#include "yb/redisserver/redis_constants.h"
-#include "yb/redisserver/redis_parser.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"

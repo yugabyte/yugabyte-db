@@ -44,7 +44,7 @@
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/common/ql_value.h"
 
 namespace yb {

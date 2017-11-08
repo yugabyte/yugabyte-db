@@ -11,11 +11,11 @@
 // under the License.
 //
 
-#include "yb/redisserver/redis_server.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/redisserver/redis_service.h"
+#include "yb/yql/redis/redisserver/redis_service.h"
 
 using yb::rpc::ServiceIf;
 
@@ -27,7 +27,8 @@ namespace yb {
 namespace redisserver {
 
 RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
-    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts), tserver_(tserver) {}
+    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts),
+      tserver_(tserver) {}
 
 Status RedisServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());

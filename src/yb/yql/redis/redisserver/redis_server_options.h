@@ -11,32 +11,25 @@
 // under the License.
 //
 
-#ifndef YB_REDISSERVER_REDIS_SERVICE_H_
-#define YB_REDISSERVER_REDIS_SERVICE_H_
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_OPTIONS_H
+#define YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_OPTIONS_H
 
-#include "yb/redisserver/redis_fwd.h"
-#include "yb/redisserver/redis_service.service.h"
+#include <vector>
 
-#include <memory>
+#include "yb/server/server_base_options.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace redisserver {
 
-class RedisServer;
-
-class RedisServiceImpl : public RedisServerServiceIf {
+// Options for constructing a redis server.
+class RedisServerOptions : public yb::server::ServerBaseOptions {
  public:
-  RedisServiceImpl(RedisServer* server, std::string yb_tier_master_address);
-  ~RedisServiceImpl();
+  RedisServerOptions();
 
-  void Handle(yb::rpc::InboundCallPtr call) override;
-
- private:
-  class Impl;
-  std::unique_ptr<Impl> impl_;
+  ~RedisServerOptions() {}
 };
 
-}  // namespace redisserver
-}  // namespace yb
-
-#endif  // YB_REDISSERVER_REDIS_SERVICE_H_
+} // namespace redisserver
+} // namespace yb
+#endif /* YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_OPTIONS_H */

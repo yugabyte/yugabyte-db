@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_REDISSERVER_REDIS_SERVER_H_
-#define YB_REDISSERVER_REDIS_SERVER_H_
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_H_
+#define YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_H_
 
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
-#include "yb/redisserver/redis_server_options.h"
+#include "yb/yql/redis/redisserver/redis_server_options.h"
 #include "yb/server/server_base.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/status.h"
@@ -49,4 +49,4 @@ class RedisServer : public server::RpcAndWebServerBase {
 
 }  // namespace redisserver
 }  // namespace yb
-#endif  // YB_REDISSERVER_REDIS_SERVER_H_
+#endif  // YB_YQL_REDIS_REDISSERVER_REDIS_SERVER_H_

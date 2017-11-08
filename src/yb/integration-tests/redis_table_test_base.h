@@ -17,7 +17,7 @@
 #include <string>
 
 #include "yb/client/client.h"
-#include "yb/redisserver/redis_parser.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
 namespace yb {

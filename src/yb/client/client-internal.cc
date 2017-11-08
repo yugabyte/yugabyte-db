@@ -55,7 +55,7 @@
 #include "yb/master/master_rpc.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/net/dns_resolver.h"

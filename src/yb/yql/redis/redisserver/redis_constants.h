@@ -11,8 +11,8 @@
 // under the License.
 //
 
-#ifndef YB_REDISSERVER_REDIS_CONSTANTS_H
-#define YB_REDISSERVER_REDIS_CONSTANTS_H
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_CONSTANTS_H
+#define YB_YQL_REDIS_REDISSERVER_REDIS_CONSTANTS_H
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/util/monotime.h"
@@ -27,4 +27,4 @@ static constexpr int64_t kRedisMaxTtlSeconds = std::numeric_limits<int64_t>::max
 // currently don't support negative TTLs at the docdb level.
 static constexpr int64_t kRedisMinTtlSeconds = 1;
 
-#endif  // YB_REDISSERVER_REDIS_CONSTANTS_H
+#endif  // YB_YQL_REDIS_REDISSERVER_REDIS_CONSTANTS_H

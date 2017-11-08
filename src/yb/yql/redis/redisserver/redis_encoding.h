@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_REDISSERVER_REDIS_ENCODING_H
-#define YB_REDISSERVER_REDIS_ENCODING_H
+#ifndef YB_YQL_REDIS_REDISSERVER_REDIS_ENCODING_H
+#define YB_YQL_REDIS_REDISSERVER_REDIS_ENCODING_H
 
 #include <string>
 
@@ -87,4 +87,4 @@ std::string EncodeAsArrayOfEncodedElements(const Container& encoded_elements) {
 }  // namespace redisserver
 }  // namespace yb
 
-#endif  // YB_REDISSERVER_REDIS_ENCODING_H
+#endif  // YB_YQL_REDIS_REDISSERVER_REDIS_ENCODING_H

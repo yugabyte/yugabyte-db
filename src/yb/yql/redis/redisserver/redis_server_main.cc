@@ -16,7 +16,7 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/redisserver/redis_server.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"

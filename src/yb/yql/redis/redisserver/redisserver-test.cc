@@ -25,9 +25,9 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
-#include "yb/redisserver/redis_constants.h"
-#include "yb/redisserver/redis_encoding.h"
-#include "yb/redisserver/redis_server.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/yql/redis/redisserver/redis_encoding.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"

@@ -37,7 +37,7 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/redisserver/redis_server.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/cqlserver/cql_server.h"
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"
