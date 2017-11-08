@@ -204,7 +204,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     // Set the cloud name.
     params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = Universe.get(taskParams().universeUUID).getUniverseDetails().deviceInfo;
+    params.deviceInfo = Universe.get(taskParams().universeUUID).getUniverseDetails().userIntent.deviceInfo;
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
