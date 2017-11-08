@@ -338,7 +338,7 @@ Test Descriptions
 -----------------
 
 By convention, each test is assigned a number in order. This is largely done
-automatically for you. However, it's often very useful to deascribe each test.
+automatically for you. However, it's often very useful to describe each test.
 Would you rather see this?
 
       ok 4
@@ -449,7 +449,7 @@ additional diagnostic:
 : Value to test.
 
 `:want`
-: Value that `:have` is expcted to be. Must be the same data type.
+: Value that `:have` is expected to be. Must be the same data type.
 
 `:description`
 : A short description of the test.
@@ -494,7 +494,7 @@ Will produce something like this:
 So you can figure out what went wrong without re-running the test.
 
 You are encouraged to use `is()` and `isnt()` over `ok()` where possible. You
-can even use them to compar records in PostgreSQL 8.4 and later:
+can even use them to compare records in PostgreSQL 8.4 and later:
 
     SELECT is( users.*, ROW(1, 'theory', true)::users )
       FROM users
@@ -716,7 +716,7 @@ Use these functions very, very, very sparingly.
 Checks to see if the given value is of a particular type. The description and
 diagnostics of this test normally just refer to "the value". If you'd like
 them to be more specific, you can supply a `:name`. For example you might say
-"the return value" when yo're examing the result of a function call:
+"the return value" when you're examining the result of a function call:
 
     SELECT isa_ok( length('foo'), 'integer', 'The return value from length()' );
 
@@ -2524,7 +2524,7 @@ This function tests that all of the casts in the database are only the casts
 that *should* be in that database. Casts are specified as strings in a syntax
 similarly to how they're declared via `CREATE CAST`. The pattern is
 `:source_type AS :target_type`. If either type was created with double-quotes
-to force mixed case or special characers, then you must use double quotes in
+to force mixed case or special characters, then you must use double quotes in
 the cast strings. Example:
 
     SELECT casts_are(ARRAY[
@@ -2744,7 +2744,7 @@ specified schema does *not* exist.
 : A short description of the test.
 
 This function tests whether or not a relation exists in the database. Relations
-are tables, views, materialized views, seqences, composite types, foreign
+are tables, views, materialized views, sequences, composite types, foreign
 tables, and toast tables. The first argument is a schema name, the second is a
 relation name, and the third is the test description. If you omit the schema,
 the relation must be visible in the search path. Example:
@@ -4133,7 +4133,7 @@ description.
 If the table schema is omitted, the table must be visible in the search path.
 If the type schema is omitted, it must be visible in the search path;
 otherwise, the diagnostics will report the schema it's actually in. The schema
-can optinally be included in the `:type` argument, e.g., `'contrib.citext`.
+can optionally be included in the `:type` argument, e.g., `'contrib.citext`.
 
 If the test description is omitted, it will be set to "Column
 `:schema.:table.:column` should be type `:schema.:type`". Note that this test
@@ -5575,7 +5575,7 @@ diagnostics that tell you so:
 
 The inverse of `domain_type_is()`, this function tests that a domain does
 *not* extend a particular data type. For example, a US postal code domain
-should probably extned the `text` type, not `integer`, since leading 0s are
+should probably extend the `text` type, not `integer`, since leading 0s are
 valid and required. Example:
 
     SELECT domain_type_isnt(
@@ -6662,7 +6662,7 @@ table privileges are:
 * TRUNCATE
 * UPDATE
 
-Note that the privilege RULE is not available aftter PostgreSQL 8.1, and that
+Note that the privilege RULE is not available after PostgreSQL 8.1, and that
 TRIGGER was added in 8.4.
 
 If the `:description` argument is omitted, an appropriate description will be
@@ -6736,7 +6736,7 @@ sequence privileges are:
 * USAGE
 
 Note that sequence privileges were added in PostgreSQL 9.0, so this function
-will likley throw an exception on earlier versions.
+will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -6809,7 +6809,7 @@ The available column privileges are:
 * UPDATE
 
 Note that column privileges were added in PostgreSQL 8.4, so this function
-will likley throw an exception on earlier versions.
+will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -6885,7 +6885,7 @@ available column privileges are:
 * UPDATE
 
 Note that column privileges were added in PostgreSQL 8.4, so this function
-will likley throw an exception on earlier versions.
+will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -7084,7 +7084,7 @@ available function privileges are:
 * USAGE
 
 Note that foreign data wrapper privileges were added in PostgreSQL 8.4, so
-this function will likley throw an exception on earlier versions.
+this function will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -7103,13 +7103,13 @@ will list the extra permissions, like so:
     #           USAGE
 
 Likewise if the role is not granted some of the specified permissions on the
-fdw:
+FDW:
 
     # Failed test 15: "Role kurk should be granted USAGE on odbc"
     #     Missing privileges:
     #           USAGE
 
-In the event that the test fails because the fdw in question does not
+In the event that the test fails because the FDW in question does not
 actually exist or is not visible, you will see an appropriate diagnostic such
 as:
 
@@ -7147,7 +7147,7 @@ function privileges are:
 * USAGE
 
 Note that server privileges were added in PostgreSQL 8.4, so this function
-will likley throw an exception on earlier versions.
+will likely throw an exception on earlier versions.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -7498,7 +7498,7 @@ On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
 `:operoid`
 : Operator OID.
 
-Similar to casting an operator OID to regoperator, only the schema is not
+Similar to casting an operator OID to `regoperator`, only the schema is not
 included in the display. For example:
 
     SELECT display_oper(oprname, oid ) FROM pg_operator;
