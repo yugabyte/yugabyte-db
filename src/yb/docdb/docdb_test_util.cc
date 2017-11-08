@@ -55,7 +55,7 @@ namespace docdb {
 
 namespace {
 
-class NonTransactionalStatusProvider: public TransactionStatusProvider {
+class NonTransactionalStatusProvider: public TransactionStatusManager {
  public:
   HybridTime LocalCommitTime(const TransactionId &id) override {
     Fail();
@@ -68,8 +68,17 @@ class NonTransactionalStatusProvider: public TransactionStatusProvider {
     Fail();
   }
 
+  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id) override {
+    Fail();
+    return boost::none;
+  }
+
+  void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
+    Fail();
+  }
+
  private:
-  static inline void Fail() {
+  static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";
   }
 };

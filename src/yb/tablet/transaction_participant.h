@@ -81,7 +81,7 @@ class TransactionParticipantContext {
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
-class TransactionParticipant : public TransactionStatusProvider {
+class TransactionParticipant : public TransactionStatusManager {
  public:
   explicit TransactionParticipant(TransactionParticipantContext* context);
   virtual ~TransactionParticipant();
@@ -89,7 +89,7 @@ class TransactionParticipant : public TransactionStatusProvider {
   // Adds new running transaction.
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
-  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id);
+  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id) override;
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
@@ -97,7 +97,7 @@ class TransactionParticipant : public TransactionStatusProvider {
                        HybridTime time,
                        TransactionStatusCallback callback) override;
 
-  void Abort(const TransactionId& id, TransactionStatusCallback callback);
+  void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 

@@ -246,8 +246,10 @@ class YBTransaction::Impl final {
     SendHeartbeat(TransactionStatus::CREATED, transaction_->shared_from_this());
   }
 
-  void SendHeartbeat(TransactionStatus status, const YBTransactionPtr& transaction) {
-    if (complete_.load(std::memory_order_acquire)) {
+  void SendHeartbeat(TransactionStatus status,
+                     std::weak_ptr<YBTransaction> weak_transaction) {
+    auto transaction = weak_transaction.lock();
+    if (!transaction || complete_.load(std::memory_order_acquire)) {
       return;
     }
 
@@ -292,8 +294,9 @@ class YBTransaction::Impl final {
           waiter(Status::OK());
         }
       }
+      std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
-          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING, transaction),
+          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING, weak_transaction),
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
@@ -376,6 +379,10 @@ void YBTransaction::Commit(CommitCallback callback) {
 
 const TransactionId& YBTransaction::id() const {
   return impl_->id();
+}
+
+std::future<Status> YBTransaction::CommitFuture() {
+  return MakeFuture<Status>([this](auto callback) { impl_->Commit(callback); });
 }
 
 } // namespace client

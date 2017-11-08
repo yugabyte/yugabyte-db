@@ -106,30 +106,22 @@ void ApplyIntent(const string& lock_string,
 
 }  // namespace
 
-IntentTypePair WriteIntentsForIsolationLevel(const IsolationLevel level) {
-  switch (level) {
-    case IsolationLevel::SNAPSHOT_ISOLATION:
-      return { IntentType::kStrongSnapshotWrite, IntentType::kWeakSnapshotWrite };
-    case IsolationLevel::SERIALIZABLE_ISOLATION:
-      return { IntentType::kStrongSerializableWrite, IntentType::kWeakSerializableWrite };
-    case IsolationLevel::NON_TRANSACTIONAL:
-      FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
-  }
-  FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
-}
-
 void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+                              const scoped_refptr<Histogram>& write_lock_latency,
+                              IsolationLevel isolation_level,
                               SharedLockManager *lock_manager,
                               LockBatch *keys_locked,
-                              bool *need_read_snapshot,
-                              const scoped_refptr<Histogram>& write_lock_latency) {
+                              bool *need_read_snapshot) {
   KeyToIntentTypeMap key_to_lock_type;
   *need_read_snapshot = false;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     list<DocPath> doc_paths;
     IsolationLevel level;
     doc_op->GetDocPathsToLock(&doc_paths, &level);
-    const IntentTypePair intent_types = WriteIntentsForIsolationLevel(level);
+    if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+      level = isolation_level;
+    }
+    const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(level);
 
     for (const auto& doc_path : doc_paths) {
       KeyBytes current_prefix = doc_path.encoded_doc_key();

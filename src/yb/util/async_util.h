@@ -34,6 +34,7 @@
 #define YB_UTIL_ASYNC_UTIL_H
 
 #include <condition_variable>
+#include <future>
 #include <mutex>
 
 #include "yb/gutil/bind.h"
@@ -110,6 +111,16 @@ class Synchronizer {
   bool assigned_ = false;
   Status status_;
 };
+
+// Functor is any functor that accepts callback as only argument.
+template <class Result, class Functor>
+std::future<Result> MakeFuture(const Functor& functor) {
+  auto promise = std::make_shared<std::promise<Result>>();
+  functor([promise](const Result& result) {
+    promise->set_value(result);
+  });
+  return promise->get_future();
+}
 
 } // namespace yb
 #endif /* YB_UTIL_ASYNC_UTIL_H */

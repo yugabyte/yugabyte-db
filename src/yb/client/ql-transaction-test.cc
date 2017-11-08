@@ -403,6 +403,19 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   }
 }
 
+TEST_F(QLTransactionTest, SimpleWriteConflict) {
+  google::FlagSaver flag_saver;
+
+  auto transaction = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
+                                                     SNAPSHOT_ISOLATION);
+
+  WriteRows(CreateSession(false /* read_only */, transaction));
+
+  WriteRows(CreateSession(false /* read_only */));
+
+  ASSERT_NOK(transaction->CommitFuture().get());
+}
+
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
   google::FlagSaver flag_saver;
   DisableApplyingIntents();

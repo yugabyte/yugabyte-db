@@ -47,6 +47,8 @@ class DocOperation {
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) = 0;
 };
 
+typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
+
 class KuduWriteOperation: public DocOperation {
  public:
   KuduWriteOperation(DocPath doc_path, PrimitiveValue value) : doc_path_(doc_path), value_(value) {

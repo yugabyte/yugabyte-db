@@ -64,6 +64,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -964,7 +965,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     LockBatch* keys_locked,
     vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-  vector<unique_ptr<DocOperation>> doc_ops;
+  docdb::DocOperations doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   const HybridTime read_hybrid_time = clock_->Now();
   WriteRequestPB batch_request;
@@ -1051,7 +1052,7 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
     WriteOperationState* operation_state) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
-  vector<unique_ptr<DocOperation>> doc_ops;
+  docdb::DocOperations doc_ops;
   WriteRequestPB batch_request;
   SetupKeyValueBatch(ql_write_request, &batch_request);
   auto* ql_write_batch = batch_request.mutable_ql_write_batch();
@@ -1189,7 +1190,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
                                               KeyValueWriteBatchPB* write_batch,
                                               LockBatch* keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-  vector<unique_ptr<DocOperation>> doc_ops;
+  docdb::DocOperations doc_ops;
   for (DecodedRowOperation row_op : row_ops) {
     // row_data contains the row key for all Kudu operation types (insert/update/delete).
     ConstContiguousRow contiguous_row(schema(), row_op.row_data);
@@ -1389,15 +1390,6 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return rocksdb_->Import(source_dir);
 }
 
-#define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
-  BOOST_PP_CAT(SCHECK_, op)(lhs, \
-                            rhs, \
-                            Corruption, \
-                            Format("Bad intent key, $0 in $1, transaction: $2", \
-                                   msg, \
-                                   intent_iter->key().ToDebugHexString(), \
-                                   transaction_id_slice.ToDebugHexString()))
-
 #define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
   BOOST_PP_CAT(SCHECK_, op)(lhs, \
                             rhs, \
@@ -1406,21 +1398,6 @@ Status Tablet::ImportData(const std::string& source_dir) {
                                    msg, \
                                    intent_iter->value().ToDebugHexString(), \
                                    transaction_id_slice.ToDebugHexString()))
-
-Result<docdb::IntentType> ExtractIntentType(
-    const rocksdb::Iterator* intent_iter, // used in INTENT_*_SCHECK macros
-    const Slice& transaction_id_slice, // used in INTENT_*_SCHECK macros
-    Slice* intent_key) {
-  int doc_ht_size = 0;
-  RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(*intent_key, &doc_ht_size));
-  INTENT_KEY_SCHECK(intent_key->size(), GE, 3, "key too short");
-  intent_key->remove_suffix(doc_ht_size + 3);
-  INTENT_KEY_SCHECK(intent_key->end()[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
-                    "intent type value type expected");
-  INTENT_KEY_SCHECK(intent_key->end()[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
-                    "hybrid time value type expected");
-  return static_cast<docdb::IntentType>(intent_key->end()[1]);
-}
 
 // We apply intents using by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
@@ -1463,7 +1440,8 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
       if (intent_iter->Valid() && intent_iter->key() == reverse_index_iter->value()) {
         Slice intent_key(intent_iter->key());
         intent_key.consume_byte();
-        auto intent_type = ExtractIntentType(intent_iter.get(), transaction_id_slice, &intent_key);
+        auto intent_type = docdb::ExtractIntentType(
+            intent_iter.get(), transaction_id_slice, &intent_key);
         RETURN_NOT_OK(intent_type);
 
         if (IsStrongIntent(*intent_type)) {
@@ -2464,309 +2442,67 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
   return Status::OK();
 }
 
-// TODO(dtxn) TransactionConflictResolver doesn't need to be dependent on tablet module, so
-// it could be extracted to DocDB later or intermediate level above DocDB.
-class TransactionConflictResolver {
- public:
-  explicit TransactionConflictResolver(const KeyValueWriteBatchPB& write_batch,
-                                       HybridTime hybrid_time,
-                                       rocksdb::DB* db,
-                                       TransactionParticipant* transaction_participant)
-      : write_batch_(write_batch),
-        hybrid_time_(hybrid_time),
-        db_(db),
-        transaction_id_(FullyDecodeTransactionId(
-            write_batch.transaction().transaction_id())),
-        intent_iter_(docdb::CreateRocksDBIterator(
-            db,
-            docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-            boost::none /* user_key_for_filter */,
-            rocksdb::kDefaultQueryId)),
-        transaction_participant_(transaction_participant)
-  {}
+namespace {
 
-  CHECKED_STATUS Resolve() {
-    RETURN_NOT_OK(transaction_id_);
-
-    if (write_batch_.transaction().has_isolation()) {
-      auto converted_metadata = TransactionMetadata::FromPB(write_batch_.transaction());
-      RETURN_NOT_OK(converted_metadata);
-      metadata_ = std::move(*converted_metadata);
-    } else {
-      // If write request does not contain metadata it means that metadata is stored in
-      // local cache.
-      auto stored_metadata = transaction_participant_->Metadata(db_, *transaction_id_);
-      if (!stored_metadata) {
-        return STATUS_FORMAT(IllegalState, "Unknown transaction: $0", *transaction_id_);
-      }
-      metadata_ = std::move(*stored_metadata);
-    }
-
-    intent_types_ = docdb::GetWriteIntentsForIsolationLevel(metadata_.isolation);
-
-    RETURN_NOT_OK(docdb::EnumerateIntents(
-        write_batch_.kv_pairs(),
-        std::bind(&TransactionConflictResolver::ProcessIntent, this, _1, _2, _3)));
-
-    if (!conflicts_.empty()) {
-      transactions_.reserve(conflicts_.size());
-      for (const auto& transaction : conflicts_) {
-        transactions_.push_back({ transaction });
-      }
-
-      return ResolveConflicts();
-    }
-
-    return Status::OK();
+Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch,
+                                         TransactionParticipant* transaction_participant,
+                                         rocksdb::DB* db) {
+  if (!write_batch.has_transaction()) {
+    return IsolationLevel::NON_TRANSACTIONAL;
   }
-
- private:
-  CHECKED_STATUS ResolveConflicts() {
-    bool fetched_metadata_for_transactions = false;
-    for (;;) {
-      RETURN_NOT_OK(CheckLocalCommits());
-
-      FetchTransactionStatuses();
-
-      RETURN_NOT_OK(Cleanup());
-      if (transactions_.empty()) {
-        return Status::OK();
-      }
-
-      auto our_priority = metadata_.priority;
-      for (auto& transaction : transactions_) {
-        if (!fetched_metadata_for_transactions) {
-          auto their_metadata = transaction_participant_->Metadata(db_, transaction.id);
-          if (!their_metadata) {
-            // This should not really happen.
-            return STATUS_FORMAT(IllegalState,
-                                 "Does not have metadata for conflicting transaction: $0",
-                                 transaction.id);
-          }
-          transaction.metadata = std::move(*their_metadata);
-        }
-        auto their_priority = transaction.metadata.priority;
-        if (our_priority < their_priority) {
-          return MakeConflictStatus(transaction.id, "higher priority");
-        }
-      }
-      fetched_metadata_for_transactions = true;
-
-      AbortTransactions();
-
-      RETURN_NOT_OK(Cleanup());
-
-      if (transactions_.empty()) {
-        return Status::OK();
-      }
-    }
+  if (write_batch.transaction().has_isolation()) {
+    return write_batch.transaction().isolation();
   }
-
-  CHECKED_STATUS CheckLocalCommits() {
-    auto write_iterator = transactions_.begin();
-    for (const auto& transaction : transactions_) {
-      auto commit_time = transaction_participant_->LocalCommitTime(transaction.id);
-      if (!commit_time.is_valid()) {
-        *write_iterator = transaction;
-        ++write_iterator;
-        continue;
-      }
-      RETURN_NOT_OK(CheckConflictWithCommitted(transaction.id, commit_time));
-    }
-    transactions_.erase(write_iterator, transactions_.end());
-
-    return Status::OK();
+  auto id = FullyDecodeTransactionId(write_batch.transaction().transaction_id());
+  RETURN_NOT_OK(id);
+  auto stored_metadata = transaction_participant->Metadata(db, *id);
+  if (!stored_metadata) {
+    return STATUS_FORMAT(IllegalState, "Missing metadata for transaction: $0", *id);
   }
+  return stored_metadata->isolation;
+}
 
-  // Remove aborted transactions, or fail if we have committed ones.
-  CHECKED_STATUS Cleanup() {
-    auto write_iterator = transactions_.begin();
-    for (const auto& transaction : transactions_) {
-      auto status = transaction.status;
-      if (status == TransactionStatus::COMMITTED) {
-        RETURN_NOT_OK(CheckConflictWithCommitted(transaction.id, transaction.commit_time));
-        continue;
-      } else if (status == TransactionStatus::APPLYING) {
-        return MakeConflictStatus(transaction.id, "applying");
-      } else if (status == TransactionStatus::ABORTED) {
-        continue;
-      } else {
-        DCHECK_EQ(TransactionStatus::PENDING, status);
-      }
-      *write_iterator = transaction;
-      ++write_iterator;
-    }
-    transactions_.erase(write_iterator, transactions_.end());
+} // namespace
 
-    return Status::OK();
-  }
-
-  CHECKED_STATUS MakeConflictStatus(const TransactionId& id, const char* reason) {
-    return STATUS_FORMAT(TryAgain,
-                         "Conflicts with $0 transaction: $1",
-                         reason,
-                         Slice(id.data, id.size()).ToDebugHexString());
-  }
-
-  // Processes intent generated by EnumerateIntents.
-  // I.e. fetches conflicting intents and fills list of conflicting transactions.
-  CHECKED_STATUS ProcessIntent(docdb::IntentKind kind, Slice value_slice, const KeyBytes* key) {
-    auto intent_type = intent_types_[kind];
-    const auto& conflicts = docdb::kIntentConflicts[static_cast<size_t>(intent_type)];
-
-    if (kind == IntentKind::kStrong &&
-        metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      Slice key_slice(key->data());
-      DCHECK_EQ(ValueType::kIntentPrefix, static_cast<ValueType>(key_slice[0]));
-      key_slice.consume_byte();
-
-      auto value_iter = docdb::CreateRocksDBIterator(
-          db_,
-          docdb::BloomFilterMode::USE_BLOOM_FILTER,
-          key_slice,
-          rocksdb::kDefaultQueryId);
-
-      value_iter->Seek(key_slice);
-      if (value_iter->Valid() && value_iter->key().starts_with(key_slice)) {
-        auto existing_key = value_iter->key();
-        DocHybridTime doc_ht;
-        RETURN_NOT_OK(doc_ht.DecodeFromEnd(existing_key));
-        if (doc_ht.hybrid_time() >= metadata_.start_time) {
-          return STATUS(TryAgain, "Value write after transaction start");
-        }
-      }
-    }
-
-    intent_iter_->Seek(key->data());
-    while (intent_iter_->Valid()) {
-      auto existing_key = intent_iter_->key();
-      auto existing_value = intent_iter_->value();
-      if (!existing_key.starts_with(key->data())) {
-        break;
-      }
-      if (existing_value.empty() ||
-          existing_value[0] != static_cast<uint8_t>(ValueType::kTransactionId)) {
-        return STATUS_FORMAT(Corruption,
-            "Transaction prefix expected in intent: $0 => $1",
-            existing_key.ToDebugHexString(),
-            existing_value.ToDebugHexString());
-      }
-      existing_value.consume_byte();
-      auto existing_intent_type = ExtractIntentType(
-          intent_iter_.get(), existing_value, &existing_key);
-
-      auto transaction_id = FullyDecodeTransactionId(
-          Slice(existing_value.data(), TransactionId::static_size()));
-      RETURN_NOT_OK(transaction_id);
-
-      RETURN_NOT_OK(existing_intent_type);
-      if (conflicts.test(static_cast<size_t>(*existing_intent_type))) {
-        conflicts_.insert(*transaction_id);
-      }
-
-      intent_iter_->Next();
-    }
-    return Status::OK();
-  }
-
-  void FetchTransactionStatuses() {
-    CountDownLatch latch(transactions_.size());
-    for (auto& i : transactions_) {
-      auto& transaction = i;
-      transaction_participant_->RequestStatusAt(
-          transaction.id,
-          hybrid_time_,
-          [&transaction, &latch](Result<TransactionStatusResult> result) {
-            if (result.ok()) {
-              transaction.ProcessStatus(*result);
-            } else {
-              CHECK(result.status().IsTryAgain()); // TODO(dtxn) Handle errors.
-              transaction.status = TransactionStatus::PENDING;
-            }
-            latch.CountDown();
-          });
-    }
-    latch.Wait();
-  }
-
-  void AbortTransactions() {
-    CountDownLatch latch(transactions_.size());
-    for (auto& i : transactions_) {
-      auto& transaction = i;
-      transaction_participant_->Abort(
-          transaction.id,
-          [&transaction, &latch](Result<TransactionStatusResult> result) {
-            if (result.ok()) {
-              transaction.ProcessStatus(*result);
-            } else {
-              LOG(INFO) << "Abort failed, would retry: " << result.status();
-            }
-            latch.CountDown();
-      });
-    }
-    latch.Wait();
-  }
-
-  CHECKED_STATUS CheckConflictWithCommitted(const TransactionId& id, HybridTime commit_time) {
-    if (metadata_.isolation == yb::IsolationLevel::SNAPSHOT_ISOLATION) {
-      if (commit_time >= metadata_.start_time) { // TODO(dtxn) clock skew?
-        return MakeConflictStatus(id, "committed");
-      }
-    }
-    return Status::OK();
-  }
-
-  struct TransactionData {
-    TransactionId id;
-    TransactionStatus status;
-    HybridTime commit_time;
-    TransactionMetadata metadata;
-
-    void ProcessStatus(const TransactionStatusResult& result) {
-      status = result.status;
-      if (status == TransactionStatus::COMMITTED) {
-        commit_time = result.status_time;
-      }
-    }
-  };
-
-  const KeyValueWriteBatchPB& write_batch_;
-  HybridTime hybrid_time_;
-  rocksdb::DB* db_;
-  Result<TransactionId> transaction_id_;
-  std::unique_ptr<rocksdb::Iterator> intent_iter_;
-  TransactionParticipant* transaction_participant_;
-  TransactionMetadata metadata_;
-  IntentTypePair intent_types_;
-  Status result_ = Status::OK();
-  std::unordered_set<TransactionId, TransactionIdHash> conflicts_;
-  std::vector<TransactionData> transactions_;
-};
-
-Status Tablet::StartDocWriteOperation(const vector<unique_ptr<DocOperation>> &doc_ops,
+Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
                                       LockBatch *keys_locked,
                                       KeyValueWriteBatchPB* write_batch) {
+  auto isolation_level =
+      GetIsolationLevel(*write_batch, transaction_participant_.get(), rocksdb_.get());
+  RETURN_NOT_OK(isolation_level);
   bool need_read_snapshot = false;
-  HybridTime hybrid_time;
   docdb::PrepareDocWriteOperation(
-      doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot,
-      metrics_->write_lock_latency);
+      doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_, keys_locked,
+      &need_read_snapshot);
+
+  HybridTime hybrid_time;
   unique_ptr<ScopedReadOperation> read_txn;
   if (need_read_snapshot) {
     read_txn.reset(new ScopedReadOperation(this));
     hybrid_time = read_txn->GetReadTimestamp();
   }
+
+  if (*isolation_level == IsolationLevel::NON_TRANSACTIONAL &&
+      metadata_->schema().table_properties().is_transactional()) {
+    auto now = clock_->Now();
+    auto result = docdb::ResolveOperationConflicts(
+        doc_ops, now, rocksdb_.get(), transaction_participant_.get());
+    RETURN_NOT_OK(result);
+    if (now != *result) {
+      clock_->Update(*result);
+    }
+  }
+
   // We expect all read operations for this transaction to be done in ApplyDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
   RETURN_NOT_OK(docdb::ApplyDocWriteOperation(
       doc_ops, hybrid_time, rocksdb_.get(), write_batch, &monotonic_counter_));
 
-  if (write_batch->has_transaction()) {
-    TransactionConflictResolver resolver(*write_batch,
-                                         hybrid_time,
-                                         rocksdb_.get(),
-                                         transaction_participant_.get());
-    auto result = resolver.Resolve();
+  if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
+    auto result = docdb::ResolveTransactionConflicts(*write_batch,
+                                                     clock_->Now(),
+                                                     rocksdb_.get(),
+                                                     transaction_participant_.get());
     if (!result.ok()) {
       *keys_locked = LockBatch();  // Unlock the keys.
       return result;

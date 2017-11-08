@@ -25,6 +25,7 @@ ADD_YB_LIBRARY(docdb_proto
   NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_SRCS
+    conflict_resolution.cc
     docdb_util.cc
     doc_boundary_values_extractor.cc
     doc_expr.cc

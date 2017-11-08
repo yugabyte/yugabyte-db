@@ -47,9 +47,9 @@ KeyBytes GetIntentPrefixForKey(const SubDocKey& subdoc_key) {
 // For locally committed transactions returns commit time if committed at specified time or
 // HybridTime::kMin otherwise. For other transactions returns HybridTime::kInvalidHybridTime.
 HybridTime GetTxnLocalCommitTime(
-    TransactionStatusProvider* txn_status_provider, const TransactionId& transaction_id,
+    TransactionStatusManager* txn_status_manager, const TransactionId& transaction_id,
     const HybridTime& time) {
-  const HybridTime local_commit_time = txn_status_provider->LocalCommitTime(transaction_id);
+  const HybridTime local_commit_time = txn_status_manager->LocalCommitTime(transaction_id);
   return local_commit_time.is_valid()
       ? (local_commit_time <= time ? local_commit_time : HybridTime::kMin)
       : local_commit_time;
@@ -58,13 +58,13 @@ HybridTime GetTxnLocalCommitTime(
 // Returns transaction commit time if already committed at specified time or HybridTime::kMin
 // otherwise.
 Result<HybridTime> GetTxnCommitTime(
-    TransactionStatusProvider* txn_status_provider,
+    TransactionStatusManager* txn_status_manager,
     const TransactionId& transaction_id,
     const HybridTime& time) {
-  DCHECK(txn_status_provider != nullptr);
+  DCHECK_ONLY_NOTNULL(txn_status_manager);
 
   HybridTime local_commit_time = GetTxnLocalCommitTime(
-      txn_status_provider, transaction_id, time);
+      txn_status_manager, transaction_id, time);
   if (local_commit_time.is_valid()) {
     return local_commit_time;
   }
@@ -76,7 +76,7 @@ Result<HybridTime> GetTxnCommitTime(
       txn_status_result = std::move(result);
       latch.count_down();
     };
-    txn_status_provider->RequestStatusAt(transaction_id, time, callback);
+    txn_status_manager->RequestStatusAt(transaction_id, time, callback);
     latch.wait();
     if (txn_status_result.ok()) {
       break;
@@ -100,8 +100,7 @@ Result<HybridTime> GetTxnCommitTime(
       ToString(time), ToString(txn_status_result->status),
       ToString(txn_status_result->status_time));
   if (txn_status_result->status == TransactionStatus::ABORTED) {
-    local_commit_time = GetTxnLocalCommitTime(
-        txn_status_provider, transaction_id, time);
+    local_commit_time = GetTxnLocalCommitTime(txn_status_manager, transaction_id, time);
     return local_commit_time.is_valid() ? local_commit_time : HybridTime::kMin;
   } else {
     return txn_status_result->status == TransactionStatus::COMMITTED
@@ -133,7 +132,7 @@ Status DecodeStrongWriteIntent(
       *value_time = intent_ht;
     } else {
       Result<HybridTime> commit_ht = GetTxnCommitTime(
-          &txn_op_context.txn_status_provider, *txn_id, time);
+          &txn_op_context.txn_status_manager, *txn_id, time);
       RETURN_NOT_OK(commit_ht);
       DOCDB_DEBUG_LOG(
           "transaction_id $0 at $1 commit time: $2", yb::ToString(*txn_id),

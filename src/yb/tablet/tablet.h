@@ -647,7 +647,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   CHECKED_STATUS StartDocWriteOperation(
-      const std::vector<std::unique_ptr<docdb::DocOperation>> &doc_ops,
+      const docdb::DocOperations &doc_ops,
       LockBatch *keys_locked,
       docdb::KeyValueWriteBatchPB* write_batch);
 

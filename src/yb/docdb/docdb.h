@@ -219,10 +219,11 @@ class DocWriteBatch {
 // Context: lock_manager
 // Outputs: write_batch, need_read_snapshot
 void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+                              const scoped_refptr<Histogram>& write_lock_latency,
+                              IsolationLevel isolation_level,
                               SharedLockManager *lock_manager,
                               LockBatch *keys_locked,
-                              bool *need_read_snapshot,
-                              const scoped_refptr<Histogram>& write_lock_latency);
+                              bool *need_read_snapshot);
 
 // This function reads from rocksdb and constructs the write batch.
 //

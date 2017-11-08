@@ -25,7 +25,7 @@ namespace yb {
 
 class HybridTime;
 class DocHybridTime;
-class TransactionStatusProvider;
+class TransactionStatusManager;
 
 namespace docdb {
 

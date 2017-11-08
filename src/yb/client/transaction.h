@@ -16,6 +16,7 @@
 #ifndef YB_CLIENT_TRANSACTION_H
 #define YB_CLIENT_TRANSACTION_H
 
+#include <future>
 #include <memory>
 #include <unordered_set>
 
@@ -58,6 +59,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Commits this transaction.
   void Commit(CommitCallback callback);
+
+  // Utility function for Commit.
+  std::future<Status> CommitFuture();
 
   // Returns transaction ID.
   const TransactionId& id() const;

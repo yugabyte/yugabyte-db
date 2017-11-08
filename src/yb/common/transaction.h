@@ -30,6 +30,12 @@
 #include "yb/util/result.h"
 #include "yb/util/uuid.h"
 
+namespace rocksdb {
+
+class DB;
+
+}
+
 namespace yb {
 
 using TransactionId = boost::uuids::uuid;
@@ -62,10 +68,11 @@ struct TransactionStatusResult {
 };
 
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
+struct TransactionMetadata;
 
-class TransactionStatusProvider {
+class TransactionStatusManager {
  public:
-  virtual ~TransactionStatusProvider() {}
+  virtual ~TransactionStatusManager() {}
 
   // Checks whether this tablet knows that transaction is committed.
   // In case of success returns commit time of transaction, otherwise returns invalid time.
@@ -84,16 +91,21 @@ class TransactionStatusProvider {
   virtual void RequestStatusAt(const TransactionId& id,
                                HybridTime time,
                                TransactionStatusCallback callback) = 0;
+
+  virtual boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db,
+                                                        const TransactionId& id) = 0;
+
+  virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 };
 
 struct TransactionOperationContext {
   TransactionOperationContext(
-      const TransactionId& transaction_id_, TransactionStatusProvider* txn_status_provider_)
+      const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
       : transaction_id(transaction_id_),
-        txn_status_provider(*(DCHECK_NOTNULL(txn_status_provider_))) {}
+        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
 
   TransactionId transaction_id;
-  TransactionStatusProvider& txn_status_provider;
+  TransactionStatusManager& txn_status_manager;
 };
 
 typedef boost::optional<TransactionOperationContext> TransactionOperationContextOpt;

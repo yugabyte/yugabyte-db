@@ -654,7 +654,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000, w=1)]) -> "row1
 
 namespace {
 
-class TransactionStatusProviderMock : public TransactionStatusProvider {
+class TransactionStatusManagerMock : public TransactionStatusManager {
  public:
   HybridTime LocalCommitTime(const TransactionId &id) override {
     return HybridTime::kInvalidHybridTime;
@@ -680,6 +680,14 @@ class TransactionStatusProviderMock : public TransactionStatusProvider {
     txn_commit_time_.emplace(txn_id, commit_time);
   }
 
+  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db,
+                                                const TransactionId& id) override {
+    return boost::none;
+  }
+
+  void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };
@@ -689,7 +697,7 @@ class TransactionStatusProviderMock : public TransactionStatusProvider {
 TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
   SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
 
-  TransactionStatusProviderMock txn_status_provider;
+  TransactionStatusManagerMock txn_status_manager;
 
   Result<TransactionId> txn1 = FullyDecodeTransactionId("0000000000000001");
   ASSERT_OK(txn1);
@@ -741,7 +749,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
       PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000), InitMarkerBehavior::OPTIONAL));
 
-  txn_status_provider.Commit(*txn1, HybridTime::FromMicros(3500));
+  txn_status_manager.Commit(*txn1, HybridTime::FromMicros(3500));
 
   SetCurrentTransactionId(*txn2);
   ASSERT_OK(DeleteSubDoc(
@@ -751,7 +759,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
       PrimitiveValue("row2_e_t2"), HybridTime::FromMicros(4000), InitMarkerBehavior::OPTIONAL));
   ResetCurrentTransactionId();
-  txn_status_provider.Commit(*txn2, HybridTime::FromMicros(6000));
+  txn_status_manager.Commit(*txn2, HybridTime::FromMicros(6000));
 
   AssertDocDbDebugDumpStrEq(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT(p=500, w=1) -> \
@@ -787,7 +795,7 @@ TransactionId(30303030-3030-3030-3030-303030303031) "row2_e_t1"
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
   const auto txn_context = TransactionOperationContext(
-      GenerateTransactionId(), &txn_status_provider);
+      GenerateTransactionId(), &txn_status_manager);
 
   ScanSpec scan_spec;
   Arena arena(32_KB, 1_MB);
