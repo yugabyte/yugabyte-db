@@ -49,15 +49,27 @@ body {
   display: block;
 }
 .sidebar-nav>li {
+  text-align: center;
   float: none !important;
   display: block;
+  padding-bottom: 20px;
+}
+.sidebar-nav>li>a {
+  color: #DDD;
+}
+.sidebar-nav>li>a:hover, .sidebar-nav>li>a:focus {
+  color: #FFF;
+  background: none;
+}
+.sidebar-nav>li>a i {
+  font-size: 36px;
 }
 
 .nav-logo {
     display: inline-block;
     height: 39px;
     margin: 10px auto;
-    padding-left: 30px;
+    padding-left: 5px;
 }
 
 .nav-bar.scrolled .navbar-text a {
@@ -90,6 +102,8 @@ body {
 
 .nav>li>a hover, .nav>li>a hover focus {
   padding: 10px 15px 10px;
+  color: #FFF;
+  background-color: #151838;
 }
 
 .yb-main {
@@ -144,4 +158,34 @@ body {
 .yb-overview {
   color: #555;
   font-size: 12px;
+}
+
+.debug-tiles {
+  padding: 20px 0;
+}
+
+.dbg-tile {
+  padding: 10px;
+  text-align: center;
+}
+
+.dbg-tile>a {
+  padding: 20px 0;
+}
+
+.dbg-tile>a:hover {
+  text-decoration: none;
+}
+
+.dbg-icon {
+  color: #f75821;
+  font-size: 48px;
+}
+
+.dbg-caption {
+  color: #777 !important;
+}
+
+.dbg-caption>h3 {
+  margin-top: 0px;
 }

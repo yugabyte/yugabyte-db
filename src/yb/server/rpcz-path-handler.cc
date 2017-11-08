@@ -74,7 +74,7 @@ void RpczPathHandler(const shared_ptr<Messenger>& messenger,
 
 void AddRpczPathHandlers(const shared_ptr<Messenger>& messenger, Webserver* webserver) {
   webserver->RegisterPathHandler(
-      "/rpcz", "RPCs", std::bind(RpczPathHandler, messenger, _1, _2), false, true);
+      "/rpcz", "RPCs", std::bind(RpczPathHandler, messenger, _1, _2), false, false);
 }
 
 } // namespace yb

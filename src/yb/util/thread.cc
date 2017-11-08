@@ -269,7 +269,7 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
 
   WebCallbackRegistry::PathHandlerCallback thread_callback =
       std::bind(&ThreadMgr::ThreadPathHandler, this, _1, _2);
-  DCHECK_NOTNULL(web)->RegisterPathHandler("/threadz", "Threads", thread_callback);
+  DCHECK_NOTNULL(web)->RegisterPathHandler("/threadz", "Threads", thread_callback, true, false);
   return Status::OK();
 }
 

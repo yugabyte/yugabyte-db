@@ -82,7 +82,9 @@ class Webserver : public WebCallbackRegistry {
 
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
-                                   bool is_styled = true, bool is_on_nav_bar = true) override;
+                                   bool is_styled = true,
+                                   bool is_on_nav_bar = true,
+                                   const std::string icon = "") override;
 
   // Change the footer HTML to be displayed at the bottom of all styled web pages.
   void set_footer_html(const std::string& html);
@@ -93,10 +95,11 @@ class Webserver : public WebCallbackRegistry {
   // Container class for a list of path handler callbacks for a single URL.
   class PathHandler {
    public:
-    PathHandler(bool is_styled, bool is_on_nav_bar, std::string alias)
+    PathHandler(bool is_styled, bool is_on_nav_bar, std::string alias, const std::string icon)
         : is_styled_(is_styled),
           is_on_nav_bar_(is_on_nav_bar),
-          alias_(std::move(alias)) {}
+          alias_(std::move(alias)),
+          icon_(icon) {}
 
     void AddCallback(const PathHandlerCallback& callback) {
       callbacks_.push_back(callback);
@@ -105,6 +108,7 @@ class Webserver : public WebCallbackRegistry {
     bool is_styled() const { return is_styled_; }
     bool is_on_nav_bar() const { return is_on_nav_bar_; }
     const std::string& alias() const { return alias_; }
+    const std::string& icon() const { return icon_; }
     const std::vector<PathHandlerCallback>& callbacks() const { return callbacks_; }
 
    private:
@@ -116,6 +120,9 @@ class Webserver : public WebCallbackRegistry {
 
     // Alias used when displaying this link on the nav bar.
     std::string alias_;
+
+    // Icon used when displaying this link on the nav bar.
+    std::string icon_;
 
     // List of callbacks to render output for this page, called in order.
     std::vector<PathHandlerCallback> callbacks_;

@@ -189,10 +189,11 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstre
 }
 
 void AddDefaultPathHandlers(Webserver* webserver) {
-  webserver->RegisterPathHandler("/logs", "Logs", LogsHandler);
-  webserver->RegisterPathHandler("/varz", "Flags", FlagsHandler);
-  webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler);
-  webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)", MemTrackersHandler);
+  webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);
+  webserver->RegisterPathHandler("/varz", "Flags", FlagsHandler, true, false);
+  webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
+  webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
+                                 MemTrackersHandler, true, false);
 
   AddPprofPathHandlers(webserver);
 }
@@ -244,8 +245,7 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
       WriteForPrometheus, metrics, _1, _2);
   bool not_styled = false;
   bool not_on_nav_bar = false;
-  bool is_on_nav_bar = true;
-  webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, is_on_nav_bar);
+  webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, not_on_nav_bar);
 
   // The old name -- this is preserved for compatibility with older releases of
   // monitoring software which expects the old name.

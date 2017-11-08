@@ -420,6 +420,43 @@ std::string RpcAndWebServerBase::FooterHtml() const {
                     instance_pb_->permanent_uuid());
 }
 
+static void DisplayIconTile(std::stringstream* output, const string icon,
+                            const string caption, const string url) {
+  *output << "  <div class='col-sm-6 col-md-4 dbg-tile'>\n"
+          << "    <a href='" << url << "' class='thumbnail'>\n"
+          << "      <div class='dbg-icon'>\n"
+          << "        <i class='fa " << icon << "' aria-hidden='true'></i>\n"
+          << "      </div>\n"
+          << "      <div class='caption dbg-caption'>\n"
+          << "        <h3>" << caption << "</h3>\n"
+          << "      </div> <!-- caption -->\n"
+          << "    </a> <!-- thumbnail -->\n"
+          << "  </div> <!-- col-xs-6 col-md-3 -->\n";
+}
+
+static void HandleDebugPage(const Webserver::WebRequest& req, stringstream* output) {
+  *output << "<h1>Debug Utilities</h1>\n";
+
+  *output << "<div class='row debug-tiles'>\n";
+
+  // Logs.
+  DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
+  // GFlags.
+  DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
+  // Memory trackers.
+  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
+  // Metrics.
+  DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
+  // RPCs in progress.
+  DisplayIconTile(output, "fa-tasks", "RPCs In Progress", "/rpcz");
+  // Threads.
+  DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
+  // Total memory.
+  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
+
+  *output << "</div> <!-- row -->\n";
+}
+
 Status RpcAndWebServerBase::Start() {
   GenerateInstanceID();
 
@@ -427,6 +464,8 @@ Status RpcAndWebServerBase::Start() {
   AddRpczPathHandlers(messenger_, web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   TracingPathHandlers::RegisterHandlers(web_server_.get());
+  web_server_->RegisterPathHandler("/utilz", "Utilities", HandleDebugPage,
+                                   true, true, "fa fa-wrench");
   web_server_->set_footer_html(FooterHtml());
   RETURN_NOT_OK(web_server_->Start());
 

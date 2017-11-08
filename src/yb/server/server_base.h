@@ -41,6 +41,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/service_if.h"
 #include "yb/server/server_base_options.h"
+#include "yb/server/webserver.h"
 #include "yb/util/status.h"
 
 namespace yb {

@@ -388,13 +388,17 @@ int Webserver::RunPathHandler(const PathHandler& handler,
   return 1;
 }
 
-void Webserver::RegisterPathHandler(const string& path, const string& alias,
-    const PathHandlerCallback& callback, bool is_styled, bool is_on_nav_bar) {
+void Webserver::RegisterPathHandler(const string& path,
+                                    const string& alias,
+                                    const PathHandlerCallback& callback,
+                                    bool is_styled,
+                                    bool is_on_nav_bar,
+                                    const std::string icon) {
   std::lock_guard<boost::shared_mutex> lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
     it = path_handlers_.insert(
-        make_pair(path, new PathHandler(is_styled, is_on_nav_bar, alias))).first;
+        make_pair(path, new PathHandler(is_styled, is_on_nav_bar, alias, icon))).first;
   }
   it->second->AddCallback(callback);
 }
@@ -430,7 +434,9 @@ void Webserver::BootstrapPageHeader(stringstream* output) {
   (*output) << NAVIGATION_BAR_PREFIX;
   for (const PathHandlerMap::value_type& handler : path_handlers_) {
     if (handler.second->is_on_nav_bar()) {
-      (*output) << "<li class='nav-item'><a href=\"" << handler.first << "\">"
+      (*output) << "<li class='nav-item'>"
+                << "<a href='" << handler.first << "'>"
+                << "<div><i class='" << handler.second->icon() << "'aria-hidden='true'></i></div>"
                 << handler.second->alias()
                 << "</a></li>" << "\n";
     }

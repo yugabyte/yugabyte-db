@@ -89,8 +89,8 @@ TEST_F(WebserverTest, TestIndexPage) {
   // Should have expected title.
   ASSERT_STR_CONTAINS(buf_.ToString(), "YugaByte");
 
-  // Should have link to default path handlers (e.g memz)
-  ASSERT_STR_CONTAINS(buf_.ToString(), "memz");
+  // Should have link to the root path handlers (Home).
+  ASSERT_STR_CONTAINS(buf_.ToString(), "Home");
 }
 
 TEST_F(WebserverTest, TestDefaultPaths) {

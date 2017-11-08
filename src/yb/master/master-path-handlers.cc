@@ -76,52 +76,63 @@ MasterPathHandlers::~MasterPathHandlers() {
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     const Webserver::WebRequest& req, stringstream* output,
     const Webserver::PathHandlerCallback& callback) {
+  string redirect;
   // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
   {
     CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
-    if (!l.first_failed_status().ok()) {
-      *output << "<h1>This is not the Master Leader!</h1>\n";
 
-      do {
-        vector<ServerEntryPB> masters;
-        Status s = master_->ListMasters(&masters);
-        if (!s.ok()) {
-          break;
-        }
-
-        string redirect;
-        for (const ServerEntryPB& master : masters) {
-          if (master.has_error()) {
-            // This will leave redirect empty and thus fail accordingly.
-            break;
-          }
-
-          if (master.role() == consensus::RaftPeerPB::LEADER) {
-            // URI already starts with a /, so none is needed between $1 and $2.
-            redirect = Substitute(
-                "<a class=\"alert-link\" href=\"http://$0:$1$2$3\">Leader</a>",
-                master.registration().http_addresses(0).host(),
-                master.registration().http_addresses(0).port(), req.redirect_uri,
-                req.query_string.empty() ? "" : "?" + req.query_string);
-          }
-        }
-
-        if (redirect.empty()) {
-          break;
-        }
-
-        *output << "<h3><div class=\"alert alert-warning\">"
-                << "Please click  " << redirect << " to get redirected to the Master Leader!"
-                << "</div></h3>";
-
-        return;
-      } while (0);
-
-      *output << "Cannot get Leader information to help you redirect...\n";
+    // If we are the master leader, handle the request.
+    if (l.first_failed_status().ok()) {
+      callback(req, output);
       return;
     }
+
+    // List all the masters.
+    vector<ServerEntryPB> masters;
+    Status s = master_->ListMasters(&masters);
+    if (!s.ok()) {
+      s = s.CloneAndPrepend("Unable to list Masters");
+      LOG(WARNING) << s.ToString();
+      *output << "<h2>" << s.ToString() << "</h2>\n";
+      return;
+    }
+
+    // Prepare the query for the master leader.
+
+    for (const ServerEntryPB &master : masters) {
+      if (master.has_error()) {
+        *output << "<h2>" << "Error listing all masters." << "</h2>\n";
+        return;
+      }
+
+      if (master.role() == consensus::RaftPeerPB::LEADER) {
+        // URI already starts with a /, so none is needed between $1 and $2.
+        redirect = Substitute("http://$0:$1$2$3",
+                              master.registration().http_addresses(0).host(),
+                              master.registration().http_addresses(0).port(),
+                              req.redirect_uri,
+                              req.query_string.empty() ? "?raw" : "?" + req.query_string + "&raw");
+        break;
+      }
+    }
   }
-  callback(req, output);
+
+  // Error out if we do not have a redirect URL to the current master leader.
+  if (redirect.empty()) {
+    *output << "<h2>" << "Error querying master leader." << "</h2>\n";
+    return;
+  }
+
+  // Make a curl call to the current master leader and return that payload as the result of the
+  // web request.
+  EasyCurl curl;
+  faststring buf;
+  Status s = curl.FetchURL(redirect, &buf);
+  if (!s.ok()) {
+    *output << "<h2>" << "Error querying url " << redirect << "</h2>\n";
+    return;
+  }
+  *output << buf.ToString();
 }
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
@@ -396,17 +407,25 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
             << "<div class='panel-heading'><h2 class='panel-title'> Overview</h2></div>\n";
   (*output) << "<div class='panel-body'>";
   (*output) << "<table class='table'>\n";
-  (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
+
+  // Universe UUID.
+  (*output) << "  <tr>";
+  (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-database yb-dashboard-icon' aria-hidden='true'></i>",
-                          "Universe UUID ",
+                          "Universe UUID ");
+  (*output) << Substitute(" <td>$0</td>",
                           config.cluster_uuid());
+  (*output) << "  </tr>\n";
 
   // Replication factor.
   (*output) << "  <tr>";
   (*output) << Substitute(" <td>$0<span class='yb-overview'>$1</span></td>",
                           "<i class='fa fa-files-o yb-dashboard-icon' aria-hidden='true'></i>",
                           "Replication Factor ");
-  (*output) << Substitute(" <td>$0</td>", master_->opts().GetMasterAddresses().get()->size());
+  (*output) << Substitute(" <td>$0 <a href='$1' class='btn btn-default pull-right'>$2</a></td>",
+                          master_->opts().GetMasterAddresses().get()->size(),
+                          "/cluster-config",
+                          "See full config &raquo;");
   (*output) << "  </tr>\n";
 
   // Tserver count.
@@ -452,13 +471,6 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << "<div class='col-md-12 col-lg-12'>\n";
   HandleCatalogManager(req, output, true /* skip_system_tables */);
   (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
-
-  // Display the tablet server info.
-  (*output) << "<div class='col-md-12 col-lg-12'>\n";
-  HandleTabletServers(req, output);
-  (*output) << "</div> <!-- col-md-12 col-lg-12 -->\n";
-
-  (*output) << "</div> <!-- row dashboard-content -->\n";
 }
 
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
@@ -689,7 +701,7 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
 }
 
 void MasterPathHandlers::HandleGetClusterConfig(
-    const Webserver::WebRequest& req, stringstream* output) {
+  const Webserver::WebRequest& req, stringstream* output) {
   *output << "<h1>Current Cluster Config</h1>\n";
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);
@@ -699,36 +711,39 @@ void MasterPathHandlers::HandleGetClusterConfig(
   }
 
   *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
-          << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
+  << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
 }
+
 
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
-  // Cannot use auto with callbacks, as they won't properly deduce types with boost magic...
+
+  // The set of handlers visible on the nav bar.
   server->RegisterPathHandler(
     "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
-    is_on_nav_bar);
-
+    is_on_nav_bar, "fa fa-home");
   Webserver::PathHandlerCallback cb =
       std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
   server->RegisterPathHandler(
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar);
+      is_on_nav_bar, "fa fa-server");
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
                  this, _1, _2, false /* skip_system_tables */);
   server->RegisterPathHandler(
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar);
+      is_on_nav_bar, "fa fa-table");
   cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
+
+  // The set of handlers not visible on the nav bar.
   server->RegisterPathHandler(
       "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
       is_styled, false);
   server->RegisterPathHandler(
       "/masters", "Masters", std::bind(&MasterPathHandlers::HandleMasters, this, _1, _2), is_styled,
-      is_on_nav_bar);
+      false);
   cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",
@@ -737,7 +752,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar);
+      false);
   return Status::OK();
 }
 

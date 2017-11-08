@@ -76,7 +76,8 @@ class WebCallbackRegistry {
   // subsequent registrations for that URL.
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
-                                   bool is_styled = true, bool is_on_nav_bar = true) = 0;
+                                   bool is_styled = true, bool is_on_nav_bar = true,
+                                   const std::string icon = "") = 0;
 };
 
 } // namespace yb
