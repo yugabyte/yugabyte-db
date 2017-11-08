@@ -425,7 +425,6 @@ TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
   VerifyLeaderMasterPeerCount();
 }
 
-
 TEST_F(MasterChangeConfigTest, TestLeaderSteppedDownNotElected) {
   SetCurLogIndex();
   ExternalMaster* old_leader = cluster_->GetLeaderMaster();
@@ -439,6 +438,22 @@ TEST_F(MasterChangeConfigTest, TestLeaderSteppedDownNotElected) {
   ASSERT_NE(old_leader->bound_rpc_addr().port(), new_leader->bound_rpc_addr().port());
 }
 
+TEST_F(MasterChangeConfigTest, TestMulitpleLeaderRestarts) {
+  ExternalMaster* first_leader = cluster_->GetLeaderMaster();
+  first_leader->Shutdown();
+  // Ensure that the new leader is not the old leader.
+  ExternalMaster* second_leader = cluster_->GetLeaderMaster();
+  ASSERT_NE(second_leader->bound_rpc_addr().port(), first_leader->bound_rpc_addr().port());
+  // Revive the first leader.
+  ASSERT_OK(first_leader->Restart());
+  ExternalMaster* check_leader = cluster_->GetLeaderMaster();
+  // Leader should remain the same second one.
+  ASSERT_EQ(second_leader->bound_rpc_addr().port(), check_leader->bound_rpc_addr().port());
+  second_leader->Shutdown();
+  check_leader = cluster_->GetLeaderMaster();
+  // Leader should not be second one, it can be any one of the other masters.
+  ASSERT_NE(second_leader->bound_rpc_addr().port(), check_leader->bound_rpc_addr().port());
+}
 
 } // namespace master
 } // namespace yb
