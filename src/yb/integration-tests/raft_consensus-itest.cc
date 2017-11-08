@@ -2455,9 +2455,9 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   ASSERT_OK(AddServer(leader, tablet_id_, new_node, RaftPeerPB::PRE_VOTER, boost::none,
                       MonoDelta::FromSeconds(10)));
   InsertOrDie(&active_tablet_servers, new_node->uuid(), new_node);
-  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
-                                                leader, tablet_id_,
-                                                MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(
+      active_tablet_servers.size(), leader, tablet_id_,
+      MonoDelta::FromSeconds(NonTsanVsTsan(20, 60))));
 
   workload.StopAndJoin();
   int num_batches = workload.batches_completed();
