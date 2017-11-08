@@ -7701,6 +7701,37 @@ database in largely the same condition as it was in when you started it (the
 one exception I'm aware of being sequences, which are not rolled back to the
 value used at the beginning of a rolled-back transaction).
 
+Secrets of the pgTAP Mavens
+===========================
+
+Over the years, a number of techniques have evolved to make all of our pgTAP
+testing lives easier. Here are some of them.
+
+Relational-style Loops
+----------------------
+
+Need to test a bunch of objects and find yourself looking for some kind of
+`for` loop to [DRY](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself) off
+with? SQL doesn't have one, of course, but that's because it doesn't need one:
+the whole language is built around doing things to a bunch of rows. So take
+advantage of it: build relations with the
+[`VALUES`](https://www.postgresql.org/docs/current/static/sql-values.html)
+command! For example, to make sure you have a table in a defined list of
+schemas, try something like this:
+
+   SELECT has_table(sch, 'widgets', format('Has %I.widgets', sch))
+   FROM (VALUES('amazon'), ('starbucks'), ('boeing')) F(sch);
+
+Note the use of the
+[`format` function](https://www.postgresql.org/docs/current/static/functions-string.html#functions-string-format)
+to make a nice test description, too. Here's a more complicated example that
+uses a cross join to test that various columns are `NOT NULL` in a specific
+table in a bunch of schemas:
+
+    SELECT col_not_null(sch, 'table1', col)
+    FROM (VALUES('schema1'), ('schema1')) AS stmp (sch)
+    CROSS JOIN (VALUES('col_pk'), ('col2'), ('col3')) AS ctmp (col);
+
 Compose Yourself
 ================
 
