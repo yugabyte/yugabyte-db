@@ -461,7 +461,16 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		char				*outputstr = NULL;
 		bool				isnull;		/* column is null? */
 
+		/*
+		 * Commit d34a74dd064af959acd9040446925d9d53dff15b introduced
+		 * TupleDescAttr() in back branches. If the version supports
+		 * this macro, use it. Version 10 and later already support it.
+		 */
+#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
 		attr = tupdesc->attrs[natt];
+#else
+		attr = TupleDescAttr(tupdesc, natt);
+#endif
 
 		elog(DEBUG1, "attribute \"%s\" (%d/%d)", NameStr(attr->attname), natt, tupdesc->natts);
 
@@ -477,8 +486,18 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 			for (j = 0; j < indexdesc->natts; j++)
 			{
-				if (strcmp(NameStr(attr->attname), NameStr(indexdesc->attrs[j]->attname)) == 0)
+				Form_pg_attribute	iattr;
+
+				/* See explanation a few lines above. */
+#if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
+				iattr = indexdesc->attrs[j];
+#else
+				iattr = TupleDescAttr(indexdesc, j);
+#endif
+
+				if (strcmp(NameStr(attr->attname), NameStr(iattr->attname)) == 0)
 					found_col = true;
+
 			}
 
 			/* Print only indexed columns */
