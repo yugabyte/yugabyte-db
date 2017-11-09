@@ -708,10 +708,8 @@ Status ClusterAdminClient::GetTabletLocations(const string& tablet_id,
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTabletPeer(
-  const string& tablet_id,
-  PeerMode mode,
-  TSInfoPB* ts_info) {
+Status ClusterAdminClient::GetTabletPeer(const string& tablet_id, PeerMode mode,
+                                         TSInfoPB* ts_info) {
   TabletLocationsPB locations;
   RETURN_NOT_OK(GetTabletLocations(tablet_id, &locations));
   CHECK_EQ(tablet_id, locations.tablet_id()) << locations.ShortDebugString();
@@ -1032,19 +1030,19 @@ static void SetUsage(const char* argv0) {
                 << "[PRE_VOTER|PRE_OBSERVER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
-      << " 4. " << kListTabletsOp << "<keyspace> " << "<table_name>" << " [max_tablets]"
+      << " 4. " << kListTabletsOp << " <keyspace> <table_name> " << " [max_tablets]"
                 << " (default 10, set 0 for max)" << std::endl
-      << " 5. " << kDeleteTableOp << " <table_name>" << std::endl
+      << " 5. " << kDeleteTableOp << " <keyspace> <table_name>" << std::endl
       << " 6. " << kListAllTabletServersOp << std::endl
       << " 7. " << kListAllMastersOp << std::endl
-      << " 8. " << kChangeMasterConfigOp << " "
-                << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port>" << std::endl
+      << " 8. " << kChangeMasterConfigOp
+                << " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port>" << std::endl
       << " 9. " << kDumpMastersStateOp << std::endl
       << " 10. " << kListTabletServersLogLocationsOp << std::endl
       << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
       << " 12. " << kSetLoadBalancerEnabled << " <0|1>" << std::endl
       << " 13. " << kGetLoadMoveCompletion << std::endl
-      << " 14. " << kListLeaderCounts << " <table_name>" << std::endl
+      << " 14. " << kListLeaderCounts << " <keyspace> <table_name>" << std::endl
       << " 15. " << kSetupRedisTable << std::endl
       << " 16. " << kDropRedisTable;
 
@@ -1139,10 +1137,10 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       return 1;
     }
   } else if (op == kDeleteTableOp) {
-    if (argc < 3) {
+    if (argc != 4) {
       UsageAndExit(argv[0]);
     }
-    const YBTableName table_name("my_keyspace", argv[2]);
+    const YBTableName table_name(argv[2], argv[3]);
     Status s = client.DeleteTable(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to delete table " << table_name.ToString()
@@ -1210,10 +1208,10 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       return 1;
     }
   } else if (op == kListLeaderCounts) {
-    if (argc != 3) {
+    if (argc != 4) {
       UsageAndExit(argv[0]);
     }
-    const YBTableName table_name("my_keyspace", argv[2]);
+    const YBTableName table_name(argv[2], argv[3]);
     Status s = client.ListLeaderCounts(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to get leader counts: " << s.ToString() << std::endl;
