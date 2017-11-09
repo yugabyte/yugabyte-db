@@ -38,7 +38,7 @@ Options:
 EOT
 }
 
-TSERVER_CONF_FILE=/etc/yugabyte/tserver.conf
+TSERVER_CONF_FILE=/home/yugabyte/tserver/conf/server.conf
 
 tablet_id=""
 replicas=""
@@ -104,8 +104,8 @@ for replica in "${REPLICAS[@]}"; do
   # Now find the tablet in the data dirs.
   remote_tablet_data_dir=""
   for data_dir in "${data_dir_arr[@]}"; do
-    remote_tablet_data_dir=$(eval $ssh_cmd_prefix@$replica "find $data_dir/data/rocksdb/ -name \
-    \"*$tablet_id\"")
+    remote_tablet_data_dir=$(eval $ssh_cmd_prefix@$replica \
+    "find $data_dir/yb-data/tserver/data/rocksdb/ -name \"*$tablet_id\"")
     if [[ ! -z $remote_tablet_data_dir ]]; then
       break;
     fi
@@ -119,7 +119,7 @@ for replica in "${REPLICAS[@]}"; do
 
   echo "Found tablet dir $remote_tablet_data_dir on replica $replica" >&2
   tablet_parent=$(dirname $remote_tablet_data_dir)
-  staging_dir="$tablet_parent/$tablet_id.bulk_load_staging"
+  staging_dir="$tablet_parent/tablet-$tablet_id.bulk_load_staging"
 
   # Create staging directory and copy files over to remote tserver.
   echo "Creating staging directory $staging_dir on $replica" >&2
