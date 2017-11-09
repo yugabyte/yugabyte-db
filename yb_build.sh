@@ -296,7 +296,7 @@ while [ $# -gt 0 ]; do
     ;;
     --skip-test-existence-check|--no-test-existence-check|--ntec) test_existence_check=false ;;
     --skip-check-test-existence|--no-check-test-existence|--ncte) test_existence_check=false ;;
-    --gtest_filter)
+    --gtest-filter)
       export YB_GTEST_FILTER=$2
       shift
     ;;
