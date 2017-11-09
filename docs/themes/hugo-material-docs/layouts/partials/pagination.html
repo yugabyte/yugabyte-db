@@ -4,9 +4,6 @@
   <div class="previous">
   {{ if .Prev }}
       <a href="{{ .Prev.Permalink }}" title="{{ .Prev.Title }}">
-        <span class="direction">
-          Previous
-        </span>
         <div class="page">
           <div class="button button-previous" role="button" aria-label="Previous">
             <i class="icon icon-back"></i>
@@ -24,9 +21,6 @@
   <div class="next">
   {{ if .Next }}
       <a href="{{ .Next.Permalink }}" title="{{ .Next.Title }}">
-        <span class="direction">
-          Next
-        </span>
         <div class="page">
           <div class="stretch">
             <div class="title">

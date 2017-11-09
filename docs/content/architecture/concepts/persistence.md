@@ -303,7 +303,7 @@ cases, the TTL is stored as part of the RocksDB value as shown below:
 
 T1: INSERT INTO page_views (page_id, views)
         VALUES ('abc.com', 10)
-        <b>USING TTL 86400</b>
+        USING TTL 86400
 
 // The entries in DocDB will look like the following
 
@@ -311,7 +311,7 @@ T1: INSERT INTO page_views (page_id, views)
 (hash1, 'abc.com'), views_column_id, T1 -> (TTL = 86400) 10
 
 T2: UPDATE page_views
-     <b>USING TTL 3600</b>
+     USING TTL 3600
        SET category = 'news'
      WHERE page_id = 'abc.com';
 

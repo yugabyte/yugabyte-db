@@ -10,19 +10,19 @@ After [installing YugaByte DB](quick-start/install/), follow the instructions be
   <li class="active">
     <a data-toggle="tab" href="#docker">
       <i class="icon-docker"></i>
-      <b>Docker</b>
+      Docker
     </a>
   </li>
   <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
-      <b>macOS</b>
+      macOS
     </a>
   </li>
   <li>
     <a data-toggle="tab" href="#linux">
       <i class="fa fa-linux" aria-hidden="true"></i>
-      <b>Linux</b>
+      Linux
     </a>
   </li>
 </ul>

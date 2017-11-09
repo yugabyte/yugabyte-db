@@ -18,12 +18,14 @@ The source code for these apps is also available in the same directory as the co
 $ jar xf ./java/yb-sample-apps-sources.jar
 ```
 
-<a class="section-link" href="cql/">
-  <i class="icon-cassandra"></i>
-  Develop CQL apps
-</a>
+<div>
+  <a class="section-link icon-offset" href="cql/">
+    <div class="icon"><i class="icon-cassandra"></i></div>
+    Develop CQL apps
+  </a>
 
-<a class="section-link" href="redis/">
-  <i class="icon-redis"></i>
-  Develop Redis apps
-</a>
+  <a class="section-link icon-offset" href="redis/">
+    <div class="icon"><i class="icon-redis"></i></div>
+    Develop Redis apps
+  </a>
+</div>

@@ -4,12 +4,14 @@ title: Client API Reference
 weight: 120
 ---
 
-<a class="section-link" href="cql/">
-  <i class="icon-cassandra"></i>
-  Apache Cassandra Query Language (CQL)
-</a>
+<div>
+  <a class="section-link icon-offset" href="cql/">
+    <div class="icon"><i class="icon-cassandra"></i></div>
+    Apache Cassandra Query Language (CQL)
+  </a>
 
-<a class="section-link" href="redis/">
-  <i class="icon-redis"></i>
-  Redis
-</a>
+  <a class="section-link icon-offset" href="redis/">
+    <div class="icon"><i class="icon-redis"></i></div>
+    Redis
+  </a>
+</div>

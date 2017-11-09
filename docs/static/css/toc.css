@@ -4,18 +4,24 @@ h1 {
 }
 
 #TableOfContents {
-  padding: 10px 5px;
-  background: #fef0ea;
+  margin-bottom: 40px;
+  padding: 10px;
+  background: #f7f7f7;
   border-radius: 12px;
+  line-height: 1.8;
 }
 #TableOfContents:before {
   content: 'On this page';
   margin-left: 10px;
-  font-weight: 700;
-  color: #322;
+  font-family: Montserrat, sans-serif;
+  font-weight: 500;
+  color: #202951;
 }
 #TableOfContents > ul {
   margin: 0 0 10px;
+}
+#TableOfContents > ul > li {
+  margin-left: 7px;
 }
 #TableOfContents a {
   border-bottom: none !important;

@@ -13,20 +13,20 @@ After [creating a local cluster](/quick-start/create-local-cluster/), follow the
 <ul class="nav nav-tabs">
   <li class="active">
     <a data-toggle="tab" href="#docker">
-      <i class="fa fa-docker" aria-hidden="true"></i>
-      <b>Docker</b>
+      <i class="icon-docker" aria-hidden="true"></i>
+      Docker
     </a>
   </li>
   <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
-      <b>macOS</b>
+      macOS
     </a>
   </li>
   <li>
     <a data-toggle="tab" href="#linux">
       <i class="fa fa-linux" aria-hidden="true"></i>
-      <b>Linux</b>
+      Linux
     </a>
   </li>
 </ul>

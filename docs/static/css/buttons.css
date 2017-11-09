@@ -51,3 +51,29 @@
 
 .longer-buttons .btn {
   min-width: 240px !important; }
+
+.nav-tabs a {
+  font-family: Montserrat, sans-serif;
+  font-size: 20px;
+  font-weight: 500 !important;
+  border-radius: 0 !important;
+  padding: 18px 24px !important;
+  height: 66px;
+  margin-top: 2px;
+}
+.nav-tabs li.active a {
+  border-top: 3px solid #f75821 !important;
+  border-left: 1px solid #f75821 !important;
+  border-right: 1px solid #f75821 !important;
+  margin-top: -2px;
+  margin-bottom: -2px;
+  height: 70px;
+}
+.nav-tabs i {
+  font-size: 24px !important;
+  margin: -2px 0;
+}
+.nav-tabs .icon-docker {
+  display: inline-block;
+  vertical-align: middle;
+}

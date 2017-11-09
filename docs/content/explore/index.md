@@ -4,14 +4,16 @@ title: Explore Core Features
 weight: 10
 ---
 
- You can use your local cluster to explore all the core features of YugaByte DB.
+<div>
+  <p>You can use your local cluster to explore all the core features of YugaByte DB.</p>
 
-<a class="section-link" href="/explore/fault-tolerance">
-  <i class="fa fa-handshake-o" aria-hidden="true"></i>
-  Fault Tolerance
-</a>
+  <a class="section-link icon-offset" href="/explore/fault-tolerance">
+    <div class="icon"><i class="fa fa-handshake-o" aria-hidden="true"></i></div>
+    Fault Tolerance
+  </a>
 
-<a class="section-link" href="/explore/auto-rebalancing">
-  <i class="fa fa-balance-scale" aria-hidden="true"></i>
-  Auto Rebalancing
- </a>
+  <a class="section-link icon-offset" href="/explore/auto-rebalancing">
+    <div class="icon"><i class="fa fa-balance-scale" aria-hidden="true"></i></div>
+    Auto Rebalancing
+  </a>
+</div>
