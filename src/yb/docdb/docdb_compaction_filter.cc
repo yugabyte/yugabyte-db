@@ -191,9 +191,13 @@ bool DocDBCompactionFilter::Filter(int level,
       return true;
     }
     // During minor compactions, expired values are written back as tombstones because removing the
-    // record might expose earlier values which would be incorrect.
-    *value_changed = true;
-    *new_value = Value(PrimitiveValue(ValueType::kTombstone)).Encode();
+    // record might expose earlier values which would be incorrect. Note that this doesn't apply
+    // to init markers for collections since even if the init marker for the collection has
+    // expired, individual elements in the collection might still be valid.
+    if (!IsCollectionType(value_type)) {
+      *value_changed = true;
+      *new_value = Value(PrimitiveValue(ValueType::kTombstone)).Encode();
+    }
   }
 
   // Deletes at or below the history cutoff hybrid_time can always be cleaned up on full (major)

@@ -107,13 +107,15 @@ class DocDBRocksDBUtil {
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
+      MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
+      MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,

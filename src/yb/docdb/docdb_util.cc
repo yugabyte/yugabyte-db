@@ -247,9 +247,11 @@ Status DocDBRocksDBUtil::InsertSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     const HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
+    InitMarkerBehavior use_init_marker,
+    MonoDelta ttl) {
   DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
-  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, use_init_marker));
+  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, use_init_marker, rocksdb::kDefaultQueryId,
+                                      ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -257,9 +259,11 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     const HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
+    InitMarkerBehavior use_init_marker,
+    MonoDelta ttl) {
   DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
-  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, use_init_marker));
+  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, use_init_marker, rocksdb::kDefaultQueryId,
+                                      ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 

@@ -193,7 +193,7 @@ class SubDocument : public PrimitiveValue {
   void EnsureContainerAllocated();
 
   bool container_allocated() const {
-    CHECK(IsObjectType(type_) || type_ == ValueType::kArray);
+    CHECK(IsCollectionType(type_));
     return complex_data_structure_ != nullptr;
   }
 

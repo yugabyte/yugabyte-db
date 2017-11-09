@@ -15,7 +15,7 @@ package org.yb.cql;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
-import java.util.Iterator;
+import java.util.*;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
@@ -145,17 +145,17 @@ public class TestTTLSemantics extends BaseCQLTest {
 
     // Insert with a TTL.
     session.execute(String.format("INSERT INTO %s (k1, k2, k3, k4, c1, c2, c3) VALUES (1, 2, 3, " +
-      "4, 1, 2, 3) USING TTL 2", tableName));
+      "4, 1, 2, 3) USING TTL 5", tableName));
 
     // Now increase the ttl for the columns.
-    session.execute(String.format("UPDATE %s USING TTL 4 SET c1 = 100 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 7 SET c1 = 100 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
-    session.execute(String.format("UPDATE %s USING TTL 6 SET c2 = 200 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 9 SET c2 = 200 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
-    session.execute(String.format("UPDATE %s USING TTL 8 SET c3 = 300 WHERE " +
+    session.execute(String.format("UPDATE %s USING TTL 11 SET c3 = 300 WHERE " +
       "k1 = 1 AND k2 = 2 AND k3 = 3 AND k4 = 4", tableName));
 
-    TestUtils.waitForTTL(2000L);
+    TestUtils.waitForTTL(5000L);
 
     // Verify whole row is present.
     Row row = getFirstRowWithPrimaryKey(tableName, 1, 2, 3, 4);
@@ -405,5 +405,89 @@ public class TestTTLSemantics extends BaseCQLTest {
     assertTrue(iter.hasNext());
     row = iter.next();
     assertEquals(100, row.getInt(0));
+  }
+
+  private void verifyCollections(String selectStmt, int c1, int c2, Set<Integer> c3,
+                                 Map<Integer, Integer> c4, List<Integer> c5) {
+    List<Row> rows = session.execute(selectStmt).all();
+    assertEquals(1, rows.size());
+    assertEquals(c1, rows.get(0).getInt(0));
+    assertEquals(c2, rows.get(0).getInt(1));
+    assertEquals(c3, rows.get(0).getSet(2, Integer.class));
+    assertEquals(c4, rows.get(0).getMap(3, Integer.class, Integer.class));
+    assertEquals(c5, rows.get(0).getList(4, Integer.class));
+  }
+
+  private void addToCollection(String tableName, int element, int ttl) {
+    session.execute(String.format("UPDATE %s USING TTL %d set c3 = c3 + {%d} where c1=1 and c2=2",
+        tableName, ttl, element));
+    session.execute(String.format("UPDATE %s USING TTL %d set c4 = c4 + {%d:%d} where c1=1 and " +
+        "c2=2", tableName, ttl, element, element));
+    session.execute(String.format("UPDATE %s USING TTL %d set c5 = c5 + [%d] where c1=1 and c2=2",
+        tableName, ttl, element, element));
+  }
+
+  private void waitForTTLAndVerifyCollections(String tableName, long ttl,
+                                              List<Integer> expectedVals) throws Exception {
+    // Wait for TTL to expire.
+    TestUtils.waitForTTL(ttl);
+
+    buildAndVerifyCollections(tableName, expectedVals);
+  }
+
+  private void buildAndVerifyCollections(String tableName, List<Integer> expectedVals) {
+    Set<Integer> expectedSet = new HashSet<>();
+    Map<Integer, Integer> expectedMap = new HashMap<>();
+    List<Integer> expectedList = new ArrayList<>();
+
+    for (Integer val : expectedVals) {
+      expectedSet.add(val);
+      expectedMap.put(val, val);
+      expectedList.add(val);
+    }
+
+    // Verify data after ttl expiry.
+    verifyCollections(String.format("SELECT * FROM %s where c1 = 1 and c2 = 2", tableName), 1, 2,
+        expectedSet, expectedMap, expectedList);
+  }
+
+  @Test
+  public void testCollections() throws Exception {
+    String tableName = "testCollections";
+    session.execute(String.format("CREATE TABLE %s (c1 int, c2 int, c3 set<int>, " +
+        "c4 map<int, int>, c5 list<int>, PRIMARY KEY ((c1), c2))", tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (1, 2, {1, 2, 3}, " +
+        "{1:1, 2:2, 3:3}, [1, 2, 3]) USING TTL 10", tableName));
+
+    // Verify data.
+    verifyCollections(String.format("SELECT * FROM %s where c1 = 1 and c2 = 2", tableName), 1, 2,
+        new HashSet<>(Arrays.asList(1, 2, 3)),
+        new HashMap<Integer, Integer>(){{ put(1, 1); put(2, 2); put(3, 3); }},
+        Arrays.asList(1, 2, 3));
+
+    // Overwrite one element.
+    session.execute(String.format("UPDATE %s USING TTL 15 set c3 = c3 + {3} where c1=1 and c2=2",
+        tableName));
+    session.execute(String.format("UPDATE %s USING TTL 15 set c4 = c4 + {3:3} where c1=1 and c2=2",
+        tableName));
+    session.execute(String.format("UPDATE %s USING TTL 15 set c5[3] = 3 where c1=1 and c2=2",
+        tableName));
+
+    // Add new elements.
+    addToCollection(tableName, 4, 15);
+    addToCollection(tableName, 5, 20);
+    addToCollection(tableName, 6, 25);
+
+    // Verify data.
+    buildAndVerifyCollections(tableName, Arrays.asList(1, 2, 3, 4, 5, 6));
+
+    // Wait for TTL to expire and verify various states.
+    waitForTTLAndVerifyCollections(tableName, 10000L, Arrays.asList(3, 4, 5, 6));
+    waitForTTLAndVerifyCollections(tableName, 5000L, Arrays.asList(5, 6));
+    waitForTTLAndVerifyCollections(tableName, 5000L, Arrays.asList(6));
+
+    TestUtils.waitForTTL(5000L);
+    assertEquals(0, session.execute(String.format("SELECT * FROM %s where c1 = 1 and c2 = 2",
+        tableName)).getAvailableWithoutFetching());
   }
 }

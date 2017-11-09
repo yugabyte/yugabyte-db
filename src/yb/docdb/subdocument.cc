@@ -31,8 +31,7 @@ namespace yb {
 namespace docdb {
 
 SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
-  if (IsObjectType(value_type) ||
-      value_type == ValueType::kArray) {
+  if (IsCollectionType(value_type)) {
     EnsureContainerAllocated();
   }
 }

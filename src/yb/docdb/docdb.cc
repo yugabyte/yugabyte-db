@@ -375,34 +375,39 @@ CHECKED_STATUS BuildSubDocument(
 
       DocHybridTime write_time = found_key.doc_hybrid_time();
 
+      bool has_expired = false;
       if (!ttl.Equals(Value::kMaxTtl)) {
         const HybridTime expiry =
             server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
         if (iter->high_ht().CompareTo(expiry) > 0) {
-          // Treat the value as a tombstone written at expiry time.
+          has_expired = true;
           if (low_ts.hybrid_time() > expiry) {
             // We should have expiry > hybrid time from key > low_ts.
             return STATUS_SUBSTITUTE(Corruption,
                 "Unexpected expiry time $0 found, should be higher than $1",
                 expiry.ToDebugString(), low_ts.ToString());
           }
-          doc_value = Value(PrimitiveValue(ValueType::kTombstone));
-          // Use a write id that could never be used by a real operation within a single-shard txn,
-          // so that we don't split that operation into multiple parts.
-          write_time = DocHybridTime(expiry, kMaxWriteId);
+
+          // Treat the value as a tombstone written at expiry time. Note that this doesn't apply
+          // to init markers for collections since even if the init marker for the collection has
+          // expired, individual elements in the collection might still be valid.
+          if (!IsCollectionType(doc_value.value_type())) {
+            doc_value = Value(PrimitiveValue(ValueType::kTombstone));
+            // Use a write id that could never be used by a real operation within a single-shard
+            // txn, so that we don't split that operation into multiple parts.
+            write_time = DocHybridTime(expiry, kMaxWriteId);
+          }
         }
       }
 
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
-      if (IsObjectType(doc_value.value_type()) ||
-          doc_value.value_type() == ValueType::kArray ||
+      if (IsCollectionType(doc_value.value_type()) ||
           doc_value.value_type() == ValueType::kTombstone) {
         if (low_ts < write_time) {
           low_ts = write_time;
         }
-        if (IsObjectType(doc_value.value_type()) ||
-            doc_value.value_type() == ValueType::kArray) {
+        if (IsCollectionType(doc_value.value_type()) && !has_expired) {
           *subdocument = SubDocument(doc_value.value_type());
         }
 

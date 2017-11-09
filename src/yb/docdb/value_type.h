@@ -195,10 +195,13 @@ constexpr inline bool IsObjectType(const ValueType value_type) {
       value_type == ValueType::kRedisSet;
 }
 
+constexpr inline bool IsCollectionType(const ValueType value_type) {
+  return IsObjectType(value_type) || value_type == ValueType::kArray;
+}
+
 constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
   return kMinPrimitiveValueType <= value_type && value_type <= kMaxPrimitiveValueType &&
-         !IsObjectType(value_type) &&
-         value_type != ValueType::kArray &&
+         !IsCollectionType(value_type) &&
          value_type != ValueType::kTombstone;
 }
 

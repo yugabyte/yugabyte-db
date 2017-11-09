@@ -1932,5 +1932,87 @@ TEST_F(DocDBTest, TestBuildSubDocumentBounds) {
   EXPECT_FALSE(subdoc_found);
 }
 
+TEST_F(DocDBTest, TestCompactionForCollectionsWithTTL) {
+  SubDocument subdoc;
+  DocKey collection_key(PrimitiveValues("collection"));
+  int num_subkeys = 3;
+
+  for (int i = 0; i < num_subkeys; i++) {
+    string key = "k" + std::to_string(i);
+    string value = "v" + std::to_string(i);
+    subdoc.SetChildPrimitive(PrimitiveValue(key), PrimitiveValue(value));
+  }
+  ASSERT_OK(InsertSubDocument(
+      DocPath(collection_key.Encode()), subdoc, HybridTime::FromMicros(1000),
+      InitMarkerBehavior::OPTIONAL, MonoDelta::FromSeconds(10)));
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["collection"]), [HT(p=1000)]) -> {}; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k0"; HT(p=1000, w=1)]) -> "v0"; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k1"; HT(p=1000, w=2)]) -> "v1"; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k2"; HT(p=1000, w=3)]) -> "v2"; ttl: 10.000s
+      )#");
+
+  // Set separate TTLs for each element.
+  for (int i = 0; i < num_subkeys; i++) {
+    SubDocument subdoc;
+    string key = "k" + std::to_string(i);
+    string value = "vv" + std::to_string(i);
+    subdoc.SetChildPrimitive(PrimitiveValue(key), PrimitiveValue(value));
+    ASSERT_OK(ExtendSubDocument(
+        DocPath(collection_key.Encode()), subdoc, HybridTime::FromMicros(1100),
+        InitMarkerBehavior::OPTIONAL, MonoDelta::FromSeconds(20 + i)));
+  }
+
+  // Add new keys as well.
+  for (int i = num_subkeys; i < num_subkeys * 2; i++) {
+    SubDocument subdoc;
+    string key = "k" + std::to_string(i);
+    string value = "vv" + std::to_string(i);
+    subdoc.SetChildPrimitive(PrimitiveValue(key), PrimitiveValue(value));
+    ASSERT_OK(ExtendSubDocument(
+        DocPath(collection_key.Encode()), subdoc, HybridTime::FromMicros(1100),
+        InitMarkerBehavior::OPTIONAL, MonoDelta::FromSeconds(20 + i)));
+  }
+
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["collection"]), [HT(p=1000)]) -> {}; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k0"; HT(p=1100)]) -> "vv0"; ttl: 20.000s
+      SubDocKey(DocKey([], ["collection"]), ["k0"; HT(p=1000, w=1)]) -> "v0"; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k1"; HT(p=1100)]) -> "vv1"; ttl: 21.000s
+      SubDocKey(DocKey([], ["collection"]), ["k1"; HT(p=1000, w=2)]) -> "v1"; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k2"; HT(p=1100)]) -> "vv2"; ttl: 22.000s
+      SubDocKey(DocKey([], ["collection"]), ["k2"; HT(p=1000, w=3)]) -> "v2"; ttl: 10.000s
+      SubDocKey(DocKey([], ["collection"]), ["k3"; HT(p=1100)]) -> "vv3"; ttl: 23.000s
+      SubDocKey(DocKey([], ["collection"]), ["k4"; HT(p=1100)]) -> "vv4"; ttl: 24.000s
+      SubDocKey(DocKey([], ["collection"]), ["k5"; HT(p=1100)]) -> "vv5"; ttl: 25.000s
+      )#");
+
+  CompactHistoryBefore(HybridTime::FromMicros(1050 + 10000000));
+  AssertDocDbDebugDumpStrEq(R"#(
+      SubDocKey(DocKey([], ["collection"]), ["k0"; HT(p=1100)]) -> "vv0"; ttl: 20.000s
+      SubDocKey(DocKey([], ["collection"]), ["k1"; HT(p=1100)]) -> "vv1"; ttl: 21.000s
+      SubDocKey(DocKey([], ["collection"]), ["k2"; HT(p=1100)]) -> "vv2"; ttl: 22.000s
+      SubDocKey(DocKey([], ["collection"]), ["k3"; HT(p=1100)]) -> "vv3"; ttl: 23.000s
+      SubDocKey(DocKey([], ["collection"]), ["k4"; HT(p=1100)]) -> "vv4"; ttl: 24.000s
+      SubDocKey(DocKey([], ["collection"]), ["k5"; HT(p=1100)]) -> "vv5"; ttl: 25.000s
+      )#");
+
+  SubDocument doc_from_rocksdb;
+  bool subdoc_found_in_rocksdb = false;
+  EXPECT_OK(GetSubDocument(
+      rocksdb(), SubDocKey(collection_key), rocksdb::kDefaultQueryId,
+      kNonTransactionalOperationContext, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
+      HybridTime::FromMicros(1200)));
+  ASSERT_TRUE(subdoc_found_in_rocksdb);
+
+  for (int i = 0; i < num_subkeys * 2; i++) {
+    SubDocument subdoc;
+    string key = "k" + std::to_string(i);
+    string value = "vv" + std::to_string(i);
+    ASSERT_EQ(value, doc_from_rocksdb.GetChild(PrimitiveValue(key))->GetString());
+  }
+}
+
 }  // namespace docdb
 }  // namespace yb
