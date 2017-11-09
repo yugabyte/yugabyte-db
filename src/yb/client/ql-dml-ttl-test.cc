@@ -12,9 +12,8 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
-
 #include "yb/client/table_handle.h"
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 namespace yb {
 namespace client {

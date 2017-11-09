@@ -13,8 +13,8 @@
 
 #include "yb/client/client.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/ql/ql_processor.h"
-#include "yb/ql/util/statement_params.h"
+#include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/util/test_util.h"
 #include "yb/util/async_util.h"
 

@@ -28,7 +28,7 @@
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(mini_cluster_reuse_data);
 DECLARE_bool(rocksdb_disable_compactions);

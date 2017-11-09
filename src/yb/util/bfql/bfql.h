@@ -67,7 +67,7 @@
 // EXAMPPLE
 // --------
 // The test "/yb/util/bfql/bfql-test.cc" would be a good example on builtin-call usage.
-// The file "/yb/ql/ptree/pt_bfunc.cc" can be used as example at the moment.
+// The file "/yb/yql/cql/ql/ptree/pt_bfunc.cc" can be used as example at the moment.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_UTIL_BFQL_BFQL_H_

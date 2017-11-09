@@ -23,8 +23,8 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_manager.h"
 
-#include "yb/ql/util/errcodes.h"
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/test_clock.h"

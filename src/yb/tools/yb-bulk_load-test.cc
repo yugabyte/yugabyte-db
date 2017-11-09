@@ -29,7 +29,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"

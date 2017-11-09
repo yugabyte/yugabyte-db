@@ -51,7 +51,7 @@
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/thread_pool.h"
 
-#include "yb/ql/ql_session.h"
+#include "yb/yql/cql/ql/ql_session.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"

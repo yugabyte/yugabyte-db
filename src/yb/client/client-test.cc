@@ -65,7 +65,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tserver/mini_tablet_server.h"

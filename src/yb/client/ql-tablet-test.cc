@@ -28,7 +28,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

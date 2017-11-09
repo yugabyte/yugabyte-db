@@ -1504,8 +1504,6 @@ add_subdirectory(src/yb/benchmarks)
 add_subdirectory(src/yb/tools)
 add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
-add_subdirectory(src/yb/ql)
-add_subdirectory(src/yb/cqlserver)
 add_subdirectory(src/yb/yql)
 
 if ("${YB_EDITION}" STREQUAL "enterprise")

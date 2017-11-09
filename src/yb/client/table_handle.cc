@@ -15,9 +15,9 @@
 
 #include "yb/master/master.pb.h"
 
-#include "yb/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 namespace yb {
 namespace client {

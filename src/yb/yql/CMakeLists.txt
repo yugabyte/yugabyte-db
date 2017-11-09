@@ -12,8 +12,8 @@
 #
 
 # CQL service
-# add_subdirectory(cql/ql)
-# add_subdirectory(cql/cqlserver)
+add_subdirectory(cql/ql)
+add_subdirectory(cql/cqlserver)
 
 # REDIS service
 add_subdirectory(redis/redisserver)
