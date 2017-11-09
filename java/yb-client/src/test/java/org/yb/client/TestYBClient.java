@@ -203,7 +203,7 @@ public class TestYBClient extends BaseYBClientTest {
     LeaderStepDownResponse resp = syncClient.masterLeaderStepDown();
     assertFalse(resp.hasError());
     // Sleep to give time for re-election completion. TODO: Add api for election completion.
-    Thread.sleep(3000);
+    Thread.sleep(6000);
     String newLeaderUuid = syncClient.getLeaderMasterUUID();
     assertNotNull(newLeaderUuid);
     listResp = syncClient.listMasters();
