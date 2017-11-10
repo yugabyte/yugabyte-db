@@ -123,11 +123,12 @@ a {
   border-bottom-style: solid;
   text-decoration: none !important;
 }
-.drawer h3,
+.drawer h3 {
+  margin-top: 28px;
+}
 .palette-primary-orange .article h1,
 .palette-primary-orange .article h2,
 .palette-primary-orange .article h3 {
-  margin-top: 28px;
   padding-top: 0 !important;
   font-family: Montserrat, "Open Sans", sans-serif !important;
   color: #344d78 !important;
@@ -142,11 +143,14 @@ a {
 }
 
 .palette-primary-orange .article h2 {
-  margin-top: 56px;
+  margin-top: -52px;
+  padding-top: 100px !important;
   font-size: 28px;
   font-weight: 500;
 }
 .palette-primary-orange .article h3 {
+  margin-top: -66px;
+  padding-top: 100px !important;
   font-size: 20px;
   font-weight: 500;
   color: #344d78;
