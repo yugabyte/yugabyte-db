@@ -55,7 +55,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       public void run(Universe universe) {
         if (expectedUniverseVersion != -1 && expectedUniverseVersion != universe.version) {
           String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
-              ", is different from the expected version of " + expectedUniverseVersion;
+              ", is different from the expected version of " + expectedUniverseVersion + ". User " +
+              "would have to sumbit the operation from a refreshed top-level universe page.";
           LOG.error(msg);
           throw new IllegalStateException(msg);
         }
