@@ -152,7 +152,7 @@ public class TestSystemTables extends BaseCQLTest {
 
     // Start the tserver back up and wait for NUM_TABLET_SERVERS + 1 (since master never forgets
     // tservers).
-    miniCluster.startTServer(null);
+    miniCluster.startTServer(BaseCQLTest.tserverArgs);
     assertTrue(miniCluster.waitForTabletServers(NUM_TABLET_SERVERS + 1));
   }
 
