@@ -61,7 +61,7 @@ class ClusterOptions():
         self.build_bin_dir = os.path.realpath(
                 os.path.join(self.script_dir, "..", "build", "latest", "bin"))
 
-        self.drives = ["disk1", "disk2"]
+        self.drives = ["disk-{}".format(i) for i in xrange(1, 3)]
 
         self.placement_cloud = "cloud"
         self.placement_region = "region"
@@ -121,7 +121,7 @@ class ClusterOptions():
         raise RuntimeError("No binary found for {}".format(binary_name))
 
     def get_base_node_dirs(self, daemon_index):
-        return ["{}/{}/node-{}".format(self.cluster_base_dir, drive, daemon_index)
+        return ["{}/node-{}/{}".format(self.cluster_base_dir, daemon_index, drive)
                 for drive in self.drives]
 
     def get_local_url_for_index(self, daemon_index):
@@ -192,7 +192,7 @@ class ClusterControl():
              for i in range(1, server_counts + 1)])
 
     def get_number_servers(self, daemon_type):
-        return len(glob.glob("{}/{}/*/yb-data/{}".format(
+        return len(glob.glob("{}/*/{}/yb-data/{}".format(
             self.options.cluster_base_dir, self.options.drives[0], daemon_type)))
 
     def get_pid(self, daemon_type, daemon_index):
