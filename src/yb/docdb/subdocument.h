@@ -111,10 +111,6 @@ class SubDocument : public PrimitiveValue {
   // Assume current subdocument is of map type (kObject type)
   CHECKED_STATUS ConvertToRedisTS();
 
-  // Interpret the SubDocument as an Array.
-  // Assume current subdocument is of map type (kObject type)
-  CHECKED_STATUS ConvertToArray();
-
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.
   SubDocument* GetChild(const PrimitiveValue& key);

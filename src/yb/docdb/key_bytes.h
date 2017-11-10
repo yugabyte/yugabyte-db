@@ -225,10 +225,12 @@ class KeyBytes {
     return yb::docdb::ToShortDebugStr(data_);
   }
 
- private:
-  int encoded_hybrid_time_size() const {
-    return data_.empty() ? 0 : static_cast<uint8_t>(data_.back());
+  void Truncate(size_t new_size) {
+    DCHECK_LE(new_size, data_.size());
+    data_.resize(new_size);
   }
+
+ private:
 
   std::string data_;
 };

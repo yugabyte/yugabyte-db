@@ -135,28 +135,6 @@ Status SubDocument::ConvertToRedisSet() {
   return ConvertToCollection(ValueType::kRedisSet);
 }
 
-Status SubDocument::ConvertToArray() {
-  if (type_ != ValueType::kObject) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Expected kObject Subdocument, found $0", type_);
-  }
-  if (!has_valid_object_container()) {
-    return STATUS(InvalidArgument, "Subdocument doesn't have valid object container");
-  }
-  const ObjectContainer& map = object_container();
-  ArrayContainer* list = new ArrayContainer();
-  list->reserve(map.size());
-  // Elements in std::map are ordered by operator< on the key.
-  // So iteration goes through sorted key order.
-  for (auto ent : map) {
-    list->emplace_back(std::move(ent.second));
-  }
-  type_ = ValueType::kArray;
-  delete &object_container();
-  complex_data_structure_ = list;
-  return Status::OK();
-}
-
 SubDocument* SubDocument::GetChild(const PrimitiveValue& key) {
   if (!has_valid_object_container()) {
     return nullptr;

@@ -30,6 +30,7 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
 
@@ -44,7 +45,8 @@ static constexpr int kMaxNumRandomDocKeyParts = 10;
 // Maximum number of subkeys in a randomly-generated SubDocKey.
 static constexpr int kMaxNumRandomSubKeys = 10;
 
-YB_DEFINE_ENUM(ResolveIntentsDuringRead, (kNo)(kYes));
+YB_STRONGLY_TYPED_BOOL(ResolveIntentsDuringRead);
+YB_STRONGLY_TYPED_BOOL(UseHash);
 
 // Intended only for testing, when we want to enable transaction aware code path for cases when we
 // really have no transactions. This way we will test that transaction aware code path works
@@ -68,15 +70,15 @@ std::vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng,
                                                      int max_num = kMaxNumRandomDocKeyParts);
 
 // Generate a "minimal" DocKey.
-DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, bool use_hash);
+DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash);
 
 // Generate a random DocKey with up to the default number of components.
-DocKey GenRandomDocKey(RandomNumberGenerator* rng, bool use_hash);
+DocKey GenRandomDocKey(RandomNumberGenerator* rng, UseHash use_hash);
 
-std::vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, bool use_hash, int num_keys);
+std::vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, UseHash use_hash, int num_keys);
 
 std::vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng,
-                                           bool use_hash,
+                                           UseHash use_hash,
                                            int num_keys);
 
 template<typename T>
@@ -114,8 +116,8 @@ class DocDBLoadGenerator {
   DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
                      int num_doc_keys,
                      int num_unique_subkeys,
-                     bool use_hash,
-                     ResolveIntentsDuringRead resolve_intents = ResolveIntentsDuringRead::kYes,
+                     UseHash use_hash,
+                     ResolveIntentsDuringRead resolve_intents = ResolveIntentsDuringRead::kTrue,
                      int deletion_chance = 100,
                      int max_nesting_level = 10,
                      uint64 random_seed = kDefaultRandomSeed,

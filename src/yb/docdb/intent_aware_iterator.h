@@ -38,7 +38,7 @@ class Value;
 // Might ignore values with HT higher than high_ht for performance optimization.
 // Intent data format:
 //   kIntentPrefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
-// TxnId, IntentType, HybridTime all prefixed with appropriate value type.
+// TxnId, IntentType, HybridTime are all prefixed with their respective value types.
 class IntentAwareIterator {
  public:
   IntentAwareIterator(

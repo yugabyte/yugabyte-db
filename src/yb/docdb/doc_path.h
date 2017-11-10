@@ -28,8 +28,8 @@ namespace docdb {
 
 // Identifies a particular subdocument inside the logical representation of the document database.
 // By "logical representation" we mean that we are not concerned with the exact keys used in the
-// underlying key-value store, and we do not keep track of any "generation timestamps" of various
-// parent subdocuments of the subdocument we are pointing to.
+// underlying key-value store. This is very similar to a SubDocKey without a hybrid time, and can
+// probably be merged with it.
 
 class DocPath {
  public:

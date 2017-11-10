@@ -170,7 +170,7 @@ void PrepareNonTransactionWriteBatch(
     // Debug-only: ensure all keys we get in Raft replication can be decoded.
     {
       docdb::SubDocKey subdoc_key;
-      Status s = subdoc_key.FullyDecodeFromKeyWithoutHybridTime(kv_pair.key());
+      Status s = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(kv_pair.key());
       CHECK(s.ok())
           << "Failed decoding key: " << s.ToString() << "; "
           << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
@@ -1003,7 +1003,7 @@ Result<std::string> DocDBKeyToDebugStr(const Slice& key_slice, KeyType* key_type
           DecodeIntentKey(key_slice, &intent_prefix, &intent_type, &doc_ht),
           "Error: failed decoding RocksDB intent key " + FormatRocksDBSliceAsStr(key_slice));
       intent_prefix.consume_byte();
-      RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(intent_prefix, false));
+      RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(intent_prefix));
       return subdoc_key.ToString() + " " + yb::docdb::ToString(intent_type) + " " +
           doc_ht.ToString();
     }

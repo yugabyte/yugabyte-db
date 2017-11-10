@@ -165,7 +165,7 @@ std::string DebugDumpKeyToStr(const KeyBytes &key) {
 
 bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
   SubDocKey subdoc_key;
-  DCHECK(subdoc_key.FullyDecodeFrom(subdoc_key_encoded, false).ok());
+  CHECK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(subdoc_key_encoded).ok());
   return subdoc_key.has_hybrid_time();
 }
 

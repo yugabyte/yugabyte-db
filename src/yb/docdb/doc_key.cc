@@ -414,7 +414,7 @@ class DecodeSubDocKeyCallback {
 
 Status SubDocKey::PartiallyDecode(Slice* slice, boost::container::small_vector_base<Slice>* out) {
   CHECK_NOTNULL(out);
-  return DoDecode(slice, true, DecodeSubDocKeyCallback(out));
+  return DoDecode(slice, HybridTimeRequired::kTrue, DecodeSubDocKeyCallback(out));
 }
 
 class SubDocKey::DecodeCallback {
@@ -440,7 +440,7 @@ class SubDocKey::DecodeCallback {
   SubDocKey* key_;
 };
 
-Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_time) {
+Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, HybridTimeRequired require_hybrid_time) {
   Clear();
   return DoDecode(slice, require_hybrid_time, DecodeCallback(this));
 }
@@ -460,7 +460,7 @@ Result<bool> SubDocKey::DecodeSubkey(Slice* slice, const Callback& callback) {
 
 template<class Callback>
 Status SubDocKey::DoDecode(rocksdb::Slice* slice,
-                           const bool require_hybrid_time,
+                           const HybridTimeRequired require_hybrid_time,
                            const Callback& callback) {
   const rocksdb::Slice original_bytes(*slice);
 
@@ -498,7 +498,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
 }
 
 Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
-                                  const bool require_hybrid_time) {
+                                  HybridTimeRequired require_hybrid_time) {
   rocksdb::Slice mutable_slice = slice;
   Status status = DecodeFrom(&mutable_slice, require_hybrid_time);
   if (!mutable_slice.empty()) {
@@ -585,7 +585,7 @@ int SubDocKey::CompareToIgnoreHt(const SubDocKey& other) const {
 string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   rocksdb::Slice mutable_slice(key_bytes.AsSlice());
   SubDocKey subdoc_key;
-  Status decode_status = subdoc_key.DecodeFrom(&mutable_slice, /* require_hybrid_time = */ false);
+  Status decode_status = subdoc_key.DecodeFrom(&mutable_slice, HybridTimeRequired::kFalse);
   if (decode_status.ok()) {
     ostringstream ss;
     if (!subdoc_key.has_hybrid_time() && subdoc_key.num_subkeys() == 0) {

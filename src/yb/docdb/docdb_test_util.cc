@@ -213,11 +213,11 @@ vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng, int 
   return result;
 }
 
-DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, bool use_hash) {
+DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
   return use_hash ? DocKey(static_cast<DocKeyHash>((*rng)()), {}, {}) : DocKey();
 }
 
-DocKey GenRandomDocKey(RandomNumberGenerator* rng, bool use_hash) {
+DocKey GenRandomDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
   if (use_hash) {
     return DocKey(
         static_cast<uint32_t>((*rng)()),  // this is just a random value, not a hash function result
@@ -228,7 +228,7 @@ DocKey GenRandomDocKey(RandomNumberGenerator* rng, bool use_hash) {
   }
 }
 
-vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, bool use_hash, int num_keys) {
+vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, UseHash use_hash, int num_keys) {
   vector<DocKey> result;
   result.push_back(CreateMinimalDocKey(rng, use_hash));
   for (int iteration = 0; iteration < num_keys; ++iteration) {
@@ -237,7 +237,7 @@ vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, bool use_hash, int n
   return result;
 }
 
-vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, bool use_hash, int num_keys) {
+vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, UseHash use_hash, int num_keys) {
   vector<SubDocKey> result;
   result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), HybridTime((*rng)())));
   for (int iteration = 0; iteration < num_keys; ++iteration) {
@@ -289,7 +289,7 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
 DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
                                        const int num_doc_keys,
                                        const int num_unique_subkeys,
-                                       const bool use_hash,
+                                       const UseHash use_hash,
                                        const ResolveIntentsDuringRead resolve_intents,
                                        const int deletion_chance,
                                        const int max_nesting_level,
@@ -546,13 +546,10 @@ void DocDBLoadGenerator::RecordSnapshotDivergence(const InMemDocDbState &snapsho
 }
 
 TransactionOperationContextOpt DocDBLoadGenerator::GetReadOperationTransactionContext() {
-  switch (resolve_intents_) {
-    case ResolveIntentsDuringRead::kYes:
-      return kNonTransactionalOperationContext;
-    case ResolveIntentsDuringRead::kNo:
-      return boost::none;
+  if (resolve_intents_) {
+    return kNonTransactionalOperationContext;
   }
-  FATAL_INVALID_ENUM_VALUE(ResolveIntentsDuringRead, resolve_intents_);
+  return boost::none;
 }
 
 // ------------------------------------------------------------------------------------------------

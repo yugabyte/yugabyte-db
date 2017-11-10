@@ -56,19 +56,19 @@ int Sign(int x) {
 
 template<typename T>
 std::vector<T> GenRandomDocOrSubDocKeys(RandomNumberGenerator* rng,
-                                        bool use_hash,
+                                        UseHash use_hash,
                                         int num_keys);
 
 template<>
 std::vector<DocKey> GenRandomDocOrSubDocKeys<DocKey>(RandomNumberGenerator* rng,
-                                                     bool use_hash,
+                                                     UseHash use_hash,
                                                      int num_keys) {
   return GenRandomDocKeys(rng, use_hash, num_keys);
 }
 
 template<>
 std::vector<SubDocKey> GenRandomDocOrSubDocKeys<SubDocKey>(RandomNumberGenerator* rng,
-                                                           bool use_hash,
+                                                           UseHash use_hash,
                                                            int num_keys) {
   return GenRandomSubDocKeys(rng, use_hash, num_keys);
 }
@@ -86,7 +86,7 @@ void TestRoundTripDocOrSubDocKeyEncodingDecoding(const DocOrSubDocKey& doc_or_su
 template <typename DocOrSubDocKey>
 void TestRoundTripDocOrSubDocKeyEncodingDecoding() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
-  for (int use_hash = 0; use_hash <= 1; ++use_hash) {
+  for (auto use_hash : UseHash::kValues) {
     auto doc_or_subdoc_keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
         &rng, use_hash, kNumDocOrSubDocKeysPerBatch);
     for (const auto& doc_or_subdoc_key : doc_or_subdoc_keys) {
@@ -98,7 +98,7 @@ void TestRoundTripDocOrSubDocKeyEncodingDecoding() {
 template <typename DocOrSubDocKey>
 void TestDocOrSubDocKeyComparison() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
-  for (int use_hash = 0; use_hash <= 1; ++use_hash) {
+  for (auto use_hash : UseHash::kValues) {
     auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
         &rng, use_hash, kNumDocOrSubDocKeysPerBatch);
     for (int k = 0; k < kNumTestDocOrSubDocKeyComparisons; ++k) {
@@ -314,7 +314,7 @@ TEST(DocKeyTest, TestFromKuduKey) {
 
 TEST(DocKeyTest, TestSubDocKeyStartsWith) {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
-  auto subdoc_keys = GenRandomSubDocKeys(&rng, /* use_hash = */ false, 1000);
+  auto subdoc_keys = GenRandomSubDocKeys(&rng, UseHash::kFalse, 1000);
   for (const auto& subdoc_key : subdoc_keys) {
     if (subdoc_key.num_subkeys() > 0) {
       const SubDocKey doc_key_only = SubDocKey(subdoc_key.doc_key());

@@ -68,7 +68,7 @@ class RandomizedDocDBTest : public DocDBTestBase,
   RandomizedDocDBTest() : verify_history_cleanup_(true) {
   }
 
-  void Init(const bool use_hash) {
+  void Init(const UseHash use_hash) {
     if (load_gen_.get() != nullptr) {
       ClearLogicalSnapshots();
       ASSERT_OK(DestroyRocksDB());
@@ -85,16 +85,10 @@ class RandomizedDocDBTest : public DocDBTestBase,
   int num_iterations_divider() {
     // GetSubDocument is slower when trying to resolve intents, so we reduce number of iterations
     // in order to respect the timeout.
-    switch (resolve_intents_) {
-      case ResolveIntentsDuringRead::kYes:
-        return 2;
-      case ResolveIntentsDuringRead::kNo:
-        return 1;
-    }
-    FATAL_INVALID_ENUM_VALUE(ResolveIntentsDuringRead, resolve_intents_);
+    return resolve_intents_ ? 2 : 1;
   }
 
-  ResolveIntentsDuringRead resolve_intents_ = ResolveIntentsDuringRead::kYes;
+  ResolveIntentsDuringRead resolve_intents_ = ResolveIntentsDuringRead::kTrue;
   bool verify_history_cleanup_;
   std::unique_ptr<DocDBLoadGenerator> load_gen_;
 };
@@ -254,7 +248,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
 TEST_P(RandomizedDocDBTest, TestNoFlush) {
   resolve_intents_ = GetParam();
   const int num_iter = FLAGS_test_num_iter / num_iterations_divider();
-  for (auto use_hash : {false, true}) {
+  for (auto use_hash : UseHash::kValues) {
     Init(use_hash);
     while (load_gen_->next_iteration() <= num_iter) {
       ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration " <<
@@ -266,7 +260,7 @@ TEST_P(RandomizedDocDBTest, TestNoFlush) {
 TEST_P(RandomizedDocDBTest, TestWithFlush) {
   resolve_intents_ = GetParam();
   const int num_iter = FLAGS_test_num_iter / num_iterations_divider();
-  for (auto use_hash : {false, true}) {
+  for (auto use_hash : UseHash::kValues) {
     Init(use_hash);
     while (load_gen_->next_iteration() <= num_iter) {
       ASSERT_NO_FATALS(load_gen_->PerformOperation()) << "at iteration "
@@ -280,7 +274,7 @@ TEST_P(RandomizedDocDBTest, TestWithFlush) {
 
 TEST_P(RandomizedDocDBTest, Snapshots) {
   resolve_intents_ = GetParam();
-  for (auto use_hash : {false, true}) {
+  for (auto use_hash : UseHash::kValues) {
     Init(use_hash);
     RunWorkloadWithSnaphots(/* enable_history_cleanup = */ false);
   }
@@ -288,7 +282,7 @@ TEST_P(RandomizedDocDBTest, Snapshots) {
 
 TEST_P(RandomizedDocDBTest, SnapshotsWithHistoryCleanup) {
   resolve_intents_ = GetParam();
-  for (auto use_hash : {false, true}) {
+  for (auto use_hash : UseHash::kValues) {
     Init(use_hash);
     // Don't verify history cleanup in case we use hashed components, since hardcoded expected
     // values doesn't work for that use case.
@@ -299,13 +293,13 @@ TEST_P(RandomizedDocDBTest, SnapshotsWithHistoryCleanup) {
 }
 
 INSTANTIATE_TEST_CASE_P(bool, RandomizedDocDBTest, ::testing::Values(
-    ResolveIntentsDuringRead::kNo, ResolveIntentsDuringRead::kYes));
+    ResolveIntentsDuringRead::kFalse, ResolveIntentsDuringRead::kTrue));
 
 // This is a bit different from SnapshotsWithHistoryCleanup. Here, we perform history cleanup within
 // DocDBLoadGenerator::PerformOperation itself, reading the document being modified both before
 // and after the history cleanup.
 TEST_F(RandomizedDocDBTest, ImmediateHistoryCleanup) {
-  for (auto use_hash : {false, true}) {
+  for (auto use_hash : UseHash::kValues) {
     Init(use_hash);
     while (load_gen_->next_iteration() <= FLAGS_test_num_iter) {
       if (load_gen_->next_iteration() % 250 == 0) {

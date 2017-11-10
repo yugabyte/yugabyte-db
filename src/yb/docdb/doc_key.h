@@ -22,6 +22,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 #include "yb/common/encoded_key.h"
 #include "yb/common/schema.h"
@@ -60,6 +61,8 @@ enum class DocKeyPart {
   WHOLE_DOC_KEY,
   HASHED_PART_ONLY
 };
+
+YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
 
 class DocKey {
  public:
@@ -233,11 +236,6 @@ class SubDocKey {
         subkeys_(subkeys) {
   }
 
-  static SubDocKey MakeSeekKey(const DocKey& doc_key, const std::vector<PrimitiveValue>& subkeys,
-                               HybridTime hybrid_time) {
-    return SubDocKey(doc_key, DocHybridTime(hybrid_time, kMaxWriteId), subkeys);
-  }
-
   SubDocKey(const DocKey& doc_key,
             HybridTime hybrid_time,
             const std::vector<PrimitiveValue>& subkeys)
@@ -314,7 +312,8 @@ class SubDocKey {
   //     Otherwise, we allow decoding an incomplete SubDocKey without a hybrid_time in the end. Note
   //     that we also allow input that has a few bytes in the end but not enough to represent a
   //     hybrid_time.
-  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice, bool require_hybrid_time = true);
+  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
+                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue);
 
   static Result<bool> DecodeSubkey(Slice* slice, PrimitiveValue* out);
 
@@ -323,7 +322,7 @@ class SubDocKey {
   // hybrid_time is omitted, we don't allow any extra bytes to be present in the slice.
   CHECKED_STATUS FullyDecodeFrom(
       const rocksdb::Slice& slice,
-      bool require_hybrid_time = true);
+      HybridTimeRequired hybrid_time_required = HybridTimeRequired::kTrue);
 
   // Splits given RocksDB key into vector of slices that forms range_group of document key and
   // hybrid_time.
@@ -332,8 +331,8 @@ class SubDocKey {
 
   static Result<bool> DecodeSubkey(Slice* slice);
 
-  CHECKED_STATUS FullyDecodeFromKeyWithoutHybridTime(const rocksdb::Slice& slice) {
-    return FullyDecodeFrom(slice, /* require_hybrid_time = */ false);
+  CHECKED_STATUS FullyDecodeFromKeyWithOptionalHybridTime(const rocksdb::Slice& slice) {
+    return FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
   }
 
   std::string ToString() const;
@@ -404,10 +403,6 @@ class SubDocKey {
     return doc_ht_.is_valid();
   }
 
-  void RemoveHybridTime() {
-    doc_ht_ = DocHybridTime::kInvalid;
-  }
-
   // @return The number of initial components (including document key and subkeys) that this
   //         SubDocKey shares with another one. This does not care about the hybrid_time field.
   int NumSharedPrefixComponents(const SubDocKey& other) const;
@@ -474,23 +469,22 @@ class SubDocKey {
   class DecodeCallback;
   friend class DecodeCallback;
 
+  // Attempts to decode and consume a subkey from the beginning of the given slice.
+  // A non-error false result means e.g. that the slice is empty or if the next thing is an encoded
+  // hybrid time.
   template<class Callback>
   static Result<bool> DecodeSubkey(Slice* slice, const Callback& callback);
 
   template<class Callback>
   static Status DoDecode(rocksdb::Slice* slice,
-                         const bool require_hybrid_time,
+                         HybridTimeRequired require_hybrid_time,
                          const Callback& callback);
 
   DocKey doc_key_;
   DocHybridTime doc_ht_;
-  std::vector<PrimitiveValue> subkeys_;
 
-  void EnsureHasNoHybridTimeYet() {
-    DCHECK(!has_hybrid_time())
-        << "Trying to append a primitive value to a SubDocKey " << ToString()
-        << " that already has a hybrid_time set: " << doc_ht_.ToString();
-  }
+  // TODO: make this a small_vector.
+  std::vector<PrimitiveValue> subkeys_;
 };
 
 inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key) {

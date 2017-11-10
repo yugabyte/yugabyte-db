@@ -198,8 +198,8 @@ void PerformRocksDBSeek(
         // is one. Before we crash, let's decode the full key and check if the timestamp is really
         // there.
         SubDocKey subdoc_key;
-        const Status subdoc_key_decode_status = subdoc_key.FullyDecodeFrom(
-            seek_key, /* require_hybrid_time = */ false);
+        const Status subdoc_key_decode_status = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(
+            seek_key);
         // Don't crash if we failed to decode the SubDocKey (that is sometimes possible in
         // special-case seek keys that we construct), or if we decoded it and it had no hybrid
         // time (which is used in the write-path InternalDocIterator to check if an object init

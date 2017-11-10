@@ -31,7 +31,13 @@ CHECKED_STATUS DecodeIntentKey(const Slice &encoded_intent_key, Slice* intent_pr
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
 enum class IntentKind {
+  // "Weak" intents are written for ancecstor keys of a key that's being modified. For example, if
+  // we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
+  // keys "a" and "a.b".
   kWeak,
+
+  // "Strong" intents are written for keys that are being modified. In the example above, we will
+  // write a strong snapshot isolation intent for the key a.b.c itself.
   kStrong
 };
 

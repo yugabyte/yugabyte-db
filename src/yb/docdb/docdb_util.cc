@@ -115,7 +115,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
-      RETURN_NOT_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithoutHybridTime(entry.first),
+      RETURN_NOT_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.first),
           Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
     }
   }
