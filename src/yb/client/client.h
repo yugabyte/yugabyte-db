@@ -1063,7 +1063,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Caller takes ownership of the returned errors.
   //
   // This function is thread-safe.
-  void GetPendingErrors(CollectedErrors* errors, bool* overflowed);
+  CollectedErrors GetPendingErrors();
 
   YBClient* client() const;
 

@@ -387,11 +387,8 @@ class Block : public std::enable_shared_from_this<Block> {
     VLOG(3) << "Received status from call " << status.ToString(true);
 
     if (!status.ok()) {
-      client::CollectedErrors errors;
-      bool overflowed;
       if (session_.get() != nullptr) {
-        session_->GetPendingErrors(&errors, &overflowed);
-        for (const auto& error : errors) {
+        for (const auto& error : session_->GetPendingErrors()) {
           LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
         }
       }

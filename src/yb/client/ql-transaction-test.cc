@@ -127,7 +127,7 @@ class QLTransactionTest : public QLDmlTestBase {
   shared_ptr<YBSession> CreateSession(const bool read_only,
                                       const YBTransactionPtr& transaction = nullptr) {
     auto session = std::make_shared<YBSession>(client_, read_only, transaction);
-    session->SetTimeout(5s);
+    session->SetTimeout(NonTsanVsTsan(5s, 20s));
     return session;
   }
 
@@ -176,7 +176,13 @@ class QLTransactionTest : public QLDmlTestBase {
     auto* const req = op->mutable_request();
     table_.SetInt32Expression(req->add_hashed_column_values(), key);
     table_.AddColumns({"v"}, req);
-    RETURN_NOT_OK(session->Apply(op));
+    auto status = session->Apply(op);
+    if (status.IsIOError()) {
+      for (const auto& error : session->GetPendingErrors()) {
+        LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
+      }
+    }
+    RETURN_NOT_OK(status);
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(QLError, "Error selecting row: $0", op->response().error_message());
     }

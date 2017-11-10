@@ -15,6 +15,8 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/util/tsan_util.h"
+
 namespace yb {
 
 namespace {
@@ -84,6 +86,11 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
                            "start_time: $4",
                        metadata.transaction_id, IsolationLevel_Name(metadata.isolation),
                        metadata.status_tablet, metadata.priority, metadata.start_time);
+}
+
+// TODO(dtxn) correct deadline should be calculated and propagated.
+MonoTime TransactionRpcDeadline() {
+  return MonoTime::FineNow() + MonoDelta::FromSeconds(NonTsanVsTsan(15, 5));
 }
 
 } // namespace yb

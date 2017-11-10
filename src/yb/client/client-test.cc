@@ -1432,10 +1432,7 @@ TEST_F(ClientTest, TestScanTimeout) {
 
 static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
   CHECK_EQ(1, session->CountPendingErrors());
-  CollectedErrors errors;
-  bool overflow;
-  session->GetPendingErrors(&errors, &overflow);
-  CHECK(!overflow);
+  CollectedErrors errors = session->GetPendingErrors();
   CHECK_EQ(1, errors.size());
   std::unique_ptr<YBError> result = std::move(errors.front());
   return result;

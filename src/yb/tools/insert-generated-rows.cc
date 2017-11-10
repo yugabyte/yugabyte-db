@@ -115,11 +115,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
     CHECK_OK(session->Apply(insert));
     Status s = session->Flush();
     if (PREDICT_FALSE(!s.ok())) {
-      client::CollectedErrors errors;
-      bool overflow;
-      session->GetPendingErrors(&errors, &overflow);
-      CHECK(!overflow);
-      for (const auto& e : errors) {
+      for (const auto& e : session->GetPendingErrors()) {
         if (e->status().IsAlreadyPresent()) {
           LOG(WARNING) << "Ignoring insert error: " << e->status().ToString();
         } else {

@@ -52,11 +52,13 @@ int ErrorCollector::CountErrors() const {
   return errors_.size();
 }
 
-void ErrorCollector::GetErrors(CollectedErrors* errors, bool* overflowed) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  errors->swap(errors_);
-  errors_.clear();
-  *overflowed = false;
+CollectedErrors ErrorCollector::GetErrors() {
+  CollectedErrors result;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    errors_.swap(result);
+  }
+  return result;
 }
 
 

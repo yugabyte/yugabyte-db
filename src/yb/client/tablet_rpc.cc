@@ -210,7 +210,11 @@ bool TabletInvoker::Done(Status* status) {
       followers_.insert(current_ts_);
     }
 
-    retrier_->DelayedRetry(command_, *status);
+    if (status->IsIllegalState()) {
+      FailToNewReplica(*status);
+    } else {
+      retrier_->DelayedRetry(command_, *status);
+    }
     return false;
   }
 

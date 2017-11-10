@@ -104,6 +104,8 @@ race:std::locale::classic
 # libbacktrace
 race:backtrace_vector_grow
 race:read_line_header
+race:read_abbrevs
+race:backtrace_alloc
 
 # False positives of TSAN, because we use atomic to check wether all responses are filled.
 race:yb::redisserver::RedisInboundCall::Serialize

@@ -41,15 +41,6 @@ DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat du
 namespace yb {
 namespace client {
 
-namespace {
-
-// TODO(dtxn) correct deadline should be calculated and propagated.
-MonoTime TransactionDeadline() {
-  return MonoTime::FineNow() + MonoDelta::FromSeconds(5);
-}
-
-} // namespace
-
 class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
@@ -192,7 +183,7 @@ class YBTransaction::Impl final {
 
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
-            TransactionDeadline(),
+            TransactionRpcDeadline(),
             status_tablet_.get(),
             manager_->client().get(),
             &req,
@@ -224,10 +215,9 @@ class YBTransaction::Impl final {
     VLOG_WITH_PREFIX(1) << "Picked status tablet: " << tablet;
 
     if (tablet.ok()) {
-      auto deadline = TransactionDeadline();
       manager_->client()->LookupTabletById(
           *tablet,
-          deadline,
+          TransactionRpcDeadline(),
           &status_tablet_holder_,
           Bind(&Impl::LookupTabletDone, Unretained(this), transaction));
     } else {
@@ -266,7 +256,7 @@ class YBTransaction::Impl final {
     state.set_status(status);
     manager_->rpcs().RegisterAndStart(
         UpdateTransaction(
-            TransactionDeadline(),
+            TransactionRpcDeadline(),
             status_tablet_.get(),
             manager_->client().get(),
             &req,

@@ -131,14 +131,8 @@ void QLEnv::FlushAsyncDone(const Status &s) {
   DCHECK(batch_session_ != nullptr);
   if (PREDICT_FALSE(!s.ok())) {
     if (s.IsIOError()) {
-      client::CollectedErrors errors;
-      bool overflowed = false;
-      batch_session_->GetPendingErrors(&errors, &overflowed);
-      for (const auto& error : errors) {
+      for (const auto& error : batch_session_->GetPendingErrors()) {
         op_errors_[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
-      }
-      if (overflowed) {
-       flush_status_ = STATUS(RuntimeError, "Too many read / write errors");
       }
     } else {
       flush_status_ = s;

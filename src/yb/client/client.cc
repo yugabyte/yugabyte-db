@@ -1422,8 +1422,8 @@ int YBSession::CountPendingErrors() const {
   return data_->error_collector_->CountErrors();
 }
 
-void YBSession::GetPendingErrors(CollectedErrors* errors, bool* overflowed) {
-  data_->error_collector_->GetErrors(errors, overflowed);
+CollectedErrors YBSession::GetPendingErrors() {
+  return data_->error_collector_->GetErrors();
 }
 
 YBClient* YBSession::client() const {

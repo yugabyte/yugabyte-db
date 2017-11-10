@@ -146,10 +146,7 @@ void TestWorkload::WriteThread() {
     Status s = session->Flush();
 
     if (PREDICT_FALSE(!s.ok())) {
-      client::CollectedErrors errors;
-      bool overflow;
-      session->GetPendingErrors(&errors, &overflow);
-      CHECK(!overflow);
+      client::CollectedErrors errors = session->GetPendingErrors();
       for (const auto& e : errors) {
         if (timeout_allowed_ && e->status().IsTimedOut()) {
           continue;

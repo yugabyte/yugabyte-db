@@ -97,14 +97,13 @@ class RunningTransaction {
       return;
     }
     lock->unlock();
-    auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
     tserver::GetTransactionStatusRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     req.set_propagated_hybrid_time(context_.Now().ToUint64());
     rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
-            deadline,
+            TransactionRpcDeadline(),
             nullptr /* tablet */,
             client,
             &req,
@@ -121,14 +120,13 @@ class RunningTransaction {
     if (!was_empty) {
       return;
     }
-    auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
     tserver::AbortTransactionRequestPB req;
     req.set_tablet_id(metadata_.status_tablet);
     req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     req.set_propagated_hybrid_time(context_.Now().ToUint64());
     rpcs_.RegisterAndStart(
         client::AbortTransaction(
-            deadline,
+            TransactionRpcDeadline(),
             nullptr /* tablet */,
             client,
             &req,
@@ -359,7 +357,6 @@ class TransactionParticipant::Impl {
         // TODO(dtxn) cleanup
       }
       if (data.mode == ProcessingMode::LEADER) {
-        auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
         tserver::UpdateTransactionRequestPB req;
         req.set_tablet_id(data.status_tablet);
         auto& state = *req.mutable_state();
@@ -369,7 +366,7 @@ class TransactionParticipant::Impl {
 
         auto handle = rpcs_.Prepare();
         *handle = UpdateTransaction(
-            deadline,
+            TransactionRpcDeadline(),
             nullptr /* remote_tablet */,
             client(),
             &req,

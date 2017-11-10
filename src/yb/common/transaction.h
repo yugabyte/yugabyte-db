@@ -26,6 +26,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/monotime.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/uuid.h"
@@ -131,6 +132,8 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
+
+MonoTime TransactionRpcDeadline();
 
 } // namespace yb
 

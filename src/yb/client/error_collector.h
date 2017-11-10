@@ -60,7 +60,7 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
   int CountErrors() const;
 
   // See YBSession for details.
-  void GetErrors(CollectedErrors* errors, bool* overflowed);
+  CollectedErrors GetErrors();
 
  private:
   friend class RefCountedThreadSafe<ErrorCollector>;

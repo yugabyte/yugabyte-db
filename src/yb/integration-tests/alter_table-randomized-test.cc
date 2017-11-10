@@ -393,9 +393,7 @@ struct MirrorTable {
       return s;
     }
 
-    client::CollectedErrors errors;
-    bool overflow;
-    session->GetPendingErrors(&errors, &overflow);
+    client::CollectedErrors errors = session->GetPendingErrors();
     CHECK_EQ(errors.size(), 1);
     return errors[0]->status();
   }

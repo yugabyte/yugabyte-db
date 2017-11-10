@@ -49,6 +49,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DEFINE_uint64(transaction_timeout_usec, 1500000, "Transaction expiration timeout in usec.");
@@ -666,7 +667,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     }
 
     if (!actions->notify_applying.empty()) {
-      auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(5); // TODO(dtxn)
+      auto deadline = TransactionRpcDeadline();
       for (const auto& p : actions->notify_applying) {
         tserver::UpdateTransactionRequestPB req;
         req.set_tablet_id(p.tablet);
@@ -732,7 +733,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   void SchedulePoll() {
     poll_task_id_ = context_.client_future().get()->messenger()->scheduler().Schedule(
         std::bind(&Impl::Poll, this, _1),
-        std::chrono::microseconds(FLAGS_transaction_check_interval_usec));
+        std::chrono::microseconds(NonTsanVsTsan(1, 4) * FLAGS_transaction_check_interval_usec));
   }
 
   void Poll(const Status& status) {

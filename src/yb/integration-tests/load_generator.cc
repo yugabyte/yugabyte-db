@@ -430,11 +430,8 @@ bool YBSingleThreadedWriter::Write(
 }
 
 void YBSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const string& key_str) {
-  client::CollectedErrors errors;
-  bool overflowed;
   if (session_ != nullptr) {
-    session_->GetPendingErrors(&errors, &overflowed);
-    for (const auto& error : errors) {
+    for (const auto& error : session_->GetPendingErrors()) {
       LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
     }
   }
