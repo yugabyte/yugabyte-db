@@ -6,11 +6,21 @@
   color: #999999;
 }
 
-/*
+/* Don't highlight shell scripts */
+.hljs.language-sh * {
+  font-weight: 400;
+  color: #111111 !important;
+}
+
+.hljs-keyword,
+.hljs-built_in,
 .hljs-selector-class,
 .hljs-selector-pseudo,
-.hljs-selector-tag,
-*/
+.hljs-selector-tag {
+  color: #447dc8;
+  font-weight: 700;
+}
+
 .hemisu-accent1, pre .number, pre .ruby .keyword {
   color: #538192;
 }
