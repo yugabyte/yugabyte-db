@@ -1297,6 +1297,35 @@ TEST_F(TestRedisService, TestTsRem) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestOverwrites) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
+  // Test Upsert.
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "subkey1", "42"}, 1);
+  DoRedisTestBulkString(__LINE__, {"HGET", "map_key", "subkey1"}, "42");
+  // Overwrite the same key. Using Set.
+  DoRedisTestOk(__LINE__, {"SET", "map_key", "new_value"});
+  DoRedisTestBulkString(__LINE__, {"GET", "map_key"}, "new_value");
+  SyncClient();
+
+  // Test NX.
+  DoRedisTestOk(__LINE__, {"SET", "key", "value1", "NX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value1");
+  DoRedisTestNull(__LINE__, {"SET", "key", "value2", "NX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value1");
+
+  // Test XX.
+  DoRedisTestOk(__LINE__, {"SET", "key", "value2", "XX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value2");
+  DoRedisTestOk(__LINE__, {"SET", "key", "value3", "XX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value3");
+  DoRedisTestNull(__LINE__, {"SET", "unknown_key", "value", "XX"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestAdditionalCommands) {
 
   // The default value is true, but we explicitly set this here for clarity.

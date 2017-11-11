@@ -365,14 +365,13 @@ Status RedisWriteOperation::Apply(
 
 Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
-  RedisDataType data_type;
-  RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
-                                  doc_write_batch));
-
   const MonoDelta ttl = request_.set_request().has_ttl() ?
       MonoDelta::FromMilliseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   if (kv.subkey_size() > 0) {
+    RedisDataType data_type;
+    RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
+                                    doc_write_batch));
     switch (kv.type()) {
       case REDIS_TYPE_TIMESERIES: FALLTHROUGH_INTENDED;
       case REDIS_TYPE_HASH: {
@@ -414,24 +413,15 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
         break;
       }
       case REDIS_TYPE_STRING: {
-        if (data_type != REDIS_TYPE_STRING && data_type != REDIS_TYPE_NONE) {
-          response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-          return Status::OK();
-        }
-        for (int i = 0; i < kv.subkey_size(); i++) {
-          DocPath subdoc_path = doc_path;
-          subdoc_path.AddSubKey(PrimitiveValue(kv.subkey(i).string_subkey()));
-          RETURN_NOT_OK(doc_write_batch->SetPrimitive(
-              subdoc_path, Value(PrimitiveValue(kv.value(i)), ttl)));
-        }
-        break;
+        return STATUS_SUBSTITUTE(InvalidCommand,
+            "Redis data type $0 in SET command should not have subkeys", kv.type());
       }
       default:
         return STATUS_SUBSTITUTE(InvalidCommand,
             "Redis data type $0 not supported in SET command", kv.type());
     }
   } else {
-    if (kv.type() != REDIS_TYPE_STRING && kv.type() != REDIS_TYPE_NONE) {
+    if (kv.type() != REDIS_TYPE_STRING) {
       return STATUS_SUBSTITUTE(InvalidCommand,
           "Redis data type for SET must be string if subkey not present, found $0", kv.type());
     }
@@ -440,8 +430,18 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
           "There must be only one value in SET if there is only one key, found $0",
           kv.value_size());
     }
-        RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path,
-        Value(PrimitiveValue(kv.value(0)), ttl)));
+    const RedisWriteMode mode = request_.set_request().mode();
+    if (mode != RedisWriteMode::REDIS_WRITEMODE_UPSERT) {
+      RedisDataType data_type;
+      RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
+                                      doc_write_batch));
+      if ((mode == RedisWriteMode::REDIS_WRITEMODE_INSERT && data_type != REDIS_TYPE_NONE)
+          || (mode == RedisWriteMode::REDIS_WRITEMODE_UPDATE && data_type == REDIS_TYPE_NONE)) {
+        response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+        return Status::OK();
+      }
+    }
+    RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path, Value(PrimitiveValue(kv.value(0)), ttl)));
   }
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();

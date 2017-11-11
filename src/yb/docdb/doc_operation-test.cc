@@ -226,6 +226,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   auto set_request_pb = redis_write_operation_pb.mutable_set_request();
   set_request_pb->set_ttl(2000);
   redis_write_operation_pb.mutable_key_value()->set_key("abc");
+  redis_write_operation_pb.mutable_key_value()->set_type(REDIS_TYPE_STRING);
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
   RedisWriteOperation redis_write_operation(&redis_write_operation_pb, HybridTime::kMax);

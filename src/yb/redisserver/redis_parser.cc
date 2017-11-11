@@ -100,6 +100,7 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& value = args[2];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   int idx = 3;
   while (idx < args.size()) {
     if (args[idx] == "EX" || args[idx] == "PX") {
