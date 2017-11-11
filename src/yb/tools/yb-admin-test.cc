@@ -184,12 +184,14 @@ TEST_F(AdminCliTest, TestDeleteTable) {
         .Build(&client));
 
   // Default table that gets created;
-  string table_name = "test-table";
+  string table_name = kTableName.table_name();
+  string keyspace = kTableName.namespace_name();
 
   string exe_path = GetAdminToolPath();
-  string arg_str = Substitute("$0 -master_addresses $1 delete_table $2",
+  string arg_str = Substitute("$0 -master_addresses $1 delete_table $2 $3",
                               exe_path,
                               master_address,
+                              keyspace,
                               table_name);
 
   ASSERT_OK(Subprocess::Call(arg_str));
