@@ -69,10 +69,10 @@ class ClusterManager(object):
                             nargs='?',
                             help='name of the pem file')
         parser.add_argument('--master_ips',
-                            nargs='*',
+                            nargs='?',
                             help="space separated IP of masters (e.g., '10.a.b.c 10.d.e.f')")
         parser.add_argument('--tserver_ips',
-                            nargs='*',
+                            nargs='?',
                             help="space separated IP of tservers (e.g., '10.a.b.c 10.d.e.f')")
         parser.add_argument('--repo',
                             nargs='?',
@@ -364,6 +364,13 @@ class Command:
         self.hint = hint
 
 
+class YbArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        sys.stderr.write('error: %s\n\n' % message)
+        self.print_help()
+        sys.exit(2)
+
+
 class YBControl:
     def __init__(self):
         global help_printer
@@ -481,15 +488,19 @@ class YBControl:
 
     def __print_help(self):
         self.parser.print_help()
-        print("Commands:")
-        commands_list = sorted(self.commands)
-        max_len = max([len(x) for x in commands_list])
-        for command in commands_list:
-            print(("  {0: <" + str(max_len) + "} - {1}").format(command,
-                                                                self.commands[command].hint))
 
     def __parse_arguments(self):
-        parser = argparse.ArgumentParser(description='YB Control.')
+        commands_list = sorted(self.commands)
+        max_len = max([len(x) for x in commands_list])
+        epilog = 'Available commands:\n'
+        for command in commands_list:
+            epilog += ("  {0: <" + str(max_len) + "} - {1}\n").format(
+                command, self.commands[command].hint)
+
+        parser = YbArgumentParser(
+            description='YB Control.',
+            epilog=epilog,
+            formatter_class=argparse.RawTextHelpFormatter)
         self.parser = parser
         ClusterManager.setup_parser(parser)
 
