@@ -44,156 +44,173 @@ googleAnalytics = "UA-104956980-1"
 
 [[menu.main]]
 	name   = "Introduction"
+	identifier = "intro"
 	url    = "introduction/"
-	weight = 1
+	weight = 2
+
+[[menu.main]]
+	name = "Overview"
+	parent = "intro"
+	url = "introduction/overview/"
+	weight = 3
+
+[[menu.main]]
+	name = "Core Features"
+	parent = "intro"
+	url = "introduction/core-features/"
+	weight = 4
+
+[[menu.main]]
+	name = "Benefits"
+	parent = "intro"
+	url = "introduction/benefits/"
+	weight = 5
 
 [[menu.main]]
 	name = "Quick Start"
 	identifier = "quick-start"
 	url = "quick-start/"
-	weight = 4
+	weight = 10
 
 [[menu.main]]
 	name = "1. Install YugaByte DB"
 	parent = "quick-start"
 	url = "quick-start/install/"
-	weight = 5
+	weight = 11
 
 [[menu.main]]
 	name = "2. Create Local Cluster"
 	parent = "quick-start"
 	url = "quick-start/create-local-cluster/"
-	weight = 6
+	weight = 12
 
 [[menu.main]]
 	name = "3. Test YugaByte CQL"
 	parent = "quick-start"
 	url = "quick-start/test-cql/"
-	weight = 7
+	weight = 13
 
 [[menu.main]]
 	name = "4. Test YugaByte Redis"
 	parent = "quick-start"
 	url = "quick-start/test-redis/"
-	weight = 8
+	weight = 14
 
 [[menu.main]]
 	name = "5. Run Sample Apps"
 	parent = "quick-start"
 	url = "quick-start/run-sample-apps/"
-	weight = 9
+	weight = 15
 
 [[menu.main]]
 	name = "Explore Core Features"
 	identifier = "explore"
 	url = "explore/"
-	weight = 10
+	weight = 20
 
 [[menu.main]]
 	name = "Fault Tolerance"
 	parent = "explore"
 	url = "explore/fault-tolerance/"
-	weight = 11
+	weight = 21
 
 [[menu.main]]
 	name = "Auto Rebalancing"
 	parent = "explore"
 	url = "explore/auto-rebalancing/"
-	weight = 12
+	weight = 22
 
 [[menu.main]]
 	name   = "Architecture"
 	identifier = "architecture"
 	url = "architecture/"
-	weight = 20
+	weight = 30
 
 [[menu.main]]
 	name   = "Concepts"
 	parent = "architecture"
 	identifier = "concepts"
 	url = "architecture/concepts/"
-	weight = 21
+	weight = 31
 
 [[menu.main]]
-	name   = "Overview"
+	name   = "Single Node"
 	parent = "concepts"
-	url = "architecture/concepts/overview/"
-	weight = 22
+	url = "architecture/concepts/single-node/"
+	weight = 32
 
 [[menu.main]]
 	name   = "Universe, YB-TServer, YB-Master"
 	parent = "concepts"
 	url = "architecture/concepts/universe/"
-	weight = 23
+	weight = 33
 
 [[menu.main]]
 	name   = "Sharding"
 	parent = "concepts"
 	url = "architecture/concepts/sharding/"
-	weight = 24
+	weight = 34
 
 [[menu.main]]
 	name   = "Replication"
 	parent = "concepts"
 	url = "architecture/concepts/replication/"
-	weight = 25
+	weight = 35
 
 [[menu.main]]
 	name   = "Persistence"
 	parent = "concepts"
 	url = "architecture/concepts/persistence/"
-	weight = 26
-
+	weight = 36
 
 [[menu.main]]
 	name   = "Query Layer"
 	parent = "concepts"
 	url = "architecture/concepts/yql/"
-	weight = 27
-
+	weight = 37
 
 [[menu.main]]
 	name   = "Acknowledgements"
 	parent = "concepts"
 	url = "architecture/concepts/acknowledgements/"
-	weight = 28
+	weight = 38
 
 [[menu.main]]
 	name   = "Core Functions"
 	parent = "architecture"
 	identifier = "core-functions"
 	url = "architecture/core-functions/"
-	weight = 29
+	weight = 39
 
 [[menu.main]]
 	name   = "Universe Creation"
 	parent = "core-functions"
 	url = "architecture/core-functions/universe-creation/"
-	weight = 30
+	weight = 40
 
 [[menu.main]]
 	name   = "Table Creation"
 	parent = "core-functions"
 	url = "architecture/core-functions/table-creation/"
-	weight = 31
+	weight = 41
 
 [[menu.main]]
 	name   = "Write IO Path"
 	parent = "core-functions"
 	url = "architecture/core-functions/write-path/"
-	weight = 32
+	weight = 42
 
 [[menu.main]]
 	name   = "Read IO Path"
 	parent = "core-functions"
 	url = "architecture/core-functions/read-path/"
-	weight = 33
+	weight = 43
 
 [[menu.main]]
 	name   = "High Availability"
 	parent = "core-functions"
 	url = "architecture/core-functions/high-availability/"
-	weight = 34
+	weight = 44
 
 #[[menu.main]]
 #	name   = "Operations"
@@ -212,43 +229,43 @@ googleAnalytics = "UA-104956980-1"
 	parent = "architecture"
 	identifier = "comparisons"
 	url = "architecture/comparisons/"
-	weight = 40
+	weight = 50
 
 [[menu.main]]
 	name   = "Apache Cassandra"
 	parent = "comparisons"
 	url = "architecture/comparisons/cassandra/"
-	weight = 41
+	weight = 51
 
 [[menu.main]]
 	name   = "Redis"
 	parent = "comparisons"
 	url = "architecture/comparisons/redis/"
-	weight = 42
+	weight = 52
 
 [[menu.main]]
 	name   = "Apache HBase"
 	parent = "comparisons"
 	url = "architecture/comparisons/hbase/"
-	weight = 43
+	weight = 53
 
 [[menu.main]]
 	name   = "Develop"
 	identifier = "develop"
 	url    = "develop/"
-	weight = 50
+	weight = 54
 
 [[menu.main]]
 	name = "CQL Apps"
 	parent = "develop"
 	url = "develop/cql/"
-	weight = 51
+	weight = 55
 
 [[menu.main]]
 	name = "Redis Apps"
 	parent = "develop"
 	url = "develop/redis/"
-	weight = 52
+	weight = 56
 
 [[menu.main]]
 	name   = "Deploy"

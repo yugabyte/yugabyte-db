@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Read IO Path
-weight: 33
+weight: 43
 ---
 
 As before, for purposes of simplicity, let us take the case of a single key read. The user-issued

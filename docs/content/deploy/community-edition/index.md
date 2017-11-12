@@ -35,9 +35,8 @@ For the purpose of this document, let's assume that we have 3 instances with pri
 Copy the YugaByte DB package into each instace and then running the following commands.
 
 ```sh
-$ mkdir ~/yugabyte
-$ tar xvfz yugabyte.<version>-centos.tar.gz -C yugabyte
-$ cd yugabyte
+$ tar xvfz yugabyte-ce-<version>-<os>.tar.gz
+$ cd yugabyte-<version>/
 ```
 
 ### Configure the installation

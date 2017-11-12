@@ -1,8 +1,6 @@
 ## Prerequisites
 
-a) Supported operating systems are
-
-<i class="icon-centos"></i> Centos 7+
+a) <i class="icon-centos"></i> Centos 7 or higher
 
 b) You must have `python` installed on your localhost.
 

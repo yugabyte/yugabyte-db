@@ -4,9 +4,17 @@ title: yb-tserver
 weight: 244
 ---
 
-`yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](/architecture/concepts/#yb-tserver) binary.
+`yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](/architecture/concepts/universe/#yb-tserver) binary.
 
-## Help command
+## Example
+
+```sh
+$ ./bin/yb-tserver \
+--tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
+```
+
+## Help 
 
 Use the **-\-help** option to see all the commands supported.
 
@@ -14,7 +22,7 @@ Use the **-\-help** option to see all the commands supported.
 $ ./bin/yb-tserver --help
 ```
 
-## Supported config flags
+## Config flags
 
 Flag | Mandatory | Default | Description 
 ----------------------|------|---------|------------------------
@@ -29,5 +37,37 @@ Flag | Mandatory | Default | Description
 `--cql_proxy_webserver_port`| N | 12000 | CQL metrics monitoring port
 `--redis_proxy_bind_address`| N | 6379  | Redis port
 `--redis_proxy_webserver_port`| N | 11000 | Redis metrics monitoring port
+`--placement_cloud`| N |`cloud1`  | Name of the cloud where this instance is deployed
+`--placement_region`| N |`datacenter1`  | Name of the region or datacenter where this instance is deployed
+`--placement_zone`| N |`rack1`  | Name of the availability zone or rack where this instance is deployed
 `--flagfile`| N | N/A  | Load flags from the specified file.
 `--version` | N | N/A | Show version and build info
+
+
+## Admin UI
+
+The Admin UI for yb-tserver is available at http://localhost:9000.
+
+### Home 
+
+Home page of the yb-tserver that gives a high level overview of this specific instance.
+
+![tserver-home](/images/admin/tserver-home.png)
+
+### Dashboards 
+
+List of all dashboards to review the ongoing operations 
+
+![tserver-dashboards](/images/admin/tserver-dashboards.png)
+
+### Tablets 
+
+List of all tablets managed by this specific instance, sorted by the table name.
+
+![tserver-tablets](/images/admin/tserver-tablets.png)
+
+### Debug
+
+List of all utilities available to debug the performance of this specific instance.
+
+![tserver-debug](/images/admin/tserver-debug.png)

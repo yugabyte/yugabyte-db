@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Run Sample Apps
-weight: 9
+weight: 15
 ---
 
 After trying out [CQL](/quick-start/test-cql/) and [Redis](/quick-start/test-redis/) cli based commands on the local cluster, follow the instructions below to run some sample apps against the cluster as well as look at some of the configuration details of the cluster.
@@ -119,7 +119,7 @@ CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
 
 You can select a few rows and examine what gets written.
 
-```
+```sql
 cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 
  k                                         | v

@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
-title: High Availabilty
-weight: 34
+title: High Availability
+weight: 44
 ---
 
 As discussed before, YugaByte is a CP database (consistent and partition tolerant) but achieves very high availability. It achieves this HA by having an active replica that is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.

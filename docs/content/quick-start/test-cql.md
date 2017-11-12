@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Test YugaByte CQL
-weight: 7
+weight: 13
 ---
 
 After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte's CQL service.
@@ -71,15 +71,15 @@ CREATE TABLE myapp.stock_market (
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
 
 ```sql
-// Insert some values for the AAPL stock symbol.
+-- Insert some values for the AAPL stock symbol
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 
-// Next insert some values for the FB stock symbol.
+-- Next insert some values for the FB stock symbol
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
 
-// Next insert some values for the GOOG stock symbol.
+-- Next insert some values for the GOOG stock symbol
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```

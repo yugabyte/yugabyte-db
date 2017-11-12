@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Write IO Path
-weight: 32
+weight: 42
 ---
 
 For purposes of simplicity, let us take the case of a single key write. The case of distributed

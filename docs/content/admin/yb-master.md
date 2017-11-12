@@ -4,9 +4,18 @@ title: yb-master
 weight: 243
 ---
 
-`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/#yb-master) binary.
+`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/universe/#yb-master) binary.
 
-## Help command
+## Example
+
+```sh
+$ ./bin/yb-master \
+--master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+--fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
+--replication_factor=3 &
+```
+
+## Help 
 
 Use the **-\-help** option to see all the commands supported.
 
@@ -14,7 +23,7 @@ Use the **-\-help** option to see all the commands supported.
 $ ./bin/yb-master --help
 ```
 
-## Supported config flags
+## Config flags
 
 Flag | Mandatory | Default | Description 
 ----------------------|------|---------|------------------------
@@ -26,6 +35,36 @@ Flag | Mandatory | Default | Description
 `--webserver_port`| N | `7000` | Monitoring web server port
 `--webserver_doc_root`| N | The `www` directory in the YugaByte home directory | Monitoring web server home
 `--replication_factor`| N |`3`  | Number of replicas to store for each tablet in the universe.
+`--placement_cloud`| N |`cloud1`  | Name of the cloud where this instance is deployed
+`--placement_region`| N |`datacenter1`  | Name of the region or datacenter where this instance is deployed
+`--placement_zone`| N |`rack1`  | Name of the availability zone or rack where this instance is deployed
 `--flagfile`| N | N/A  | Load flags from the specified file.
 `--version` | N | N/A | Show version and build info
 
+## Admin UI
+
+The Admin UI for yb-master is available at http://localhost:7000.
+
+### Home 
+
+Home page of the yb-master that gives a high level overview of the cluster. Note all yb-masters in a cluster show exactly the same information.
+
+![master-home](/images/admin/master-home-binary-with-tables.png)
+
+### Tables 
+
+List of tables present in the cluster.
+
+![master-tables](/images/admin/master-tables.png)
+
+### Tablet servers 
+
+List of all nodes (aka yb-tservers) present in the cluster.
+
+![master-tservers](/images/admin/master-tservers-list-binary-with-tablets.png)
+
+### Debug
+
+List of all utilities available to debug the performance of the cluster.
+
+![master-debug](/images/admin/master-debug.png)

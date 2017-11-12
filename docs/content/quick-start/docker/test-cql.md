@@ -11,7 +11,7 @@ cqlsh>
 
 - Run a cql command to verify it is working.
 
-```sql
+```sh
 cqlsh> describe keyspaces;
 
 system_schema  system_auth  system  default_keyspace

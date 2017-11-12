@@ -1,5 +1,6 @@
 
-- Initialize Redis.
+- Initialize YugaByte Redis service.
+
 Setup the redis_keyspace keyspace and the .redis table so that this cluster becomes ready for redis clients. Detailed output for the setup_redis command is available in the [yb-ctl Reference](/admin/yb-ctl/#setup-redis).
 
 ```sh
@@ -15,7 +16,7 @@ $ ./bin/redis-cli
 
 - Run a Redis command to verify it is working.
 
-```sql
+```sh
 127.0.0.1:6379> PING
 "pong"
 ```

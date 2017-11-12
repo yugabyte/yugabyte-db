@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Create Local Cluster
-weight: 6
+weight: 12
 ---
 
 After [installing YugaByte DB](quick-start/install/), follow the instructions below to create a local cluster.

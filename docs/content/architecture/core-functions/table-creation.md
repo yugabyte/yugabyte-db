@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Table Creation
-weight: 31
+weight: 41
 ---
 
 The user issued table creation is handled by the YB-Master leader, and is an asychronous API. The

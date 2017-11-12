@@ -8,7 +8,7 @@ $ docker exec -it yb-tserver-n3 /home/yugabyte/bin/redis-cli
 
 - Run a Redis command to verify it is working.
 
-```sql
+```sh
 127.0.0.1:6379> PING
 "pong"
 ```

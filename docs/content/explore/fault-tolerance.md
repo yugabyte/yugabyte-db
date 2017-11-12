@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Fault Tolerance
-weight: 11
+weight: 21
 ---
 
 This section uses the binary version of the local cluster.
