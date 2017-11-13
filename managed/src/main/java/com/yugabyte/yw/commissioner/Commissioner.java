@@ -8,8 +8,10 @@ import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.yugabyte.yw.forms.ITaskParams;
@@ -30,11 +32,18 @@ public class Commissioner {
 
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
-  // Max number of concurrent tasks to execute at a time.
-  public final int NUM_TASK_THREADS = 10;
+  // Minimum number of concurrent tasks to execute at a time.
+  private static final int MIN_TASK_THREADS = 1;
+
+  // Maximum number of concurrent tasks to execute at a time.
+  private static final int MAX_TASK_THREADS = 500;
+
+  // The maximum time that excess idle threads will wait for new tasks before terminating.
+  // The unit is specified in the API (and is seconds).
+  private static final long THREAD_ALIVE_TIME = 60L;
 
   // The interval after which progress monitor wakes up and does work.
-  public final long PROGRESS_MONITOR_SLEEP_INTERVAL = 300;
+  private final long PROGRESS_MONITOR_SLEEP_INTERVAL = 300;
 
   // State variable which signals if the task manager is shutting down.
   private static AtomicBoolean shuttingDown = new AtomicBoolean(false);
@@ -50,13 +59,18 @@ public class Commissioner {
   // persisted before removing the task from this map.
   static Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<UUID, TaskRunner>();
 
+  public static ExecutorService newCachedThreadPool(ThreadFactory namedThreadFactory) {
+      return new ThreadPoolExecutor(MIN_TASK_THREADS, MAX_TASK_THREADS, THREAD_ALIVE_TIME,
+                                    TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
+                                    namedThreadFactory);
+  }
 
   public Commissioner() {
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
       new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
-    executor = Executors.newFixedThreadPool(NUM_TASK_THREADS, namedThreadFactory);
-    LOG.info("Started TaskPool with " + NUM_TASK_THREADS + " threads.");
+    executor = newCachedThreadPool(namedThreadFactory);
+    LOG.info("Started Commissioner TaskPool.");
 
     // Initialize the task manager.
     progressMonitor = new ProgressMonitor();
