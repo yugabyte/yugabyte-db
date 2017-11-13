@@ -38,6 +38,12 @@ a {
   padding-bottom: 110px !important;
 }
 
+@media screen and (max-width: 799px) {
+  .article .wrapper {
+    padding-bottom: 200px !important;
+  }
+}
+
 .project .logo img {
   border-radius: 0px;
   background: transparent !important;
@@ -248,6 +254,41 @@ a {
 }
 .pagination .page {
   top: 16px !important;
+}
+.pagination .page .title {
+  padding-top: 6px !important;
+}
+.pagination .direction {
+  display: none !important;
+}
+
+@media screen and (max-width: 559px) {
+  .pagination {
+    height: auto !important;
+  }
+  .pagination .previous,
+  .pagination .next {
+    width: auto !important;
+    float: none !important;
+  }
+  .pagination .next a {
+    text-align: right !important;
+  }
+  .pagination .page {
+    display: inline-block !important;
+    position: relative;
+    top: 0 !important;
+    text-align: center !important;
+  }
+  .pagination .page .button {
+    display: inline-block !important;
+    position: relative !important;
+    width: auto !important;
+  }
+  .pagination .stretch {
+    display: inline-block !important;
+    width: auto !important;
+  }
 }
 
 .nav-bar.scrolled .navbar-text .download-btn {

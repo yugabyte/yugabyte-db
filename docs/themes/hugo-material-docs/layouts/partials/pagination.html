@@ -1,23 +1,6 @@
 {{ if .IsPage }}
 {{ if .Prev | or .Next }}
 <nav class="pagination" aria-label="Footer">
-  <div class="previous">
-  {{ if .Prev }}
-      <a href="{{ .Prev.Permalink }}" title="{{ .Prev.Title }}">
-        <div class="page">
-          <div class="button button-previous" role="button" aria-label="Previous">
-            <i class="icon icon-back"></i>
-          </div>
-          <div class="stretch">
-            <div class="title">
-              {{ .Prev.Title }}
-            </div>
-          </div>
-        </div>
-      </a>
-  {{ end }}
-  </div>
-
   <div class="next">
   {{ if .Next }}
       <a href="{{ .Next.Permalink }}" title="{{ .Next.Title }}">
@@ -29,6 +12,23 @@
           </div>
           <div class="button button-next" role="button" aria-label="Next">
             <i class="icon icon-forward"></i>
+          </div>
+        </div>
+      </a>
+  {{ end }}
+  </div>
+
+  <div class="previous">
+  {{ if .Prev }}
+      <a href="{{ .Prev.Permalink }}" title="{{ .Prev.Title }}">
+        <div class="page">
+          <div class="button button-previous" role="button" aria-label="Previous">
+            <i class="icon icon-back"></i>
+          </div>
+          <div class="stretch">
+            <div class="title">
+              {{ .Prev.Title }}
+            </div>
           </div>
         </div>
       </a>
