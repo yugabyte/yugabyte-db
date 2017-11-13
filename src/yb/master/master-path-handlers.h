@@ -56,7 +56,7 @@ class MasterPathHandlers {
  public:
   explicit MasterPathHandlers(Master* master)
     : master_(master),
-      output_precision_(3) {
+      output_precision_(4) {
   }
 
   ~MasterPathHandlers();

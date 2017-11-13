@@ -82,11 +82,11 @@ string MasterPathHandlers::BytesToHumanReadable(uint64_t bytes) {
   std::ostringstream op_stream;
   op_stream <<std::setprecision(output_precision_);
   if (bytes >= kBytesPerGB) {
-    op_stream << kBytesPerGB << " GB";
+    op_stream << static_cast<double> (bytes)/kBytesPerGB << " GB";
   } else if (bytes >= kBytesPerMB) {
-    op_stream << bytes/kBytesPerMB << " MB";
+    op_stream << static_cast<double> (bytes)/kBytesPerMB << " MB";
   } else if (bytes >= kBytesPerKB) {
-    op_stream << bytes/kBytesPerKB << " KB";
+    op_stream << static_cast<double> (bytes)/kBytesPerKB << " KB";
   } else {
     op_stream << bytes << " B";
   }
