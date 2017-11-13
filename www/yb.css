@@ -116,6 +116,10 @@ body {
   /* Set the fixed height of the footer here */
   height: 60px;
   background-color: #f5f5f5;
+  /* Pin the footer to the bottom */
+  position: absolute;
+  bottom: 0;
+  margin-left: -35px;
 }
 .footer pre {
   border: none;
@@ -139,6 +143,7 @@ body {
 
 .dashboard-content {
   margin-top: 25px;
+  margin-bottom: 60px;
 }
 
 .table > tbody > tr:first-child > td {

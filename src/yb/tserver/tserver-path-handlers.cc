@@ -87,7 +87,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
       "/tablets", "Tablets", std::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
-      true /* styled */, true /* is_on_nav_bar */);
+      true /* styled */, true /* is_on_nav_bar */, "fa fa-server");
   server->RegisterPathHandler(
       "/tablet", "", std::bind(&TabletServerPathHandlers::HandleTabletPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
@@ -107,9 +107,9 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       "/log-anchors", "", std::bind(&TabletServerPathHandlers::HandleLogAnchorsPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-      "/dashboards", "Dashboards",
+      "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
-      true /* is_on_nav_bar */);
+      false /* is_on_nav_bar */);
   server->RegisterPathHandler(
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),

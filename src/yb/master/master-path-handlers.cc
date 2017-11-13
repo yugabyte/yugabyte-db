@@ -433,7 +433,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   (*output) << "<div class='row dashboard-content'>\n";
 
   (*output) << "<div class='col-xs-12 col-md-8 col-lg-6'>\n";
-  (*output) << "<div class='panel panel-default'>\n"
+  (*output) << "<div class='panel panel-primary'>\n"
             << "<div class='panel-heading'><h2 class='panel-title'> Overview</h2></div>\n";
   (*output) << "<div class='panel-body'>";
   (*output) << "<table class='table'>\n";
@@ -513,7 +513,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     *output << "<h1>" << s.ToString() << "</h1>\n";
     return;
   }
-  (*output) << "<div class='panel panel-default'>\n"
+  (*output) << "<div class='panel panel-primary'>\n"
             << "<div class='panel-heading'><h2 class='panel-title'>Masters</h2></div>\n";
   (*output) << "<div class='panel-body'>";
   (*output) << "<table class='table'>\n";
@@ -752,7 +752,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   // The set of handlers visible on the nav bar.
   server->RegisterPathHandler(
     "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
-    is_on_nav_bar, "fa fa-home");
+    false);
   Webserver::PathHandlerCallback cb =
       std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
   server->RegisterPathHandler(

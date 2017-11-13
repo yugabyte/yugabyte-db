@@ -224,7 +224,7 @@ Status Webserver::Start() {
   PathHandlerCallback default_callback =
       std::bind(boost::mem_fn(&Webserver::RootHandler), this, _1, _2);
 
-  RegisterPathHandler("/", "Home", default_callback);
+  RegisterPathHandler("/", "Home", default_callback, true, false);
 
   std::vector<Endpoint> addrs;
   RETURN_NOT_OK(GetBoundAddresses(&addrs));
