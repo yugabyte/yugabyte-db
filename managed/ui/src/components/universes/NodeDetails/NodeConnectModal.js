@@ -46,7 +46,7 @@ class NodeConnectModal extends Component {
     const privateSSHCommand = nodeIPs.map(function(nodeIP, idx) {
       return(
         <p key={'private-node-details-' + idx}>
-          ssh -i { accessKeyInfo.privateKey } centos@{nodeIP.privateIP} -p 54422
+          sudo ssh -i { accessKeyInfo.privateKey } centos@{nodeIP.privateIP} -p 54422
         </p>
       );
     });
@@ -54,7 +54,7 @@ class NodeConnectModal extends Component {
     const publicSSHCommand = nodeIPs.map(function(nodeIP, idx) {
       return(
         <p key={'public-node-details-' + idx}>
-          ssh -i {accessKeyCode}.pem centos@{nodeIP.publicIP} -p 54422
+          sudo ssh -i {accessKeyCode}.pem centos@{nodeIP.publicIP} -p 54422
         </p>
       );
     });
