@@ -11,12 +11,7 @@ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION pg_version_num()
 RETURNS integer AS $$
-    SELECT substring(s.a[1] FROM '[[:digit:]]+')::int * 10000
-           + COALESCE(substring(s.a[2] FROM '[[:digit:]]+')::int, 0) * 100
-           + COALESCE(substring(s.a[3] FROM '[[:digit:]]+')::int, 0)
-      FROM (
-          SELECT string_to_array(current_setting('server_version'), '.') AS a
-      ) AS s;
+    SELECT current_setting('server_version_num')::integer;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION os_name()

@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -9895,133 +9895,3 @@
+@@ -9890,133 +9890,3 @@
          'Table ' || quote_ident($1) || ' should not be partitioned'
      );
  $$ LANGUAGE sql;

@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -675,7 +675,7 @@
+@@ -670,7 +670,7 @@
             '      caught: no exception' ||
          E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
      );
@@ -9,7 +9,7 @@
      IF (errcode IS NULL OR SQLSTATE = errcode)
          AND ( errmsg IS NULL OR SQLERRM = errmsg)
      THEN
-@@ -779,7 +779,7 @@
+@@ -774,7 +774,7 @@
  BEGIN
      EXECUTE code;
      RETURN ok( TRUE, descr );

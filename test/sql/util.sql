@@ -24,11 +24,11 @@ SELECT matches(
 );
 
 SELECT CASE WHEN pg_version_num() < 81000
-    THEN pass( 'pg_version() should return same as "server_version" setting' )
+    THEN pass( 'pg_version_num() should return same as "server_version_num" setting' )
     ELSE is(
         pg_version_num(),
-        current_setting( 'server_version_num')::integer,
-        'pg_version() should return same as "server_version" setting'
+        current_setting('server_version_num')::integer,
+        'pg_version_num() should return same as "server_version_num" setting'
     )
     END;
 

@@ -6,6 +6,8 @@ Revision history for pgTAP
 * Updated introductory documentation. A lot has changed over the years!
 * Added the "Secrets of the pgTAP Mavens" section of the documentation.
   Contributions wanted!
+* Fixed `pg_version_num()` to always return the value of `server_version_num`
+  on PostreSQL 8.3 and higher, thus fixing a test failure on 10.1.
 
 0.98.0 2017-11-06T22:30:54Z
 ---------------------------
