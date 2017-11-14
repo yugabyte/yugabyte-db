@@ -390,12 +390,16 @@ yb::Status GetSubDocument(
     const SubDocKeyBound& low_subkey = SubDocKeyBound(),
     const SubDocKeyBound& high_subkey = SubDocKeyBound());
 
+YB_STRONGLY_TYPED_BOOL(IncludeBinary);
+
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,
 // if any.
-yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out, bool include_binary = false);
+void DocDBDebugDump(
+    rocksdb::DB* rocksdb, std::ostream& out, IncludeBinary include_binary = IncludeBinary::kFalse);
 
-std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, bool include_binary = false);
+std::string DocDBDebugDumpToStr(
+    rocksdb::DB* rocksdb, IncludeBinary include_binary = IncludeBinary::kFalse);
 
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 

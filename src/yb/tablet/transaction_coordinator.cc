@@ -23,6 +23,8 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/tag.hpp>
 
+#include <boost/scope_exit.hpp>
+
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/client/client.h"
@@ -57,6 +59,7 @@ DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interv
 DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
 
+using namespace std::literals;
 using namespace std::placeholders;
 
 namespace yb {
@@ -216,10 +219,10 @@ class TransactionState {
   }
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
-    VLOG(1) << "Handle: " << request->request()->ShortDebugString();
-    if (request->request()->status() ==
-        TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
-      auto status = AppliedInOneOfInvolvedTablets(*request->request());
+    auto& state = *request->request();
+    VLOG(1) << "Handle: " << state.ShortDebugString();
+    if (state.status() == TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
+      auto status = AppliedInOneOfInvolvedTablets(state);
       request->completion_callback()->CompleteWithStatus(status);
       return;
     }
@@ -478,6 +481,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         }
       }
       cond_.wait(lock, [this] { return poll_task_id_ == rpc::kUninitializedScheduledTaskId; });
+      // There could be rare case when poll left mutex and is executing postponed actions.
+      // So we should wait that it also completed.
+      while (running_polls_ != 0) {
+        std::this_thread::sleep_for(10ms);
+      }
     }
     rpcs_.Shutdown();
   }
@@ -737,6 +745,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   }
 
   void Poll(const Status& status) {
+    ++running_polls_;
+    BOOST_SCOPE_EXIT(&running_polls_) {
+      --running_polls_;
+    } BOOST_SCOPE_EXIT_END;
     auto now = context_.clock().Now();
 
     bool leader = context_.LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY;
@@ -745,7 +757,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       std::lock_guard<std::mutex> lock(managed_mutex_);
       if (!status.ok() || closing_) {
         LOG(INFO) << "Poll stopped: " << status << ", " << this;
-        poll_task_id_ = 0;
+        poll_task_id_ = rpc::kUninitializedScheduledTaskId;
         cond_.notify_one();
         return;
       }
@@ -785,6 +797,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   bool closing_ = false;
   rpc::ScheduledTaskId poll_task_id_ = rpc::kUninitializedScheduledTaskId;
+  std::atomic<int64_t> running_polls_{0};
   std::condition_variable cond_;
 
   rpc::Rpcs rpcs_;

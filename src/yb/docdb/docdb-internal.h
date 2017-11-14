@@ -55,7 +55,7 @@ namespace yb {
 namespace docdb {
 
 // Type of keys written by DocDB into RocksDB.
-YB_DEFINE_ENUM(KeyType, (kIntentKey)(kReverseTxnKey)(kValueKey)(kEmpty));
+YB_DEFINE_ENUM(KeyType, (kEmpty)(kIntentKey)(kReverseTxnKey)(kValueKey)(kTransactionMetadata));
 
 KeyType GetKeyType(const Slice& slice);
 

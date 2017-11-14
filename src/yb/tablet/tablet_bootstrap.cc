@@ -171,11 +171,13 @@ void ReplayState::DumpReplayStateToStrings(vector<string>* strings)  const {
       "Previous OpId: $0, "
       "Committed OpId: $1, "
       "Pending Replicates: $2, "
-      "Pending Commits: $3",
+      "Pending Commits: $3, "
+      "Flushed: $4",
       OpIdToString(prev_op_id),
       OpIdToString(committed_op_id),
       pending_replicates.size(),
-      pending_commits.size()));
+      pending_commits.size(),
+      OpIdToString(last_stored_op_id)));
   if (num_entries_applied_to_rocksdb > 0) {
     strings->push_back(Substitute("Log entries applied to RocksDB: $0",
                                   num_entries_applied_to_rocksdb));
@@ -1039,13 +1041,13 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
   if (write->has_row_operations()) {
-    assert(!write->has_write_batch());
-    assert(tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE);
+    DCHECK(!write->has_write_batch());
+    DCHECK_EQ(tablet_->table_type(), TableType::KUDU_COLUMNAR_TABLE_TYPE);
   }
 
   if (write->has_write_batch()) {
-    assert(!write->has_row_operations());
-    assert(tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE);
+    DCHECK(!write->has_row_operations());
+    DCHECK_NE(tablet_->table_type(), TableType::KUDU_COLUMNAR_TABLE_TYPE);
   }
 
   if (write->has_row_operations() || write->has_write_batch()) {

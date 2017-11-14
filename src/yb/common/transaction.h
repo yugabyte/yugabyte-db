@@ -93,8 +93,7 @@ class TransactionStatusManager {
                                HybridTime time,
                                TransactionStatusCallback callback) = 0;
 
-  virtual boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db,
-                                                        const TransactionId& id) = 0;
+  virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 };

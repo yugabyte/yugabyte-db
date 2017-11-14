@@ -92,7 +92,7 @@ class ConflictResolver {
   }
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
-    return status_manager_.Metadata(db_, id);
+    return status_manager_.Metadata(id);
   }
 
   CHECKED_STATUS Resolve() {

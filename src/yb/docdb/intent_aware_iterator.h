@@ -45,11 +45,8 @@ class IntentAwareIterator {
       rocksdb::DB* rocksdb,
       const rocksdb::ReadOptions& read_opts,
       HybridTime high_ht,
-      const TransactionOperationContextOpt& txn_op_context)
-      : high_ht_(high_ht), txn_op_context_(txn_op_context),
-        iter_(rocksdb->NewIterator(read_opts)),
-        intent_iter_(txn_op_context.is_initialized() ? rocksdb->NewIterator(read_opts) : nullptr) {
-  }
+      const TransactionOperationContextOpt& txn_op_context);
+
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
 
@@ -147,8 +144,8 @@ class IntentAwareIterator {
 
   const HybridTime high_ht_; // Ignoring values with higher HT.
   const TransactionOperationContextOpt txn_op_context_;
-  std::unique_ptr<rocksdb::Iterator> iter_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
+  std::unique_ptr<rocksdb::Iterator> iter_;
 
   // Following fields contain information related to resolved suitable intent.
   bool has_resolved_intent_ = false;

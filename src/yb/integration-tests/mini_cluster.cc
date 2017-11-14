@@ -359,29 +359,33 @@ Status MiniCluster::WaitForTabletServerCount(int count,
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < kRegistrationWaitTimeSeconds) {
-    leader_mini_master()->master()->ts_manager()->GetAllDescriptors(descs);
-    if (descs->size() == count) {
-      // GetAllDescriptors() may return servers that are no longer online.
-      // Do a second step of verification to verify that the descs that we got
-      // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-      int match_count = 0;
-      for (const shared_ptr<TSDescriptor>& desc : *descs) {
-        for (auto mini_tablet_server : mini_tablet_servers_) {
-          auto ts = mini_tablet_server->server();
-          if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
-              ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
-            match_count++;
-            break;
+    auto leader = leader_mini_master();
+    if (leader) {
+      leader->master()->ts_manager()->GetAllDescriptors(descs);
+      if (descs->size() == count) {
+        // GetAllDescriptors() may return servers that are no longer online.
+        // Do a second step of verification to verify that the descs that we got
+        // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
+        int match_count = 0;
+        for (const shared_ptr<TSDescriptor>& desc : *descs) {
+          for (auto mini_tablet_server : mini_tablet_servers_) {
+            auto ts = mini_tablet_server->server();
+            if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
+                ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
+              match_count++;
+              break;
+            }
           }
         }
-      }
 
-      if (match_count == count) {
-        LOG(INFO) << count << " TS(s) registered with Master after "
-                  << sw.elapsed().wall_seconds() << "s";
-        return Status::OK();
+        if (match_count == count) {
+          LOG(INFO) << count << " TS(s) registered with Master after "
+                    << sw.elapsed().wall_seconds() << "s";
+          return Status::OK();
+        }
       }
     }
+
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
   return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));

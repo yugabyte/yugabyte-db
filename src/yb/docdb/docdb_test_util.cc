@@ -68,7 +68,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id) override {
+  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
     Fail();
     return boost::none;
   }
@@ -527,7 +527,7 @@ void DocDBLoadGenerator::VerifySnapshot(const InMemDocDbState& snapshot) {
   const bool is_match = flashback_state.EqualsAndLogDiff(snapshot);
   if (!is_match) {
     LOG(ERROR) << details_msg << "\nDOCDB SNAPSHOT VERIFICATION FAILED, DOCDB STATE:";
-    ASSERT_OK(fixture_->DocDBDebugDumpToConsole());
+    fixture_->DocDBDebugDumpToConsole();
   }
   ASSERT_TRUE(is_match) << details_msg;
 }

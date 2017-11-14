@@ -182,7 +182,10 @@ class QLTransactionTest : public QLDmlTestBase {
     }
     RETURN_NOT_OK(status);
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-      return STATUS_FORMAT(QLError, "Error selecting row: $0", op->response().error_message());
+      return STATUS_FORMAT(QLError,
+                           "Error selecting row: $0, $1",
+                           QLResponsePB::QLStatus_Name(op->response().status()),
+                           op->response().error_message());
     }
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
@@ -329,10 +332,6 @@ TEST_F(QLTransactionTest, PreserveLogs) {
     });
   }
   latch.Wait();
-  // TODO(dtxn) - without this sleep "Row not found" could happen. Most probably it has to do with
-  // concurrent removal of intents and replacing them with regular key-value pairs.
-  // Solution should be similar to https://yugabyte.atlassian.net/browse/ENG-2271.
-  std::this_thread::sleep_for(3s); // Wait long enough for transaction to be applied.
   VerifyData(kTransactions);
 }
 

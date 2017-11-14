@@ -20,7 +20,11 @@
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/write_batch.h"
 
+#include "yb/util/enums.h"
+
 namespace yb {
+
+YB_DEFINE_ENUM(OutputFormat, (kEscaped)(kHex));
 
 // Produces a human-readable representation of the given RocksDB WriteBatch, e.g.:
 // <pre>
@@ -29,6 +33,9 @@ namespace yb {
 // </pre>
 class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
  public:
+  explicit WriteBatchFormatter(OutputFormat output_format = OutputFormat::kEscaped)
+      : output_format_(output_format) {}
+
   virtual rocksdb::Status PutCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key,
@@ -57,6 +64,7 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
   void OutputField(const rocksdb::Slice& value);
   void FinishOutputLine();
 
+  OutputFormat output_format_;
   bool need_separator_ = false;
   std::stringstream out_;
   int update_index_ = 0;

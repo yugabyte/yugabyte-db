@@ -261,7 +261,7 @@ class RunningTransaction {
 class TransactionParticipant::Impl {
  public:
   explicit Impl(TransactionParticipantContext* context)
-      : context_(*context) {}
+      : context_(*context), log_prefix_(context->tablet_id() + ": ") {}
 
   ~Impl() {
     transactions_.clear();
@@ -272,7 +272,7 @@ class TransactionParticipant::Impl {
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch) {
     auto metadata = TransactionMetadata::FromPB(data);
     if (!metadata.ok()) {
-      LOG(DFATAL) << "Invalid transaction id: " << metadata.status().ToString();
+      LOG_WITH_PREFIX(DFATAL) << "Invalid transaction id: " << metadata.status().ToString();
       return;
     }
     bool store = false;
@@ -287,7 +287,6 @@ class TransactionParticipant::Impl {
       }
     }
     if (store) {
-      // TODO(dtxn) Load value if it is not loaded.
       docdb::KeyBytes key;
       AppendTransactionKeyPrefix(metadata->transaction_id, &key);
       auto value = data.SerializeAsString();
@@ -304,9 +303,9 @@ class TransactionParticipant::Impl {
     return it->local_commit_time();
   }
 
-  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id) {
+  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(db, id);
+    auto it = FindOrLoad(id);
     if (it == transactions_.end()) {
       return boost::none;
     }
@@ -317,10 +316,10 @@ class TransactionParticipant::Impl {
                        HybridTime time,
                        TransactionStatusCallback callback) {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto it = transactions_.find(id);
+    auto it = FindOrLoad(id);
     if (it == transactions_.end()) {
       lock.unlock();
-      callback(STATUS_FORMAT(NotFound, "Unknown transaction: $1", id));
+      callback(STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", id));
       return;
     }
     return it->RequestStatusAt(client(), time, std::move(callback), &lock);
@@ -329,26 +328,33 @@ class TransactionParticipant::Impl {
   void Abort(const TransactionId& id,
              TransactionStatusCallback callback) {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto it = transactions_.find(id);
+    auto it = FindOrLoad(id);
     if (it == transactions_.end()) {
       lock.unlock();
-      callback(STATUS_FORMAT(NotFound, "Unknown transaction: $1", id));
+      callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
     }
     return it->Abort(client(), std::move(callback), &lock);
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      // It is our last chance to load transaction metadata, if missing.
+      // Because it will be deleted when intents are applied.
+      FindOrLoad(data.transaction_id);
+    }
+
     CHECK_OK(data.applier->ApplyIntents(data));
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      auto it = transactions_.find(data.transaction_id);
+      auto it = FindOrLoad(data.transaction_id);
       if (it == transactions_.end()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
         // 2) Failed to notify status tablet that we applied transaction.
-        LOG(WARNING) << "Apply of unknown transaction: " << data.transaction_id;
+        LOG_WITH_PREFIX(WARNING) << "Apply of unknown transaction: " << data.transaction_id;
         return Status::OK();
       } else {
         transactions_.modify(it, [&data](RunningTransaction& transaction) {
@@ -373,12 +379,16 @@ class TransactionParticipant::Impl {
             [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
               context_.UpdateClock(propagated_hybrid_time);
               rpcs_.Unregister(handle);
-              LOG_IF(WARNING, !status.ok()) << "Failed to send applied: " << status;
+              LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
             });
         (**handle).SendRpc();
       }
     }
     return Status::OK();
+  }
+
+  void SetDB(rocksdb::DB* db) {
+    db_ = db;
   }
 
  private:
@@ -392,7 +402,8 @@ class TransactionParticipant::Impl {
       >
   > Transactions;
 
-  Transactions::const_iterator FindOrLoad(rocksdb::DB* db, const TransactionId& id) {
+  // TODO(dtxn) unlock during load
+  Transactions::const_iterator FindOrLoad(const TransactionId& id) {
     auto it = transactions_.find(id);
     if (it != transactions_.end()) {
       return it;
@@ -400,7 +411,7 @@ class TransactionParticipant::Impl {
 
     docdb::KeyBytes key;
     AppendTransactionKeyPrefix(id, &key);
-    auto iter = docdb::CreateRocksDBIterator(db,
+    auto iter = docdb::CreateRocksDBIterator(db_,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
@@ -412,11 +423,14 @@ class TransactionParticipant::Impl {
         if (metadata.ok()) {
           it = transactions_.emplace(std::move(*metadata), &rpcs_, &context_).first;
         } else {
-          LOG(DFATAL) << "Loaded bad metadata: " << metadata.status();
+          LOG_WITH_PREFIX(DFATAL) << "Loaded bad metadata: " << metadata.status();
         }
       } else {
-        LOG(DFATAL) << "Unable to parse stored metadata: " << iter->value().ToDebugHexString();
+        LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
+                                << iter->value().ToDebugHexString();
       }
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id;
     }
 
     return it;
@@ -426,8 +440,14 @@ class TransactionParticipant::Impl {
     return context_.client_future().get().get();
   }
 
-  TransactionParticipantContext& context_;
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
 
+  TransactionParticipantContext& context_;
+  std::string log_prefix_;
+
+  rocksdb::DB* db_ = nullptr;
   std::mutex mutex_;
   rpc::Rpcs rpcs_;
   Transactions transactions_;
@@ -445,9 +465,8 @@ void TransactionParticipant::Add(const TransactionMetadataPB& data,
   impl_->Add(data, write_batch);
 }
 
-boost::optional<TransactionMetadata> TransactionParticipant::Metadata(
-    rocksdb::DB* db, const TransactionId& id) {
-  return impl_->Metadata(db, id);
+boost::optional<TransactionMetadata> TransactionParticipant::Metadata(const TransactionId& id) {
+  return impl_->Metadata(id);
 }
 
 HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
@@ -467,6 +486,10 @@ void TransactionParticipant::Abort(const TransactionId& id,
 
 CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
   return impl_->ProcessApply(data);
+}
+
+void TransactionParticipant::SetDB(rocksdb::DB* db) {
+  impl_->SetDB(db);
 }
 
 } // namespace tablet

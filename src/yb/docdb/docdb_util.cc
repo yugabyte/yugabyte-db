@@ -300,8 +300,8 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
-Status DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
-  return DocDBDebugDump(rocksdb_.get(), std::cerr);
+void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
+  DocDBDebugDump(rocksdb_.get(), std::cerr);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDB() {

@@ -171,6 +171,21 @@ bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
 
 } // namespace
 
+IntentAwareIterator::IntentAwareIterator(
+    rocksdb::DB* rocksdb,
+    const rocksdb::ReadOptions& read_opts,
+    HybridTime high_ht,
+    const TransactionOperationContextOpt& txn_op_context)
+    : high_ht_(high_ht), txn_op_context_(txn_op_context) {
+  if (txn_op_context.is_initialized()) {
+    intent_iter_ = docdb::CreateRocksDBIterator(rocksdb,
+                                                docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+                                                boost::none,
+                                                rocksdb::kDefaultQueryId);
+  }
+  iter_.reset(rocksdb->NewIterator(read_opts));
+}
+
 Status IntentAwareIterator::Seek(const DocKey &doc_key, const HybridTime &hybrid_time) {
   if (intent_iter_) {
     RETURN_NOT_OK(

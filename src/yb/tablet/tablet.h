@@ -708,7 +708,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS OpenKuduColumnarTablet();
 
   CHECKED_STATUS KuduDebugDump(vector<std::string> *lines);
-  CHECKED_STATUS DocDBDebugDump(vector<std::string> *lines);
+  void DocDBDebugDump(vector<std::string> *lines);
 
   // Helper method to find the rowset that has the DMS with the highest retention.
   std::shared_ptr<RowSet> FindBestDMSToFlush(

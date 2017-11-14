@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/transaction.h"
 #include "yb/docdb/docdb-internal.h"
 
 namespace yb {
@@ -20,9 +21,12 @@ KeyType GetKeyType(const Slice& slice) {
   if (slice.empty()) {
     return KeyType::kEmpty;
   } else if (*slice.data() == static_cast<char>(ValueType::kIntentPrefix)) {
-    if (slice.size() > 1
-        && *(slice.data() + 1) == static_cast<char>(ValueType::kTransactionId)) {
-      return KeyType::kReverseTxnKey;
+    if (slice.size() > 1 && slice[1] == static_cast<char>(ValueType::kTransactionId)) {
+      if (slice.size() == TransactionId::static_size() + 2) {
+        return KeyType::kTransactionMetadata;
+      } else {
+        return KeyType::kReverseTxnKey;
+      }
     } else {
       return KeyType::kIntentKey;
     }

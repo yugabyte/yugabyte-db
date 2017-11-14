@@ -990,7 +990,9 @@ yb::Status GetSubDocument(
 // Debug output
 // ------------------------------------------------------------------------------------------------
 
-Result<std::string> DocDBKeyToDebugStr(const Slice& key_slice, KeyType* key_type) {
+namespace {
+
+Result<std::string> DocDBKeyToDebugStr(Slice key_slice, KeyType* key_type) {
   *key_type = GetKeyType(key_slice);
   SubDocKey subdoc_key;
   switch (*key_type) {
@@ -1008,8 +1010,19 @@ Result<std::string> DocDBKeyToDebugStr(const Slice& key_slice, KeyType* key_type
           doc_ht.ToString();
     }
     case KeyType::kReverseTxnKey:
-      // TODO(dtxn) - support dumping reverse txn key-values.
-      return std::string();
+    {
+      key_slice.remove_prefix(2); // kIntentPrefix + kTransactionId
+      auto transaction_id = DecodeTransactionId(&key_slice);
+      RETURN_NOT_OK(transaction_id);
+      return Format("TXN REV $0", *transaction_id);
+    }
+    case KeyType::kTransactionMetadata:
+    {
+      key_slice.remove_prefix(2); // kIntentPrefix + kTransactionId
+      auto transaction_id = DecodeTransactionId(&key_slice);
+      RETURN_NOT_OK(transaction_id);
+      return Format("TXN META $0", *transaction_id);
+    }
     case KeyType::kEmpty: FALLTHROUGH_INTENDED;
     case KeyType::kValueKey:
       RETURN_NOT_OK_PREPEND(
@@ -1040,53 +1053,66 @@ Result<std::string> DocDBValueToDebugStr(Slice value_slice, const KeyType& key_t
   return prefix;
 }
 
-Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, const bool include_binary) {
+Result<std::string> DocDBValueToDebugStr(
+    KeyType key_type, const std::string& key_str, Slice value) {
+  switch (key_type) {
+    case KeyType::kTransactionMetadata: {
+      TransactionMetadataPB metadata_pb;
+      if (!metadata_pb.ParseFromArray(value.cdata(), value.size())) {
+        return STATUS_FORMAT(Corruption, "Bad metadata: $0", value.ToDebugHexString());
+      }
+      auto metadata = TransactionMetadata::FromPB(metadata_pb);
+      RETURN_NOT_OK(metadata);
+      return ToString(*metadata);
+    }
+    case KeyType::kReverseTxnKey: {
+      KeyType ignore_key_type;
+      return DocDBKeyToDebugStr(value, &ignore_key_type);
+    }
+    case KeyType::kEmpty: FALLTHROUGH_INTENDED;
+    case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
+    case KeyType::kValueKey:
+      return DocDBValueToDebugStr(value, key_type);
+  }
+  FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
+}
+
+void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, std::ostream* out) {
+  KeyType key_type;
+  Result<std::string> key_str = DocDBKeyToDebugStr(key, &key_type);
+  if (!key_str.ok()) {
+    *out << key_str.status() << endl;
+    return;
+  }
+  Result<std::string> value_str = DocDBValueToDebugStr(key_type, *key_str, value);
+  if (!value_str.ok()) {
+    *out << value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)) << endl;
+    return;
+  }
+  *out << *key_str << " -> " << *value_str << endl;
+  if (include_binary) {
+    *out << FormatRocksDBSliceAsStr(key) << " -> "
+         << FormatRocksDBSliceAsStr(value) << endl << endl;
+  }
+}
+
+}  // namespace
+
+void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, IncludeBinary include_binary) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
-  auto result_status = Status::OK();
-
-  auto handle_error = [&result_status, &iter, &out](const Status& s) -> void {
-    if (!result_status.ok()) {
-      result_status = s;
-    }
-    out << s.ToString();
-    iter->Next();
-  };
 
   while (iter->Valid()) {
-    KeyType key_type;
-    Result<std::string> key_str = DocDBKeyToDebugStr(iter->key(), &key_type);
-    if (!key_str.ok()) {
-      handle_error(key_str.status());
-      continue;
-    }
-    if (key_type == KeyType::kReverseTxnKey) {
-      // TODO(dtxn) - support dumping reverse txn key-values, for now we just skip them.
-      iter->Next();
-      continue;
-    }
-
-    Result<std::string> value_str = DocDBValueToDebugStr(iter->value(), key_type);
-    if (!value_str.ok()) {
-      handle_error(value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)));
-      continue;
-    }
-    out << *key_str << " -> " << *value_str << endl;
-    if (include_binary) {
-      out << FormatRocksDBSliceAsStr(iter->key()) << " -> "
-          << FormatRocksDBSliceAsStr(iter->value()) << endl << endl;
-    }
-
+    ProcessDumpEntry(iter->key(), iter->value(), include_binary, &out);
     iter->Next();
   }
-  return Status::OK();
 }
 
-std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, const bool include_binary) {
+std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, IncludeBinary include_binary) {
   stringstream ss;
-  CHECK_OK(DocDBDebugDump(rocksdb, ss, include_binary));
+  DocDBDebugDump(rocksdb, ss, include_binary);
   return ss.str();
 }
 

@@ -229,6 +229,12 @@ class DocDBLoadGenerator {
   TransactionOperationContextOpt GetReadOperationTransactionContext();
 };
 
+#define ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(expected) \
+  do { \
+    ASSERT_STR_EQ_VERBOSE_TRIMMED( \
+        ::yb::util::ApplyEagerLineContinuation(expected), DocDBDebugDumpToStr()); \
+  } while(false)
+
 }  // namespace docdb
 }  // namespace yb
 

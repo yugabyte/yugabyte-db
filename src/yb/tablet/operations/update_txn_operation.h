@@ -34,11 +34,13 @@ class UpdateTxnOperationState : public OperationState {
   explicit UpdateTxnOperationState(TabletPeer* tablet_peer)
       : UpdateTxnOperationState(tablet_peer, nullptr) {}
 
-  const tserver::TransactionStatePB* request() const override { return request_; }
+  const tserver::TransactionStatePB* request() const override {
+    return request_.load(std::memory_order_acquire);
+  }
 
   void TakeRequest(tserver::TransactionStatePB* request) {
     request_holder_.reset(new tserver::TransactionStatePB);
-    request_ = request_holder_.get();
+    request_.store(request_holder_.get(), std::memory_order_release);
     request_holder_->Swap(request);
   }
 
@@ -48,7 +50,7 @@ class UpdateTxnOperationState : public OperationState {
   void UpdateRequestFromConsensusRound() override;
 
   std::unique_ptr<tserver::TransactionStatePB> request_holder_;
-  const tserver::TransactionStatePB* request_;
+  std::atomic<const tserver::TransactionStatePB*> request_;
 };
 
 class UpdateTxnOperation : public Operation {

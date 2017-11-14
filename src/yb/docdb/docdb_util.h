@@ -138,7 +138,7 @@ class DocDBRocksDBUtil {
       HybridTime hybrid_time,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
 
-  CHECKED_STATUS DocDBDebugDumpToConsole();
+  void DocDBDebugDumpToConsole();
 
   CHECKED_STATUS FlushRocksDB();
 

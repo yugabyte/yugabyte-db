@@ -145,7 +145,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
         hybrid_time);
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
-      LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);
+      LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, IncludeBinary::kTrue);
     }
     CHECK_OK(get_doc_status);
     // doc_found can be false for deleted documents, and that is perfectly valid.

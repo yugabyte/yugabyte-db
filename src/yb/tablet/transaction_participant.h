@@ -89,7 +89,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // Adds new running transaction.
   void Add(const TransactionMetadataPB& data, rocksdb::WriteBatch *write_batch);
 
-  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db, const TransactionId& id) override;
+  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override;
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
@@ -100,6 +100,8 @@ class TransactionParticipant : public TransactionStatusManager {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
+
+  void SetDB(rocksdb::DB* db);
 
  private:
   class Impl;

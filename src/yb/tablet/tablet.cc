@@ -434,6 +434,9 @@ Status Tablet::OpenKeyValueTablet() {
   }
   rocksdb_.reset(db);
   ql_storage_.reset(new docdb::QLRocksDBStorage(rocksdb_.get()));
+  if (transaction_participant_) {
+    transaction_participant_->SetDB(db);
+  }
   LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
   return Status::OK();
 }
@@ -899,7 +902,7 @@ void Tablet::PrepareTransactionWriteBatch(
   }
   auto transaction_id = FullyDecodeTransactionId(put_batch.transaction().transaction_id());
   CHECK_OK(transaction_id);
-  auto metadata = transaction_participant()->Metadata(rocksdb_.get(), *transaction_id);
+  auto metadata = transaction_participant()->Metadata(*transaction_id);
   CHECK(metadata) << "Transaction metadata missing: " << *transaction_id;
 
   auto isolation_level = metadata->isolation;
@@ -2324,10 +2327,10 @@ Status Tablet::DebugDump(vector<string> *lines) {
       return KuduDebugDump(lines);
     case TableType::YQL_TABLE_TYPE:
     case TableType::REDIS_TABLE_TYPE:
-      return DocDBDebugDump(lines);
+      DocDBDebugDump(lines);
+      return Status::OK();
   }
-  LOG(FATAL) << "Invalid table type: " << table_type_;
-  return Status::OK();
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
 }
 
 Status Tablet::KuduDebugDump(vector<string> *lines) {
@@ -2347,10 +2350,10 @@ Status Tablet::KuduDebugDump(vector<string> *lines) {
   return Status::OK();
 }
 
-Status Tablet::DocDBDebugDump(vector<string> *lines) {
+void Tablet::DocDBDebugDump(vector<string> *lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
-  return yb::docdb::DocDBDebugDump(rocksdb_.get(), LOG_STRING(INFO, lines));
+  yb::docdb::DocDBDebugDump(rocksdb_.get(), LOG_STRING(INFO, lines));
 }
 
 Status Tablet::CaptureConsistentIterators(
@@ -2445,8 +2448,7 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
 namespace {
 
 Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch,
-                                         TransactionParticipant* transaction_participant,
-                                         rocksdb::DB* db) {
+                                         TransactionParticipant* transaction_participant) {
   if (!write_batch.has_transaction()) {
     return IsolationLevel::NON_TRANSACTIONAL;
   }
@@ -2455,7 +2457,7 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
   }
   auto id = FullyDecodeTransactionId(write_batch.transaction().transaction_id());
   RETURN_NOT_OK(id);
-  auto stored_metadata = transaction_participant->Metadata(db, *id);
+  auto stored_metadata = transaction_participant->Metadata(*id);
   if (!stored_metadata) {
     return STATUS_FORMAT(IllegalState, "Missing metadata for transaction: $0", *id);
   }
@@ -2467,8 +2469,7 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
 Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
                                       LockBatch *keys_locked,
                                       KeyValueWriteBatchPB* write_batch) {
-  auto isolation_level =
-      GetIsolationLevel(*write_batch, transaction_participant_.get(), rocksdb_.get());
+  auto isolation_level = GetIsolationLevel(*write_batch, transaction_participant_.get());
   RETURN_NOT_OK(isolation_level);
   bool need_read_snapshot = false;
   docdb::PrepareDocWriteOperation(
@@ -2906,7 +2907,7 @@ void Tablet::ForceRocksDBCompactInTest() {
 }
 
 std::string Tablet::DocDBDumpStrInTest() {
-  return docdb::DocDBDebugDumpToStr(rocksdb_.get(), false);
+  return docdb::DocDBDebugDumpToStr(rocksdb_.get());
 }
 
 void Tablet::LostLeadership() {

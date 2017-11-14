@@ -128,7 +128,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   SCOPED_TRACE("\nWrite batch:\n" + dwb_str);
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000)]) -> "row1_e"
@@ -246,7 +246,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
   ASSERT_OK(DeleteSubDoc(
       DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500), InitMarkerBehavior::OPTIONAL));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
@@ -310,7 +310,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestRowDeletes) {
       InitMarkerBehavior::OPTIONAL));
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2800)));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000, w=1)]) -> 10000
@@ -371,7 +371,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorHasNextIdempotence) {
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"
@@ -422,7 +422,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000, w=1)]) -> "row1_e"
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=1000, w=2)]) -> 20000
@@ -501,7 +501,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorMultipleDeletes) {
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000, w=1)]) -> 10000
@@ -568,7 +568,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"
@@ -624,7 +624,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorKeyProjection) {
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000, w=1)]) -> "row1_e"
       )#");
@@ -682,8 +682,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     txn_commit_time_.emplace(txn_id, commit_time);
   }
 
-  boost::optional<TransactionMetadata> Metadata(rocksdb::DB* db,
-                                                const TransactionId& id) override {
+  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
     return boost::none;
   }
 
@@ -763,7 +762,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
   ResetCurrentTransactionId();
   txn_status_manager.Commit(*txn2, HybridTime::FromMicros(6000));
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT(p=500, w=1) -> \
 TransactionId(30303030-3030-3030-3030-303030303031) none
       SubDocKey(DocKey([], ["row1", 11111]), []) kStrongSnapshotWrite HT(p=4000) -> \
@@ -784,6 +783,14 @@ TransactionId(30303030-3030-3030-3030-303030303031) 42000
 TransactionId(30303030-3030-3030-3030-303030303032) "row2_e_t2"
       SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=500) -> \
 TransactionId(30303030-3030-3030-3030-303030303031) "row2_e_t1"
+      TXN REV 30303030-3030-3030-3030-303030303031 -> \
+SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT(p=500, w=1)
+      TXN REV 30303030-3030-3030-3030-303030303031 -> \
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=500)
+      TXN REV 30303030-3030-3030-3030-303030303032 -> \
+SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT(p=4000, w=1)
+      TXN REV 30303030-3030-3030-3030-303030303032 -> \
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=4000)
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
       SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000)]) -> "row1_e"

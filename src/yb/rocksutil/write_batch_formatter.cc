@@ -82,8 +82,12 @@ void WriteBatchFormatter::OutputField(const rocksdb::Slice& value) {
   if (need_separator_) {
     out_ << ", ";
   }
-  need_separator_ = true,
-  out_ << FormatBytesAsStr(value.cdata(), value.size(), QuotesType::kSingleQuotes);
+  need_separator_ = true;
+  if (output_format_ == OutputFormat::kEscaped) {
+    out_ << FormatBytesAsStr(value.cdata(), value.size(), QuotesType::kSingleQuotes);
+  } else {
+    out_ << value.ToDebugHexString();
+  }
 }
 
 void WriteBatchFormatter::FinishOutputLine() {

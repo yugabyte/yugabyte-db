@@ -192,12 +192,6 @@ void Rpcs::Register(RpcCommandPtr call, Handle* handle) {
 
 Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
   std::lock_guard<std::mutex> lock(*mutex_);
-#ifndef NDEBUG
-  for (const auto& existing : calls_) {
-    CHECK(existing.get() != call.get());
-  }
-#endif
-
   calls_.push_back(std::move(call));
   return --calls_.end();
 }

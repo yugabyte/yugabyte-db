@@ -24,12 +24,13 @@ namespace yb {
 namespace tablet {
 
 void UpdateTxnOperationState::UpdateRequestFromConsensusRound() {
-  request_ = consensus_round()->replicate_msg()->mutable_transaction_state();
+  request_.store(consensus_round()->replicate_msg()->mutable_transaction_state(),
+                 std::memory_order_release);
 }
 
 std::string UpdateTxnOperationState::ToString() const {
-  return Format("UpdateTxnOperationState [$0]",
-                request_ ? "(none)"s : request_->ShortDebugString());
+  auto req = request();
+  return Format("UpdateTxnOperationState [$0]", !req ? "(none)"s : req->ShortDebugString());
 }
 
 consensus::ReplicateMsgPtr UpdateTxnOperation::NewReplicateMsg() {
