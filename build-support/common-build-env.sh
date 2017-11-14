@@ -65,7 +65,6 @@ readonly YB_LINUXBREW_DIR_CANDIDATES=(
 # or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
 # outside of main (non-thirdparty) YB codebase's build pipeline.
 readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY=/n/jenkins/thirdparty
-readonly MAC_OS_X_PARENT_DIR_FOR_SHARED_THIRDPARTY=/var/lib/jenkins/thirdparty
 
 # This node is the NFS server and is also used to run the non-distributed part of distributed builds
 # (e.g. "cmake" or "make" commands) in a way such that it would have access to the build directory
@@ -451,8 +450,7 @@ set_build_type_based_on_jenkins_job_name() {
   local _build_type  # to avoid collision with the global build_type variable
   local jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
   for _build_type in "${VALID_BUILD_TYPES[@]}"; do
-    local _build_type_regex="-$_build_type-"
-    if [[ "-$jenkins_job_name-" =~ $_build_type_regex ]]; then
+    if [[ "-$jenkins_job_name-" =~ [-_]$_build_type[-_] ]]; then
       log "Using build type '$_build_type' based on Jenkins job name '$JOB_NAME'."
       readonly build_type=$_build_type
       return
@@ -510,8 +508,7 @@ set_compiler_type_based_on_jenkins_job_name() {
     local jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
     YB_COMPILER_TYPE=""
     for compiler_type in "${VALID_COMPILER_TYPES[@]}"; do
-      local compiler_type_regex="\\b$compiler_type\\b"
-      if [[ "$jenkins_job_name" =~ $compiler_type_regex ]]; then
+      if [[ "-$jenkins_job_name-" =~ [-_]$compiler_type[-_] ]]; then
         log "Setting YB_COMPILER_TYPE='$compiler_type' based on Jenkins job name '$JOB_NAME'."
         YB_COMPILER_TYPE=$compiler_type
         break
@@ -1119,7 +1116,7 @@ run_remote_cmd() {
   local escape_cmd_line_rv
   escape_cmd_line "$@"
   ssh "$build_host" \
-      "'$YB_SRC_ROOT/build-support/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
+      "'$YB_BUILD_SUPPORT_DIR/remote_cmd.sh' '$PWD' '$PATH' '$executable' $escape_cmd_line_rv"
 }
 
 # Run the build command (cmake / make) on the appropriate host. This is localhost in most cases.
@@ -1186,12 +1183,13 @@ detect_edition() {
 
 set_yb_src_root() {
   YB_SRC_ROOT=$1
+  YB_BUILD_SUPPORT_DIR=$YB_SRC_ROOT/build-support
   if [[ ! -d $YB_SRC_ROOT ]]; then
     fatal "YB_SRC_ROOT directory '$YB_SRC_ROOT' does not exist"
   fi
   YB_ENTERPRISE_ROOT=$YB_SRC_ROOT/ent
-  YB_COMPILER_WRAPPER_CC=$YB_SRC_ROOT/build-support/compiler-wrappers/cc
-  YB_COMPILER_WRAPPER_CXX=$YB_SRC_ROOT/build-support/compiler-wrappers/c++
+  YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
+  YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
 }
 
 # Checks syntax of all Python scripts in the repository.
@@ -1209,7 +1207,7 @@ check_python_script_syntax() {
         log "Checking Python syntax of $file_path"
         set -x
       fi
-      "$YB_SRC_ROOT/build-support/check_python_syntax.py" "$file_path"
+      "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py" "$file_path"
     )
   done
   popd
@@ -1222,9 +1220,9 @@ check_python_script_syntax() {
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )"
 
-if [[ ! -d $YB_SRC_ROOT/build-support ]]; then
+if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
   fatal "Could not determine YB source directory from '$BASH_SOURCE':" \
-        "$YB_SRC_ROOT/build-support does not exist."
+        "$YB_BUILD_SUPPORT_DIR does not exist."
 fi
 
 if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then

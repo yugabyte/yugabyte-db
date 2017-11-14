@@ -20,6 +20,8 @@
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/intent.h"
 
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

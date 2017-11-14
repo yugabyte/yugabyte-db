@@ -123,10 +123,23 @@ build_cpp_code() {
   set_yb_src_root "$old_yb_src_root"
 }
 
-# -------------------------------------------------------------------------------------------------
+cleanup() {
+  if [[ -n ${BUILD_ROOT:-} && $DONT_DELETE_BUILD_ROOT == "0" ]]; then
+    log "Running the script to clean up build artifacts..."
+    "$YB_BUILD_SUPPORT_DIR/jenkins/post-build-clean.sh"
+  fi
+}
+
+# =================================================================================================
 # Main script
+# =================================================================================================
 
 cd "$YB_SRC_ROOT"
+
+if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
+  fatal "Test of the common build environment failed, cannot proceed."
+fi
+
 export TSAN_OPTIONS=""
 
 if [[ $OSTYPE =~ ^darwin ]]; then
@@ -214,13 +227,6 @@ export BUILD_ROOT
 TEST_LOG_DIR="$BUILD_ROOT/test-logs"
 TEST_TMP_ROOT_DIR="$BUILD_ROOT/test-tmp"
 
-cleanup() {
-  if [[ -n ${BUILD_ROOT:-} && $DONT_DELETE_BUILD_ROOT == "0" ]]; then
-    log "Running the script to clean up build artifacts..."
-    "$YB_SRC_ROOT/build-support/jenkins/post-build-clean.sh"
-  fi
-}
-
 # If we're running inside Jenkins (the BUILD_ID is set), then install an exit handler which will
 # clean up all of our build results.
 if is_jenkins; then
@@ -228,7 +234,7 @@ if is_jenkins; then
 fi
 
 export TOOLCHAIN_DIR=/opt/toolchain
-if [ -d "$TOOLCHAIN_DIR" ]; then
+if [[ -d $TOOLCHAIN_DIR ]]; then
   PATH=$TOOLCHAIN_DIR/apache-maven-3.0/bin:$PATH
 fi
 
@@ -236,11 +242,8 @@ configure_remote_build
 
 should_build_thirdparty=true
 parent_dir_for_shared_thirdparty=""
-if is_linux && is_src_root_on_nfs; then
+if is_src_root_on_nfs; then
   parent_dir_for_shared_thirdparty=$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY
-fi
-if is_mac; then
-  parent_dir_for_shared_thirdparty=$MAC_OS_X_PARENT_DIR_FOR_SHARED_THIRDPARTY
 fi
 
 if [[ -d $parent_dir_for_shared_thirdparty ]]; then
@@ -279,7 +282,7 @@ THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
 
 if which ccache >/dev/null ; then
-  CLANG=$YB_SRC_ROOT/build-support/ccache-clang/clang
+  CLANG=$YB_BUILD_SUPPORT_DIR/ccache-clang/clang
 else
   CLANG=$YB_SRC_ROOT/thirdparty/clang-toolchain/bin/clang
 fi
@@ -338,13 +341,12 @@ if [[ $BUILD_TYPE != "asan" ]]; then
   export YB_TEST_ULIMIT_CORE=unlimited
 fi
 
-NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
-
 # Cap the number of parallel tests to run at $MAX_NUM_PARALLEL_TESTS
-if [[ $NUM_PROCS -gt $MAX_NUM_PARALLEL_TESTS ]]; then
+detect_num_cpus
+if [[ $YB_NUM_CPUS -gt $MAX_NUM_PARALLEL_TESTS ]]; then
   NUM_PARALLEL_TESTS=$MAX_NUM_PARALLEL_TESTS
 else
-  NUM_PARALLEL_TESTS=$NUM_PROCS
+  NUM_PARALLEL_TESTS=$YB_NUM_CPUS
 fi
 
 declare -i EXIT_STATUS=0
@@ -358,10 +360,8 @@ set -e
 
 FAILURES=""
 
-if [[ $YB_BUILD_CPP == "1" ]]; then
-  if ! which ctest >/dev/null; then
-    fatal "ctest not found, won't be able to run C++ tests"
-  fi
+if [[ $YB_BUILD_CPP == "1" ]] && ! which ctest >/dev/null; then
+  fatal "ctest not found, won't be able to run C++ tests"
 fi
 
 # -------------------------------------------------------------------------------------------------

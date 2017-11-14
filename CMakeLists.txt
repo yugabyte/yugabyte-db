@@ -297,6 +297,17 @@ function(YB_INCLUDE_EXTENSIONS)
   endif()
 endfunction()
 
+set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
+
+# Wrap add_dependencies so that we can capture dependencies for external processing. We use this
+# when determining what tests to run for a particular set of changes.
+function(add_dependencies target)
+  # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
+  # of CMake can't parse their own cache in case some values have newlines.
+  set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
+  _add_dependencies(${target} ${ARGN})
+endfunction()
+
 # ------------------------------------------------------------------------------------------------
 # Main build
 
@@ -1559,3 +1570,9 @@ add_subdirectory(src/yb/cqlserver)
 if ("${YB_EDITION}" STREQUAL "enterprise")
   include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
 endif()
+
+# This file contains dependencies in the following form, separated by '\n' (escaped newline),
+# all on one line:
+# target: dep1;dep2;..;depN
+# The same target can appear on the left hand side of multiple such "lines".
+file(WRITE "${YB_BUILD_ROOT}/yb_all_deps.txt" "${YB_ALL_DEPS}")

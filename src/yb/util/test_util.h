@@ -33,14 +33,13 @@
 #ifndef YB_UTIL_TEST_UTIL_H
 #define YB_UTIL_TEST_UTIL_H
 
-#include <gmock/gmock.h>
+#include <atomic>
 #include <string>
 
 #include <gtest/gtest.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 
-#include "yb/server/hybrid_clock.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -167,14 +166,6 @@ CHECKED_STATUS WaitFor(std::function<Result<bool>()> condition, const MonoDelta&
 std::string GetToolPath(const std::string& tool_name);
 
 int CalcNumTablets(int num_tablet_servers);
-
-#if !defined(__APPLE__)
-class MockHybridClock : public server::HybridClock {
- public:
-  MOCK_METHOD1(NtpAdjtime, int(timex* timex));
-  MOCK_METHOD1(NtpGettime, int(ntptimeval* timeval));
-};
-#endif // !defined(__APPLE__)
 
 template <class T>
 void SetAtomicFlag(T value, T* flag) {
