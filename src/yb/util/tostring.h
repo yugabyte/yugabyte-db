@@ -221,7 +221,7 @@ std::string PointerToString<Pointer>::Apply(P&& ptr) {
     buffer[1] = 'x';
     FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
     char* end = buffer + strlen(buffer);
-    memcpy(end, " -> ", 4);
+    memcpy(end, " -> ", 5);
     return buffer + ToString(*ptr);
   } else {
     return "<NULL>";

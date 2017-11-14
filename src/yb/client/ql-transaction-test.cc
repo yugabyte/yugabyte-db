@@ -344,7 +344,8 @@ TEST_F(QLTransactionTest, ResendApplying) {
   ASSERT_NE(0, CountTransactions());
 
   SetIgnoreApplyingProbability(0.0);
-  std::this_thread::sleep_for(1s); // Wait long enough for transaction to be applied.
+  // Wait long enough for transaction to be applied.
+  std::this_thread::sleep_for(NonTsanVsTsan(1s, 5s));
   ASSERT_EQ(0, CountTransactions());
   VerifyData();
   CHECK_OK(cluster_->RestartSync());

@@ -81,7 +81,10 @@ using std::vector;
 using tserver::MiniTabletServer;
 using tserver::TabletServer;
 
-static const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
+namespace {
+
+const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
+const int kMasterLeaderElectionWaitTimeSeconds = NonTsanVsTsan(20, 60);
 
 std::string GetFsRoot(const MiniClusterOptions& options) {
   if (!options.data_root.empty()) {
@@ -92,6 +95,8 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
   }
   return JoinPathSegments(GetTestDataDirectory(), "minicluster-data");
 }
+
+} // namespace
 
 MiniClusterOptions::MiniClusterOptions()
   : num_masters(1),

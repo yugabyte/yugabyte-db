@@ -1022,7 +1022,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
                     &tablets, nullptr, &table));
   DCHECK_EQ(1, tablets.size());
-  LOG (INFO) << "Inserted new table and tablet info into CatalogManager maps";
+  LOG(INFO) << "Inserted new table and tablet info into CatalogManager maps: "
+            << namespace_name << "." << table_name;
 
   // Write Tablets to sys-tablets (in "running" state since we don't want the loadbalancer to
   // assign these tablets since this table is virtual)
@@ -1030,12 +1031,12 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::RUNNING);
   }
   RETURN_NOT_OK(sys_catalog_->AddItems(tablets));
-  LOG (INFO) << "Wrote tablets to system catalog";
+  LOG(INFO) << "Wrote tablets to system catalog: " << ToString(tablets);
 
   // Update the on-disk table state to "running".
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   RETURN_NOT_OK(sys_catalog_->AddItem(table.get()));
-  LOG (INFO) << "Wrote table to system catalog";
+  LOG(INFO) << "Wrote table to system catalog: " << ToString(table);
 
   // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
@@ -4561,9 +4562,9 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
   Consensus* consensus = catalog_->sys_catalog_->tablet_peer_->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
-    leader_status_ = STATUS(IllegalState,
-                         Substitute("Not the leader. Local UUID: $0, Consensus state: $1",
-                                    uuid, cstate.ShortDebugString()));
+    leader_status_ = STATUS_FORMAT(IllegalState,
+                                   "Not the leader. Local UUID: $0, Consensus state: $1",
+                                   uuid, cstate);
     return;
   }
   // TODO: deduplicate the leadership check above and below (one is committed, one is active).

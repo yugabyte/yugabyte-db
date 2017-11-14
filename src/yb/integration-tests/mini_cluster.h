@@ -168,7 +168,6 @@ class MiniCluster : public MiniClusterBase {
   enum {
     kTabletReportWaitTimeSeconds = 5,
     kRegistrationWaitTimeSeconds = 30,
-    kMasterLeaderElectionWaitTimeSeconds = 20
   };
 
   // Create a client configured to talk to this cluster. Builder may contain
