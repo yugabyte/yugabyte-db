@@ -529,6 +529,12 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
         }
       }
     } else {
+      // If the key is invalid, GetRedisValueType will set data_type to REDIS_TYPE_NONE because it
+      // can't find the key. If the op is TSREM, then the kv.type() should be REDIS_TYPE_TIMESERIES,
+      // so we can safely return OK since there is nothing to remove.
+      if (kv.type() == REDIS_TYPE_TIMESERIES && data_type == REDIS_TYPE_NONE) {
+        return Status::OK();
+      }
       for (int i = 0; i < kv.subkey_size(); i++) {
         PrimitiveValue primitive_value;
         RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), data_type, &primitive_value));

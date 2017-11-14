@@ -1223,6 +1223,10 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
 }
 
 TEST_F(TestRedisService, TestTsRem) {
+
+  // Try some deletes before inserting any data.
+  DoRedisTestOk(__LINE__, {"TSREM", "invalid_key", "20", "40", "70", "90"});
+
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "10", "v1",
       "20", "v2",
