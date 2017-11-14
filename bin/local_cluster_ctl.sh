@@ -281,6 +281,7 @@ start_master() {
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
       --master_addresses "$master_addresses" \
+      --webserver_interface 127.0.0.$master_index \
       --webserver_port $(( $master_http_port_base + $master_index )) \
       --rpc_bind_addresses 127.0.0.$master_index:$(( $master_rpc_port )) \
       --placement_cloud "$placement_cloud" \
@@ -310,6 +311,7 @@ start_tserver() {
        --tserver_master_addrs "$master_addresses" \
        --block_cache_capacity_mb 128 \
        --memory_limit_hard_bytes $(( 1024 * 1024 * 1024)) \
+       --webserver_interface 127.0.0.$tserver_index \
        --webserver_port $(( $tserver_http_port_base + $tserver_index )) \
        --rpc_bind_addresses 127.0.0.$tserver_index:$(( $tserver_rpc_port )) \
        --redis_proxy_webserver_port $(( $redis_http_port_base + $tserver_index )) \
