@@ -72,8 +72,6 @@ bool ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tabl
       }
     }
   }
-  YB_LOG_EVERY_N(WARNING, 100)
-    << "Cannot relocate leader from tablet server in non-affinitized zone to affinitized zone";
   return false;
 }
 
