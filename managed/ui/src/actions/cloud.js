@@ -283,7 +283,8 @@ export function createAccessKey(providerUUID, regionUUID, keyInfo) {
     keyType: "PRIVATE",
     keyContent: keyInfo.privateKeyContent,
     sshUser: keyInfo.sshUser,
-    passwordlessSudoAccess: keyInfo.passwordlessSudoAccess
+    passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
+    airGapInstall: keyInfo.airGapInstall
   };
   const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);

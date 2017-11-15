@@ -16,7 +16,8 @@ const mapDispatchToProps = (dispatch, ownProps) => {
             code: formData.name.toLowerCase().replace(/ /g, "-") + "-key",
             privateKeyContent: formData.privateKeyContent,
             sshUser: formData.sshUser,
-            passwordlessSudoAccess: formData.passwordlessSudoAccess
+            passwordlessSudoAccess: formData.passwordlessSudoAccess,
+            airGapInstall: formData.airGapInstall
           }
         };
         dispatch(setOnPremConfigData(formSubmitVals));
@@ -27,7 +28,10 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 };
 
 const mapStateToProps = (state, ownProps) => {
-  let initialFormValues = {};
+  let initialFormValues = {
+    passwordlessSudoAccess: true,
+    airGapInstall: false
+  };
   const {cloud: {onPremJsonFormData}} = state;
   if (ownProps.isEditProvider && isNonEmptyObject(onPremJsonFormData)) {
     initialFormValues = {
@@ -35,7 +39,8 @@ const mapStateToProps = (state, ownProps) => {
       keyCode: onPremJsonFormData.key.code,
       privateKeyContent: onPremJsonFormData.key.privateKeyContent,
       sshUser: onPremJsonFormData.key.sshUser,
-      passwordlessSudoAccess: true,
+      passwordlessSudoAccess: onPremJsonFormData.key.passwordlessSudoAccess,
+      airGapInstall: onPremJsonFormData.key.airGapInstall,
       machineTypeList : onPremJsonFormData.instanceTypes.map(function (item) {
         return {
           code: item.instanceTypeCode,
@@ -79,7 +84,7 @@ const validate = values => {
 
 const onPremProviderConfigForm = reduxForm({
   form: 'onPremConfigForm',
-  fields: ['name', 'sshUser', 'privateKeyContent', 'passwordlessSudoAccess'],
+  fields: ['name', 'sshUser', 'privateKeyContent', 'passwordlessSudoAccess', 'airGapInstall'],
   validate,
   destroyOnUnmount: false,
   enableReinitialize: true,
