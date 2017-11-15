@@ -287,8 +287,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the cloud name.
       params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
       // Set the device information (numVolumes, volumeSize, etc.)
