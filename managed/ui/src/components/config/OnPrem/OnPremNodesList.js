@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray } from 'redux-form';
 import { withRouter } from 'react-router';
@@ -138,12 +138,13 @@ class OnPremNodesList extends Component {
       const onPremKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid);
       if (isDefinedNotNull(onPremKey) && isNonEmptyString(onPremKey.keyInfo.provisionInstanceScript)) {
         provisionMessage = (
-          <div>
-            <i>Warning: The SSH User associated with this provider does not have passwordless sudo access to instances in this provider. Please execute the following script on the YugaWare host machine, once for each instance that you add here.</i>
+          <Alert bsStyle="warning" className="pre-provision-message">
+            You need to pre-provision your nodes, Please execute the following script
+            on the YugaWare host machine once for each instance that you add here.
             <YBCodeBlock>
-              {'python ' + onPremKey.keyInfo.provisionInstanceScript + ' --ip '}<b>{'<IP Address> '}</b>{'--mount_points '}<b>{'<instance type mount points>'}</b>
+              {onPremKey.keyInfo.provisionInstanceScript + ' --ip '}<b>{'<IP Address> '}</b>{'--mount_points '}<b>{'<instance type mount points>'}</b>
             </YBCodeBlock>
-          </div>
+          </Alert>
         );
       }
     }

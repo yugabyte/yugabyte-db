@@ -6,20 +6,16 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
@@ -33,10 +29,13 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -54,8 +53,9 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -86,6 +86,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    new File(TestHelper.TMP_PATH).mkdirs();
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File(TestHelper.TMP_PATH));
   }
 
   private Result listProviders() {
@@ -253,13 +259,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteProviderWithProvisionScript() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
-    String provisionDir = "/test/dir";
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.provisionInstanceScript = provisionDir + "/provision_instance.py";
+    String scriptFile = createTempFile("provision_instance.py", "some script");
+    keyInfo.provisionInstanceScript = scriptFile;
     AccessKey.create(p.uuid, "access-key-code", keyInfo);
-    when(mockTemplateManager.getOrCreateProvisionFilePath(p.uuid)).thenReturn(provisionDir);
     Result result = deleteProvider(p.uuid);
     assertOk(result);
-    verify(mockTemplateManager, times(1)).getOrCreateProvisionFilePath(p.uuid);
+    assertFalse(new File(scriptFile).exists());
   }
 }

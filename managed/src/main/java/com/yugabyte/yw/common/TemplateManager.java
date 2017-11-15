@@ -27,7 +27,7 @@ public class TemplateManager extends DevopsBase {
     return COMMAND_TYPE;
   }
 
-  public String getOrCreateProvisionFilePath(UUID providerUUID) {
+  private String getOrCreateProvisionFilePath(UUID providerUUID) {
     File provisionBasePathName = new File(appConfig.getString("yb.storage.path"), "/provision");
     if (!provisionBasePathName.exists() && !provisionBasePathName.mkdirs()) {
       throw new RuntimeException("Provision path " + provisionBasePathName.getAbsolutePath() + " doesn't exists.");
@@ -39,7 +39,7 @@ public class TemplateManager extends DevopsBase {
     throw new RuntimeException("Unable to create provision file path " + provisionFilePath.getAbsolutePath());
   }
 
-  public void createProvisionTemplate(AccessKey accessKey) {
+  public void createProvisionTemplate(AccessKey accessKey, boolean airGapInstall, boolean passwordlessSudoAccess) {
 
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
@@ -58,11 +58,16 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.vaultPasswordFile);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+    if (passwordlessSudoAccess) {
+      commandArgs.add("--passwordless_sudo");
+    }
 
     JsonNode result = execAndParseCommand(Common.CloudType.onprem, "template", commandArgs);
 
     if (result.get("error") == null) {
+      keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;
       keyInfo.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
+      keyInfo.airGapInstall = airGapInstall;
       accessKey.setKeyInfo(keyInfo);
       accessKey.save();
     } else {

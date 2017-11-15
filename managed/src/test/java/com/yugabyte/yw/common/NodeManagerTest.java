@@ -364,6 +364,7 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      keyInfo.airGapInstall = true;
       getOrCreate(t.provider.uuid, "demo-access", keyInfo);
 
       // Set up task params
@@ -389,9 +390,12 @@ public class NodeManagerTest extends FakeDBApplication {
       }
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
-      List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
+      List<String> accessKeyCommand = new ArrayList<String>(ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
-          "/path/to/private.key");
+          "/path/to/private.key"));
+      if (params.cloud.equals(Common.CloudType.onprem)) {
+        accessKeyCommand.add("--air_gap");
+      }
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
       if (params.cloud.equals(Common.CloudType.aws)) {
         List<String> awsAccessKeyCommands = ImmutableList.of("--key_pair_name",

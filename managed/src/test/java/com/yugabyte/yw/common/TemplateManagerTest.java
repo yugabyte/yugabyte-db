@@ -26,8 +26,8 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.common.DevopsBase.YBCLOUD_SCRIPT;
 import static com.yugabyte.yw.common.ShellProcessHandler.ShellResponse;
 import static com.yugabyte.yw.common.TemplateManager.PROVISION_SCRIPT;
-import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -100,28 +100,60 @@ public class TemplateManagerTest extends FakeDBApplication {
     FileUtils.deleteDirectory(new File(YB_STORAGE_PATH_VALUE));
   }
 
-  @Test
-  public void testGetOrCreateProvisionFilePathSuccess() {
-    String path = templateManager.getOrCreateProvisionFilePath(testProvider.uuid);
-    assertThat(path, is(YB_STORAGE_PATH_VALUE + "/provision/" + testProvider.uuid));
+  private void assertAccessKeyInfo(AccessKey accessKey, boolean airGapInstall, boolean passwordlessSudo) {
+    assertEquals(airGapInstall, accessKey.getKeyInfo().airGapInstall);
+    assertEquals(passwordlessSudo, accessKey.getKeyInfo().passwordlessSudoAccess);
+    if (airGapInstall || passwordlessSudo) {
+      String expectedProvisionScript = String.format("%s/provision/%s/%s",
+          YB_STORAGE_PATH_VALUE, accessKey.getProviderUUID(), PROVISION_SCRIPT
+      );
+      assertEquals(expectedProvisionScript, accessKey.getKeyInfo().provisionInstanceScript);
+    } else {
+      assertNull(accessKey.getKeyInfo().provisionInstanceScript);
+    }
   }
 
   @Test
-  public void testTemplateCommandSuccess() {
+  public void testTemplateCommandWithAirGapEnabled() {
     AccessKey accessKey = setupTestAccessKey();
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
     when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(0, "{}"));
-    templateManager.createProvisionTemplate(accessKey);
+    templateManager.createProvisionTemplate(accessKey, true, false);
     verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+    assertAccessKeyInfo(accessKey, true, false);
+  }
+
+  @Test
+  public void testTemplateCommandWithAirGapAndPasswordlessSudoAccessEnabled() {
+    AccessKey accessKey = setupTestAccessKey();
+    List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
+    expectedCommand.add("--passwordless_sudo");
+    when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(0, "{}"));
+    templateManager.createProvisionTemplate(accessKey, true, true);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+    assertAccessKeyInfo(accessKey, true, true);
+  }
+
+  @Test
+  public void testTemplateCommandWithPasswordlessSudoAccessEnabled() {
+    AccessKey accessKey = setupTestAccessKey();
+    List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
+    expectedCommand.add("--passwordless_sudo");
+    when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(0, "{}"));
+    templateManager.createProvisionTemplate(accessKey, false, true);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, new HashMap<>());
+    assertAccessKeyInfo(accessKey, false, true);
   }
 
   @Test
   public void testTemplateCommandError() {
     AccessKey accessKey = setupTestAccessKey();
     List<String> expectedCommand = getExpectedCommmand(accessKey.getKeyInfo());
+    expectedCommand.add("--passwordless_sudo");
     when(shellProcessHandler.run(expectedCommand, new HashMap<>())).thenReturn(ShellResponse.create(1, "foobar"));
     expectedException.expect(RuntimeException.class);
     expectedException.expectMessage("YBCloud command instance (template) failed to execute.");
-    templateManager.createProvisionTemplate(accessKey);
+    templateManager.createProvisionTemplate(accessKey, true, true);
+    assertAccessKeyInfo(accessKey, false, false);
   }
 }

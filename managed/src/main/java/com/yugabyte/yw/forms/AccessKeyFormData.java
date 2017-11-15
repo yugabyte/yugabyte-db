@@ -21,4 +21,6 @@ public class AccessKeyFormData {
     public String sshUser;
 
     public boolean passwordlessSudoAccess = true;
+
+    public boolean airGapInstall = false;
 }

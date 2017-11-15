@@ -16,7 +16,6 @@ import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,9 +91,8 @@ public class CloudProviderController extends AuthenticatedController {
     // TODO: move this to task framework
     try {
       for (AccessKey accessKey : AccessKey.getAll(providerUUID)) {
-        if (accessKey.getKeyInfo().provisionInstanceScript.length() > 0) {
-          String dirPath = templateManager.getOrCreateProvisionFilePath(providerUUID);
-          FileUtils.deleteDirectory(new File(dirPath));
+        if (!accessKey.getKeyInfo().provisionInstanceScript.isEmpty()) {
+          new File(accessKey.getKeyInfo().provisionInstanceScript).delete();
         }
         accessKey.delete();
       }
@@ -102,7 +100,7 @@ public class CloudProviderController extends AuthenticatedController {
       NodeInstance.deleteByProvider(providerUUID);
       provider.delete();
       return ApiResponse.success("Deleted provider: " + providerUUID);
-    } catch (RuntimeException | IOException e) {
+    } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
     }

@@ -34,7 +34,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -111,11 +110,11 @@ public class AccessKeyControllerTest extends WithApplication {
 
   private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile,
                                  boolean useRawString) {
-    return createAccessKey(providerUUID, keyCode, uploadFile, useRawString, defaultRegion, true);
+    return createAccessKey(providerUUID, keyCode, uploadFile, useRawString, defaultRegion, true, true);
   }
 
   private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile, boolean useRawString,
-                                 Region region, boolean passwordlessSudoAccess) {
+                                 Region region, boolean airGapInstall, boolean passwordlessSudoAccess) {
     String uri = "/api/customers/" + defaultCustomer.uuid + "/providers/" + providerUUID + "/access_keys";
 
     if (uploadFile) {
@@ -145,6 +144,7 @@ public class AccessKeyControllerTest extends WithApplication {
         bodyJson.put("keyType", AccessManager.KeyType.PRIVATE.toString());
         bodyJson.put("keyContent", "PRIVATE KEY DATA");
       }
+      bodyJson.put("airGapInstall", airGapInstall);
       bodyJson.put("passwordlessSudoAccess", passwordlessSudoAccess);
       return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, defaultCustomer.createAuthToken(), bodyJson);
     }
@@ -316,9 +316,9 @@ public class AccessKeyControllerTest extends WithApplication {
     Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
     AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1")).thenReturn(accessKey);
-    Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false);
+    Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, true, false);
     assertOk(result);
-    verify(mockTemplateManager, times(1)).createProvisionTemplate(accessKey);
+    verify(mockTemplateManager, times(1)).createProvisionTemplate(accessKey, true, false);
   }
 
   @Test
@@ -327,8 +327,8 @@ public class AccessKeyControllerTest extends WithApplication {
     Region onpremRegion = Region.create(onpremProvider, "onprem-a", "onprem-a", "yb-image");
     AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1")).thenReturn(accessKey);
-    doThrow(new RuntimeException("foobar")).when(mockTemplateManager).createProvisionTemplate(accessKey);
-    Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false);
+    doThrow(new RuntimeException("foobar")).when(mockTemplateManager).createProvisionTemplate(accessKey, false, false);
+    Result result = createAccessKey(onpremProvider.uuid, "key-code-1", false, false, onpremRegion, false, false);
     assertErrorResponse(result, "Unable to create access key: key-code-1");
   }
 

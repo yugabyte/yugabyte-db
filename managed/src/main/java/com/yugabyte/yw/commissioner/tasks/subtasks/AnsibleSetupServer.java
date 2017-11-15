@@ -37,7 +37,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     // Note: For now, we assume there will only be one AccessKey.
     // Also, should only execute Provision command if there is no externally accessible provision script.
-    if (accessKeys.size() > 0 && accessKeys.get(0).getKeyInfo().provisionInstanceScript.length() == 0) {
+    if (accessKeys.size() > 0 && accessKeys.get(0).getKeyInfo().passwordlessSudoAccess) {
       // Execute the ansible command.
       ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
           NodeManager.NodeCommandType.Provision, taskParams());
