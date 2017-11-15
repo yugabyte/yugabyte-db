@@ -68,6 +68,18 @@ TEST_F(HistogramTest, ClearHistogram) {
   ASSERT_EQ(histogram.Average(), 0);
 }
 
+TEST_F(HistogramTest, BigValues) {
+  double values[] = {0, 0, 1e19, 1e19};
+  HistogramImpl histogram;
+  for (auto v : values) {
+    histogram.Add(v);
+  }
+  ASSERT_EQ(histogram.Average(), 5e18);
+  ASSERT_GT(histogram.Median(), 0);
+  ASSERT_LT(histogram.Median(), 1e19);
+  ASSERT_EQ(histogram.StandardDeviation(), 5e18);
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

@@ -23,7 +23,7 @@
 
 #include "yb/rocksdb/util/histogram.h"
 
-#include <cassert>
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 
@@ -107,7 +107,7 @@ void HistogramImpl::Add(uint64_t value) {
 
   add_to_num(1);
   add_to_sum(value);
-  add_to_sum_squares(value * value);
+  add_to_sum_squares(static_cast<double>(value) * value);
 
   // TODO: maybe we should use int for IndexForValue's return value?
   // There are only 200 or so buckets.
@@ -224,4 +224,4 @@ void HistogramImpl::Data(HistogramData * const data) const {
   data->standard_deviation = StandardDeviation();
 }
 
-} // namespace levedb
+} // namespace rocksdb
