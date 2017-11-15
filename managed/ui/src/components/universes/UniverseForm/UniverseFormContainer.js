@@ -15,6 +15,7 @@ import { createUniverse, createUniverseResponse, editUniverse, editUniverseRespo
          fetchUniverseTasksResponse } from 'actions/universe';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat }
   from 'utils/ObjectUtils';
+import { IN_DEVELOPMENT_MODE } from '../../../config';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -128,7 +129,7 @@ function mapStateToProps(state, ownProps) {
     "formType": "create",
     "accessKeyCode": "yugabyte-default",
     "spotPrice": "0.00",
-    "useSpotPrice": false
+    "useSpotPrice": IN_DEVELOPMENT_MODE
   };
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
     const userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;

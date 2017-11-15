@@ -74,13 +74,22 @@ class OnPremSuccess extends Component {
       if (isNonEmptyArray(accessKeys.data)) {
         onPremAccessKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid);
       }
+      let keyJson = {};
+      if (isNonEmptyObject(onPremAccessKey) && onPremAccessKey.idKey && onPremAccessKey.keyInfo) {
+        const { idKey, keyInfo } = onPremAccessKey;
+        keyJson = {
+          code: idKey.keyCode,
+          privateKeyContent: keyInfo.privateKey,
+          sshUser: keyInfo.sshUser,
+          passwordlessSudoAccess: keyInfo.passwordlessSudoAccess,
+          airGapInstall: keyInfo.airGapInstall,
+          preProvisionScript: keyInfo.provisionInstanceScript
+        };
+      }
+
       const jsonData = {
         provider: {name: currentProvider.name},
-        key: isNonEmptyObject(onPremAccessKey) ? {
-          code: onPremAccessKey.idKey && onPremAccessKey.idKey.keyCode,
-          privateKeyContent: onPremAccessKey.keyInfo && onPremAccessKey.keyInfo.privateKey,
-          sshUser: onPremAccessKey.keyInfo && onPremAccessKey.keyInfo.sshUser,
-        } : {},
+        key: keyJson,
         regions: onPremRegions.map((regionItem) => {
           return {
             code: regionItem.code,

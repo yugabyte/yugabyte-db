@@ -84,8 +84,6 @@ public class AccessKeyController extends AuthenticatedController {
     String keyContent = formData.get().keyContent;
     AccessManager.KeyType keyType = formData.get().keyType;
     String sshUser =  formData.get().sshUser;
-    boolean passwordlessSudoAccess = formData.get().passwordlessSudoAccess;
-
     AccessKey accessKey;
     // Check if a public/private key was uploaded as part of the request
     Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
@@ -111,9 +109,13 @@ public class AccessKeyController extends AuthenticatedController {
         accessKey = accessManager.addKey(regionUUID, keyCode);
       }
 
-      // Create provision instance script if provider is onprem with no passwordless sudo access.
-      if (region.provider.code.equals(onprem.name()) && !passwordlessSudoAccess) {
-        templateManager.createProvisionTemplate(accessKey);
+      // In case of onprem provider, we can couple of additional attributes like airGap, passwordlessSudo
+      // We would create a preprovision script
+      if (region.provider.code.equals(onprem.name())) {
+        templateManager.createProvisionTemplate(
+            accessKey,
+            formData.get().airGapInstall,
+            formData.get().passwordlessSudoAccess);
       }
     } catch(RuntimeException | IOException e) {
       LOG.error(e.getMessage());
