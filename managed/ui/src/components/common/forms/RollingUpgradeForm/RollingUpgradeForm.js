@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
-import { YBButton, YBModal, YBInputField, YBSelectWithLabel } from '../fields';
+import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel } from '../fields';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
 
@@ -42,13 +42,13 @@ class FlagItems extends Component {
     ));
 
     return (
-      <div>
+      <div className="form-field-grid">
         {
           gFlagsFieldList
         }
-        <YBButton btnClass="btn btn-sm universe-btn btn-default bg-orange"
-                  btnText="Add" btnIcon="fa fa-plus"
-                  onClick={addFlagItem} />
+        <YBAddRowButton 
+          btnText="Add" 
+          onClick={addFlagItem} />
       </div>
     );
   }

@@ -5,6 +5,7 @@ import { YBTextInput } from 'components/common/forms/fields';
 import { Field } from 'redux-form';
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
+import { YBAddRowButton, YBRemoveRowButton } from '../../common/forms/fields';
 
 export default class GFlagArrayComponent extends Component {
 
@@ -50,32 +51,39 @@ export default class GFlagArrayComponent extends Component {
       currentLabel = "Master";
     }
     return (
-      <div>
+      <div className="form-field-grid">
         <label>{currentLabel}</label>
         {
           fields.map(function(field, idx){
             return (
               <Row key={`${flagType}${idx}`} className="gflag-row">
                 <Col md={5}>
-                  <Field name={`${field}name`} component={YBTextInput} isReadOnly={isReadOnly}/>
+                  <div  className="yb-field-group">
+                    <Field name={`${field}name`} component={YBTextInput} isReadOnly={isReadOnly}/>
+                  </div>
                 </Col>
                 <Col md={5}>
-                  <Field name={`${field}value`} component={YBTextInput} isReadOnly={isReadOnly}/>
+                  <div className="yb-field-group">
+                    <Field name={`${field}value`} component={YBTextInput} isReadOnly={isReadOnly}/>
+                  </div>
                 </Col>
                 <Col md={2}>
                   {
                     isReadOnly ? <span/> :
-                    <i className="fa fa-minus-circle flag-button remove-flag-button" onClick={() => self.removeRow(idx)}/>
+                    <YBRemoveRowButton onClick={() => self.removeRow(idx)}/>
                   }
                 </Col>
               </Row>
             );
           })
         }
-        <Col md={12}>
-          {isReadOnly ? <span/>: <i className="fa fa-plus-circle flag-button add-flag-button" onClick={self.addRow}/>
-          }
-        </Col>
+        <Row>
+          <Col md={12}>
+            {
+              isReadOnly ? <span/>: <YBAddRowButton btnText="Add Row" onClick={self.addRow}/>
+            }
+          </Col>
+        </Row>
       </div>
     );
   }
