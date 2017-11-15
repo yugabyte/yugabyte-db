@@ -51,6 +51,7 @@ enum class SortOrder : int8_t {
 class PrimitiveValue {
  public:
   static const PrimitiveValue kInvalidPrimitiveValue;
+  static const PrimitiveValue kTombstone;
 
   PrimitiveValue() : type_(ValueType::kNull) {
   }
@@ -252,6 +253,10 @@ class PrimitiveValue {
   // method can tell whether what's stored here is an actual primitive value.
   bool IsPrimitive() const {
     return IsPrimitiveValueType(type_);
+  }
+
+  bool IsTombstoneOrPrimitive() const {
+    return IsPrimitiveValueType(type_) || type_ == ValueType::kTombstone;
   }
 
   int CompareTo(const PrimitiveValue& other) const;

@@ -25,7 +25,10 @@
 namespace yb {
 namespace docdb {
 
-// Changes to this enum may invalidate persistent data.
+// ValueType determines the first byte of PrimitiveValue encoding. There are also some special value
+// types, such as kGroupEnd, that are used to indicate where one part of a key ends and the next
+// part begins. This is used in RocksDB key and value encoding. Changes to this enum may invalidate
+// persistent data.
 enum class ValueType : char {
   // This ValueType is used as -infinity for scanning purposes only.
   kLowest = 0,
@@ -118,7 +121,19 @@ enum class ValueType : char {
   kMaxByte = '\xff',
 };
 
+// "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
+// multiple write-only operations don't need to conflict. However, if one operation is a
+// read-modify-write snapshot isolation operation, then a write-only operation cannot proceed in
+// parallel with it. Conflicts between intent types are handled according to the conflict matrix at
+// https://goo.gl/Wbc663.
+
+// "Weak" intents are obtained for parent nodes of a node that is a transaction is working with.
+// E.g. if we're writing "a.b.c", we'll obtain weak write intents on "a" and "a.b", but a strong
+// write intent on "a.b.c".
 constexpr int kWeakIntentFlag         = 0b000;
+
+// "Strong" intents are obtained on the node that an operation is working with. See the example
+// above.
 constexpr int kStrongIntentFlag       = 0b001;
 
 constexpr int kReadIntentFlag         = 0b000;
@@ -129,15 +144,13 @@ constexpr int kSnapshotIntentFlag     = 0b100;
 
 constexpr int kStrongWriteIntentFlags = kStrongIntentFlag | kWriteIntentFlag;
 
-// The purpose of different types of intents is to ensure that they conflict
-// in appropriate ways according to the conflict matrix.
 YB_DEFINE_ENUM(IntentType,
-    ((kStrongSnapshotWrite, kStrongIntentFlag | kWriteIntentFlag | kSnapshotIntentFlag))
-    ((kWeakSnapshotWrite, kWeakIntentFlag | kWriteIntentFlag | kSnapshotIntentFlag))
+    ((kStrongSnapshotWrite,     kStrongIntentFlag | kWriteIntentFlag | kSnapshotIntentFlag))
+    ((kWeakSnapshotWrite,       kWeakIntentFlag   | kWriteIntentFlag | kSnapshotIntentFlag))
     ((kStrongSerializableWrite, kStrongIntentFlag | kWriteIntentFlag | kSerializableIntentFlag))
-    ((kWeakSerializableWrite, kWeakIntentFlag | kWriteIntentFlag | kSerializableIntentFlag))
-    ((kStrongSerializableRead, kStrongIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
-    ((kWeakSerializableRead, kWeakIntentFlag | kReadIntentFlag | kSerializableIntentFlag))
+    ((kWeakSerializableWrite,   kWeakIntentFlag   | kWriteIntentFlag | kSerializableIntentFlag))
+    ((kStrongSerializableRead,  kStrongIntentFlag | kReadIntentFlag  | kSerializableIntentFlag))
+    ((kWeakSerializableRead,    kWeakIntentFlag   | kReadIntentFlag  | kSerializableIntentFlag))
 );
 
 inline bool IsStrongIntent(IntentType intent) {

@@ -92,8 +92,6 @@ installed_dirs=(
 
 check_build_output_dirs_exist "${installed_dirs[@]}"
 
-"$TP_DIR"/../build-support/fix_rpath.py
-
 thirdparty_dir_sha1=$( git log -n 1 --pretty=format:%H . )
 if [[ ! "$thirdparty_dir_sha1" =~ ^[0-9a-f]{40}$ ]]; then
   fatal "Failed to get the SHA1 of the last change to the thirdparty directory"

@@ -79,6 +79,7 @@ string RealToString(T val) {
 
 const PrimitiveValue PrimitiveValue::kInvalidPrimitiveValue =
     PrimitiveValue(ValueType::kInvalidValueType);
+const PrimitiveValue PrimitiveValue::kTombstone = PrimitiveValue(ValueType::kTombstone);
 
 string PrimitiveValue::ToString() const {
   switch (type_) {

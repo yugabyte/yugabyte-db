@@ -62,6 +62,17 @@ Status InternalDocIterator::SeekToSubDocument(const PrimitiveValue& subkey) {
   return SeekToKeyPrefix();
 }
 
+Status InternalDocIterator::AppendSubkeyInExistingSubDoc(const PrimitiveValue &subkey) {
+  if (!subdoc_exists()) {
+    return STATUS_FORMAT(IllegalState, "Subdocument is supposed to exist. $0", ToDebugString());
+  }
+  if (!IsObjectType(subdoc_type_)) {
+    return STATUS_FORMAT(IllegalState, "Expected object subdocument type. $0", ToDebugString());
+  }
+  AppendToPrefix(subkey);
+  return Status::OK();
+}
+
 void InternalDocIterator::AppendToPrefix(const PrimitiveValue& subkey) {
   subkey.AppendToKey(&key_prefix_);
 }

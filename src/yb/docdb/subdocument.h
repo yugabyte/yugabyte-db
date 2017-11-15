@@ -188,28 +188,7 @@ class SubDocument : public PrimitiveValue {
   CHECKED_STATUS ConvertToCollection(ValueType value_type);
 
   // Common code used by move constructor and move assignment.
-  void MoveFrom(SubDocument* other) {
-    if (this == other) {
-      return;
-    }
-
-    if (IsPrimitiveValueType(other->type_)) {
-      new(this) PrimitiveValue(std::move(*other));
-    } else {
-      // For objects/arrays the internal state is just a type and a pointer.
-      type_ = other->type_;
-      ttl_seconds_ = other->ttl_seconds_;
-      write_time_ = other->write_time_;
-      complex_data_structure_ = other->complex_data_structure_;
-      // The internal state of the other subdocument is now owned by this one. Replace it with dummy
-      // data without calling the destructor.
-#ifndef NDEBUG
-      // Another layer of protection against trying to use the old state in debug mode.
-      memset(other, 0xab, sizeof(SubDocument));  // Fill with a random value.
-#endif
-      other->type_ = ValueType::kNull;  // To avoid deallocation of the old object's memory.
-    }
-  }
+  void MoveFrom(SubDocument* other);
 
   void EnsureContainerAllocated();
 

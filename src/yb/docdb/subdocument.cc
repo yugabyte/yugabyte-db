@@ -127,6 +127,28 @@ Status SubDocument::ConvertToCollection(ValueType value_type) {
   return Status::OK();
 }
 
+void SubDocument::MoveFrom(SubDocument* other) {
+  if (this == other) {
+    return;
+  }
+
+  if (IsPrimitiveValueType(other->type_)) {
+    new(this) PrimitiveValue(std::move(*other));
+  } else {
+    // For objects/arrays the internal state is just a type and a pointer.
+    type_ = other->type_;
+    ttl_seconds_ = other->ttl_seconds_;
+    write_time_ = other->write_time_;
+    complex_data_structure_ = other->complex_data_structure_;
+    // The internal state of the other subdocument is now owned by this one.
+#ifndef NDEBUG
+    // Another layer of protection against trying to use the old state in debug mode.
+    memset(other, 0xab, sizeof(SubDocument));  // Fill with a random value.
+#endif
+    other->type_ = ValueType::kNull;  // To avoid deallocation of the old object's memory.
+  }
+}
+
 Status SubDocument::ConvertToRedisTS() {
   return ConvertToCollection(ValueType::kRedisTS);
 }

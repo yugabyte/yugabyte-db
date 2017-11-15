@@ -26,28 +26,29 @@ ADD_YB_LIBRARY(docdb_proto
 
 set(DOCDB_SRCS
     conflict_resolution.cc
-    docdb_util.cc
     doc_boundary_values_extractor.cc
+    docdb.cc
+    docdb_compaction_filter.cc
+    docdb-internal.cc
+    docdb_rocksdb_util.cc
+    docdb_util.cc
     doc_expr.cc
     doc_key.cc
     doc_kv_util.cc
     doc_operation.cc
+    doc_ql_scanspec.cc
     doc_rowwise_iterator.cc
     doc_write_batch_cache.cc
-    doc_ql_scanspec.cc
-    docdb.cc
-    docdb-internal.cc
-    docdb_compaction_filter.cc
-    docdb_rocksdb_util.cc
-    intent.cc
+    doc_write_batch.cc
     intent_aware_iterator.cc
+    intent.cc
     internal_doc_iterator.cc
     key_bytes.cc
-    ql_rocksdb_storage.cc
-    primitive_value.cc
-    subdocument.cc
-    shared_lock_manager.cc
     lock_batch.cc
+    primitive_value.cc
+    ql_rocksdb_storage.cc
+    shared_lock_manager.cc
+    subdocument.cc
     value.cc
     value_type.cc
 )

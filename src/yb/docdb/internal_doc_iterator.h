@@ -87,11 +87,7 @@ class InternalDocIterator {
 
   // Append the given subkey to the document. We are assuming that we have already made sure that
   // the iterator is positioned inside an existing subdocument.
-  void AppendSubkeyInExistingSubDoc(const PrimitiveValue &subkey) {
-    CHECK(subdoc_exists());
-    CHECK(IsObjectType(subdoc_type_));
-    AppendToPrefix(subkey);
-  }
+  CHECKED_STATUS AppendSubkeyInExistingSubDoc(const PrimitiveValue &subkey);
 
   // @return Whether the subdocument pointed to by this iterator exists.
   bool subdoc_exists() const {

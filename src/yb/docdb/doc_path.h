@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/string_util.h"
