@@ -2,6 +2,8 @@
 
 export { default as YBModal } from './YBModal';
 export { default as YBButton } from './YBButton';
+export { default as YBAddRowButton } from './YBAddRowButton';
+export { default as YBRemoveRowButton } from './YBRemoveRowButton';
 export { default as YBCheckBox } from './YBCheckBox';
 export { default as YBMultiSelectWithLabel, YBNewMultiSelect, YBMultiSelect } from './YBMultiSelect';
 export { default as YBNumericInputWithLabel, YBNumericInput, YBControlledNumericInputWithLabel, YBControlledNumericInput } from './YBNumericInput';

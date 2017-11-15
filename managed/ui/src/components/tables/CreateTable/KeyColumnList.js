@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Row, Col } from 'react-bootstrap';
-import { YBInputField, YBButton, YBSelectWithLabel } from '../../common/forms/fields';
+import { YBInputField, YBAddRowButton, YBRemoveRowButton, YBSelectWithLabel } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { isValidArray } from '../../../utils/ObjectUtils';
 import CollectionSubtypeRow from './CollectionSubtypeRow';
@@ -72,9 +72,7 @@ export default class KeyColumnList extends Component {
     const {columnType} = this.props;
     if (columnType !== "partitionKey" || index > 0) {
       return (
-        <YBButton btnClass="btn btn-xs remove-item-btn"
-                  btnIcon="fa fa-minus"
-                  onClick={() => this.removeKeyItem(index)} />
+        <YBRemoveRowButton onClick={() => this.removeKeyItem(index)} />
       );
     } else {
       return <span/>;
@@ -93,17 +91,6 @@ export default class KeyColumnList extends Component {
     const typeOptions = CollectionSubtypeRow.getTypeOptions("type", "Type",
       (columnType === "other") ? allDataTypes : primitives
     );
-    const getFieldLabel = function() {
-      if (columnType === "partitionKey") {
-        return "Partition Key";
-      } else if (columnType === "clustering") {
-        return "Clustering";
-      } else if (columnType === "other") {
-        return "Other";
-      } else {
-        return "";
-      }
-    };
 
     return (
       <div className="form-field-grid">
@@ -119,7 +106,7 @@ export default class KeyColumnList extends Component {
                        placeHolder={"Type"} onInputChanged={(value) => this.columnTypeChanged(value, index)} />
               </Col>
               {this.columnListSort(item)}
-              <Col md={1} className="text-center">
+              <Col md={1}>
                 {this.removeRowItem(index)}
               </Col>
             </Row>
@@ -129,7 +116,7 @@ export default class KeyColumnList extends Component {
         ))}
         <Row>
           <Col md={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
-            <i className="fa fa-plus" />&nbsp;Add {getFieldLabel()} Column
+            <YBAddRowButton btnText="Add Column" />
           </Col>
         </Row>
       </div>
