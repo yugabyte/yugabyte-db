@@ -16,7 +16,9 @@ import com.sun.xml.internal.rngom.parse.host.Base;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.YBClient;
+import org.yb.Common.PartitionSchemaPB.HashSchema;
 import org.yb.minicluster.BaseMiniClusterTest;
 import redis.clients.jedis.Jedis;
 
@@ -40,6 +42,13 @@ public class BaseJedisTest extends BaseMiniClusterTest {
 
     // Create the redis table.
     miniCluster.getClient().createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME, REDIS_NUM_TABLETS);
+
+    YBClient ybClient;
+
+    GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
+        YBClient.REDIS_DEFAULT_TABLE_NAME, YBClient.REDIS_KEYSPACE_NAME);
+
+    assertEquals(tableSchema.getPartitionSchema().getHashSchema(), HashSchema.REDIS_HASH_SCHEMA);
 
     // Setup the jedis client.
     List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();

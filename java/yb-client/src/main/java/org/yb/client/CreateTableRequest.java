@@ -62,10 +62,6 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     this.keySpace = keySpace;
     this.tableType = tableOptions.getTableType();
     Master.CreateTableRequestPB.Builder pbBuilder = tableOptions.getBuilder();
-    if (this.schema.getNumHashKeyColumns() > 0) {
-      pbBuilder.getPartitionSchemaBuilder()
-               .setHashSchema(PartitionSchemaPB.HashSchema.MULTI_COLUMN_HASH_SCHEMA);
-    }
     this.builder = pbBuilder;
   }
 

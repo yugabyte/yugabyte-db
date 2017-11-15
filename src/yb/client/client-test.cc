@@ -2002,13 +2002,15 @@ TEST_F(ClientTest, TestDeleteTable) {
 
 TEST_F(ClientTest, TestGetTableSchema) {
   YBSchema schema;
+  PartitionSchema partition_schema;
 
   // Verify the schema for the current table
-  ASSERT_OK(client_->GetTableSchema(kTableName, &schema));
+  ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
   ASSERT_TRUE(schema_.Equals(schema));
 
   // Verify that a get schema request for a missing table throws not found
-  Status s = client_->GetTableSchema(YBTableName(kKeyspaceName, "MissingTableName"), &schema);
+  Status s = client_->GetTableSchema(YBTableName(kKeyspaceName, "MissingTableName"), &schema,
+                                     &partition_schema);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "The table does not exist");
 }

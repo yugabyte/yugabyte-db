@@ -283,7 +283,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
-  Status s = client_->GetTableSchema(TestWorkload::kDefaultTableName, &schema);
+  PartitionSchema partition_schema;
+  Status s = client_->GetTableSchema(TestWorkload::kDefaultTableName, &schema, &partition_schema);
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 
   // 3) Should return an error for GetTabletLocations RPCs.

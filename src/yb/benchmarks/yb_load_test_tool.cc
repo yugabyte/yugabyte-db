@@ -20,6 +20,7 @@
 #include <boost/thread/mutex.hpp>
 
 #include "yb/client/client.h"
+#include "yb/common/partition.h"
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
 #include "yb/common/common.pb.h"
@@ -332,7 +333,8 @@ bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const YBTableName 
   LOG(INFO) << "Checking if table '" << table_name.ToString() << "' already exists";
   {
     YBSchema existing_schema;
-    if (client->GetTableSchema(table_name, &existing_schema).ok()) {
+    yb::PartitionSchema partition_schema;
+    if (client->GetTableSchema(table_name, &existing_schema, &partition_schema).ok()) {
       LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
       return true;
     } else {

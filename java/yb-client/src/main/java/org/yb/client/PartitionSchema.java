@@ -34,6 +34,7 @@ package org.yb.client;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
+import org.yb.Common.PartitionSchemaPB.HashSchema;
 
 import java.util.List;
 
@@ -61,6 +62,7 @@ public class PartitionSchema {
   private final RangeSchema rangeSchema;
   private final List<HashBucketSchema> hashBucketSchemas;
   private final boolean isSimple;
+  private final HashSchema hashSchema;
 
   /**
    * Creates a new partition schema from the range and hash bucket schemas.
@@ -68,12 +70,15 @@ public class PartitionSchema {
    * @param rangeSchema the range schema
    * @param hashBucketSchemas the hash bucket schemas
    * @param schema the table schema
+   * @param hashSchema the hash schema
    */
   PartitionSchema(RangeSchema rangeSchema,
                   List<HashBucketSchema> hashBucketSchemas,
-                  Schema schema) {
+                  Schema schema,
+                  HashSchema hashSchema) {
     this.rangeSchema = rangeSchema;
     this.hashBucketSchemas = hashBucketSchemas;
+    this.hashSchema = hashSchema;
 
     boolean isSimple = hashBucketSchemas.isEmpty()
         && rangeSchema.columns.size() == schema.getPrimaryKeyColumnCount();
@@ -104,6 +109,8 @@ public class PartitionSchema {
   public List<HashBucketSchema> getHashBucketSchemas() {
     return hashBucketSchemas;
   }
+
+  public HashSchema getHashSchema() { return hashSchema; }
 
   /**
    * Returns true if the partition schema if the partition schema does not include any hash

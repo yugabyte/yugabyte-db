@@ -19,6 +19,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/redisserver/redis_parser.h"

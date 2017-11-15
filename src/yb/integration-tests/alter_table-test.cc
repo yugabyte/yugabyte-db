@@ -370,8 +370,9 @@ TEST_F(AlterTableTest, TestAlterOnTSRestart) {
 
   // Verify that the Schema is the old one
   YBSchema schema;
+  PartitionSchema partition_schema;
   bool alter_in_progress = false;
-  ASSERT_OK(client_->GetTableSchema(kTableName, &schema));
+  ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
   ASSERT_TRUE(schema_.Equals(schema));
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress));
   ASSERT_TRUE(alter_in_progress);
@@ -429,7 +430,8 @@ TEST_F(AlterTableTest, TestGetSchemaAfterAlterTable) {
   ASSERT_OK(AddNewI32Column(kTableName, "new-i32", 10));
 
   YBSchema s;
-  ASSERT_OK(client_->GetTableSchema(kTableName, &s));
+  PartitionSchema partition_schema;
+  ASSERT_OK(client_->GetTableSchema(kTableName, &s, &partition_schema));
 }
 
 void AlterTableTest::InsertRows(int start_row, int num_rows) {
@@ -912,7 +914,8 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
 
   // All new columns should be present.
   YBSchema new_schema;
-  ASSERT_OK(client_->GetTableSchema(kSplitTableName, &new_schema));
+  PartitionSchema partition_schema;
+  ASSERT_OK(client_->GetTableSchema(kSplitTableName, &new_schema, &partition_schema));
   ASSERT_EQ(kNumNewCols + schema_.num_columns(), new_schema.num_columns());
 }
 

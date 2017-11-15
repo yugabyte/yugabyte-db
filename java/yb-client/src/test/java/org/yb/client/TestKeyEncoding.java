@@ -41,6 +41,7 @@ import org.junit.Test;
 import org.yb.ColumnSchema;
 import org.yb.ColumnSchema.ColumnSchemaBuilder;
 import org.yb.Common;
+import org.yb.Common.PartitionSchemaPB.HashSchema;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.client.PartitionSchema.HashBucketSchema;
@@ -83,7 +84,7 @@ public class TestKeyEncoding {
                             ImmutableList.of(
                                 new HashBucketSchema(ImmutableList.of(0, 1), 32, 0),
                                 new HashBucketSchema(ImmutableList.of(2), 32, 42)),
-                            schema);
+                            schema, HashSchema.MULTI_COLUMN_HASH_SCHEMA);
 
     PartialRow rowA = schema.newPartialRow();
     rowA.addInt("a", 0);

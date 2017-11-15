@@ -1323,6 +1323,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   PartitionSchema partition_schema;
   vector<Partition> partitions;
 
+  if (req.table_type() == REDIS_TABLE_TYPE) {
+    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
+  } else if (schema.num_hash_key_columns() > 0 ||
+             req.partition_schema().hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA) {
+    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  } else {
+    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
+  }
+
   s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
   switch (partition_schema.hash_schema()) {
     case YBHashSchema::kMultiColumnHash: {

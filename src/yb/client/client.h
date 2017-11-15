@@ -269,7 +269,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                         bool *alter_in_progress);
 
   CHECKED_STATUS GetTableSchema(const YBTableName& table_name,
-                                YBSchema* schema);
+                                YBSchema* schema,
+                                PartitionSchema* partition_schema);
 
   // Namespace related methods.
 
@@ -531,6 +532,9 @@ class YBTableCreator {
   // Sets the type of the table.
   YBTableCreator& table_type(YBTableType table_type);
 
+  // Sets the partition hash schema.
+  YBTableCreator& hash_schema(YBHashSchema hash_schema);
+
   // Number of tablets that should be used for this table. If tablet_count is not given, YBClient
   // will calculate this value (num_shards_per_tserver * num_of_tservers).
   YBTableCreator& num_tablets(int32_t count);
@@ -612,8 +616,6 @@ class YBTableCreator {
   friend class YBClient;
 
   explicit YBTableCreator(YBClient* client);
-
-  YBTableCreator& set_hash_schema(YBHashSchema hash_schema);
 
   // Owned.
   Data* data_;

@@ -111,7 +111,7 @@ public class YBClient implements AutoCloseable {
     }
 
     cto.setTableType(TableType.REDIS_TABLE_TYPE)
-       .setNumTablets(numTablets);
+        .setNumTablets(numTablets);
 
     return cto;
   }

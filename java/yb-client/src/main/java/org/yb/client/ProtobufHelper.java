@@ -162,21 +162,22 @@ public class ProtobufHelper {
     List<Integer> rangeColumns = pbToIds(pb.getRangeSchema().getColumnsList());
     PartitionSchema.RangeSchema rangeSchema = new PartitionSchema.RangeSchema(rangeColumns);
 
-    ImmutableList.Builder<PartitionSchema.HashBucketSchema> hashSchemas = ImmutableList.builder();
+    ImmutableList.Builder<PartitionSchema.HashBucketSchema> hashBucketSchemas =
+        ImmutableList.builder();
 
     for (Common.PartitionSchemaPB.HashBucketSchemaPB hashBucketSchemaPB
         : pb.getHashBucketSchemasList()) {
       List<Integer> hashColumnIds = pbToIds(hashBucketSchemaPB.getColumnsList());
 
-      PartitionSchema.HashBucketSchema hashSchema =
+      PartitionSchema.HashBucketSchema hashBucketSchema =
           new PartitionSchema.HashBucketSchema(hashColumnIds,
                                                hashBucketSchemaPB.getNumBuckets(),
                                                hashBucketSchemaPB.getSeed());
 
-      hashSchemas.add(hashSchema);
+      hashBucketSchemas.add(hashBucketSchema);
     }
 
-    return new PartitionSchema(rangeSchema, hashSchemas.build(), schema);
+    return new PartitionSchema(rangeSchema, hashBucketSchemas.build(), schema, pb.getHashSchema());
   }
 
   /**

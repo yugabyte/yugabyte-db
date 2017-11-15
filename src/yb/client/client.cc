@@ -369,16 +369,16 @@ Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
 }
 
 Status YBClient::GetTableSchema(const YBTableName& table_name,
-                                YBSchema* schema) {
+                                YBSchema* schema,
+                                PartitionSchema* partition_schema) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   string table_id_ignored;
-  PartitionSchema partition_schema;
   return data_->GetTableSchema(this,
                                table_name,
                                deadline,
                                schema,
-                               &partition_schema,
+                               partition_schema,
                                &table_id_ignored);
 }
 
@@ -992,21 +992,6 @@ YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::set_hash_schema(YBHashSchema hash_schema) {
-  switch (hash_schema) {
-    case YBHashSchema::kKuduHashSchema:
-      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
-      break;
-    case YBHashSchema::kMultiColumnHash:
-      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-      break;
-    case YBHashSchema::kRedisHash:
-      data_->partition_schema_.set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
-      break;
-  }
-  return *this;
-}
-
 YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
                                                         int32_t num_buckets) {
   return add_hash_partitions(columns, num_buckets, 0);
@@ -1144,14 +1129,6 @@ Status YBTableCreator::Create() {
       VLOG(1) << "num_tablets: number of tablets explicitly specified: " << data_->num_tablets_;
     }
     req.set_num_tablets(data_->num_tablets_);
-
-    if (data_->table_type_ == TableType::REDIS_TABLE_TYPE) {
-      set_hash_schema(YBHashSchema::kRedisHash);
-    } else {
-      // Setup multi column hash schema option.
-      set_hash_schema(YBHashSchema::kMultiColumnHash);
-    }
-
   } else {
     RowOperationsPBEncoder encoder(req.mutable_split_rows());
 
