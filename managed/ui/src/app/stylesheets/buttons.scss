@@ -131,7 +131,7 @@ button, .btn {
 }
 
 .bottom-bar-padding {
-  padding-bottom: 60px;
+  padding-bottom: 80px;
 }
 
 .radio-label {
@@ -185,5 +185,64 @@ button, .btn {
         }
       }
     }
+  }
+}
+
+.yb-input-checkbox {
+  width: 30px;
+  height: 30px;
+}
+
+.yb-add-button {
+  font-family: "Open Sans";
+  color: $YB_ORANGE;
+  font-weight: 400;
+  display: inline-block;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  i {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: $YB_ORANGE;
+    color: white;
+    text-align: center;
+    line-height: 24px;
+    margin-right: 5px;
+    font-size: 16px;
+    top: 1px;
+    position: relative;
+  }
+}
+
+.yb-remove-button {
+  vertical-align: middle;
+  padding: 0;
+  background: transparent;
+  color: white;
+  height: 40px;
+  width: 38px;
+  font-size: 16px;
+  border-radius: 50%;
+  line-height: 22px;
+  text-align: center;
+  color: $YB_TEXT_COLOR;
+  border: none;
+  @include transition(0.125s);
+  i {
+    display: inline-block;
+    text-align: center;
+    margin-right: 0 !important;
+    margin-top: 0;
+  }
+  &:hover {
+    opacity: 0.7;
+    @include transition(0.35s);
+  }
+  &:hover, &:focus, &:active {
+    box-shadow: none;
   }
 }

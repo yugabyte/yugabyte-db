@@ -17,7 +17,7 @@ export default class YBCheckBox extends Component {
     };
     return (
       <label htmlFor={this.props.name}>
-        <input {...input} type="checkbox"
+        <input className="yb-input-checkbox" {...input} type="checkbox"
           name={this.props.name} defaultChecked={checkState}
           id={this.props.id} onClick={onCheckClick} />
         &nbsp; {label}

@@ -6,33 +6,9 @@
   max-width: 1000px;
   margin: 0 auto;
 
-  .remove-item-btn {
-    margin-top: 8px;
-    padding: 0;
-    background-color: rgba(255, 0, 0, 0.7);
-    color: white;
-    height: 25px;
-    width: 25px;
-    font-size: 16px;
-    border-radius: 50%;
-    line-height: 22px;
-    text-align: center;
-
-    i {
-      display: inline-block;
-      width: 30px;
-      margin: 0 -10px;
-      text-align: center;
-    }
-  }
-
   .add-key-column {
     cursor: pointer;
-    color: #CD6500;
-  }
-
-  .form-group {
-    margin-bottom: 2px;
+    color: $YB_ORANGE;
   }
 
   .key-row-heading {

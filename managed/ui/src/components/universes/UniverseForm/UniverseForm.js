@@ -679,7 +679,7 @@ class UniverseForm extends Component {
           </span>
         );
         ebsTypeSelector = (
-          <span>
+          <span className="volume-info">
             <Field name="ebsType" component={YBControlledSelectWithLabel} options={ebsTypesList}
                    label="EBS Type" selectVal={self.state.ebsType}
                    onInputChanged={self.ebsTypeChanged}/>
@@ -772,7 +772,7 @@ class UniverseForm extends Component {
             <Col md={12}>
               <h4>Instance Configuration</h4>
             </Col>
-            <Col md={4}>
+            <Col sm={12} md={12} lg={4}>
               <div className="form-right-aligned-labels">
                 <Field name="instanceType" type="select" component={YBControlledSelectWithLabel} label="Instance Type"
                        options={universeInstanceTypeList} selectVal={this.state.instanceTypeSelected}
@@ -782,15 +782,17 @@ class UniverseForm extends Component {
               </div>
             </Col>
             {deviceDetail &&
-            <Col md={8}>
-              <div className="form-right-aligned-labels">
+            <Col sm={12} md={8} lg={8}>
+              <div className="form-right-aligned-labels form-inline-controls">
                 <div className="form-group universe-form-instance-info">
                   <label className="form-item-label">Volume Info</label>
                   {deviceDetail}
                 </div>
               </div>
-              <div className="form-right-aligned-labels">
-                {ebsTypeSelector}
+              <div className="form-right-aligned-labels form-inline-controls">
+                <div className="form-group universe-form-instance-info">
+                  {ebsTypeSelector}
+                </div>
               </div>
             </Col>
             }
