@@ -58,7 +58,7 @@ Status InternalDocIterator::SeekToDocument(const KeyBytes& encoded_doc_key) {
 
 Status InternalDocIterator::SeekToSubDocument(const PrimitiveValue& subkey) {
   DOCDB_DEBUG_LOG("Called with subkey=$0", subkey.ToString());
-  AppendSubkeyInExistingSubDoc(subkey);
+  RETURN_NOT_OK(AppendSubkeyInExistingSubDoc(subkey));
   return SeekToKeyPrefix();
 }
 
