@@ -85,6 +85,8 @@ export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
 export const GET_SUGGESTED_SPOT_PRICE = 'GET_SUGGESTED_SPOT_PRICE';
 export const GET_SUGGESTED_SPOT_PRICE_RESPONSE = 'GET_SUGGESTED_SPOT_PRICE_RESPONSE';
 
+export const RESET_SUGGESTED_SPOT_PRICE = 'RESET_SUGGESTED_SPOT_PRICE';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -147,6 +149,12 @@ export function getSuggestedSpotPriceResponse(responsePayload) {
   return {
     type: GET_SUGGESTED_SPOT_PRICE_RESPONSE,
     payload: responsePayload
+  };
+}
+
+export function resetSuggestedSpotPrice() {
+  return {
+    type: RESET_SUGGESTED_SPOT_PRICE
   };
 }
 

@@ -6,7 +6,7 @@ import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailur
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
          getNodeInstancesForProvider, getNodesInstancesForProviderResponse, getSuggestedSpotPrice,
-         getSuggestedSpotPriceResponse } from 'actions/cloud';
+         getSuggestedSpotPriceResponse, resetSuggestedSpotPrice } from 'actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
@@ -83,6 +83,10 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getSuggestedSpotPrice(providerUUID, instanceType, regions)).then((response) => {
         dispatch(getSuggestedSpotPriceResponse(response.payload));
       });
+    },
+
+    resetSuggestedSpotPrice: () => {
+      dispatch(resetSuggestedSpotPrice());
     },
 
     setPlacementStatus: (currentStatus) => {
