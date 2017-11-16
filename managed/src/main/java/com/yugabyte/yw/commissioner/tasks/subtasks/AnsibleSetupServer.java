@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.models.AccessKey;
@@ -35,15 +36,20 @@ public class AnsibleSetupServer extends NodeTaskBase {
   public void run() {
     Provider p = taskParams().getProvider();
     List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
-    // Note: For now, we assume there will only be one AccessKey.
-    // Also, should only execute Provision command if there is no externally accessible provision script.
-    if (accessKeys.size() > 0 && accessKeys.get(0).getKeyInfo().passwordlessSudoAccess) {
+    boolean skipProvision = false;
+
+    // For now we will skipProvision if the provider is onprem with either airGapInstall or passwordlessSudo enabled
+    if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
+      skipProvision = accessKeys.get(0).getKeyInfo().passwordlessSudoAccess || accessKeys.get(0).getKeyInfo().airGapInstall;
+    }
+
+    if (skipProvision) {
+      LOG.info("Skipping ansible provision because provider " + p.code + " does not support passwordless sudo access.");
+    } else {
       // Execute the ansible command.
       ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
           NodeManager.NodeCommandType.Provision, taskParams());
       logShellResponse(response);
-    } else {
-      LOG.info("Skipping ansible provision because provider " + p.code + " does not support passwordless sudo access.");
     }
   }
 }
