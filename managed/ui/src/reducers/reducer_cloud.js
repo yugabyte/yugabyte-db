@@ -13,7 +13,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   CREATE_NODE_INSTANCES_RESPONSE, SET_ON_PREM_CONFIG_DATA, GET_NODE_INSTANCE_LIST,
   GET_NODE_INSTANCE_LIST_RESPONSE, RESET_ON_PREM_CONFIG_DATA, BOOTSTRAP_PROVIDER, BOOTSTRAP_PROVIDER_RESPONSE,
   CREATE_ONPREM_PROVIDER, CREATE_ONPREM_PROVIDER_RESPONSE, GET_SUGGESTED_SPOT_PRICE,
-  GET_SUGGESTED_SPOT_PRICE_RESPONSE } from '../actions/cloud';
+  GET_SUGGESTED_SPOT_PRICE_RESPONSE, RESET_SUGGESTED_SPOT_PRICE } from '../actions/cloud';
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
@@ -82,6 +82,9 @@ export default function(state = INITIAL_STATE, action) {
         return setFailureState(state, "suggestedSpotPrice", action.payload.data.error);
       }
       return setSuccessState(state, "suggestedSpotPrice", action.payload.data);
+
+    case RESET_SUGGESTED_SPOT_PRICE:
+      return setInitialState(state, "suggestedSpotPrice");
 
     case RESET_PROVIDER_LIST:
       return { ...state, providers: getInitialState([]), regions: getInitialState([]), instanceTypes:getInitialState([])};
