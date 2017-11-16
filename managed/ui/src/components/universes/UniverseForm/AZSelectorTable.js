@@ -34,8 +34,10 @@ export default class AZSelectorTable extends Component {
     const {universe: {universeConfigTemplate}} = this.props;
     const currentAZState = this.state.azItemState;
     const universeTemplate = _.clone(universeConfigTemplate.data);
-    currentAZState[listKey].value = event.target.value;
-    this.updatePlacementInfo(currentAZState, universeTemplate);
+    if (!currentAZState.some((azItem) => azItem.value === event.target.value)) {
+      currentAZState[listKey].value = event.target.value;
+      this.updatePlacementInfo(currentAZState, universeTemplate);
+    }
   }
 
   handleAZNodeCountChange(listKey, value) {
