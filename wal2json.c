@@ -17,6 +17,7 @@
 #include "replication/logical.h"
 
 #include "utils/builtins.h"
+#include "utils/json.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_lsn.h"
@@ -292,7 +293,7 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	if (data->pretty_print)
 		appendStringInfoString(ctx->out, "{\n");
 	else
-		appendStringInfoChar(ctx->out, '{');
+		appendStringInfoCharMacro(ctx->out, '{');
 
 	if (data->include_xids)
 	{
@@ -353,7 +354,7 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	{
 		/* if we don't write in chunks, we need a newline here */
 		if (!data->write_in_chunks)
-			appendStringInfoChar(ctx->out, '\n');
+			appendStringInfoCharMacro(ctx->out, '\n');
 
 		appendStringInfoString(ctx->out, "\t]\n}");
 	}
@@ -365,57 +366,6 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	OutputPluginWrite(ctx, true);
 }
 
-/*
- * Format a string as a JSON literal
- * XXX it doesn't do a sanity check for invalid input, does it?
- * FIXME it doesn't handle \uxxxx
- */
-static void
-quote_escape_json(StringInfo buf, const char *val)
-{
-	const char *valptr;
-
-	appendStringInfoChar(buf, '"');
-	for (valptr = val; *valptr; valptr++)
-	{
-		char		ch = *valptr;
-
-		/* XXX suppress \x in bytea field? */
-		if (ch == '\\' && *(valptr + 1) == 'x')
-		{
-			valptr++;
-			continue;
-		}
-
-		switch (ch)
-		{
-			case '"':
-			case '\\':
-			case '/':
-				appendStringInfo(buf, "\\%c", ch);
-				break;
-			case '\b':
-				appendStringInfoString(buf, "\\b");
-				break;
-			case '\f':
-				appendStringInfoString(buf, "\\f");
-				break;
-			case '\n':
-				appendStringInfoString(buf, "\\n");
-				break;
-			case '\r':
-				appendStringInfoString(buf, "\\r");
-				break;
-			case '\t':
-				appendStringInfoString(buf, "\\t");
-				break;
-			default:
-				appendStringInfoChar(buf, ch);
-				break;
-		}
-	}
-	appendStringInfoChar(buf, '"');
-}
 
 /*
  * Accumulate tuple information and stores it at the end
@@ -578,7 +528,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		}
 
 		/* Accumulate each column info */
-		appendStringInfo(&colnames, "%s\"%s\"", comma, NameStr(attr->attname));
+		appendStringInfoString(&colnames, comma);
+		escape_json(&colnames, NameStr(attr->attname));
 
 		if (data->include_types)
 		{
@@ -587,13 +538,15 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				char	*type_str;
 
 				type_str = TextDatumGetCString(DirectFunctionCall2(format_type, attr->atttypid, attr->atttypmod));
-				appendStringInfo(&coltypes, "%s\"%s\"", comma, type_str);
+				appendStringInfoString(&coltypes, comma);
+				escape_json(&coltypes, type_str);
 				pfree(type_str);
 			}
 			else
 			{
 				Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
-				appendStringInfo(&coltypes, "%s\"%s\"", comma, NameStr(type_form->typname));
+				appendStringInfoString(&coltypes, comma);
+				escape_json(&coltypes, NameStr(type_form->typname));
 			}
 
 			/* oldkeys doesn't print not-null constraints */
@@ -659,9 +612,14 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 					else
 						appendStringInfo(&colvalues, "%sfalse", comma);
 					break;
+				case BYTEAOID:
+					appendStringInfoString(&colvalues, comma);
+					// XXX: strings here are "\xC0FFEE", we strip the "\x"
+					escape_json(&colvalues, (outputstr+2));
+					break;
 				default:
 					appendStringInfoString(&colvalues, comma);
-					quote_escape_json(&colvalues, outputstr);
+					escape_json(&colvalues, outputstr);
 					break;
 			}
 		}
@@ -696,8 +654,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				appendStringInfoString(&coltypes, "],");
 			if (data->include_type_oids)
 				appendStringInfoString(&coltypeoids, "],");
-			appendStringInfoChar(&colvalues, ']');
-			appendStringInfoChar(&colvalues, '}');
+			appendStringInfoCharMacro(&colvalues, ']');
+			appendStringInfoCharMacro(&colvalues, '}');
 		}
 	}
 	else
@@ -728,7 +686,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			if (hasreplident)
 				appendStringInfoString(&colvalues, "],");
 			else
-				appendStringInfoChar(&colvalues, ']');
+				appendStringInfoCharMacro(&colvalues, ']');
 		}
 	}
 
@@ -878,7 +836,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		if (data->nr_changes > 1)
 			appendStringInfoString(ctx->out, ",{");
 		else
-			appendStringInfoChar(ctx->out, '{');
+			appendStringInfoCharMacro(ctx->out, '{');
 	}
 
 	/* Print change kind */
@@ -910,14 +868,26 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (data->pretty_print)
 	{
 		if (data->include_schemas)
-			appendStringInfo(ctx->out, "\t\t\t\"schema\": \"%s\",\n", get_namespace_name(class_form->relnamespace));
-		appendStringInfo(ctx->out, "\t\t\t\"table\": \"%s\",\n", NameStr(class_form->relname));
+		{
+			appendStringInfoString(ctx->out, "\t\t\t\"schema\": ");
+			escape_json(ctx->out, get_namespace_name(class_form->relnamespace));
+			appendStringInfoString(ctx->out, ",\n");
+		}
+		appendStringInfoString(ctx->out, "\t\t\t\"table\": ");
+		escape_json(ctx->out, NameStr(class_form->relname));
+		appendStringInfoString(ctx->out, ",\n");
 	}
 	else
 	{
 		if (data->include_schemas)
-			appendStringInfo(ctx->out, "\"schema\":\"%s\",", get_namespace_name(class_form->relnamespace));
-		appendStringInfo(ctx->out, "\"table\":\"%s\",", NameStr(class_form->relname));
+		{
+			appendStringInfoString(ctx->out, "\"schema\":");
+			escape_json(ctx->out, get_namespace_name(class_form->relnamespace));
+			appendStringInfoCharMacro(ctx->out, ',');
+		}
+		appendStringInfoString(ctx->out, "\"table\":");
+		escape_json(ctx->out, NameStr(class_form->relname));
+		appendStringInfoCharMacro(ctx->out, ',');
 	}
 
 	switch (change->action)
@@ -987,7 +957,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (data->pretty_print)
 		appendStringInfoString(ctx->out, "\t\t}");
 	else
-		appendStringInfoChar(ctx->out, '}');
+		appendStringInfoCharMacro(ctx->out, '}');
 
 	MemoryContextSwitchTo(old);
 	MemoryContextReset(data->context);
@@ -1005,6 +975,7 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 {
 	JsonDecodingData *data;
 	MemoryContext old;
+	char *content_str;
 
 	data = ctx->output_plugin_private;
 
@@ -1052,11 +1023,17 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		else
 			appendStringInfoString(ctx->out, "\t\t\t\"transactional\": false,\n");
 
-		appendStringInfo(ctx->out, "\t\t\t\"prefix\": \"%s\",\n", prefix);
-		appendStringInfoString(ctx->out, "\t\t\t\"content\": \"");
-		appendBinaryStringInfo(ctx->out, content, content_size);
-		appendStringInfoString(ctx->out, "\"\n");
-		appendStringInfoString(ctx->out, "\t\t}");
+		appendStringInfo(ctx->out, "\t\t\t\"prefix\": ");
+		escape_json(ctx->out, prefix);
+		appendStringInfoString(ctx->out, ",\n\t\t\t\"content\": ");
+
+		// force null-terminated string
+		content_str = (char *)palloc0(content_size+1);
+		strncpy(content_str, content, content_size);
+		escape_json(ctx->out, content_str);
+		pfree(content_str);
+
+		appendStringInfoString(ctx->out, "\n\t\t}");
 
 		/* build a complete JSON object for non-transactional message */
 		if (!transactional)
@@ -1070,8 +1047,7 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		/* build a complete JSON object for non-transactional message */
 		if (!transactional)
 		{
-			appendStringInfoString(ctx->out, "{");
-			appendStringInfoString(ctx->out, "\"change\":[");
+			appendStringInfoString(ctx->out, "{\"change\":[");
 		}
 
 		if (data->nr_changes > 1)
@@ -1086,18 +1062,22 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		else
 			appendStringInfoString(ctx->out, "\"transactional\":false,");
 
-		appendStringInfo(ctx->out, "\"prefix\":\"%s\"", prefix);
-		appendStringInfoChar(ctx->out, ',');
-		appendStringInfoString(ctx->out, "\"content\":\"");
-		appendBinaryStringInfo(ctx->out, content, content_size);
-		appendStringInfoChar(ctx->out, '"');
+		appendStringInfo(ctx->out, "\"prefix\":");
+		escape_json(ctx->out, prefix);
+		appendStringInfoString(ctx->out, ",\"content\":");
+
+		// force null-terminated string
+		content_str = (char *)palloc0(content_size+1);
+		strncpy(content_str, content, content_size);
+		escape_json(ctx->out, content_str);
+		pfree(content_str);
+
 		appendStringInfoChar(ctx->out, '}');
 
 		/* build a complete JSON object for non-transactional message */
 		if (!transactional)
 		{
-			appendStringInfoChar(ctx->out, ']');
-			appendStringInfoChar(ctx->out, '}');
+			appendStringInfoString(ctx->out, "]}");
 		}
 	}
 
