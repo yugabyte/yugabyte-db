@@ -12,9 +12,14 @@ export class YBTextInput extends Component {
     isReadOnly: false
   };
 
+  componentWillMount() {
+    const { initValue } = this.props;
+    if (isDefinedNotNull(initValue)) this.props.input.onChange(initValue);
+  }
+
   render() {
     const self = this;
-    const { input, type, className, placeHolder, onValueChanged, isReadOnly, normalizeOnBlur, initValue } = this.props;
+    const { input, type, className, placeHolder, onValueChanged, isReadOnly, normalizeOnBlur } = this.props;
 
     function onChange(event) {
       if (isFunction(onValueChanged)) {
@@ -29,10 +34,6 @@ export class YBTextInput extends Component {
       } else {
         self.props.input.onBlur(event.target.value);
       }
-    }
-
-    if (isDefinedNotNull(initValue)) {
-      input["value"] = initValue;
     }
 
     return (
