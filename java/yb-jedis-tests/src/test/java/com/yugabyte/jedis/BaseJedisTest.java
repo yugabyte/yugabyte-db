@@ -13,7 +13,9 @@
 package com.yugabyte.jedis;
 
 import com.sun.xml.internal.rngom.parse.host.Base;
+import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetTableSchemaResponse;
@@ -27,6 +29,8 @@ import java.util.List;
 
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.yb.client.YBClient.REDIS_DEFAULT_TABLE_NAME;
+import static org.yb.client.YBClient.REDIS_KEYSPACE_NAME;
 
 public class BaseJedisTest extends BaseMiniClusterTest {
 
@@ -48,7 +52,7 @@ public class BaseJedisTest extends BaseMiniClusterTest {
     GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
         YBClient.REDIS_DEFAULT_TABLE_NAME, YBClient.REDIS_KEYSPACE_NAME);
 
-    assertEquals(tableSchema.getPartitionSchema().getHashSchema(), HashSchema.REDIS_HASH_SCHEMA);
+    assertEquals(HashSchema.REDIS_HASH_SCHEMA, tableSchema.getPartitionSchema().getHashSchema());
 
     // Setup the jedis client.
     List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
@@ -57,5 +61,10 @@ public class BaseJedisTest extends BaseMiniClusterTest {
     LOG.info("Connecting to: " + redisContactPoints.get(0).toString());
     jedis_client = new Jedis(redisContactPoints.get(0).getHostName(),
       redisContactPoints.get(0).getPort(), JEDIS_SOCKET_TIMEOUT_MS);
+  }
+
+  @After
+  public void tearDownAfter() throws Exception {
+    destroyMiniCluster();
   }
 }

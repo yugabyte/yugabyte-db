@@ -34,7 +34,7 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>redis.clients</groupId>
+      <groupId>com.yugabyte</groupId>
       <artifactId>jedis</artifactId>
       <version>${jedis.version}</version>
     </dependency>

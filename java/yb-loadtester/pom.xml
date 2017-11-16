@@ -71,7 +71,7 @@
       <version>1.10</version>
     </dependency>
     <dependency>
-      <groupId>redis.clients</groupId>
+      <groupId>com.yugabyte</groupId>
       <artifactId>jedis</artifactId>
       <version>${jedis.version}</version>
     </dependency>
