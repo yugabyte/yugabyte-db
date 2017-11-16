@@ -285,6 +285,8 @@ class UniverseForm extends Component {
     this.setState({nodeSetViaAZList: false, regionList: value});
     if (this.state.useSpotPrice) {
       this.getSuggestedSpotPrice(this.state.instanceTypeSelected, value);
+    } else {
+      this.props.resetSuggestedSpotPrice();
     }
   }
 
@@ -294,6 +296,8 @@ class UniverseForm extends Component {
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
     if (this.state.useSpotPrice) {
       this.getSuggestedSpotPrice(instanceTypeValue, this.state.regionList);
+    } else {
+      this.props.resetSuggestedSpotPrice();
     }
   }
 
@@ -443,6 +447,7 @@ class UniverseForm extends Component {
       this.getSuggestedSpotPrice(this.state.instanceTypeSelected, this.state.regionList);
     } else {
       nextState['spotPrice'] = initialState.spotPrice;
+      this.props.resetSuggestedSpotPrice();
     }
     this.setState(nextState);
   }
@@ -486,11 +491,20 @@ class UniverseForm extends Component {
     // Set spot price
     const currentPromiseState = getPromiseState(this.props.cloud.suggestedSpotPrice);
     const nextPromiseState = getPromiseState(suggestedSpotPrice);
-    if ((currentPromiseState.isInit() || currentPromiseState.isLoading()) && nextPromiseState.isSuccess()) {
-      this.setState({
-        spotPrice: normalizeToPositiveFloat(suggestedSpotPrice.data.toString()),
-        gettingSuggestedSpotPrice: false
-      });
+    if (currentPromiseState.isInit() || currentPromiseState.isLoading()) {
+      if (nextPromiseState.isSuccess()) {
+        this.setState({
+          spotPrice: normalizeToPositiveFloat(suggestedSpotPrice.data.toString()),
+          useSpotPrice: true,
+          gettingSuggestedSpotPrice: false
+        });
+      } else if (nextPromiseState.isError()) {
+        this.setState({
+          spotPrice: normalizeToPositiveFloat('0.00'),
+          useSpotPrice: false,
+          gettingSuggestedSpotPrice: false
+        });
+      }
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
@@ -556,7 +570,7 @@ class UniverseForm extends Component {
 
   render() {
     const self = this;
-    const {handleSubmit, universe, softwareVersions, cloud, accessKeys, type } = this.props;
+    const {handleSubmit, universe, softwareVersions, accessKeys, type, cloud, cloud: {suggestedSpotPrice}} = this.props;
     let universeProviderList = [];
     let currentProviderCode = "";
     if (isNonEmptyArray(cloud.providers.data)) {
@@ -727,6 +741,13 @@ class UniverseForm extends Component {
                  initValue={this.state.spotPrice.toString()}
                  onValueChanged={(val) => this.spotPriceChanged(val, false)}/>
         );
+      } else if (getPromiseState(suggestedSpotPrice).isError()) {
+        spotPriceField = (
+          <div className="form-group">
+            <label className="form-item-label">Spot Price (Per Hour)</label>
+            <div className="extra-info-field text-center">Spot pricing not supported for {this.state.instanceTypeSelected} in selected regions.</div>
+          </div>
+        );
       }
       spotPriceToggle = (
         <Field name="useSpotPrice"
@@ -734,7 +755,7 @@ class UniverseForm extends Component {
                label="Use Spot Pricing"
                subLabel="spot pricing is suitable for test environments only, because spot instances might go away any time"
                onToggle={this.toggleSpotPrice}
-               defaultChecked={this.state.useSpotPrice}
+               checkedVal={this.state.useSpotPrice}
                isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
       );
     }

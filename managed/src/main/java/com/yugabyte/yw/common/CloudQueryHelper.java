@@ -74,9 +74,9 @@ public class CloudQueryHelper extends DevopsBase {
    * Get a suggested spot price for a given list of regions. Will find the max spot price amongst all the regions and
    * return a suggested spot price of double the max spot price found.
    *
-   * @param regions
-   * @param instanceType
-   * @return
+   * @param regions Regions to get the suggested spot price for.
+   * @param instanceType Instance type to get the suggested spot price for.
+   * @return Double value which is the suggested spot price for a given instance type over all regions.
    */
   public double getSuggestedSpotPrice(List<Region> regions, String instanceType) {
     String command = "spot-pricing";
@@ -86,6 +86,9 @@ public class CloudQueryHelper extends DevopsBase {
         List<String> cloudArgs = ImmutableList.of("--zone", availabilityZone.code);
         List<String> commandArgs = ImmutableList.of("--instance_type", instanceType);
         JsonNode result = parseShellResponse(execCommand(region.uuid, command, commandArgs, cloudArgs), command);
+        if (result.has("error")) {
+          throw new RuntimeException(result.get("error").asText());
+        }
         double price = result.get("SpotPrice").asDouble();
         if (price > maxPriceFound) maxPriceFound = price;
       }
