@@ -51,11 +51,11 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   }
 
   @Test
-  public void testOnPremProviderWithPasswordlessOption() {
+  public void testOnPremProviderWithPasswordlessOptionDisabled() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.passwordlessSudoAccess = true;
+    keyInfo.passwordlessSudoAccess = false;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
     ansibleSetupServer.initialize(params);
     ansibleSetupServer.run();
@@ -63,11 +63,23 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
   }
 
   @Test
-  public void testOnPremProviderWithMultipleAccessKeys() {
+  public void testOnPremProviderWithPasswordlessOptionEnabled() {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
     AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.passwordlessSudoAccess = true;
+    AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
+    ansibleSetupServer.initialize(params);
+    ansibleSetupServer.run();
+    verify(mockNodeManager, times(1)).nodeCommand(NodeManager.NodeCommandType.Provision, params);
+  }
+
+  @Test
+  public void testOnPremProviderWithMultipleAccessKeys() {
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellProcessHandler.ShellResponse());
+    AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.passwordlessSudoAccess = false;
     AnsibleSetupServer.Params params = createUniverse(Common.CloudType.onprem, keyInfo);
     AccessKey.create(params.getProvider().uuid, "demo-key-2", keyInfo);
     ansibleSetupServer.initialize(params);
