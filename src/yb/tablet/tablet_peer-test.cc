@@ -113,7 +113,7 @@ class TabletPeerTest : public YBTabletTest,
     ASSERT_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
-    ASSERT_OK(builder.Build(&messenger_));
+    ASSERT_OK(builder.Build().MoveTo(&messenger_));
 
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
 

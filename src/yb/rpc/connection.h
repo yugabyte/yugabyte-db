@@ -48,11 +48,12 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/inbound_call.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/server_event.h"
-#include "yb/ql/ql_session.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
@@ -61,6 +62,7 @@
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace rpc {
@@ -77,9 +79,6 @@ class RpcConnectionPB;
 class ConnectionContext {
  public:
   virtual ~ConnectionContext() {}
-
-  // Perform negotiation for a connection
-  virtual void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) = 0;
 
   // Split slice into separate calls and invoke them.
   // Return number of processed bytes in `consumed`.
@@ -105,12 +104,18 @@ class ConnectionContext {
 
   virtual void AssignConnection(const ConnectionPtr& connection) {}
 
+  virtual void Connected(const ConnectionPtr& connection) = 0;
+
   virtual uint64_t ProcessedCallCount() = 0;
+
+  virtual RpcConnectionPB::StateType State() = 0;
 };
 
 typedef std::function<std::unique_ptr<ConnectionContext>()> ConnectionContextFactory;
 
 YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
+
+YB_STRONGLY_TYPED_BOOL(Connected);
 
 typedef boost::container::small_vector_base<OutboundDataPtr> OutboundDataBatch;
 
@@ -146,7 +151,15 @@ class Connection final : public std::enable_shared_from_this<Connection> {
              const Endpoint& remote,
              int socket,
              Direction direction,
+             Connected connected,
              std::unique_ptr<ConnectionContext> context);
+
+  static ConnectionPtr New(const ConnectionContextFactory& factory,
+                           Reactor* reactor,
+                           const Endpoint& remote,
+                           int socket,
+                           Connection::Direction direction,
+                           Connected connected);
 
   ~Connection();
 
@@ -160,15 +173,6 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   MonoTime last_activity_time() const {
     return last_activity_time_;
   }
-
-  // Set the user credentials which should be used to log in.
-  void set_user_credentials(const UserCredentials& user_credentials);
-
-  // Modify the user credentials which will be used to log in.
-  UserCredentials* mutable_user_credentials() { return &user_credentials_; }
-
-  // Get the user credentials which will be used to log in.
-  const UserCredentials& user_credentials() const { return user_credentials_; }
 
   // Returns true if we are not in the process of receiving or sending a
   // message, and we have no outstanding calls.
@@ -209,12 +213,6 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   Socket* socket() { return &socket_; }
 
-  // Go through the process of transferring control of the underlying socket back to the Reactor.
-  void CompleteNegotiation(Status negotiation_status);
-
-  // Indicate that negotiation is complete and that the Reactor is now in control of the socket.
-  void MarkNegotiationComplete();
-
   // Queue a call response back to the client on the server side.
   //
   // This may be called from a non-reactor thread.
@@ -225,12 +223,10 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   Reactor* reactor() const { return reactor_; }
 
   CHECKED_STATUS DumpPB(const DumpRunningRpcsRequestPB& req,
-                RpcConnectionPB* resp);
+                        RpcConnectionPB* resp);
 
   // Do appropriate actions after adding outbound call.
   void OutboundQueued();
-
-  void RunNegotiation(const MonoTime& deadline);
 
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
@@ -238,6 +234,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   CHECKED_STATUS HandleCallResponse(Slice slice);
 
   ConnectionContext& context() { return *context_; }
+
+  void CallSent(OutboundCallPtr call);
 
  private:
   CHECKED_STATUS DoWrite();
@@ -249,12 +247,10 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   void ClearSending(const Status& status);
 
-  void CallSent(OutboundCallPtr call);
-
-  CHECKED_STATUS Receive(bool* received);
+  Result<bool> Receive();
 
   // Try to parse received data into calls and process them.
-  CHECKED_STATUS TryProcessCalls(bool* had_calls);
+  Result<bool> TryProcessCalls();
 
   // The reactor thread that created this connection.
   Reactor* const reactor_;
@@ -271,11 +267,10 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // whether we are client or server
   Direction direction_;
 
+  Connected connected_;
+
   // The last time we read or wrote from the socket.
   MonoTime last_activity_time_;
-
-  // The credentials of the user operating on this connection (if a client user).
-  UserCredentials user_credentials_;
 
   // Notifies us when our socket is readable or writable.
   ev::io io_;
@@ -290,9 +285,6 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_;
-
-  // Whether we completed connection negotiation.
-  bool negotiation_complete_ = false;
 
   // We instantiate and store this metric instance at the level of connection, but not at the level
   // of the class emitting metrics (OutboundTransfer) as recommended in metrics.h. This is on

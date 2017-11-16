@@ -106,7 +106,7 @@ void TsTabletManagerITest::SetUp() {
   YBTest::SetUp();
 
   MessengerBuilder bld("client");
-  ASSERT_OK(bld.Build(&client_messenger_));
+  ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
 
   MiniClusterOptions opts;
   opts.num_tablet_servers = kNumReplicas;

@@ -121,7 +121,7 @@ class TabletServerTestBase : public YBTest {
     rb_.reset(new RowBuilder(schema_));
 
     rpc::MessengerBuilder bld("Client");
-    ASSERT_OK(bld.Build(&client_messenger_));
+    ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
   }
 
   virtual void StartTabletServer() {

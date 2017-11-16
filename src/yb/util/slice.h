@@ -192,13 +192,19 @@ class Slice {
 
   // Return true iff "x" is a prefix of "*this"
   bool starts_with(const Slice& x) const {
-    return ((size_ >= x.size_) &&
-            (MemEqual(data_, x.data_, x.size_)));
+    return starts_with(x.data(), x.size());
+  }
+
+  bool starts_with(const uint8_t* data, size_t size) const {
+    return (size_ >= size) && MemEqual(data_, data, size);
+  }
+
+  bool starts_with(const char* data, size_t size) const {
+    return (size_ >= size) && MemEqual(data_, data, size);
   }
 
   bool ends_with(const Slice& x) const {
-    return ((size_ >= x.size_) &&
-            (MemEqual(data_ + size_ - x.size_, x.data_, x.size_)));
+    return (size_ >= x.size_) && MemEqual(data_ + size_ - x.size_, x.data_, x.size_);
   }
 
   // Comparator struct, useful for ordered collections (like STL maps).

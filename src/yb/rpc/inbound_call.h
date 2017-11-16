@@ -76,7 +76,6 @@ class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 class RpcCallDetailsPB;
 class CQLCallDetailsPB;
-class UserCredentials;
 
 struct InboundCallTiming {
   MonoTime time_received;   // Time the call was first accepted.
@@ -96,10 +95,6 @@ class InboundCall : public RpcCall {
   const Slice &serialized_request() const {
     return serialized_request_;
   }
-
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
-
-  virtual const UserCredentials& user_credentials() const;
 
   virtual const Endpoint& remote_address() const;
   virtual const Endpoint& local_address() const;
@@ -140,7 +135,7 @@ class InboundCall : public RpcCall {
   virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
 
  protected:
-  void NotifyTransferred(const Status& status) override;
+  void NotifyTransferred(const Status& status, Connection* conn) override;
 
   // Log a WARNING message if the RPC response was slow enough that the
   // client likely timed out. This is based on the client-provided timeout

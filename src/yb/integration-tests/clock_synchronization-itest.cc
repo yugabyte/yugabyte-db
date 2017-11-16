@@ -49,7 +49,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     CHECK_OK(b.Build(&schema_));
 
     rpc::MessengerBuilder bld("Client");
-    ASSERT_OK(bld.Build(&client_messenger_));
+    ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
     client::YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(&builder, &client_));
   }

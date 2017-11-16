@@ -303,7 +303,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   MessengerBuilder builder(data_->client_name_);
   builder.set_num_reactors(data_->num_reactors_);
   builder.set_metric_entity(data_->metric_entity_);
-  RETURN_NOT_OK(builder.Build(&c->data_->messenger_));
+  RETURN_NOT_OK(builder.Build().MoveTo(&c->data_->messenger_));
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;

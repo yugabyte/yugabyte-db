@@ -74,22 +74,7 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
   CHECK(messenger != nullptr);
   DCHECK(!service_name_.empty()) << "Proxy service name must not be blank";
 
-  // By default, we set the real user to the currently logged-in user.
-  // Effective user and password remain blank.
-  string real_user;
-  Status s = GetLoggedInUser(&real_user);
-  if (!s.ok()) {
-    LOG(WARNING) << "Proxy for " << service_name_ << ": Unable to get logged-in user name: "
-                 << s.ToString() << " before connecting to remote: " << remote;
-  }
-  if (real_user.empty()) {
-    static const char* kDefaultUser = "yugabyte-user";
-    VLOG(4) << "Warning: logged-in user is empty, setting to '" << kDefaultUser << "'";
-    real_user = kDefaultUser;
-  }
-
   conn_id_.set_remote(remote);
-  conn_id_.mutable_user_credentials()->set_real_user(real_user);
   is_started_.store(false, std::memory_order_release);
   num_calls_.store(0, std::memory_order_release);
 }
@@ -163,12 +148,6 @@ Status Proxy::SyncRequest(const string& method,
 
   latch.Wait();
   return controller->status();
-}
-
-void Proxy::set_user_credentials(const UserCredentials& user_credentials) {
-  CHECK(!is_started_.load(std::memory_order_acquire))
-      << "It is illegal to call set_user_credentials() after request processing has started";
-  conn_id_.set_user_credentials(user_credentials);
 }
 
 }  // namespace rpc

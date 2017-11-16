@@ -26,7 +26,8 @@ set(CQLSERVER_YRPC_LIBS
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
-  wire_protocol_proto)
+  wire_protocol_proto
+  ${OPENSSL_CRYPTO_LIBRARY})
 ADD_YB_LIBRARY(cql_service_proto
   SRCS ${CQLSERVER_YRPC_SRCS}
   DEPS ${CQLSERVER_YRPC_LIBS}

@@ -132,14 +132,6 @@ TEST_F(TestRpc, TestAcceptorPoolStartStop) {
   }
 }
 
-TEST_F(TestRpc, TestConnHeaderValidation) {
-  MessengerBuilder mb("TestRpc.TestConnHeaderValidation");
-  constexpr int kConnectionHeaderLength = kMagicNumberLength + kHeaderFlagsLength;
-  uint8_t buf[kConnectionHeaderLength];
-  serialization::SerializeConnHeader(buf);
-  ASSERT_OK(serialization::ValidateConnHeader(Slice(buf, kConnectionHeaderLength)));
-}
-
 // Test making successful RPC calls.
 TEST_F(TestRpc, TestCall) {
   // Set up server.

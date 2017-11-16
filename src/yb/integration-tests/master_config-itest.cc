@@ -66,7 +66,7 @@ class MasterChangeConfigTest : public YBTest {
     ASSERT_OK(CheckNumMastersWithCluster("Start"));
 
     MessengerBuilder builder("config_change");
-    Status s = builder.Build(&messenger_);
+    Status s = builder.Build().MoveTo(&messenger_);
     if (!s.ok()) {
       LOG(FATAL) << "Unable to build messenger : " << s.ToString();
     }

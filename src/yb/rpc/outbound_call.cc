@@ -39,13 +39,17 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/trace.h"
 
@@ -154,7 +158,7 @@ OutboundCall::~OutboundCall() {
   }
 }
 
-void OutboundCall::NotifyTransferred(const Status& status) {
+void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   // TODO: would be better to cancel the transfer while it is still on the queue if we
   // timed out before the transfer started, but there is still a race in the case of
   // a partial send that we have to handle here
@@ -162,6 +166,7 @@ void OutboundCall::NotifyTransferred(const Status& status) {
     DCHECK(IsTimedOut());
   } else {
     if (status.ok()) {
+      conn->CallSent(shared_from(this));
       SetSent();
     } else {
       VLOG(1) << "Connection torn down before " << ToString()
@@ -426,11 +431,11 @@ Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {
 }
 
 string OutboundCall::ToString() const {
-  return Substitute("RPC call $0 -> $1 , state=$2.",
-                    remote_method_.ToString(), conn_id_.ToString(), StateName(state_));
+  return Format("RPC call $0 -> $1 , state=$2.",
+                remote_method_.ToString(), conn_id_, StateName(state_));
 }
 
-void OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
+bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
   resp->mutable_header()->CopyFrom(header_);
@@ -438,67 +443,7 @@ void OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
-}
-
-///
-/// UserCredentials
-///
-
-UserCredentials::UserCredentials() {}
-
-bool UserCredentials::has_effective_user() const {
-  return !eff_user_.empty();
-}
-
-void UserCredentials::set_effective_user(const string& eff_user) {
-  eff_user_ = eff_user;
-}
-
-bool UserCredentials::has_real_user() const {
-  return !real_user_.empty();
-}
-
-void UserCredentials::set_real_user(const string& real_user) {
-  real_user_ = real_user;
-}
-
-bool UserCredentials::has_password() const {
-  return !password_.empty();
-}
-
-void UserCredentials::set_password(const string& password) {
-  password_ = password;
-}
-
-void UserCredentials::CopyFrom(const UserCredentials& other) {
-  eff_user_ = other.eff_user_;
-  real_user_ = other.real_user_;
-  password_ = other.password_;
-}
-
-string UserCredentials::ToString() const {
-  // Does not print the password.
-  return StringPrintf("{real_user=%s, eff_user=%s}", real_user_.c_str(), eff_user_.c_str());
-}
-
-size_t UserCredentials::HashCode() const {
-  size_t seed = 0;
-  if (has_effective_user()) {
-    boost::hash_combine(seed, effective_user());
-  }
-  if (has_real_user()) {
-    boost::hash_combine(seed, real_user());
-  }
-  if (has_password()) {
-    boost::hash_combine(seed, password());
-  }
-  return seed;
-}
-
-bool UserCredentials::Equals(const UserCredentials& other) const {
-  return (effective_user() == other.effective_user()
-       && real_user() == other.real_user()
-       && password() == other.password());
+  return true;
 }
 
 ///
@@ -507,63 +452,29 @@ bool UserCredentials::Equals(const UserCredentials& other) const {
 
 ConnectionId::ConnectionId() {}
 
-ConnectionId::ConnectionId(const ConnectionId& other) {
-  DoCopyFrom(other);
-}
-
-ConnectionId::ConnectionId(const Endpoint& remote, const UserCredentials& user_credentials) {
+ConnectionId::ConnectionId(const Endpoint& remote) {
   remote_ = remote;
-  user_credentials_.CopyFrom(user_credentials);
 }
 
 void ConnectionId::set_remote(const Endpoint& remote) {
   remote_ = remote;
 }
 
-void ConnectionId::set_user_credentials(const UserCredentials& user_credentials) {
-  user_credentials_.CopyFrom(user_credentials);
-}
-
 void ConnectionId::set_idx(uint8_t idx) { idx_ = idx; }
 
-void ConnectionId::CopyFrom(const ConnectionId& other) {
-  DoCopyFrom(other);
-}
-
 string ConnectionId::ToString() const {
-  // Does not print the password.
-  return Substitute("{remote=$0, user_credentials=$1, idx=$2}",
-                    yb::ToString(remote_),
-                    user_credentials_.ToString(),
-                    idx_);
-}
-
-void ConnectionId::DoCopyFrom(const ConnectionId& other) {
-  remote_ = other.remote_;
-  idx_ = other.idx_;
-  user_credentials_.CopyFrom(other.user_credentials_);
+  return Format("{remote=$0, idx=$1}", remote_, idx_);
 }
 
 size_t ConnectionId::HashCode() const {
   size_t seed = 0;
   boost::hash_combine(seed, hash_value(remote_));
-  boost::hash_combine(seed, user_credentials_.HashCode());
   boost::hash_combine(seed, idx_);
   return seed;
 }
 
-bool ConnectionId::Equals(const ConnectionId& other) const {
-  return (remote() == other.remote()
-       && user_credentials().Equals(other.user_credentials()))
-       && idx_ == other.idx_;
-}
-
 size_t ConnectionIdHash::operator() (const ConnectionId& conn_id) const {
   return conn_id.HashCode();
-}
-
-bool ConnectionIdEqual::operator() (const ConnectionId& cid1, const ConnectionId& cid2) const {
-  return cid1.Equals(cid2);
 }
 
 ///

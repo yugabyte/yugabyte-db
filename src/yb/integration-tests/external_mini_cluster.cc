@@ -208,9 +208,7 @@ Status ExternalMiniCluster::Start() {
   FLAGS_replication_factor = opts_.num_masters;
 
   RETURN_NOT_OK_PREPEND(rpc::MessengerBuilder("minicluster-messenger")
-                        .set_num_reactors(1)
-                        .set_negotiation_threads(1)
-                        .Build(&messenger_),
+                            .set_num_reactors(1).Build().MoveTo(&messenger_),
                         "Failed to start Messenger for minicluster");
 
   Status s = Env::Default()->CreateDir(data_root_);

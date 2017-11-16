@@ -1221,12 +1221,12 @@ if(IS_CLANG AND NOT "$ENV{YB_CLANG_PREFIX}" STREQUAL "")
   ADD_GLOBAL_RPATH_ENTRY("$ENV{YB_CLANG_PREFIX}/lib")
 endif()
 
-## Cyrus SASL
-find_package(CyrusSASL REQUIRED)
-include_directories(SYSTEM ${CYRUS_SASL_INCLUDE_DIR})
-ADD_THIRDPARTY_LIB(cyrus_sasl
-  SHARED_LIB "${CYRUS_SASL_SHARED_LIB}"
-  DEPS ${CYRUS_SASL_LIB_DEPS})
+## OpenSSL
+find_package(OpenSSL REQUIRED)
+include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(openssl
+  SHARED_LIB "${OPENSSL_CRYPTO_LIBRARY}"
+  DEPS ${OPENSSL_LIB_DEPS})
 
 ## GLog
 find_package(GLog REQUIRED)
@@ -1523,16 +1523,14 @@ string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
 # TODO: switch to C++17.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (USING_LINUXBREW)
-  if (IS_CLANG)
-    # Add the Linuxbrew library directory last.
-    ADD_COMMON_COMPILER_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
-    ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
-  endif()
-  # Add the system library directory when building under Linuxbrew, otherwise we can't find libsasl2
-  # at runtime.
+  # Add the Linuxbrew library directory last.
+  ADD_COMMON_COMPILER_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
+  ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
+  ADD_COMMON_COMPILER_LINKER_FLAGS("-L/usr/lib64")
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
 endif()
 

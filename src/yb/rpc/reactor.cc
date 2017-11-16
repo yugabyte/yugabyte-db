@@ -53,11 +53,8 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/negotiation.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/sasl_client.h"
-#include "yb/rpc/sasl_server.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
@@ -77,36 +74,17 @@ using std::shared_ptr;
 
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
-DEFINE_int64(rpc_negotiation_timeout_ms, 3000,
-             "Timeout for negotiating an RPC connection.");
-TAG_FLAG(rpc_negotiation_timeout_ms, advanced);
-TAG_FLAG(rpc_negotiation_timeout_ms, runtime);
 
 namespace yb {
 namespace rpc {
 
 namespace {
+
 Status ShutdownError(bool aborted) {
   const char* msg = "reactor is shutting down";
   return aborted ?
       STATUS(Aborted, msg, "", ESHUTDOWN) :
       STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
-}
-
-ConnectionPtr MakeNewConnection(const ConnectionContextFactory& factory,
-                                Reactor* reactor,
-                                const Endpoint& remote,
-                                int socket,
-                                Connection::Direction direction) {
-  auto context = factory();
-  auto* context_ptr = context.get();
-  auto result = std::make_shared<Connection>(reactor,
-                                             remote,
-                                             socket,
-                                             direction,
-                                             std::move(context));
-  context_ptr->AssignConnection(result);
-  return result;
 }
 
 } // anonymous namespace
@@ -215,7 +193,7 @@ void Reactor::ShutdownInternal() {
   }
 
   for (auto& call : processing_outbound_queue_) {
-    call->Transferred(aborted);
+    call->Transferred(aborted, nullptr);
   }
   processing_outbound_queue_.clear();
 }
@@ -248,7 +226,7 @@ Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
     for (const ConnectionPtr& conn : reactor->server_conns_) {
       RETURN_NOT_OK(conn->DumpPB(req, resp->add_inbound_connections()));
     }
-    for (const conn_map_t::value_type& entry : reactor->client_conns_) {
+    for (const auto& entry : reactor->client_conns_) {
       Connection* conn = entry.second.get();
       RETURN_NOT_OK(conn->DumpPB(req, resp->add_outbound_connections()));
     }
@@ -301,16 +279,12 @@ void Reactor::AsyncHandler(ev::async &watcher, int revents) {
 void Reactor::RegisterConnection(const ConnectionPtr& conn) {
   DCHECK(IsCurrentThread());
 
-  // Set a limit on how long the server will negotiate with a new client.
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
-  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_rpc_negotiation_timeout_ms));
-
-  Status s = StartConnectionNegotiation(conn, deadline);
-  if (!s.ok()) {
-    LOG(ERROR) << "Server connection negotiation failed: " << s.ToString();
-    DestroyConnection(conn.get(), s);
+  Status s = StartConnection(conn);
+  if (s.ok()) {
+    server_conns_.push_back(conn);
+  } else {
+    LOG(WARNING) << "Failed to start connection: " << conn->ToString() << ": " << s;
   }
-  server_conns_.push_back(conn);
 }
 
 ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
@@ -458,15 +432,15 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
                                       const MonoTime &deadline,
                                       ConnectionPtr* conn) {
   DCHECK(IsCurrentThread());
-  conn_map_t::const_iterator c = client_conns_.find(conn_id);
+  auto c = client_conns_.find(conn_id);
   if (c != client_conns_.end()) {
     *conn = (*c).second;
     return Status::OK();
   }
 
   // No connection to this remote. Need to create one.
-  VLOG(2) << name() << " FindOrStartConnection: creating "
-          << "new connection for " << conn_id.remote();
+  VLOG(2) << name() << " FindOrStartConnection: creating new connection for " << conn_id.ToString();
+
 
   // Create a new socket and start connecting to the remote.
   auto sock = CreateClientSocket(conn_id.remote());
@@ -486,22 +460,21 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   RETURN_NOT_OK(StartConnect(sock.get_ptr(), conn_id.remote(), &connect_in_progress));
 
   // Register the new connection in our map.
-  *conn = MakeNewConnection(messenger_->connection_context_factory_,
-                            this,
-                            conn_id.remote(),
-                            sock->Release(),
-                            ConnectionDirection::CLIENT);
-  (*conn)->set_user_credentials(conn_id.user_credentials());
+  *conn = Connection::New(messenger_->connection_context_factory_,
+                          this,
+                          conn_id.remote(),
+                          sock->Release(),
+                          ConnectionDirection::CLIENT,
+                          Connected(!connect_in_progress));
 
-  // Kick off blocking client connection negotiation.
-  Status s = StartConnectionNegotiation(*conn, deadline);
+  Status s = StartConnection(*conn);
   if (s.IsIllegalState()) {
     // Return a nicer error message to the user indicating -- if we just
     // forward the status we'd get something generic like "ThreadPool is closing".
     return STATUS(ServiceUnavailable, "Client RPC Messenger shutting down");
   }
   // Propagate any other errors as-is.
-  RETURN_NOT_OK_PREPEND(s, "Unable to start connection negotiation thread");
+  RETURN_NOT_OK_PREPEND(s, "Unable to start connection");
 
   // Insert into the client connection map to avoid duplicate connection requests.
   client_conns_.emplace(conn_id, *conn);
@@ -546,35 +519,17 @@ void Reactor::DropWithRemoteAddress(const IpAddress& address) {
   }
 }
 
-Status Reactor::StartConnectionNegotiation(const ConnectionPtr& conn,
-                                           const MonoTime& deadline) {
+Status Reactor::StartConnection(const ConnectionPtr& conn) {
   DCHECK(IsCurrentThread());
 
-  scoped_refptr<Trace> trace(new Trace());
-  ADOPT_TRACE(trace.get());
-  TRACE("Submitting negotiation task for $0", conn->ToString());
-  RETURN_NOT_OK(messenger_->negotiation_pool()->SubmitClosure(
-      Bind(&Negotiation::RunNegotiation, conn, deadline)));
-  return Status::OK();
-}
-
-void Reactor::CompleteConnectionNegotiation(const ConnectionPtr& conn,
-      const Status &status) {
-  DCHECK(IsCurrentThread());
-  if (PREDICT_FALSE(!status.ok())) {
-    DestroyConnection(conn.get(), status);
-    return;
-  }
-
-  // Switch the socket back to non-blocking mode after negotiation.
   Status s = conn->SetNonBlocking(true);
   if (PREDICT_FALSE(!s.ok())) {
     LOG(DFATAL) << "Unable to set connection to non-blocking mode: " << s.ToString();
     DestroyConnection(conn.get(), s);
-    return;
+    return s;
   }
-  conn->MarkNegotiationComplete();
   conn->EpollRegister(loop_);
+  return Status::OK();
 }
 
 Status Reactor::StartConnect(Socket *sock, const Endpoint& remote, bool *in_progress) {
@@ -607,7 +562,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
 
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
-    ConnectionId conn_id(conn->remote(), conn->user_credentials());
+    ConnectionId conn_id(conn->remote());
     bool erased = false;
     for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
       conn_id.set_idx(idx);
@@ -618,8 +573,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
       }
     }
     if (!erased) {
-      LOG(WARNING) << "Looking for " << conn->ToString() << ", "
-                   << conn->user_credentials().ToString();
+      LOG(WARNING) << "Looking for " << conn->ToString();
       for (auto &p : client_conns_) {
         LOG(WARNING) << "  Client connection: " << p.first.ToString() << ", "
                      << p.second->ToString();
@@ -683,7 +637,7 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
     }
   }
   if (closing) {
-    call->Transferred(ShutdownError(true));
+    call->Transferred(ShutdownError(true), nullptr);
     return;
   }
   if (was_empty) {
@@ -772,11 +726,12 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
-  auto conn = MakeNewConnection(messenger_->connection_context_factory_,
-                                this,
-                                remote,
-                                socket->Release(),
-                                ConnectionDirection::SERVER);
+  auto conn = Connection::New(messenger_->connection_context_factory_,
+                              this,
+                              remote,
+                              socket->Release(),
+                              ConnectionDirection::SERVER,
+                              Connected::kTrue);
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
   });

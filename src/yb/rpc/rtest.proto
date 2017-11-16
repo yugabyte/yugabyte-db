@@ -89,7 +89,6 @@ message WhoAmIRequestPB {
 }
 
 message WhoAmIResponsePB {
-  required yb.rpc.UserInformationPB credentials = 1;
   required string address = 2;
 }
 

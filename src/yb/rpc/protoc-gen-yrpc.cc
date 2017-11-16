@@ -585,7 +585,6 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include \"yb/util/status.h\"\n"
       "#include \"yb/util/net/net_fwd.h\"\n"
       "\n"
-      "namespace yb { namespace rpc { class UserCredentials; } }\n"
       "$open_namespace$"
       "\n"
       "\n"

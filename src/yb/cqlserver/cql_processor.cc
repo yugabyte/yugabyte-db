@@ -15,9 +15,6 @@
 
 #include "yb/cqlserver/cql_processor.h"
 
-#include <sasl/md5global.h>
-#include <sasl/md5.h>
-
 #include "yb/cqlserver/cql_service.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/rpc/rpc_context.h"

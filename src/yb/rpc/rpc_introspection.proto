@@ -85,8 +85,6 @@ message RpcConnectionPB {
 
   required string remote_ip = 1;
   required StateType state = 2;
-  // TODO: swap out for separate fields
-  optional string remote_user_credentials = 3;
   optional uint64 processed_call_count = 4;
   optional RpcConnectionDetailsPB connection_details = 5;
   repeated RpcCallInProgressPB calls_in_flight = 6;

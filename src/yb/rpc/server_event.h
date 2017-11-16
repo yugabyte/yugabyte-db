@@ -33,8 +33,10 @@ class ServerEvent {
 class ServerEventList : public OutboundData {
  public:
   virtual ~ServerEventList() {}
-  virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
-  virtual std::string ToString() const = 0;
+
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override {
+    return false;
+  }
 };
 
 typedef std::shared_ptr<ServerEventList> ServerEventListPtr;

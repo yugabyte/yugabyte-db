@@ -1623,9 +1623,9 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
   {
     RpcServer server2("server2", opts);
     MessengerBuilder mb("foo");
-    shared_ptr<Messenger> messenger;
-    ASSERT_OK(mb.Build(&messenger));
-    ASSERT_OK(server2.Init(messenger));
+    auto messenger = mb.Build();
+    ASSERT_OK(messenger);
+    ASSERT_OK(server2.Init(*messenger));
   }
 }
 
@@ -1636,21 +1636,21 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ServerRegistrationPB reg;
   TabletServerOptions tbo;
   MessengerBuilder mb("foo");
-  shared_ptr<Messenger> messenger;
-  ASSERT_OK(mb.Build(&messenger));
+  auto messenger = mb.Build();
+  ASSERT_OK(messenger);
 
   RpcServer server1("server1", opts);
-  ASSERT_OK(server1.Init(messenger));
+  ASSERT_OK(server1.Init(*messenger));
 
   FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
   RpcServerOptions opts2;
   RpcServer server2("server2", opts2);
-  ASSERT_OK(server2.Init(messenger));
+  ASSERT_OK(server2.Init(*messenger));
 
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017";
   RpcServerOptions opts3;
   RpcServer server3("server3", opts3);
-  ASSERT_OK(server3.Init(messenger));
+  ASSERT_OK(server3.Init(*messenger));
 
   reg.Clear();
   tbo.rpc_opts = opts3;

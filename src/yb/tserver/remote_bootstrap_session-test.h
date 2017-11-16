@@ -146,16 +146,16 @@ class RemoteBootstrapTest : public YBTabletTest {
                                        tablet()->tablet_id(), fs_manager()->uuid(),
                                        config, consensus::kMinimumTerm, &cmeta));
 
-    shared_ptr<Messenger> messenger;
     MessengerBuilder mbuilder(CURRENT_TEST_NAME());
-    ASSERT_OK(mbuilder.Build(&messenger));
+    auto messenger = mbuilder.Build();
+    ASSERT_OK(messenger);
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();
     CHECK_OK(tablet_peer_->InitTabletPeer(tablet(),
                                           std::shared_future<client::YBClientPtr>(),
                                           clock(),
-                                          messenger,
+                                          *messenger,
                                           log,
                                           metric_entity));
     consensus::ConsensusBootstrapInfo boot_info;

@@ -38,8 +38,13 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
               rpc::RpcConnectionPB* resp) override;
 
  private:
+  void Connected(const rpc::ConnectionPtr& connection) override {}
+
+  rpc::RpcConnectionPB::StateType State() override {
+    return rpc::RpcConnectionPB::OPEN;
+  }
+
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
-  void RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) override;
   CHECKED_STATUS ProcessCalls(const rpc::ConnectionPtr& connection,
                               Slice slice,
                               size_t* consumed) override;
@@ -70,7 +75,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   void LogTrace() const override;
   std::string ToString() const override;
-  void DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
+  bool DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
   MonoTime GetClientDeadline() const override;
 

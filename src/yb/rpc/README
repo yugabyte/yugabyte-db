@@ -279,7 +279,6 @@ serialized as follows:
     - for typical RPC calls, this is the user-specified request or response
       protobuf
     - for RPC calls which caused an error, the response is a ErrorResponsePB
-    - during SASL negotiation, this is a SaslMessagePB
 
 
 Example packet capture
@@ -299,47 +298,6 @@ An example call (captured with strace on rpc-test.cc) follows:
       Decoded with protoc --decode=yb.rpc_test.AddRequestPB rpc/rtest.proto
       x: 304089172
       y: 1303455736
-
-
-
-SASL negotiation
-------------------
-After the initial connection header is sent, SASL negotiation begins.
-YugaByte always uses SASL regardless of security settings. In the case that
-no strong authentication is required, SASL PLAIN is used with no password.
-
-This SASL negotiation protocol matches the Hadoop protocol.
-The negotiation proceeds as described in this diagram:
-
-                                CLIENT |        | SERVER
-                                       |        |
-(1) SaslMessagePB }                    |        |
-state=NEGOTIATE   } --------------------------> |
-                                       |        |
-                                       |        | { (2) SaslMessagePB
-                                       |        | { state=NEGOTIATE
-                                       | <------- { auths=<list of supported mechanisms>
-                                       |        |
-(3) SaslMessagePB                  }   |        |
-state=INITIATE                     }   |        |
-auths[0]=<chosen mechanism>        }   |        |
-token=<challenge response, if any> } ---------> |
-                                       |        |
-                                       |        | { (4) SaslMessagePB
-                                       |        | { state=CHALLENGE (or SUCCESS)
-                                       | <------- { token=<challenge token, if applicable>
-                                       |        |
-(5) SaslMessagePB          }           |        |
-state=RESPONSE             }           |        |
-token=<challenge response> } -----------------> |
-                                       |        |
-                                       |        | { GOTO (4) above
-                                       |        |
-
-
-Each of the SaslMessagePBs above is framed as usual using RequestHeader or ResponseHeader
-protobufs. For each SASL message, the CallId should be set to '-33'.
-
 
 
 Connection Context:

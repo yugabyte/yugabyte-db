@@ -19,7 +19,6 @@
 #include "yb/cqlserver/cql_statement.h"
 
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
@@ -55,11 +54,6 @@ namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext()
     : ql_session_(new ql::QLSession()) {
-}
-
-void CQLConnectionContext::RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) {
-  CHECK_EQ(connection->direction(), rpc::ConnectionDirection::SERVER);
-  connection->CompleteNegotiation(Status::OK());
 }
 
 Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
@@ -189,7 +183,6 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
     case rpc::ErrorStatusPB::ERROR_NO_SUCH_SERVICE: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::ERROR_INVALID_REQUEST: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN: FALLTHROUGH_INTENDED;
-    case rpc::ErrorStatusPB::FATAL_INVALID_RPC_HEADER: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_DESERIALIZING_REQUEST: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_VERSION_MISMATCH: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_UNAUTHORIZED: FALLTHROUGH_INTENDED;
@@ -300,7 +293,7 @@ std::string CQLInboundCall::ToString() const {
   return Format("CQL Call from $0", connection()->remote());
 }
 
-void CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
+bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                             rpc::RpcCallInProgressPB* resp) {
 
   if (req.include_traces() && trace_) {
@@ -309,6 +302,8 @@ void CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   resp->set_micros_elapsed(
       MonoTime::FineNow().GetDeltaSince(timing_.time_received).ToMicroseconds());
   GetCallDetails(resp);
+
+  return true;
 }
 
 MonoTime CQLInboundCall::GetClientDeadline() const {

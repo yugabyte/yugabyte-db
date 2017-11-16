@@ -20,7 +20,6 @@
 #include "yb/redisserver/redis_parser.h"
 
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
@@ -53,12 +52,6 @@ RedisConnectionContext::RedisConnectionContext()
     : ConnectionContextWithQueue(FLAGS_redis_max_concurrent_commands) {}
 
 RedisConnectionContext::~RedisConnectionContext() {}
-
-void RedisConnectionContext::RunNegotiation(rpc::ConnectionPtr connection,
-                                            const MonoTime& deadline) {
-  CHECK_EQ(connection->direction(), rpc::ConnectionDirection::SERVER);
-  connection->CompleteNegotiation(Status::OK());
-}
 
 Status RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
                                             Slice slice,
@@ -195,7 +188,7 @@ string RedisInboundCall::ToString() const {
   return Format("Redis Call from $0", connection()->remote());
 }
 
-void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
+bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                               rpc::RpcCallInProgressPB* resp) {
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
@@ -204,7 +197,7 @@ void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
       .ToMicroseconds());
 
   if (!parsed_.load(std::memory_order_acquire)) {
-    return;
+    return true;
   }
 
   // RedisClientBatch client_batch_
@@ -216,6 +209,8 @@ void RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
     }
     redis_details->add_call_details()->set_redis_string(query);
   }
+
+  return true;
 }
 
 template <class Collection, class Out>

@@ -59,7 +59,6 @@ class RefCntBuffer;
 
 namespace rpc {
 
-class UserCredentials;
 class YBInboundCall;
 
 // The context provided to a generated ServiceIf. This provides
@@ -173,9 +172,6 @@ class RpcContext {
   // later) to 'idx'. Call may fail if all sidecars have already been used
   // by the RPC response.
   CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
-
-  // Return the credentials of the remote user who made this call.
-  const UserCredentials& user_credentials() const;
 
   // Return the remote endpoint which sent the current RPC call.
   const Endpoint& remote_address() const;

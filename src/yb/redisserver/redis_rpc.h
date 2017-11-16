@@ -33,7 +33,12 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   ~RedisConnectionContext();
 
  private:
-  void RunNegotiation(rpc::ConnectionPtr connection, const MonoTime& deadline) override;
+  void Connected(const rpc::ConnectionPtr& connection) override {}
+
+  rpc::RpcConnectionPB::StateType State() override {
+    return rpc::RpcConnectionPB::OPEN;
+  }
+
   CHECKED_STATUS ProcessCalls(const rpc::ConnectionPtr& connection,
                               Slice slice,
                               size_t* consumed) override;
@@ -59,7 +64,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   void LogTrace() const override;
   std::string ToString() const override;
-  void DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
+  bool DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
   MonoTime GetClientDeadline() const override;
 

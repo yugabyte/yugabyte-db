@@ -919,7 +919,7 @@ class CQLServerEventList : public rpc::ServerEventList {
   void Serialize(std::deque<RefCntBuffer>* output) const override;
   std::string ToString() const override;
  private:
-  void Transferred(const Status& status) override;
+  void Transferred(const Status& status, rpc::Connection*) override;
   std::vector<std::unique_ptr<CQLServerEvent>> cql_server_events_;
 };
 

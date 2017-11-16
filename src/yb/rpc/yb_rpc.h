@@ -22,47 +22,30 @@
 namespace yb {
 namespace rpc {
 
-class SaslClient;
-class SaslServer;
-
 class YBConnectionContext : public ConnectionContextWithCallId {
  public:
   YBConnectionContext();
   ~YBConnectionContext();
-
-  // Return SASL client instance for this connection.
-  SaslClient& sasl_client() { return *sasl_client_; }
-
-  // Return SASL server instance for this connection.
-  SaslServer& sasl_server() { return *sasl_server_; }
-
-  // Initialize SASL client before negotiation begins.
-  CHECKED_STATUS InitSaslClient(Connection* connection);
-
-  // Initialize SASL server before negotiation begins.
-  CHECKED_STATUS InitSaslServer(Connection* connection);
 
  private:
   uint64_t ExtractCallId(InboundCall* call) override;
 
   size_t BufferLimit() override;
 
-  void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
-
   CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
                               Slice slice,
                               size_t* consumed) override;
 
   size_t MaxReceive(Slice existing_data) override;
+  void Connected(const ConnectionPtr& connection) override;
+  void AssignConnection(const ConnectionPtr& connection) override;
 
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, Slice call_data);
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice call_data);
 
-  // SASL client instance used for connection negotiation when Direction == CLIENT.
-  std::unique_ptr<SaslClient> sasl_client_;
+  RpcConnectionPB::StateType State() override { return state_; }
 
-  // SASL server instance used for connection negotiation when Direction == SERVER.
-  std::unique_ptr<SaslServer> sasl_server_;
+  RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
 };
 
 class YBInboundCall : public InboundCall {
@@ -125,7 +108,7 @@ class YBInboundCall : public InboundCall {
 
   void LogTrace() const override;
   std::string ToString() const override;
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
 
   MonoTime GetClientDeadline() const override;
 

@@ -89,10 +89,6 @@ class MessengerBuilder {
   // receiving.
   MessengerBuilder &set_num_reactors(int num_reactors);
 
-  // Set the number of connection-negotiation threads that will be used to handle the
-  // blocking connection-negotiation step.
-  MessengerBuilder &set_negotiation_threads(int num_negotiation_threads);
-
   // Set the granularity with which connections are checked for keepalive.
   MessengerBuilder &set_coarse_timer_granularity(const MonoDelta &granularity);
 
@@ -105,16 +101,15 @@ class MessengerBuilder {
     return *this;
   }
 
-  CHECKED_STATUS Build(std::shared_ptr<Messenger> *msgr);
+  Result<std::shared_ptr<Messenger>> Build();
 
   MonoDelta connection_keepalive_time() const { return connection_keepalive_time_; }
   MonoDelta coarse_timer_granularity() const { return coarse_timer_granularity_; }
+
  private:
-  CHECKED_STATUS Build(Messenger **msgr);
   const std::string name_;
   MonoDelta connection_keepalive_time_;
   int num_reactors_;
-  int num_negotiation_threads_;
   MonoDelta coarse_timer_granularity_;
   scoped_refptr<MetricEntity> metric_entity_;
   ConnectionContextFactory connection_context_factory_;
@@ -197,8 +192,6 @@ class Messenger {
                             MonoDelta when,
                             const std::shared_ptr<Messenger>& msgr = nullptr);
 
-  yb::ThreadPool* negotiation_pool() const { return negotiation_pool_.get(); }
-
   std::string name() const {
     return name_;
   }
@@ -255,8 +248,6 @@ class Messenger {
   mutable std::atomic<int> rpc_services_lock_count_ = {0};
 
   std::vector<Reactor*> reactors_;
-
-  gscoped_ptr<yb::ThreadPool> negotiation_pool_;
 
   const scoped_refptr<MetricEntity> metric_entity_;
   const scoped_refptr<Histogram> outgoing_queue_time_;

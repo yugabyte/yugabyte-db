@@ -165,7 +165,7 @@ public class TestUtils {
   private static String findGitRepoContaining(String initialPath) {
     File currentPath = new File(initialPath);
     while (currentPath != null) {
-      if (new File(currentPath, ".git").isDirectory()) {
+      if (new File(currentPath, ".git").exists()) {
         // Cache the root dir so that we don't have to find it every time.
         return currentPath.getAbsolutePath();
       }

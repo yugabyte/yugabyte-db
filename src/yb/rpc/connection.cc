@@ -42,24 +42,17 @@
 
 #include "yb/util/enums.h"
 
-#include "yb/rpc/auth_store.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/sasl_client.h"
-#include "yb/rpc/sasl_server.h"
 
 #include "yb/util/trace.h"
 
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
-
-namespace yb {
-namespace rpc {
 
 DEFINE_uint64(rpc_initial_buffer_size, 4096, "Initial buffer size used for RPC calls");
 
@@ -68,6 +61,9 @@ METRIC_DEFINE_histogram(
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the response to the wire",
     60000000LU, 2);
 
+namespace yb {
+namespace rpc {
+
 ///
 /// Connection
 ///
@@ -75,11 +71,13 @@ Connection::Connection(Reactor* reactor,
                        const Endpoint& remote,
                        int socket,
                        Direction direction,
+                       Connected connected,
                        std::unique_ptr<ConnectionContext> context)
     : reactor_(reactor),
       socket_(socket),
       remote_(remote),
       direction_(direction),
+      connected_(connected),
       last_activity_time_(MonoTime::Now(MonoTime::FINE)),
       read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
       context_(std::move(context)) {
@@ -90,6 +88,23 @@ Connection::Connection(Reactor* reactor,
   const auto metric_entity = reactor->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
+}
+
+ConnectionPtr Connection::New(const ConnectionContextFactory& factory,
+                              Reactor* reactor,
+                              const Endpoint& remote,
+                              int socket,
+                              Connection::Direction direction,
+                              Connected connected) {
+  auto context = factory();
+  auto* context_ptr = context.get();
+  auto result = std::make_shared<Connection>(
+      reactor, remote, socket, direction, connected, std::move(context));
+  context_ptr->AssignConnection(result);
+  if (connected) {
+    context_ptr->Connected(result);
+  }
+  return result;
 }
 
 Connection::~Connection() {
@@ -112,9 +127,14 @@ void Connection::EpollRegister(ev::loop_ref& loop) {  // NOLINT
   DVLOG(4) << "Registering connection for epoll: " << ToString();
   io_.set(loop);
   io_.set<Connection, &Connection::Handler>(this);
-  int events = ev::READ;
-  if (direction_ == Direction::CLIENT && negotiation_complete_) {
-    events |= ev::WRITE;
+  int events;
+  if (connected_) {
+    events = ev::READ;
+    if (direction_ == Direction::CLIENT) {
+      events |= ev::WRITE;
+    }
+  } else {
+    events = ev::WRITE;
   }
   io_.start(socket_.GetFd(), events);
 
@@ -144,11 +164,6 @@ bool Connection::Idle() const {
     return false;
   }
 
-  // We are not idle if we are in the middle of connection negotiation.
-  if (!negotiation_complete_) {
-    return false;
-  }
-
   return true;
 }
 
@@ -156,7 +171,7 @@ void Connection::ClearSending(const Status& status) {
   // Clear any outbound transfers.
   for (auto& call : sending_outbound_datas_) {
     if (call) {
-      call->Transferred(status);
+      call->Transferred(status, this);
     }
   }
   sending_outbound_datas_.clear();
@@ -192,7 +207,7 @@ void Connection::Shutdown(const Status& status) {
   ClearSending(status);
 
   for (auto& call : outbound_data_being_processed_) {
-    call->Transferred(status);
+    call->Transferred(status, this);
   }
   outbound_data_being_processed_.clear();
 
@@ -204,7 +219,7 @@ void Connection::Shutdown(const Status& status) {
 void Connection::OutboundQueued() {
   DCHECK(reactor_->IsCurrentThread());
 
-  if (negotiation_complete_ && !waiting_write_ready_) {
+  if (connected_ && !waiting_write_ready_) {
     // If we weren't waiting write to be ready, we could try to write data to socket.
     auto status = DoWrite();
     if (!status.ok()) {
@@ -266,10 +281,6 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   call->SetQueued();
 }
 
-void Connection::set_user_credentials(const UserCredentials& user_credentials) {
-  user_credentials_.CopyFrom(user_credentials);
-}
-
 void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   DCHECK(reactor_->IsCurrentThread());
 
@@ -284,6 +295,10 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   }
 
   if (status.ok() && (revents & EV_WRITE)) {
+    if (!connected_) {
+      connected_ = Connected::kTrue;
+      context_->Connected(shared_from_this());
+    }
     status = WriteHandler();
   }
 
@@ -304,35 +319,33 @@ Status Connection::ReadHandler() {
   last_activity_time_ = reactor_->cur_time();
 
   for (;;) {
-    bool received = false;
-    auto status = Receive(&received);
-    if (PREDICT_FALSE(!status.ok())) {
-      if (status.posix_code() == ESHUTDOWN) {
+    auto received = Receive();
+    if (PREDICT_FALSE(!received.ok())) {
+      if (received.status().posix_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
       } else {
-        LOG(WARNING) << ToString() << " recv error: " << status.ToString();
+        LOG(WARNING) << ToString() << " recv error: " << received;
       }
-      return status;
+      return received.status();
     }
     // Exit the loop if we did not receive anything.
-    if (!received) {
+    if (!received.get()) {
       return Status::OK();
     }
     // If we were not able to process next call exit loop.
     // If status is ok, it means that we just do not have enough data to process yet.
-    bool continue_receiving = false;
-    status = TryProcessCalls(&continue_receiving);
-    if (!continue_receiving) {
-      return status;
+    auto continue_receiving = TryProcessCalls();
+    if (!continue_receiving.ok()) {
+      return continue_receiving.status();
+    }
+    if (!continue_receiving.get()) {
+      return Status::OK();
     }
   }
 }
 
-Status Connection::Receive(bool* received) {
-  auto status = read_buffer_.PrepareRead();
-  if (!status.ok()) {
-    return status;
-  }
+Result<bool> Connection::Receive() {
+  RETURN_NOT_OK(read_buffer_.PrepareRead());
 
   size_t max_receive = context_->MaxReceive(Slice(read_buffer_.begin(), read_buffer_.size()));
   DCHECK_GT(max_receive, read_buffer_.size());
@@ -348,41 +361,34 @@ Status Connection::Receive(bool* received) {
 
   const int32_t remaining_buf_capacity = static_cast<int32_t>(max_receive);
   int32_t nread = 0;
-  status = socket_.Recv(read_buffer_.write_position(), remaining_buf_capacity, &nread);
+  auto status = socket_.Recv(read_buffer_.write_position(), remaining_buf_capacity, &nread);
   if (!status.ok()) {
     if (Socket::IsTemporarySocketError(status)) {
-      *received = false;
-      return Status::OK();
+      return false;
     }
     return status;
   }
 
   read_buffer_.DataAppended(nread);
-  *received = nread != 0;
-  return Status::OK();
+  return nread != 0;
 }
 
-Status Connection::TryProcessCalls(bool* continue_receiving) {
-  CHECK_NOTNULL(continue_receiving);
+Result<bool> Connection::TryProcessCalls() {
   DCHECK(reactor_->IsCurrentThread());
 
   if (read_buffer_.empty()) {
-    *continue_receiving = false;
-    return Status::OK();
+    return false;
   }
 
+  Slice bytes_to_process(read_buffer_.begin(), read_buffer_.size());
   size_t consumed = 0;
-  const Slice bytes_to_process(read_buffer_.begin(), read_buffer_.size());
-
   auto result = context_->ProcessCalls(shared_from_this(), bytes_to_process, &consumed);
   if (PREDICT_FALSE(!result.ok())) {
     LOG(WARNING) << ToString() << " command sequence failure: " << result.ToString();
-    *continue_receiving = false;
     return result;
   }
-  *continue_receiving = true;
   read_buffer_.Consume(consumed);
-  return Status::OK();
+  return true;
 }
 
 Status Connection::HandleCallResponse(Slice call_data) {
@@ -461,11 +467,7 @@ Status Connection::DoWrite() {
       sending_.pop_front();
       sending_outbound_datas_.pop_front();
       if (call) {
-        if (direction_ == Direction::CLIENT) {
-          OutboundCallPtr outbound_call = std::static_pointer_cast<OutboundCall>(call);
-          CallSent(std::move(outbound_call));
-        }
-        call->Transferred(Status::OK());
+        call->Transferred(Status::OK(), this);
       }
     }
   }
@@ -503,31 +505,6 @@ std::string Connection::ToString() const {
   }
 }
 
-// Reactor task that transitions this Connection from connection negotiation to
-// regular RPC handling. Destroys Connection on negotiation error.
-class NegotiationCompletedTask : public ReactorTask {
- public:
-  NegotiationCompletedTask(ConnectionPtr conn,
-                           const Status& negotiation_status)
-      : conn_(std::move(conn)),
-        negotiation_status_(negotiation_status) {
-  }
-
-  virtual void Run(Reactor* reactor) override {
-    reactor->CompleteConnectionNegotiation(conn_, negotiation_status_);
-  }
-
-  virtual void Abort(const Status& status) override {
-    DCHECK(conn_->reactor()->closing());
-    VLOG(1) << "Failed connection negotiation due to shut down reactor thread: "
-            << status.ToString();
-  }
-
- private:
-  ConnectionPtr conn_;
-  Status negotiation_status_;
-};
-
 // Disable / reset socket timeouts.
 Status DisableSocketTimeouts(Connection *conn) {
   RETURN_NOT_OK(conn->socket()->SetSendTimeout(MonoDelta::FromNanoseconds(0L)));
@@ -535,35 +512,11 @@ Status DisableSocketTimeouts(Connection *conn) {
   return Status::OK();
 }
 
-void Connection::CompleteNegotiation(Status negotiation_status) {
-  if (negotiation_status.ok()) {
-    negotiation_status = DisableSocketTimeouts(this);
-  }
-  auto task = std::make_shared<NegotiationCompletedTask>(shared_from_this(), negotiation_status);
-  reactor_->ScheduleReactorTask(task);
-}
-
-void Connection::MarkNegotiationComplete() {
-  DCHECK(reactor_->IsCurrentThread());
-  negotiation_complete_ = true;
-}
-
-void Connection::RunNegotiation(const MonoTime& deadline) {
-  context_->RunNegotiation(shared_from_this(), deadline);
-}
-
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcConnectionPB* resp) {
   DCHECK(reactor_->IsCurrentThread());
   resp->set_remote_ip(yb::ToString(remote_));
-  if (negotiation_complete_) {
-    resp->set_state(RpcConnectionPB::OPEN);
-    resp->set_remote_user_credentials(user_credentials_.ToString());
-  } else {
-    // It's racy to dump credentials while negotiating, since the Connection
-    // object is owned by the negotiation thread at that point.
-    resp->set_state(RpcConnectionPB::NEGOTIATING);
-  }
+  resp->set_state(context_->State());
 
   const uint64_t processed_call_count =
       direction_ == Direction::CLIENT ? responded_call_count_.load(std::memory_order_acquire)
@@ -575,16 +528,18 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
   context_->DumpPB(req, resp);
 
   if (direction_ == Direction::CLIENT) {
+    auto call_in_flight = resp->add_calls_in_flight();
     for (auto& entry : awaiting_response_) {
-      if (entry.second) {
-        entry.second->DumpPB(req, resp->add_calls_in_flight());
+      if (entry.second && entry.second->DumpPB(req, call_in_flight)) {
+        call_in_flight = resp->add_calls_in_flight();
       }
     }
     for (auto& call : sending_outbound_datas_) {
-      if (call) {
-        down_cast<OutboundCall*>(call.get())->DumpPB(req, resp->add_calls_in_flight());
+      if (call && call->DumpPB(req, call_in_flight)) {
+        call_in_flight = resp->add_calls_in_flight();
       }
     }
+    resp->mutable_calls_in_flight()->DeleteSubrange(resp->calls_in_flight_size() - 1, 1);
   } else if (direction_ != Direction::SERVER) {
     LOG(FATAL) << "Invalid direction: " << util::to_underlying(direction_);
   }
@@ -618,7 +573,8 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
     if (!shutdown_status_.ok()) {
       auto task = MakeFunctorReactorTask(std::bind(&OutboundData::Transferred,
                                                    outbound_data,
-                                                   shutdown_status_));
+                                                   shutdown_status_,
+                                                   nullptr));
       lock.unlock();
       reactor_->ScheduleReactorTask(task);
       return;
@@ -656,10 +612,9 @@ void Connection::ProcessResponseQueue() {
 
 void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_->IsCurrentThread());
-  DCHECK_EQ(direction_, Direction::SERVER);
 
   if (!shutdown_status_.ok()) {
-    outbound_data->Transferred(shutdown_status_);
+    outbound_data->Transferred(shutdown_status_, this);
     return;
   }
 

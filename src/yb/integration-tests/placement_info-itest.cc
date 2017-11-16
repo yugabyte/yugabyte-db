@@ -61,7 +61,7 @@ class PlacementInfoTest : public YBTest {
     YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(&builder, &client_));
     rpc::MessengerBuilder bld("Client");
-    ASSERT_OK(bld.Build(&client_messenger_));
+    ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
     proxy_.reset(new master::MasterServiceProxy(client_messenger_,
                                                 cluster_->leader_mini_master()->bound_rpc_addr()));
 

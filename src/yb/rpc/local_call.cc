@@ -66,11 +66,6 @@ LocalYBInboundCall::LocalYBInboundCall(
     : YBInboundCall(remote_method), outbound_call_(outbound_call), deadline_(deadline) {
 }
 
-const UserCredentials& LocalYBInboundCall::user_credentials() const {
-  static const UserCredentials user_credentials;
-  return user_credentials;
-}
-
 const Endpoint& LocalYBInboundCall::remote_address() const {
   static const Endpoint endpoint;
   return endpoint;

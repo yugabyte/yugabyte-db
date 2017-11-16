@@ -183,6 +183,14 @@ class Result {
     return &value_;
   }
 
+  CHECKED_STATUS MoveTo(TValue* value) {
+    if (!ok()) {
+      return status();
+    }
+    *value = std::move(**this);
+    return Status::OK();
+  }
+
   ~Result() {
     if (success_) {
       value_.~TValue();
@@ -190,6 +198,7 @@ class Result {
       status_.~Status();
     }
   }
+
  private:
   bool success_;
 #ifndef NDEBUG
@@ -271,7 +280,11 @@ inline std::string StatusToString(const Result<TValue>& result) {
 
 template<class TValue>
 std::ostream& operator<<(std::ostream& out, const Result<TValue>& result) {
-  return result.ok() ? out << *result : out << result.status().ToString();
+  return result.ok() ? out << *result : out << result.status();
+}
+
+inline std::ostream& operator<<(std::ostream& out, const Result<bool>& result) {
+  return result.ok() ? out << result.get() : out << result.status();
 }
 
 template <class Functor>

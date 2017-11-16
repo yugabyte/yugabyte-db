@@ -18,6 +18,7 @@
 
 #include "yb/util/enums.h"
 
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/outbound_data.h"
 
 namespace yb {
@@ -32,10 +33,10 @@ class RpcCall : public OutboundData {
  public:
   // This functions is invoked in reactor thread of appropriate connection.
   // So it doesn't require synchronization.
-  void Transferred(const Status& status) override;
+  void Transferred(const Status& status, Connection* conn) override;
 
  private:
-  virtual void NotifyTransferred(const Status& status) = 0;
+  virtual void NotifyTransferred(const Status& status, Connection* conn) = 0;
 
   TransferState state_ = TransferState::PENDING;
 };

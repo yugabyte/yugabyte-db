@@ -171,10 +171,6 @@ Status RpcContext::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return call_->AddRpcSidecar(car, idx);
 }
 
-const UserCredentials& RpcContext::user_credentials() const {
-  return call_->user_credentials();
-}
-
 const Endpoint& RpcContext::remote_address() const {
   return call_->remote_address();
 }
@@ -184,7 +180,7 @@ const Endpoint& RpcContext::local_address() const {
 }
 
 std::string RpcContext::requestor_string() const {
-  return call_->user_credentials().ToString() + " at " + yb::ToString(call_->remote_address());
+  return yb::ToString(call_->remote_address());
 }
 
 MonoTime RpcContext::GetClientDeadline() const {

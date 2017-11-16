@@ -102,13 +102,8 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
 
   private ArrayList<YRpc<?>> pending_rpcs;
 
-  public static final byte RPC_CURRENT_VERSION = 9;
-  /** Initial part of the header for 0.95 and up.  */
-  private static final byte[] RPC_HEADER = new byte[] { 'h', 'r', 'p', 'c',
-      RPC_CURRENT_VERSION,     // RPC version.
-      0,
-      0
-  };
+  /** The connection header.  */
+  private static final byte[] RPC_HEADER = new byte[] { 'Y', 'B', 1 };
   public static final int CONNECTION_CTX_CALL_ID = -3;
 
   /**
@@ -152,8 +147,6 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
   private final String uuid;
 
   private final long socketReadTimeoutMs;
-
-  private SecureRpcHelper secureRpcHelper;
 
   public TabletClient(AsyncYBClient client, String uuid) {
     this.ybClient = client;
@@ -254,8 +247,6 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
           + ", payload=" + payload + ' ' + Bytes.pretty(payload));
     }
 
-    payload = secureRpcHelper.wrap(payload);
-
     return payload;
   }
 
@@ -334,13 +325,6 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     final int rdx = buf.readerIndex();
     LOG.debug("------------------>> ENTERING DECODE >>------------------");
 
-    try {
-      buf = secureRpcHelper.handleResponse(buf, chan);
-    } catch (SaslException e) {
-      String message = getPeerUuidLoggingString() + "Couldn't complete the SASL handshake";
-      LOG.error(message);
-      throw new NonRecoverableException(message, e);
-    }
     if (buf == null) {
       return null;
     }
@@ -608,9 +592,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     ChannelBuffer header = connectionHeaderPreamble();
     header.writerIndex(RPC_HEADER.length);
     Channels.write(chan, header);
-
-    secureRpcHelper = new SecureRpcHelper(this);
-    secureRpcHelper.sendHello(chan);
+    becomeReady(chan);
   }
 
   @Override
@@ -748,23 +730,6 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
         sendRpc(rpc);
       }
     }
-  }
-
-  void sendContext(Channel channel) {
-    Channels.write(channel,  header());
-    becomeReady(channel);
-  }
-
-  private ChannelBuffer header() {
-    RpcHeader.ConnectionContextPB.Builder builder = RpcHeader.ConnectionContextPB.newBuilder();
-    RpcHeader.UserInformationPB.Builder userBuilder = RpcHeader.UserInformationPB.newBuilder();
-    userBuilder.setEffectiveUser(SecureRpcHelper.USER_AND_PASSWORD); // TODO set real user
-    userBuilder.setRealUser(SecureRpcHelper.USER_AND_PASSWORD);
-    builder.setUserInfo(userBuilder.build());
-    RpcHeader.ConnectionContextPB pb = builder.build();
-    RpcHeader.RequestHeader header = RpcHeader.RequestHeader.newBuilder().setCallId
-        (CONNECTION_CTX_CALL_ID).build();
-    return YRpc.toChannelBuffer(header, pb);
   }
 
   private String getPeerUuidLoggingString() {

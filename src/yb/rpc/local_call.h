@@ -58,7 +58,6 @@ class LocalYBInboundCall : public YBInboundCall {
 
   bool IsLocalCall() const override { return true; }
 
-  const UserCredentials& user_credentials() const override;
   const Endpoint& remote_address() const override;
   const Endpoint& local_address() const override;
   MonoTime GetClientDeadline() const override { return deadline_; }

@@ -393,8 +393,8 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
 
   // Finalize the import.
   rpc::MessengerBuilder bld("Client");
-  std::shared_ptr<rpc::Messenger> client_messenger;
-  RETURN_NOT_OK(bld.Build(&client_messenger));
+  auto client_messenger = bld.Build();
+  RETURN_NOT_OK(client_messenger);
   vector<string> lines;
   boost::split(lines, bulk_load_helper_stdout, boost::is_any_of("\n"));
   for (const string &line : lines) {
@@ -407,7 +407,7 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
     const string &directory = tokens[1];
     Endpoint endpoint(IpAddress::from_string(replica_host), host_to_rpcport[replica_host]);
 
-    tserver::TabletServerServiceProxy proxy(client_messenger, endpoint);
+    tserver::TabletServerServiceProxy proxy(*client_messenger, endpoint);
     tserver::ImportDataRequestPB req;
     req.set_tablet_id(tablet_id);
     req.set_source_dir(directory);

@@ -180,11 +180,11 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   MessengerBuilder bld("messenger1");
   bld.set_num_reactors(kMaxConcurrency);
   bld.set_metric_entity(metric_entity());
-  std::shared_ptr<Messenger> server_messenger;
-  CHECK_OK(bld.Build(&server_messenger));
+  Result<std::shared_ptr<Messenger>> server_messenger = bld.Build();
+  CHECK_OK(server_messenger);
 
   Endpoint server_addr;
-  ASSERT_OK(server_messenger->ListenAddress(Endpoint(), &server_addr));
+  ASSERT_OK((**server_messenger).ListenAddress(Endpoint(), &server_addr));
 
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
   auto service_name = service->service_name();
@@ -193,8 +193,8 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
                                                           &thread_pool,
                                                           std::move(service),
                                                           metric_entity()));
-  ASSERT_OK(server_messenger->RegisterService(service_name, service_pool));
-  ASSERT_OK(server_messenger->StartAcceptor());
+  ASSERT_OK((**server_messenger).RegisterService(service_name, service_pool));
+  ASSERT_OK((**server_messenger).StartAcceptor());
 
   scoped_refptr<yb::Thread> threads[3];
   Status status[3];
@@ -210,10 +210,10 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   latch.Wait();
 
   // The rest would time out after 10 sec, but we help them along.
-  ASSERT_OK(server_messenger->UnregisterService(service_name));
+  ASSERT_OK((**server_messenger).UnregisterService(service_name));
   service_pool->Shutdown();
   thread_pool.Shutdown();
-  server_messenger->Shutdown();
+  (**server_messenger).Shutdown();
 
   for (const auto& thread : threads) {
     ASSERT_OK(ThreadJoiner(thread.get()).warn_every_ms(500).Join());

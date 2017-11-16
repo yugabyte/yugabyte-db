@@ -113,8 +113,7 @@ void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
 
 void ConnectionContextWithQueue::AssignConnection(const ConnectionPtr& conn) {
   flush_outbound_queue_task_ = MakeFunctorReactorTask(
-      std::bind(&ConnectionContextWithQueue::FlushOutboundQueue, this, conn.get()),
-      conn);
+      std::bind(&ConnectionContextWithQueue::FlushOutboundQueue, this, conn.get()), conn);
 }
 
 } // namespace rpc

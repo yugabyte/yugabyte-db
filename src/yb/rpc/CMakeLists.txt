@@ -57,15 +57,11 @@ ADD_YB_LIBRARY(rpc_introspection_proto
 ### RPC library
 set(YRPC_SRCS
     acceptor.cc
-    auth_store.cc
-    blocking_ops.cc
     connection.cc
-    constants.cc
     growable_buffer.cc
     inbound_call.cc
     io_thread_pool.cc
     messenger.cc
-    negotiation.cc
     outbound_call.cc
     local_call.cc
     rpc_call.cc
@@ -77,10 +73,6 @@ set(YRPC_SRCS
     rpc_controller.cc
     rpc_with_call_id.cc
     rpc_with_queue.cc
-    sasl_common.cc
-    sasl_client.cc
-    sasl_helper.cc
-    sasl_server.cc
     scheduler.cc
     serialization.cc
     service_if.cc
@@ -94,8 +86,7 @@ set(YRPC_LIBS
   rpc_introspection_proto
   yb_util
   gutil
-  libev
-  cyrus_sasl)
+  libev)
 
 ADD_YB_LIBRARY(yrpc
   SRCS ${YRPC_SRCS}
@@ -139,6 +130,5 @@ ADD_YB_TEST(reactor-test)
 ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
-ADD_YB_TEST(sasl_rpc-test)
 ADD_YB_TEST(scheduler-test)
 ADD_YB_TEST(thread_pool-test)

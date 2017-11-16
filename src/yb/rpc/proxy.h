@@ -120,12 +120,6 @@ class Proxy {
                      google::protobuf::Message* resp,
                      RpcController* controller) const;
 
-  // Set the user credentials which should be used to log in.
-  void set_user_credentials(const UserCredentials& user_credentials);
-
-  // Get the user credentials which should be used to log in.
-  const UserCredentials& user_credentials() const { return conn_id_.user_credentials(); }
-
   // Is the service local?
   bool IsServiceLocal() const { return call_local_service_; }
 

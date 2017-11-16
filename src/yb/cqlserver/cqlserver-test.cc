@@ -235,9 +235,9 @@ TEST_F(TestCQLService, TestCQLServerEventConst) {
   void* ptr = event_list.get();
   char buffer[kSize];
   memcpy(buffer, ptr, kSize);
-  data->Transferred(Status::OK());
+  data->Transferred(Status::OK(), nullptr);
   ASSERT_EQ(0, memcmp(buffer, ptr, kSize));
-  data->Transferred(STATUS(NetworkError, "Dummy"));
+  data->Transferred(STATUS(NetworkError, "Dummy"), nullptr);
   ASSERT_EQ(0, memcmp(buffer, ptr, kSize));
 }
 

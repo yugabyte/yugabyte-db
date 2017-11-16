@@ -58,7 +58,6 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_service.h"
-#include "yb/rpc/sasl_common.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/errno.h"
@@ -93,7 +92,6 @@ MessengerBuilder::MessengerBuilder(std::string name)
       connection_keepalive_time_(
           MonoDelta::FromMilliseconds(FLAGS_rpc_default_keepalive_time_ms)),
       num_reactors_(4),
-      num_negotiation_threads_(4),
       coarse_timer_granularity_(MonoDelta::FromMilliseconds(100)),
       connection_context_factory_(&std::make_unique<YBConnectionContext>) {
 }
@@ -108,11 +106,6 @@ MessengerBuilder& MessengerBuilder::set_num_reactors(int num_reactors) {
   return *this;
 }
 
-MessengerBuilder& MessengerBuilder::set_negotiation_threads(int num_negotiation_threads) {
-  num_negotiation_threads_ = num_negotiation_threads;
-  return *this;
-}
-
 MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(const MonoDelta &granularity) {
   coarse_timer_granularity_ = granularity;
   return *this;
@@ -124,22 +117,13 @@ MessengerBuilder &MessengerBuilder::set_metric_entity(
   return *this;
 }
 
-Status MessengerBuilder::Build(Messenger **msgr) {
-  RETURN_NOT_OK(SaslInit(kSaslAppName)); // Initialize SASL library before we start making requests
-  gscoped_ptr<Messenger> new_msgr(new Messenger(*this));
-  RETURN_NOT_OK(new_msgr.get()->Init());
-  *msgr = new_msgr.release();
-  return Status::OK();
-}
-
-Status MessengerBuilder::Build(shared_ptr<Messenger> *msgr) {
-  Messenger *ptr;
-  RETURN_NOT_OK(Build(&ptr));
+Result<std::shared_ptr<Messenger>> MessengerBuilder::Build() {
+  std::unique_ptr<Messenger> messenger(new Messenger(*this));
+  RETURN_NOT_OK(messenger->Init());
 
   // See docs on Messenger::retain_self_ for info about this odd hack.
-  *msgr = shared_ptr<Messenger>(
-    ptr, std::mem_fun(&Messenger::AllExternalReferencesDropped));
-  return Status::OK();
+  return shared_ptr<Messenger>(
+    messenger.release(), std::mem_fun(&Messenger::AllExternalReferencesDropped));
 }
 
 // See comment on Messenger::retain_self_ member.
@@ -171,11 +155,6 @@ void Messenger::Shutdown() {
     rpc_services_.clear();
 
     acceptor.swap(acceptor_);
-
-    // Need to shut down negotiation pool before the reactors, since the
-    // reactors close the Connection sockets, and may race against the negotiation
-    // threads' blocking reads & writes.
-    negotiation_pool_->Shutdown();
 
     reactors = reactors_;
   }
@@ -324,7 +303,7 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   if (IsArtificiallyDisconnectedFrom(remote.address())) {
     LOG(INFO) << "TEST: Rejected connection to " << remote;
     reactor->ScheduleReactorTask(MakeFunctorReactorTask([call](Reactor*) {
-      call->Transferred(STATUS(NetworkError, "TEST: Connectivity is broken"));
+      call->Transferred(STATUS(NetworkError, "TEST: Connectivity is broken"), nullptr);
     }));
     return;
   }
@@ -386,9 +365,6 @@ Messenger::Messenger(const MessengerBuilder &bld)
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.push_back(new Reactor(retain_self_, i, bld));
   }
-  CHECK_OK(ThreadPoolBuilder("negotiator")
-              .set_max_threads(bld.num_negotiation_threads_)
-              .Build(&negotiation_pool_));
 }
 
 Messenger::~Messenger() {

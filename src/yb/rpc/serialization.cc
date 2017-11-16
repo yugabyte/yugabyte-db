@@ -54,12 +54,6 @@ namespace yb {
 namespace rpc {
 namespace serialization {
 
-enum {
-  kHeaderPosVersion = 0,
-  kHeaderPosServiceClass = 1,
-  kHeaderPosAuthProto = 2
-};
-
 Status SerializeMessage(const MessageLite& message,
                         RefCntBuffer* param_buf,
                         int additional_size,
@@ -185,52 +179,6 @@ Status ParseYBMessage(const Slice& buf,
 
   *parsed_main_message = Slice(buf.data() + buf.size() - main_msg_len,
                               main_msg_len);
-  return Status::OK();
-}
-
-Status ParseRedisMessage(const Slice& buf, Slice* parsed_main_message) {
-  *parsed_main_message = buf;
-  return Status::OK();
-}
-
-Status ParseCQLMessage(const Slice& buf, Slice* parsed_main_message) {
-  // Parsing of CQL message is deferred to CQLServiceImpl::Handle
-  *parsed_main_message = buf;
-  return Status::OK();
-}
-
-void SerializeConnHeader(uint8_t* buf) {
-  memcpy(reinterpret_cast<char *>(buf), kMagicNumber, kMagicNumberLength);
-  buf += kMagicNumberLength;
-  buf[kHeaderPosVersion] = kCurrentRpcVersion;
-  buf[kHeaderPosServiceClass] = 0; // TODO: implement
-  buf[kHeaderPosAuthProto] = 0; // TODO: implement
-}
-
-// validate the entire rpc header (magic number + flags)
-Status ValidateConnHeader(const Slice& slice) {
-  DCHECK_EQ(kMagicNumberLength + kHeaderFlagsLength, slice.size())
-    << "Invalid RPC header length";
-
-  // validate actual magic
-  if (!slice.starts_with(kMagicNumber)) {
-    return STATUS(InvalidArgument, "Connection must begin with magic number", kMagicNumber);
-  }
-
-  const uint8_t *data = slice.data();
-  data += kMagicNumberLength;
-
-  // validate version
-  if (data[kHeaderPosVersion] != kCurrentRpcVersion) {
-    return STATUS(InvalidArgument, "Unsupported RPC version",
-        StringPrintf("Received: %d, Supported: %d",
-            data[kHeaderPosVersion], kCurrentRpcVersion));
-  }
-
-  // TODO: validate additional header flags:
-  // RPC_SERVICE_CLASS
-  // RPC_AUTH_PROTOCOL
-
   return Status::OK();
 }
 

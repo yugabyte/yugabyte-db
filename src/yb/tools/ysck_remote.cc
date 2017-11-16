@@ -239,10 +239,10 @@ Status RemoteYsckMaster::Connect() const {
 }
 
 Status RemoteYsckMaster::Build(const Endpoint& address, shared_ptr<YsckMaster>* master) {
-  shared_ptr<Messenger> messenger;
   MessengerBuilder builder(kMessengerName);
-  RETURN_NOT_OK(builder.Build(&messenger));
-  master->reset(new RemoteYsckMaster(address, messenger));
+  auto messenger = builder.Build();
+  RETURN_NOT_OK(messenger);
+  master->reset(new RemoteYsckMaster(address, *messenger));
   return Status::OK();
 }
 

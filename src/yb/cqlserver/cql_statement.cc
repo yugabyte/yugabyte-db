@@ -15,8 +15,7 @@
 
 #include "yb/cqlserver/cql_statement.h"
 
-#include <sasl/md5global.h>
-#include <sasl/md5.h>
+#include <openssl/md5.h>
 
 namespace yb {
 namespace cqlserver {
@@ -31,12 +30,12 @@ CQLStatement::~CQLStatement() {
 }
 
 CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const string& ql_stmt) {
-  unsigned char md5[16];
+  unsigned char md5[MD5_DIGEST_LENGTH];
   MD5_CTX md5ctx;
-  _sasl_MD5Init(&md5ctx);
-  _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(keyspace.data()), keyspace.length());
-  _sasl_MD5Update(&md5ctx, util::to_uchar_ptr(ql_stmt.data()), ql_stmt.length());
-  _sasl_MD5Final(md5, &md5ctx);
+  MD5_Init(&md5ctx);
+  MD5_Update(&md5ctx, util::to_uchar_ptr(keyspace.data()), keyspace.length());
+  MD5_Update(&md5ctx, util::to_uchar_ptr(ql_stmt.data()), ql_stmt.length());
+  MD5_Final(md5, &md5ctx);
   return CQLMessage::QueryId(util::to_char_ptr(md5), sizeof(md5));
 }
 

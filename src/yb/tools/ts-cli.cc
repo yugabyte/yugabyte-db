@@ -188,7 +188,7 @@ Status TsAdminClient::Init() {
   HostPort host_port;
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
   MessengerBuilder builder("ts-cli");
-  RETURN_NOT_OK(builder.Build(&messenger_));
+  RETURN_NOT_OK(builder.Build().MoveTo(&messenger_));
 
   RETURN_NOT_OK(host_port.ResolveAddresses(&addrs_));
 

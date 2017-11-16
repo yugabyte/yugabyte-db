@@ -65,55 +65,11 @@ namespace yb {
 namespace rpc {
 
 class CallResponse;
-class Connection;
 class DumpRunningRpcsRequestPB;
 class YBInboundTransfer;
 class RpcCallInProgressPB;
 class RpcCallDetailsPB;
 class RpcController;
-
-// Client-side user credentials, such as a user's username & password.
-// In the future, we will add Kerberos credentials.
-//
-// TODO(mpercy): this is actually used server side too -- should
-// we instead introduce a RemoteUser class or something?
-class UserCredentials {
- public:
-  UserCredentials();
-
-  // Effective user, in cases where impersonation is supported.
-  // If impersonation is not supported, this should be left empty.
-  bool has_effective_user() const;
-  void set_effective_user(const std::string& eff_user);
-  const std::string& effective_user() const { return eff_user_; }
-
-  // Real user.
-  bool has_real_user() const;
-  void set_real_user(const std::string& real_user);
-  const std::string& real_user() const { return real_user_; }
-
-  // The real user's password.
-  bool has_password() const;
-  void set_password(const std::string& password);
-  const std::string& password() const { return password_; }
-
-  // Copy state from another object to this one.
-  void CopyFrom(const UserCredentials& other);
-
-  // Returns a string representation of the object, not including the password field.
-  std::string ToString() const;
-
-  std::size_t HashCode() const;
-  bool Equals(const UserCredentials& other) const;
-
- private:
-  // Remember to update HashCode() and Equals() when new fields are added.
-  std::string eff_user_;
-  std::string real_user_;
-  std::string password_;
-
-  DISALLOW_COPY_AND_ASSIGN(UserCredentials);
-};
 
 // Used to key on Connection information.
 // For use as a key in an unordered STL collection, use ConnectionIdHash and ConnectionIdEqual.
@@ -122,26 +78,15 @@ class ConnectionId {
  public:
   ConnectionId();
 
-  // Copy constructor required for use with STL unordered_map.
-  ConnectionId(const ConnectionId& other);
-
   // Convenience constructor.
-  ConnectionId(const Endpoint& remote, const UserCredentials& user_credentials);
+  explicit ConnectionId(const Endpoint& remote);
 
   // The remote address.
   void set_remote(const Endpoint& remote);
   const Endpoint& remote() const { return remote_; }
 
-  // The credentials of the user associated with this connection, if any.
-  void set_user_credentials(const UserCredentials& user_credentials);
-  const UserCredentials& user_credentials() const { return user_credentials_; }
-  UserCredentials* mutable_user_credentials() { return &user_credentials_; }
-
   void set_idx(uint8_t idx);
   uint8_t idx() const { return idx_; }
-
-  // Copy state from another object to this one.
-  void CopyFrom(const ConnectionId& other);
 
   // Returns a string representation of the object, not including the password field.
   std::string ToString() const;
@@ -152,14 +97,7 @@ class ConnectionId {
  private:
   // Remember to update HashCode() and Equals() when new fields are added.
   Endpoint remote_;
-  UserCredentials user_credentials_;
   uint8_t idx_ = 0;  // Connection index, used to support multiple connections to the same server.
-
-  // Implementation of CopyFrom that can be shared with copy constructor.
-  void DoCopyFrom(const ConnectionId& other);
-
-  // Disable assignment operator.
-  void operator=(const ConnectionId&);
 };
 
 class ConnectionIdHash {
@@ -167,10 +105,9 @@ class ConnectionIdHash {
   std::size_t operator() (const ConnectionId& conn_id) const;
 };
 
-class ConnectionIdEqual {
- public:
-  bool operator() (const ConnectionId& cid1, const ConnectionId& cid2) const;
-};
+inline bool operator==(const ConnectionId& lhs, const ConnectionId& rhs) {
+  return lhs.remote() == rhs.remote() && lhs.idx() == rhs.idx();
+}
 
 // Container for OutboundCall metrics
 struct OutboundCallMetrics {
@@ -269,13 +206,6 @@ class OutboundCall : public RpcCall {
   // subsequently mutated with no ill effects.
   virtual CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req);
 
-  // Assign the call ID for this call. This is called from the reactor
-  // thread once a connection has been assigned. Must only be called once.
-  void set_call_id(int32_t call_id) {
-    DCHECK_EQ(header_.call_id(), kInvalidCallId) << "Already has a call ID";
-    header_.set_call_id(call_id);
-  }
-
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
   void Serialize(std::deque<RefCntBuffer>* output) const override;
@@ -309,7 +239,7 @@ class OutboundCall : public RpcCall {
 
   std::string ToString() const override;
 
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp);
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
 
   ////////////////////////////////////////////////////////////
   // Getters
@@ -322,13 +252,7 @@ class OutboundCall : public RpcCall {
   const RpcController* controller() const { return controller_; }
   google::protobuf::Message* response() const { return response_; }
 
-  // Return true if a call ID has been assigned to this call.
-  bool call_id_assigned() const {
-    return header_.call_id() != kInvalidCallId;
-  }
-
   int32_t call_id() const {
-    DCHECK(call_id_assigned());
     return header_.call_id();
   }
 
@@ -364,7 +288,7 @@ class OutboundCall : public RpcCall {
 
   static std::string StateName(State state);
 
-  virtual void NotifyTransferred(const Status& status) override;
+  virtual void NotifyTransferred(const Status& status, Connection* conn) override;
 
   void set_state(State new_state);
   State state() const;

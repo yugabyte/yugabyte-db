@@ -90,7 +90,7 @@ InboundCall::~InboundCall() {
       << "Tracing op: \n " << trace_->DumpToString(true);
 }
 
-void InboundCall::NotifyTransferred(const Status& status) {
+void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   if (status.ok()) {
     TRACE_TO(trace_, "Transfer finished");
   } else {
@@ -149,11 +149,6 @@ bool InboundCall::ClientTimedOut() const {
 
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   return deadline.ComesBefore(now);
-}
-
-const UserCredentials& InboundCall::user_credentials() const {
-  CHECK_NOTNULL(conn_.get());
-  return conn_->user_credentials();
 }
 
 void InboundCall::QueueResponse(bool is_success) {

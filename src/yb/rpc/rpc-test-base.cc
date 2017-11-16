@@ -75,9 +75,9 @@ std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
   bld.set_connection_keepalive_time(options.keep_alive_timeout);
   bld.set_coarse_timer_granularity(coarse_time_granularity);
   bld.set_metric_entity(metric_entity);
-  std::shared_ptr<Messenger> messenger;
-  CHECK_OK(bld.Build(&messenger));
-  return messenger;
+  auto messenger = bld.Build();
+  CHECK_OK(messenger);
+  return *messenger;
 }
 
 #ifdef THREAD_SANITIZER
@@ -223,11 +223,6 @@ class CalculatorService: public CalculatorServiceIf {
   }
 
   void WhoAmI(const WhoAmIRequestPB* req, WhoAmIResponsePB* resp, RpcContext context) override {
-    const UserCredentials& creds = context.user_credentials();
-    if (creds.has_effective_user()) {
-      resp->mutable_credentials()->set_effective_user(creds.effective_user());
-    }
-    resp->mutable_credentials()->set_real_user(creds.real_user());
     resp->set_address(yb::ToString(context.remote_address()));
     context.RespondSuccess();
   }

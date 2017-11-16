@@ -44,52 +44,6 @@ option java_package = "org.yb.rpc";
 //
 // For a description of the YB protocol, see 'README' in this directory.
 
-// User Information proto.  Included in ConnectionContextPB on connection setup.
-message UserInformationPB {
-  optional string effective_user = 1;
-  required string real_user = 2;
-}
-
-/**
- * The connection context is sent as part of the connection establishment.
- * It establishes the context for ALL RPC calls within the connection.
- * This is sent on connection setup after the connection preamble is sent
- * and SASL has been negotiated.
- * No response is sent from the server to the client.
- */
-message ConnectionContextPB {
-  // UserInfo beyond what is determined as part of security handshake
-  // at connection time (kerberos, tokens etc).
-  optional UserInformationPB user_info = 2;
-}
-
-// Message type passed back & forth for the SASL negotiation.
-message SaslMessagePB {
-  enum SaslState {
-    UNKNOWN   = 999;
-    SUCCESS   = 0;
-    NEGOTIATE = 1;
-    INITIATE  = 2;
-    CHALLENGE = 3;
-    RESPONSE  = 4;
-  }
-
-  message SaslAuth {
-    optional string method    = 1;  // Deprecated, but was 'required' in YB 0.5.0 and 0.6.0.
-    required string mechanism = 2;  // Standard SASL mechanism, i.e. ANONYMOUS, PLAIN, GSSAPI.
-
-    // SASL challenge token from server, if the client chooses to use this method.
-    // Only used when the server is piggy-backing a challenge on a NEGOTIATE response.
-    // Otherwise, SaslMessagePB::token is used as the challenge token.
-    optional bytes challenge = 5;
-  }
-
-  optional uint32 version  = 1;
-  required SaslState state = 2;  // RPC system SASL state.
-  optional bytes token     = 3;
-  repeated SaslAuth auths  = 4;
-}
-
 message RemoteMethodPB {
   // Service name for the RPC layer.
   // The client created a proxy with this service name.
@@ -171,8 +125,6 @@ message ErrorStatusPB {
     //------------------------------------------------------------
     // The RPC server is already shutting down.
     FATAL_SERVER_SHUTTING_DOWN = 11;
-    // Fields of RpcHeader are invalid.
-    FATAL_INVALID_RPC_HEADER = 12;
     // Could not deserialize RPC request.
     FATAL_DESERIALIZING_REQUEST = 13;
     // IPC Layer version mismatch.

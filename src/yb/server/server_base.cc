@@ -182,7 +182,7 @@ Status RpcServerBase::Init() {
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());
   builder.use_connection_context_factory(connection_context_factory_);
-  RETURN_NOT_OK(builder.Build(&messenger_));
+  RETURN_NOT_OK(builder.Build().MoveTo(&messenger_));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_));
   RETURN_NOT_OK(rpc_server_->Bind());

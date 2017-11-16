@@ -2178,9 +2178,9 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   // Since we waited before, hopefully all replicas will be up to date
   // and we can just promote another replica.
-  std::shared_ptr<rpc::Messenger> client_messenger;
   rpc::MessengerBuilder bld("client");
-  ASSERT_OK(bld.Build(&client_messenger));
+  auto client_messenger = bld.Build();
+  ASSERT_OK(client_messenger);
   gscoped_ptr<consensus::ConsensusServiceProxy> new_leader_proxy;
 
   int new_leader_idx = -1;
@@ -2199,7 +2199,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   MiniTabletServer* new_leader = cluster_->mini_tablet_server(new_leader_idx);
   ASSERT_TRUE(new_leader != nullptr);
   new_leader_proxy.reset(
-      new consensus::ConsensusServiceProxy(client_messenger,
+      new consensus::ConsensusServiceProxy(*client_messenger,
                                            new_leader->bound_rpc_addr()));
 
   consensus::RunLeaderElectionRequestPB req;
@@ -2757,17 +2757,16 @@ TEST_F(ClientTest, TestReadFromFollower) {
   }
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
-  std::shared_ptr<rpc::Messenger> client_messenger;
   rpc::MessengerBuilder bld("client");
-  ASSERT_OK(bld.Build(&client_messenger));
+  auto client_messenger = bld.Build();
+  ASSERT_OK(client_messenger);
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
     auto endpoint = ParseEndpoint(ts_info.rpc_addresses(0).host(),
                                   ts_info.rpc_addresses(0).port());
     ASSERT_TRUE(endpoint.ok());
-    std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
-    tserver_proxy.reset(
-        new tserver::TabletServerServiceProxy(client_messenger, *endpoint));
+    auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+        *client_messenger, *endpoint);
 
     std::unique_ptr<QLRowBlock> rowBlock;
     ASSERT_OK(WaitFor([&]() -> bool {

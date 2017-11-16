@@ -19,13 +19,9 @@
 
 #include "yb/gutil/endian.h"
 
-#include "yb/rpc/auth_store.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/sasl_client.h"
-#include "yb/rpc/sasl_server.h"
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/flag_tags.h"
@@ -52,6 +48,42 @@ DECLARE_int32(rpc_slow_query_threshold_ms);
 namespace yb {
 namespace rpc {
 
+namespace {
+
+// One byte after YugaByte is reserved for future use. It could control type of connection.
+const char kConnectionHeaderBytes[] = "YB\1";
+const size_t kConnectionHeaderSize = sizeof(kConnectionHeaderBytes) - 1;
+
+class ConnectionHeader : public OutboundData {
+ public:
+  static OutboundDataPtr Instance() {
+    static OutboundDataPtr result(new ConnectionHeader());
+    return result;
+  }
+
+  void Transferred(const Status&, Connection*) override {}
+
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override {
+    return false;
+  }
+
+  void Serialize(std::deque<RefCntBuffer> *output) const override {
+    output->push_back(buffer_);
+  }
+
+  std::string ToString() const override {
+    return "ConnectionHeader";
+  }
+
+  virtual ~ConnectionHeader() {}
+ private:
+  ConnectionHeader() : buffer_(kConnectionHeaderBytes, kConnectionHeaderSize) {}
+
+  RefCntBuffer buffer_;
+};
+
+} // namespace
+
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
 using google::protobuf::MessageLite;
@@ -67,10 +99,6 @@ YBConnectionContext::YBConnectionContext() {}
 
 YBConnectionContext::~YBConnectionContext() {}
 
-void YBConnectionContext::RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) {
-  Negotiation::YBNegotiation(std::move(connection), this, deadline);
-}
-
 size_t YBConnectionContext::BufferLimit() {
   return FLAGS_rpc_max_message_size;
 }
@@ -80,6 +108,21 @@ Status YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
                                          size_t* consumed) {
   auto pos = slice.data();
   const auto end = slice.end();
+
+  if (state_ == RpcConnectionPB::NEGOTIATING) {
+    if (slice.size() < kConnectionHeaderSize) {
+      *consumed = 0;
+      return Status::OK();
+    }
+    if (!slice.starts_with(kConnectionHeaderBytes, kConnectionHeaderSize)) {
+      return STATUS_FORMAT(NetworkError,
+                           "Invalid connection header: $0",
+                           slice.ToDebugHexString());
+    }
+    state_ = RpcConnectionPB::OPEN;
+    pos += kConnectionHeaderSize;
+  }
+
   while (end - pos >= kMsgLengthPrefixLength) {
     const size_t data_length = NetworkByteOrder::Load32(pos);
     const size_t total_length = data_length + kMsgLengthPrefixLength;
@@ -126,26 +169,6 @@ Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice ca
   LOG(FATAL) << "Invalid direction: " << direction;
 }
 
-Status YBConnectionContext::InitSaslClient(Connection* connection) {
-  sasl_client_.reset(new SaslClient(kSaslAppName, connection->socket()->GetFd()));
-  RETURN_NOT_OK(sasl_client().Init(kSaslProtoName));
-  RETURN_NOT_OK(sasl_client().EnableAnonymous());
-  const auto& credentials = connection->user_credentials();
-  RETURN_NOT_OK(sasl_client().EnablePlain(credentials.real_user(),
-      credentials.password()));
-  return Status::OK();
-}
-
-Status YBConnectionContext::InitSaslServer(Connection* connection) {
-  sasl_server_.reset(new SaslServer(kSaslAppName, connection->socket()->GetFd()));
-  // TODO: Do necessary configuration plumbing to enable user authentication.
-  // Right now we just enable PLAIN with a "dummy" auth store, which allows everyone in.
-  RETURN_NOT_OK(sasl_server().Init(kSaslProtoName));
-  gscoped_ptr<AuthStore> auth_store(new DummyAuthStore());
-  RETURN_NOT_OK(sasl_server().EnablePlain(auth_store.Pass()));
-  return Status::OK();
-}
-
 Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
@@ -169,6 +192,17 @@ Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, S
 
 uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
   return down_cast<YBInboundCall*>(call)->call_id();
+}
+
+void YBConnectionContext::Connected(const ConnectionPtr& connection) {
+  state_ = connection->direction() == ConnectionDirection::SERVER ? RpcConnectionPB::NEGOTIATING
+                                                                  : RpcConnectionPB::OPEN;
+}
+
+void YBConnectionContext::AssignConnection(const ConnectionPtr& connection) {
+  if (connection->direction() == ConnectionDirection::CLIENT) {
+    connection->QueueOutboundData(ConnectionHeader::Instance());
+  }
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
@@ -274,7 +308,7 @@ string YBInboundCall::ToString() const {
       header_.call_id());
 }
 
-void YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
+bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                            RpcCallInProgressPB* resp) {
   resp->mutable_header()->CopyFrom(header_);
   if (req.include_traces() && trace_) {
@@ -282,6 +316,7 @@ void YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   }
   resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
       .ToMicroseconds());
+  return true;
 }
 
 void YBInboundCall::LogTrace() const {

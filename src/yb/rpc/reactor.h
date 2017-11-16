@@ -66,7 +66,7 @@ constexpr unsigned int kDefaultLibEvFlags = ev::KQUEUE;
 constexpr unsigned int kDefaultLibEvFlags = ev::AUTO;
 #endif
 
-typedef std::list<ConnectionPtr> conn_list_t;
+typedef std::list<ConnectionPtr> ConnectionList;
 
 class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
@@ -206,8 +206,7 @@ class DelayedTask : public ReactorTask {
 class Reactor {
  public:
   // Client-side connection map.
-  typedef std::unordered_map<const ConnectionId, ConnectionPtr,
-                             ConnectionIdHash, ConnectionIdEqual> conn_map_t;
+  typedef std::unordered_map<const ConnectionId, ConnectionPtr, ConnectionIdHash> ConnectionMap;
 
   Reactor(const std::shared_ptr<Messenger>& messenger,
           int index,
@@ -263,9 +262,7 @@ class Reactor {
 
   // Begin the process of connection negotiation.
   // Must be called from the reactor thread.
-  // Deadline specifies latest time negotiation may complete before timeout.
-  CHECKED_STATUS StartConnectionNegotiation(const ConnectionPtr& conn,
-                                            const MonoTime& deadline);
+  CHECKED_STATUS StartConnection(const ConnectionPtr& conn);
 
   // Transition back from negotiating to processing requests.
   // Must be called from the reactor thread.
@@ -398,13 +395,13 @@ class Reactor {
   MonoTime last_unused_tcp_scan_;
 
   // Map of sockaddrs to Connection objects for outbound (client) connections.
-  conn_map_t client_conns_;
+  ConnectionMap client_conns_;
 
   // List of current connections coming into the server.
-  conn_list_t server_conns_;
+  ConnectionList server_conns_;
 
   // List of connections that should be completed before we could stop this thread.
-  conn_list_t waiting_conns_;
+  ConnectionList waiting_conns_;
 
   // If a connection has been idle for this much time, it is torn down.
   const MonoDelta connection_keepalive_time_;
