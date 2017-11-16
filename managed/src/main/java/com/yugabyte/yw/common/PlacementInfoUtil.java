@@ -85,8 +85,6 @@ public class PlacementInfoUtil {
     }
     PlacementInfo newPlacementInfo = taskParams.placementInfo;
     PlacementInfo oldPlacementInfo = universe.getUniverseDetails().placementInfo;
-    Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
-      taskParams.nodeDetailsSet;
     
     // Map between the old placement's AZs and the affinitized leader info.
     HashMap<UUID, Boolean> oldAZMap = new HashMap<UUID, Boolean>();
@@ -102,7 +100,7 @@ public class PlacementInfoUtil {
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
-          if (oldAZMap.get(newAZ.uuid)) {
+          if (oldAZMap.containsKey(newAZ.uuid)) {
              if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
                // affinitized leader info has changed, return true.
                return true;
@@ -488,7 +486,7 @@ public class PlacementInfoUtil {
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
-          if (oldAZMap.get(newAZ.uuid) != null) {
+          if (oldAZMap.containsKey(newAZ.uuid)) {
              if (oldAZMap.get(newAZ.uuid).getKey() != newAZ.isAffinitized ||
                  oldAZMap.get(newAZ.uuid).getValue() != newAZ.numNodesInAZ) {
                return false;
