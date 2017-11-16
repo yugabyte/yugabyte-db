@@ -82,10 +82,7 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    ASSERT_OK(MessengerBuilder("test-msgr")
-              .set_num_reactors(1)
-              .set_negotiation_threads(1)
-              .Build(&messenger_));
+    ASSERT_OK(MessengerBuilder("test-msgr").set_num_reactors(1).Build().MoveTo(&messenger_));
     proxy_.reset(new MasterServiceProxy(messenger_, cluster_->mini_master()->bound_rpc_addr()));
     proxy_backup_.reset(new MasterBackupServiceProxy(
         messenger_, cluster_->mini_master()->bound_rpc_addr()));
