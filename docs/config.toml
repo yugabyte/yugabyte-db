@@ -108,17 +108,41 @@ googleAnalytics = "UA-104956980-1"
 	url = "explore/"
 	weight = 20
 
-[[menu.main]]
-	name = "Fault Tolerance"
-	parent = "explore"
-	url = "explore/fault-tolerance/"
-	weight = 21
+#[[menu.main]]
+#	name = "1. Auto Sharding"
+#	parent = "explore"
+#	url = "explore/auto-sharding/"
+#	weight = 21
 
 [[menu.main]]
-	name = "Auto Rebalancing"
+	name = "1. Fault Tolerance"
+	parent = "explore"
+	url = "explore/fault-tolerance/"
+	weight = 22
+
+[[menu.main]]
+	name = "2. Linear Scalability"
+	parent = "explore"
+	url = "explore/linear-scalability/"
+	weight = 23
+
+[[menu.main]]
+	name = "3. Tunable Reads"
+	parent = "explore"
+	url = "explore/tunable-reads/"
+	weight = 24
+
+[[menu.main]]
+	name = "4. Auto Rebalancing"
 	parent = "explore"
 	url = "explore/auto-rebalancing/"
-	weight = 22
+	weight = 25
+
+#[[menu.main]]
+#	name = "6. Zero Downtime Reconfig"
+#	parent = "explore"
+#	url = "explore/zero-downtime-reconfig/"
+#	weight = 26
 
 [[menu.main]]
 	name   = "Architecture"

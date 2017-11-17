@@ -1,68 +1,216 @@
 ---
 date: 2016-03-09T00:11:02+01:00
 title: Fault Tolerance
-weight: 21
+weight: 22
 ---
 
-This section uses the binary version of the local cluster.
+YugaByte can automatically handle failures and therfore provides [high availability](/architecture/core-functions/high-availability/) for both Redis as well as Cassandra tables. In this tutorial, we will look at how fault tolerance is achieved for CQL, but the same steps would work for Redis tables as well. We will create these tables with a replication factor = 5 that allows a [fault tolerance](/architecture/concepts/replication/) of 2. We will then insert some data through one of the nodes, and query the data from another node. We will then kill two nodes (one by one) and make sure we are able to successfully query and write data after each of these faults.
 
-## Step 1. Create local cluster 
+## Step 1. Setup - create universe
 
-Start a new local cluster on terminal 1.
+If you have a previously running local universe, destroy it using the following:
 
 ```sh
-# destroy any previously running local cluster
+./bin/yb-ctl destroy
+```
+
+Start a new local universe with replication factor 5.
+
+```sh
+./bin/yb-ctl --replication_factor 5 create
+```
+
+Connect to cqlsh on node 1.
+
+```sh
+./bin/cqlsh 127.0.0.1
+Connected to local cluster at 127.0.0.1:9042.
+[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+cqlsh>
+```
+
+Create a CQL keyspace and a table.
+
+```sh
+cqlsh> CREATE KEYSPACE users;
+cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
+	                               email text,
+	                               password text,
+	                               profile frozen<map<text, text>>);
+```
+
+
+## Step 2. Insert CQL data through node 1
+
+Connect to node 1 using cqlsh by doing the following.
+
+```sh
+cqlsh 127.0.0.1
+```
+
+Now insert some data by typing the following into cqlsh shell we joined above.
+
+```sh
+cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+  (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
+   {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
+  );
+
+cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+  (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
+   {'firstname': 'Sherlock', 'lastname': 'Holmes'}
+  );
+
+```
+
+Query all the rows.
+
+```sh
+cqlsh> SELECT email, profile FROM users.profile;
+
+ email                        | profile
+------------------------------+---------------------------------------------------------------
+      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
+ sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
+
+(2 rows)
+```
+
+
+## Step 3. Read data through another nodes
+
+Let us now query the data from node 5.
+
+```sh
+# Connect to node 5
+./bin/cqlsh 127.0.0.5
+
+cqlsh> SELECT email, profile FROM users.profile;
+
+ email                        | profile
+------------------------------+---------------------------------------------------------------
+      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
+ sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
+
+(2 rows)
+```
+
+## Step 4. Verify killing one node has no impact
+
+We have 5 nodes in this universe. You can verify this by running the following.
+
+```sh
+$ ./bin/yb-ctl status
+...
+2017-11-19 23:20:35,029 INFO: Server is running: type=tserver, node_id=1, ...
+2017-11-19 23:20:35,061 INFO: Server is running: type=tserver, node_id=2, ...
+2017-11-19 23:20:35,094 INFO: Server is running: type=tserver, node_id=3, ...
+2017-11-19 23:20:35,128 INFO: Server is running: type=tserver, node_id=4, ...
+2017-11-19 23:20:35,155 INFO: Server is running: type=tserver, node_id=5, ...
+```
+
+Let us kill node 5 by doing the following.
+
+```sh
+./bin/yb-ctl remove_node 5
+```
+
+Now running the status command should show only 4 nodes:
+
+```sh
+$ ./bin/yb-ctl status
+...
+2017-11-19 23:20:35,029 INFO: Server is running: type=tserver, node_id=1, ...
+2017-11-19 23:20:35,061 INFO: Server is running: type=tserver, node_id=2, ...
+2017-11-19 23:20:35,094 INFO: Server is running: type=tserver, node_id=3, ...
+2017-11-19 23:20:35,128 INFO: Server is running: type=tserver, node_id=4, ...
+2017-11-19 23:22:12,997 INFO: Server type=tserver node_id=5 is not running
+```
+
+Now connect to node 4.
+
+```sh
+./bin/cqlsh 127.0.0.4
+```
+
+Let us insert some data.
+
+```sh
+cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
+  (3000, 'austin.powers@yugabyte.com', 'imGroovy',
+   {'firstname': 'Austin', 'lastname': 'Powers'});
+```
+
+Now query the data.
+
+```sh
+cqlsh> SELECT email, profile FROM users.profile;
+
+ email                        | profile
+------------------------------+---------------------------------------------------------------
+      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
+ sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
+   austin.powers@yugabyte.com |                 {'firstname': 'Austin', 'lastname': 'Powers'}
+
+(3 rows)
+```
+
+
+## Step 5. Verify killing second node has no impact
+
+Let us kill node 1.
+
+```sh
+./bin/yb-ctl remove_node 1
+```
+
+We can check the status to verify:
+
+```sh
+$ ./bin/yb-ctl status
+...
+2017-11-19 23:31:02,183 INFO: Server type=tserver node_id=1 is not running
+2017-11-19 23:31:02,217 INFO: Server is running: type=tserver, node_id=2, ...
+2017-11-19 23:31:02,245 INFO: Server is running: type=tserver, node_id=3, ...
+2017-11-19 23:31:02,278 INFO: Server is running: type=tserver, node_id=4, ...
+2017-11-19 23:31:02,308 INFO: Server type=tserver node_id=5 is not running
+```
+
+Now let us connect to node 2.
+
+```sh
+./bin/cqlsh 127.0.0.2
+```
+
+Insert some data.
+
+```sh
+cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
+  (4000, 'superman@yugabyte.com', 'iCanFly',
+   {'firstname': 'Clark', 'lastname': 'Kent'});
+```
+
+Run the query.
+
+```sh
+cqlsh> SELECT email, profile FROM users.profile;
+
+ email                        | profile
+------------------------------+---------------------------------------------------------------
+        superman@yugabyte.com |                    {'firstname': 'Clark', 'lastname': 'Kent'}
+      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
+ sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
+   austin.powers@yugabyte.com |                 {'firstname': 'Austin', 'lastname': 'Powers'}
+
+(4 rows)
+```
+
+
+## Step 6. Clean up (optional)
+
+Optionally, you can shutdown the local cluster created in Step 1.
+
+```sh
 $ ./bin/yb-ctl destroy
-
-# create a new local cluster
-$ ./bin/yb-ctl create
 ```
-
-## Step 2. Run sample app 
-
-Start the CQL sample app on terminal 2. Observe the output with 3 `yb-tserver` nodes.
-
-```sh
-$ java -jar ./java/yb-sample-apps.jar --workload CassandraTimeseries --nodes 127.0.0.1:9042,127.0.0.2:9042,127.0.0.3:9042 --num_threads_write 1
-```
-
-## Step 3. Remove a node
-
-Remove one node to bring the cluster to only 2 `yb-tserver` nodes.
-
-```sh
-# check status and get node_ids
-$ ./bin/yb-ctl status
-2017-10-23 16:44:25,855 INFO: Server is running: type=master, node_id=1, PID=3097, admin service=127.0.0.1:7000
-2017-10-23 16:44:26,843 INFO: Server is running: type=master, node_id=2, PID=3100, admin service=127.0.0.2:7000
-2017-10-23 16:44:27,120 INFO: Server is running: type=master, node_id=3, PID=3103, admin service=127.0.0.3:7000
-2017-10-23 16:44:27,652 INFO: Server is running: type=tserver, node_id=1, PID=3106, admin service=127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
-2017-10-23 16:44:27,986 INFO: Server is running: type=tserver, node_id=2, PID=3109, admin service=127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
-2017-10-23 16:44:28,058 INFO: Server is running: type=tserver, node_id=3, PID=3112, admin service=127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
-
-# remove node 1 from local cluster
-$ ./bin/yb-ctl remove_node 3
-2017-10-23 17:10:55,576 INFO: Removing server type=tserver node_id=3
-2017-10-23 17:10:56,803 INFO: Stopping server type=tserver node_id=3 PID=3112
-2017-10-23 17:10:56,803 INFO: Waiting for server type=tserver node_id=3 PID=3112 to stop...
-2017-10-23 17:10:57,304 INFO: Waiting for server type=tserver node_id=3 PID=3112 to stop...
-2017-10-23 17:10:57,808 INFO: Waiting for server type=tserver node_id=3 PID=3112 to stop...
-2017-10-23 17:10:58,309 INFO: Waiting for server type=tserver node_id=3 PID=3112 to stop...
-2017-10-23 17:10:58,810 INFO: Waiting for server type=tserver node_id=3 PID=3112 to stop...
-2017-10-23 17:10:59,315 INFO: Waiting for server type=tserver node_id=3 PID=3112 to stop...
-
-# check status again
-$ ./bin/yb-ctl status
-2017-10-23 17:11:39,438 INFO: Server is running: type=master, node_id=1, PID=3097, admin service=127.0.0.1:7000
-2017-10-23 17:11:39,587 INFO: Server is running: type=master, node_id=2, PID=3100, admin service=127.0.0.2:7000
-2017-10-23 17:11:39,962 INFO: Server is running: type=master, node_id=3, PID=3103, admin service=127.0.0.3:7000
-2017-10-23 17:11:40,298 INFO: Server is running: type=tserver, node_id=1, PID=3106, admin service=127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
-2017-10-23 17:11:40,630 INFO: Server is running: type=tserver, node_id=2, PID=3109, admin service=127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
-2017-10-23 17:11:40,970 INFO: Server type=tserver node_id=3 is not running
-```
-
-## Step 4. Observe sample app
-
-Observe sample app output again to see a temporary connectivity issue to the node that was just killed. The client immediately fails over to a live node and then overall throughput/latency remains unchanged. This is because even with 2 live nodes, YugaByte can continue to update majority of replicas (i.e. 2 out of 3 replicas) and hence can continue to process the writes from the CQL sample app.
-
-If you remove one more node then you can see that write operations from the CQL sample app no longer succeed. This is expected since the number of alive nodes (i.e. 1) is less than the number required to establish majority (i.e. 2 nodes out of 3).
