@@ -97,6 +97,8 @@ class RedisWriteOperation: public DocOperation {
   RedisWriteRequestPB request_;
   RedisResponsePB response_;
   HybridTime read_hybrid_time_;
+
+  rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId > (&request_); }
 };
 
 class RedisReadOperation {
@@ -123,6 +125,7 @@ class RedisReadOperation {
 
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
+  rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 };
 
 class QLWriteOperation : public DocOperation {

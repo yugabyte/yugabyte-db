@@ -58,15 +58,17 @@ class DocWriteBatch {
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path, const Value& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
-    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp),
-                        use_init_marker);
+    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp), use_init_marker,
+                        query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -77,6 +79,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
@@ -84,6 +87,7 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
@@ -92,6 +96,7 @@ class DocWriteBatch {
       const SubDocument& value,
       ListExtendOrder extend_order = ListExtendOrder::APPEND,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
@@ -109,6 +114,7 @@ class DocWriteBatch {
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
+      rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   void Clear();

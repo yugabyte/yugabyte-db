@@ -116,6 +116,7 @@ Status GetRedisValueType(
     const HybridTime &hybrid_time,
     const RedisKeyValuePB &key_value_pb,
     RedisDataType *type,
+    rocksdb::QueryId redis_query_id,
     DocWriteBatch* doc_write_batch = nullptr,
     int subkey_index = -1) {
   if (!key_value_pb.has_key()) {
@@ -130,6 +131,7 @@ Status GetRedisValueType(
                                "Size of subkeys ($0) must be larger than subkey_index ($1)",
                                key_value_pb.subkey_size(), subkey_index);
     }
+
     PrimitiveValue subkey_primitive;
     RETURN_NOT_OK(PrimitiveValueFromSubKey(key_value_pb.subkey(subkey_index), &subkey_primitive));
     subdoc_key = SubDocKey(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()),
@@ -150,7 +152,7 @@ Status GetRedisValueType(
     // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
     // support for Redis.
     RETURN_NOT_OK(GetSubDocument(
-        rocksdb, subdoc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found,
+        rocksdb, subdoc_key, redis_query_id, boost::none, &doc, &doc_found,
         hybrid_time, Value::kMaxTtl, /* return_type_only */ true));
   }
 
@@ -188,6 +190,7 @@ CHECKED_STATUS GetRedisValue(
     const RedisKeyValuePB &key_value_pb,
     RedisDataType *type,
     string *value,
+    rocksdb::QueryId redis_query_id,
     int subkey_index = -1) {
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
@@ -212,7 +215,7 @@ CHECKED_STATUS GetRedisValue(
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
   RETURN_NOT_OK(GetSubDocument(
-      rocksdb, doc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found, hybrid_time));
+      rocksdb, doc_key, redis_query_id, boost::none, &doc, &doc_found, hybrid_time));
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;
@@ -371,7 +374,7 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
   if (kv.subkey_size() > 0) {
     RedisDataType data_type;
     RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
-                                    doc_write_batch));
+                                    redis_query_id(), doc_write_batch));
     switch (kv.type()) {
       case REDIS_TYPE_TIMESERIES: FALLTHROUGH_INTENDED;
       case REDIS_TYPE_HASH: {
@@ -397,7 +400,8 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
         if (kv.subkey_size() == 1 && EmulateRedisResponse(kv.type())) {
           RedisDataType type;
           RETURN_NOT_OK(GetRedisValueType(
-              doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, doc_write_batch, 0));
+              doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, redis_query_id(),
+              doc_write_batch, 0));
           // For HSET/TSADD, we return 0 or 1 depending on if the key already existed.
           // If flag is false, no int response is returned.
           response_.set_int_response(type == REDIS_TYPE_NONE ? 1 : 0);
@@ -405,10 +409,10 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
         if (data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
-              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, ttl));
+              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, redis_query_id(), ttl));
         } else {
           RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(
-              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, ttl));
+              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, redis_query_id(), ttl));
         }
         break;
       }
@@ -434,14 +438,15 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
     if (mode != RedisWriteMode::REDIS_WRITEMODE_UPSERT) {
       RedisDataType data_type;
       RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
-                                      doc_write_batch));
+                                      redis_query_id(), doc_write_batch));
       if ((mode == RedisWriteMode::REDIS_WRITEMODE_INSERT && data_type != REDIS_TYPE_NONE)
           || (mode == RedisWriteMode::REDIS_WRITEMODE_UPDATE && data_type == REDIS_TYPE_NONE)) {
         response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
         return Status::OK();
       }
     }
-    RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path, Value(PrimitiveValue(kv.value(0)), ttl)));
+    RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path, Value(PrimitiveValue(kv.value(0)), ttl),
+                                                InitMarkerBehavior::REQUIRED, redis_query_id()));
   }
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
@@ -452,7 +457,8 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
   string value;
   const RedisKeyValuePB& kv = request_.key_value();
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value,
+                              redis_query_id()));
 
   if (kv.value_size() != 1) {
     return STATUS_SUBSTITUTE(Corruption,
@@ -467,7 +473,7 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(kv.value(0))));
+      Value(PrimitiveValue(kv.value(0))), InitMarkerBehavior::REQUIRED, redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
@@ -480,7 +486,8 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
         "Append kv should have 1 value, found $0", kv.value_size());
   }
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value,
+                              redis_query_id()));
 
   if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_, true)) {
     // We've already set the error code in the response.
@@ -492,7 +499,8 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
   response_.set_int_response(new_value.length());
 
   return doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), Value(PrimitiveValue(new_value)));
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), Value(PrimitiveValue(new_value)),
+      InitMarkerBehavior::REQUIRED, redis_query_id());
 }
 
 // TODO (akashnil): Actually check if the value existed, return 0 if not. handle multidel in future.
@@ -501,7 +509,7 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RedisDataType data_type;
   RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
-                                  doc_write_batch));
+                                  redis_query_id(), doc_write_batch));
   if (data_type != REDIS_TYPE_NONE && data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
     return Status::OK();
@@ -519,7 +527,8 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
       for (int i = 0; i < kv.subkey_size(); i++) {
         RedisDataType type;
         RETURN_NOT_OK(GetRedisValueType(
-            doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, doc_write_batch, i));
+            doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, redis_query_id(),
+            doc_write_batch, i));
         if (type == REDIS_TYPE_STRING) {
           values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
                           SubDocument(ValueType::kTombstone));
@@ -543,7 +552,8 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
     }
   }
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
-  RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(doc_path, values, InitMarkerBehavior::REQUIRED));
+  RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(doc_path, values, InitMarkerBehavior::REQUIRED,
+                                                   redis_query_id()));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   if (EmulateRedisResponse(kv.type())) {
     // If the flag is true, we respond with the number of keys actually being deleted. We don't
@@ -562,7 +572,8 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
         "SetRange kv should have 1 value, found $0", kv.value_size());
   }
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value,
+                              redis_query_id()));
 
   if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_, true)) {
     // We've already set the error code in the response.
@@ -578,7 +589,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(value)));
+      Value(PrimitiveValue(value)), InitMarkerBehavior::REQUIRED, redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t incr) {
@@ -586,7 +597,8 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
   string value;
   const RedisKeyValuePB& kv = request_.key_value();
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value,
+                              redis_query_id()));
 
   if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -616,7 +628,8 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(std::to_string(new_value))));
+      Value(PrimitiveValue(std::to_string(new_value))),
+      InitMarkerBehavior::REQUIRED, redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyPush(DocWriteBatch* doc_write_batch) {
@@ -633,10 +646,9 @@ Status RedisWriteOperation::ApplyPop(DocWriteBatch* doc_write_batch) {
 
 Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
-
   RedisDataType data_type;
   RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &data_type,
-                                  doc_write_batch));
+                                  redis_query_id(), doc_write_batch));
 
   if (data_type != REDIS_TYPE_SET && data_type != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
@@ -658,7 +670,7 @@ Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
       RedisDataType type;
       string value;
       RETURN_NOT_OK(GetRedisValueType(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type,
-                                      doc_write_batch, i));
+                                      redis_query_id(), doc_write_batch, i));
       if (type != REDIS_TYPE_NONE) {
         num_keys_found++;
       }
@@ -675,10 +687,12 @@ Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
 
   if (data_type == REDIS_TYPE_NONE) {
     RETURN_NOT_OK(
-        doc_write_batch->InsertSubDocument(doc_path, set_entries, InitMarkerBehavior::REQUIRED));
+        doc_write_batch->InsertSubDocument(doc_path, set_entries, InitMarkerBehavior::REQUIRED,
+                                           redis_query_id()));
   } else {
     RETURN_NOT_OK(
-        doc_write_batch->ExtendSubDocument(doc_path, set_entries, InitMarkerBehavior::REQUIRED));
+        doc_write_batch->ExtendSubDocument(doc_path, set_entries, InitMarkerBehavior::REQUIRED,
+                                           redis_query_id()));
   }
 
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -732,7 +746,7 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
   RETURN_NOT_OK(GetSubDocument(
-      rocksdb, doc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found, hybrid_time));
+      rocksdb, doc_key, redis_query_id(), boost::none, &doc, &doc_found, hybrid_time));
   if (add_keys || add_values) {
     response_.set_allocated_array_response(new RedisArrayPB());
   }
@@ -794,7 +808,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange(rocksdb::DB *rocksdb, Hybri
       SubDocument doc;
       bool doc_found = false;
       RETURN_NOT_OK(GetSubDocument(
-          rocksdb, doc_key, rocksdb::kDefaultQueryId, boost::none, &doc, &doc_found, hybrid_time,
+          rocksdb, doc_key, redis_query_id(), boost::none, &doc, &doc_found, hybrid_time,
           Value::kMaxTtl, false, low_subkey, high_subkey));
 
       // Validate and populate response.
@@ -826,7 +840,8 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
     case RedisGetRequestPB_GetRequestType_TSGET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_HGET: {
       string value;
-      RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
+      RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value,
+                                  redis_query_id()));
 
       // If wrong type, we set the error code in the response.
       if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
@@ -836,25 +851,26 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
     }
     case RedisGetRequestPB_GetRequestType_HEXISTS: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_SISMEMBER: {
-      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, nullptr,
-                                      -1));
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type,
+                                      redis_query_id(), nullptr, -1));
       if (VerifyTypeAndSetCode(
           (request_type == RedisGetRequestPB_GetRequestType_HEXISTS
               ? RedisDataType::REDIS_TYPE_HASH
               : RedisDataType::REDIS_TYPE_SET),
           type, &response_, true)) {
         RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type,
-                                        nullptr, 0));
+                                        redis_query_id(), nullptr, 0));
         response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : 1);
       }
       return Status::OK();
     }
     case RedisGetRequestPB_GetRequestType_HSTRLEN: {
       RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type,
-                                      nullptr, -1));
+                                      redis_query_id(), nullptr, -1));
       if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_, true)) {
         string value;
-        RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
+        RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value,
+                                    redis_query_id()));
         response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : value.length());
       }
       return Status::OK();
@@ -863,7 +879,8 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
       return STATUS(NotSupported, "MGET not yet supported");
     }
     case RedisGetRequestPB_GetRequestType_HMGET: {
-      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type, nullptr));
+      RETURN_NOT_OK(GetRedisValueType(rocksdb, hybrid_time, request_.key_value(), &type,
+                                      redis_query_id()));
       if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_, true)) {
           return Status::OK();
       }
@@ -873,7 +890,8 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_ti
         // TODO: ENG-1803: It is inefficient to create a new iterator for each subkey causing a
         // new seek. Consider reusing the same iterator.
         string value;
-        RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value, i));
+        RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value,
+                                    redis_query_id(), i));
         if (type == REDIS_TYPE_STRING) {
           response_.mutable_array_response()->add_elements(value);
         } else {
@@ -906,7 +924,8 @@ Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value,
+                              redis_query_id()));
 
   if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_, true)) {
     response_.set_int_response((type == RedisDataType::REDIS_TYPE_NONE) ? 0 : value.length());
@@ -919,7 +938,8 @@ Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value,
+                              redis_query_id()));
 
   if (type != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -936,7 +956,8 @@ Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybr
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value,
+                              redis_query_id()));
 
   if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -1268,7 +1289,7 @@ Status QLWriteOperation::Apply(
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
           RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value,
-              InitMarkerBehavior::OPTIONAL));
+              InitMarkerBehavior::OPTIONAL, request_.query_id()));
         }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
@@ -1298,6 +1319,7 @@ Status QLWriteOperation::Apply(
                   RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
+                                                                   request_.query_id(),
                                                                    ttl,
                                                                    user_timestamp));
                   break;
@@ -1306,6 +1328,7 @@ Status QLWriteOperation::Apply(
                   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
+                                                                   request_.query_id(),
                                                                    ttl));
                   break;
                 case WriteAction::APPEND:
@@ -1314,6 +1337,7 @@ Status QLWriteOperation::Apply(
                                                             sub_doc,
                                                             ListExtendOrder::APPEND,
                                                             InitMarkerBehavior::OPTIONAL,
+                                                            request_.query_id(),
                                                             ttl));
                   break;
                 case WriteAction::PREPEND:
@@ -1322,6 +1346,7 @@ Status QLWriteOperation::Apply(
                                                             sub_doc,
                                                             ListExtendOrder::PREPEND,
                                                             InitMarkerBehavior::OPTIONAL,
+                                                            request_.query_id(),
                                                             ttl));
                   break;
                 case WriteAction::REMOVE_KEYS:
@@ -1329,6 +1354,7 @@ Status QLWriteOperation::Apply(
                   RETURN_NOT_OK(doc_write_batch->ExtendSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
+                                                                   request_.query_id(),
                                                                    ttl));
                   break;
                 case WriteAction::REMOVE_VALUES:
@@ -1358,6 +1384,7 @@ Status QLWriteOperation::Apply(
                   RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path,
                                                                    sub_doc,
                                                                    InitMarkerBehavior::OPTIONAL,
+                                                                   request_.query_id(),
                                                                    ttl,
                                                                    user_timestamp));
                   break;
@@ -1410,7 +1437,7 @@ Status QLWriteOperation::Apply(
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
             RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
-                                                        user_timestamp));
+                                                        request_.query_id(), user_timestamp));
           }
         } else {
           if (user_timestamp != Value::kInvalidUserTimestamp) {
@@ -1420,6 +1447,7 @@ Status QLWriteOperation::Apply(
               const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
                                      PrimitiveValue(schema_.column_id(i)));
               RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
+                                                          request_.query_id(),
                                                           user_timestamp));
             }
 
@@ -1429,10 +1457,11 @@ Status QLWriteOperation::Apply(
                 PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
             RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
                                                         InitMarkerBehavior::OPTIONAL,
+                                                        request_.query_id(),
                                                         user_timestamp));
           } else {
             RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
-                *pk_doc_path_, InitMarkerBehavior::OPTIONAL, user_timestamp));
+                *pk_doc_path_, InitMarkerBehavior::OPTIONAL, request_.query_id(), user_timestamp));
           }
         }
         break;
