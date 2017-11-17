@@ -3,3 +3,7 @@
 .DS_Store
 public/*
 npm-debug.log
+node_modules
+
+static/css/site.css
+static/js/site.js

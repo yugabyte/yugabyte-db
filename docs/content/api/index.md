@@ -6,12 +6,20 @@ weight: 120
 
 <div>
   <a class="section-link icon-offset" href="cql/">
-    <div class="icon"><i class="icon-cassandra"></i></div>
-    Apache Cassandra Query Language (CQL)
+    <div class="icon">
+      <img src="/images/section_icons/api/cql.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      Apache Cassandra Query Language (CQL)
+    </div>
   </a>
 
   <a class="section-link icon-offset" href="redis/">
-    <div class="icon"><i class="icon-redis"></i></div>
-    Redis
+    <div class="icon">
+      <img src="/images/section_icons/api/redis.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      Redis
+    </div>
   </a>
 </div>

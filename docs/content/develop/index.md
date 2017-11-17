@@ -20,12 +20,20 @@ $ jar xf ./java/yb-sample-apps-sources.jar
 
 <div>
   <a class="section-link icon-offset" href="cql/">
-    <div class="icon"><i class="icon-cassandra"></i></div>
-    Develop CQL apps
+    <div class="icon">
+      <img src="/images/section_icons/develop/cql.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      Develop CQL apps
+    </div>
   </a>
 
   <a class="section-link icon-offset" href="redis/">
-    <div class="icon"><i class="icon-redis"></i></div>
-    Develop Redis apps
+    <div class="icon">
+      <img src="/images/section_icons/develop/redis.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      Develop Redis apps
+    </div>
   </a>
 </div>
