@@ -946,6 +946,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
 
+  void AssertLeaderLockAcquiredForReading() const {
+    leader_lock_.AssertAcquiredForReading();
+  }
+
  protected:
   friend class TableLoader;
   friend class TabletLoader;

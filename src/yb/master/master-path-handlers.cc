@@ -157,6 +157,8 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
                                              stringstream* output) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
   vector<std::shared_ptr<TSDescriptor> > descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   *output << std::setprecision(output_precision_);
@@ -205,6 +207,8 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               stringstream* output,
                                               bool skip_system_tables) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
   vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
   string title = skip_system_tables ? "User Tables" : "All Tables";
@@ -263,17 +267,13 @@ bool CompareByRole(const TabletReplica& a, const TabletReplica& b) {
 
 void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
                                          stringstream *output) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
   // Parse argument.
   string table_id;
   if (!FindCopy(req.parsed_args, "id", &table_id)) {
     // TODO: webserver should give a way to return a non-200 response code
     *output << "Missing 'id' argument";
-    return;
-  }
-
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
-  if (!l.first_failed_status().ok()) {
-    *output << "Master is not ready: " << l.first_failed_status().ToString();
     return;
   }
 
@@ -719,6 +719,8 @@ Status JsonDumpCollection(JsonWriter* jw, Master* master, stringstream* output) 
 
 void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
                                             stringstream* output) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
 
@@ -732,6 +734,8 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
 
 void MasterPathHandlers::HandleGetClusterConfig(
   const Webserver::WebRequest& req, stringstream* output) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
   *output << "<h1>Current Cluster Config</h1>\n";
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);

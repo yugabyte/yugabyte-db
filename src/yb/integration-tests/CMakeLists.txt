@@ -81,6 +81,7 @@ ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports" RUN_SERIAL true)
 
 ADD_YB_TEST(master_sysnamespace-itest RESOURCE_LOCK "master-rpc-ports")
+ADD_YB_TEST(master_path_handlers-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_failover-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_config-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(raft_consensus-itest RUN_SERIAL true)
