@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Row, Col, Grid, ButtonGroup } from 'react-bootstrap';
+import { Row, Col, Grid } from 'react-bootstrap';
 import { Field, change, FieldArray } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
@@ -738,11 +738,11 @@ class UniverseForm extends Component {
                isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
       );
     }
-
+    const pageTitle = this.props.type === "Create" ? <h2 className="page-topnav-title"><span>{this.props.type} universe</span></h2> : <h2 className="page-topnav-title">{this.props.formValues.universeName}<span> - {this.props.type.toLowerCase()} universe </span></h2>;
     return (
 
-      <Grid id="page-wrapper" fluid={true}>
-        <h2>{this.props.type} Universe</h2>
+      <Grid id="page-wrapper" fluid={true} className="universe-form-new">
+        {pageTitle}
         <form name="UniverseForm" className="universe-form-container" onSubmit={handleSubmit(this.handleSubmitButtonClick)}>
           <Row className={"no-margin-row"}>
             <Col md={6}>
@@ -834,10 +834,10 @@ class UniverseForm extends Component {
           </Row>
           <div className="form-action-button-container">
             <UniverseResources resources={universe.universeResourceTemplate.data}>
-              <ButtonGroup className="pull-right">
+              <div className="pull-right">
                 <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
-                <YBButton btnClass="btn btn-default bg-orange universe-form-submit-btn" btnText={submitLabel} btnType={"submit"}/>
-              </ButtonGroup>
+                <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitLabel} btnType={"submit"}/>
+              </div>
             </UniverseResources>
           </div>
         </form>

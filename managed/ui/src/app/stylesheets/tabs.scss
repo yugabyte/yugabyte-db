@@ -11,7 +11,6 @@
       border-bottom: none;
       min-width: 80px;
       text-align: center;
-      padding: 10px !important;
       color: #555;
       border: 1px solid $YB_GRAY;
       background-color: rgba($YB_GRAY_HOVER, .7);
@@ -36,7 +35,6 @@
       > a {
         &, &:focus, &:hover {
           margin-top: 0;
-          padding: 10px !important;
           background-color: white;
           border: 1px solid $YB_GRAY_HOVER;
           border-bottom-color: transparent;
@@ -54,7 +52,7 @@
   box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
   border-top: none;
   background-color: #fff;
-  min-height: 500px;
+  min-height: 400px;
   height: 100%;
   .x_title {
     margin-top: 6px;
@@ -64,11 +62,12 @@
     font-size: 21px;
   }
   .content-panel {
-    box-shadow: none;
-    padding-left: 0;
-    padding-right: 0;
     .react-bs-table-search-form .form-control {
       right: 0;
     }
   }
+}
+
+.panel-group:last-child {
+  margin-bottom: 0;
 }

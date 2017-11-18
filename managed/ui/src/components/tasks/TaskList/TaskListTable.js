@@ -76,8 +76,8 @@ export default class TaskListTable extends Component {
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     return (
       <div id="page-wrapper" className="dashboard-widget-container">
-        <h2 className="task-list-header">{title}</h2>
-        <div className="content-panel">
+        <h2 className="task-list-header page-topnav-title">{title}</h2>
+        <div className="content-panel content-panel-margin-top">
           <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
                           search multiColumnSearch searchPlaceholder='Search by Name or Type'>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>

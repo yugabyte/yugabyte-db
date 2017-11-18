@@ -36,7 +36,7 @@ export default class YBModal extends Component {
           {(footerAccessory || showCancelButton || onFormSubmit) &&
             <Modal.Footer>
               <div className={footerButtonClass}>
-                {onFormSubmit && <YBButton btnClass="btn bg-orange pull-right" disabled={btnDisabled}
+                {onFormSubmit && <YBButton btnClass="btn btn-orange pull-right" disabled={btnDisabled}
                   btnText={submitLabel} onClick={onFormSubmit} />}
                 {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
               </div>

@@ -1,48 +1,38 @@
 /* Copyright (c) YugaByte, Inc. */
 
-.yb-nav-bar {
-    background-color: #fff;
-}
-
-.yb-nav-bar .main-container .top_nav {
-  display: block;
-  margin-left: 230px;
-}
+@import "_style/colors.scss";
 
 /* From gentelella.css need to cleanup */
 
-.nav-sm {
-  .container.body {
-
-    .col-md-3.left_col {
-      min-height: 100%;
-      width: 90px;
-      padding: 0;
-      z-index: 999;
-      left:0;
-      position: absolute;
-
-      .logo {
-        height: 39px;
-        margin: 10px auto;
-      }
-
-      &.menu_fixed {
-        position: fixed;
-        height: 100%;
-      }
-
-      .mCSB_container,
-      .mCustomScrollBox {
-        overflow: visible;
-      }
+.yb-nav-bar {
+  .left_col {
+    min-height: 100%;
+    width: 90px;
+    padding: 0;
+    z-index: 999;
+    left:0;
+    position: absolute;
+    background: $YB_VIOLET;
+    .logo {
+      height: 39px;
+      margin: 8px auto;
     }
 
-    .right_col {
-      padding: 10px 20px;
-      margin-left: 70px;
-      z-index: 2;
+    &.menu_fixed {
+      position: fixed;
+      height: 100%;
     }
+
+    .mCSB_container,
+    .mCustomScrollBox {
+      overflow: visible;
+    }
+  }
+
+  .right_col {
+    padding: 10px 20px;
+    margin-left: 70px;
+    z-index: 2;
   }
 
   .hidden-small {
@@ -61,11 +51,6 @@
     }
   }
 
-  .main_container .top_nav {
-    display: block;
-    margin-left: 70px;
-    z-index: 2;
-  }
   .nav.side-menu li a {
     text-align: center !important;
     font-weight: 300;

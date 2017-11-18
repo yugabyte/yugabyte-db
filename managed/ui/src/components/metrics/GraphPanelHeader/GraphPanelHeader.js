@@ -303,7 +303,7 @@ class GraphPanelHeader extends Component {
               </form>
             </div>
 
-            <h2>Metrics</h2>
+            <h2 className="page-topnav-title">Metrics</h2>
             <div className="filter-container">
               {universePicker}
               <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}

@@ -5,17 +5,24 @@
 
 .btn {
   display: inline-block;
-  padding: 10px 15px 12px;
+  padding: 9px 15px 11px;
   margin-bottom: 0;
   font-size: 14px;
   border-radius: 4px;
   z-index: 1 !important;
+  box-sizing: border-box;
+  &, &:hover, &:focus, &:active {
+    border-color: transparent;
+  }
+}
+.btn-default {
+  &, &:hover, &:focus, &:active {
+    border-color: transparent;
+  }
 }
 
-button, .btn {
-  &.bg-orange {
+  .btn-orange {
     background: $YB_ORANGE;
-    border: 1px solid transparent;
     color: white;
     font-weight: 600;
     @include transition(0.35s);
@@ -25,16 +32,15 @@ button, .btn {
       @include transition(0.35s);
     }
     &:hover {
-      border: 1px solid transparent;
       @include transition(0.125s);
       background-color: $YB_ORANGE_HOVER;
+      color: white;
       i {
         @include transition(0.125s);
         color: rgba(white, 0.5);
       }
     }
     &:active:focus, &:focus, &:active {
-      border: 1px solid transparent;
       background-color: darken($YB_ORANGE_HOVER, 2%);
       color: #fff;
       box-shadow: none;
@@ -44,6 +50,55 @@ button, .btn {
     }
   }
 
+  .btn-default {
+    color: $YB_TEXT_COLOR;
+    background-color: #fff;
+    font-weight: 300;
+    border: 1px solid $YB_GRAY;
+    @include transition(0.35s);
+    .caret {
+      border-top-color: #44518b;
+    }
+    i {
+      color: $YB_ORANGE;
+      font-size: 16px;
+      line-height: 1;
+    }
+    &:hover {
+      @include transition(0.125s);
+      border-color: $YB_GRAY_HOVER;
+      background-color: $YB_GRAY_HOVER;
+    }
+    &:active:focus, &:focus, &:active, &.active {
+      border-color: darken($YB_GRAY, 2%);
+      background-color: darken($YB_GRAY, 2%);
+      box-shadow: none;
+    }
+  }
+
+
+.btn-grey {
+    color: $YB_TEXT_COLOR;
+    background-color: $YB_GRAY_HOVER;
+    font-weight: 300;
+    @include transition(0.35s);
+    i {
+      color: $YB_ORANGE;
+      font-size: 16px;
+      line-height: 1;
+    }
+    &:hover {
+      @include transition(0.125s);
+      background-color: $YB_GRAY;
+    }
+    &:active:focus, &:focus, &:active, &.active {
+      border-color: darken($YB_GRAY_BORDER, 2%);
+      background-color: darken($YB_GRAY, 2%);
+      box-shadow: none;
+    }
+  }
+
+  button, .btn {
   .fa {
     margin-right: 8px;
   }
@@ -58,40 +113,16 @@ button, .btn {
   &.open {
     .btn-default, .btn-default:hover, .btn-default:focus {
       color: $YB_TEXT_COLOR;
-      border-color: $YB_GRAY;
+      border-color: $YB_GRAY_HOVER;
       background-color: $YB_GRAY_HOVER;
     }
   }
 }
 
-.btn-default {
-  color: $YB_TEXT_COLOR;
-  background-color: #fff;
-  border-color: $YB_GRAY;
-  font-weight: 300;
-  @include transition(0.35s);
-  .caret {
-    border-top-color: #44518b;
-  }
-  i {
-    color: $YB_ORANGE;
-    font-size: 16px;
-  }
-  &:hover {
-    @include transition(0.125s);
-    border-color: $YB_GRAY_BORDER;
-    background-color: $YB_GRAY_HOVER;
-  }
-  &:active:focus, &:focus, &:active, &.active {
-    border-color: darken($YB_GRAY_BORDER, 2%);
-    background-color: darken($YB_GRAY, 2%);
-    box-shadow: none;
-  }
-}
 .open > .dropdown-toggle.btn-default {
   &, &:hover, &:focus {
-    border-color: $YB_GRAY_BORDER;
-    background-color: $YB_GRAY_HOVER;
+    border-color: $YB_GRAY;
+    background-color: $YB_GRAY;
     box-shadow: none;
   }
 }
@@ -103,11 +134,11 @@ button, .btn {
 }
 
 .btn-group {
-  .bg-orange + .btn{
+  .btn-orange + .btn {
     border-left: none;
   }
-  .bg-orange + * {
-    & > .btn{
+  .btn-orange + * {
+    & > .btn {
       border-left: none;
     }
   }
@@ -122,7 +153,7 @@ button, .btn {
   }
 
   .fa {
-  margin: 0 4px;
+  margin: 0 4px 0 0;
   }
 }
 

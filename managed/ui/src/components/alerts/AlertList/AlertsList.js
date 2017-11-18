@@ -11,7 +11,7 @@ export default class AlertsList extends Component {
       <div id="page-wrapper">
         <Row className="header-row">
           <Col lg={12}>
-            <h2>Alerts</h2>
+            <h2 className="page-topnav-title">Alerts</h2>
             <BootstrapTable data={[]} bodyStyle={tableBodyContainer} pagination={true}>
               <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
               <TableHeaderColumn dataField="createTime" columnClassName="no-border" className="no-border" dataAlign="left">

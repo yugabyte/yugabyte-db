@@ -8,13 +8,9 @@ import './stylesheets/NavBar.scss';
 export default class NavBar extends Component {
   render() {
     return (
-      <div className="nav-sm yb-nav-bar">
-        <div className="container body">
-          <div className="main-container">
-            <TopNavBarContainer />
-            <SideNavBar />
-          </div>
-        </div>
+      <div className="yb-nav-bar">
+        <TopNavBarContainer />
+        <SideNavBar />
       </div>
     );
   }

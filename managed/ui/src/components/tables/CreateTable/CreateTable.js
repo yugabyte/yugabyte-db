@@ -113,7 +113,7 @@ class CreateTable extends Component {
           </Row>
           <CassandraColumnSpecification {...this.props} />
           <div className="form-action-button-container">
-            <YBButton btnText="Create" btnClass={`pull-right btn btn-default bg-orange`}
+            <YBButton btnText="Create" btnClass={`pull-right btn btn-orange`}
                       btnType="submit"/>
             <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`}
                       onClick={this.cancelCreateTableForm}/>

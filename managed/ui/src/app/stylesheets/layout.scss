@@ -2,6 +2,12 @@
 
 @import "_style/colors.scss";
 
+.full-height-container {
+  position: absolute;
+  min-height: 100%;
+  width: 100%;
+}
+
 .container {
   width: 100%;
   padding: 0;
@@ -14,8 +20,10 @@
 }
 
 .container-body {
-  margin: 90px 25px 25px 115px;
-
+  padding: 95px 38px 83px 128px;
+  @media (max-width: 767px) {
+    padding: 95px 25px 83px 115px;
+  }
   h1, h2 {
     &:first-child {
       margin-top: 0 !important;
@@ -70,9 +78,15 @@ legend {
 .content-panel {
   position: relative;
   margin: 0;
-  padding: 15px 20px;
   box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
   border: none;
   background-color: #fff;
-  min-height: 500px;
+  padding: 15px 20px 20px 20px;
+}
+.content-panel-margin-top {
+  margin-top: 58px;
+}
+
+.flex-grow {
+  flex: 1 1 auto;
 }

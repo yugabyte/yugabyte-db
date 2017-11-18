@@ -45,7 +45,7 @@ class AuthenticatedComponent extends Component {
 
   render() {
     return (
-      <div>
+      <div className="full-height-container">
         {this.props.children}
       </div>
     );

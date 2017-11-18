@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Col } from 'react-bootstrap';
 import moment from 'moment';
 import { DescriptionItem, YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
@@ -13,7 +12,7 @@ class StatsPanelComponent extends Component {
   render() {
     const {value, label} = this.props;
     return (
-      <Col xs={4} className="tile_stats_count text-center">
+      <div className="tile_stats_count text-center">
         <DescriptionItem>
           <div className="count">
             {value}
@@ -22,7 +21,7 @@ class StatsPanelComponent extends Component {
         <span className="count_top">
           {label}
         </span>
-      </Col>
+      </div>
     );
   }
 }
@@ -53,12 +52,10 @@ export default class HighlightedStatsPanel extends Component {
         formattedNumberStyle="currency" currency="USD"/>
     );
     return (
-      <div className="row tile_count highlighted-stats-panel">
-        <Col xs={12} sm={12} mdOffset={2} md={8} lgOffset={4} lg={6}>
-          <StatsPanelComponent value={universeList.data.length} label={"Universes"}/>
-          <StatsPanelComponent value={numNodes} label={"Nodes"}/>
-          <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
-        </Col>
+      <div className="tile_count highlighted-stats-panel">
+        <StatsPanelComponent value={universeList.data.length} label={"Universes"}/>
+        <StatsPanelComponent value={numNodes} label={"Nodes"}/>
+        <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
       </div>
     );
   }

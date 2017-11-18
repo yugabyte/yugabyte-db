@@ -32,7 +32,7 @@ class LoginForm extends Component {
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-5 dark-form">
           <PageHeader bsClass="dark-form-heading">
-            <YBLogo size="full"/>
+            <YBLogo type="full"/>
             <span>Admin Console</span>
           </PageHeader>
           <form onSubmit={handleSubmit(this.submitLogin)}>
@@ -46,7 +46,7 @@ class LoginForm extends Component {
             </div>
             <div className="clearfix">
               <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}
-                        btnClass="btn btn-default bg-orange" btnText="Login"/>
+                        btnClass="btn btn-orange" btnText="Login"/>
             </div>
           </form>
         </div>

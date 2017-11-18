@@ -44,7 +44,7 @@ export default class CustomerProfile extends Component {
                 <Field name="email" type="text" component={YBInputField} isReadOnly={true} label="Email" placeHolder="Email Address"/>
                 <Field name="password" type="password" component={YBInputField} label="Password" placeHolder="Enter New Password"/>
                 <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password" placeHolder="Confirm New Password"/>
-                <YBButton btnText="Save" btnType="submit" disabled={submitting} btnClass="btn btn-default bg-orange pull-right"/>
+                <YBButton btnText="Save" btnType="submit" disabled={submitting} btnClass="btn btn-orange pull-right"/>
               </form>
             </div>
           </div>
