@@ -4,7 +4,6 @@
 @import "_style/mixins.scss";
 
 .side-nav-container {
-  position: relative;
   top: 60px;
   bottom: 0;
   z-index: 1040;
@@ -12,6 +11,7 @@
   overflow: hidden;
   width: 90px;
   min-height: 322px;
+  background: $YB_VIOLET;
 }
 
 /* From gentelella.css need to cleanup */
@@ -21,32 +21,11 @@
   border-radius: 50%;
 }
 
-.left_col {
-  background: $YB_VIOLET;
-}
-
 .left_col .mCSB_scrollTools {
   width: 6px;
 }
 .left_col .mCSB_dragger {
   max-height: 400px !important;
-}
-
-.nav-md .container.body .col-md-3.left_col {
-  min-height: 100%;
-  width: 230px;
-  padding: 0;
-  position: absolute;
-  display: flex;
-  z-index: 1;
-}
-.nav-md .container.body .col-md-3.left_col.menu_fixed {
-  height: 100%;
-  position: fixed;
-}
-
-.nav-md .container.body .col-md-3.left_col {
-  display: none;
 }
 
 .main-menu-side {
@@ -154,11 +133,11 @@
   }
 }
 
-.nav-sm .menu_section {
+.yb-nav-bar .menu_section {
   margin: 0;
 }
-.nav-sm span.fa,
-.nav-sm .menu_section h3 {
+.yb-nav-bar span.fa,
+.yb-nav-bar .menu_section h3 {
   display: none;
 }
 

@@ -48,7 +48,7 @@ class RegisterForm extends Component {
             </div>
             <div className="clearfix">
               <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}
-                        btnClass="btn btn-default bg-orange pull-right" btnText="Register"/>
+                        btnClass="btn btn-orange pull-right" btnText="Register"/>
             </div>
           </form>
         </div>

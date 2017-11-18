@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import NavBar from '../components/common/nav_bar/NavBar';
+import { Footer } from '../components/common/footer';
 import AuthenticatedComponentContainer from '../components/Authenticated/AuthenticatedComponentContainer';
 import { mouseTrap } from 'react-mousetrap';
 import { browserHistory } from 'react-router';
@@ -77,6 +78,7 @@ class AuthenticatedComponent extends Component {
             </Table>
           </YBModal>
         </div>
+        <Footer />
       </AuthenticatedComponentContainer>
     );
   }
