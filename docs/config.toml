@@ -2,7 +2,7 @@
 
 baseurl = "https://docs.yugabyte.com"
 languageCode = "en-us"
-title = "YugaByte Docs"
+title = "YugaByte DB Docs"
 theme = "hugo-material-docs"
 metadataformat = "yaml"
 canonifyurls = true
@@ -12,12 +12,12 @@ googleAnalytics = "UA-104956980-1"
 [params]
 	# General information
 	author = "Team YugaByte"
-	description = "YugaByte Product Documentation"
-	copyright = "YugaByte Inc."
+	description = "Cloud-native DB for mission-critical apps"
+	copyright = "YugaByte, Inc."
 	block_indexing = false
 
 	version = "Beta"
-	logo = "/images/logo.png"
+	logo = "/images/og-image.png"
 	favicon = "/images/favicon.ico"
 
 	permalink = "#"
