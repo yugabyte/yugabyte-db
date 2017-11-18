@@ -74,6 +74,8 @@ readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY=/n/jenkins/thirdparty
 # "buildmaster.c.yugabyte.internal", only "buildmaster".
 readonly DISTRIBUTED_BUILD_MASTER_HOST=buildmaster
 
+readonly YB_VIRTUALENV_BASENAME=python_virtual_env
+
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
 # -------------------------------------------------------------------------------------------------
@@ -1211,6 +1213,30 @@ check_python_script_syntax() {
     )
   done
   popd
+}
+
+activate_virtualenv() {
+  virtualenv_dir=${YB_SRC_ROOT}/$YB_VIRTUALENV_BASENAME
+  if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
+    fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
+          "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
+  fi
+  if [[ ! -d $virtualenv_dir ]]; then
+    # We need to be using system python to install the virtualenv module or create a new virtualenv.
+    pip install virtualenv
+    (
+      set -x
+      cd "${virtualenv_dir%/*}"
+      python -m virtualenv "$YB_VIRTUALENV_BASENAME"
+    )
+  fi
+  set +u
+  . "$virtualenv_dir"/bin/activate
+  # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
+  unset PYTHONPATH
+  set -u
+  export PYTHONPATH=$YB_SRC_ROOT/python:$virtualenv_dir/lib/python2.7/site-packages
+  pip install -r requirements.txt
 }
 
 # -------------------------------------------------------------------------------------------------

@@ -14,25 +14,24 @@
 
 import argparse
 import atexit
-import glob
-import imp
-import json
+from datetime import datetime
 import logging
 import os
 import shutil
-import sys
 import tempfile
 import yaml
 
-from xml.dom import minidom
 from subprocess import call
-from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.release_manager import ReleaseManager
-from ybops.utils import init_env, log_message, RELEASE_EDITION_ALLOWED_VALUES, \
-    RELEASE_EDITION_ENTERPRISE, RELEASE_EDITION_COMMUNITY
 from yb.library_packager import LibraryPackager, add_common_arguments
+from yb.release_util import ReleaseUtil
+from yb.common_util import init_env, log_message
 
 YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+RELEASE_EDITION_ENTERPRISE = "ee"
+RELEASE_EDITION_COMMUNITY = "ce"
+RELEASE_EDITION_ALLOWED_VALUES = set([RELEASE_EDITION_ENTERPRISE, RELEASE_EDITION_COMMUNITY])
+DISTRIBUTION_DIR = os.path.join("build", "dist")
 
 
 def main():
@@ -40,26 +39,21 @@ def main():
     parser.add_argument('--build', help='Build type (debug/release)',
                         default="release",
                         dest='build_type')
-    parser.add_argument('--build-args',
-                        help='Additional arguments to pass to the build script',
-                        dest='build_args',
-                        default='')
-    parser.add_argument('--publish', action='store_true', help='Publish release to S3.')
+    parser.add_argument('--build_args', default='',
+                        help='Additional arguments to pass to the build script')
+    parser.add_argument('--build_archive', action='store_true',
+                        help='Whether or not we should build a release archive.')
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
     parser.add_argument('--edition', help='Which edition the code is built as.',
                         default=RELEASE_EDITION_ENTERPRISE,
                         choices=RELEASE_EDITION_ALLOWED_VALUES)
-    parser.add_argument('--skip-build', help='Skip building the code', action='store_true')
-    parser.add_argument(
-            '--extracted-destination',
-            help='Instead of building a tarball, put the distribution in the given'
-                 'directory. This is equivalent to building and extracting the tarball, but '
-                 'much faster.')
+    parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
+    parser.add_argument('--build_target',
+                        help='Target directory to put the build files.')
     add_common_arguments(parser)
     args = parser.parse_args()
-
-    init_env(logging.DEBUG if args.verbose else logging.INFO)
+    init_env(args.verbose)
     log_message(logging.INFO, "Building YugaByte code: '{}' build".format(args.build_type))
 
     tmp_dir = tempfile.mkdtemp(suffix=os.path.basename(__file__))
@@ -70,11 +64,6 @@ def main():
 
     os.chdir(YB_SRC_ROOT)
 
-    # Parse Java project version out of java/pom.xml.
-    java_project_version = minidom.parse('java/pom.xml').getElementsByTagName(
-            'version')[0].firstChild.nodeValue
-    log_message(logging.INFO, "Java project version from pom.xml: {}".format(java_project_version))
-
     build_edition = "enterprise" if args.edition == RELEASE_EDITION_ENTERPRISE else "community"
     build_cmd_list = [
         "./yb_build.sh", args.build_type, "--with-assembly",
@@ -83,7 +72,9 @@ def main():
         # This will build the exact set of targets that are needed for the release.
         "packaged_targets",
         args.build_args
-        ]
+    ]
+    if args.skip_build:
+        build_cmd_list.append("--skip-build")
 
     build_cmd_line = " ".join(build_cmd_list).strip()
     log_message(logging.INFO, "Build command line: {}".format(build_cmd_line))
@@ -97,105 +88,45 @@ def main():
 
     log_message(logging.INFO, "Build descriptor: {}".format(build_desc))
 
-    if args.extracted_destination and args.publish:
-        raise RuntimeError('--extracted-destination and --publish are incompatible')
-
     build_dir = build_desc['build_root']
-    release_manager = ReleaseManager({"repository": YB_SRC_ROOT,
-                                      "name": "yugabyte",
-                                      "type": args.build_type,
-                                      "edition": args.edition,
-                                      "force_yes": args.force})
+    build_target = args.build_target
+    if build_target is None:
+        # if a build target is not provided, we create a temporary target path based on timestamp
+        # and delete it when the program exits.
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        build_target = os.path.join(DISTRIBUTION_DIR, timestamp)
+        atexit.register(lambda: shutil.rmtree(build_target))
 
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
-    release_manifest = release_manager.release_manifest
-    for key, value_list in release_manifest.iteritems():
-        for i in xrange(len(value_list)):
-            new_value = value_list[i].replace('${project.version}', java_project_version)
-            if new_value != value_list[i]:
-                log_message(logging.INFO,
-                            "Substituting Java project version in '{}' -> '{}'".format(
-                                value_list[i], new_value))
-                value_list[i] = new_value
+    release_util = ReleaseUtil(YB_SRC_ROOT, args.build_type,
+                               args.edition, build_target, args.force)
+    release_util.update_java_version()
 
     library_packager = LibraryPackager(
             build_dir=build_dir,
-            seed_executable_patterns=release_manifest['bin'],
+            seed_executable_patterns=release_util.get_binary_path(),
             dest_dir=yb_distribution_dir,
             verbose_mode=args.verbose,
             include_system_libs=not args.no_system_libs,
             include_licenses=args.include_licenses)
     library_packager.package_binaries()
 
-    for release_subdir in ['bin']:
-        if release_subdir in release_manifest:
-            del release_manifest[release_subdir]
-    for root, dirs, files in os.walk(yb_distribution_dir):
-        release_manifest.setdefault(os.path.relpath(root, yb_distribution_dir), []).extend(
-                [os.path.join(root, f) for f in files])
+    release_util.update_manifest(yb_distribution_dir)
 
-    if args.verbose:
-        log_message(logging.INFO,
-                    "Effective release manifest:\n" +
-                    json.dumps(release_manifest, indent=2, sort_keys=True))
+    log_message(logging.INFO, "Generating release distribution")
 
-    log_message(logging.INFO, "Generating release")
+    if os.path.exists(build_target) and os.listdir(build_target):
+        raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
+    release_util.create_distribution(build_target)
 
-    if args.extracted_destination:
-        extracted_dest_dir = args.extracted_destination
-        if os.path.exists(extracted_dest_dir) and os.listdir(extracted_dest_dir):
-            raise RuntimeError("Directory '{}' exists and is non-empty".format(extracted_dest_dir))
-        for dir_from_manifest in release_manifest:
-            current_dest_dir = os.path.join(extracted_dest_dir, dir_from_manifest)
-            if os.path.exists(current_dest_dir):
-                if args.verbose:
-                    logging.info("Directory '{}' already exists".format(current_dest_dir))
-            else:
-                os.makedirs(current_dest_dir)
-
-            for elem in release_manifest[dir_from_manifest]:
-                if not elem.startswith('/'):
-                    elem = os.path.join(YB_SRC_ROOT, elem)
-                files = glob.glob(elem)
-                for file_path in files:
-                    if os.path.islink(file_path):
-                        link_path = os.path.join(current_dest_dir, os.path.basename(file_path))
-                        link_target = os.readlink(file_path)
-                        if args.verbose:
-                            log_message(logging.INFO,
-                                        "Creating symlink {} -> {}".format(link_path, link_target))
-                        os.symlink(link_target, link_path)
-                    elif os.path.isdir(file_path):
-                        current_dest_dir = os.path.join(current_dest_dir,
-                                                        os.path.basename(file_path))
-                        if args.verbose:
-                            log_message(logging.INFO,
-                                        "Copying directory {} to {}".format(file_path,
-                                                                            current_dest_dir))
-                        shutil.copytree(file_path, current_dest_dir)
-                    else:
-                        current_dest_dir = os.path.join(extracted_dest_dir, dir_from_manifest)
-                        if args.verbose:
-                            log_message(
-                                    logging.INFO,
-                                    "Copying file {} to directory {}".format(file_path,
-                                                                             current_dest_dir))
-                        shutil.copy(file_path, current_dest_dir)
-        log_message(logging.INFO,
-                    "Creating an non-tar distribution at '{}'".format(extracted_dest_dir))
-    else:
-        # We've already updated the release manifest inside release_manager with the auto-generated
-        # set of executables and libraries to package.
-        release_file = release_manager.generate_release()
-
-    if args.publish:
-        log_message(logging.INFO, "Publishing release")
-        release_manager.publish_release()
-    elif args.destination:
-        if not os.path.exists(args.destination):
-            raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
-        shutil.copy(release_file, args.destination)
+    if args.build_archive:
+        log_message(logging.INFO, "Generating release tar")
+        release_file = release_util.generate_release()
+        if args.destination:
+            if not os.path.exists(args.destination):
+                raise RuntimeError("Destination {} not a directory.".format(args.destination))
+            shutil.copy(release_file, args.destination)
 
 
 if __name__ == '__main__':

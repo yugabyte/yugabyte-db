@@ -15,23 +15,5 @@
 set -euo pipefail
 . ${BASH_SOURCE%/*}/build-support/common-build-env.sh
 
-if [[ -z ${DEVOPS_HOME-} ]]; then
-  devops_home_candidate=$YB_SRC_ROOT/../devops
-  if [[ -d $devops_home_candidate ]]; then
-    DEVOPS_HOME=$devops_home_candidate
-  else
-    echo "ERROR: DEVOPS_HOME not set, and not found at '$devops_home_candidate'" >&2
-    exit 1
-  fi
-fi
-
-if [[ $OSTYPE =~ ^darwin ]]; then
-  echo "ERROR: Server tarball is only expected to be built on CentOS7."
-  exit 1
-fi
-
-. "$DEVOPS_HOME/bin/common.sh"
 activate_virtualenv
-
-export PYTHONPATH=$YB_SRC_ROOT/python:$PYTHONPATH
 "$YB_SRC_ROOT"/build-support/yb_release.py "$@"
