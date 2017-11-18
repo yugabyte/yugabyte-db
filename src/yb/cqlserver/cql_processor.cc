@@ -57,6 +57,16 @@ METRIC_DEFINE_histogram(
 namespace yb {
 namespace cqlserver {
 
+DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
+
+const unordered_map<string, vector<string>> kSupportedOptions = {
+  {CQLMessage::kCQLVersionOption, {"3.0.0" /* minimum */, "3.4.2" /* current */} },
+  {CQLMessage::kCompressionOption, {CQLMessage::kLZ4Compression, CQLMessage::kSnappyCompression} }
+};
+
+constexpr const char* const kCassandraPasswordAuthenticator =
+    "org.apache.cassandra.auth.PasswordAuthenticator";
+
 extern const char* const kRoleColumnNameSaltedHash;
 
 using std::shared_ptr;
@@ -75,6 +85,7 @@ using ql::Statement;
 using ql::StatementExecutedCallback;
 using ql::ErrorCode;
 using ql::GetErrorCode;
+using strings::Substitute;
 using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
@@ -123,7 +134,10 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
 
   // Parse the CQL request. If the parser failed, it sets the error message in response.
   parse_begin_ = MonoTime::Now(MonoTime::FINE);
-  if (!CQLRequest::ParseRequest(call_->serialized_request(), &request, &response)) {
+  const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
+  const auto compression_scheme = context.compression_scheme();
+  if (!CQLRequest::ParseRequest(call_->serialized_request(), compression_scheme,
+                                &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
     SendResponse(*response);
     service_impl_->ReturnProcessor(pos_);
@@ -150,8 +164,10 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   // Serialize the response to return to the CQL client. In case of error, an error response
   // should still be present.
   MonoTime response_begin = MonoTime::Now(MonoTime::FINE);
+  const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
+  const auto compression_scheme = context.compression_scheme();
   faststring msg;
-  response.Serialize(&msg);
+  response.Serialize(compression_scheme, &msg);
   call_->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
 
   MonoTime response_done = MonoTime::Now(MonoTime::FINE);
@@ -175,22 +191,74 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
 
 CQLResponse* CQLProcessor::ProcessRequest(const CQLRequest& req) {
   switch (req.opcode()) {
+    case CQLMessage::Opcode::OPTIONS:
+      return ProcessRequest(static_cast<const OptionsRequest&>(req));
+    case CQLMessage::Opcode::STARTUP:
+      return ProcessRequest(static_cast<const StartupRequest&>(req));
     case CQLMessage::Opcode::PREPARE:
-      return ProcessPrepare(static_cast<const PrepareRequest&>(req));
+      return ProcessRequest(static_cast<const PrepareRequest&>(req));
     case CQLMessage::Opcode::EXECUTE:
-      return ProcessExecute(static_cast<const ExecuteRequest&>(req));
+      return ProcessRequest(static_cast<const ExecuteRequest&>(req));
     case CQLMessage::Opcode::QUERY:
-      return ProcessQuery(static_cast<const QueryRequest&>(req));
+      return ProcessRequest(static_cast<const QueryRequest&>(req));
     case CQLMessage::Opcode::BATCH:
-      return ProcessBatch(static_cast<const BatchRequest&>(req));
+      return ProcessRequest(static_cast<const BatchRequest&>(req));
     case CQLMessage::Opcode::AUTH_RESPONSE:
-      return ProcessAuthResponse(static_cast<const AuthResponseRequest&>(req));
-    default:
-      return req.Execute();
+      return ProcessRequest(static_cast<const AuthResponseRequest&>(req));
+    case CQLMessage::Opcode::REGISTER:
+      return ProcessRequest(static_cast<const RegisterRequest&>(req));
+
+    case CQLMessage::Opcode::ERROR: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::READY: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::AUTHENTICATE: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::SUPPORTED: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::RESULT: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::EVENT: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::AUTH_CHALLENGE: FALLTHROUGH_INTENDED;
+    case CQLMessage::Opcode::AUTH_SUCCESS:
+      break;
+  }
+
+  LOG(FATAL) << "Invalid CQL request: opcode = " << static_cast<int>(req.opcode());
+  return nullptr;
+}
+
+CQLResponse* CQLProcessor::ProcessRequest(const OptionsRequest& req) {
+  return new SupportedResponse(req, &kSupportedOptions);
+}
+
+CQLResponse* CQLProcessor::ProcessRequest(const StartupRequest& req) {
+  for (const auto& option : req.options()) {
+    const auto& name = option.first;
+    const auto& value = option.second;
+    const auto it = kSupportedOptions.find(name);
+    if (it == kSupportedOptions.end() ||
+        std::find(it->second.begin(), it->second.end(), value) == it->second.end()) {
+      return new ErrorResponse(
+          req, ErrorResponse::Code::PROTOCOL_ERROR,
+          Substitute("Unsupported option $0 = $1", name, value));
+    }
+    if (name == CQLMessage::kCompressionOption) {
+      auto& context = static_cast<CQLConnectionContext&>(call_->connection()->context());
+      if (value == CQLMessage::kLZ4Compression) {
+        context.set_compression_scheme(CQLMessage::CompressionScheme::LZ4);
+      } else if (value == CQLMessage::kSnappyCompression) {
+        context.set_compression_scheme(CQLMessage::CompressionScheme::SNAPPY);
+      } else {
+        return new ErrorResponse(
+            req, ErrorResponse::Code::PROTOCOL_ERROR,
+            Substitute("Unsupported compression scheme $0", value));
+      }
+    }
+  }
+  if (FLAGS_use_cassandra_authentication) {
+    return new AuthenticateResponse(req, kCassandraPasswordAuthenticator);
+  } else {
+    return new ReadyResponse(req);
   }
 }
 
-CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
+CQLResponse* CQLProcessor::ProcessRequest(const PrepareRequest& req) {
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
@@ -209,12 +277,11 @@ CQLResponse* CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
     return ProcessResult(s);
   }
 
-  return (result != nullptr) ?
-      new PreparedResultResponse(req, query_id, *result) :
-      new PreparedResultResponse(req, query_id);
+  return (result != nullptr) ? new PreparedResultResponse(req, query_id, *result)
+                             : new PreparedResultResponse(req, query_id);
 }
 
-CQLResponse* CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
+CQLResponse* CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   const shared_ptr<const CQLStatement> stmt = GetPreparedStatement(req.query_id());
   if (stmt == nullptr) {
@@ -229,13 +296,13 @@ CQLResponse* CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
   return nullptr;
 }
 
-CQLResponse* CQLProcessor::ProcessQuery(const QueryRequest& req) {
+CQLResponse* CQLProcessor::ProcessRequest(const QueryRequest& req) {
   VLOG(1) << "QUERY " << req.query();
   RunAsync(req.query(), req.params(), statement_executed_cb_);
   return nullptr;
 }
 
-CQLResponse* CQLProcessor::ProcessBatch(const BatchRequest& req) {
+CQLResponse* CQLProcessor::ProcessRequest(const BatchRequest& req) {
   VLOG(1) << "BATCH " << req.queries().size();
 
   int retry_count = retry_count_; // Save current retry count.
@@ -282,7 +349,7 @@ CQLResponse* CQLProcessor::ProcessBatch(const BatchRequest& req) {
   return nullptr;
 }
 
-CQLResponse* CQLProcessor::ProcessAuthResponse(const AuthResponseRequest& req) {
+CQLResponse* CQLProcessor::ProcessRequest(const AuthResponseRequest& req) {
   const auto& params = req.params();
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this).ok()) {
@@ -297,6 +364,10 @@ CQLResponse* CQLProcessor::ProcessAuthResponse(const AuthResponseRequest& req) {
         "Could not execute prepared statement for querying roles for user " + params.username);
   }
   return nullptr;
+}
+
+CQLResponse* CQLProcessor::ProcessRequest(const RegisterRequest& req) {
+  return new ReadyResponse(req);
 }
 
 shared_ptr<const CQLStatement> CQLProcessor::GetPreparedStatement(const CQLMessage::QueryId& id) {

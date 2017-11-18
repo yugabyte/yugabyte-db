@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#include <lz4.h>
+#include <snappy.h>
+
 #include <regex>
 
 #include "yb/client/client.h"
@@ -24,9 +27,6 @@
 namespace yb {
 namespace cqlserver {
 
-constexpr const char* const kCassandraPasswordAuthenticator =
-    "org.apache.cassandra.auth.PasswordAuthenticator";
-
 using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
@@ -35,8 +35,11 @@ using std::vector;
 using std::unordered_map;
 using strings::Substitute;
 using util::to_char_ptr;
-
-DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
+using util::to_uchar_ptr;
+using snappy::GetUncompressedLength;
+using snappy::MaxCompressedLength;
+using snappy::RawUncompress;
+using snappy::RawCompress;
 
 #define RETURN_NOT_ENOUGH(sz)                               \
   do {                                                      \
@@ -44,6 +47,13 @@ DEFINE_bool(use_cassandra_authentication, false, "If to require authentication o
       return STATUS(NetworkError, "Truncated CQL message"); \
     }                                                       \
   } while (0)
+
+constexpr char CQLMessage::kCQLVersionOption[];
+constexpr char CQLMessage::kCompressionOption[];
+constexpr char CQLMessage::kNoCompactOption[];
+
+constexpr char CQLMessage::kLZ4Compression[];
+constexpr char CQLMessage::kSnappyCompression[];
 
 Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
                                                     const int64_t pos,
@@ -168,7 +178,8 @@ Type LoadInt(const Slice& slice, size_t offset) {
 
 // ------------------------------------ CQL request -----------------------------------
 bool CQLRequest::ParseRequest(
-  const Slice& mesg, unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
+  const Slice& mesg, const CompressionScheme compression_scheme,
+  unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
 
   *request = nullptr;
   *error_response = nullptr;
@@ -211,9 +222,72 @@ bool CQLRequest::ParseRequest(
     return false;
   }
 
-  const Slice body =
-      (mesg.size() == kMessageHeaderLength) ?
-      Slice() : Slice(&mesg[kMessageHeaderLength], mesg.size() - kMessageHeaderLength);
+  size_t body_size = mesg.size() - kMessageHeaderLength;
+  const uint8_t* body_data = (body_size > 0) ? &mesg[kMessageHeaderLength] : to_uchar_ptr("");
+  unique_ptr<uint8_t[]> buffer;
+
+  // If the message body is compressed, uncompress it.
+  if (body_size > 0 && (header.flags & kCompressionFlag)) {
+    if (header.opcode == Opcode::STARTUP) {
+      error_response->reset(
+          new ErrorResponse(
+              header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+              "STARTUP request should not be compressed"));
+      return false;
+    }
+    switch (compression_scheme) {
+      case CompressionScheme::LZ4: {
+        if (body_size < sizeof(uint32_t)) {
+          error_response->reset(
+              new ErrorResponse(
+                  header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+                  "Insufficient compressed data"));
+          return false;
+        }
+
+        const uint32_t uncomp_size = static_cast<uint32_t>(NetworkByteOrder::Load32(body_data));
+        buffer = std::make_unique<uint8_t[]>(uncomp_size);
+        body_data += sizeof(uncomp_size);
+        body_size -= sizeof(uncomp_size);
+        const int size = LZ4_decompress_safe(to_char_ptr(body_data), to_char_ptr(buffer.get()),
+                                             body_size, uncomp_size);
+        if (size < 0 || size != uncomp_size) {
+          error_response->reset(
+              new ErrorResponse(
+                  header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+                  "Error occurred when uncompressing CQL message"));
+          return false;
+        }
+        body_data = buffer.get();
+        body_size = uncomp_size;
+        break;
+      }
+      case CompressionScheme::SNAPPY: {
+        size_t uncomp_size = 0;
+        if (GetUncompressedLength(to_char_ptr(body_data), body_size, &uncomp_size)) {
+          buffer = std::make_unique<uint8_t[]>(uncomp_size);
+          if (RawUncompress(to_char_ptr(body_data), body_size, to_char_ptr(buffer.get()))) {
+            body_data = buffer.get();
+            body_size = uncomp_size;
+            break;
+          }
+        }
+        error_response->reset(
+            new ErrorResponse(
+                header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+                "Error occurred when uncompressing CQL message"));
+        break;
+      }
+      case CompressionScheme::NONE:
+        error_response->reset(
+            new ErrorResponse(
+                header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+                "No compression scheme specified"));
+        return false;
+    }
+  }
+
+  const Slice body = (body_size == 0) ? Slice() : Slice(body_data, body_size);
 
   // Construct the skeleton request by the opcode
   switch (header.opcode) {
@@ -267,18 +341,18 @@ bool CQLRequest::ParseRequest(
   }
 
   // Parse the request body
-  const Status status = request->get()->ParseBody();
+  const Status status = (*request)->ParseBody();
   if (!status.ok()) {
     error_response->reset(
         new ErrorResponse(
-            *request->get(), ErrorResponse::Code::PROTOCOL_ERROR, status.message().ToString()));
-  } else if (!request->get()->body_.empty()) {
+            *(*request), ErrorResponse::Code::PROTOCOL_ERROR, status.message().ToString()));
+  } else if (!(*request)->body_.empty()) {
     // Flag error when there are bytes remaining after we have parsed the whole request body
     // according to the protocol. Either the request's length field from the client is
     // wrong. Or we could have a bug in our parser.
     error_response->reset(
         new ErrorResponse(
-            *request->get(), ErrorResponse::Code::PROTOCOL_ERROR, "Request length too long"));
+            *(*request), ErrorResponse::Code::PROTOCOL_ERROR, "Request length too long"));
   }
 
   // If there is any error, free the partially parsed request and return.
@@ -286,6 +360,9 @@ bool CQLRequest::ParseRequest(
     *request = nullptr;
     return false;
   }
+
+  // Clear and release the body after parsing.
+  (*request)->body_.clear();
 
   return true;
 }
@@ -474,24 +551,6 @@ Status StartupRequest::ParseBody() {
   return ParseStringMap(&options_);
 }
 
-CQLResponse* StartupRequest::Execute() const {
-  for (const auto& option : options_) {
-    const auto& name = option.first;
-    const auto& value = option.second;
-    const auto it = SupportedResponse::options_.find(name);
-    if (it == SupportedResponse::options_.end() ||
-        std::find(it->second.begin(), it->second.end(), value) == it->second.end()) {
-      return new ErrorResponse(
-          *this, ErrorResponse::Code::PROTOCOL_ERROR, "Unsupported option " + name);
-    }
-  }
-  if (FLAGS_use_cassandra_authentication) {
-    return new AuthenticateResponse(*this, kCassandraPasswordAuthenticator);
-  } else {
-    return new ReadyResponse(*this);
-  }
-}
-
 //----------------------------------------------------------------------------------------
 AuthResponseRequest::AuthResponseRequest(const Header& header, const Slice& body)
     : CQLRequest(header, body) {
@@ -526,11 +585,6 @@ Status AuthResponseRequest::ParseBody() {
   return STATUS(InvalidArgument, error_msg);
 }
 
-CQLResponse* AuthResponseRequest::Execute() const {
-  LOG(FATAL) << "Cannot execute AuthResponseRequest";
-  return nullptr;
-}
-
 CHECKED_STATUS AuthResponseRequest::AuthQueryParameters::GetBindVariable(
     const std::string& name,
     int64_t pos,
@@ -556,10 +610,6 @@ Status OptionsRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* OptionsRequest::Execute() const {
-  return new SupportedResponse(*this);
-}
-
 //----------------------------------------------------------------------------------------
 QueryRequest::QueryRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
 }
@@ -571,11 +621,6 @@ Status QueryRequest::ParseBody() {
   RETURN_NOT_OK(ParseLongString(&query_));
   RETURN_NOT_OK(ParseQueryParameters(&params_));
   return Status::OK();
-}
-
-CQLResponse* QueryRequest::Execute() const {
-  LOG(FATAL) << "Cannot execute QueryRequest";
-  return nullptr;
 }
 
 //----------------------------------------------------------------------------------------
@@ -590,11 +635,6 @@ Status PrepareRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* PrepareRequest::Execute() const {
-  LOG(FATAL) << "Cannot execute PrepareRequest";
-  return nullptr;
-}
-
 //----------------------------------------------------------------------------------------
 ExecuteRequest::ExecuteRequest(const Header& header, const Slice& body) : CQLRequest(header, body) {
 }
@@ -606,11 +646,6 @@ Status ExecuteRequest::ParseBody() {
   RETURN_NOT_OK(ParseShortBytes(&query_id_));
   RETURN_NOT_OK(ParseQueryParameters(&params_));
   return Status::OK();
-}
-
-CQLResponse* ExecuteRequest::Execute() const {
-  LOG(FATAL) << "Cannot execute ExecuteRequest";
-  return nullptr;
 }
 
 //----------------------------------------------------------------------------------------
@@ -676,11 +711,6 @@ Status BatchRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* BatchRequest::Execute() const {
-  LOG(FATAL) << "Cannot execute BatchRequest";
-  return nullptr;
-}
-
 //----------------------------------------------------------------------------------------
 RegisterRequest::RegisterRequest(const Header& header, const Slice& body)
     : CQLRequest(header, body) {
@@ -692,59 +722,6 @@ RegisterRequest::~RegisterRequest() {
 Status RegisterRequest::ParseBody() {
   return ParseStringList(&event_types_);
 }
-
-CQLResponse* RegisterRequest::Execute() const {
-  // TODO(Robert): implement real event responses
-  return new ReadyResponse(*this);
-}
-
-// ------------------------------------ CQL response -----------------------------------
-CQLResponse::CQLResponse(const CQLRequest& request, const Opcode opcode)
-    : CQLMessage(
-          Header(
-              request.version() | kResponseVersion, request.flags(), request.stream_id(),
-              opcode)) {
-}
-
-CQLResponse::CQLResponse(const StreamId stream_id, const Opcode opcode)
-    : CQLMessage(Header(kCurrentVersion | kResponseVersion, 0, stream_id, opcode)) {
-}
-
-CQLResponse::~CQLResponse() {
-}
-
-// Short-hand macros for serializing fields from the message header
-#define SERIALIZE_BYTE(buf, pos, value) \
-  Store8(&(buf)[pos], static_cast<uint8_t>(value))
-#define SERIALIZE_SHORT(buf, pos, value) \
-  NetworkByteOrder::Store16(&(buf)[pos], static_cast<uint16_t>(value))
-#define SERIALIZE_INT(buf, pos, value) \
-  NetworkByteOrder::Store32(&(buf)[pos], static_cast<int32_t>(value))
-#define SERIALIZE_LONG(buf, pos, value) \
-  NetworkByteOrder::Store64(&(buf)[pos], static_cast<int64_t>(value))
-
-void CQLResponse::Serialize(faststring* mesg) const {
-  const size_t start_pos = mesg->size(); // save the start position
-  SerializeHeader(mesg);
-  SerializeBody(mesg);
-  SERIALIZE_INT(
-      mesg->data(), start_pos + kHeaderPosLength, mesg->size() - start_pos - kMessageHeaderLength);
-}
-
-void CQLResponse::SerializeHeader(faststring* mesg) const {
-  uint8_t buffer[kMessageHeaderLength];
-  SERIALIZE_BYTE(buffer, kHeaderPosVersion, version());
-  SERIALIZE_BYTE(buffer, kHeaderPosFlags, flags());
-  SERIALIZE_SHORT(buffer, kHeaderPosStreamId, stream_id());
-  SERIALIZE_INT(buffer, kHeaderPosLength, 0);
-  SERIALIZE_BYTE(buffer, kHeaderPosOpcode, opcode());
-  mesg->append(buffer, sizeof(buffer));
-}
-
-#undef SERIALIZE_BYTE
-#undef SERIALIZE_SHORT
-#undef SERIALIZE_INT
-#undef SERIALIZE_LONG
 
 // --------------------------- Serialization utility functions -------------------------------
 namespace {
@@ -910,6 +887,85 @@ void SerializeValue(const CQLMessage::Value& value, faststring* mesg) {
 
 } // namespace
 
+// ------------------------------------ CQL response -----------------------------------
+CQLResponse::CQLResponse(const CQLRequest& request, const Opcode opcode)
+    : CQLMessage(Header(request.version() | kResponseVersion, 0, request.stream_id(), opcode)) {
+}
+
+CQLResponse::CQLResponse(const StreamId stream_id, const Opcode opcode)
+    : CQLMessage(Header(kCurrentVersion | kResponseVersion, 0, stream_id, opcode)) {
+}
+
+CQLResponse::~CQLResponse() {
+}
+
+// Short-hand macros for serializing fields from the message header
+#define SERIALIZE_BYTE(buf, pos, value) \
+  Store8(&(buf)[pos], static_cast<uint8_t>(value))
+#define SERIALIZE_SHORT(buf, pos, value) \
+  NetworkByteOrder::Store16(&(buf)[pos], static_cast<uint16_t>(value))
+#define SERIALIZE_INT(buf, pos, value) \
+  NetworkByteOrder::Store32(&(buf)[pos], static_cast<int32_t>(value))
+#define SERIALIZE_LONG(buf, pos, value) \
+  NetworkByteOrder::Store64(&(buf)[pos], static_cast<int64_t>(value))
+
+void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststring* mesg) const {
+  const size_t start_pos = mesg->size(); // save the start position
+  const bool compress = (compression_scheme != CQLMessage::CompressionScheme::NONE);
+  SerializeHeader(compress, mesg);
+  if (compress) {
+    faststring body;
+    SerializeBody(&body);
+    switch (compression_scheme) {
+      case CQLMessage::CompressionScheme::LZ4: {
+        SerializeInt(static_cast<int32_t>(body.size()), mesg);
+        const size_t curr_size = mesg->size();
+        const int max_comp_size = LZ4_compressBound(body.size());
+        mesg->resize(curr_size + max_comp_size);
+        const int comp_size = LZ4_compress_default(to_char_ptr(body.data()),
+                                                   to_char_ptr(mesg->data() + curr_size),
+                                                   body.size(),
+                                                   max_comp_size);
+        CHECK_NE(comp_size, 0) << "LZ4 compression failed";
+        mesg->resize(curr_size + comp_size);
+        break;
+      }
+      case CQLMessage::CompressionScheme::SNAPPY: {
+        const size_t curr_size = mesg->size();
+        const size_t max_comp_size = MaxCompressedLength(body.size());
+        size_t comp_size = 0;
+        mesg->resize(curr_size + max_comp_size);
+        RawCompress(to_char_ptr(body.data()), body.size(),
+                    to_char_ptr(mesg->data() + curr_size), &comp_size);
+        mesg->resize(curr_size + comp_size);
+        break;
+      }
+      case CQLMessage::CompressionScheme::NONE:
+        LOG(FATAL) << "No compression scheme";
+        break;
+    }
+  } else {
+    SerializeBody(mesg);
+  }
+  SERIALIZE_INT(
+      mesg->data(), start_pos + kHeaderPosLength, mesg->size() - start_pos - kMessageHeaderLength);
+}
+
+void CQLResponse::SerializeHeader(const bool compress, faststring* mesg) const {
+  uint8_t buffer[kMessageHeaderLength];
+  SERIALIZE_BYTE(buffer, kHeaderPosVersion, version());
+  SERIALIZE_BYTE(buffer, kHeaderPosFlags, flags() | (compress ? kCompressionFlag : 0));
+  SERIALIZE_SHORT(buffer, kHeaderPosStreamId, stream_id());
+  SERIALIZE_INT(buffer, kHeaderPosLength, 0);
+  SERIALIZE_BYTE(buffer, kHeaderPosOpcode, opcode());
+  mesg->append(buffer, sizeof(buffer));
+}
+
+#undef SERIALIZE_BYTE
+#undef SERIALIZE_SHORT
+#undef SERIALIZE_INT
+#undef SERIALIZE_LONG
+
 // ------------------------------ Individual CQL responses -----------------------------------
 ErrorResponse::ErrorResponse(const CQLRequest& request, const Code code, const string& message)
     : CQLResponse(request, Opcode::ERROR), code_(code), message_(message) {
@@ -972,20 +1028,16 @@ void AuthenticateResponse::SerializeBody(faststring* mesg) const {
 }
 
 //----------------------------------------------------------------------------------------
-const unordered_map<string, vector<string>> SupportedResponse::options_ = {
-  {"COMPRESSION", { } },
-  {"CQL_VERSION", {"3.0.0" /* minimum */, "3.4.2" /* current */} }
-};
-
-SupportedResponse::SupportedResponse(const CQLRequest& request)
-    : CQLResponse(request, Opcode::SUPPORTED) {
+SupportedResponse::SupportedResponse(const CQLRequest& request,
+                                     const unordered_map<string, vector<string>>* options)
+    : CQLResponse(request, Opcode::SUPPORTED), options_(options) {
 }
 
 SupportedResponse::~SupportedResponse() {
 }
 
 void SupportedResponse::SerializeBody(faststring* mesg) const {
-  SerializeStringMultiMap(options_, mesg);
+  SerializeStringMultiMap(*options_, mesg);
 }
 
 //----------------------------------------------------------------------------------------
@@ -1416,13 +1468,13 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) const {
 RowsResultResponse::RowsResultResponse(
     const QueryRequest& request, const ql::RowsResult::SharedPtr& result)
     : ResultResponse(request, Kind::ROWS), result_(result),
-      skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
+      skip_metadata_(request.params().flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::RowsResultResponse(
     const ExecuteRequest& request, const ql::RowsResult::SharedPtr& result)
     : ResultResponse(request, Kind::ROWS), result_(result),
-      skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
+      skip_metadata_(request.params().flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::~RowsResultResponse() {
@@ -1518,12 +1570,13 @@ SchemaChangeResultResponse::SchemaChangeResultResponse(
 SchemaChangeResultResponse::~SchemaChangeResultResponse() {
 }
 
-void SchemaChangeResultResponse::Serialize(faststring* mesg) const {
-  ResultResponse::Serialize(mesg);
+void SchemaChangeResultResponse::Serialize(const CompressionScheme compression_scheme,
+                                           faststring* mesg) const {
+  ResultResponse::Serialize(compression_scheme, mesg);
   // TODO: Replace this hack that piggybacks a SCHEMA_CHANGE event along a SCHEMA_CHANGE result
   // response with a formal event notification mechanism.
   SchemaChangeEventResponse event(change_type_, target_, keyspace_, object_, argument_types_);
-  event.Serialize(mesg);
+  event.Serialize(compression_scheme, mesg);
 }
 
 void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) const {
@@ -1656,7 +1709,7 @@ CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
     : event_response_(std::move(event_response)) {
   CHECK_NOTNULL(event_response_.get());
   faststring temp;
-  event_response_->Serialize(&temp);
+  event_response_->Serialize(CQLMessage::CompressionScheme::NONE, &temp);
   serialized_response_ = RefCntBuffer(temp);
 }
 

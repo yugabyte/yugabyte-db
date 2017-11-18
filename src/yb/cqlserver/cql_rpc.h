@@ -37,6 +37,14 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
   void DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
               rpc::RpcConnectionPB* resp) override;
 
+  // Accessor methods for CQL message compression scheme to use.
+  CQLMessage::CompressionScheme compression_scheme() const {
+    return compression_scheme_;
+  }
+  void set_compression_scheme(CQLMessage::CompressionScheme compression_scheme) {
+    compression_scheme_ = compression_scheme;
+  }
+
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
 
@@ -53,12 +61,10 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
   CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection, Slice slice);
 
   // SQL session of this CQL client connection.
-  // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
-  // reference to the QLSession here, the whole QLSession definition is contained in ql_session.h
-  // and #include'd in connection.h/.cc. When QLSession gets more complicated (say when we support
-  // Cassandra ROLE), consider adding a CreateNewConnection method in rpc::ServiceIf so that
-  // CQLConnection can be created and returned from CQLServiceImpl.CreateNewConnection().
   ql::QLSession::SharedPtr ql_session_;
+
+  // CQL message compression scheme to use.
+  CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::NONE;
 };
 
 class CQLInboundCall : public rpc::InboundCall {

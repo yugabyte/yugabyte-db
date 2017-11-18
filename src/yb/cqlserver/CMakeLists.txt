@@ -56,7 +56,9 @@ target_link_libraries(yb-cql
   yb_client
   cql_service_proto
   server_common
-  server_process)
+  server_process
+  lz4
+  snappy)
 
 #########################################
 # yb-cqlserver

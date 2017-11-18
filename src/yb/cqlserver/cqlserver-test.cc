@@ -162,6 +162,15 @@ TEST_F(TestCQLService, StartupRequest) {
       BINARY_STRING("\x84\x00\x00\x00\x00" "\x00\x00\x00\x4f"
                     "\x00\x00\x00\x0a" "\x00\x49"
                     "Protocol version 5 not supported. Supported versions are between 3 and 4."));
+
+  // Send STARTUP request with compression
+  SendRequestAndExpectResponse(
+      BINARY_STRING("\x04\x01\x00\x00\x01" "\x00\x00\x00\x16"
+                    "\x00\x01" "\x00\x0b" "CQL_VERSION"
+                               "\x00\x05" "3.0.0"),
+      BINARY_STRING("\x84\x00\x00\x00\x00" "\x00\x00\x00\x2e"
+                    "\x00\x00\x00\x0a" "\x00\x28"
+                    "STARTUP request should not be compressed"));
 }
 
 TEST_F(TestCQLService, OptionsRequest) {
@@ -169,11 +178,11 @@ TEST_F(TestCQLService, OptionsRequest) {
   // Send OPTIONS request using version V4
   SendRequestAndExpectResponse(
       BINARY_STRING("\x04\x00\x00\x00\x05" "\x00\x00\x00\x00"),
-      BINARY_STRING("\x84\x00\x00\x00\x06" "\x00\x00\x00\x2e"
-                    "\x00\x02" "\x00\x0b" "CQL_VERSION"
-                               "\x00\x02" "\x00\x05" "3.0.0" "\x00\x05" "3.4.2"
-                               "\x00\x0b" "COMPRESSION"
-                               "\x00\x00"));
+      BINARY_STRING("\x84\x00\x00\x00\x06" "\x00\x00\x00\x3b"
+                    "\x00\x02" "\x00\x0b" "COMPRESSION"
+                               "\x00\x02" "\x00\x03" "lz4" "\x00\x06" "snappy"
+                               "\x00\x0b" "CQL_VERSION"
+                               "\x00\x02" "\x00\x05" "3.0.0" "\x00\x05" "3.4.2"));
 }
 
 TEST_F(TestCQLService, InvalidRequest) {

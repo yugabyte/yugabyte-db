@@ -109,6 +109,20 @@ class CQLMessage {
        : version(version), flags(0), stream_id(stream_id), opcode(opcode) { }
   };
 
+  // STARTUP options.
+  static constexpr char kCQLVersionOption[] = "CQL_VERSION";
+  static constexpr char kCompressionOption[] = "COMPRESSION";
+  static constexpr char kNoCompactOption[] = "NO_COMPACT";
+
+  // Message body compression schemes.
+  enum class CompressionScheme {
+    NONE = 0,
+    LZ4,
+    SNAPPY
+  };
+  static constexpr char kLZ4Compression[] = "lz4";
+  static constexpr char kSnappyCompression[] = "snappy";
+
   // Basic datatype mapping for CQL message body:
   //   Int        -> int32_t
   //   Long       -> int64_t
@@ -214,16 +228,14 @@ class CQLRequest : public CQLMessage {
   // Return true iff a request is parsed successfully without error. If an error occurs, an error
   // response will be returned instead and it should be sent back to the CQL client.
   static bool ParseRequest(
-      const Slice& mesg, std::unique_ptr<CQLRequest>* request,
-      std::unique_ptr<CQLResponse>* error_response);
+      const Slice& mesg, CompressionScheme compression_scheme,
+      std::unique_ptr<CQLRequest>* request, std::unique_ptr<CQLResponse>* error_response);
 
   static StreamId ParseStreamId(const Slice& mesg) {
-    return static_cast<StreamId>(NetworkByteOrder::Load16(mesg.data() + kHeaderPosStreamId));
+    return static_cast<StreamId>(NetworkByteOrder::Load16(&mesg[kHeaderPosStreamId]));
   }
 
   virtual ~CQLRequest();
-
-  virtual CQLResponse* Execute() const = 0;
 
  protected:
   CQLRequest(const Header& header, const Slice& body);
@@ -307,7 +319,8 @@ class StartupRequest : public CQLRequest {
  public:
   StartupRequest(const Header& header, const Slice& body);
   virtual ~StartupRequest() override;
-  virtual CQLResponse* Execute() const override;
+
+  const std::unordered_map<std::string, std::string>& options() const { return options_; }
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -333,7 +346,6 @@ class AuthResponseRequest : public CQLRequest {
 
   AuthResponseRequest(const Header& header, const Slice& body);
   virtual ~AuthResponseRequest() override;
-  virtual CQLResponse* Execute() const override;
 
   const std::string& token() const { return token_; }
   const AuthQueryParameters& params() const { return params_; }
@@ -351,7 +363,6 @@ class OptionsRequest : public CQLRequest {
  public:
   OptionsRequest(const Header& header, const Slice& body);
   virtual ~OptionsRequest() override;
-  virtual CQLResponse* Execute() const override;
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -362,7 +373,6 @@ class QueryRequest : public CQLRequest {
  public:
   QueryRequest(const Header& header, const Slice& body);
   virtual ~QueryRequest() override;
-  virtual CQLResponse* Execute() const override;
 
   const std::string& query() const { return query_; }
   const QueryParameters& params() const { return params_; }
@@ -371,8 +381,6 @@ class QueryRequest : public CQLRequest {
   virtual CHECKED_STATUS ParseBody() override;
 
  private:
-  friend class RowsResultResponse;
-
   std::string query_;
   QueryParameters params_;
 };
@@ -382,7 +390,6 @@ class PrepareRequest : public CQLRequest {
  public:
   PrepareRequest(const Header& header, const Slice& body);
   virtual ~PrepareRequest() override;
-  virtual CQLResponse* Execute() const override;
 
   const std::string& query() const { return query_; }
 
@@ -398,7 +405,6 @@ class ExecuteRequest : public CQLRequest {
  public:
   ExecuteRequest(const Header& header, const Slice& body);
   virtual ~ExecuteRequest() override;
-  virtual CQLResponse* Execute() const override;
 
   const QueryId& query_id() const { return query_id_; }
   const QueryParameters& params() const { return params_; }
@@ -407,8 +413,6 @@ class ExecuteRequest : public CQLRequest {
   virtual CHECKED_STATUS ParseBody() override;
 
  private:
-  friend class RowsResultResponse;
-
   QueryId query_id_;
   QueryParameters params_;
 };
@@ -430,7 +434,6 @@ class BatchRequest : public CQLRequest {
 
   BatchRequest(const Header& header, const Slice& body);
   virtual ~BatchRequest() override;
-  virtual CQLResponse* Execute() const override;
 
   const std::vector<Query>& queries() const { return queries_; }
 
@@ -448,7 +451,6 @@ class RegisterRequest : public CQLRequest {
  public:
   RegisterRequest(const Header& header, const Slice& body);
   virtual ~RegisterRequest() override;
-  virtual CQLResponse* Execute() const override;
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -460,12 +462,13 @@ class RegisterRequest : public CQLRequest {
 // ------------------------------------ CQL response -----------------------------------
 class CQLResponse : public CQLMessage {
  public:
-  virtual void Serialize(faststring* mesg) const;
   virtual ~CQLResponse();
+  virtual void Serialize(CompressionScheme compression_scheme, faststring* mesg) const;
+
  protected:
   CQLResponse(const CQLRequest& request, Opcode opcode);
   CQLResponse(StreamId stream_id, Opcode opcode);
-  void SerializeHeader(faststring* mesg) const;
+  void SerializeHeader(bool compress, faststring* mesg) const;
 
   // Function to serialize a response body that all CQLResponse subclasses need to implement
   virtual void SerializeBody(faststring* mesg) const = 0;
@@ -528,16 +531,11 @@ class UnpreparedErrorResponse : public ErrorResponse {
 //------------------------------------------------------------
 class ReadyResponse : public CQLResponse {
  public:
+  explicit ReadyResponse(const CQLRequest& request);
   virtual ~ReadyResponse() override;
 
  protected:
   virtual void SerializeBody(faststring* mesg) const override;
-
- private:
-  friend class StartupRequest;
-  friend class RegisterRequest;
-
-  explicit ReadyResponse(const CQLRequest& request);
 };
 
 //------------------------------------------------------------
@@ -556,18 +554,16 @@ class AuthenticateResponse : public CQLResponse {
 //------------------------------------------------------------
 class SupportedResponse : public CQLResponse {
  public:
+  explicit SupportedResponse(
+      const CQLRequest& request,
+      const std::unordered_map<std::string, std::vector<std::string>>* options);
   virtual ~SupportedResponse() override;
 
  protected:
   virtual void SerializeBody(faststring* mesg) const override;
 
  private:
-  friend class StartupRequest;
-  friend class OptionsRequest;
-
-  explicit SupportedResponse(const CQLRequest& request);
-
-  static const std::unordered_map<std::string, std::vector<std::string>> options_;
+  const std::unordered_map<std::string, std::vector<std::string>>* options_;
 };
 
 //------------------------------------------------------------
@@ -787,7 +783,7 @@ class SchemaChangeResultResponse : public ResultResponse {
   SchemaChangeResultResponse(const CQLRequest& request, const ql::SchemaChangeResult& result);
   virtual ~SchemaChangeResultResponse() override;
 
-  void Serialize(faststring* mesg) const override;
+  void Serialize(CompressionScheme compression_scheme, faststring* mesg) const override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) const override;

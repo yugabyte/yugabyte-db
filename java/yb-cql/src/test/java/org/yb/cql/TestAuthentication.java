@@ -13,6 +13,7 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.*;
+import com.datastax.driver.core.ProtocolOptions.Compression;
 
 import java.util.Arrays;
 
@@ -49,13 +50,34 @@ public class TestAuthentication extends BaseCQLTest {
     checkConnectivity(false, null, null, true);
   }
 
+  @Test(timeout = 100000)
+  public void testConnectWithDefaultUserPassAndCompression() throws Exception {
+    checkConnectivity(true, "cassandra", "cassandra", Compression.LZ4, false);
+    checkConnectivity(true, "cassandra", "cassandra", Compression.SNAPPY, false);
+    checkConnectivity(true, "fakeUser", "fakePass", Compression.LZ4, true);
+    checkConnectivity(true, "fakeUser", "fakePass", Compression.SNAPPY, true);
+    checkConnectivity(false, null, null, Compression.LZ4, true);
+    checkConnectivity(false, null, null, Compression.SNAPPY, true);
+  }
+
   public void checkConnectivity(
       boolean usingAuth, String optUser, String optPass, boolean expectFailure) {
+    checkConnectivity(usingAuth, optUser, optPass, Compression.NONE, expectFailure);
+  }
+
+  public void checkConnectivity(boolean usingAuth,
+                                String optUser,
+                                String optPass,
+                                Compression compression,
+                                boolean expectFailure) {
     // Use superclass definition to not have a default set of credentials.
     Cluster.Builder cb = super.getDefaultClusterBuilder();
     Cluster c = null;
     if (usingAuth) {
       cb = cb.withCredentials(optUser, optPass);
+    }
+    if (compression != Compression.NONE) {
+      cb = cb.withCompression(compression);
     }
     c = cb.build();
     try {

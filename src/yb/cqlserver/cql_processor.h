@@ -68,12 +68,15 @@ class CQLProcessor : public ql::QLProcessor {
   // Process a CQL request.
   CQLResponse* ProcessRequest(const CQLRequest& req);
 
-  // Process a PREPARE, EXECUTE, QUERY, BATCH or AUTH_RESPONSE request.
-  CQLResponse* ProcessPrepare(const PrepareRequest& req);
-  CQLResponse* ProcessExecute(const ExecuteRequest& req);
-  CQLResponse* ProcessQuery(const QueryRequest& req);
-  CQLResponse* ProcessBatch(const BatchRequest& req);
-  CQLResponse* ProcessAuthResponse(const AuthResponseRequest& req);
+  // Process specific CQL requests.
+  CQLResponse* ProcessRequest(const OptionsRequest& req);
+  CQLResponse* ProcessRequest(const StartupRequest& req);
+  CQLResponse* ProcessRequest(const PrepareRequest& req);
+  CQLResponse* ProcessRequest(const ExecuteRequest& req);
+  CQLResponse* ProcessRequest(const QueryRequest& req);
+  CQLResponse* ProcessRequest(const BatchRequest& req);
+  CQLResponse* ProcessRequest(const AuthResponseRequest& req);
+  CQLResponse* ProcessRequest(const RegisterRequest& req);
 
   // Get a prepared statement and adds it to the set of statements currently being executed.
   std::shared_ptr<const CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);

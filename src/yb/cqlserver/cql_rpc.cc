@@ -170,12 +170,14 @@ void CQLInboundCall::Serialize(std::deque<RefCntBuffer>* output) const {
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
                                     const Status& status) {
+  const auto& context = static_cast<const CQLConnectionContext&>(connection()->context());
+  const auto compression_scheme = context.compression_scheme();
   faststring msg;
   switch (error_code) {
     case rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY: {
       // Return OVERLOADED error to redirect CQL client to the next host.
       ErrorResponse(stream_id_, ErrorResponse::Code::OVERLOADED, "CQL service queue full")
-          .Serialize(&msg);
+          .Serialize(compression_scheme, &msg);
       break;
     }
     case rpc::ErrorStatusPB::ERROR_APPLICATION: FALLTHROUGH_INTENDED;
@@ -190,7 +192,7 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
       LOG(ERROR) << "Unexpected error status: "
                  << rpc::ErrorStatusPB::RpcErrorCodePB_Name(error_code);
       ErrorResponse(stream_id_, ErrorResponse::Code::SERVER_ERROR, "Server error")
-          .Serialize(&msg);
+          .Serialize(compression_scheme, &msg);
       break;
     }
   }
