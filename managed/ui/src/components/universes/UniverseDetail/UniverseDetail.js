@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Link, withRouter, browserHistory} from 'react-router';
-import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import { Grid, Row, Col, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { UniverseInfoPanel, ResourceStringPanel } from '../../panels';
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
@@ -85,26 +85,27 @@ class UniverseDetail extends Component {
     });
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-        <div className="universe-detail-flex-container">
-          <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
-          <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
+        <div className="content-panel content-panel-margin-top">
+          <div className="universe-detail-flex-container">
+            <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
+          </div>
+          <Row>
+            <Col lg={5}>
+              <UniverseInfoPanel universeInfo={currentUniverse.data}
+                                customerId={localStorage.getItem("customer_id")} />
+            </Col>
+            <Col lg={7}>
+              <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
+                                  universeInfo={currentUniverse.data} />
+            </Col>
+          </Row>
+          <Row>
+            <Col lg={12}>
+              <RegionMap universe={currentUniverse.data} type={"Universe"} />
+              <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
+            </Col>
+          </Row>
         </div>
-        <Row>
-          <Col lg={5}>
-            <UniverseInfoPanel universeInfo={currentUniverse.data}
-                               customerId={localStorage.getItem("customer_id")} />
-          </Col>
-          <Col lg={7}>
-            <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                                universeInfo={currentUniverse.data} />
-          </Col>
-        </Row>
-        <Row>
-          <Col lg={12}>
-            <RegionMap universe={currentUniverse.data} type={"Universe"} />
-            <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
-          </Col>
-        </Row>
       </Tab>,
       <Tab eventKey={"tables"} title="Tables" key="tables-tab"mountOnEnter={true} unmountOnExit={true}>
         <ListTablesContainer/>
@@ -139,9 +140,11 @@ class UniverseDetail extends Component {
     );
 
     return (
-      <Grid id="page-wrapper" fluid={true}>
+      <Grid id="page-wrapper" fluid={true} className="universe-details-new">
         <Row>
           <Col lg={10} sm={8} xs={6}>
+            {/* UNIVERSE NAME */}
+
             {currentBreadCrumb}
             <div className="universe-detail-status-container">
               <h2>
@@ -149,13 +152,19 @@ class UniverseDetail extends Component {
               </h2>
               <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} />
             </div>
+
+
           </Col>
           <Col lg={2} sm={4}  xs={6} className="page-action-buttons">
-            <ButtonGroup className="universe-detail-btn-group">
-              <YBButton btnClass=" btn btn-default bg-orange"
+
+
+            {/* UNIVERSE EDIT */}
+            <div className="universe-detail-btn-group">
+              <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
+              <YBButton btnClass=" btn btn-orange"
                         btnText="Edit" btnIcon="fa fa-database" onClick={this.onEditUniverseButtonClick} />
 
-              <DropdownButton className="btn btn-default" title="More" id="bg-nested-dropdown" pullRight>
+              <DropdownButton title="More" id="bg-nested-dropdown" pullRight>
                 <MenuItem eventKey="1" onClick={this.props.showSoftwareUpgradesModal}>
 
                   <YBLabelWithIcon icon="fa fa-refresh fa-fw">
@@ -173,7 +182,7 @@ class UniverseDetail extends Component {
                   </YBLabelWithIcon>
                 </MenuItem>
               </DropdownButton>
-            </ButtonGroup>
+            </div>
           </Col>
           <RollingUpgradeFormContainer modalVisible={showModal &&
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}

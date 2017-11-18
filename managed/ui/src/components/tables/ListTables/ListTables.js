@@ -17,7 +17,7 @@ class TableTitle extends Component {
   render() {
     const {onCreateButtonClick, numCassandraTables, numRedisTables} = this.props;
     return (
-      <div className="table-container-title">
+      <div className="table-container-title clearfix">
         <div className="pull-left">
           <h3>Tables</h3>
           <div className="table-type-count">
@@ -31,7 +31,7 @@ class TableTitle extends Component {
         </div>
         <div className="pull-right">
           <input type="text" className="table-search-bar" placeholder="Search Tables" />
-          <Button bsClass="btn bg-orange" onClick={onCreateButtonClick}>
+          <Button bsClass="btn btn-orange" onClick={onCreateButtonClick}>
             Create Table
           </Button>
         </div>
@@ -198,26 +198,28 @@ class ListTableGrid extends Component {
     }
     const sortedListItems = _.sortBy(listItems, "tableName");
     const tableListDisplay = (
-      <BootstrapTable data={sortedListItems} >
-        <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
-        <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
-                           columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}/>
-        <TableHeaderColumn dataField={"keySpace"}
-                           columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
-          Keyspace</TableHeaderColumn>
-        <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
-                           columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
-          Table Name</TableHeaderColumn>
-        <TableHeaderColumn dataField={"status"}
-                           columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
-          Status</TableHeaderColumn>
-        <TableHeaderColumn dataField={"read"}
-                           columnClassName={"yb-table-cell"} >
-          Read</TableHeaderColumn>
-        <TableHeaderColumn dataField={"write"}
-                           columnClassName={"yb-table-cell"} >
-          Write</TableHeaderColumn>
-      </BootstrapTable>
+      <div className="content-panel content-panel-margin-top">
+        <BootstrapTable data={sortedListItems} >
+          <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
+          <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
+                            columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}/>
+          <TableHeaderColumn dataField={"keySpace"}
+                            columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
+            Keyspace</TableHeaderColumn>
+          <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
+                            columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
+            Table Name</TableHeaderColumn>
+          <TableHeaderColumn dataField={"status"}
+                            columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
+            Status</TableHeaderColumn>
+          <TableHeaderColumn dataField={"read"}
+                            columnClassName={"yb-table-cell"} >
+            Read</TableHeaderColumn>
+          <TableHeaderColumn dataField={"write"}
+                            columnClassName={"yb-table-cell"} >
+            Write</TableHeaderColumn>
+        </BootstrapTable>
+      </div>
     );
 
     return <div>{tableListDisplay}</div>;

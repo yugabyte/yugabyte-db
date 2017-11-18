@@ -2,10 +2,8 @@
 
 import React, { Component } from 'react';
 import 'react-fa';
-import { MenuItem , NavDropdown, Navbar, Nav, NavItem } from 'react-bootstrap';
+import { MenuItem , NavDropdown, Navbar, Nav } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { HighlightedStatsPanelContainer } from '../../panels';
-import { TaskAlertsContainer } from '../../tasks';
 import YBLogo from '../YBLogo/YBLogo';
 import './stylesheets/TopNavBar.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
@@ -23,10 +21,7 @@ export default class TopNavBar extends Component {
   }
 
   render() {
-    const { customer: { yugawareVersion, currentCustomer } } = this.props;
-    const version = getPromiseState(yugawareVersion).isSuccess()
-        ? yugawareVersion.data.version
-        : null;
+    const { customer: { currentCustomer } } = this.props;
     const customerEmail = getPromiseState(currentCustomer).isSuccess()
         ? currentCustomer.data.email
         : "";
@@ -34,18 +29,15 @@ export default class TopNavBar extends Component {
     return (
       <Navbar fixedTop>
         <Navbar.Header>
-          <Link to="/" className="col-md-3 left_col text-center">
-            <YBLogo size="icon"/>
+          <Link to="/" className="left_col text-center">
+            <YBLogo />
           </Link>
         </Navbar.Header>
 
-        <HighlightedStatsPanelContainer />
+        <div className="flex-grow">
+        </div>
         
         <Nav pullRight>
-          { version && <NavItem eventKey={3} disabled>Version: {version}</NavItem> }
-          <NavDropdown eventKey="1" title={<i className="fa fa-list fa-fw"></i>} id="task-alert-dropdown">
-            <TaskAlertsContainer eventKey="1"/>
-          </NavDropdown>
           <NavDropdown  eventKey="2" title={<span><i className="fa fa-user fa-fw"></i> {customerEmail}</span>} id="profile-dropdown">
             <LinkContainer to="/profile">
               <MenuItem eventKey="2.1">

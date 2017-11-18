@@ -49,28 +49,8 @@
 .navbar {
   margin-bottom: 0
 }
-.navbar-header {
-  background: #34495E;
-}
 .main-container .navbar-right {
   margin-right: 0;
-}
-.top_nav .navbar-right {
-  margin: 0;
-  width: 70%;
-  float: right;
-}
-.top_nav .navbar-right li {
-  float: right;
-  position: static;
-}
-@media (min-width: 480px) {
-  .top_nav .navbar-right li {
-    position: relative;
-  }
-}
-.top_nav li a i {
-  font-size: 15px
 }
 .navbar-static-top {
   position: fixed;
@@ -89,6 +69,7 @@
     .dropdown-toggle i, .task-list-heading i {
       color: $YB_VIOLET_TEXT;
       vertical-align: middle;
+      margin-top: -2px;
     }
     &.open .dropdown-toggle {
       background-color: $YB_BACKGROUND !important;
@@ -151,16 +132,13 @@
 .navbar-nav>li>a, .navbar-brand, .navbar-nav>li>a {
   color: #fff !important;
 }
-.top_nav .nav>li>a:focus, .top_nav .nav>li>a:hover, .top_nav .nav .open>a, .top_nav .nav .open>a:focus, .top_nav .nav .open>a:hover {
-  background: #D9DEE4;
-}
 
 .navbar-brand, .navbar-nav>li>a {
   font-weight: 300;
   color: #ECF0F1 !important;
   margin-left: 0 !important;
-  height: 64px;
-  padding-top: 21px;
+  height: 60px;
+  padding-top: 20px;
   padding-bottom: 14px;
   &.dropdown-toggle {
     border-left: 1px solid $YB_GRAY_HOVER !important;
@@ -169,6 +147,20 @@
 
 .nav.navbar-nav>li>a {
   color: #515356 !important;
+  @media (max-width: 767px) {
+    span {
+      display: none;
+    }
+    span:first-child {
+      display: block;
+      overflow: hidden;
+      width: 26px;
+      height: 26px;
+      i {
+        margin: 0 20px 20px 0;
+      }
+    }
+  }
 }
 
 .navbar-nav .open .dropdown-menu {

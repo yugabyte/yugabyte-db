@@ -31,7 +31,7 @@ export default class SideNavBar extends Component {
   render() {
     return (
       <div className="side-nav-container">
-        <div className="col-md-3 left_col" >
+        <div className="left_col" >
           <div className="left_col scroll-view">
             <div id="sidebar-menu" className="main-menu-side hidden-print main-menu">
               <div className="menu_section">

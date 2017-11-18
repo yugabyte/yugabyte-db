@@ -139,19 +139,21 @@ export default class NodeDetails extends Component {
     return (
       <YBPanelItem name="Nodes">
         { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} providerUUID={currentUniverse.data.provider.uuid} />}
-        <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
-          <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
-          <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
-          <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
-            Master
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="isTServer" dataFormat={ formatIpPort } formatExtraData="tserver" >
-            TServer
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
-          <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
-          <TableHeaderColumn dataField="nodeAction" dataFormat={getNodeAction}>Action</TableHeaderColumn>
-        </BootstrapTable>
+        <div className="content-panel content-panel-margin-top">
+          <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
+            <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
+            <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
+            <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
+              Master
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="isTServer" dataFormat={ formatIpPort } formatExtraData="tserver" >
+              TServer
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
+            <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
+            <TableHeaderColumn dataField="nodeAction" dataFormat={getNodeAction}>Action</TableHeaderColumn>
+          </BootstrapTable>
+        </div>
       </YBPanelItem>
     );
   }

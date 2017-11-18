@@ -42,7 +42,7 @@ export default class YBRadioButtonBar extends Component {
       }
       value = Number(value);
       function getLabelClass() {
-        return 'btn btn-default' + (self.state.fieldValue === value ? ' bg-orange' : '');
+        return 'btn' + (self.state.fieldValue === value ? ' btn-orange' : '');
       }
       return (
         <YBRadioButton key={value} {...input} fieldValue={value} checkState={self.state.fieldValue === value}

@@ -1,0 +1,29 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+/* From gentelella.css need to cleanup */
+
+footer {
+  height: 45px;
+  margin-left: 90px;
+  background-color: white;
+  line-height: 46px;
+  display: flex;
+  flex-direction: row;
+  padding: 0 38px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  object {
+    margin-right: 20px;
+    margin-top: -1px;
+    height: 18px;
+    vertical-align: middle;
+    display: inline-block;
+  }
+  .flex-grow:last-child {
+    text-align: right;
+  }
+}

@@ -12,9 +12,8 @@ export default class YBPanelItem extends Component {
     return (
       <div>
         <div className="x_panel">
-          <div className="x_title">
+          <div className="x_title clearfix">
             <h3 className={headerTextClass}>{name}</h3>
-            <div className="clearfix"></div>
           </div>
           {children}
         </div>

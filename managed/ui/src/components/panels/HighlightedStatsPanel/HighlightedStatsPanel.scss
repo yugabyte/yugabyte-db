@@ -3,28 +3,27 @@
 @import "_style/colors.scss";
 
 .highlighted-stats-panel {
-  margin-top: 10px;
+  max-width: 500px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
 }
 
 /* From gentelella.css need to cleanup */
 .tile_count .tile_stats_count {
-  padding: 0 20px 0 20px;
+  text-align: left;
+  margin-right: 40px;
+  min-width: 70px;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
   position: relative;
 }
 
-
 @media (min-width: 992px) {
   .tile_count .tile_stats_count {
-    margin-bottom: 4px;
     border-bottom: 0;
-    padding-bottom: 4px;
   }
-}
-.tile_count .tile_stats_count {
-  border-left: 1px solid $YB_GRAY_HOVER;
 }
 .tile_count .tile_stats_count:first-child {
   border-left: none;
@@ -35,29 +34,67 @@
   }
 }
 .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
-  font-size: 22px;
-  line-height: 22px;
+  font-size: 30px;
+  line-height: 30px;
   font-weight: 600;
   color: $YB_VIOLET_TEXT;
 }
-@media (min-width:768px) {
-  .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
-    font-size: 22px;
-  }
-}
-@media (min-width: 992px) and (max-width: 1100px) {
-  .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
-    font-size: 22px;
-  }
-}
+// @media (min-width:768px) {
+//   .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
+//     font-size: 22px;
+//   }
+// }
+// @media (min-width: 992px) and (max-width: 1100px) {
+//   .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
+//     font-size: 22px;
+//   }
+// }
 .tile_count .tile_stats_count span {
   font-size: 12px;
 }
 @media (min-width:768px) {
   .tile_count .tile_stats_count span {
-    font-size: 13px;
+    font-size: 12px;
   }
 }
 .tile_count .tile_stats_count .count_bottom i {
   width: 12px;
+}
+
+.dashboard-stats {
+  position: fixed;
+  z-index: 2040;
+  top: 10px;
+  left: 50%;
+  margin-left: -300px;
+  @media (max-width:767px) {
+    margin-left: -160px;
+  }
+  .highlighted-stats-panel {
+    max-width: 700px;
+    min-width: 400px;
+    align-content: space-between;
+  }
+  .tile_count .tile_stats_count {
+    border-left: 1px solid $YB_GRAY_HOVER;
+    padding: 0 50px;
+    text-align: center;
+    margin: 0;
+    @media (max-width:767px) {
+      padding: 0 30px;
+    }
+  }
+  .tile_count .tile_stats_count:first-child {
+    border-left: none;
+  }
+  * {
+    text-align: center;
+  }
+  span {
+    display: block;
+  }
+  .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
+    font-size: 24px;
+    line-height: 24px;
+  }
 }
