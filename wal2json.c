@@ -35,6 +35,7 @@ typedef struct
 	bool		include_timestamp;	/* include transaction timestamp */
 	bool		include_schemas;	/* qualify tables */
 	bool		include_types;		/* include data types */
+	bool		include_type_oids;	/* include data type oids */
 	bool		include_typmod;		/* include typmod in types */
 
 	bool		pretty_print;		/* pretty-print JSON? */
@@ -105,6 +106,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_timestamp = false;
 	data->include_schemas = true;
 	data->include_types = true;
+	data->include_type_oids = false;
 	data->include_typmod = true;
 	data->pretty_print = false;
 	data->write_in_chunks = false;
@@ -170,6 +172,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_types = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_types))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "include-type-oids") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "include-type-oids argument is null");
+				data->include_type_oids = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_type_oids))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -401,14 +416,17 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 	StringInfoData		colnames;
 	StringInfoData		coltypes;
+	StringInfoData		coltypeoids;
 	StringInfoData		colvalues;
 	char				*comma = "";
 
+	data = ctx->output_plugin_private;
+
 	initStringInfo(&colnames);
 	initStringInfo(&coltypes);
+	if (data->include_type_oids)
+		initStringInfo(&coltypeoids);
 	initStringInfo(&colvalues);
-
-	data = ctx->output_plugin_private;
 
 	/*
 	 * If replident is true, it will output info about replica identity. In this
@@ -422,6 +440,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&colnames, "\t\t\t\"oldkeys\": {\n");
 			appendStringInfoString(&colnames, "\t\t\t\t\"keynames\": [");
 			appendStringInfoString(&coltypes, "\t\t\t\t\"keytypes\": [");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "\t\t\t\"keytypeoids\": [");
 			appendStringInfoString(&colvalues, "\t\t\t\t\"keyvalues\": [");
 		}
 		else
@@ -429,6 +449,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&colnames, "\"oldkeys\":{");
 			appendStringInfoString(&colnames, "\"keynames\":[");
 			appendStringInfoString(&coltypes, "\"keytypes\":[");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "\"keytypeoids\": [");
 			appendStringInfoString(&colvalues, "\"keyvalues\":[");
 		}
 	}
@@ -438,12 +460,16 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		{
 			appendStringInfoString(&colnames, "\t\t\t\"columnnames\": [");
 			appendStringInfoString(&coltypes, "\t\t\t\"columntypes\": [");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "\t\t\t\"columntypeoids\": [");
 			appendStringInfoString(&colvalues, "\t\t\t\"columnvalues\": [");
 		}
 		else
 		{
 			appendStringInfoString(&colnames, "\"columnnames\":[");
 			appendStringInfoString(&coltypes, "\"columntypes\":[");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "\"columntypeoids\": [");
 			appendStringInfoString(&colvalues, "\"columnvalues\":[");
 		}
 	}
@@ -549,6 +575,9 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			}
 		}
 
+		if (data->include_type_oids)
+			appendStringInfo(&coltypeoids, "%s%u", comma, typid);
+
 		ReleaseSysCache(type_tuple);
 
 		if (isnull)
@@ -624,6 +653,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&colnames, "],\n");
 			if (data->include_types)
 				appendStringInfoString(&coltypes, "],\n");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "],\n");
 			appendStringInfoString(&colvalues, "]\n");
 			appendStringInfoString(&colvalues, "\t\t\t}\n");
 		}
@@ -632,6 +663,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&colnames, "],");
 			if (data->include_types)
 				appendStringInfoString(&coltypes, "],");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "],");
 			appendStringInfoChar(&colvalues, ']');
 			appendStringInfoChar(&colvalues, '}');
 		}
@@ -643,6 +676,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&colnames, "],\n");
 			if (data->include_types)
 				appendStringInfoString(&coltypes, "],\n");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "],\n");
 			if (hasreplident)
 				appendStringInfoString(&colvalues, "],\n");
 			else
@@ -653,6 +688,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&colnames, "],");
 			if (data->include_types)
 				appendStringInfoString(&coltypes, "],");
+			if (data->include_type_oids)
+				appendStringInfoString(&coltypeoids, "],");
 			if (hasreplident)
 				appendStringInfoString(&colvalues, "],");
 			else
@@ -664,10 +701,14 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	appendStringInfoString(ctx->out, colnames.data);
 	if (data->include_types)
 		appendStringInfoString(ctx->out, coltypes.data);
+	if (data->include_type_oids)
+		appendStringInfoString(ctx->out, coltypeoids.data);
 	appendStringInfoString(ctx->out, colvalues.data);
 
 	pfree(colnames.data);
 	pfree(coltypes.data);
+	if (data->include_type_oids)
+		pfree(coltypeoids.data);
 	pfree(colvalues.data);
 }
 
