@@ -68,46 +68,71 @@ a {
   display: none;
 }
 
+#drawerMenu {
+  display: none;
+}
 .drawer .toc {
   padding-left: 5px;
-}
-.drawer .toc ul {
-  margin-bottom: 0 !important;
-  padding-bottom: 6px;
-}
-.drawer .toc > ul > li {
-  margin-bottom: 10px;
-}
-.drawer .toc > ul > li > a {
-  font-family: Montserrat, sans-serif;
-  font-size: 16px;
-  font-weight: 500;
-}
-.drawer .toc li {
-  padding-left: 0;
-  margin-left: 5px;
-}
+  margin-top: 34px !important;
 
-.drawer .toc li .section {
-  color: #999;
-  font-size: 14px;
-  /*text-transform: uppercase;*/
-}
+  ul {
+    margin-bottom: 0 !important;
+    padding-bottom: 4px;
+  }
+  ul a {
+    display: inline-block;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+  }
+  > ul > li {
+    margin-bottom: 6px;
+  }
+  > ul > li > a {
+    font-family: Montserrat, sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .node-toggle {
+    position: relative;
+    left: -6px;
+    padding-left: 6px;
+    padding-right: 6px;
+    border-radius: 4px;
+  }
+  li {
+    padding-left: 0;
+    margin-left: 5px;
+  }
 
-.drawer .toc li a {
-  padding: 6px 6px 8px 15px;
-  font-size: 14px;
-  font-weight: 400;
-}
-.drawer .toc li a:hover {
-  color: #f75821 !important;
-}
-.drawer .toc li a.current {
-  color: #f75821 !important;
-  font-weight: 700;
-}
-.drawer .toc li li {
-  border-left: 1px solid #f75821;
+  li > .node-toggle {
+    transform: rotateZ(0);
+    transition: transform 0.2s;
+  }
+  li.open > .node-toggle {
+    transform: rotateZ(-180deg) !important;
+  }
+
+  li .section {
+    color: #999;
+    font-size: 14px;
+    /*text-transform: uppercase;*/
+  }
+
+  li a {
+    padding: 6px 6px 8px 15px;
+    font-size: 14px;
+    font-weight: 400;
+  }
+  li a:hover {
+    color: #f75821 !important;
+  }
+  li a.current {
+    color: #f75821 !important;
+    font-weight: 700;
+  }
+  li li {
+    border-left: 1px solid #f75821;
+  }
 }
 
 #scrollspy {
@@ -317,7 +342,7 @@ a {
 }
 
 .breadcrumbs {
-  margin: 23px 0 -23px;
+  margin: 0 0 -23px;
 }
 .breadcrumbs a {
   border-bottom: none !important;
@@ -418,5 +443,8 @@ table code {
   }
   .drawer .scrollable {
     top: 70px;
+  }
+  .drawer .toc {
+    margin-top: 12px !important;
   }
 }
