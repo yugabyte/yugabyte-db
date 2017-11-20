@@ -49,6 +49,8 @@
 #include "yb/util/status.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/threadpool.h"
+
 
 namespace yb {
 
@@ -118,6 +120,7 @@ struct BootstrapTabletData {
   TabletOptions tablet_options;
   TransactionParticipantContext* transaction_participant_context;
   TransactionCoordinatorContext* transaction_coordinator_context;
+  ThreadPool* append_pool;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet

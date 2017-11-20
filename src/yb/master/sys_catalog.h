@@ -135,6 +135,7 @@ class SysCatalogTable {
 
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
+  ThreadPool* append_pool() const { return append_pool_.get(); }
 
   const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
     return tablet_peer_;
@@ -221,6 +222,9 @@ class SysCatalogTable {
 
   // Thread pool for preparing transactions, shared between all tablets.
   gscoped_ptr<ThreadPool> tablet_prepare_pool_;
+
+  // Thread pool for appender tasks
+  gscoped_ptr<ThreadPool> append_pool_;
 
   scoped_refptr<tablet::TabletPeer> tablet_peer_;
 

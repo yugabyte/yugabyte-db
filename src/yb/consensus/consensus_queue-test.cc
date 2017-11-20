@@ -79,13 +79,15 @@ class ConsensusQueueTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
-    CHECK_OK(log::Log::Open(log::LogOptions(),
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
+    ASSERT_OK(log::Log::Open(log::LogOptions(),
                             fs_manager_.get(),
                             kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             schema_,
                             0, // schema_version
                             NULL,
+                            append_pool_.get(),
                             &log_));
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
@@ -213,6 +215,7 @@ class ConsensusQueueTest : public YBTest {
   gscoped_ptr<FsManager> fs_manager_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
+  std::unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<log::Log> log_;
   std::unique_ptr<ThreadPool> raft_pool_;
   gscoped_ptr<PeerMessageQueue> queue_;

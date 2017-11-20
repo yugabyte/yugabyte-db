@@ -166,19 +166,22 @@ class LogTestBase : public YBTest {
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
-
     FLAGS_log_min_seconds_to_retain = 0;
+    ASSERT_OK(ThreadPoolBuilder("append")
+                 .unlimited_threads()
+                 .Build(&append_pool_));
   }
 
   void BuildLog() {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
-    CHECK_OK(Log::Open(options_,
+    ASSERT_OK(Log::Open(options_,
                        fs_manager_.get(),
                        kTestTablet,
                        tablet_wal_path_,
                        schema_with_ids,
                        0, // schema_version
                        metric_entity_.get(),
+                       append_pool_.get(),
                        &log_));
   }
 
@@ -206,7 +209,7 @@ class LogTestBase : public YBTest {
   }
 
   static void CheckReplicateResult(const consensus::ReplicateMsgPtr& msg, const Status& s) {
-    CHECK_OK(s);
+    ASSERT_OK(s);
   }
 
   // Appends a batch with size 2, or the given set of writes.
@@ -301,6 +304,7 @@ class LogTestBase : public YBTest {
   gscoped_ptr<FsManager> fs_manager_;
   gscoped_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
+  std::unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<Log> log_;
   int32_t current_index_;
   LogOptions options_;
