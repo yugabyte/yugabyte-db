@@ -27,34 +27,6 @@ import static org.junit.Assert.assertEquals;
 public class TestUpdate extends BaseCQLTest {
 
   @Test
-  public void testUpdateWithTimestamp() throws Exception {
-    String tableName = "test_update_with_timestamp";
-    createTable(tableName, "timestamp");
-    // this includes both string and int inputs
-    Map<String, Date> ts_values = generateTimestampMap();
-    for (String key : ts_values.keySet()) {
-      Date date_value = ts_values.get(key);
-      String ins_stmt = String.format(
-        "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
-        tableName, 1, key, 2, key, 3, "0");
-      session.execute(ins_stmt);
-      String upd_stmt = String.format(
-        "UPDATE %s SET v2 = %s WHERE h1 = 1 AND h2 = %s" +
-          " AND r1 = 2 AND r2 = %s;", tableName, key , key, key);
-      session.execute(upd_stmt);
-      String sel_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
-        + " WHERE h1 = 1 AND h2 = %s;", tableName, key);
-      Row row = runSelect(sel_stmt).next();
-      assertEquals(1, row.getInt(0));
-      assertEquals(2, row.getInt(2));
-      assertEquals(3, row.getInt(4));
-      assertEquals(date_value, row.getTimestamp(1));
-      assertEquals(date_value, row.getTimestamp(3));
-      assertEquals(date_value, row.getTimestamp(5));
-    }
-  }
-
-  @Test
   public void testUpdateWithTTL() throws Exception {
     String tableName = "test_update_with_ttl";
     createTable(tableName);
@@ -110,37 +82,6 @@ public class TestUpdate extends BaseCQLTest {
     assertEquals("r4", row.getString(3));
     assertTrue(row.isNull(4));
     assertTrue(row.isNull(5));
-  }
-
-  private void runInvalidUpdateWithTimestamp(String tableName, String ts) {
-    // testing SET clause
-    String upd_stmt1 = String.format(
-      "UPDATE %s SET v2 = '%s' WHERE h1 = 1 AND h2 = %s" +
-        " AND r1 = 2 AND r2 = %s;", tableName, ts, "0", "0");
-    runInvalidStmt(upd_stmt1);
-
-    // testing WHERE clause
-    String upd_stmt2 = String.format(
-      "UPDATE %s SET v2 = %s WHERE h1 = 1 AND h2 = '%s'" +
-        " AND r1 = 2 AND r2 = %s;", tableName, "0", ts, "0");
-    runInvalidStmt(upd_stmt2);
-  }
-
-  @Test
-  public void testInvalidUpdateWithTimestamp() throws Exception {
-    String tableName = "test_update_with_invalid_timestamp";
-    createTable(tableName, "timestamp");
-    String ins_stmt = String.format(
-      "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
-      tableName, 1, "0", 2, "0", 3, "0");
-    session.execute(ins_stmt);
-
-    runInvalidUpdateWithTimestamp(tableName, "plainstring");
-    runInvalidUpdateWithTimestamp(tableName, "1992:12:11");
-    runInvalidUpdateWithTimestamp(tableName, "1992-11");
-    runInvalidUpdateWithTimestamp(tableName, "1992-13-12");
-    runInvalidUpdateWithTimestamp(tableName, "1992-12-12 14:23:30:31");
-    runInvalidUpdateWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
   }
 
   private String getUpdateStmt(String tableName, long ttl_seconds) {

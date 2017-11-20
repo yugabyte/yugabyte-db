@@ -98,50 +98,6 @@ public class TestInsert extends BaseCQLTest {
   }
 
   @Test
-    public void testInsertWithTimestamp() throws Exception {
-      String tableName = "test_insert_with_timestamp";
-      createTable(tableName, "timestamp");
-      // this includes both string and int inputs
-      Map<String, Date> ts_values = generateTimestampMap();
-      for (String key : ts_values.keySet()) {
-        Date date_value = ts_values.get(key);
-        String ins_stmt = String.format(
-                "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %s, %d, %s, %d, %s);",
-                tableName, 1, key, 2, key, 3, key);
-        session.execute(ins_stmt);
-        String sel_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
-                + " WHERE h1 = 1 AND h2 = %s;", tableName, key);
-        Row row = runSelect(sel_stmt).next();
-        assertEquals(1, row.getInt(0));
-        assertEquals(2, row.getInt(2));
-        assertEquals(3, row.getInt(4));
-        assertEquals(date_value, row.getTimestamp(1));
-        assertEquals(date_value, row.getTimestamp(3));
-        assertEquals(date_value, row.getTimestamp(5));
-      }
-    }
-
-  private void runInvalidInsertWithTimestamp(String tableName, String ts) {
-    String insert_stmt = String.format(
-            "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %d, %d, %d, %d, '%s');",
-            tableName, 1, 2, 3, 4, 5, ts);
-    runInvalidStmt(insert_stmt);
-  }
-
-  @Test
-  public void testInvalidInsertWithTimestamp() throws Exception {
-    String tableName = "test_insert_with_invalid_timestamp";
-    createTable(tableName, "timestamp");
-
-    runInvalidInsertWithTimestamp(tableName, "plainstring");
-    runInvalidInsertWithTimestamp(tableName, "1992:12:11");
-    runInvalidInsertWithTimestamp(tableName, "1992-11");
-    runInvalidInsertWithTimestamp(tableName, "1992-13-12");
-    runInvalidInsertWithTimestamp(tableName, "1992-12-12 14:23:30:31");
-    runInvalidInsertWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
-  }
-
-  @Test
   public void testInsertWithTTL() throws Exception {
     String tableName = "test_insert_with_ttl";
     createTable(tableName);

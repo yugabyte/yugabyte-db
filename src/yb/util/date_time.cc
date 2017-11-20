@@ -121,7 +121,7 @@ Result<Timestamp> DateTime::TimestampFromString(const string& str,
 
 Timestamp DateTime::TimestampFromInt(const int64_t val, const DateTimeInputFormat input_format) {
   int input_precision = input_format.input_precision();
-  int64_t adj_val = AdjustPrecision(val, input_precision, internal_precision);
+  int64_t adj_val = AdjustPrecision(val, input_precision, kInternalPrecision);
   return Timestamp(adj_val);
 }
 
@@ -129,8 +129,15 @@ int64_t DateTime::AdjustPrecision(int64_t val,
                                   int input_precision,
                                   const int output_precision) {
   while (input_precision < output_precision) {
-    // TODO how to handle overflow and not deviate from Cassandra
-    val *= 10;
+    // In case of overflow we just return max/min values -- this is needed for correctness of
+    // comparison operations and is similar to Cassandra behaviour.
+    if (val > kInt64MaxOverTen) {
+      return INT64_MAX;
+    } else if (val < kInt64MinOverTen) {
+      return INT64_MIN;
+    } else {
+      val *= 10;
+    }
     input_precision += 1;
   }
   while (input_precision > output_precision) {
@@ -145,8 +152,14 @@ string DateTime::TimestampToString(const Timestamp timestamp,
   std::ostringstream ss;
   ss.imbue(output_format.output_locale());
   time_type pt = output_format.epoch_start() + microseconds(timestamp.value());
-  local_date_time ldt(pt, output_format.default_tz());
-  ss << ldt;
+  try {
+    local_date_time ldt(pt, output_format.default_tz());
+    ss << ldt;
+  } catch (...) {
+    // If we cannot produce a valid date, default to showing the exact timestamp value.
+    // This can happen if timestamp value is outside the standard year range (1400..10000).
+    ss << timestamp.value();
+  }
   return ss.str();
 }
 

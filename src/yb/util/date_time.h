@@ -92,7 +92,12 @@ class DateTime {
   static tz_ptr_type GetSystemTimezone();
   static tz_ptr_type GetUtcTimezone();
   static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);
-  static const int64_t internal_precision = 6; // microseconds
+  static constexpr int64_t kInternalPrecision = 6; // microseconds
+
+ private:
+  // Utility constants to avoid overflow when increasing precision in AdjustPrecision().
+  static constexpr int64_t kInt64MaxOverTen = INT64_MAX / 10;
+  static constexpr int64_t kInt64MinOverTen = INT64_MIN / 10;
 };
 
 } // namespace yb

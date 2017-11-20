@@ -261,7 +261,7 @@ void QLValue::Serialize(
       return;
     case TIMESTAMP: {
       int64_t val = DateTime::AdjustPrecision(timestamp_value().ToInt64(),
-          DateTime::internal_precision,
+          DateTime::kInternalPrecision,
           DateTime::CqlDateTimeInputFormat.input_precision());
       CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
       return;
@@ -461,7 +461,7 @@ Status QLValue::Deserialize(
       int64_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
       value = DateTime::AdjustPrecision(value,
-          DateTime::CqlDateTimeInputFormat.input_precision(), DateTime::internal_precision);
+          DateTime::CqlDateTimeInputFormat.input_precision(), DateTime::kInternalPrecision);
       set_timestamp_value(value);
       return Status::OK();
     }
