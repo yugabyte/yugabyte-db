@@ -17,7 +17,7 @@ googleAnalytics = "UA-104956980-1"
 	block_indexing = false
 
 	version = "Beta"
-	logo = "/images/og-image.png"
+	logo = "/images/og-image.jpg"
 	favicon = "/images/favicon.ico"
 
 	permalink = "#"
