@@ -90,12 +90,13 @@ class RemoteBootstrapTest : public YBTabletTest {
  public:
   explicit RemoteBootstrapTest(TableType table_type)
     : YBTabletTest(GetSimpleTestSchema(), table_type) {
-    CHECK_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
-    CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
-    CHECK_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
   }
 
   virtual void SetUp() override {
+    ASSERT_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
+    ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+    ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
     YBTabletTest::SetUp();
     SetUpTabletPeer();
     ASSERT_NO_FATALS(PopulateTablet());
@@ -111,12 +112,14 @@ class RemoteBootstrapTest : public YBTabletTest {
  protected:
   void SetUpTabletPeer() {
     scoped_refptr<Log> log;
-    CHECK_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
+    ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
                        fs_manager()->GetFirstTabletWalDirOrDie(tablet()->metadata()->table_id(),
                                                                tablet()->tablet_id()),
                        *tablet()->schema(),
                        0,  // schema_version
-                       NULL, &log));
+                       nullptr, // metric_entity
+                       append_pool_.get(),
+                       &log));
 
     scoped_refptr<MetricEntity> metric_entity =
       METRIC_ENTITY_tablet.Instantiate(&metric_registry_, CURRENT_TEST_NAME());
@@ -141,7 +144,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
-    CHECK_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
+    ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
                                        tablet()->tablet_id(), fs_manager()->uuid(),
                                        config, consensus::kMinimumTerm, &cmeta));
 
@@ -151,7 +154,7 @@ class RemoteBootstrapTest : public YBTabletTest {
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();
-    CHECK_OK(tablet_peer_->InitTabletPeer(tablet(),
+    ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                           std::shared_future<client::YBClientPtr>(),
                                           clock(),
                                           *messenger,
@@ -160,7 +163,7 @@ class RemoteBootstrapTest : public YBTabletTest {
                                           raft_pool_.get(),
                                           tablet_prepare_pool_.get()));
     consensus::ConsensusBootstrapInfo boot_info;
-    CHECK_OK(tablet_peer_->Start(boot_info));
+    ASSERT_OK(tablet_peer_->Start(boot_info));
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(2)));
 
@@ -197,7 +200,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   virtual void InitSession() {
     session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
         tablet_peer_.get(), "TestSession", "FakeUUID", fs_manager()));
-    CHECK_OK(session_->Init());
+    ASSERT_OK(session_->Init());
   }
 
   // Read the specified BlockId, via the RemoteBootstrapSession, into a file.
@@ -209,7 +212,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     string data;
     int64_t block_file_size = 0;
     RemoteBootstrapErrorPB::Code error_code;
-    CHECK_OK(session_->GetBlockPiece(block_id, 0, 0, &data, &block_file_size, &error_code));
+    ASSERT_OK(session_->GetBlockPiece(block_id, 0, 0, &data, &block_file_size, &error_code));
     if (block_file_size > 0) {
       CHECK_GT(data.size(), 0);
     }
@@ -218,11 +221,11 @@ class RemoteBootstrapTest : public YBTabletTest {
     WritableFileOptions opts;
     string path_template = GetTestPath(Substitute("test_block_$0.tmp.XXXXXX", block_id.ToString()));
     gscoped_ptr<WritableFile> writable_file;
-    CHECK_OK(Env::Default()->NewTempWritableFile(opts, path_template, path, &writable_file));
-    CHECK_OK(writable_file->Append(Slice(data.data(), data.size())));
-    CHECK_OK(writable_file->Close());
+    ASSERT_OK(Env::Default()->NewTempWritableFile(opts, path_template, path, &writable_file));
+    ASSERT_OK(writable_file->Append(Slice(data.data(), data.size())));
+    ASSERT_OK(writable_file->Close());
 
-    CHECK_OK(Env::Default()->NewSequentialFile(*path, file));
+    ASSERT_OK(Env::Default()->NewSequentialFile(*path, file));
   }
 
   MetricRegistry metric_registry_;
@@ -230,6 +233,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   gscoped_ptr<ThreadPool> apply_pool_;
   unique_ptr<ThreadPool> raft_pool_;
   unique_ptr<ThreadPool> tablet_prepare_pool_;
+  unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<TabletPeer> tablet_peer_;
   scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
 };

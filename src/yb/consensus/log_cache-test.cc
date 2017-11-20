@@ -73,13 +73,15 @@ class LogCacheTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
-    CHECK_OK(log::Log::Open(log::LogOptions(),
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
+    ASSERT_OK(log::Log::Open(log::LogOptions(),
                             fs_manager_.get(),
                             kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             schema_,
                             0, // schema_version
                             NULL,
+                            append_pool_.get(),
                             &log_));
 
     CloseAndReopenCache(MinimumOpId());
@@ -104,7 +106,7 @@ class LogCacheTest : public YBTest {
 
  protected:
   static void FatalOnError(const Status& s) {
-    CHECK_OK(s);
+    ASSERT_OK(s);
   }
 
   Status AppendReplicateMessagesToCache(
@@ -125,6 +127,7 @@ class LogCacheTest : public YBTest {
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<ThreadPool> append_pool_;
   gscoped_ptr<LogCache> cache_;
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;

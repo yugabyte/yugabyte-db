@@ -212,20 +212,22 @@ class RaftConsensusTest : public YBTest {
     // TODO mock the Log too, since we're gonna mock the queue
     // monitors and pretty much everything else.
     fs_manager_.reset(new FsManager(env_.get(), test_path, "tserver_test"));
-    CHECK_OK(fs_manager_->CreateInitialFileSystemLayout());
-    CHECK_OK(fs_manager_->Open());
-    CHECK_OK(Log::Open(LogOptions(),
+    ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
+    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
+    ASSERT_OK(Log::Open(LogOptions(),
                        fs_manager_.get(),
                        kTestTablet,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                        schema_,
                        0, // schema_version
-                       NULL,
+                       nullptr, // metric_entity
+                       append_pool_.get(),
                        &log_));
 
     log_->TEST_SetAllOpIdsSafe(true);
 
-    CHECK_OK(ThreadPoolBuilder("raft-pool").Build(&raft_pool_));
+    ASSERT_OK(ThreadPoolBuilder("raft-pool").Build(&raft_pool_));
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
     queue_ = new MockQueue(metric_entity_, log_.get(), clock_, std::move(raft_pool_token));
@@ -245,7 +247,7 @@ class RaftConsensusTest : public YBTest {
     string peer_uuid = config_.peers(num_peers - 1).permanent_uuid();
 
     std::unique_ptr<ConsensusMetadata> cmeta;
-    CHECK_OK(ConsensusMetadata::Create(fs_manager_.get(), kTestTablet, peer_uuid,
+    ASSERT_OK(ConsensusMetadata::Create(fs_manager_.get(), kTestTablet, peer_uuid,
                                        config_, initial_term, &cmeta));
 
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
@@ -279,7 +281,7 @@ class RaftConsensusTest : public YBTest {
 
   static void LogAppendCallback(const StatusCallback& callback,
                                 const Status& s) {
-    CHECK_OK(s);
+    ASSERT_OK(s);
     callback.Run(s);
   }
 
@@ -347,6 +349,7 @@ class RaftConsensusTest : public YBTest {
   RaftConfigPB config_;
   OpId initial_id_;
   gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<Log> log_;
   gscoped_ptr<PeerProxyFactory> proxy_factory_;
   scoped_refptr<server::Clock> clock_;

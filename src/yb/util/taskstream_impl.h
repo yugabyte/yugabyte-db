@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#ifndef YB_UTIL_TASKSTREAM_IMPL_H
+#define YB_UTIL_TASKSTREAM_IMPL_H
+
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -193,11 +196,6 @@ template <typename T> Status TaskStream<T>::Submit(T* item) {
   return impl_->Submit(item);
 }
 
-template TaskStream<int>::TaskStream(std::function<void(int *)> process_item,
-                                     ThreadPool* thread_pool);
-template TaskStream<int>::~TaskStream();
-template Status TaskStream<int>::Start();
-template void TaskStream<int>::Stop();
-template Status TaskStream<int>::Submit(int* item);
 
 }  // namespace yb
+#endif  // YB_UTIL_TASKSTREAM_IMPL_H

@@ -36,6 +36,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/log_reader.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 namespace tablet {
@@ -152,6 +153,9 @@ class TabletBootstrap {
 
   std::unique_ptr<consensus::ConsensusMetadata> cmeta_;
   TabletOptions tablet_options_;
+
+  // Thread pool for append task for bootstrap.
+  ThreadPool* append_pool_;
 
   // Statistics on the replay of entries in the log.
   struct Stats {

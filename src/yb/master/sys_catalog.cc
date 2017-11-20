@@ -119,6 +119,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
   CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
+  CHECK_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -473,7 +474,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                        tablet_peer_->status_listener(),
                                        tablet_peer_->log_anchor_registry(),
                                        tablet_options,
-                                       nullptr /* transaction_coordinator_context */ };
+                                       nullptr, // transaction_participant_context
+                                       nullptr, // transaction_coordinator_context
+                                       append_pool()};
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
   // TODO: Do we have a setSplittable(false) or something from the outside is
