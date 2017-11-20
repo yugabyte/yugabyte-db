@@ -63,8 +63,8 @@ Group commit implementation details
 =============================================================
 
 Currently, the group implementation uses a blocking queue (see
-Log::entry_queue_ in log.h) and a separate long-running thread (see
-Log::AppendThread in log.cc). Since access to the queue is
+Log::entry_queue_ in log.h) and a separate TaskStream (see
+Log::Appender in log.cc). Since access to the queue is
 synchronized via a lock and only a single thread removes the queue,
 the order in which the elements are added to the queue will be the
 same as the order in which the elements are removed from the queue.

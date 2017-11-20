@@ -126,7 +126,9 @@ class BootstrapTest : public LogTestBase {
         listener.get(),
         log_anchor_registry,
         tablet_options,
-        nullptr /* transaction_coordinator_context */};
+        nullptr, // transaction_participant_context
+        nullptr, // transaction_coordinator_context
+        append_pool_.get()};
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
     return Status::OK();
   }

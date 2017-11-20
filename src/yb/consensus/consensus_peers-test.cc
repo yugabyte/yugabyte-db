@@ -74,22 +74,24 @@ class ConsensusPeersTest : public YBTest {
   ConsensusPeersTest()
       : metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "peer-test")),
         schema_(GetSimpleTestSchema()) {
-    CHECK_OK(ThreadPoolBuilder("test-raft-pool").Build(&raft_pool_));
-    raft_pool_token_ = raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
   }
 
   void SetUp() override {
     YBTest::SetUp();
+    ASSERT_OK(ThreadPoolBuilder("test-raft-pool").Build(&raft_pool_));
+    raft_pool_token_ = raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+    ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
 
-    CHECK_OK(fs_manager_->CreateInitialFileSystemLayout());
-    CHECK_OK(Log::Open(options_,
+    ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
+    ASSERT_OK(Log::Open(options_,
                        fs_manager_.get(),
                        kTabletId,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),
                        schema_,
                        0, // schema_version
                        NULL,
+                       append_pool_.get(),
                        &log_));
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
@@ -111,7 +113,7 @@ class ConsensusPeersTest : public YBTest {
   }
 
   void TearDown() override {
-    CHECK_OK(log_->WaitUntilAllFlushed());
+    ASSERT_OK(log_->WaitUntilAllFlushed());
   }
 
   DelayablePeerProxy<NoOpTestPeerProxy>* NewRemotePeer(
@@ -159,6 +161,7 @@ class ConsensusPeersTest : public YBTest {
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<FsManager> fs_manager_;
+  unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<Log> log_;
   gscoped_ptr<PeerMessageQueue> message_queue_;
   const Schema schema_;

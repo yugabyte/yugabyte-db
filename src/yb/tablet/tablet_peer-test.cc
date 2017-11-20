@@ -151,10 +151,14 @@ class TabletPeerTest : public YBTabletTest,
                                         consensus::kMinimumTerm,
                                         &cmeta));
 
+    ASSERT_OK(ThreadPoolBuilder("append")
+                 .unlimited_threads()
+                 .Build(&append_pool_));
     scoped_refptr<Log> log;
     ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
                         tablet()->metadata()->wal_dir(), *tablet()->schema(),
-                        tablet()->metadata()->schema_version(), metric_entity_.get(), &log));
+                        tablet()->metadata()->schema_version(), metric_entity_.get(),
+                        append_pool_.get(), &log));
 
     tablet_peer_->SetBootstrapping();
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
@@ -252,7 +256,7 @@ class TabletPeerTest : public YBTabletTest,
   // Assert that the Log GC() anchor is earlier than the latest OpId in the Log.
   void AssertLogAnchorEarlierThanLogLatest() {
     int64_t earliest_index = -1;
-    CHECK_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
+    ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
     auto last_log_opid = tablet_peer_->log_->GetLatestEntryOpId();
     CHECK_LT(earliest_index, last_log_opid.index)
       << "Expected valid log anchor, got earliest opid: " << earliest_index
@@ -276,6 +280,7 @@ class TabletPeerTest : public YBTabletTest,
   gscoped_ptr<ThreadPool> apply_pool_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<TabletPeer> tablet_peer_;
   TableType table_type_;
 };
