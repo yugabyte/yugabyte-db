@@ -4,23 +4,37 @@ title: Frequently Asked Questions
 weight: 245
 ---
 
-## Architecture
+## Product
 
-### How can YugaByte DB be both CP and HA at the same time?
+### When is YugaByte DB a good fit?
 
-In terms of the CAP theorem, YugaByte DB is a Consistent and Partition-tolerant (CP) database. It provides High Availability (HA) for most practical situations even while remaining strongly consistent. While this may seem a violation of the CAP theorem, that is not the case since CAP treats availability as a binary option whereas YugaByte treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available). During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. **Multi-active availability** here refers to YugaByte's ability to serve reads in any partition of a cluster. Note that requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any unpredictable background anti-entropy operations. 
+YugaByte DB is a good fit for cloud-native applications needing to serve mission-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
 
-The above architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability.
+1. Online Transaction Processing (OLTP) applications needing multi-datacenter availability without compromising strong consistency. E.g. User identity, retail product catalog, financial data service.
 
-### Why is a group of YugaByte nodes called a `universe` instead of the more commonly used term `clusters`?
+2. Hybrid Transactional/Analytical Processing (HTAP) applications needing real-time analytics on transactional data. E.g User personalization, fraud detection, machine learning.
 
-The YugaByte universe packs a lot more functionality that what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
+3. Streaming applications needing to efficiently ingest, analyze and store ever-growing data. E.g. IoT sensor analytics, time series metrics, real time monitoring.
 
-- A YugaByte universe can move into new machines/AZs/Regions/DCs in an online fashion, while these primitives are not associated with a traditional cluster.
+A few such use cases are detailed [here](https://www.yugabyte.com/use-cases/).
 
-- It is very easy to setup multiple async replicas with just a few clicks (in the Enterprise edition). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
+### When is YugaByte DB not a good fit?
 
-- Failover to async replicas as the primary data and failback once the original datacenter is up and running are both natively supported within a universe.
+YugaByte DB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
+
+### Can I deploy YugaByte DB to production?
+
+YugaByte DB is currently in 0.9 beta release with multiple pre-production deployments. Production deployments are not recommended until the planned 1.0 release in 2018.
+
+### Any performance benchmarks available?
+
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked YugaByte Cassandra against the standard Apache Cassandra using YCSB. YugaByte outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. Complete results are available on the [YugaByte Forum](https://forum.yugabyte.com/t/ycsb-benchmark-results-for-yugabyte-and-apache-cassandra/59). 
+
+[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugaByte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. Details are available on the [YugaByte Forum](https://forum.yugabyte.com/t/ndbench-results-for-yugabyte-db/94).
+
+### What about correctness testing?
+
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. We have started testing YugaByte DB with Jepsen and will post the results on the [YugaByte Forum](https://forum.yugabyte.com/t/validating-yugabyte-db-with-jepsen/73) as they become available.
 
 ## Community Edition 
 
@@ -94,15 +108,15 @@ In general, we are be able to fill the gaps quickly if we are missing some featu
 
 ## Comparisons
 
-### How is YugaByte different than the standard Apache Cassandra?
+### How does YugaByte DB compare to the standard Apache Cassandra?
 
 See [YugaByte vs. Apache Cassandra](/architecture/comparisons/#yugabyte-vs-apache-cassandra)
 
-### How is YugaByte different than the standard Redis?
+### How does YugaByte DB compare to the standard Redis?
 
 See [YugaByte vs. Redis](/architecture/comparisons/#yugabyte-vs-redis)
 
-### How does YugaByte compare against other NoSQL databases such as Apache HBase and MongoDB?
+### How does YugaByte DB compare against other NoSQL databases such as Apache HBase and MongoDB?
 
 See [YugaByte vs. Apache HBase](/architecture/comparisons/#yugabyte-vs-apache-hbase)
 
@@ -122,8 +136,25 @@ Typically not all the data needs to be cached, and the cache has to adapt to the
 
 You need to solve all the failover and failback issues at two layers especially when both sync and async replicas are needed. Additionally, the latency/consistency/throughput tracking needs to be done at two levels, which makes the app deployment architecture very complicated.
 
+## Architecture
 
-## Apache CQL
+### How can YugaByte DB be both CP and HA at the same time?
+
+In terms of the CAP theorem, YugaByte DB is a Consistent and Partition-tolerant (CP) database. It provides High Availability (HA) for most practical situations even while remaining strongly consistent. While this may seem a violation of the CAP theorem, that is not the case since CAP treats availability as a binary option whereas YugaByte treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available). During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. **Multi-active availability** refers to YugaByte DB's ability to serve writes on all nodes in a non-partitioned cluster and serve reads in any partition of a cluster. Note that requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any unpredictable background anti-entropy operations. 
+
+The above architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users.
+
+### Why is a group of YugaByte DB nodes called a `universe` instead of the more commonly used term `clusters`?
+
+The YugaByte universe packs a lot more functionality that what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
+
+- A YugaByte universe can move into new machines/AZs/Regions/DCs in an online fashion, while these primitives are not associated with a traditional cluster.
+
+- It is very easy to setup multiple async replicas with just a few clicks (in the Enterprise edition). This is built into the universe as a first-class operation with bootstrapping of the remote replica and all the operational aspects of running async replicas being supported natively. In the case of traditional clusters, the source and the async replicas are independent clusters. The user is responsible for maintaining these separate clusters as well as operating the replication logic.
+
+- Failover to async replicas as the primary data and failback once the original datacenter is up and running are both natively supported within a universe.
+
+## Apache Cassandra Query Language (CQL)
 
 ### Do INSERTs do “upserts” by default? How do I insert data only if it is absent?
 
