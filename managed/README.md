@@ -28,7 +28,9 @@
 ```
 * Setup Postgres
 ```
-  $ brew install postgres
+  # Currently we support postgres@9.5 for local development
+  $ brew install postgresql@9.5
+  $ echo 'export PATH="/usr/local/opt/postgresql@9.5/bin:$PATH"' >> ~/.bash_profile
   # Note: do not set any password for postgres.
   # Make postgres a daemon.
   $ ln -sfv /usr/local/opt/postgresql/*.plist ~/Library/LaunchAgents
