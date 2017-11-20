@@ -104,8 +104,9 @@ class TSManager {
   // Return the tablet server descriptor running on the given port.
   const std::shared_ptr<TSDescriptor> GetTSDescriptor(const HostPortPB& host_port) const;
 
- private:
   bool IsTSLive(const std::shared_ptr<TSDescriptor>& ts) const;
+
+ private:
 
   mutable rw_spinlock lock_;
 
@@ -119,4 +120,4 @@ class TSManager {
 } // namespace master
 } // namespace yb
 
-#endif
+#endif // YB_MASTER_TS_MANAGER_H

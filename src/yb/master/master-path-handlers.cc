@@ -160,7 +160,8 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   vector<std::shared_ptr<TSDescriptor> > descs;
-  master_->ts_manager()->GetAllDescriptors(&descs);
+  const auto& ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
   *output << std::setprecision(output_precision_);
   *output << "<h2>Tablet Servers</h2>\n";
 
@@ -168,6 +169,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   *output << "    <tr>\n"
           << "      <th>Server</th>\n"
           << "      <th>Time since heartbeat</th>\n"
+          << "      <th>Status</th>\n"
           << "      <th>Load (Num Tablets)</th>\n"
           << "      <th>RAM Used</th>\n"
           << "      <th>Total SST File Sizes</th>\n"
@@ -188,6 +190,12 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     *output << "  <tr>\n";
     *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
     *output << "    <td>" << time_since_hb << "</td>";
+    if (ts_manager->IsTSLive(desc)) {
+      *output << "    <td style=\"color:Green\">" << kTserverAlive << "</td>";
+    } else {
+      *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
+    }
+
     *output << "    <td>" << desc->num_live_replicas() << "</td>";
     *output << "    <td>" << BytesToHumanReadable
                              (desc->total_memory_usage()) << "</td>";

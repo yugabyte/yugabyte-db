@@ -149,42 +149,46 @@ class TSDescriptor {
 
   void set_total_memory_usage(uint64_t total_memory_usage) {
     std::lock_guard<simple_spinlock> l(lock_);
-    total_memory_usage_ = total_memory_usage;
+    tsMetrics_.total_memory_usage = total_memory_usage;
   }
 
   uint64_t total_memory_usage() {
     std::lock_guard<simple_spinlock> l(lock_);
-    return total_memory_usage_;
+    return tsMetrics_.total_memory_usage;
   }
 
   void set_total_sst_file_size (uint64_t total_sst_file_size) {
     std::lock_guard<simple_spinlock> l(lock_);
-    total_sst_file_size_ = total_sst_file_size;
+    tsMetrics_.total_sst_file_size = total_sst_file_size;
   }
 
   uint64_t total_sst_file_size() {
     std::lock_guard<simple_spinlock> l(lock_);
-    return total_sst_file_size_;
+    return tsMetrics_.total_sst_file_size;
   }
 
   void set_read_ops_per_sec(double read_ops_per_sec) {
     std::lock_guard<simple_spinlock> l(lock_);
-    read_ops_per_sec_ = read_ops_per_sec;
+    tsMetrics_.read_ops_per_sec = read_ops_per_sec;
   }
 
   double read_ops_per_sec() {
     std::lock_guard<simple_spinlock> l(lock_);
-    return read_ops_per_sec_;
+    return tsMetrics_.read_ops_per_sec;
   }
 
   void set_write_ops_per_sec(double write_ops_per_sec) {
     std::lock_guard<simple_spinlock> l(lock_);
-    write_ops_per_sec_ = write_ops_per_sec;
+    tsMetrics_.write_ops_per_sec = write_ops_per_sec;
   }
 
   double write_ops_per_sec() {
     std::lock_guard<simple_spinlock> l(lock_);
-    return write_ops_per_sec_;
+    return tsMetrics_.write_ops_per_sec;
+  }
+
+  void ClearMetrics() {
+    tsMetrics_.ClearMetrics();
   }
 
   // Set of methods to keep track of pending tablet deletes for a tablet server. We use them to
@@ -214,15 +218,27 @@ class TSDescriptor {
 
   mutable simple_spinlock lock_;
 
-  // Stores the total RAM usage of a tserver that is sent in every heartbeat.
-  uint64_t total_memory_usage_;
+  struct TSMetrics {
 
-  // Stores the total size of all the sst files in a tserver
-  uint64_t total_sst_file_size_;
+    // Stores the total RAM usage of a tserver that is sent in every heartbeat.
+    uint64_t total_memory_usage = 0;
 
-  double read_ops_per_sec_;
+    // Stores the total size of all the sst files in a tserver
+    uint64_t total_sst_file_size = 0;
 
-  double write_ops_per_sec_;
+    double read_ops_per_sec = 0;
+
+    double write_ops_per_sec = 0;
+
+    void ClearMetrics() {
+      total_memory_usage = 0;
+      total_sst_file_size = 0;
+      read_ops_per_sec = 0;
+      write_ops_per_sec = 0;
+    }
+  };
+
+  struct TSMetrics tsMetrics_;
 
   const std::string permanent_uuid_;
   int64_t latest_seqno_;

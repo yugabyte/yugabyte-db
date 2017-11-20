@@ -46,6 +46,9 @@ class Schema;
 
 namespace master {
 
+static constexpr char kTserverAlive[] = "ALIVE";
+static constexpr char kTserverDead[] = "DEAD";
+
 class Master;
 struct TabletReplica;
 class TSDescriptor;
