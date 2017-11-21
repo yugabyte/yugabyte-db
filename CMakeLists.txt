@@ -1222,6 +1222,10 @@ if(IS_CLANG AND NOT "$ENV{YB_CLANG_PREFIX}" STREQUAL "")
 endif()
 
 ## OpenSSL
+if(APPLE)
+  set(OPENSSL_ROOT_DIR "/usr/local/opt/openssl")
+endif()
+
 find_package(OpenSSL REQUIRED)
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(openssl
