@@ -313,7 +313,7 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespacesExistance({ make_tuple(other_ns_name, other_ns_id) }, namespaces);
   }
 
@@ -506,7 +506,7 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
   }
 
   ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-  ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
+  ASSERT_EQ(kNumSystemNamespaces, namespaces.namespaces_size());
 }
 
 } // namespace yb
