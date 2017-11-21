@@ -21,7 +21,7 @@ script_name=${script_name%.*}
 
 show_help() {
   cat >&2 <<-EOT
-Usage: ${0##*/} [<options>] [<build_type>]
+Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>]
 Options:
   -h, --help
     Show help.
@@ -110,9 +110,15 @@ Options:
     Only build Java code
   --
     Pass all arguments after -- to repeat_unit_test.
-
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
+Supported target keywords:
+  ...-test
+    Build and run a C++ test
+  [yb-]master        - master executable
+  [yb-]tserver       - tablet server executable
+  daemons            - both yb-master and yb-tserver
+  packaged[-targets] - targets that are required for a release package
 EOT
 }
 
@@ -372,7 +378,7 @@ while [ $# -gt 0 ]; do
     daemons|yb-daemons)
       make_targets+=( "yb-master" "yb-tserver" )
     ;;
-    packaged-targets)
+    packaged|packaged-targets)
       for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
         make_targets+=( "$packaged_target" )
       done
@@ -442,6 +448,12 @@ fi
 if "$java_only" && ! "$build_java"; then
   fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
         "--cxx-test or --skip-java-build."
+fi
+
+if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != "$YB_SRC_ROOT/thirdparty" ]]; then
+  log "YB_THIRDPARTY_DIR ('$YB_THIRDPARTY_DIR') is not what we expect based on the source root " \
+      "('$YB_SRC_ROOT/thirdparty'), not attempting to rebuild third-party dependencies."
+  export NO_REBUILD_THIRDPARTY=1
 fi
 
 configure_remote_build

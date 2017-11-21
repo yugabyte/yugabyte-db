@@ -11,19 +11,20 @@ import os
 import platform
 import shutil
 import sys
+import re
 
 from subprocess import call, check_output
-from common_util import log_message
+from common_util import log_message, YB_THIRDPARTY_DIR
 from xml.dom import minidom
+from yb.command_util import run_program
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
+THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
 class ReleaseUtil(object):
-    """ReleaseUtil class is used to package yugabyte release build file with appropriate
-    file naming schema.
-    """
+    """Packages a YugaByte release archive with the appropriate file naming schema."""
     def __init__(self, repository, build_type, edition, distribution_path, force):
         self.repo = repository
         self.build_type = build_type
@@ -49,8 +50,12 @@ class ReleaseUtil(object):
     def get_binary_path(self):
         return self.release_manifest['bin']
 
-    def update_java_version(self):
-        # Parse Java project version out of java/pom.xml.
+    def rewrite_manifest(self):
+        """
+        Rewrite the release manifest with the following changes:
+        - Replace ${project.version} with the Java version from pom.xml.
+        - Replace the leading "thirdparty/" with YB_THIRDPARTY_DIR.
+        """
         pom_file = os.path.join(self.repo, 'java', 'pom.xml')
         java_project_version = minidom.parse(pom_file).getElementsByTagName(
             'version')[0].firstChild.nodeValue
@@ -59,10 +64,14 @@ class ReleaseUtil(object):
 
         for key, value_list in self.release_manifest.iteritems():
             for i in xrange(len(value_list)):
-                new_value = value_list[i].replace('${project.version}', java_project_version)
+                old_value = value_list[i]
+                new_value = old_value.replace('${project.version}', java_project_version)
+                thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
+                if thirdparty_prefix_match:
+                    new_value = os.path.join(YB_THIRDPARTY_DIR, thirdparty_prefix_match.group(1))
                 if new_value != value_list[i]:
                     log_message(logging.INFO,
-                                "Substituting Java project version in '{}' -> '{}'".format(
+                                "Substituting '{}' -> '{}' in manifest".format(
                                     value_list[i], new_value))
                     value_list[i] = new_value
 
@@ -74,9 +83,7 @@ class ReleaseUtil(object):
         """
         for dir_from_manifest in self.release_manifest:
             current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
-            if os.path.exists(current_dest_dir):
-                logging.info("Directory '{}' already exists".format(current_dest_dir))
-            else:
+            if not os.path.exists(current_dest_dir):
                 os.makedirs(current_dest_dir)
 
             for elem in self.release_manifest[dir_from_manifest]:
@@ -120,12 +127,13 @@ class ReleaseUtil(object):
                     json.dumps(self.release_manifest, indent=2, sort_keys=True))
 
     def get_release_file(self):
-        """This method does couple of checks before generating the release file name
+        """
+        This method does couple of checks before generating the release file name.
         - Checks if there are local uncommitted changes.
         - Checks if there are local commits which aren't merged upstream.
         - Reads the base version from the version.txt file and appends to the filename.
-        Also fetches the platform the release file is being built and adds that
-        to the file name along with commit hash and built type.
+        Also fetches the platform the release file is being built and adds that to the file name
+        along with commit hash and built type.
         Returns:
             (string): Release file path.
         """
@@ -155,11 +163,25 @@ class ReleaseUtil(object):
 
     def generate_release(self):
         yugabyte_folder_prefix = "yugabyte-{}".format(self.base_version)
-        release_file = self.get_release_file()
-        response = call(['gtar', 'cvf', release_file,
-                         '--transform', 's,^,{}/,'.format(yugabyte_folder_prefix), '.'],
-                        cwd=self.distribution_path)
-        if response:
-            self.log_message(logging.ERROR, "Unable to generate release file.")
-            raise RuntimeError("Unable to generate release file.")
-        return release_file
+        tmp_parent_dir = self.distribution_path + '.tmp_for_tar_gz'
+        os.mkdir(tmp_parent_dir)
+
+        # Move the distribution directory to a new location named yugabyte-<version> and archive
+        # it from there so it has the right name when extracted.
+        #
+        # We used to do this using the --transform option to the tar command, but that has an
+        # unintended side effect of corrupting library symlinks to files in the same directory.
+        tmp_distribution_dir = os.path.join(tmp_parent_dir, yugabyte_folder_prefix)
+        shutil.move(self.distribution_path, tmp_distribution_dir)
+
+        try:
+            release_file = self.get_release_file()
+            log_message(logging.INFO,
+                        "Creating a release archive '{}' from directory {}".format(
+                            release_file, tmp_distribution_dir))
+            run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
+                        cwd=tmp_parent_dir)
+            return release_file
+        finally:
+            shutil.move(tmp_distribution_dir, self.distribution_path)
+            os.rmdir(tmp_parent_dir)

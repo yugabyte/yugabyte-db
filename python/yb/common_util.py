@@ -9,6 +9,11 @@ import os
 import sys
 
 
+MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
+YB_SRC_ROOT = os.path.realpath(os.path.join(MODULE_DIR, '..', '..'))
+YB_THIRDPARTY_DIR = os.environ.get("YB_THIRDPARTY_DIR", os.path.join(YB_SRC_ROOT, 'thirdparty'))
+
+
 class Colors(object):
     """ ANSI color codes. """
 
@@ -37,15 +42,12 @@ class Colors(object):
 def init_env(verbose):
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s: %(message)s")
+        format="%(asctime)s [%(filename)s:%(lineno)d %(levelname)s] %(message)s")
 
 
 def log_message(level, message):
     log_level = logging.getLogger().getEffectiveLevel()
     if level < log_level:
         return
-    co_filename, co_firstlineno, _ = logging.getLogger().findCaller()
-    message_with_file = "{}[{}:{}] {}{}".format(
-        Colors.for_level(level), os.path.basename(co_filename),
-        co_firstlineno, message, Colors.RESET)
+    message_with_file = "{}{}{}".format(Colors.for_level(level), message, Colors.RESET)
     logging.log(level, message_with_file)

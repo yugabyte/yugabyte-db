@@ -57,10 +57,8 @@ from six.moves import urllib
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from yb.command_util import run_program, mkdir_p  # nopep8
 from yb.linuxbrew import get_linuxbrew_dir  # nopep8
+from yb.common_util import YB_THIRDPARTY_DIR, YB_SRC_ROOT  # nopep8
 
-
-MODULE_DIR = path_dirname(realpath(__file__))
-YB_SRC_ROOT = realpath(os.path.join(MODULE_DIR, '..', '..'))
 
 # A resolved shared library dependency shown by ldd.
 # Example (split across two lines):
@@ -79,7 +77,6 @@ LINUXBREW_HOME = get_linuxbrew_dir()
 LINUXBREW_CELLAR_GLIBC_DIR = os.path.join(LINUXBREW_HOME, 'Cellar', 'glibc')
 LINUXBREW_LDD_PATH = os.path.join(LINUXBREW_HOME, 'bin', 'ldd')
 
-YB_THIRDPARTY_DIR = os.environ.get("YB_THIRDPARTY_DIR", os.path.join(YB_SRC_ROOT, 'thirdparty'))
 YB_SCRIPT_BIN_DIR = os.path.join(YB_SRC_ROOT, 'bin')
 YB_BUILD_SUPPORT_DIR = os.path.join(YB_SRC_ROOT, 'build-support')
 

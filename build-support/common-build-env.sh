@@ -74,6 +74,7 @@ readonly NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY=/n/jenkins/thirdparty
 # "buildmaster.c.yugabyte.internal", only "buildmaster".
 readonly DISTRIBUTED_BUILD_MASTER_HOST=buildmaster
 
+# We create a Python Virtual Environment inside this directory in the build directory.
 readonly YB_VIRTUALENV_BASENAME=python_virtual_env
 
 # -------------------------------------------------------------------------------------------------
@@ -343,7 +344,7 @@ set_build_root() {
 
   validate_compiler_type "$YB_COMPILER_TYPE"
   determine_linking_type
-  BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE-$YB_LINK
+  BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-$YB_LINK
 
   detect_edition
   BUILD_ROOT+="-$YB_EDITION"
@@ -1216,7 +1217,8 @@ check_python_script_syntax() {
 }
 
 activate_virtualenv() {
-  virtualenv_dir=${YB_SRC_ROOT}/$YB_VIRTUALENV_BASENAME
+  local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
+  local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
   if [[ ! $virtualenv_dir = */$YB_VIRTUALENV_BASENAME ]]; then
     fatal "Internal error: virtualenv_dir ('$virtualenv_dir') must end" \
           "with YB_VIRTUALENV_BASENAME ('$YB_VIRTUALENV_BASENAME')"
@@ -1226,7 +1228,8 @@ activate_virtualenv() {
     pip install virtualenv
     (
       set -x
-      cd "${virtualenv_dir%/*}"
+      mkdir -p "$virtualenv_parent_dir"
+      cd "$virtualenv_parent_dir"
       python -m virtualenv "$YB_VIRTUALENV_BASENAME"
     )
   fi
@@ -1236,7 +1239,7 @@ activate_virtualenv() {
   unset PYTHONPATH
   set -u
   export PYTHONPATH=$YB_SRC_ROOT/python:$virtualenv_dir/lib/python2.7/site-packages
-  pip install -r requirements.txt
+  pip install -r "$YB_SRC_ROOT/requirements.txt"
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -1245,6 +1248,9 @@ activate_virtualenv() {
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )"
+
+# Parent directory for build directories of all build types.
+YB_BUILD_PARENT_DIR=$YB_SRC_ROOT/build
 
 if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
   fatal "Could not determine YB source directory from '$BASH_SOURCE':" \

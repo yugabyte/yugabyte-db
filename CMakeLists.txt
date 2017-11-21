@@ -1223,7 +1223,9 @@ endif()
 
 ## OpenSSL
 if(APPLE)
+  # Not sure if we need a CMake variable or an environment variable, set both.
   set(OPENSSL_ROOT_DIR "/usr/local/opt/openssl")
+  set(ENV{OPENSSL_ROOT_DIR} "${OPENSSL_ROOT_DIR}")
 endif()
 
 find_package(OpenSSL REQUIRED)

@@ -20,6 +20,7 @@ import os
 import shutil
 import tempfile
 import yaml
+import sys
 
 from subprocess import call
 from yb.library_packager import LibraryPackager, add_common_arguments
@@ -31,7 +32,6 @@ YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RELEASE_EDITION_ENTERPRISE = "ee"
 RELEASE_EDITION_COMMUNITY = "ce"
 RELEASE_EDITION_ALLOWED_VALUES = set([RELEASE_EDITION_ENTERPRISE, RELEASE_EDITION_COMMUNITY])
-DISTRIBUTION_DIR = os.path.join("build", "dist")
 
 
 def main():
@@ -50,10 +50,22 @@ def main():
                         choices=RELEASE_EDITION_ALLOWED_VALUES)
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
     parser.add_argument('--build_target',
-                        help='Target directory to put the build files.')
+                        help='Target directory to put the YugaByte distribution into. This can '
+                             'be used for debugging this script without having to build the '
+                             'tarball. If specified, this directory must either not exist or be '
+                             'empty.')
     add_common_arguments(parser)
     args = parser.parse_args()
+
     init_env(args.verbose)
+
+    if not args.build_target and not args.build_archive:
+        log_message(logging.ERROR,
+                    "Neither --build_target or --build_archive is specified. In this "
+                    "configuration we would create a distribution in a temporary directory "
+                    "and then immediately delete it, which does not make sense.")
+        sys.exit(1)
+
     log_message(logging.INFO, "Building YugaByte code: '{}' build".format(args.build_type))
 
     tmp_dir = tempfile.mkdtemp(suffix=os.path.basename(__file__))
@@ -91,17 +103,13 @@ def main():
     build_dir = build_desc['build_root']
     build_target = args.build_target
     if build_target is None:
-        # if a build target is not provided, we create a temporary target path based on timestamp
-        # and delete it when the program exits.
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        build_target = os.path.join(DISTRIBUTION_DIR, timestamp)
-        atexit.register(lambda: shutil.rmtree(build_target))
+        # Use a temporary directory.
+        build_target = os.path.join(tmp_dir, 'tmp_yb_distribution')
 
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
-    release_util = ReleaseUtil(YB_SRC_ROOT, args.build_type,
-                               args.edition, build_target, args.force)
-    release_util.update_java_version()
+    release_util = ReleaseUtil(YB_SRC_ROOT, args.build_type, args.edition, build_target, args.force)
+    release_util.rewrite_manifest()
 
     library_packager = LibraryPackager(
             build_dir=build_dir,
@@ -121,7 +129,6 @@ def main():
     release_util.create_distribution(build_target)
 
     if args.build_archive:
-        log_message(logging.INFO, "Generating release tar")
         release_file = release_util.generate_release()
         if args.destination:
             if not os.path.exists(args.destination):

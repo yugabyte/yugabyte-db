@@ -13,7 +13,7 @@
 # under the License.
 #
 set -euo pipefail
-. ${BASH_SOURCE%/*}/build-support/common-build-env.sh
+. "${BASH_SOURCE%/*}/build-support/common-build-env.sh"
 
 activate_virtualenv
 "$YB_SRC_ROOT"/build-support/yb_release.py "$@"

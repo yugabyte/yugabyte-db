@@ -205,11 +205,18 @@ if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
     rm -rf "$BUILD_ROOT"
     build_root_deleted=true
   fi
+
 fi
 
 if ! $build_root_deleted; then
   log "Skipped deleting BUILD_ROOT ('$BUILD_ROOT'), only deleting $YB_TEST_LOG_ROOT_DIR."
   rm -rf "$YB_TEST_LOG_ROOT_DIR"
+fi
+
+if is_jenkins; then
+  log "Deleting yb-test-logs from all subdirectories of $YB_BUILD_PARENT_DIR so that Jenkins " \
+      "does not get confused with old JUnit-style XML files."
+  ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
 fi
 
 if [[ ! -d $BUILD_ROOT ]]; then
@@ -252,18 +259,39 @@ if [[ -d $parent_dir_for_shared_thirdparty ]]; then
   # We name shared prebuilt thirdparty directories on NFS like this:
   # /n/jenkins/thirdparty/yugabyte-thirdparty-YYYY-MM-DDTHH_MM_SS
   # This is why sorting and taking the last entry makes sense below.
-  existing_thirdparty_dir=$(
-    ls -d "$parent_dir_for_shared_thirdparty/yugabyte-thirdparty-"*/thirdparty | sort | tail -1
-  )
+  set +e
+  existing_thirdparty_dirs=( $(
+    ls -d "$parent_dir_for_shared_thirdparty/yugabyte-thirdparty-"*/thirdparty | sort --reverse
+  ) )
   set -e
-  if [[ -d $existing_thirdparty_dir ]]; then
-    log "Using existing third-party dependencies from $existing_thirdparty_dir"
-    export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
-    should_build_thirdparty=false
-  else
+  if [[ ${#existing_thirdparty_dirs[@]} -gt 0 ]]; then
+    for existing_thirdparty_dir in "${existing_thirdparty_dirs[@]}"; do
+      if [[ ! -d $existing_thirdparty_dir ]]; then
+        log "Warning: third-party directory '$existing_thirdparty_dir' not found, skipping."
+        continue
+      fi
+      if [[ -e $existing_thirdparty_dir/.yb_thirdparty_do_not_use ]]; then
+        log "Skipping '$existing_thirdparty_dir' because of a 'do not use' flag file."
+        continue
+      fi
+      if [[ -d $existing_thirdparty_dir ]]; then
+        log "Using existing third-party dependencies from $existing_thirdparty_dir"
+        if is_jenkins; then
+          log "Cleaning the old dedicated third-party dependency build in '$YB_SRC_ROOT/thirdparty'"
+          unset YB_THIRDPARTY_DIR
+          "$YB_SRC_ROOT/thirdparty/clean_thirdparty.sh" --all
+        fi
+        export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
+        should_build_thirdparty=false
+        break
+      fi
+    done
+  fi
+  if "$should_build_thirdparty"; then
     log "Even though the top-level directory '$parent_dir_for_shared_thirdparty'" \
-        "exists, we could not find a prebuilt shared third-party directory there (got" \
-        "$existing_thirdparty_dir. Falling back to building our own third-party dependencies."
+        "exists, we could not find a prebuilt shared third-party directory there that exists " \
+        "and does not have a 'do not use' flag file inside. Falling back to building our own " \
+        "third-party dependencies."
   fi
 fi
 
@@ -460,14 +488,15 @@ if [[ $YB_BUILD_JAVA == "1" ]]; then
   find . -name "pom.xml" \
          -exec sed -i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" {} \;
 
+  commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
+  commit_msg+="during testing"
   (
     set -x
     mvn versions:set -DnewVersion="$yb_java_project_version"
     git add -A .
-    commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
-    commit_msg+="during testing"
     git commit -m "$commit_msg"
   )
+  unset commit_msg
 
   java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
   if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" \
@@ -549,20 +578,8 @@ fi
 
 # Finished running tests.
 
-if [[ $YB_BUILD_CPP == "1" ]] && using_linuxbrew; then
-  # -----------------------------------------------------------------------------------------------
-  # Test package creation (i.e. relocating all the necessary libraries).  This only works on Linux
-  # builds using Linuxbrew.
-
-  packaged_dest_dir=${BUILD_ROOT}__packaged
-  rm -rf "$packaged_dest_dir"
-  log "Testing creating a distribution in '$packaged_dest_dir'"
-  export PYTHONPATH=${PYTHONPATH:-}:$YB_SRC_ROOT/python
-  python "$YB_SRC_ROOT/python/yb/library_packager.py" \
-    --build-dir "$BUILD_ROOT" \
-    --dest-dir "$packaged_dest_dir"
-  rm -rf "$packaged_dest_dir"
-fi
+log "Testing creating a distribution package"
+"$YB_SRC_ROOT/yb_release" --force --build_archive --skip_build
 
 set -e
 
