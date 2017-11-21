@@ -292,6 +292,9 @@ class PeerMessageQueue {
 
   virtual ~PeerMessageQueue();
 
+  void NotifyObserversOfFailedFollower(const std::string& uuid,
+                                       const std::string& reason);
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
 

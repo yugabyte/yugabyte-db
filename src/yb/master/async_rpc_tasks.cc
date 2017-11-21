@@ -370,6 +370,12 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
         PerformStateTransition(kStateRunning, kStateComplete);
         delete_done = true;
         break;
+      case TabletServerErrorPB::WRONG_SERVER_UUID:
+        LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
+                     << " due to a incorrect UUID. No further retry: " << status.ToString();
+        PerformStateTransition(kStateRunning, kStateComplete);
+        delete_done = true;
+        break;
       default:
         LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                      << " with error code " << TabletServerErrorPB::Code_Name(code)

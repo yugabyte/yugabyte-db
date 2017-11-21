@@ -286,6 +286,18 @@ void Peer::ProcessResponse() {
     return;
   }
 
+  // We should try to evict a follower which returns a WRONG UUID error.
+  if (response_.has_error() &&
+      response_.error().code() == tserver::TabletServerErrorPB::WRONG_SERVER_UUID) {
+    queue_->NotifyObserversOfFailedFollower(
+        peer_pb_.permanent_uuid(),
+        Substitute("Leader communication with peer $0 received error $1, will try to "
+                   "evict peer", peer_pb_.permanent_uuid(),
+                   response_.error().ShortDebugString()));
+    ProcessResponseError(StatusFromPB(response_.error().status()));
+    return;
+  }
+
   // Pass through errors we can respond to, like not found, since in that case
   // we will need to remotely bootstrap. TODO: Handle DELETED response once implemented.
   if ((response_.has_error() &&

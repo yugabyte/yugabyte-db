@@ -979,6 +979,16 @@ void PeerMessageQueue::NotifyObserversOfTermChangeTask(int64_t term) {
 }
 
 void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
+                                                       const string& reason) {
+  int64_t current_term;
+  {
+    LockGuard lock(queue_lock_);
+    current_term = queue_state_.current_term;
+  }
+  NotifyObserversOfFailedFollower(uuid, current_term, reason);
+}
+
+void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
                                                        int64_t term,
                                                        const string& reason) {
   WARN_NOT_OK(observers_pool_->SubmitClosure(

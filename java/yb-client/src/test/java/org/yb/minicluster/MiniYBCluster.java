@@ -303,11 +303,19 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   public void startTServer(List<String> tserverArgs) throws Exception {
+    startTServer(tserverArgs, null, null);
+  }
+
+  public void startTServer(List<String> tserverArgs, String tserverBindAddress,
+                           Integer tserverRpcPort) throws Exception {
     String baseDirPath = TestUtils.getBaseDir();
     long now = System.currentTimeMillis();
-    final String tserverBindAddress = getTabletServerBindAddress();
+    if (tserverBindAddress == null) {
+      tserverBindAddress = getTabletServerBindAddress();
+    }
 
-    final int rpcPort = TestUtils.findFreePort(tserverBindAddress);
+    final int rpcPort = (tserverRpcPort == null) ? TestUtils.findFreePort(tserverBindAddress) :
+        tserverRpcPort;
     final int webPort = TestUtils.findFreePort(tserverBindAddress);
     final int redisWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
@@ -341,7 +349,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.TSERVER,
         tsCmdLine.toArray(new String[tsCmdLine.size()]),
-        tserverBindAddress, rpcPort, webPort, cqlWebPort, redisWebPort);
+        tserverBindAddress, rpcPort, webPort, cqlWebPort, redisWebPort, dataDirPath);
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, REDIS_PORT));
@@ -398,7 +406,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(
         MiniYBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
-        masterBindAddress, rpcPort, webPort, -1, -1);
+        masterBindAddress, rpcPort, webPort, -1, -1, dataDirPath);
 
     final HostAndPort masterHostPort = HostAndPort.fromParts(masterBindAddress, rpcPort);
     masterHostPorts.add(masterHostPort);
@@ -479,7 +487,7 @@ public class MiniYBCluster implements AutoCloseable {
           configureAndStartProcess(
               MiniYBDaemonType.MASTER,
               masterCmdLine.toArray(new String[masterCmdLine.size()]),
-              masterBindAddress, masterRpcPort, masterWebPort, -1, -1));
+              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, dataDirPath));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -507,7 +515,8 @@ public class MiniYBCluster implements AutoCloseable {
                                                 int rpcPort,
                                                 int webPort,
                                                 int cqlWebPort,
-                                                int redisWebPort) throws Exception {
+                                                int redisWebPort,
+                                                String dataDirPath) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
     LOG.info("Starting process: {}", Joiner.on(" ").join(command));
     ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -518,7 +527,7 @@ public class MiniYBCluster implements AutoCloseable {
                                         : nextTServerIndex.incrementAndGet();
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
-            redisWebPort);
+            redisWebPort, dataDirPath);
 
     ProcessInputStreamLogPrinterRunnable printer =
         new ProcessInputStreamLogPrinterRunnable(proc.getInputStream(), daemon.getLogPrefix());
@@ -588,6 +597,7 @@ public class MiniYBCluster implements AutoCloseable {
     assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
     assert(redisContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), REDIS_PORT)));
     destroyDaemonAndWait(ts);
+    tserverUsedBindIPs.remove(hostPort.getHostText());
   }
 
   public Map<HostAndPort, MiniYBDaemon> getTabletServers() {

@@ -1,0 +1,125 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+package org.yb.cql;
+
+import com.datastax.driver.core.utils.Bytes;
+import com.google.common.net.HostAndPort;
+import org.apache.commons.io.FileUtils;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.LocatedTablet;
+import org.yb.client.TestUtils;
+import org.yb.client.YBTable;
+import org.yb.minicluster.MiniYBDaemon;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import static junit.framework.TestCase.assertNotNull;
+import static org.junit.Assert.assertFalse;
+
+public class TestWipeNode  extends BaseCQLTest {
+
+  protected static final Logger LOG = LoggerFactory.getLogger(TestWipeNode.class);
+  protected static final int WAIT_FOR_OP_MS = 10000;
+
+  private void writeRows(String tableName, int numRows) {
+    for (int i = 0; i < numRows; i++) {
+      session.execute(String.format("INSERT INTO %s (c1, c2) values (%d, %d)", tableName, i, i));
+    }
+  }
+
+  /**
+   * This unit test verifies that if we stop a tserver, wipe its data and bring it back up, it is
+   * eventually removed from all quorums and we are still able to perform write operations.
+   */
+  @Test
+  public void testWipeTserver() throws Exception {
+    String tableName = "testwipetserver";
+    session.execute(String.format("CREATE TABLE %s (c1 int, c2 int, PRIMARY KEY (c1))", tableName));
+    writeRows(tableName, 100);
+
+    // Wipe one node now.
+    Map.Entry<HostAndPort, MiniYBDaemon> daemon =
+        miniCluster.getTabletServers().entrySet().iterator().next();
+    LOG.info("Removing node: " + daemon.getKey().toString());
+    String removedNodeHost = daemon.getKey().getHostText();
+    int removedNodePort = daemon.getKey().getPort();
+
+    miniCluster.killTabletServerOnHostPort(daemon.getKey());
+    String dataDirPath = daemon.getValue().getDataDirPath();
+    FileUtils.deleteDirectory(new File(dataDirPath));
+
+    // Now start up the node on the same host, port.
+    miniCluster.startTServer(null, removedNodeHost, removedNodePort);
+
+    // Try writing rows.
+    writeRows(tableName, 100);
+
+    // Verify tablet metrics.
+    YBTable ybTable = miniCluster.getClient().openTable(DEFAULT_TEST_KEYSPACE, tableName);
+    TestUtils.waitFor(() -> {
+      List<LocatedTablet> tablets = ybTable.getTabletsLocations(WAIT_FOR_OP_MS);
+      assertFalse(tablets.isEmpty());
+      for (LocatedTablet tablet : tablets) {
+        // Verify the wiped node has no tablets.
+        for (LocatedTablet.Replica replica : tablet.getReplicas()) {
+          if (replica.getRpcHost() == removedNodeHost &&
+              replica.getRpcPort() == removedNodePort) {
+            LOG.error(String.format("Removed node %s:%d, still has replica: %s", removedNodeHost,
+                removedNodePort, replica.toString()));
+            return false;
+          }
+        }
+
+        HostAndPort hostPort = HostAndPort.fromParts(tablet.getLeaderReplica().getRpcHost(),
+            tablet.getLeaderReplica().getRpcPort());
+        MiniYBDaemon ybDaemon = miniCluster.getTabletServers().get(hostPort);
+        assertNotNull(ybDaemon);
+
+        URL url = new URL(String.format("http://%s:%d/tablet-consensus-status?id=%s",
+            ybDaemon.getLocalhostIP(), ybDaemon.getWebPort(),
+            new String(tablet.getTabletId())));
+        BufferedReader in = new BufferedReader(
+            new InputStreamReader(url.openConnection().getInputStream()));
+        try {
+          String inputLine;
+          String content = "";
+          while ((inputLine = in.readLine()) != null) {
+            content += inputLine;
+          }
+
+          LOG.info("Content for " + url + ", " + content);
+          // Validate that there are no OPs pending replication.
+          if (content.indexOf("LogCacheStats(num_ops=0") == -1) {
+            LOG.error(String.format("Ops still pending replication for tablet: %s",
+                tablet.toString()));
+            return false;
+          }
+        } finally {
+          in.close();
+        }
+      }
+      return true;
+    }, WAIT_FOR_OP_MS * (long)TestUtils.getTimeoutMultiplier());
+
+    // Writes should still succeed.
+    writeRows(tableName, 100);
+  }
+}

@@ -198,7 +198,8 @@ bool TabletInvoker::Done(Status* status) {
   // TODO: IllegalState is obviously way too broad an error category for
   // this case.
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
-      status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease()) {
+      status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
+      TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
     const bool leader_is_not_ready =
         ErrorCode(rpc_->response_error()) ==
             tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE ||
@@ -210,7 +211,7 @@ bool TabletInvoker::Done(Status* status) {
       followers_.insert(current_ts_);
     }
 
-    if (status->IsIllegalState()) {
+    if (status->IsIllegalState() || TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
       FailToNewReplica(*status);
     } else {
       retrier_->DelayedRetry(command_, *status);

@@ -49,6 +49,7 @@ class TabletRpc {
   ~TabletRpc() {}
 };
 
+tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
 class TabletInvoker {
  public:
   explicit TabletInvoker(bool consistent_prefix,
@@ -98,6 +99,15 @@ class TabletInvoker {
 
   void InitialLookupTabletDone(const Status& status);
 
+  // If we receive TABLET_NOT_FOUND and current_ts_ is set, that means we contacted a tserver
+  // with a tablet_id, but the tserver no longer has that tablet.
+  bool TabletNotFoundOnTServer(const tserver::TabletServerErrorPB* error_code,
+                               const Status& status) {
+    return status.IsNotFound() &&
+        ErrorCode(error_code) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
+        current_ts_ != nullptr;
+  }
+
   YBClient* client_;
 
   rpc::RpcCommand* const command_;
@@ -129,8 +139,6 @@ class TabletInvoker {
 };
 
 CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);
-tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
-
 template <class Response>
 HybridTime GetPropagatedHybridTime(const Response& response) {
   return response.has_propagated_hybrid_time() ? HybridTime(response.propagated_hybrid_time())

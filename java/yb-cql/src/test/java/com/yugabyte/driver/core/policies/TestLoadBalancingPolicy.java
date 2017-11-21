@@ -307,8 +307,10 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
     // With PartitionAwarePolicy, all calls should be local ideally but there is no 100% guarantee
     // because as soon as the test table has been created and the partition metadata has been
     // loaded, the cluster's load-balancer may still be rebalancing the leaders.
-    assertTrue(totalMetrics.localReadCount >= NUM_KEYS * 0.7);
-    assertTrue(totalMetrics.localWriteCount >= NUM_KEYS * 3 * 0.7);
+    assertTrue("Local Read Count: " + totalMetrics.localReadCount,
+        totalMetrics.localReadCount >= NUM_KEYS * 0.7);
+    assertTrue("Local Write Count: " + totalMetrics.localWriteCount,
+        totalMetrics.localWriteCount >= NUM_KEYS * 3 * 0.7);
   }
 
   // Test load-balancing policy with BatchStatement

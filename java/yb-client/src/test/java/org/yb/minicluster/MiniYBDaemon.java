@@ -28,7 +28,7 @@ public class MiniYBDaemon {
    */
   public MiniYBDaemon(
       MiniYBDaemonType type, int indexForLog, String[] commandLine, Process process, String bindIp,
-      int rpcPort, int webPort, int cqlWebPort, int redisWebPort) {
+      int rpcPort, int webPort, int cqlWebPort, int redisWebPort, String dataDirPath) {
     this.type = type;
     this.commandLine = commandLine;
     this.process = process;
@@ -38,6 +38,7 @@ public class MiniYBDaemon {
     this.webPort = webPort;
     this.cqlWebPort = cqlWebPort;
     this.redisWebPort = redisWebPort;
+    this.dataDirPath = dataDirPath;
   }
 
   public MiniYBDaemonType getType() {
@@ -79,6 +80,7 @@ public class MiniYBDaemon {
   private final int webPort;
   private final int cqlWebPort;
   private final int redisWebPort;
+  private final String dataDirPath;
 
   public HostAndPort getWebHostAndPort() {
     return HostAndPort.fromParts(bindIp, webPort);
@@ -103,6 +105,10 @@ public class MiniYBDaemon {
 
   public int getCqlWebPort() {
     return cqlWebPort;
+  }
+
+  public String getDataDirPath() {
+    return dataDirPath;
   }
 
   // TODO: rename tp getBindIp
