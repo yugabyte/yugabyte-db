@@ -324,6 +324,18 @@ googleAnalytics = "UA-104956980-1"
 	weight = 64
 
 [[menu.main]]
+	name   = "Manage"
+	identifier = "manage"
+	url    = "manage/"
+	weight = 70
+
+[[menu.main]]
+	name = "Diagnostics Reporting"
+	parent = "manage"
+	url = "manage/diagnostics-reporting/"
+	weight = 71
+
+[[menu.main]]
 	name   = "Client API Reference"
 	weight = 120
 	url = "api/"
@@ -790,15 +802,22 @@ googleAnalytics = "UA-104956980-1"
 	url = "admin/yb-docker-ctl/"
 
 [[menu.main]]
-	name = "yb-master"
+	name = "docker-compose"
 	weight = 243
+	identifier = "docker-compose"
+	parent = "admin"
+	url = "admin/docker-compose/"
+
+[[menu.main]]
+	name = "yb-master"
+	weight = 244
 	identifier = "yb-master"
 	parent = "admin"
 	url = "admin/yb-master/"
 
 [[menu.main]]
 	name = "yb-tserver"
-	weight = 244
+	weight = 245
 	identifier = "yb-tserver"
 	parent = "admin"
 	url = "admin/yb-tserver/"

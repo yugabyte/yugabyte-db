@@ -24,7 +24,7 @@ weight: 20
   </a>
 
   <a class="section-link icon-offset" href="/explore/linear-scalability">
-    <div class="icon"><i class="fa fa-plus-square-o" aria-hidden="true"></i></div>
+    <div class="icon"><i class="fa fa-line-chart" aria-hidden="true"></i></div>
     <div class="text">Linear Scalability</div>
   </a>
 
