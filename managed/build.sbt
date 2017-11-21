@@ -25,8 +25,16 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "1.17",
   "com.google.protobuf" % "protobuf-java" % "2.6.1"
 )
-resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
-// resolvers += Resolver.mavenLocal
+
+lazy val mavenLocal = System.getenv("USE_MAVEN_LOCAL")
+resolvers += {
+  if (mavenLocal != null && mavenLocal.equals("true")) {
+    Resolver.mavenLocal
+  } else {
+    "Yugabyte S3 Snapshots" at "s3://no-such-url/"
+  }
+}
+
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
 publishTo := Some("yugabyteS3" at "s3://no-such-url/")
 
