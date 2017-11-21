@@ -78,7 +78,6 @@ using std::shared_ptr;
 using std::vector;
 
 using yb::consensus::RaftPeerPB;
-using yb::master::GetLeaderMasterRpc;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
 using yb::tserver::RemoteBootstrapServiceImpl;

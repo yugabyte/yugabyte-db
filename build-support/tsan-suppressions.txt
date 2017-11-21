@@ -110,3 +110,6 @@ race:backtrace_alloc
 # False positives of TSAN, because we use atomic to check wether all responses are filled.
 race:yb::redisserver::RedisInboundCall::Serialize
 race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
+
+# Bug in tacopie
+race:tacopie::utils::thread_pool

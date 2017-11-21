@@ -22,8 +22,8 @@
 #include <set>
 #include <string>
 
-#include "cpp_redis/redis_client.hpp"
-#include "cpp_redis/reply.hpp"
+#include <cpp_redis/cpp_redis>
+
 #include "yb/client/client.h"
 
 #include "yb/gutil/stl_util.h"
@@ -31,12 +31,13 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/test_util.h"
 
-using cpp_redis::RedisClient;
-using cpp_redis::RedisReply;
 using std::shared_ptr;
 
 namespace yb {
 namespace load_generator {
+
+typedef cpp_redis::client RedisClient;
+typedef cpp_redis::reply RedisReply;
 
 class SingleThreadedReader;
 class SingleThreadedWriter;

@@ -95,7 +95,7 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
     RETURN_NOT_OK(TSDescriptor::RegisterNew(instance, registration, &new_desc));
     InsertOrDie(&servers_by_id_, uuid, shared_ptr<TSDescriptor>(new_desc.release()));
     LOG(INFO) << "Registered new tablet server { " << instance.ShortDebugString()
-              << " } with Master";
+              << " } with Master, full list: " << yb::ToString(servers_by_id_);
   } else {
     const shared_ptr<TSDescriptor>& found = FindOrDie(servers_by_id_, uuid);
     RETURN_NOT_OK(found->Register(instance, registration));

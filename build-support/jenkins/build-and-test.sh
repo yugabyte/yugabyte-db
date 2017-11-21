@@ -205,7 +205,6 @@ if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
     rm -rf "$BUILD_ROOT"
     build_root_deleted=true
   fi
-
 fi
 
 if ! $build_root_deleted; then

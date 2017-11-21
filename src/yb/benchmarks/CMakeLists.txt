@@ -30,8 +30,6 @@
 # under the License.
 #
 
-include_directories(../redisserver/cpp_redis/includes)
-
 add_executable(yb_load_test_tool yb_load_test_tool.cc)
 target_link_libraries(
     yb_load_test_tool

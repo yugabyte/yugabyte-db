@@ -125,12 +125,12 @@ class RpcRetrier {
 
   int attempt_num() const { return attempt_num_; }
 
-  // Called when an RPC comes up for retrying. Actually sends the RPC.
-  void DelayedRetryCb(RpcCommand* rpc, const Status& status);
-
   void Abort();
 
  private:
+  // Called when an RPC comes up for retrying. Actually sends the RPC.
+  void DoRetry(RpcCommand* rpc, const Status& status);
+
   // The next sent rpc will be the nth attempt (indexed from 1).
   int attempt_num_;
 
@@ -208,7 +208,6 @@ class Rpcs {
   RpcCommandPtr Unregister(Handle handle) {
     return Unregister(&handle);
   }
-
 
   Handle InvalidHandle() { return calls_.end(); }
 

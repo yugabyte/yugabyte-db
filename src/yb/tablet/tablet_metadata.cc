@@ -538,6 +538,11 @@ Status TabletMetadata::Flush() {
   return Status::OK();
 }
 
+void TabletMetadata::SetPreFlushCallback(StatusClosure callback) {
+  MutexLock lock(flush_lock_);
+  pre_flush_callback_ = std::move(callback);
+}
+
 Status TabletMetadata::UpdateUnlocked(
     const RowSetMetadataIds& to_remove,
     const RowSetMetadataVector& to_add,

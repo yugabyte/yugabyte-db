@@ -328,10 +328,8 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
         RpcController*)>& func);
 
 YBClient::Data::Data()
-    : master_server_endpoint_(),
-      master_server_addrs_(),
-      latest_observed_hybrid_time_(YBClient::kNoHybridTime) {
-}
+    : leader_master_rpc_(rpcs_.InvalidHandle()),
+      latest_observed_hybrid_time_(YBClient::kNoHybridTime) {}
 
 YBClient::Data::~Data() {
   // Workaround for KUDU-956: the user may close a YBClient while a flush
@@ -342,6 +340,7 @@ YBClient::Data::~Data() {
   // jitter on the reactor is not a big deal (and DNS resolutions are not in flight).
   ThreadRestrictions::ScopedAllowWait allow_wait;
   dns_resolver_.reset();
+  rpcs_.Shutdown();
 }
 
 RemoteTabletServer* YBClient::Data::SelectTServer(const RemoteTablet* rt,
@@ -972,12 +971,13 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
   {
     std::lock_guard<simple_spinlock> l(leader_master_lock_);
     cbs.swap(leader_master_callbacks_);
-    leader_master_rpc_.reset();
 
     if (new_status.ok()) {
       leader_master_hostport_ = host_port;
       master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_addr));
     }
+
+    rpcs_.Unregister(&leader_master_rpc_);
   }
 
   for (const StatusCallback& cb : cbs) {
@@ -1047,16 +1047,19 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
     LeaderMasterDetermined(Status::OK(), HostPort(master_sockaddrs.front()));
     return;
   }
-  if (!leader_master_rpc_) {
+  if (leader_master_rpc_ == rpcs_.InvalidHandle()) {
     // No one is sending a request yet - we need to be the one to do it.
-    leader_master_rpc_ = std::make_shared<GetLeaderMasterRpc>(
-        Bind(&YBClient::Data::LeaderMasterDetermined,
-            Unretained(this)),
-        master_sockaddrs,
-        actual_deadline,
-        messenger_);
+    rpcs_.Register(
+        std::make_shared<GetLeaderMasterRpc>(
+            Bind(&YBClient::Data::LeaderMasterDetermined,
+                Unretained(this)),
+            master_sockaddrs,
+            actual_deadline,
+            messenger_,
+            &rpcs_),
+        &leader_master_rpc_);
     l.unlock();
-    leader_master_rpc_->SendRpc();
+    (**leader_master_rpc_).SendRpc();
   }
 }
 

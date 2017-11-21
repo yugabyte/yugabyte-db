@@ -368,6 +368,13 @@ if [[ ! -d $REDIS_DIR ]]; then
   fetch_and_expand redis_cli
 fi
 
+if [[ ! -d $TACOPIE_DIR ]]; then
+  fetch_and_expand tacopie
+fi
+
+if [[ ! -d $CPP_REDIS_DIR ]]; then
+  fetch_and_expand cpp_redis
+fi
 
 echo "---------------"
 if [[ $DOWNLOAD_ONLY -eq 1 ]]; then

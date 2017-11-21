@@ -85,12 +85,19 @@ void RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   // RPC on our behalf.
   int num_ms = ++attempt_num_ + RandomUniformInt(0, 4);
 
-  state_ = RpcRetrierState::kWaiting;
+  RpcRetrierState expected_state = RpcRetrierState::kIdle;
+  while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kWaiting)) {
+    if (expected_state == RpcRetrierState::kFinished ||
+        expected_state == RpcRetrierState::kWaiting) {
+      LOG(DFATAL) << "DelayedRetry failed, state: " << yb::ToString(expected_state);
+      return;
+    }
+  }
   task_id_ = messenger_->ScheduleOnReactor(
-      std::bind(&RpcRetrier::DelayedRetryCb, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
+      std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
 }
 
-void RpcRetrier::DelayedRetryCb(RpcCommand* rpc, const Status& status) {
+void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   auto retain_rpc = rpc->shared_from_this();
 
   RpcRetrierState expected_state = RpcRetrierState::kWaiting;

@@ -30,8 +30,6 @@
 # under the License.
 #
 
-include_directories(../redisserver/cpp_redis/includes)
-
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
   cluster_verifier.cc
@@ -48,6 +46,7 @@ set(INTEGRATION_TESTS_SRCS
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
 target_link_libraries(integration-tests
   cpp_redis
+  tacopie
   tserver
   tserver_test_util
   master

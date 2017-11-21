@@ -51,27 +51,52 @@ using yb::consensus::RaftPeerPB;
 using yb::rpc::Messenger;
 using yb::rpc::Rpc;
 
+using namespace std::placeholders;
+
 namespace yb {
 namespace master {
+
+namespace {
 
 ////////////////////////////////////////////////////////////
 // GetMasterRegistrationRpc
 ////////////////////////////////////////////////////////////
 
-GetMasterRegistrationRpc::GetMasterRegistrationRpc(
-    StatusCallback user_cb, const Endpoint& addr, const MonoTime& deadline,
-    const shared_ptr<Messenger>& messenger, ServerEntryPB* out)
-    : Rpc(deadline, messenger),
-      user_cb_(std::move(user_cb)),
-      addr_(addr),
-      out_(DCHECK_NOTNULL(out)) {}
+// An RPC for getting a Master server's registration.
+class GetMasterRegistrationRpc: public rpc::Rpc {
+ public:
 
-GetMasterRegistrationRpc::~GetMasterRegistrationRpc() {
-}
+  // Create a wrapper object for a retriable GetMasterRegistration RPC
+  // to 'addr'. The result is stored in 'out', which must be a valid
+  // pointer for the lifetime of this object.
+  //
+  // Invokes 'user_cb' upon failure or success of the RPC call.
+  GetMasterRegistrationRpc(std::function<void(const Status&)> user_cb,
+                           const Endpoint& addr,
+                           const MonoTime& deadline,
+                           const std::shared_ptr<rpc::Messenger>& messenger,
+                           ServerEntryPB* out)
+      : Rpc(deadline, messenger),
+        user_cb_(std::move(user_cb)),
+        addr_(addr),
+        out_(DCHECK_NOTNULL(out)) {}
+
+  void SendRpc() override;
+
+  std::string ToString() const override;
+
+ private:
+  virtual void SendRpcCb(const Status& status) override;
+
+  std::function<void(const Status&)> user_cb_;
+  Endpoint addr_;
+
+  ServerEntryPB* out_;
+
+  GetMasterRegistrationResponsePB resp_;
+};
 
 void GetMasterRegistrationRpc::SendRpc() {
-  retained_self_ = shared_from_this();
-
   MasterServiceProxy proxy(retrier().messenger(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
@@ -81,16 +106,12 @@ void GetMasterRegistrationRpc::SendRpc() {
 
 string GetMasterRegistrationRpc::ToString() const {
   return strings::Substitute("GetMasterRegistrationRpc(address: $0, num_attempts: $1)",
-                             yb::ToString(addr_), num_attempts());
+      yb::ToString(addr_), num_attempts());
 }
 
 void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
-  rpc::RpcCommandPtr retained_self;
-  retained_self.swap(retained_self_);
-
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
-    retained_self.swap(retained_self_);
     return;
   }
   if (new_status.ok() && resp_.has_error()) {
@@ -110,8 +131,11 @@ void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
     out_->mutable_registration()->CopyFrom(resp_.registration());
     out_->set_role(resp_.role());
   }
-  user_cb_.Run(new_status);
+  auto callback = std::move(user_cb_);
+  callback(new_status);
 }
+
+} // namespace
 
 ////////////////////////////////////////////////////////////
 // GetLeaderMasterRpc
@@ -119,13 +143,13 @@ void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
 
 GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
                                        vector<Endpoint> addrs,
-                                       const MonoTime& deadline,
-                                       const shared_ptr<Messenger>& messenger)
+                                       MonoTime deadline,
+                                       const shared_ptr<Messenger>& messenger,
+                                       rpc::Rpcs* rpcs)
     : Rpc(deadline, messenger),
       user_cb_(std::move(user_cb)),
       addrs_(std::move(addrs)),
-      pending_responses_(0),
-      completed_(false) {
+      rpcs_(*rpcs) {
   DCHECK(deadline.Initialized());
 
   // Using resize instead of reserve to explicitly initialized the
@@ -147,17 +171,19 @@ string GetLeaderMasterRpc::ToString() const {
 }
 
 void GetLeaderMasterRpc::SendRpc() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  retained_self_ = shared_from_this();
+  auto self = shared_from_this();
 
+  std::lock_guard<simple_spinlock> l(lock_);
   for (int i = 0; i < addrs_.size(); i++) {
-    rpc::StartRpc<GetMasterRegistrationRpc>(
-        Bind(&GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode,
-             Unretained(this), ConstRef(addrs_[i]), ConstRef(responses_[i])),
+    auto handle = rpcs_.Prepare();
+    *handle = std::make_shared<GetMasterRegistrationRpc>(
+        std::bind(
+            &GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode, this, i, _1, self, handle),
         addrs_[i],
         retrier().deadline(),
         retrier().messenger(),
         &responses_[i]);
+    (**handle).SendRpc();
     ++pending_responses_;
   }
 }
@@ -169,7 +195,7 @@ void GetLeaderMasterRpc::SendRpcCb(const Status& status) {
   if (status.IsNetworkError() || status.IsNotFound()) {
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
-    mutable_retrier()->DelayedRetryCb(this, Status::OK());
+    mutable_retrier()->DelayedRetry(this, Status::OK());
     return;
   }
   {
@@ -183,9 +209,11 @@ void GetLeaderMasterRpc::SendRpcCb(const Status& status) {
   user_cb_.Run(status, leader_master_);
 }
 
-void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_addr,
-                                                           const ServerEntryPB& resp,
-                                                           const Status& status) {
+void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
+    int idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
+    rpc::Rpcs::Handle handle) {
+  rpcs_.Unregister(handle);
+
   // TODO: handle the situation where one Master is partitioned from
   // the rest of the Master consensus configuration, all are reachable by the client,
   // and the partitioned node "thinks" it's the leader.
@@ -193,21 +221,16 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_
   // The proper way to do so is to add term/index to the responses
   // from the Master, wait for majority of the Masters to respond, and
   // pick the one with the highest term/index as the leader.
-  rpc::RpcCommandPtr retained_self;
   Status new_status = status;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     --pending_responses_;
-    if (pending_responses_ == 0) {
-      retained_self_.swap(retained_self);
-    } else {
-      retained_self = retained_self_;
-    }
     if (completed_) {
       // If 'user_cb_' has been invoked (see SendRpcCb above), we can
       // stop.
       return;
     }
+    auto& resp = responses_[idx];
     if (new_status.ok()) {
       if (resp.role() != RaftPeerPB::LEADER) {
         // Use a STATUS(NotFound, "") to indicate that the node is not
@@ -219,7 +242,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_
         new_status = STATUS(NotFound, "no leader found: " + ToString());
       } else {
         // We've found a leader.
-        leader_master_ = HostPort(node_addr);
+        leader_master_ = HostPort(addrs_[idx]);
       }
     }
     if (!new_status.ok()) {
@@ -230,13 +253,19 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Endpoint& node_
         // been unable to find a leader so far.
         return;
       }
+    } else {
+      completed_ = true;
     }
   }
+
   // Called if the leader has been determined, or if we've received
   // all of the responses.
-  SendRpcCb(new_status);
+  if (new_status.ok()) {
+    user_cb_.Run(new_status, leader_master_);
+  } else {
+    SendRpcCb(new_status);
+  }
 }
-
 
 } // namespace master
 } // namespace yb

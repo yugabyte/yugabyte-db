@@ -255,5 +255,11 @@ void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
   tablets_pending_delete_.erase(tablet_id);
 }
 
+std::string TSDescriptor::ToString() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",
+                permanent_uuid_, registration_, placement_id_);
+}
+
 } // namespace master
 } // namespace yb

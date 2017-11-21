@@ -194,6 +194,8 @@ class TSDescriptor {
   void AddPendingTabletDelete(const std::string& tablet_id);
   void ClearPendingTabletDelete(const std::string& tablet_id);
 
+  std::string ToString() const;
+
  private:
   template <class TProxy>
   CHECKED_STATUS GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,

@@ -1,4 +1,5 @@
 cmake-*
+cpp_redis-*
 crcutil-*
 gflags-*
 glog-*

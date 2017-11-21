@@ -280,12 +280,14 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
   if (master_sock_addrs.empty()) {
     return STATUS(NotFound, "unable to resolve any of the master addresses!");
   }
+  rpc::Rpcs rpcs;
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
       Bind(&LeaderMasterCallback, leader_hostport, &sync),
       master_sock_addrs,
       deadline,
-      server_->messenger());
+      server_->messenger(),
+      &rpcs);
   return sync.Wait();
 }
 

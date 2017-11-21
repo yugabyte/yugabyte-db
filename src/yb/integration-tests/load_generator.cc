@@ -19,8 +19,6 @@
 #include <random>
 #include <thread>
 
-#include "cpp_redis/redis_client.hpp"
-#include "cpp_redis/reply.hpp"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
@@ -329,10 +327,7 @@ void ConfigureRedisSessions(
     shared_ptr<RedisClient> client(new RedisClient());
     auto remote = ParseEndpoint(addr, 6379);
     CHECK_OK(remote);
-    auto endpoint = *remote;
-    client->connect(remote->address().to_string(), remote->port(), [endpoint](RedisClient&) {
-      LOG(ERROR) << "client disconnected (disconnection handler) from " << endpoint;
-    });
+    client->connect(remote->address().to_string(), remote->port());
     clients->push_back(client);
   }
 }

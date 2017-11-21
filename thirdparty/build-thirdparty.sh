@@ -305,6 +305,8 @@ set_compiler gcc
 
 F_ALL=1
 F_BITSHUFFLE=""
+F_CPP_REDIS=""
+F_TACOPIE=""
 F_CRCUTIL=""
 F_CRYPT_BLOWFISH=""
 F_CURL=""
@@ -369,6 +371,10 @@ while [[ $# -gt 0 ]]; do
 
     "bitshuffle")   building_what+=( bitshuffle )
                     F_BITSHUFFLE=1 ;;
+    "cpp_redis")    building_what+=( cpp_redis )
+                    F_CPP_REDIS=1 ;;
+    "tacopie")      building_what+=( tacopie )
+                    F_TACOPIE=1 ;;
     "crcutil")      building_what+=( crcutil )
                     F_CRCUTIL=1 ;;
     "crypt_blowfish") building_what+=( crypt_blowfish )
@@ -646,6 +652,14 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
     do_build_if_necessary crypt_blowfish
   fi
 
+  if [ -n "$F_ALL" -o -n "$F_TACOPIE" ]; then
+    do_build_if_necessary tacopie
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_CPP_REDIS" ]; then
+    do_build_if_necessary cpp_redis
+  fi
+
   heading "Finished building non-TSAN dependencies"
 fi
 
@@ -707,6 +721,14 @@ if [[ -n $F_TSAN  ]]; then
   # C++ libraries that require TSAN instrumentation.
   if [ -n "$F_ALL" -o -n "$F_PROTOBUF" ]; then
     do_build_if_necessary protobuf
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_TACOPIE" ]; then
+    do_build_if_necessary tacopie
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_CPP_REDIS" ]; then
+    do_build_if_necessary cpp_redis
   fi
   restore_env
 

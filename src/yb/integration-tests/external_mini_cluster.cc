@@ -955,12 +955,15 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     addrs.push_back(master->bound_rpc_addr());
   }
+  rpc::Rpcs rpcs;
   auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
       Bind(&LeaderMasterCallback, &leader_master_hp, &sync),
       addrs,
       deadline,
-      messenger_);
+      messenger_,
+      &rpcs);
   RETURN_NOT_OK(sync.Wait());
+  rpcs.Shutdown();
   bool found = false;
   for (int i = 0; i < masters_.size(); i++) {
     if (is_leader && masters_[i]->bound_rpc_hostport().port() == leader_master_hp.port() ||

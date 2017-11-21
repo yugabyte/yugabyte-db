@@ -18,8 +18,7 @@
 #include <thread>
 #include <vector>
 
-#include "cpp_redis/redis_client.hpp"
-#include "cpp_redis/reply.hpp"
+#include "cpp_redis/cpp_redis"
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -55,15 +54,14 @@ using namespace std::literals; // NOLINT
 namespace yb {
 namespace redisserver {
 
-using cpp_redis::RedisClient;
-using cpp_redis::RedisReply;
+using RedisClient = cpp_redis::client;
+using RedisReply = cpp_redis::reply;
 using std::string;
 using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
 using yb::util::ToRepeatedPtrField;
-using namespace std::literals::string_literals;  // NOLINT
 
 #if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
 constexpr int kDefaultTimeoutMs = 100000;
@@ -262,6 +260,10 @@ class TestRedisService : public RedisTableTestBase {
 
   bool expected_no_sessions_ = false;
 
+  RedisClient& client() {
+    return test_client_;
+  }
+
  protected:
   std::string int64Max_ = std::to_string(std::numeric_limits<int64_t>::max());
   std::string int64MaxExclusive_ = "(" + int64Max_;
@@ -278,7 +280,6 @@ class TestRedisService : public RedisTableTestBase {
   unique_ptr<FileLock> redis_port_lock_;
   unique_ptr<FileLock> redis_webserver_lock_;
   std::vector<uint8_t> resp_;
-
 };
 
 void TestRedisService::SetUp() {
@@ -288,9 +289,7 @@ void TestRedisService::SetUp() {
   StartClient();
   num_callbacks_called_ = 0;
   expected_callbacks_called_ = 0;
-  test_client_.connect("127.0.0.1", server_port(), [] (RedisClient&) {
-    LOG(ERROR) << "client disconnected (disconnection handler)";
-  });
+  test_client_.connect("127.0.0.1", server_port());
 }
 
 void TestRedisService::StartServer() {
@@ -338,11 +337,11 @@ void TestRedisService::TearDown() {
   size_t allocated_sessions = CountSessions(METRIC_allocated_read_sessions,
                                             METRIC_allocated_write_sessions);
   if (!expected_no_sessions_) {
-    ASSERT_GT(allocated_sessions, 0); // Check that metric is sane.
+    EXPECT_GT(allocated_sessions, 0); // Check that metric is sane.
   } else {
-    ASSERT_EQ(0, allocated_sessions);
+    EXPECT_EQ(0, allocated_sessions);
   }
-  ASSERT_EQ(allocated_sessions, CountSessions(METRIC_available_read_sessions,
+  EXPECT_EQ(allocated_sessions, CountSessions(METRIC_available_read_sessions,
                                               METRIC_available_write_sessions));
 
   test_client_.disconnect();
@@ -924,7 +923,7 @@ TEST_F(TestRedisService, TestTtl) {
 
   DoRedisTestOk(__LINE__, {"SET", "k1", "v1"});
   DoRedisTestOk(__LINE__, {"SET", "k2", "v2", "EX", "1"});
-  DoRedisTestOk(__LINE__, {"SET", "k3", "v3", "EX", "10"});
+  DoRedisTestOk(__LINE__, {"SET", "k3", "v3", "EX", NonTsanVsTsan("20", "100")});
   DoRedisTestOk(__LINE__, {"SET", "k4", "v4", "EX", std::to_string(kRedisMaxTtlSeconds)});
   DoRedisTestOk(__LINE__, {"SET", "k5", "v5", "EX", std::to_string(kRedisMinTtlSeconds)});
 

@@ -51,39 +51,6 @@ class HostPort;
 
 namespace master {
 
-// An RPC for getting a Master server's registration.
-class GetMasterRegistrationRpc : public rpc::Rpc {
- public:
-
-  // Create a wrapper object for a retriable GetMasterRegistration RPC
-  // to 'addr'. The result is stored in 'out', which must be a valid
-  // pointer for the lifetime of this object.
-  //
-  // Invokes 'user_cb' upon failure or success of the RPC call.
-  GetMasterRegistrationRpc(StatusCallback user_cb, const Endpoint& addr,
-                           const MonoTime& deadline,
-                           const std::shared_ptr<rpc::Messenger>& messenger,
-                           ServerEntryPB* out);
-
-  ~GetMasterRegistrationRpc();
-
-  void SendRpc() override;
-
-  std::string ToString() const override;
-
- private:
-  virtual void SendRpcCb(const Status& status) override;
-
-  StatusCallback user_cb_;
-  Endpoint addr_;
-
-  ServerEntryPB* out_;
-
-  GetMasterRegistrationResponsePB resp_;
-
-  rpc::RpcCommandPtr retained_self_;
-};
-
 // In parallel, send requests to the specified Master servers until a
 // response comes back from the leader of the Master consensus configuration.
 //
@@ -113,8 +80,9 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // found until 'deadline' passes.
   GetLeaderMasterRpc(LeaderCallback user_cb,
                      std::vector<Endpoint> addrs,
-                     const MonoTime& deadline,
-                     const std::shared_ptr<rpc::Messenger>& messenger);
+                     MonoTime deadline,
+                     const std::shared_ptr<rpc::Messenger>& messenger,
+                     rpc::Rpcs* rpcs);
 
   ~GetLeaderMasterRpc();
 
@@ -131,9 +99,9 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // Invokes SendRpcCb if the response indicates that the specified
   // master is a leader, or if responses have been received from all
   // of the Masters.
-  void GetMasterRegistrationRpcCbForNode(const Endpoint& node_addr,
-                                         const ServerEntryPB& resp,
-                                         const Status& status);
+  void GetMasterRegistrationRpcCbForNode(
+      int idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
+      rpc::Rpcs::Handle handle);
 
   LeaderCallback user_cb_;
   std::vector<Endpoint> addrs_;
@@ -146,16 +114,16 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   std::vector<ServerEntryPB> responses_;
 
   // Number of pending responses.
-  int pending_responses_;
+  int pending_responses_ = 0;
 
   // If true, then we've already executed the user callback and the
   // RPC can be deallocated.
-  bool completed_;
+  bool completed_ = false;
 
   // Protects 'pending_responses_' and 'completed_'.
   mutable simple_spinlock lock_;
 
-  rpc::RpcCommandPtr retained_self_;
+  rpc::Rpcs& rpcs_;
 };
 
 } // namespace master

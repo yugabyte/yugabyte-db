@@ -71,6 +71,5 @@ target_link_libraries(yb-cqlserver
   ${YB_BASE_LIBS})
 
 # Tests
-include_directories(../redisserver/cpp_redis/includes) # needed by yb_table_test_base.h -> load_generator.h
 set(YB_TEST_LINK_LIBS yb-cql integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(cqlserver-test)

@@ -37,8 +37,6 @@ ADD_YB_LIBRARY(redis_service_proto
 # redis server
 #########################################
 
-include_directories(cpp_redis/includes)
-
 set(REDISSERVER_SRCS
   redis_encoding.cc
   redis_rpc.cc
@@ -49,7 +47,6 @@ set(REDISSERVER_SRCS
 
 add_library(yb-redis ${REDISSERVER_SRCS})
 target_link_libraries(yb-redis
-  cpp_redis
   protobuf
   log
   yrpc
@@ -68,5 +65,5 @@ target_link_libraries(yb-redisserver
   ${YB_BASE_LIBS})
 
 # Tests
-set(YB_TEST_LINK_LIBS yb-redis integration-tests ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb-redis integration-tests cpp_redis tacopie ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(redisserver-test)

@@ -254,7 +254,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   void SetLastDurableMrsIdForTests(int64_t mrs_id) { last_durable_mrs_id_ = mrs_id; }
 
-  void SetPreFlushCallback(StatusClosure callback) { pre_flush_callback_ = callback; }
+  void SetPreFlushCallback(StatusClosure callback);
 
   consensus::OpId tombstone_last_logged_opid() const { return tombstone_last_logged_opid_; }
 
