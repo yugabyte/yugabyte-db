@@ -42,7 +42,8 @@ def main():
     parser.add_argument('--build_args', default='',
                         help='Additional arguments to pass to the build script')
     parser.add_argument('--build_archive', action='store_true',
-                        help='Whether or not we should build a release archive.')
+                        help='Whether or not we should build a release archive. This defaults to '
+                             'false if --build_target is specified, true otherwise.')
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
     parser.add_argument('--edition', help='Which edition the code is built as.',
@@ -60,11 +61,9 @@ def main():
     init_env(args.verbose)
 
     if not args.build_target and not args.build_archive:
-        log_message(logging.ERROR,
-                    "Neither --build_target or --build_archive is specified. In this "
-                    "configuration we would create a distribution in a temporary directory "
-                    "and then immediately delete it, which does not make sense.")
-        sys.exit(1)
+        log_message(logging.INFO,
+                    "Implying --build_archive because --build_target is not specified.")
+        args.build_archive = True
 
     log_message(logging.INFO, "Building YugaByte code: '{}' build".format(args.build_type))
 
@@ -134,6 +133,7 @@ def main():
             if not os.path.exists(args.destination):
                 raise RuntimeError("Destination {} not a directory.".format(args.destination))
             shutil.copy(release_file, args.destination)
+        log_message(logging.INFO, "Generated a release archive at '{}'".format(release_file))
 
 
 if __name__ == '__main__':

@@ -579,7 +579,7 @@ fi
 # Finished running tests.
 
 log "Testing creating a distribution package"
-"$YB_SRC_ROOT/yb_release" --force --build_archive --skip_build
+"$YB_SRC_ROOT/yb_release" --force --skip_build
 
 set -e
 
