@@ -87,7 +87,7 @@ public class TestHideRedis extends BaseCQLTest {
         "table_name = '%s'", YBClient.REDIS_DEFAULT_TABLE_NAME)).all().size());
 
     } finally {
-      client.deleteTable(YBClient.REDIS_DEFAULT_TABLE_NAME, YBClient.REDIS_KEYSPACE_NAME);
+      client.deleteTable(YBClient.REDIS_KEYSPACE_NAME, YBClient.REDIS_DEFAULT_TABLE_NAME);
       runInvalidQuery(String.format("DROP KEYSPACE %s", YBClient.REDIS_KEYSPACE_NAME));
       runInvalidQuery(String.format("DROP TABLE %s.\"%s\"",
         YBClient.REDIS_KEYSPACE_NAME, YBClient.REDIS_DEFAULT_TABLE_NAME));

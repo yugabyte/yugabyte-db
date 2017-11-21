@@ -881,7 +881,6 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
 }
 
 Status CatalogManager::PrepareDefaultNamespaces() {
-  RETURN_NOT_OK(PrepareNamespace(kDefaultNamespaceName, kDefaultNamespaceId));
   RETURN_NOT_OK(PrepareNamespace(kSystemNamespaceName, kSystemNamespaceId));
   RETURN_NOT_OK(PrepareNamespace(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId));
   RETURN_NOT_OK(PrepareNamespace(kSystemAuthNamespaceName, kSystemAuthNamespaceId));
@@ -1265,19 +1264,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   LOG(INFO) << "CreateTable from " << RequestorString(rpc)
             << ":\n" << req.DebugString();
 
-  // Validate the user request.
-  NamespaceId namespace_id = kDefaultNamespaceId;
-
-  // Validate namespace.
-  if (req.has_namespace_()) {
-    scoped_refptr<NamespaceInfo> ns;
-
-    // Lookup the namespace and verify if it exists.
-    TRACE("Looking up namespace");
-    RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req.namespace_(), &ns), resp);
-
-    namespace_id = ns->id();
-  }
+  // Lookup the namespace and verify if it exists.
+  TRACE("Looking up namespace");
+  scoped_refptr<NamespaceInfo> ns;
+  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req.namespace_(), &ns), resp);
+  NamespaceId namespace_id = ns->id();
 
   // Validate schema.
   Schema client_schema;
@@ -1643,7 +1634,7 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
   if (table_identifier.has_table_id()) {
     *table_info = FindPtrOrNull(table_ids_map_, table_identifier.table_id());
   } else if (table_identifier.has_table_name()) {
-    NamespaceId namespace_id = kDefaultNamespaceId;
+    NamespaceId namespace_id;
 
     if (table_identifier.has_namespace_()) {
       if (table_identifier.namespace_().has_id()) {
@@ -1663,6 +1654,10 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
       } else {
         return STATUS(InvalidArgument, "Neither namespace id or namespace name are specified");
       }
+    }
+
+    if (namespace_id.empty()) {
+      return STATUS(InvalidArgument, "No namespace used");
     }
 
     *table_info = FindPtrOrNull(table_names_map_, {namespace_id, table_identifier.table_name()});
@@ -1982,7 +1977,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return s;
   }
 
-  NamespaceId new_namespace_id = kDefaultNamespaceId;
+  NamespaceId new_namespace_id;
 
   if (req->has_new_namespace()) {
     // Lookup the new namespace and verify if it exists.
@@ -2024,6 +2019,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Try to acquire the new table name.
   if (req->has_new_namespace() || req->has_new_table_name()) {
+
+    if (new_namespace_id.empty()) {
+      const Status s = STATUS(InvalidArgument, "No namespace used");
+      SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
+      return s;
+    }
+
     std::lock_guard<LockType> catalog_lock(lock_);
 
     TRACE("Acquired catalog manager lock");
@@ -2695,15 +2697,6 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
             << ": " << req->ShortDebugString();
 
   RETURN_NOT_OK(CheckOnline());
-
-  // Prevent 'default' namespace deletion
-  if ((req->namespace_().has_id() && req->namespace_().id() == kDefaultNamespaceId) ||
-      (req->namespace_().has_name() && req->namespace_().name() == kDefaultNamespaceName)) {
-    Status s = STATUS(InvalidArgument,
-        "Cannot delete default namespace", req->DebugString());
-    SetupError(resp->mutable_error(), MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE, s);
-    return s;
-  }
 
   scoped_refptr<NamespaceInfo> ns;
 

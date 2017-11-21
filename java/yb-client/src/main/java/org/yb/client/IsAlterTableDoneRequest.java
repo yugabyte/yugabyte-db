@@ -35,6 +35,7 @@ import com.google.protobuf.Message;
 import static org.yb.master.Master.*;
 
 import org.yb.annotations.InterfaceAudience;
+import org.yb.master.Master;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -46,19 +47,24 @@ class IsAlterTableDoneRequest extends YRpc<IsAlterTableDoneResponse> {
 
   static final String IS_ALTER_TABLE_DONE = "IsAlterTableDone";
   private final String name;
+  private final String keyspace;
 
 
-  IsAlterTableDoneRequest(YBTable masterTable, String name) {
+  IsAlterTableDoneRequest(YBTable masterTable, String name, String keyspace) {
     super(masterTable);
     this.name = name;
+    this.keyspace = keyspace;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
     final IsAlterTableDoneRequestPB.Builder builder = IsAlterTableDoneRequestPB.newBuilder();
-    TableIdentifierPB tableID =
-        TableIdentifierPB.newBuilder().setTableName(name).build();
+    TableIdentifierPB tableID = TableIdentifierPB.newBuilder()
+                                .setTableName(name)
+                                .setNamespace(Master.NamespaceIdentifierPB.newBuilder()
+                                              .setName(this.keyspace))
+                                .build();
     builder.setTable(tableID);
     return toChannelBuffer(header, builder.build());
   }

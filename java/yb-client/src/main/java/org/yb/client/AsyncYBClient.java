@@ -300,45 +300,41 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name
    * @param schema the table's schema
    * @return a deferred object to track the progress of the createTable command that gives
    * an object to communicate with the created table
    */
-  public Deferred<YBTable> createTable(String name, Schema schema) {
-    return this.createTable(name, schema, new CreateTableOptions(), null);
+  public Deferred<YBTable> createTable(String keyspace, String name, Schema schema) {
+    return this.createTable(keyspace, name, schema, new CreateTableOptions());
   }
 
   /**
    * Create a table on the cluster with the specified name, schema, and table configurations.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name
    * @param schema the table's schema
    * @param builder a builder containing the table's configurations
    * @return a deferred object to track the progress of the createTable command that gives
    * an object to communicate with the created table
    */
-  public Deferred<YBTable> createTable(final String name,
+  public Deferred<YBTable> createTable(final String keyspace,
+                                       final String name,
                                        Schema schema,
                                        CreateTableOptions builder) {
-    return createTable(name, schema, builder, null);
-  }
-
-  public Deferred<YBTable> createTable(final String name,
-                                       Schema schema,
-                                       CreateTableOptions builder,
-                                       final String keySpace) {
     checkIsClosed();
     if (builder == null) {
       builder = new CreateTableOptions();
     }
     CreateTableRequest create = new CreateTableRequest(this.masterTable, name, schema,
-        builder, keySpace);
+        builder, keyspace);
     create.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(create).addCallbackDeferring(
         new Callback<Deferred<YBTable>, CreateTableResponse>() {
       @Override
       public Deferred<YBTable> call(CreateTableResponse createTableResponse) throws Exception {
-        return openTable(name, keySpace);
+        return openTable(keyspace, name);
       }
     });
   }
@@ -347,21 +343,21 @@ public class AsyncYBClient implements AutoCloseable {
    * Create a CQL keyspace.
    * @param name of the keyspace.
    */
-  public Deferred<CreateKeyspaceResponse> createKeyspace(String keySpace)
+  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace)
       throws Exception {
     checkIsClosed();
-    CreateKeyspaceRequest keyspace = new CreateKeyspaceRequest(this.masterTable, keySpace);
-    keyspace.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-    return sendRpcToTablet(keyspace);
+    CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable, keyspace);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
   }
 
   /**
    * Delete a table on the cluster with the specified name.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name
-   * @param keyspace CQL keyspace to which this table belongs, if available
    * @return a deferred object to track the progress of the deleteTable command
    */
-  public Deferred<DeleteTableResponse> deleteTable(final String name, final String keyspace) {
+  public Deferred<DeleteTableResponse> deleteTable(final String keyspace, final String name) {
     checkIsClosed();
     DeleteTableRequest delete = new DeleteTableRequest(this.masterTable, name, keyspace);
     delete.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -373,13 +369,15 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * When the returned deferred completes it only indicates that the master accepted the alter
    * command, use {@link AsyncYBClient#isAlterTableDone(String)} to know when the alter finishes.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name, if this is a table rename then the old table name must be passed
    * @param ato the alter table builder
    * @return a deferred object to track the progress of the alter command
    */
-  public Deferred<AlterTableResponse> alterTable(String name, AlterTableOptions ato) {
+  public Deferred<AlterTableResponse> alterTable(String keyspace, String name,
+                                                 AlterTableOptions ato) {
     checkIsClosed();
-    AlterTableRequest alter = new AlterTableRequest(this.masterTable, name, ato);
+    AlterTableRequest alter = new AlterTableRequest(this.masterTable, name, ato, keyspace);
     alter.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(alter);
   }
@@ -387,12 +385,14 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Helper method that checks and waits until the completion of an alter command.
    * It will block until the alter command is done or the deadline is reached.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name, if the table was renamed then that name must be checked against
    * @return a deferred object to track the progress of the isAlterTableDone command
    */
-  public Deferred<IsAlterTableDoneResponse> isAlterTableDone(String name) throws Exception {
+  public Deferred<IsAlterTableDoneResponse> isAlterTableDone(String keyspace, String name)
+      throws Exception {
     checkIsClosed();
-    IsAlterTableDoneRequest request = new IsAlterTableDoneRequest(this.masterTable, name);
+    IsAlterTableDoneRequest request = new IsAlterTableDoneRequest(this.masterTable, name, keyspace);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -545,20 +545,11 @@ public class AsyncYBClient implements AutoCloseable {
 
   /**
    * Get the schema for a specific table given that table's name.
-   * @param name the name of the table to get a schema of.
-   * @return a deferred object that yields the schema of the specified table
-   */
-  private Deferred<GetTableSchemaResponse> getTableSchema(String name) {
-    return getTableSchema(name, null);
-  }
-
-  /**
-   * Get the schema for a specific table given that table's name.
-   * @param name the name of the table to get a schema of.
    * @param keyspace the keyspace name to which this table belongs.
+   * @param name the name of the table to get a schema of.
    * @return a deferred object that yields the schema of the specified table
    */
-  Deferred<GetTableSchemaResponse> getTableSchema(String name, final String keyspace) {
+  Deferred<GetTableSchemaResponse> getTableSchema(String keyspace, String name) {
     GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name, null, keyspace);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
@@ -597,14 +588,15 @@ public class AsyncYBClient implements AutoCloseable {
 
   /**
    * Test if a table exists.
+   * @param keyspace the keyspace name to which this table belongs.
    * @param name a non-null table name
    * @return true if the table exists, else false
    */
-  public Deferred<Boolean> tableExists(final String name) {
+  public Deferred<Boolean> tableExists(final String keyspace, final String name) {
     if (name == null) {
       throw new IllegalArgumentException("The table name cannot be null");
     }
-    return getTableSchema(name).addCallbackDeferring(new Callback<Deferred<Boolean>,
+    return getTableSchema(keyspace, name).addCallbackDeferring(new Callback<Deferred<Boolean>,
         GetTableSchemaResponse>() {
       @Override
       public Deferred<Boolean> call(GetTableSchemaResponse response) throws Exception {
@@ -634,26 +626,16 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Open the table with the given name. If the table was just created, the Deferred will only get
    * called back when all the tablets have been successfully created.
+   * @param keyspace the keyspace name to which this table belongs.
    * @param name table to open
    * @return a YBTable if the table exists, else a MasterErrorException
    */
-  public Deferred<YBTable> openTable(final String name) {
-    return openTable(name, null);
-  }
-
-  /**
-   * Open the table with the given name. If the table was just created, the Deferred will only get
-   * called back when all the tablets have been successfully created.
-   * @param name table to open
-   * @param keyspace the keyspace name, if available
-   * @return a YBTable if the table exists, else a MasterErrorException
-   */
-  public Deferred<YBTable> openTable(final String name, final String keyspace) {
+  public Deferred<YBTable> openTable(final String keyspace, final String name) {
     checkIsClosed();
 
     final OpenTableHelperRPC helper = new OpenTableHelperRPC();
 
-    return getTableSchema(name, keyspace).addCallbackDeferring(new Callback<Deferred<YBTable>,
+    return getTableSchema(keyspace, name).addCallbackDeferring(new Callback<Deferred<YBTable>,
         GetTableSchemaResponse>() {
       @Override
       public Deferred<YBTable> call(GetTableSchemaResponse response) throws Exception {

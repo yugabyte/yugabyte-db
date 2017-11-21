@@ -60,8 +60,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   // Integer.MAX_VALUE seconds is the maximum allowed TTL by Cassandra.
   protected static final int MAX_TTL_SEC = Integer.MAX_VALUE;
 
-  protected static final String DEFAULT_KEYSPACE = "default_keyspace";
-
   protected static final String DEFAULT_TEST_KEYSPACE = "cql_test_keyspace";
 
   protected static final String TSERVER_READ_METRIC =

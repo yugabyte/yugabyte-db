@@ -126,6 +126,10 @@ public class YBCliCommands implements CommandMarker {
 
   @CliCommand(value = "check exists", help = "Check that a table exists")
   public String checkTableExists(
+      @CliOption(key = { "keyspace", "k" },
+                 mandatory = true,
+                 help = "keyspace name")
+      final String keyspace,
       @CliOption(key = { "name", "n" },
                  help = "table identifier (name)")
       final String tableName,
@@ -134,7 +138,7 @@ public class YBCliCommands implements CommandMarker {
       final String tableUuid) {
     try {
       if (tableName != null) {
-        return Boolean.toString(ybClient.tableExists(tableName));
+        return Boolean.toString(ybClient.tableExists(keyspace, tableName));
       } else if (tableUuid != null) {
         return Boolean.toString(ybClient.tableExistsByUUID(tableUuid));
       } else {
@@ -245,21 +249,21 @@ public class YBCliCommands implements CommandMarker {
 
   @CliCommand(value = "describe table", help = "Info on a table in this database.")
   public String infoTable(
-      @CliOption(key = { "table", "t" },
-                 mandatory = true,
-                 help = "table identifier (name)")
-      final String tableName,
       @CliOption(key = { "keyspace", "k" },
                  mandatory = true,
                  help = "keyspace name")
-      final String keyspace) {
+      final String keyspace,
+      @CliOption(key = { "table", "t" },
+                 mandatory = true,
+                 help = "table identifier (name)")
+      final String tableName) {
     StringBuilder sb = new StringBuilder();
     try {
       ListTablesResponse resp = ybClient.getTablesList();
       for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
-        if (table.getName().equals(tableName)) {
+        if (table.getNamespace().getName().equals(keyspace) && table.getName().equals(tableName)) {
           printTableInfo(table, sb);
-          printSchemaInfo(ybClient.getTableSchema(tableName, keyspace), sb);
+          printSchemaInfo(ybClient.getTableSchema(keyspace, tableName), sb);
           sb.append("Time taken: ");
           sb.append(resp.getElapsedMillis());
           sb.append(" ms.");

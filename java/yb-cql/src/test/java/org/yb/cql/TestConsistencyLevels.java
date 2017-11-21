@@ -62,7 +62,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   @Override
   public void useKeyspace() throws Exception {
-    // Use the DEFAULT_KEYSPACE for this test.
+    // Use the DEFAULT_TEST_KEYSPACE for this test.
   }
 
   @Override
@@ -97,7 +97,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
     CreateTableOptions options = new CreateTableOptions();
     options.setNumTablets(1);
     options.setTableType(Common.TableType.YQL_TABLE_TYPE);
-    ybTable = client.createTable(TABLE_NAME, new Schema(
+    ybTable = client.createTable(DEFAULT_TEST_KEYSPACE, TABLE_NAME, new Schema(
       Arrays.asList(hash_column.build(), range_column.build(), regular_column.build())), options);
 
     // Verify number of replicas.
@@ -109,8 +109,8 @@ public class TestConsistencyLevels extends BaseCQLTest {
     for (int idx = 0; idx < NUM_ROWS; idx++) {
       // INSERT: Valid statement with column list.
       String insert_stmt = String.format(
-        "INSERT INTO %s.%s(h, r, k) VALUES(%d, %d, %d);", DEFAULT_KEYSPACE, TABLE_NAME, idx, idx,
-        idx);
+        "INSERT INTO %s.%s(h, r, k) VALUES(%d, %d, %d);", DEFAULT_TEST_KEYSPACE, TABLE_NAME,
+        idx, idx, idx);
       session.execute(insert_stmt);
     }
   }
@@ -142,7 +142,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   private boolean verifyNumRows(ConsistencyLevel consistencyLevel) {
     Statement statement = QueryBuilder.select()
-      .from(DEFAULT_KEYSPACE, TABLE_NAME)
+      .from(DEFAULT_TEST_KEYSPACE, TABLE_NAME)
       .setConsistencyLevel(consistencyLevel);
     return NUM_ROWS == session.execute(statement).all().size();
   }
@@ -247,7 +247,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
       // Perform a number of reads.
       Statement statement = QueryBuilder.select()
-        .from(DEFAULT_KEYSPACE, TABLE_NAME)
+        .from(DEFAULT_TEST_KEYSPACE, TABLE_NAME)
         .setConsistencyLevel(ConsistencyLevel.ONE);
       for (int j = 0; j < NUM_OPS; j++) {
         session.execute(statement);

@@ -58,7 +58,7 @@ public class YBTable {
   private final PartitionSchema partitionSchema;
   private final AsyncYBClient client;
   private final String name;
-  private final String keySpace;
+  private final String keyspace;
   private final String tableId;
   private final TableType tableType;
 
@@ -69,14 +69,14 @@ public class YBTable {
    * @param schema this table's schema
    */
   YBTable(AsyncYBClient client, String name, String tableId, Schema schema,
-          PartitionSchema partitionSchema, TableType tableType, String keySpace) {
+          PartitionSchema partitionSchema, TableType tableType, String keyspace) {
     this.schema = schema;
     this.partitionSchema = partitionSchema;
     this.client = client;
     this.name = name;
     this.tableId = tableId;
     this.tableType = tableType;
-    this.keySpace = keySpace;
+    this.keyspace = keyspace;
   }
 
   YBTable(AsyncYBClient client, String name, String tableId,
@@ -125,8 +125,8 @@ public class YBTable {
    * Get this table's keyspace.
    * @return this table's keyspace.
    */
-  public String getKeySpace() {
-    return this.keySpace;
+  public String getKeyspace() {
+    return this.keyspace;
   }
 
   /**

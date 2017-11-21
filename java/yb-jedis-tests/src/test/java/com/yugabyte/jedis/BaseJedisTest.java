@@ -50,7 +50,7 @@ public class BaseJedisTest extends BaseMiniClusterTest {
     YBClient ybClient;
 
     GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
-        YBClient.REDIS_DEFAULT_TABLE_NAME, YBClient.REDIS_KEYSPACE_NAME);
+        YBClient.REDIS_KEYSPACE_NAME, YBClient.REDIS_DEFAULT_TABLE_NAME);
 
     assertEquals(HashSchema.REDIS_HASH_SCHEMA, tableSchema.getPartitionSchema().getHashSchema());
 

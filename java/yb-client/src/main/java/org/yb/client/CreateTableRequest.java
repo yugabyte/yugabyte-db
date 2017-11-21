@@ -50,16 +50,16 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
 
   private final Schema schema;
   private final String name;
-  private final String keySpace;
+  private final String keyspace;
   private final TableType tableType;
   private final Master.CreateTableRequestPB.Builder builder;
 
   CreateTableRequest(YBTable masterTable, String name, Schema schema,
-                     CreateTableOptions tableOptions, String keySpace) {
+                     CreateTableOptions tableOptions, String keyspace) {
     super(masterTable);
     this.schema = schema;
     this.name = name;
-    this.keySpace = keySpace;
+    this.keyspace = keyspace;
     this.tableType = tableOptions.getTableType();
     Master.CreateTableRequestPB.Builder pbBuilder = tableOptions.getBuilder();
     this.builder = pbBuilder;
@@ -69,10 +69,8 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
     this.builder.setName(this.name);
-    if (this.keySpace != null) {
-      Master.NamespaceIdentifierPB.Builder nsBuilder = Master.NamespaceIdentifierPB.newBuilder();
-      this.builder.setNamespace(nsBuilder.setName(this.keySpace).build());
-    }
+    Master.NamespaceIdentifierPB.Builder nsBuilder = Master.NamespaceIdentifierPB.newBuilder();
+    this.builder.setNamespace(nsBuilder.setName(this.keyspace).build());
     this.builder.setSchema(ProtobufHelper.schemaToPb(this.schema));
     this.builder.setTableType(this.tableType);
     return toChannelBuffer(header, this.builder.build());

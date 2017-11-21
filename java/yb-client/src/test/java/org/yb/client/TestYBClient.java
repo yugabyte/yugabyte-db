@@ -323,12 +323,12 @@ public class TestYBClient extends BaseYBClientTest {
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
     assertEquals(16, table.getTabletsLocations(100000).size());
 
-    table = syncClient.openTable(redisTableName, YBClient.REDIS_KEYSPACE_NAME);
+    table = syncClient.openTable(YBClient.REDIS_KEYSPACE_NAME, redisTableName);
     assertEquals(redisSchema.getColumnCount(), table.getSchema().getColumnCount());
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
-    assertEquals(YBClient.REDIS_KEYSPACE_NAME, table.getKeySpace());
+    assertEquals(YBClient.REDIS_KEYSPACE_NAME, table.getKeyspace());
 
-    syncClient.deleteTable(redisTableName, YBClient.REDIS_KEYSPACE_NAME);
+    syncClient.deleteTable(YBClient.REDIS_KEYSPACE_NAME, redisTableName);
     assertFalse(syncClient.getTablesList().getTablesList().contains(tableName));
   }
 
@@ -350,23 +350,22 @@ public class TestYBClient extends BaseYBClientTest {
   public void testCreateDeleteTable() throws Exception {
     LOG.info("Starting testCreateDeleteTable");
     // Check that we can create a table.
-    syncClient.createTable(tableName, basicSchema, new CreateTableOptions(),
-                           YBClient.DEFAULT_KEYSPACE_NAME);
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, basicSchema, new CreateTableOptions());
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
 
     // Check that we can delete it.
-    syncClient.deleteTable(tableName, YBClient.DEFAULT_KEYSPACE_NAME);
+    syncClient.deleteTable(DEFAULT_KEYSPACE_NAME, tableName);
     assertFalse(syncClient.getTablesList().getTablesList().contains(tableName));
 
     // Check that we can re-recreate it, with a different schema.
     List<ColumnSchema> columns = new ArrayList<>(basicSchema.getColumns());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("one more", Type.STRING).build());
     Schema newSchema = new Schema(columns);
-    syncClient.createTable(tableName, newSchema);
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, newSchema);
 
     // Check that we can open a table and see that it has the new schema.
-    YBTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     assertEquals(newSchema.getColumnCount(), table.getSchema().getColumnCount());
 
     // Check that the block size parameter we specified in the schema is respected.
@@ -384,10 +383,10 @@ public class TestYBClient extends BaseYBClientTest {
   public void testStrings() throws Exception {
     LOG.info("Starting testStrings");
     Schema schema = createManyStringsSchema();
-    syncClient.createTable(tableName, schema);
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, schema);
 
     YBSession session = syncClient.newSession();
-    YBTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     for (int i = 0; i < 100; i++) {
       Insert insert = table.newInsert();
       PartialRow row = insert.getRow();
@@ -425,10 +424,10 @@ public class TestYBClient extends BaseYBClientTest {
   public void testUTF8() throws Exception {
     LOG.info("Starting testUTF8");
     Schema schema = createManyStringsSchema();
-    syncClient.createTable(tableName, schema);
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, schema);
 
     YBSession session = syncClient.newSession();
-    YBTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     Insert insert = table.newInsert();
     PartialRow row = insert.getRow();
     row.addString("key", "กขฃคฅฆง"); // some thai
@@ -454,8 +453,8 @@ public class TestYBClient extends BaseYBClientTest {
   public void testAutoClose() throws Exception {
     LOG.info("Starting testAutoClose");
     try (YBClient localClient = new YBClient.YBClientBuilder(masterAddresses).build()) {
-      localClient.createTable(tableName, basicSchema);
-      YBTable table = localClient.openTable(tableName);
+      localClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, basicSchema);
+      YBTable table = localClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
       YBSession session = localClient.newSession();
 
       session.setFlushMode(SessionConfiguration.FlushMode.MANUAL_FLUSH);
@@ -463,7 +462,7 @@ public class TestYBClient extends BaseYBClientTest {
       session.apply(insert);
     }
 
-    YBTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     AsyncYBScanner scanner = new AsyncYBScanner.AsyncYBScannerBuilder(client, table).build();
     assertEquals(1, countRowsInScan(scanner));
   }
@@ -479,7 +478,7 @@ public class TestYBClient extends BaseYBClientTest {
         .build();
     long buildTime = (System.nanoTime() - startTime) / 1000000000L;
     assertTrue("Building YBClient is slow, maybe netty get stuck", buildTime < 3);
-    localClient.createTable(tableName, basicSchema);
+    localClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, basicSchema);
     Thread[] threads = new Thread[4];
     for (int t = 0; t < 4; t++) {
       final int id = t;
@@ -487,7 +486,7 @@ public class TestYBClient extends BaseYBClientTest {
         @Override
         public void run() {
           try {
-            YBTable table = localClient.openTable(tableName);
+            YBTable table = localClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
             YBSession session = localClient.newSession();
             session.setFlushMode(SessionConfiguration.FlushMode.AUTO_FLUSH_SYNC);
             for (int i = 0; i < 100; i++) {

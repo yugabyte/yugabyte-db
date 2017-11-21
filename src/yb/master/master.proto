@@ -88,7 +88,7 @@ message MasterErrorPB {
     // Invalid namespace name or id for the namespace operation.
     NAMESPACE_NOT_FOUND = 11;
     NAMESPACE_ALREADY_PRESENT = 12;
-    CANNOT_DELETE_DEFAULT_NAMESPACE = 13;
+    NO_NAMESPACE_USED = 13;
     NAMESPACE_IS_NOT_EMPTY = 14;
 
     // Client set some fields incorrectly in the cluster config proto.

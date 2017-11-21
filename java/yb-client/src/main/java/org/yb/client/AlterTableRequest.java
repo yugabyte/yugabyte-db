@@ -33,6 +33,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.annotations.InterfaceAudience;
+import org.yb.master.Master;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -47,19 +48,24 @@ class AlterTableRequest extends YRpc<AlterTableResponse> {
 
   static final String ALTER_TABLE = "AlterTable";
   private final String name;
+  private final String keyspace;
   private final AlterTableRequestPB.Builder builder;
 
-  AlterTableRequest(YBTable masterTable, String name, AlterTableOptions ato) {
+  AlterTableRequest(YBTable masterTable, String name, AlterTableOptions ato, String keyspace) {
     super(masterTable);
     this.name = name;
     this.builder = ato.pb;
+    this.keyspace = keyspace;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    TableIdentifierPB tableID =
-        TableIdentifierPB.newBuilder().setTableName(name).build();
+    TableIdentifierPB tableID = TableIdentifierPB.newBuilder()
+                                .setTableName(name)
+                                .setNamespace(Master.NamespaceIdentifierPB.newBuilder()
+                                              .setName(this.keyspace))
+                                .build();
     this.builder.setTable(tableID);
     return toChannelBuffer(header, this.builder.build());
   }

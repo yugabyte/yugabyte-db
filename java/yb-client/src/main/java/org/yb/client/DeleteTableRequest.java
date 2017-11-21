@@ -61,12 +61,9 @@ class DeleteTableRequest extends YRpc<DeleteTableResponse> {
     Master.TableIdentifierPB.Builder tbuilder = Master.TableIdentifierPB.newBuilder();
     Master.TableIdentifierPB tableID;
     tbuilder.setTableName(name);
-    if (this.keyspace != null) {
-      tableID = tbuilder
-          .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName(this.keyspace)).build();
-    } else {
-      tableID = tbuilder.build();
-    }
+    tableID = tbuilder
+              .setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName(this.keyspace))
+              .build();
     builder.setTable(tableID);
     return toChannelBuffer(header, builder.build());
   }

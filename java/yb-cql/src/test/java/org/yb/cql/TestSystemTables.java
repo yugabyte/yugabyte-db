@@ -247,8 +247,8 @@ public class TestSystemTables extends BaseCQLTest {
   public void testSystemKeyspacesAndTables() throws Exception {
     List <Row> results = session.execute(
       "SELECT * FROM system_schema.keyspaces;").all();
-    Set<String> expectedKeySpaces = new HashSet<>(Arrays.asList(DEFAULT_KEYSPACE,
-      DEFAULT_TEST_KEYSPACE, "system_schema", "system", "system_auth"));
+    Set<String> expectedKeySpaces = new HashSet<>(Arrays.asList(DEFAULT_TEST_KEYSPACE,
+      "system_schema", "system", "system_auth"));
     assertEquals(expectedKeySpaces.size(), results.size());
 
     for (Row row : results) {

@@ -616,20 +616,11 @@ class TestNamespaceLoader : public Visitor<PersistentNamespaceInfo> {
 TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
 
-  // 1. CHECK DEFAULT NAMESPACE
+  // 1. CHECK SYSTEM NAMESPACE COUNT
   unique_ptr<TestNamespaceLoader> loader(new TestNamespaceLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
-  ASSERT_EQ(1 + kNumSystemNamespaces, loader->namespaces.size());
-
-  scoped_refptr<NamespaceInfo> universe_ns(new NamespaceInfo(kDefaultNamespaceId));
-  {
-    auto l = universe_ns->LockForWrite();
-    l->mutable_data()->pb.set_name(kDefaultNamespaceName);
-    l->Commit();
-  }
-
-  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+  ASSERT_EQ(kNumSystemNamespaces, loader->namespaces.size());
 
   // 2. CHECK ADD_NAMESPACE
   // Create new namespace.
@@ -646,8 +637,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Verify it showed up.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2 + kNumSystemNamespaces, loader->namespaces.size());
-  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+  ASSERT_EQ(1 + kNumSystemNamespaces, loader->namespaces.size());
   ASSERT_TRUE(MetadatasEqual(ns.get(), loader->namespaces[loader->namespaces.size() - 1]));
 
   // 3. CHECK UPDATE_NAMESPACE
@@ -662,8 +652,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Verify it showed up.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2 + kNumSystemNamespaces, loader->namespaces.size());
-  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+  ASSERT_EQ(1 + kNumSystemNamespaces, loader->namespaces.size());
   ASSERT_TRUE(MetadatasEqual(ns.get(), loader->namespaces[loader->namespaces.size() - 1]));
 
   // 4. CHECK DELETE_NAMESPACE
@@ -673,8 +662,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Verify the result.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(1 + kNumSystemNamespaces, loader->namespaces.size());
-  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+  ASSERT_EQ(kNumSystemNamespaces, loader->namespaces.size());
 }
 
 // Verify that data mutations are not available from metadata() until commit.
@@ -741,7 +729,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   {
     auto l = tp->LockForWrite();
     l->mutable_data()->pb.set_name("test_tp");
-    l->mutable_data()->pb.set_namespace_id(kDefaultNamespaceId);
+    l->mutable_data()->pb.set_namespace_id(kSystemNamespaceId);
     // Add the udtype
     ASSERT_OK(sys_catalog->AddItem(tp.get()));
     l->Commit();

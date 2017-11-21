@@ -75,9 +75,6 @@ public class YBClient implements AutoCloseable {
   // Redis keyspace name.
   public static final String REDIS_KEYSPACE_NAME = "system_redis";
 
-  // Redis keyspace name.
-  public static final String DEFAULT_KEYSPACE_NAME = "default_keyspace";
-
   // Redis key column name.
   public static final String REDIS_KEY_COLUMN_NAME = "key";
 
@@ -128,45 +125,34 @@ public class YBClient implements AutoCloseable {
       throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME + ". Error :" +
                                 resp.errorMessage());
     }
-    return createTable(name, getRedisSchema(), getRedisTableOptions(numTablets),
-                       REDIS_KEYSPACE_NAME);
+    return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
+                       getRedisTableOptions(numTablets));
   }
 
   /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name Table's name
    * @param schema Table's schema
    * @return an object to communicate with the created table
    */
-  public YBTable createTable(String name, Schema schema) throws Exception {
-    return createTable(name, schema, new CreateTableOptions(), null);
+  public YBTable createTable(String keyspace, String name, Schema schema) throws Exception {
+    return createTable(keyspace, name, schema, new CreateTableOptions());
   }
 
   /**
    * Create a table on the cluster with the specified name, schema, and table configurations.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name
    * @param schema the table's schema
    * @param builder a builder containing the table's configurations
    * @return an object to communicate with the created table
    */
-  public YBTable createTable(String name, Schema schema, CreateTableOptions builder)
+  public YBTable createTable(String keyspace, String name, Schema schema,
+                             CreateTableOptions builder)
       throws Exception {
-    return createTable(name, schema, builder, null);
-  }
-
-  /**
-   * Create a table on the cluster with the specified name, schema, and table configurations.
-   * @param name the table's name
-   * @param schema the table's schema
-   * @param builder a builder containing the table's configurations
-   * @param keySpace CQL keyspace to which this table should belong
-   * @return an object to communicate with the created table
-   */
-  public YBTable createTable(String name, Schema schema, CreateTableOptions builder,
-                             String keySpace)
-      throws Exception {
-    Deferred<YBTable> d = asyncClient.createTable(name, schema, builder, keySpace);
+    Deferred<YBTable> d = asyncClient.createTable(keyspace, name, schema, builder);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -174,21 +160,21 @@ public class YBClient implements AutoCloseable {
    * Create a CQL keyspace.
    * @param non-null name of the keyspace.
    */
-  public CreateKeyspaceResponse createKeyspace(String keySpace)
+  public CreateKeyspaceResponse createKeyspace(String keyspace)
       throws Exception {
-    Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keySpace);
+    Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   /**
    * Delete a table on the cluster with the specified name.
-   * @param name the table's name
    * @param keyspace CQL keyspace to which this table belongs
+   * @param name the table's name
    * @return an rpc response object
    */
-  public DeleteTableResponse deleteTable(final String name, final String keyspace)
+  public DeleteTableResponse deleteTable(final String keyspace, final String name)
       throws Exception {
-    Deferred<DeleteTableResponse> d = asyncClient.deleteTable(name, keyspace);
+    Deferred<DeleteTableResponse> d = asyncClient.deleteTable(keyspace, name);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -197,27 +183,30 @@ public class YBClient implements AutoCloseable {
    *
    * When the method returns it only indicates that the master accepted the alter
    * command, use {@link YBClient#isAlterTableDone(String)} to know when the alter finishes.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name the table's name, if this is a table rename then the old table name must be passed
    * @param ato the alter table builder
    * @return an rpc response object
    */
-  public AlterTableResponse alterTable(String name, AlterTableOptions ato) throws Exception {
-    Deferred<AlterTableResponse> d = asyncClient.alterTable(name, ato);
+  public AlterTableResponse alterTable(String keyspace, String name, AlterTableOptions ato)
+      throws Exception {
+    Deferred<AlterTableResponse> d = asyncClient.alterTable(keyspace, name, ato);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   /**
    * Helper method that checks and waits until the completion of an alter command.
    * It will block until the alter command is done or the timeout is reached.
+   * @param keyspace CQL keyspace to which this table belongs
    * @param name Table's name, if the table was renamed then that name must be checked against
    * @return a boolean indicating if the table is done being altered
    */
-  public boolean isAlterTableDone(String name) throws Exception {
+  public boolean isAlterTableDone(String keyspace, String name) throws Exception {
     long totalSleepTime = 0;
     while (totalSleepTime < getDefaultAdminOperationTimeoutMs()) {
       long start = System.currentTimeMillis();
 
-      Deferred<IsAlterTableDoneResponse> d = asyncClient.isAlterTableDone(name);
+      Deferred<IsAlterTableDoneResponse> d = asyncClient.isAlterTableDone(keyspace, name);
       IsAlterTableDoneResponse response;
       try {
         response = d.join(AsyncYBClient.SLEEP_TIME);
@@ -758,11 +747,12 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Test if a table exists.
+   * @param keyspace the keyspace name to which this table belongs.
    * @param name a non-null table name
    * @return true if the table exists, else false
    */
-  public boolean tableExists(String name) throws Exception {
-    Deferred<Boolean> d = asyncClient.tableExists(name);
+  public boolean tableExists(String keyspace, String name) throws Exception {
+    Deferred<Boolean> d = asyncClient.tableExists(keyspace, name);
     try {
       return d.join(getDefaultAdminOperationTimeoutMs());
     } catch (MasterErrorException e) {
@@ -786,13 +776,13 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Get the schema for a table based on the table's name.
+   * @param keyspace the keyspace name to which this table belongs.
    * @param name a non-null table name
-   * @param keyspace the keyspace name, if available
    * @return a deferred that contains the schema for the specified table
    */
-  public GetTableSchemaResponse getTableSchema(final String name, final String keyspace)
+  public GetTableSchemaResponse getTableSchema(final String keyspace, final String name)
       throws Exception {
-    Deferred<GetTableSchemaResponse> d = asyncClient.getTableSchema(name, keyspace);
+    Deferred<GetTableSchemaResponse> d = asyncClient.getTableSchema(keyspace, name);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -810,22 +800,12 @@ public class YBClient implements AutoCloseable {
   /**
    * Open the table with the given name. If the table was just created, this method will block until
    * all its tablets have also been created.
-   * @param name table to open
-   * @return a YBTable if the table exists, else a MasterErrorException
-   */
-  public YBTable openTable(final String name) throws Exception {
-    return openTable(name, null);
-  }
-
-  /**
-   * Open the table with the given name. If the table was just created, this method will block until
-   * all its tablets have also been created.
-   * @param name table to open
    * @param keyspace the keyspace name to which the table belongs.
+   * @param name table to open
    * @return a YBTable if the table exists, else a MasterErrorException
    */
-  public YBTable openTable(final String name, final String keyspace) throws Exception {
-    Deferred<YBTable> d = asyncClient.openTable(name, keyspace);
+  public YBTable openTable(final String keyspace, final String name) throws Exception {
+    Deferred<YBTable> d = asyncClient.openTable(keyspace, name);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

@@ -57,6 +57,9 @@ import static org.junit.Assert.fail;
  */
 public class BaseYBClientTest extends BaseMiniClusterTest {
 
+    // Default keyspace name.
+  public static final String DEFAULT_KEYSPACE_NAME = "default_keyspace";
+
   private static final Logger LOG = LoggerFactory.getLogger(BaseYBClientTest.class);
 
   // We create both versions of the client (synchronous and asynchronous) for ease of use.
@@ -65,8 +68,6 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
   protected static Schema basicSchema = getBasicSchema();
   protected static Schema allTypesSchema = getSchemaWithAllTypes();
   protected static Schema redisSchema = getRedisSchema();
-
-  private static List<String> tableNames = new ArrayList<>();
 
   @Override
   protected void afterStartingMiniCluster() throws Exception {
@@ -78,6 +79,7 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
         .defaultSocketReadTimeoutMs(DEFAULT_SLEEP)
         .build();
     syncClient = new YBClient(client);
+    syncClient.createKeyspace(DEFAULT_KEYSPACE_NAME);
   }
 
   private static void destroyClient() throws Exception {
@@ -107,9 +109,9 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
   }
 
   protected static YBTable createTable(String tableName, Schema schema,
-                                         CreateTableOptions builder) {
+                                       CreateTableOptions builder) {
     LOG.info("Creating table: {}", tableName);
-    Deferred<YBTable> d = client.createTable(tableName, schema, builder);
+    Deferred<YBTable> d = client.createTable(DEFAULT_KEYSPACE_NAME, tableName, schema, builder);
     final AtomicBoolean gotError = new AtomicBoolean(false);
     d.addErrback(arg -> {
       gotError.set(true);
@@ -125,7 +127,6 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
     if (gotError.get()) {
       fail("Got error during table creation, is the YB master running at " + masterAddresses + "?");
     }
-    tableNames.add(tableName);
     return table;
   }
 
@@ -265,7 +266,7 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
    * @throws Exception MasterErrorException if the table doesn't exist
    */
   protected static YBTable openTable(String name) throws Exception {
-    Deferred<YBTable> d = client.openTable(name);
+    Deferred<YBTable> d = client.openTable(DEFAULT_KEYSPACE_NAME, name);
     return d.join(DEFAULT_SLEEP);
   }
 

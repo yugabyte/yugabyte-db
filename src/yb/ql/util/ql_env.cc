@@ -225,13 +225,6 @@ Status QLEnv::DeleteKeyspace(const string& keyspace_name) {
 }
 
 Status QLEnv::UseKeyspace(const string& keyspace_name) {
-  // Default keyspace is not allowed for using.
-  // The default keyspace is an internal keyspace, which is used by master::CatalogManager only.
-  // If the user provides correct name of the default keyspace the use-request must be rejected.
-  if (keyspace_name == yb::master::kDefaultNamespaceName) {
-    return STATUS(InvalidArgument, "Cannot use default keyspace");
-  }
-
   // Check if a keyspace with the specified name exists.
   bool exists = false;
   RETURN_NOT_OK(client_->NamespaceExists(keyspace_name, &exists));

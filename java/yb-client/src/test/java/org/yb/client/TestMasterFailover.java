@@ -80,7 +80,7 @@ public class TestMasterFailover extends BaseYBClientTest {
     // Test that we can initialize a client when one of the masters specified in the
     // connection string is down.
     AsyncYBClient newClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
-    table = newClient.openTable(newTableName).join(DEFAULT_SLEEP);
+    table = newClient.openTable(DEFAULT_KEYSPACE_NAME, newTableName).join(DEFAULT_SLEEP);
     assertEquals(0, countRowsInScan(newClient.newScannerBuilder(table).build()));
   }
 }
