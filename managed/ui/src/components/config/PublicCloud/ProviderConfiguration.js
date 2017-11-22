@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import { withRouter } from 'react-router';
 import _ from 'lodash';
 import ProviderResultView from './views/ProviderResultView';
@@ -101,7 +101,8 @@ class ProviderConfiguration extends Component {
 
   getResultView() {
     const { configuredProviders, visibleModal, configuredRegions, universeList,
-           accessKeys, hideDeleteProviderModal, initializeProvider, showDeleteProviderModal, deleteProviderConfig, providerType } = this.props;
+            accessKeys, hideDeleteProviderModal, initializeProvider, showDeleteProviderModal,
+            deleteProviderConfig, providerType, hostInfo } = this.props;
     const currentProvider = configuredProviders.data.find((provider) => provider.code === providerType);
     let keyPairName = "Not Configured";
     if (isDefinedNotNull(accessKeys) && isNonEmptyArray(accessKeys.data)) {
@@ -115,10 +116,21 @@ class ProviderConfiguration extends Component {
       if (isNonEmptyArray(configuredRegions.data)) {
         regions = configuredRegions.data.filter((region) => region.provider.uuid === currentProvider.uuid);
       }
-      const providerInfo = [
+      let providerInfo = [
         {name: "Name", data: currentProvider.name},
         {name: "SSH Key", data: keyPairName},
       ];
+      if (currentProvider.code === "aws" && isNonEmptyObject(hostInfo)) {
+        if (isNonEmptyString(hostInfo["region"])) {
+          providerInfo.push({name: "Host Region", data: hostInfo["region"]});
+        }
+        if (isNonEmptyString(hostInfo["vpc-id"])) {
+          providerInfo.push({name: "Host VPC ID", data: hostInfo["vpc-id"]});
+        }
+        if (isNonEmptyString(hostInfo["privateIp"])) {
+          providerInfo.push({name: "Host Private IP", data: hostInfo["privateIp"]});
+        }
+      }
       let universeExistsForProvider = false;
       if (getPromiseState(configuredProviders).isSuccess() && getPromiseState(universeList).isSuccess()){
         universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === currentProvider.uuid));
