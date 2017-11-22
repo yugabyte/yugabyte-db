@@ -33,9 +33,7 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <gtest/gtest.h>
 #include <gtest/gtest-spi.h>
-#include <boost/scope_exit.hpp>
 
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -229,7 +227,7 @@ void AssertEventually(const std::function<void(void)>& f,
       testing::TestPartResultArray results;
       testing::ScopedFakeTestPartResultReporter reporter(
           testing::ScopedFakeTestPartResultReporter::INTERCEPT_ONLY_CURRENT_THREAD,
-      &results);
+          &results);
       f();
 
       // Determine whether their function produced any new test failure results.
