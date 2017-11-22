@@ -125,14 +125,10 @@ class LogCacheTest : public YBTest {
     ASSERT_OK(s);
   }
 
-  Status AppendReplicateMessagesToCache(
-      int first,
-      int count,
-      int payload_size = 0) {
-
-    for (int i = first; i < first + count; i++) {
-      int term = i / kTermDivisor;
-      int index = i;
+  Status AppendReplicateMessagesToCache(int64_t first, int64_t count, size_t payload_size = 0) {
+    for (int64_t cur_index = first; cur_index < first + count; cur_index++) {
+      int64_t term = cur_index / kTermDivisor;
+      int64_t index = cur_index;
       ReplicateMsgs msgs = { CreateDummyReplicate(term, index, clock_->Now(), payload_size) };
       RETURN_NOT_OK(cache_->AppendOperations(
           msgs, yb::OpId() /* committed_op_id */, RestartSafeCoarseMonoClock().Now(),

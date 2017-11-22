@@ -85,10 +85,10 @@ inline CoarseTimePoint CoarseBigDeadline() {
   return CoarseMonoClock::now() + 600s;
 }
 
-inline ReplicateMsgPtr CreateDummyReplicate(int term,
-                                            int index,
+inline ReplicateMsgPtr CreateDummyReplicate(int64_t term,
+                                            int64_t index,
                                             const HybridTime& hybrid_time,
-                                            int payload_size) {
+                                            int64_t payload_size) {
   auto msg = std::make_shared<ReplicateMsg>();
   OpId* id = msg->mutable_id();
   id->set_term(term);
@@ -118,14 +118,14 @@ RaftPeerPB FakeRaftPeerPB(const std::string& uuid) {
 static inline void AppendReplicateMessagesToQueue(
     PeerMessageQueue* queue,
     const scoped_refptr<server::Clock>& clock,
-    int first_index,
-    int count,
-    int payload_size = 0) {
+    int64_t first_index,
+    int64_t count,
+    int64_t payload_size = 0) {
 
-  for (int index = first_index; index < first_index + count; index++) {
-    int term = index / 7;
+  for (int64_t index = first_index; index < first_index + count; index++) {
+    int64_t term = index / kTermDivisor;
     CHECK_OK(queue->TEST_AppendOperation(
-        CreateDummyReplicate(term, index, clock->Now(), payload_size)));
+          CreateDummyReplicate(term, index, clock->Now(), payload_size)));
   }
 }
 
