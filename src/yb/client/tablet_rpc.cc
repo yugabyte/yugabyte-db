@@ -259,9 +259,16 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
 
 void TabletInvoker::LookupTabletCb(const Status& status) {
   TRACE_TO(trace_, "LookupTabletCb($0)", status.ToString(false));
+
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
-  //
+  // Unless we know that this status is persistent.
+  // For instance if tablet was deleted, we would always receive "Not found".
+  if (status.IsNotFound()) {
+    command_->SendRpcCb(status);
+    return;
+  }
+
   // Retry() imposes a slight delay, which is desirable in a lookup loop,
   // but unnecessary the first time through. Seeing as leader failures are
   // rare, perhaps this doesn't matter.
