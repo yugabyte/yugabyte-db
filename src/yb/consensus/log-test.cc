@@ -685,7 +685,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 TEST_F(LogTest, TestWaitUntilAllFlushed) {
   BuildLog();
   // Append 2 replicate pairs asynchronously
-  AppendReplicateBatchToLog(2, kTableType, APPEND_ASYNC);
+  AppendReplicateBatchToLog(2, APPEND_ASYNC);
 
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
@@ -781,7 +781,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 
   LOG(INFO)<< "Starting to write " << num_batches << " to log";
   LOG_TIMING(INFO, "Wrote all batches to log") {
-    AppendReplicateBatchToLog(num_batches, kTableType);
+    AppendReplicateBatchToLog(num_batches);
   }
   ASSERT_OK(log_->Close());
   LOG(INFO) << "Done writing";
@@ -1120,5 +1120,25 @@ TEST_F(LogTest, TestGetMaxIndexesToSegmentSizeMap) {
   log_->GetMaxIndexesToSegmentSizeMap(10, &max_idx_to_segment_size);
   ASSERT_EQ(0, max_idx_to_segment_size.size());
 }
+
+// Ensure that we can read replicate messages from the LogReader with a very
+// high (> 32 bit) log index and term. Regression test for KUDU-1933.
+TEST_F(LogTest, TestReadReplicatesHighIndex) {
+  const int64_t first_log_index = std::numeric_limits<int32_t>::max() - 3;
+  const int kSequenceLength = 10;
+
+  BuildLog();
+  OpId op_id;
+  op_id.set_term(first_log_index);
+  op_id.set_index(first_log_index);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  auto* reader = log_->GetLogReader();
+  ReplicateMsgs repls;
+  ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
+                                          LogReader::kNoSizeLimit, &repls));
+  ASSERT_EQ(kSequenceLength, repls.size());
+}
+
 } // namespace log
 } // namespace yb

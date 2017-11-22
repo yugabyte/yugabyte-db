@@ -219,8 +219,15 @@ class LogTestBase : public YBTest {
     WriteRequestPB *batch_request = replicate->mutable_write_request();
     if (writes.empty()) {
       const int opid_index_as_int = static_cast<int>(opid.index());
+      // Since OpIds deal with int64 index and term, we are downcasting here. In order to be able
+      // to test with values > INT_MAX, we need to make sure we do not overflow, while still
+      // wanting to add 2 different values here.
+      //
+      // Picking x and x / 2 + 1 as the 2 values.
+      // For small numbers, special casing x <= 2.
+      const int other_int = opid_index_as_int <= 2 ? 3 : opid_index_as_int / 2 + 1;
       writes.emplace_back(opid_index_as_int, 0, "this is a test insert");
-      writes.emplace_back(opid_index_as_int + 1, 0, "this is a test mutate");
+      writes.emplace_back(other_int, 0, "this is a test mutate");
     }
     auto write_batch = batch_request->mutable_write_batch();
     for (const auto &w : writes) {
@@ -249,11 +256,11 @@ class LogTestBase : public YBTest {
     }
   }
 
-  // Appends 'count' ReplicateMsgs and the corresponding CommitMsgs to the log
-  void AppendReplicateBatchToLog(int count, TableType table_type, bool sync = true) {
+  // Appends 'count' ReplicateMsgs to the log as committed entries.
+  void AppendReplicateBatchToLog(int count, bool sync = true) {
     for (int i = 0; i < count; i++) {
-      OpId opid = consensus::MakeOpId(1, current_index_);
-      AppendReplicateBatch(opid);
+      consensus::OpId opid = consensus::MakeOpId(1, current_index_);
+      AppendReplicateBatch(opid, opid);
       current_index_ += 1;
     }
   }
@@ -302,7 +309,7 @@ class LogTestBase : public YBTest {
   scoped_refptr<MetricEntity> metric_entity_;
   std::unique_ptr<ThreadPool> append_pool_;
   scoped_refptr<Log> log_;
-  int32_t current_index_;
+  int64_t current_index_;
   LogOptions options_;
   // Reusable entries vector that deletes the entries on destruction.
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;

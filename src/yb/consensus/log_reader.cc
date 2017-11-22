@@ -80,7 +80,7 @@ using consensus::ReplicateMsg;
 using env_util::ReadFully;
 using strings::Substitute;
 
-const int LogReader::kNoSizeLimit = -1;
+const int64_t LogReader::kNoSizeLimit = -1;
 
 Status LogReader::Open(Env *env,
                        const scoped_refptr<LogIndex>& index,
@@ -282,7 +282,7 @@ scoped_refptr<ReadableLogSegment> LogReader::GetSegmentBySequenceNumber(int64_t 
 Status LogReader::ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
                                            faststring* tmp_buf,
                                            LogEntryBatchPB* batch) const {
-  const int index = index_entry.op_id.index();
+  const int64_t index = index_entry.op_id.index();
 
   scoped_refptr<ReadableLogSegment> segment = GetSegmentBySequenceNumber(
     index_entry.segment_sequence_number);
@@ -326,7 +326,7 @@ Status LogReader::ReadReplicatesInRange(
   bool limit_exceeded = false;
   faststring tmp_buf;
   LogEntryBatchPB batch;
-  for (int index = starting_at; index <= up_to && !limit_exceeded; index++) {
+  for (int64_t index = starting_at; index <= up_to && !limit_exceeded; index++) {
     LogIndexEntry index_entry;
     RETURN_NOT_OK_PREPEND(log_index_->GetEntry(index, &index_entry),
                           Substitute("Failed to read log index for op $0", index));
