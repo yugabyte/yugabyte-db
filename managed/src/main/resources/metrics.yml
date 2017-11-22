@@ -44,13 +44,13 @@ cpu_usage:
 
 disk_iops:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (device)|avg"
   range: "1m"
   filters:
     saved_name: "node_disk_reads_completed|node_disk_writes_completed"
   group_by: "saved_name"
   layout:
-    title: "Disk IOPS / Node / Device"
+    title: "Disk IOPS / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -166,13 +166,10 @@ disk_bytes_per_second_per_node:
   filters:
     saved_name: "node_disk_bytes_read|node_disk_bytes_written"
   group_by: "saved_name"
-  # TODO: FIXME.
-  # This is off by a factor of 3 (number of disks) when compared to what
-  # is reported by GCP console. This is expected though.
   range: "1m"
-  function: "rate|avg"
+  function: "rate|sum without (device)|avg"
   layout:
-    title: "Disk Bytes / Sec / Node / Device"
+    title: "Disk Bytes / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -542,12 +539,12 @@ tserver_log_latency:
 
 tserver_log_bytes_written:
   metric: "log_bytes_logged"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Log Bytes Written / Sec / Node / Table"
+    title: "Log Bytes Written / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -556,12 +553,12 @@ tserver_log_bytes_written:
 
 tserver_log_bytes_read:
   metric: "log_reader_bytes_read"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Log Bytes Read / Sec / Node / Table"
+    title: "Log Bytes Read / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -570,14 +567,14 @@ tserver_log_bytes_read:
 
 tserver_log_ops_second:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
   group_by: "saved_name"
   layout:
-    title: "TServer Log Ops / Sec / Node / Table"
+    title: "TServer Log Ops / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -609,14 +606,14 @@ tserver_tc_malloc_stats:
 
 tserver_log_stats:
   metric: ""
-  function: "avg"
+  function: "sum without (table_id, table_name)|avg"
   operator: "/ 1024"
   filters:
     export_type: "tserver_export"
     saved_name: "log_reader_bytes_read|log_cache_size"
   group_by: "saved_name"
   layout:
-    title: "Log Stats / Node / Table"
+    title: "Log Stats / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -627,11 +624,11 @@ tserver_log_stats:
 
 tserver_cache_reader_num_ops:
   metric: "log_cache_num_ops"
-  function: "avg"
+  function: "sum without (table_id, table_name)|avg"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Log Cache Num Ops / Node / Table"
+    title: "Log Cache Num Ops / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -645,14 +642,14 @@ node_up:
 
 lsm_rocksdb_num_seek_or_next:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next"
   group_by: "saved_name"
   layout:
-    title: "LSM-DB Seek/Next Num Ops / Table"
+    title: "LSM-DB Seek/Next Num Ops"
     xaxis:
       type: "date"
     yaxis:
@@ -662,12 +659,12 @@ lsm_rocksdb_num_seek_or_next:
 
 lsm_rocksdb_num_seeks_per_node:
   metric: "rocksdb_number_db_seek"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Seeks / Sec / Node / Table"
+    title: "LSM-DB Seeks / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -676,14 +673,14 @@ lsm_rocksdb_num_seeks_per_node:
 
 lsm_rocksdb_blooms_checked_and_useful:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
   group_by: "saved_name"
   layout:
-    title: "LSM-DB Blooms usefulness / Table"
+    title: "LSM-DB Blooms usefulness"
     xaxis:
       type: "date"
     yaxis:
@@ -693,12 +690,12 @@ lsm_rocksdb_blooms_checked_and_useful:
 
 lsm_rocksdb_latencies_get:
   metric: "rocksdb_db_get_micros.avg"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Get latencies / Table"
+    title: "LSM-DB Get latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -708,12 +705,12 @@ lsm_rocksdb_latencies_get:
 
 lsm_rocksdb_latencies_write:
   metric: "rocksdb_db_write_micros.avg"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Write latencies / Table"
+    title: "LSM-DB Write latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -723,10 +720,10 @@ lsm_rocksdb_latencies_write:
 
 lsm_rocksdb_latencies_seek:
   metric: "rocksdb_db_seek_micros.avg"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   layout:
-    title: "LSM-DB Seek latencies / Table"
+    title: "LSM-DB Seek latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -736,12 +733,12 @@ lsm_rocksdb_latencies_seek:
 
 lsm_rocksdb_latencies_mutex:
   metric: "rocksdb_db_mutex_wait_micros.avg"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Mutex Wait latencies / Table"
+    title: "LSM-DB Mutex Wait latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -751,14 +748,14 @@ lsm_rocksdb_latencies_mutex:
 
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
-    title: "Cache Hit & Miss / Table"
+    title: "Cache Hit & Miss"
     xaxis:
       type: "date"
     yaxis:
@@ -786,14 +783,14 @@ lsm_rocksdb_block_cache_usage:
 
 lsm_rocksdb_block_cache_add:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     saved_name: "rocksdb_block_cache_add|rocksdb_block_cache_single_touch_add|rocksdb_block_cache_multi_touch_add"
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
-    title: "Cache Add / Table"
+    title: "Cache Add"
     xaxis:
       type: "date"
     yaxis:
@@ -804,12 +801,12 @@ lsm_rocksdb_block_cache_add:
 
 lsm_rocksdb_stalls:
   metric: "rocksdb_stall_micros"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Stalls / Table"
+    title: "Stalls"
     xaxis:
       type: "date"
     yaxis:
@@ -819,11 +816,11 @@ lsm_rocksdb_stalls:
 
 lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   operator: "/ 1048576"
   layout:
-    title: "Flush write / Table"
+    title: "Flush write"
     xaxis:
       type: "date"
     yaxis:
@@ -833,7 +830,7 @@ lsm_rocksdb_flush_size:
 
 lsm_rocksdb_compaction:
   metric: ""
-  function: "rate|avg"
+  function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   operator: "/ 1048576"
   filters:
@@ -841,7 +838,7 @@ lsm_rocksdb_compaction:
     saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
   group_by: "saved_name"
   layout:
-    title: "Compaction / Table"
+    title: "Compaction"
     xaxis:
       type: "date"
     yaxis:
@@ -852,12 +849,12 @@ lsm_rocksdb_compaction:
 
 lsm_rocksdb_compaction_numfiles:
   metric: "rocksdb_numfiles_in_singlecompaction.avg"
-  function: "irate|avg"
+  function: "irate|sum without (table_id, table_name)|avg"
   range: "1m"
   filters:
     export_type: "tserver_export"
   layout:
-    title: "Compaction num files / Table"
+    title: "Compaction num files"
     xaxis:
       type: "date"
     yaxis:
@@ -866,14 +863,13 @@ lsm_rocksdb_compaction_numfiles:
 
 lsm_rocksdb_compaction_time:
   metric: "rocksdb_compaction_times_micros.avg"
-  function: "irate|avg"
+  function: "irate|sum without (table_id, table_name)|avg"
   range: "1m"
   #operator: "/ 1000000"
   filters:
     export_type: "tserver_export"
   layout:
-      #title: "Compaction time (sec) / Table"
-    title: "Compaction time / Table"
+    title: "Compaction time"
     xaxis:
       type: "date"
     yaxis:
