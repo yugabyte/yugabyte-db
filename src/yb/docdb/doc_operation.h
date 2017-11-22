@@ -167,6 +167,9 @@ class QLWriteOperation : public DocOperation {
                                       QLTableRow* table_row,
                                       const rocksdb::QueryId query_id);
 
+  CHECKED_STATUS DeleteRow(DocWriteBatch* doc_write_batch,
+                           const DocPath row_path);
+
   const Schema& schema_;
 
   // Doc key and doc path for hashed key (i.e. without range columns). Present when there is a

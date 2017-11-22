@@ -30,7 +30,7 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            PTDmlUsingClause::SharedPtr using_clause,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause)
-    : PTDmlStmt(memctx, loc, true, where_clause, if_clause, using_clause),
+    : PTDmlStmt(memctx, loc, where_clause, if_clause, using_clause),
       target_(target),
       relation_(relation) {
 }
@@ -47,15 +47,40 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   // Collect table's schema for semantic analysis.
   RETURN_NOT_OK(LookupTable(sem_context));
 
-  column_args_->resize(num_columns());
-
-  if (target_) {
-    TreeNodePtrOperator<SemContext> analyze =
-        std::bind(&PTDeleteStmt::AnalyzeTarget, this, std::placeholders::_1, std::placeholders::_2);
-    RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
-  }
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
+  bool range_key_missing = key_where_ops_.size() < num_key_columns_;
+
+  column_args_->resize(num_columns());
+
+  // If target columns are given, range key can be omitted only if all columns targeted for
+  // deletions are static. Then we must also check there are no extra conditions on the range
+  // columns (e.g. inequality conditions).
+  // Otherwise, (if no target columns are given) range key can omitted (implying a range delete)
+  // only if there is no 'IF' clause (not allowed for range deletes).
+  if (target_) {
+    deleting_only_static_cols_ = true;
+    TreeNodePtrOperator<SemContext> analyze =
+        std::bind(&PTDeleteStmt::AnalyzeTarget, this, std::placeholders::_1, std::placeholders::_2);
+        RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
+
+    if (range_key_missing) {
+      if (!deleting_only_static_cols_) {
+        return sem_context->Error(this,
+            "DELETE statement must give the entire primary key if specifying non-static columns",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+      if (!where_ops_.empty()) {
+        return sem_context->Error(this,
+            "DELETE statement cannot specify both target columns and range condition",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+    }
+  } else if (range_key_missing && if_clause_ != nullptr) {
+    return sem_context->Error(this,
+        "DELETE statement must specify the entire primary key to use an IF clause",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
 
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
@@ -71,7 +96,6 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
 
   return Status::OK();
 }
-
 
 CHECKED_STATUS PTDeleteStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
@@ -93,13 +117,16 @@ CHECKED_STATUS PTDeleteStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
     if (col_desc->is_primary()) {
       return sem_context->Error(target, "Delete target cannot be part of primary key",
                                 ErrorCode::INVALID_ARGUMENTS);
-  }
+    }
+    if (!col_desc->is_static()) {
+      deleting_only_static_cols_ = false;
+    }
+
     // Set rhs expr to nullptr, since it is delete.
     column_args_->at(col_desc->index()).Init(col_desc, nullptr);
   }
   return Status::OK();
 }
-
 
 void PTDeleteStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";

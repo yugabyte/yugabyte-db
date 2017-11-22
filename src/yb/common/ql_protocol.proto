@@ -239,6 +239,9 @@ message QLWriteRequestPB {
   // Note: DELETE statement has no column value.
   repeated QLColumnValuePB column_values = 8;
 
+  // Where clause condition -- currently this is only allowed for deletes.
+  optional QLExpressionPB where_expr = 14;
+
   // If clause condition
   optional QLExpressionPB if_expr = 9;
 

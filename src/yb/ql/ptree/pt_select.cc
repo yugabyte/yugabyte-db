@@ -77,7 +77,7 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTListNode::SharedPtr having_clause,
                            PTOrderByListNode::SharedPtr order_by_clause,
                            PTExpr::SharedPtr limit_clause)
-    : PTDmlStmt(memctx, loc, false, where_clause),
+    : PTDmlStmt(memctx, loc, where_clause),
       distinct_(distinct),
       is_forward_scan_(true),
       selected_exprs_(selected_exprs),

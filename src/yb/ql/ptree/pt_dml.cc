@@ -34,7 +34,6 @@ const PTExpr::SharedPtr PTDmlStmt::kNullPointerRef = nullptr;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
-                     bool write_only,
                      PTExpr::SharedPtr where_clause,
                      PTExpr::SharedPtr if_clause,
                      PTDmlUsingClause::SharedPtr using_clause)
@@ -48,7 +47,6 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     where_ops_(memctx),
     subscripted_col_where_ops_(memctx),
     partition_key_ops_(memctx),
-    write_only_(write_only),
     where_clause_(where_clause),
     if_clause_(if_clause),
     using_clause_(using_clause),
@@ -67,7 +65,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
   YBTableName name = table_name();
 
   return sem_context->LookupTable(name, &table_, &table_columns_, &num_key_columns_,
-                                  &num_hash_key_columns_, &is_system_, write_only_, table_loc());
+                                  &num_hash_key_columns_, &is_system_, IsWriteOp(), table_loc());
 }
 
 // Node semantics analysis.
@@ -82,14 +80,14 @@ CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
 CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
                                              const PTExpr::SharedPtr& where_clause) {
   if (where_clause == nullptr) {
-    if (write_only_) {
+    if (IsWriteOp()) {
       return sem_context->Error(this, "Missing partition key", ErrorCode::CQL_STATEMENT_INVALID);
     }
     return Status::OK();
   }
 
   // Analyze where expression.
-  if (write_only_) {
+  if (IsWriteOp()) {
     key_where_ops_.resize(num_key_columns_);
   } else {
     key_where_ops_.resize(num_hash_key_columns_);
@@ -104,13 +102,13 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
   op_counters.resize(num_columns());
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
-      &partition_key_ops_, &op_counters, &partition_key_counter, write_only_, &func_ops_);
+      &partition_key_ops_, &op_counters, &partition_key_counter, opcode(), &func_ops_);
 
   SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
   RETURN_NOT_OK(expr->Analyze(sem_context));
 
-  if (write_only_) {
+  if (IsWriteOp()) {
     // Make sure that all hash entries are referenced in where expression.
     for (int idx = 0; idx < num_hash_key_columns_; idx++) {
       if (op_counters[idx].eq_count() == 0) {
@@ -135,9 +133,15 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
         key_where_ops_.resize(num_hash_key_columns_);
       }
     } else {
-      if (range_keys != num_key_columns_ - num_hash_key_columns_)
-        return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
-                                  ErrorCode::CQL_STATEMENT_INVALID);
+      if (range_keys != num_key_columns_ - num_hash_key_columns_) {
+        if (opcode() == TreeNodeOpcode::kPTDeleteStmt) {
+          // Range expression in write requests are allowed for deletes only.
+          key_where_ops_.resize(num_hash_key_columns_);
+        } else {
+          return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
+                                    ErrorCode::CQL_STATEMENT_INVALID);
+        }
+      }
     }
   } else {
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
@@ -244,100 +248,110 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
   ColumnOpCounter& counter = op_counters_->at(col_desc->index());
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {
-      if (col_args != nullptr && !write_only_) {
-        SubscriptedColumnOp subcol_op(col_desc, col_args, value, QLOperator::QL_OP_EQUAL);
-        subscripted_col_ops_->push_back(subcol_op);
-      } else {
-        counter.increase_eq();
-        if (!counter.isValid()) {
-          return sem_context->Error(expr, "Illogical condition for where clause",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
-        }
+      counter.increase_eq();
+      if (!counter.isValid()) {
+        return sem_context->Error(expr, "Illogical condition for where clause",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
 
-        // Check if the column is used correctly.
-        if (col_desc->is_hash()) {
+      // Check that the column is being used correctly.
+      switch (statement_type_) {
+        case TreeNodeOpcode::kPTInsertStmt:
+        case TreeNodeOpcode::kPTUpdateStmt:
+        case TreeNodeOpcode::kPTDeleteStmt: {
+          if (!col_desc->is_primary()) {
+            return sem_context->Error(expr,
+                "Non primary key cannot be used in where clause for write requests",
+                ErrorCode::CQL_STATEMENT_INVALID);
+          }
           (*key_ops_)[col_desc->index()].Init(col_desc, value, QLOperator::QL_OP_EQUAL);
-        } else if (col_desc->is_primary()) {
-          if (write_only_) {
+          break;
+        }
+        case TreeNodeOpcode::kPTSelectStmt: {
+          if (col_desc->is_hash()) {
             (*key_ops_)[col_desc->index()].Init(col_desc, value, QLOperator::QL_OP_EQUAL);
+          } else if (col_args != nullptr) {
+            SubscriptedColumnOp subcol_op(col_desc, col_args, value, expr->ql_op());
+            subscripted_col_ops_->push_back(subcol_op);
           } else {
             ColumnOp col_op(col_desc, value, QLOperator::QL_OP_EQUAL);
             ops_->push_back(col_op);
           }
-        } else { // conditions on regular columns only allowed in select statements
-          if (write_only_) {
-            return sem_context->Error(expr, "Non primary key cannot be used in where clause",
-                                      ErrorCode::CQL_STATEMENT_INVALID);
-          }
-          ColumnOp col_op(col_desc, value, QLOperator::QL_OP_EQUAL);
-          ops_->push_back(col_op);
+          break;
         }
+        default:
+          return sem_context->Error(expr, "Statement type cannot have where condition",
+              ErrorCode::CQL_STATEMENT_INVALID);
       }
       break;
     }
 
     case QL_OP_LESS_THAN: FALLTHROUGH_INTENDED;
-    case QL_OP_LESS_THAN_EQUAL: {
-      if (col_args != nullptr && !write_only_) {
-        SubscriptedColumnOp subcol_op(col_desc, col_args, value, expr->ql_op());
-        subscripted_col_ops_->push_back(subcol_op);
-      } else {
-        if (col_desc->is_hash()) {
-          return sem_context->Error(expr, "Partition column cannot be used in this expression",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
-        } else if (col_desc->is_primary() && write_only_) {
-            return sem_context->Error(expr, "Range expression is not yet supported",
-                                      ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
-        } else if (write_only_) { // regular column
-          return sem_context->Error(expr, "Non primary key cannot be used in where clause",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
-        }
-
-        counter.increase_lt();
-        if (!counter.isValid()) {
-          return sem_context->Error(expr, "Illogical condition for where clause",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
-        }
-        // Cache the column operator for execution.
-        ColumnOp col_op(col_desc, value, expr->ql_op());
-        ops_->push_back(col_op);
-      }
-      break;
-    }
-
+    case QL_OP_LESS_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN: {
-      if (col_args != nullptr && !write_only_) {
-        SubscriptedColumnOp subcol_op(col_desc, col_args, value, expr->ql_op());
-        subscripted_col_ops_->push_back(subcol_op);
-      } else {
-        if (col_desc->is_hash()) {
-          return sem_context->Error(expr, "Partition column cannot be used in this expression",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
-        } else if (col_desc->is_primary() && write_only_) {
-          return sem_context->Error(expr, "Range expression is not yet supported",
-                                    ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
-        } else if (write_only_) { // regular column
-          return sem_context->Error(expr, "Non primary key cannot be used in where clause",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
+
+      // Inequality conditions on hash columns are not allowed.
+      if (col_desc->is_hash()) {
+        return sem_context->Error(expr, "Partition column cannot be used in this expression",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+
+      // Check for illogical conditions.
+      if (col_args == nullptr) { // subcolumn conditions don't affect the condition counter.
+        if (expr->ql_op() == QL_OP_LESS_THAN || expr->ql_op() == QL_OP_LESS_THAN_EQUAL) {
+          counter.increase_lt();
+        } else {
+          counter.increase_gt();
         }
 
-        counter.increase_gt();
         if (!counter.isValid()) {
           return sem_context->Error(expr, "Illogical condition for where clause",
-                                    ErrorCode::CQL_STATEMENT_INVALID);
+              ErrorCode::CQL_STATEMENT_INVALID);
         }
+      }
 
-        // Cache the column operator for execution.
-        ColumnOp col_op(col_desc, value, expr->ql_op());
-        ops_->push_back(col_op);
+      // Check that the column is being used correctly.
+      switch (statement_type_) {
+        case TreeNodeOpcode::kPTInsertStmt:
+        case TreeNodeOpcode::kPTUpdateStmt:
+          if (col_desc->is_primary()) {
+            return sem_context->Error(expr,
+                "Range expressions are not supported for inserts and updates",
+                ErrorCode::CQL_STATEMENT_INVALID);
+          }
+          FALLTHROUGH_INTENDED;
+        case TreeNodeOpcode::kPTDeleteStmt: {
+          if (!col_desc->is_primary()) {
+            return sem_context->Error(expr,
+                "Non primary key cannot be used in where clause for write requests",
+                ErrorCode::CQL_STATEMENT_INVALID);
+          }
+          ColumnOp col_op(col_desc, value, expr->ql_op());
+          ops_->push_back(col_op);
+          break;
+        }
+        case TreeNodeOpcode::kPTSelectStmt: {
+          // Cache the column operator for execution.
+          if (col_args != nullptr) {
+            SubscriptedColumnOp subcol_op(col_desc, col_args, value, expr->ql_op());
+            subscripted_col_ops_->push_back(subcol_op);
+          } else {
+            ColumnOp col_op(col_desc, value, expr->ql_op());
+            ops_->push_back(col_op);
+          }
+          break;
+        }
+        default:
+          return sem_context->Error(expr, "Statement type cannot have where condition",
+              ErrorCode::CQL_STATEMENT_INVALID);
       }
       break;
     }
 
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {
-      if (write_only_) {
+      if (statement_type_ != TreeNodeOpcode::kPTSelectStmt) {
         return sem_context->Error(expr, "IN expression not supported for write operations",
                                   ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
       }
@@ -367,7 +381,6 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  // Check that if where clause is present, it must follow CQL rules.
   return Status::OK();
 }
 

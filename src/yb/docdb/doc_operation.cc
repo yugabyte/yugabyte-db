@@ -992,18 +992,33 @@ bool RequireReadForExpressions(const QLWriteRequestPB& request) {
   // A QLWriteOperation requires a read if it contains an IF clause or an UPDATE assignment that
   // involves an expresion with a column reference. If the IF clause contains a condition that
   // involves a column reference, the column will be included in "column_refs". However, we cannot
-  // rely on non-empty "column_ref" alone to decide if a read is required becaue "IF EXISTS" and
+  // rely on non-empty "column_ref" alone to decide if a read is required because "IF EXISTS" and
   // "IF NOT EXISTS" do not involve a column reference explicitly.
   return request.has_if_expr()
       || request.has_column_refs() && (!request.column_refs().ids().empty() ||
           !request.column_refs().static_ids().empty());
 }
 
-bool RequireRead(const QLWriteRequestPB& request) {
+// If range key portion is missing and there are no targeted columns this is a range operation
+// (e.g. range delete) -- it affects all rows within a hash key that match the where clause.
+// Note: If target columns are given this could just be e.g. a delete targeting a static column
+// which can also omit the range portion -- Analyzer will check these restrictions.
+bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema) {
+  return schema.num_range_key_columns() > 0 &&
+         request.range_column_values().empty() &&
+         request.column_values().empty();
+}
+
+bool RequireRead(const QLWriteRequestPB& request, const Schema& schema) {
   // In case of a user supplied timestamp, we need a read (and hence appropriate locks for read
   // modify write) but it is at the docdb level on a per key basis instead of a QL read of the
   // latest row.
-  return RequireReadForExpressions(request) || request.has_user_timestamp_usec();
+  bool has_user_timestamp = request.has_user_timestamp_usec();
+
+  // We need to read the rows in the given range to find out which rows to write to.
+  bool is_range_operation = IsRangeOperation(request, schema);
+
+  return RequireReadForExpressions(request) || has_user_timestamp || is_range_operation;
 }
 
 // Create projection schemas of static and non-static columns from a rowblock projection schema
@@ -1085,7 +1100,7 @@ QLWriteOperation::QLWriteOperation(
     QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response,
     const TransactionOperationContextOpt& txn_op_context)
     : schema_(schema), response_(response), txn_op_context_(txn_op_context),
-      require_read_(RequireRead(*request)) {
+      require_read_(RequireRead(*request, schema)) {
   request_.Swap(request);
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
@@ -1101,11 +1116,13 @@ QLWriteOperation::QLWriteOperation(
     }
   }
 
+  bool is_range_operation = IsRangeOperation(request_, schema);
+
   // We need the hashed key if writing to the static columns, and need primary key if writing to
   // non-static columns or writing the full primary key (i.e. range columns are present or table
   // does not have range columns).
   CHECK_OK(InitializeKeys(
-      write_static_columns,
+      write_static_columns || is_range_operation,
       write_non_static_columns ||
       !request_.range_column_values().empty() ||
       schema.num_range_key_columns() == 0));
@@ -1160,11 +1177,11 @@ void QLWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *l
 }
 
 Status QLWriteOperation::ReadColumns(rocksdb::DB *rocksdb,
-                                      const HybridTime& hybrid_time,
-                                      Schema *param_static_projection,
-                                      Schema *param_non_static_projection,
-                                      QLTableRow *table_row,
-                                      const rocksdb::QueryId query_id) {
+                                     const HybridTime& hybrid_time,
+                                     Schema *param_static_projection,
+                                     Schema *param_non_static_projection,
+                                     QLTableRow *table_row,
+                                     const rocksdb::QueryId query_id) {
 
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
@@ -1264,8 +1281,8 @@ Status QLWriteOperation::Apply(
                                        &table_row,
                                        request_.query_id()));
   } else if (RequireReadForExpressions(request_)) {
-    RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &table_row,
-                              request_.query_id()));
+        RETURN_NOT_OK(ReadColumns(rocksdb, hybrid_time, nullptr, nullptr, &table_row,
+        request_.query_id()));
   }
 
   if (should_apply) {
@@ -1424,9 +1441,14 @@ Status QLWriteOperation::Apply(
         break;
       }
       case QLWriteRequestPB::QL_STMT_DELETE: {
-        // If non-key columns are specified, just the individual columns will be deleted. Otherwise,
-        // the whole row is deleted.
+        // We have three cases:
+        // 1. If non-key columns are specified, we delete only those columns.
+        // 2. Otherwise, if range cols are missing, this must be a range delete.
+        // 3. Otherwise, this is a normal delete.
+        // Analyzer ensures these are the only cases before getting here (e.g. range deletes cannot
+        // specify non-key columns).
         if (request_.column_values_size() > 0) {
+          // Delete the referenced columns only.
           for (const auto& column_value : request_.column_values()) {
             CHECK(column_value.has_column_id())
                 << "column id missing: " << column_value.DebugString();
@@ -1439,30 +1461,51 @@ Status QLWriteOperation::Apply(
             RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
                                                         request_.query_id(), user_timestamp));
           }
-        } else {
-          if (user_timestamp != Value::kInvalidUserTimestamp) {
-            // If user_timestamp is provided, we need to add a tombstone for each individual
-            // column in the schema since we don't want to analyze this on the read path.
-            for (int i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
-              const DocPath sub_path(pk_doc_path_->encoded_doc_key(),
-                                     PrimitiveValue(schema_.column_id(i)));
-              RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
-                                                          request_.query_id(),
-                                                          user_timestamp));
-            }
+        } else if (IsRangeOperation(request_, schema_)) {
+          // If the range columns are not specified, we read everything and delete all rows for
+          // which the where condition matches.
 
-            // Delete the liveness column as well.
-            const DocPath liveness_column(
-                pk_doc_path_->encoded_doc_key(),
-                PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
-            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
-                                                        InitMarkerBehavior::OPTIONAL,
-                                                        request_.query_id(),
-                                                        user_timestamp));
-          } else {
-            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
-                *pk_doc_path_, InitMarkerBehavior::OPTIONAL, request_.query_id(), user_timestamp));
+          // Create the schema projection -- range deletes cannot reference non-primary key columns,
+          // so the non-static projection is all we need, it should contain all referenced columns.
+          Schema static_projection;
+          Schema projection;
+          RETURN_NOT_OK(CreateProjections(schema_, request_.column_refs(),
+              &static_projection, &projection));
+
+          // Construct the scan spec basing on the WHERE condition.
+          vector<PrimitiveValue> hashed_components;
+          RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+              request_.hashed_column_values(), schema_, 0,
+              schema_.num_hash_key_columns(), &hashed_components));
+
+          DocQLScanSpec spec(projection, request_.hash_code(), -1, hashed_components,
+              request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+              request_.query_id());
+
+          // Create iterator.
+          DocRowwiseIterator iterator(projection, schema_, txn_op_context_, rocksdb, hybrid_time);
+          RETURN_NOT_OK(iterator.Init(spec));
+
+          // Iterate through rows and delete those that match the condition.
+          // TODO We do not lock here, so other write transactions coming in might appear partially
+          // applied if they happen in the middle of a ranged delete.
+          QLTableRow row;
+          while (iterator.HasNext()) {
+            row.clear();
+            RETURN_NOT_OK(iterator.NextRow(projection, &row));
+
+            // Match the row with the where condition before deleting it.
+            bool match = false;
+            RETURN_NOT_OK(spec.Match(row, &match));
+            if (match) {
+              DocKey row_key = iterator.row_key();
+              DocPath row_path(row_key.Encode());
+              RETURN_NOT_OK(DeleteRow(doc_write_batch, row_path));
+            }
           }
+        } else {
+          // Otherwise, delete the referenced row (all columns).
+          RETURN_NOT_OK(DeleteRow(doc_write_batch, *pk_doc_path_));
         }
         break;
       }
@@ -1470,6 +1513,35 @@ Status QLWriteOperation::Apply(
   }
 
   response_->set_status(QLResponsePB::YQL_STATUS_OK);
+
+  return Status::OK();
+}
+
+Status QLWriteOperation::DeleteRow(DocWriteBatch* doc_write_batch,
+                                   const DocPath row_path) {
+
+  if (request_.has_user_timestamp_usec()) {
+    // If user_timestamp is provided, we need to add a tombstone for each individual
+    // column in the schema since we don't want to analyze this on the read path.
+    for (int i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
+      const DocPath sub_path(row_path.encoded_doc_key(), PrimitiveValue(schema_.column_id(i)));
+      RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path,
+                                                  InitMarkerBehavior::OPTIONAL,
+                                                  request_.query_id(),
+                                                  request_.user_timestamp_usec()));
+    }
+
+    // Delete the liveness column as well.
+    const DocPath liveness_column(
+        row_path.encoded_doc_key(),
+        PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+    RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
+                                                InitMarkerBehavior::OPTIONAL,
+                                                request_.query_id(),
+                                                request_.user_timestamp_usec()));
+  } else {
+    RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(row_path, InitMarkerBehavior::OPTIONAL));
+  }
 
   return Status::OK();
 }

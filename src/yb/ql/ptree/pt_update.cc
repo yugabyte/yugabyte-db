@@ -101,7 +101,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause,
                            PTDmlUsingClause::SharedPtr using_clause)
-    : PTDmlStmt(memctx, loc, true, where_clause, if_clause, using_clause),
+    : PTDmlStmt(memctx, loc, where_clause, if_clause, using_clause),
       relation_(relation),
       set_clause_(set_clause) {
 }

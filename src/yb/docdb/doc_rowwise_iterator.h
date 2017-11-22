@@ -82,6 +82,10 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
   CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
                                            QLResponsePB* response) const override;
 
+  const DocKey& row_key() const {
+    return row_key_;
+  }
+
   // Skip the current row.
   void SkipRow() override;
 

@@ -71,7 +71,7 @@ class WhereExprState {
                  MCList<PartitionKeyOp> *partition_key_ops,
                  MCVector<ColumnOpCounter> *op_counters,
                  ColumnOpCounter *partition_key_counter,
-                 bool write_only,
+                 TreeNodeOpcode statement_type,
                  MCList<FuncOp> *func_ops)
     : ops_(ops),
       key_ops_(key_ops),
@@ -79,7 +79,7 @@ class WhereExprState {
       partition_key_ops_(partition_key_ops),
       op_counters_(op_counters),
       partition_key_counter_(partition_key_counter),
-      write_only_(write_only),
+      statement_type_(statement_type),
       func_ops_(func_ops) {
   }
 
@@ -116,11 +116,11 @@ class WhereExprState {
   // Counters of '=', '<', and '>' operators for each column in the where expression.
   MCVector<ColumnOpCounter> *op_counters_;
 
-  // conters on conditions on the partition key (i.e. using `token`)
+  // Counters on conditions on the partition key (i.e. using `token`)
   ColumnOpCounter *partition_key_counter_;
 
-  // update, insert, delete.
-  bool write_only_;
+  // update, insert, delete, select.
+  TreeNodeOpcode statement_type_;
 
   MCList<FuncOp> *func_ops_;
 
@@ -160,7 +160,6 @@ class PTDmlStmt : public PTCollection {
   // Constructor and destructor.
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
-                     bool write_only,
                      PTExpr::SharedPtr where_clause = nullptr,
                      PTExpr::SharedPtr if_clause = nullptr,
                      PTDmlUsingClause::SharedPtr using_clause = nullptr);
@@ -314,6 +313,13 @@ class PTDmlStmt : public PTCollection {
     return selected_schemas_;
   }
 
+
+  bool IsWriteOp() {
+    return opcode() == TreeNodeOpcode::kPTInsertStmt ||
+           opcode() == TreeNodeOpcode::kPTUpdateStmt ||
+           opcode() == TreeNodeOpcode::kPTDeleteStmt;
+  }
+
  protected:
   // Protected functions.
   CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
@@ -351,9 +357,6 @@ class PTDmlStmt : public PTCollection {
 
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;
-
-  // Predicate for write operator (INSERT/UPDATE/DELETE).
-  bool write_only_;
 
   PTExpr::SharedPtr where_clause_;
   PTExpr::SharedPtr if_clause_;

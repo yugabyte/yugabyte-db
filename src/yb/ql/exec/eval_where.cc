@@ -41,17 +41,19 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
   }
 
   // Setup the rest of the columns.
-  CHECK(where_ops.empty()) << "Server doesn't support range operation yet";
+  CHECK(where_ops.empty() || req->type() == QLWriteRequestPB::QL_STMT_DELETE)
+      << "Server only supports range operations in write requests for deletes";
 
-  for (const auto& op : subcol_where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    QLColumnValuePB *col_pb;
-    col_pb = req->add_column_values();
-    col_pb->set_column_id(col_desc->id());
-    for (auto& arg : op.args()->node_list()) {
-      RETURN_NOT_OK(PTExprToPB(arg, col_pb->add_subscript_args()));
+  CHECK(subcol_where_ops.empty())
+      << "Server doesn't support sub-column conditions in where clause for write requests";
+
+  // Setup the where clause -- only allowed for deletes, should be checked before getting here.
+  if (!where_ops.empty()) {
+    QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+    where_pb->set_op(QL_OP_AND);
+    for (const auto &col_op : where_ops) {
+          RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
     }
-    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
   }
 
   return Status::OK();

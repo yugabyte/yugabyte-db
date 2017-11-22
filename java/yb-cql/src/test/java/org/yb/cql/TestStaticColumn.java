@@ -463,20 +463,19 @@ public class TestStaticColumn extends BaseCQLTest {
   public void testDeleteStaticColumn() throws Exception {
     LOG.info("Test Start");
     session.execute("create table t (" +
-                    "h int, r int, v int static," +
+                    "h int, r int, s int static, " +
                     "primary key (h, r));");
 
-    // Test select rows with a hash key (1, h1). Expect updated s1 and c1.
-    session.execute("insert into t (h, r, v) " +
+    // Insert two rows.
+    session.execute("insert into t (h, r, s) " +
                     "values (1, 1, 1);");
-    session.execute("insert into t (h, r, v) " +
+    session.execute("insert into t (h, r, s) " +
                     "values (1, 2, 2);");
 
-    // Verify the static collection columns
-    String delete_stmt = "delete v from t where h = 1;";
-    session.execute(delete_stmt);
-    String select_stmt = "select v from t;";
-    ResultSet rs = session.execute(select_stmt);
+    // Test delete static columns only.
+    session.execute("delete s from t where h = 1;");
+    // Verify the static column
+    ResultSet rs = session.execute("select s from t;");
     List<Row> rows = rs.all();
     assertEquals(2, rows.size());
     for (Row row : rows) {
