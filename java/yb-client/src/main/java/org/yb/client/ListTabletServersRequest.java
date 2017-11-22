@@ -69,19 +69,23 @@ public class ListTabletServersRequest extends YRpc<ListTabletServersResponse> {
     final ListTabletServersResponsePB.Builder respBuilder =
       ListTabletServersResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    int serversCount = respBuilder.getServersCount();
-    List<ServerInfo> servers = new ArrayList<ServerInfo>(serversCount);
-    ServerInfo server;
-    for (ListTabletServersResponsePB.Entry entry : respBuilder.getServersList()) {
-      server = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
-                              entry.getRegistration().getCommon().getRpcAddresses(0).getHost(),
-                              entry.getRegistration().getCommon().getRpcAddresses(0).getPort(),
-                              false); // Leader info is not present as its for all tservers.
-      servers.add(server);
+    boolean hasErr = respBuilder.hasError();
+    int serversCount = hasErr ? 0 : respBuilder.getServersCount();
+    List<ServerInfo> servers = new ArrayList<ServerInfo>();
+    if (!hasErr) {
+      ServerInfo server;
+      for (ListTabletServersResponsePB.Entry entry : respBuilder.getServersList()) {
+        server = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
+                                entry.getRegistration().getCommon().getRpcAddresses(0).getHost(),
+                                entry.getRegistration().getCommon().getRpcAddresses(0).getPort(),
+                                false); // Leader info is not present as its for all tservers.
+        servers.add(server);
+      }
     }
     ListTabletServersResponse response = new ListTabletServersResponse(
-        deadlineTracker.getElapsedMillis(), tsUUID, serversCount, servers);
+        deadlineTracker.getElapsedMillis(), tsUUID, serversCount, servers,
+        hasErr ? respBuilder.getError() : null);
     return new Pair<ListTabletServersResponse, Object>(
-        response, respBuilder.hasError() ? respBuilder.getError() : null);
+        response, hasErr ? respBuilder.getError() : null);
   }
 }

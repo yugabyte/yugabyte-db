@@ -30,6 +30,7 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.IsLoadBalancedResponse;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
@@ -64,7 +65,8 @@ public class YBCliCommands implements CommandMarker {
 
   @CliAvailabilityIndicator({"list tablet-servers", "list tablets", "list tables", "list masters",
                              "change_config", "change_blacklist", "leader_step_down",
-                             "get_universe_config", "get_load_move_completion"})
+                             "get_universe_config", "get_load_move_completion",
+                             "is_load_balanced"})
   public boolean isDatabaseOperationAvailable() {
     // We can perform operations on the database once we are connected to one.
     if (connectedToDatabase) {
@@ -390,6 +392,30 @@ public class YBCliCommands implements CommandMarker {
       }
 
       return "Percent completed = " + resp.getPercentCompleted();
+    } catch (Exception e) {
+      LOG.error("Caught exception ", e);
+      return "Failed: " + e.toString() + "\n";
+    }
+  }
+
+  @CliCommand(value = "is_load_balanced",
+              help = "Check if master leader thinks that the load is balanced across tservers.")
+  public String getIsLoadBalanced() {
+    try {
+      ListTabletServersResponse list_resp = ybClient.listTabletServers();
+
+      if (list_resp.hasError()) {
+        return "Failed: Cannot list tablet servers. Error : " + list_resp.errorMessage();
+      }
+
+      LOG.info("Checking load across " + list_resp.getTabletServersCount() + " tservers.");
+      IsLoadBalancedResponse resp = ybClient.getIsLoadBalanced(list_resp.getTabletServersCount());
+
+      if (resp.hasError()) {
+        return "Load is not balanced.";
+      }
+
+      return "Load is balanced.";
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";
