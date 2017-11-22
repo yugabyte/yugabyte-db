@@ -156,11 +156,17 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
 }
 
 // Waits for the given condition to be true or until the provided deadline happens.
-CHECKED_STATUS Wait(std::function<Result<bool>()> condition, const MonoTime& deadline,
-                    const string& description);
+CHECKED_STATUS Wait(std::function<Result<bool>()> condition,
+                    MonoTime deadline,
+                    const std::string& description,
+                    MonoDelta initial_delay = MonoDelta::FromMilliseconds(1),
+                    double delay_multiplier = 1.0);
 // Waits for the given condition to be true or until the provided timeout has expired.
-CHECKED_STATUS WaitFor(std::function<Result<bool>()> condition, const MonoDelta& timeout,
-                       const string& description);
+CHECKED_STATUS WaitFor(std::function<Result<bool>()> condition,
+                       MonoDelta timeout,
+                       const std::string& description,
+                       MonoDelta initial_delay = MonoDelta::FromMilliseconds(1),
+                       double delay_multiplier = 1.0);
 
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& tool_name);

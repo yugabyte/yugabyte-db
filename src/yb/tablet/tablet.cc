@@ -2959,8 +2959,9 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
   }
 }
 
-ScopedReadOperation::ScopedReadOperation(AbstractTablet* tablet)
-    : tablet_(tablet), timestamp_(tablet_->SafeTimestampToRead()) {
+ScopedReadOperation::ScopedReadOperation(AbstractTablet* tablet, HybridTime timestamp)
+    : tablet_(tablet),
+      timestamp_(timestamp.is_valid() ? timestamp : tablet_->SafeTimestampToRead()) {
   tablet_->RegisterReaderTimestamp(timestamp_);
 }
 

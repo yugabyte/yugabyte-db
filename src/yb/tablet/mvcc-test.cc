@@ -85,7 +85,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 
   // Initial state should not have any committed transactions.
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 1 }}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < <initial>}]", snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(HybridTime(1)));
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 
@@ -95,7 +95,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 
   // State should still have no committed transactions, since 1 is in-flight.
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 1 }}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < <initial>}]", snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(HybridTime(1)));
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 
@@ -128,7 +128,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // State should still have no committed transactions, since both are in-flight.
 
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < { physical: 0 logical: 1 }}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < <initial>}]", snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_FALSE(snap.IsCommitted(t2));
 
@@ -139,7 +139,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // State should show 2 as committed, 1 as uncommitted.
   mgr.TakeSnapshot(&snap);
   ASSERT_EQ("MvccSnapshot[committed="
-            "{T|T < { physical: 0 logical: 1 } or (T in {2})}]",
+            "{T|T < <initial> or (T in {2})}]",
             snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
@@ -151,7 +151,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // State should show 2 as committed, 1 and 4 as uncommitted.
   mgr.TakeSnapshot(&snap);
   ASSERT_EQ("MvccSnapshot[committed="
-            "{T|T < { physical: 0 logical: 1 } or (T in {2})}]",
+            "{T|T < <initial> or (T in {2})}]",
             snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
@@ -164,7 +164,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
   // 2 and 3 committed
   mgr.TakeSnapshot(&snap);
   ASSERT_EQ("MvccSnapshot[committed="
-            "{T|T < { physical: 0 logical: 1 } or (T in {2,3})}]",
+            "{T|T < <initial> or (T in {2,3})}]",
             snap.ToString());
   ASSERT_FALSE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
@@ -570,26 +570,26 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
   MvccSnapshot snap;
 
   EXPECT_DEATH({
-      mgr.StartApplyingOperation(HybridTime(1));
-    }, "Cannot mark hybrid_time \\{ physical: 0 logical: 1 \\} as APPLYING: "
+      mgr.StartApplyingOperation(HybridTime(2));
+    }, "Cannot mark hybrid_time \\{ physical: 0 logical: 2 \\} as APPLYING: "
        "not in the in-flight map");
 
   // Depending whether this is a DEBUG or RELEASE build, the error message
   // could be different for this case -- the "future hybrid_time" check is only
   // run in DEBUG builds.
   EXPECT_DEATH({
-      mgr.CommitOperation(HybridTime(1));
+      mgr.CommitOperation(HybridTime(2));
     },
     "Trying to commit a transaction with a future hybrid_time|"
     "Trying to remove hybrid_time which isn't in the in-flight set: "
-    "\\{ physical: 0 logical: 1 \\}");
+    "\\{ physical: 0 logical: 2 \\}");
 
   clock_->Update(HybridTime(20));
 
   EXPECT_DEATH({
-      mgr.CommitOperation(HybridTime(1));
+      mgr.CommitOperation(HybridTime(2));
     }, "Trying to remove hybrid_time which isn't in the in-flight set: "
-       "\\{ physical: 0 logical: 1 \\}");
+       "\\{ physical: 0 logical: 2 \\}");
 
   // Start a transaction, and try committing it without having moved to "Applying"
   // state.

@@ -551,7 +551,7 @@ HybridTime MvccSnapshot::LastCommittedHybridTime() const {
   if (!is_clean()) {
     if (committed_hybrid_times_.size() == 1 &&
         all_committed_before_.value() == committed_hybrid_times_.front()) {
-      // This is a degenerate case of a dirty snapshot that is in fact clean, consiting of all
+      // This is a degenerate case of a dirty snapshot that is in fact clean, consisting of all
       // hybrid_times less than X and the set {X}, e.g.:
       // MvccSnapshot[committed={T|T < 6041797920884666368 or (T in {6041797920884666368})}]
       return all_committed_before_;

@@ -109,27 +109,34 @@ Result<HybridTime> GetTxnCommitTime(
   }
 }
 
+struct DecodeStrongWriteIntentResult {
+  Slice intent_prefix;
+  Slice intent_value;
+  DocHybridTime value_time;
+
+  // Whether this intent from the same transaction as specified in context.
+  bool same_transaction = false;
+};
+
 // Decodes intent based on intent_iterator and its transaction commit time if intent is a strong
 // write intent and transaction is already committed at specified time or it is current transaction.
 // Returns HybridTime::kMin as value_time otherwise.
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
-Status DecodeStrongWriteIntent(
-    TransactionOperationContext txn_op_context,
-    const HybridTime& time,
-    rocksdb::Iterator* intent_iter,
-    Slice* intent_prefix,
-    Slice* value_slice,
-    DocHybridTime* value_time) {
+Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
+    TransactionOperationContext txn_op_context, HybridTime time, rocksdb::Iterator* intent_iter) {
   IntentType intent_type;
   DocHybridTime intent_ht;
-  RETURN_NOT_OK(DecodeIntentKey(intent_iter->key(), intent_prefix, &intent_type, &intent_ht));
+  DecodeStrongWriteIntentResult result;
+  RETURN_NOT_OK(DecodeIntentKey(
+     intent_iter->key(), &result.intent_prefix, &intent_type, &intent_ht));
   if (IsStrongWriteIntent(intent_type)) {
-    *value_slice = intent_iter->value();
-    Result<TransactionId> txn_id = DecodeTransactionIdFromIntentValue(value_slice);
+    result.intent_value = intent_iter->value();
+    Result<TransactionId> txn_id = DecodeTransactionIdFromIntentValue(&result.intent_value);
     RETURN_NOT_OK(txn_id);
-    if (*txn_id == txn_op_context.transaction_id) {
-      *value_time = intent_ht;
+    result.same_transaction = *txn_id == txn_op_context.transaction_id;
+    if (result.same_transaction) {
+      result.value_time = intent_ht;
     } else {
       Result<HybridTime> commit_ht = GetTxnCommitTime(
           &txn_op_context.txn_status_manager, *txn_id, time);
@@ -137,12 +144,12 @@ Status DecodeStrongWriteIntent(
       DOCDB_DEBUG_LOG(
           "transaction_id $0 at $1 commit time: $2", yb::ToString(*txn_id),
           ToString(time), ToString(*commit_ht));
-      *value_time = DocHybridTime(*commit_ht);
+      result.value_time = DocHybridTime(*commit_ht);
     }
   } else {
-    *value_time = DocHybridTime::kMin;
+    result.value_time = DocHybridTime::kMin;
   }
-  return Status::OK();
+  return result;
 }
 
 // Given that key is well-formed DocDB encoded key, checks if it is an intent key for the same key
@@ -303,22 +310,28 @@ void IntentAwareIterator::SeekForwardRegular(const KeyBytes& key_bytes) {
 }
 
 Status IntentAwareIterator::ProcessIntent(const HybridTime& high_ht) {
-  Slice intent_prefix;
-  Slice intent_value;
-  DocHybridTime value_time;
-  RETURN_NOT_OK(DecodeStrongWriteIntent(
-      txn_op_context_.get(), high_ht, intent_iter_.get(), &intent_prefix, &intent_value,
-      &value_time));
+  auto decode_result = DecodeStrongWriteIntent(txn_op_context_.get(), high_ht, intent_iter_.get());
+  RETURN_NOT_OK(decode_result);
   DOCDB_DEBUG_LOG(
       "resolved_intent_txn_dht_: $0 value_time: $1 high_ht: $2",
-      resolved_intent_txn_dht_.ToString(), value_time.ToString(), high_ht.ToString());
-  if (value_time > resolved_intent_txn_dht_ && value_time.hybrid_time() <= high_ht) {
+      resolved_intent_txn_dht_.ToString(),
+      decode_result->value_time.ToString(),
+      high_ht.ToString());
+  auto real_time = decode_result->same_transaction ? intent_dht_from_same_txn_
+                                                   : resolved_intent_txn_dht_;
+  if (decode_result->value_time > real_time &&
+      (decode_result->same_transaction || decode_result->value_time.hybrid_time() <= high_ht)) {
     if (!has_resolved_intent_) {
-      resolved_intent_key_prefix_.Reset(intent_prefix);
+      resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
       has_resolved_intent_ = true;
     }
-    resolved_intent_txn_dht_ = value_time;
-    resolved_intent_value_.Reset(intent_value);
+    if (decode_result->same_transaction) {
+      intent_dht_from_same_txn_ = decode_result->value_time;
+      resolved_intent_txn_dht_ = DocHybridTime(high_ht, kMaxWriteId);
+    } else {
+      resolved_intent_txn_dht_ = decode_result->value_time;
+    }
+    resolved_intent_value_.Reset(decode_result->intent_value);
   }
   return Status::OK();
 }

@@ -405,8 +405,7 @@ void Batcher::FlushBuffersIfReady() {
                                           this,
                                           _1,
                                           BatcherPtr(this)),
-                                &transaction_metadata_,
-                                &propagated_hybrid_time_)) {
+                                &transaction_prepare_data_)) {
         return;
       }
     }

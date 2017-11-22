@@ -45,6 +45,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
@@ -223,6 +224,52 @@ RpcCommandPtr StartRpc(Args&&... args) {
   auto rpc = std::make_shared<T>(std::forward<Args>(args)...);
   rpc->SendRpc();
   return rpc;
+}
+
+template <class Value>
+class RpcFutureCallback {
+ public:
+  RpcFutureCallback(Rpcs::Handle handle,
+                    Rpcs* rpcs,
+                    std::shared_ptr<std::promise<Result<Value>>> promise)
+      : rpcs_(rpcs), handle_(handle), promise_(std::move(promise)) {}
+
+  void operator()(const Status& status, Value value) const {
+    rpcs_->Unregister(handle_);
+    if (status.ok()) {
+      promise_->set_value(std::move(value));
+    } else {
+      promise_->set_value(status);
+    }
+  }
+ private:
+  Rpcs* rpcs_;
+  Rpcs::Handle handle_;
+  std::shared_ptr<std::promise<Result<Value>>> promise_;
+};
+
+template <class Value, class Functor>
+class WrappedRpcFuture {
+ public:
+  WrappedRpcFuture(const Functor& functor, Rpcs* rpcs) : functor_(functor), rpcs_(rpcs) {}
+
+  template <class... Args>
+  std::future<Result<Value>> operator()(Args&&... args) const {
+    auto handle = rpcs_->Prepare();
+    auto promise = std::make_shared<std::promise<Result<Value>>>();
+    *handle = functor_(std::forward<Args>(args)...,
+                       RpcFutureCallback<Value>(handle, rpcs_, promise));
+    (**handle).SendRpc();
+    return promise->get_future();
+  }
+ private:
+  Functor* functor_;
+  Rpcs* rpcs_;
+};
+
+template <class Value, class Functor>
+WrappedRpcFuture<Value, Functor> WrapRpcFuture(const Functor& functor, Rpcs* rpcs) {
+  return WrappedRpcFuture<Value, Functor>(functor, rpcs);
 }
 
 } // namespace rpc

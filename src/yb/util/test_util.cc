@@ -197,9 +197,12 @@ string GetTestDataDirectory() {
 }
 
 Status Wait(std::function<Result<bool>()> condition,
-            const MonoTime& deadline,
-            const string& description) {
+            MonoTime deadline,
+            const std::string& description,
+            MonoDelta initial_delay,
+            double delay_multiplier) {
   auto start = MonoTime::FineNow();
+  MonoDelta delay = initial_delay;
   for (;;) {
     auto current = condition();
     if (!current.ok()) {
@@ -209,22 +212,27 @@ Status Wait(std::function<Result<bool>()> condition,
       break;
     }
     auto now = MonoTime::FineNow();
-    if (now > deadline) {
+    auto left = deadline - now;
+    if (left <= MonoDelta::kZero) {
       return STATUS_FORMAT(TimedOut,
                            "Operation '$0' didn't complete within $1ms",
                            description,
                            (now - start).ToMilliseconds());
     }
-    SleepFor(MonoDelta::FromMilliseconds(1));
+    delay = std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left);
+    SleepFor(delay);
   }
   return Status::OK();
 }
 
 // Waits for the given condition to be true or until the provided timeout has expired.
 Status WaitFor(std::function<Result<bool>()> condition,
-               const MonoDelta& timeout,
-               const string& description) {
-  return Wait(condition, MonoTime::FineNow() + timeout, description);
+               MonoDelta timeout,
+               const string& description,
+               MonoDelta initial_delay,
+               double delay_multiplier) {
+  return Wait(
+      condition, MonoTime::FineNow() + timeout, description, initial_delay, delay_multiplier);
 }
 
 string GetToolPath(const string& tool_name) {

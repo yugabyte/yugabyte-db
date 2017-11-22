@@ -888,7 +888,8 @@ typedef std::shared_ptr<Tablet> TabletPtr;
 // when created, and deregisters the read point when this object is destructed.
 class ScopedReadOperation {
  public:
-  explicit ScopedReadOperation(AbstractTablet* tablet);
+  explicit ScopedReadOperation(
+      AbstractTablet* tablet, HybridTime timestamp = HybridTime::kInvalidHybridTime);
 
   ~ScopedReadOperation();
 

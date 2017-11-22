@@ -36,6 +36,8 @@ class Value;
 // format. If (sub)key A goes before/after (sub)key B, all intents for A should go before/after all
 // intents for (sub)key B.
 // Might ignore values with HT higher than high_ht for performance optimization.
+// For intents from the same transaction, intent with maximal HT would be picked, ignoring high_ht.
+// And returned as key with time equals to high_ht.
 // Intent data format:
 //   kIntentPrefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
 // TxnId, IntentType, HybridTime are all prefixed with their respective value types.
@@ -154,6 +156,7 @@ class IntentAwareIterator {
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).
   DocHybridTime resolved_intent_txn_dht_;
+  DocHybridTime intent_dht_from_same_txn_ = DocHybridTime::kMin;
   KeyBytes resolved_intent_sub_doc_key_encoded_;
   KeyBytes resolved_intent_value_;
 };

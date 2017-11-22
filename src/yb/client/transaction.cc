@@ -53,20 +53,19 @@ class YBTransaction::Impl final {
                   manager->Now()},
         log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
         heartbeat_handle_(manager->rpcs().InvalidHandle()),
-        commit_handle_(manager->rpcs().InvalidHandle()) {
-    VLOG_WITH_PREFIX(1) << "Started, isolation level: " << metadata_;
+        commit_handle_(manager->rpcs().InvalidHandle()),
+        abort_handle_(manager->rpcs().InvalidHandle()) {
+    VLOG_WITH_PREFIX(1) << "Started, metadata: " << metadata_;
   }
 
   ~Impl() {
-    manager_->rpcs().Abort({&heartbeat_handle_, &commit_handle_});
+    manager_->rpcs().Abort({&heartbeat_handle_, &commit_handle_, &abort_handle_});
   }
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionMetadata* metadata,
-               HybridTime* propagated_hybrid_time) {
-    CHECK_NOTNULL(metadata);
-    CHECK_NOTNULL(propagated_hybrid_time);
+               TransactionPrepareData* prepare_data) {
+    CHECK_NOTNULL(prepare_data);
 
     VLOG_WITH_PREFIX(1) << "Prepare";
 
@@ -93,11 +92,14 @@ class YBTransaction::Impl final {
       }
     }
 
-    *propagated_hybrid_time = manager_->Now();
+    prepare_data->propagated_hybrid_time = manager_->Now();
     if (has_tablets_without_parameters) {
-      *metadata = metadata_;
+      prepare_data->metadata = metadata_;
     } else {
-      metadata->transaction_id = metadata_.transaction_id;
+      prepare_data->metadata.transaction_id = metadata_.transaction_id;
+    }
+    if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+      prepare_data->read_time = metadata_.start_time;
     }
     return true;
   }
@@ -132,17 +134,13 @@ class YBTransaction::Impl final {
         auto status = error_;
         lock.unlock();
         if (status.ok()) {
-          status = STATUS(IllegalState, "Transaction already committed");
+          status = STATUS(IllegalState, "Transaction already completed");
         }
         callback(status);
         return;
       }
       complete_.store(true, std::memory_order_release);
       commit_callback_ = std::move(callback);
-      if (tablets_.empty()) { // TODO(dtxn) abort empty transaction?
-        commit_callback_(Status::OK());
-        return;
-      }
       if (!ready_) {
         RequestStatusTablet();
         waiters_.emplace_back(std::bind(&Impl::DoCommit, this, _1, transaction));
@@ -150,6 +148,43 @@ class YBTransaction::Impl final {
       }
     }
     DoCommit(Status::OK(), transaction);
+  }
+
+  void Abort() {
+    auto transaction = transaction_->shared_from_this();
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (complete_.load(std::memory_order_acquire)) {
+        LOG(DFATAL) << "Abort of committed transaction";
+        return;
+      }
+      complete_.store(true, std::memory_order_release);
+      if (!ready_) {
+        RequestStatusTablet();
+        waiters_.emplace_back(std::bind(&Impl::DoAbort, this, _1, transaction));
+        return;
+      }
+    }
+    DoAbort(Status::OK(), transaction);
+  }
+
+  std::shared_future<TransactionMetadata> TEST_GetMetadata() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (metadata_future_.valid()) {
+      return metadata_future_;
+    }
+    metadata_future_ = std::shared_future<TransactionMetadata>(metadata_promise_.get_future());
+    if (!ready_) {
+      RequestStatusTablet();
+      auto transaction = transaction_->shared_from_this();
+      waiters_.push_back([this, transaction](const Status& status) {
+        // Ok to crash here, because we are in test
+        CHECK_OK(status);
+        metadata_promise_.set_value(metadata_);
+      });
+    }
+    metadata_promise_.set_value(metadata_);
+    return metadata_future_;
   }
 
   const std::string& LogPrefix() {
@@ -167,13 +202,23 @@ class YBTransaction::Impl final {
  private:
   void DoCommit(const Status& status, const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << Format("Commit, tablets: $0, status: $1", tablets_, status);
+
     if (!status.ok()) {
       commit_callback_(status);
       return;
     }
 
+    // tablets_.empty() means that transaction does not have writes, so just abort it.
+    // But notify caller that commit was successful, so it is transparent for him.
+    if (tablets_.empty()) {
+      DoAbort(Status::OK(), transaction);
+      commit_callback_(Status::OK());
+      return;
+    }
+
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet_->tablet_id());
+    req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     state.set_status(TransactionStatus::COMMITTED);
@@ -191,6 +236,30 @@ class YBTransaction::Impl final {
         &commit_handle_);
   }
 
+  void DoAbort(const Status& status, const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << Format("Abort, status: $1", status);
+
+    if (!status.ok()) {
+      // We already stopped to send heartbeats, so transaction would be aborted anyway.
+      LOG(WARNING) << "Failed to abort transaction: " << status;
+      return;
+    }
+
+    tserver::AbortTransactionRequestPB req;
+    req.set_tablet_id(status_tablet_->tablet_id());
+    req.set_propagated_hybrid_time(manager_->Now().ToUint64());
+    req.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
+
+    manager_->rpcs().RegisterAndStart(
+        AbortTransaction(
+            TransactionRpcDeadline(),
+            status_tablet_.get(),
+            manager_->client().get(),
+            &req,
+            std::bind(&Impl::AbortDone, this, _1, _2, transaction)),
+        &abort_handle_);
+  }
+
   void CommitDone(const Status& status,
                   HybridTime propagated_hybrid_time,
                   const YBTransactionPtr& transaction) {
@@ -199,6 +268,17 @@ class YBTransaction::Impl final {
     manager_->UpdateClock(propagated_hybrid_time);
     manager_->rpcs().Unregister(&commit_handle_);
     commit_callback_(status);
+  }
+
+  void AbortDone(const Status& status,
+                 const tserver::AbortTransactionResponsePB& response,
+                 const YBTransactionPtr& transaction) {
+    VLOG_WITH_PREFIX(1) << "Aborted: " << status;
+
+    if (response.has_propagated_hybrid_time()) {
+      manager_->UpdateClock(HybridTime(response.propagated_hybrid_time()));
+    }
+    manager_->rpcs().Unregister(&abort_handle_);
   }
 
   void RequestStatusTablet() {
@@ -251,6 +331,7 @@ class YBTransaction::Impl final {
 
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet_->tablet_id());
+    req.set_propagated_hybrid_time(manager_->Now().ToUint64());
     auto& state = *req.mutable_state();
     state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     state.set_status(status);
@@ -327,6 +408,7 @@ class YBTransaction::Impl final {
   Status error_;
   rpc::Rpcs::Handle heartbeat_handle_;
   rpc::Rpcs::Handle commit_handle_;
+  rpc::Rpcs::Handle abort_handle_;
 
   struct TabletState {
     bool has_parameters = false;
@@ -341,6 +423,8 @@ class YBTransaction::Impl final {
   std::mutex mutex_;
   TabletStates tablets_;
   std::vector<Waiter> waiters_;
+  std::promise<TransactionMetadata> metadata_promise_;
+  std::shared_future<TransactionMetadata> metadata_future_;
 };
 
 YBTransaction::YBTransaction(TransactionManager* manager,
@@ -353,9 +437,8 @@ YBTransaction::~YBTransaction() {
 
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                             Waiter waiter,
-                            TransactionMetadata* metadata,
-                            HybridTime* propagated_hybrid_time) {
-  return impl_->Prepare(ops, std::move(waiter), metadata, propagated_hybrid_time);
+                            TransactionPrepareData* prepare_data) {
+  return impl_->Prepare(ops, std::move(waiter), prepare_data);
 }
 
 void YBTransaction::Flushed(
@@ -373,6 +456,14 @@ const TransactionId& YBTransaction::id() const {
 
 std::future<Status> YBTransaction::CommitFuture() {
   return MakeFuture<Status>([this](auto callback) { impl_->Commit(callback); });
+}
+
+void YBTransaction::Abort() {
+  impl_->Abort();
+}
+
+std::shared_future<TransactionMetadata> YBTransaction::TEST_GetMetadata() const {
+  return impl_->TEST_GetMetadata();
 }
 
 } // namespace client

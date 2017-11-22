@@ -39,6 +39,7 @@
 #include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/transaction.h"
 
 #include "yb/common/transaction.h"
 
@@ -145,12 +146,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   YBTransactionPtr transaction() const;
 
-  const TransactionMetadata& transaction_metadata() const {
-    return transaction_metadata_;
-  }
-
-  HybridTime propagated_hybrid_time() const {
-    return propagated_hybrid_time_;
+  const TransactionPrepareData& transaction_prepare_data() const {
+    return transaction_prepare_data_;
   }
 
  private:
@@ -271,8 +268,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
 
-  TransactionMetadata transaction_metadata_;
-  HybridTime propagated_hybrid_time_;
+  TransactionPrepareData transaction_prepare_data_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

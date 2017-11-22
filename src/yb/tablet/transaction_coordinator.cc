@@ -199,7 +199,7 @@ class TransactionState {
       CHECK_EQ(TransactionStatus::PENDING, status_);
       response->set_status(TransactionStatus::PENDING);
       response->set_status_hybrid_time(
-          context_.coordinator_context().LastCommittedHybridTime().ToUint64());
+          context_.coordinator_context().LastCommittedHybridTime().Decremented().ToUint64());
     }
     return Status::OK();
   }

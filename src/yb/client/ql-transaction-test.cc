@@ -19,13 +19,17 @@
 
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_manager.h"
+
 #include "yb/ql/util/statement_result.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/random_util.h"
 
 using namespace std::literals; // NOLINT
 
@@ -44,6 +48,7 @@ namespace client {
 namespace {
 
 constexpr size_t kNumRows = 5;
+const auto kTransactionApplyTime = NonTsanVsTsan(3s, 15s);
 
 YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE));
 
@@ -99,6 +104,8 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
 }
 
 } // namespace
+
+#define VERIFY_ROW(session, key, value) VerifyRow(__LINE__, (session), (key), (value))
 
 class QLTransactionTest : public QLDmlTestBase {
  protected:
@@ -194,12 +201,12 @@ class QLTransactionTest : public QLDmlTestBase {
     return rowblock->row(0).column(0).int32_value();
   }
 
-  void VerifyRow(const YBSessionPtr& session, int32_t key, int32_t value) {
+  void VerifyRow(int line, const YBSessionPtr& session, int32_t key, int32_t value) {
     VLOG(4) << "Calling SelectRow";
     auto row = SelectRow(session, key);
-    ASSERT_OK(row);
+    ASSERT_TRUE(row.ok()) << "Bad status: " << row << ", originator: " << __FILE__ << ":" << line;
     VLOG(4) << "SelectRow returned: " << *row;
-    ASSERT_EQ(value, *row);
+    ASSERT_EQ(value, *row) << "Originator: " << __FILE__ << ":" << line;
   }
 
   void WriteData(const WriteOpType op_type = WriteOpType::INSERT) {
@@ -222,7 +229,7 @@ class QLTransactionTest : public QLDmlTestBase {
     auto session = CreateSession(true /* read_only */);
     for (size_t i = 0; i != num_transactions; ++i) {
       for (size_t r = 0; r != kNumRows; ++r) {
-        VerifyRow(
+        VERIFY_ROW(
             session, KeyForTransactionAndIndex(i, r), ValueForTransactionAndIndex(i, r, op_type));
       }
     }
@@ -250,7 +257,7 @@ class QLTransactionTest : public QLDmlTestBase {
 TEST_F(QLTransactionTest, Simple) {
   WriteData();
   VerifyData();
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, InsertUpdate) {
@@ -259,18 +266,19 @@ TEST_F(QLTransactionTest, InsertUpdate) {
   SetIgnoreApplyingProbability(1.0);
   WriteData(); // Add data
   WriteData(); // Update data
-  SetIgnoreApplyingProbability(0.0);
-  std::this_thread::sleep_for(5s); // TODO(dtxn) Wait for intents to apply
   VerifyData();
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, Cleanup) {
   WriteData();
-  std::this_thread::sleep_for(1s); // TODO(dtxn)
-  ASSERT_EQ(0, CountTransactions());
   VerifyData();
-  CHECK_OK(cluster_->RestartSync());
+
+  // Wait transaction apply. Otherwise count could be non zero.
+  ASSERT_OK(WaitFor(
+      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
+  VerifyData();
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, Heartbeat) {
@@ -289,8 +297,6 @@ TEST_F(QLTransactionTest, Heartbeat) {
 }
 
 TEST_F(QLTransactionTest, Expire) {
-  DontVerifyClusterBeforeNextTearDown(); // TODO(dtxn) temporary
-
   google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
@@ -323,7 +329,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   }
   LOG(INFO) << "Request clean";
   cluster_->CleanTabletLogs();
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
   CountDownLatch latch(kTransactions);
   for (auto& transaction : transactions) {
     transaction->Commit([&latch](const Status& status) {
@@ -344,11 +350,11 @@ TEST_F(QLTransactionTest, ResendApplying) {
   ASSERT_NE(0, CountTransactions());
 
   SetIgnoreApplyingProbability(0.0);
-  // Wait long enough for transaction to be applied.
-  std::this_thread::sleep_for(NonTsanVsTsan(1s, 5s));
-  ASSERT_EQ(0, CountTransactions());
+
+  ASSERT_OK(WaitFor(
+      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
   VerifyData();
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, ConflictResolution) {
@@ -430,11 +436,10 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
   WriteData(WriteOpType::UPDATE);
   VerifyData(1, WriteOpType::UPDATE);
 
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
-  DontVerifyClusterBeforeNextTearDown(); // TODO(dtxn) temporary - uncomment once crash is fixed.
   google::FlagSaver flag_saver;
   DisableApplyingIntents();
 
@@ -445,54 +450,38 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
     ASSERT_OK(WriteRow(session, 2, 2));
   }
 
-  CountDownLatch latch(1);
   {
     // Start T1.
-    auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    auto txn = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
 
     // T1: Update { 1 -> 11, 2 -> 12 }.
     {
-      auto session = CreateSession(false /* read_only */, txn1);
+      auto session = CreateSession(false /* read_only */, txn);
       ASSERT_OK(UpdateRow(session, 1, 11));
       ASSERT_OK(UpdateRow(session, 2, 12));
     }
 
     // T1: Should read { 1 -> 11, 2 -> 12 }.
     {
-      auto session = CreateSession(true /* read_only */, txn1);
-      VerifyRow(session, 1, 11);
-      VerifyRow(session, 2, 12);
+      auto session = CreateSession(true /* read_only */, txn);
+      VERIFY_ROW(session, 1, 11);
+      VERIFY_ROW(session, 2, 12);
     }
 
-    // T1: Abort.
-    // TODO(dtxn) - temporary workaround to abort the transaction, to be replaced with commented
-    // code below after YBTransaction::Abort is implemented.
-    SetDisableHeartbeatInTests(true);
-    std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
-    txn1->Commit([&latch](const Status& status) {
-      ASSERT_TRUE(status.IsExpired()) << "Bad status: " << status.ToString();
-      latch.CountDown();
-    });
-
-    // TODO(dtxn) - uncomment after YBTransaction::Abort is implemented.
-//    txn->Abort([&latch](const Status& status) {
-//      ASSERT_OK(status);
-//      latch.CountDown(1);
-//    });
+    txn->Abort();
   }
-  latch.Wait();
+
+  ASSERT_OK(WaitFor(
+      [this] { return CountTransactions() == 0; }, kTransactionApplyTime, "Transactions cleaned"));
 
   // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
   {
     auto session = CreateSession(true /* read_only */);
-    VerifyRow(session, 1, 1);
-    VerifyRow(session, 2, 2);
+    VERIFY_ROW(session, 1, 1);
+    VERIFY_ROW(session, 2, 2);
   }
 
-  // TODO(dtxn) - uncomment once fixed, currently TransactionParticipant doesn't know about the
-  // transaction, however there are intents in DB with this transaction ID.
-  // https://yugabyte.atlassian.net/browse/ENG-2271.
-//  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
@@ -520,38 +509,35 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
 
   // T2: Should read { 1 -> 1, 2 -> 2 }.
-  // TODO(dtxn) currently fails with "Cannot determine transaction status". Uncomment once fixed.
-//  {
-//    auto session = CreateSession(true /* read_only */, txn2);
-//    VerifyRow(session, 1, 1);
-//    VerifyRow(session, 2, 2);
-//  }
+  {
+    auto session = CreateSession(true /* read_only */, txn2);
+    VERIFY_ROW(session, 1, 1);
+    VERIFY_ROW(session, 2, 2);
+  }
 
   // T1: Commit
   CommitAndResetSync(&txn1);
 
   // T2: Should still read { 1 -> 1, 2 -> 2 }, because it should read at the time of it's start.
-  // TODO(dtxn) currently fails, because read time selected incorrectly. Uncomment once fixed.
-//  {
-//    auto session = CreateSession(true /* read_only */, txn2);
-//    VerifyRow(session, 1, 1);
-//    VerifyRow(session, 2, 2);
-//  }
+  {
+    auto session = CreateSession(true /* read_only */, txn2);
+    VERIFY_ROW(session, 1, 1);
+    VERIFY_ROW(session, 2, 2);
+  }
 
   // Simple read should get { 1 -> 11, 2 -> 12 }, since T1 has been already committed.
   {
     auto session = CreateSession(true /* read_only */);
-    VerifyRow(session, 1, 11);
-    VerifyRow(session, 2, 12);
+    VERIFY_ROW(session, 1, 11);
+    VERIFY_ROW(session, 2, 12);
   }
 
   CommitAndResetSync(&txn2);
 
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
 }
 
-// TODO(dtxn) enable test as soon as we support this case.
-TEST_F(QLTransactionTest, DISABLED_ResolveIntentsCheckConsistency) {
+TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   google::FlagSaver flag_saver;
   DisableApplyingIntents();
 
@@ -580,31 +566,147 @@ TEST_F(QLTransactionTest, DISABLED_ResolveIntentsCheckConsistency) {
   });
 
   // Start T2.
-  // TODO - to test efficiently we need T2_start_time > T1_commit_time, but T1 should not be
-  // committed yet when T2 is reading k1.
-  // How can we do that?
   auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
 
   // T2: Should read { 1 -> 1, 2 -> 2 } even in case T1 is committed between reading k1 and k2.
   {
     auto session = CreateSession(true /* read_only */, txn2);
-    VerifyRow(session, 1, 1);
-    // Need T1 to be not committed yet at this point.
-    // Wait T1 for commit.
+    VERIFY_ROW(session, 1, 1);
     commit_latch.Wait();
-    VerifyRow(session, 2, 2);
+    VERIFY_ROW(session, 2, 2);
   }
 
   // Simple read should get { 1 -> 11, 2 -> 12 }, since T1 has been already committed.
   {
     auto session = CreateSession(true /* read_only */);
-    VerifyRow(session, 1, 11);
-    VerifyRow(session, 2, 12);
+    VERIFY_ROW(session, 1, 11);
+    VERIFY_ROW(session, 2, 12);
   }
 
   CommitAndResetSync(&txn2);
 
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
+}
+
+struct TransactionState {
+  YBTransactionPtr transaction;
+  std::shared_future<TransactionMetadata> metadata_future;
+  std::future<Status> commit_future;
+  std::future<Result<tserver::GetTransactionStatusResponsePB>> status_future;
+  TransactionMetadata metadata;
+  HybridTime status_time = HybridTime::kMin;
+  TransactionStatus last_status = TransactionStatus::PENDING;
+
+  void CheckStatus() {
+    ASSERT_TRUE(status_future.valid());
+    ASSERT_EQ(status_future.wait_for(NonTsanVsTsan(1s, 5s)), std::future_status::ready);
+    auto resp = status_future.get();
+    ASSERT_OK(resp);
+
+    if (resp->status() == TransactionStatus::ABORTED) {
+      ASSERT_TRUE(commit_future.valid());
+      transaction = nullptr;
+      return;
+    }
+
+    auto new_time = HybridTime(resp->status_hybrid_time());
+    if (last_status == TransactionStatus::PENDING) {
+      if (resp->status() == TransactionStatus::PENDING) {
+        ASSERT_GE(new_time, status_time);
+      } else {
+        ASSERT_EQ(TransactionStatus::COMMITTED, resp->status());
+        ASSERT_GT(new_time, status_time);
+      }
+    } else {
+      ASSERT_EQ(last_status, TransactionStatus::COMMITTED);
+      ASSERT_EQ(resp->status(), TransactionStatus::COMMITTED)
+          << "Bad transaction status: " << TransactionStatus_Name(resp->status());
+      ASSERT_EQ(status_time, new_time);
+    }
+    status_time = new_time;
+    last_status = resp->status();
+  }
+};
+
+// Test transaction status evolution.
+// The following should happen:
+// If both previous and new transaction state are PENDING, then the new time of status is >= the
+// old time of status.
+// Previous - PENDING, new - COMMITTED, new_time > old_time.
+// Previous - COMMITTED, new - COMMITTED, new_time == old_time.
+// All other cases are invalid.
+TEST_F(QLTransactionTest, StatusEvolution) {
+  // We don't care about exact probability of create/commit operations.
+  // Just create rate should be higher than commit one.
+  const int kTransactionCreateChance = 10;
+  const int kTransactionCommitChance = 20;
+  size_t transactions_to_create = 10;
+  size_t active_transactions = 0;
+  std::vector<TransactionState> states;
+  rpc::Rpcs rpcs;
+  states.reserve(transactions_to_create);
+
+  while (transactions_to_create || active_transactions) {
+    if (transactions_to_create &&
+        (!active_transactions || RandomWithChance(kTransactionCreateChance))) {
+      LOG(INFO) << "Create transaction";
+      auto txn =
+          std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+      {
+        auto session = CreateSession(false /* read_only */, txn);
+        // Insert using different keys to avoid conflicts.
+        ASSERT_OK(WriteRow(session, states.size(), states.size()));
+      }
+      states.push_back({ txn, txn->TEST_GetMetadata() });
+      ++active_transactions;
+      --transactions_to_create;
+    }
+    if (active_transactions && RandomWithChance(kTransactionCommitChance)) {
+      LOG(INFO) << "Destroy transaction";
+      size_t idx = RandomUniformInt<size_t>(1, active_transactions);
+      for (auto& state : states) {
+        if (!state.transaction) {
+          continue;
+        }
+        if (!--idx) {
+          state.commit_future = state.transaction->CommitFuture();
+          break;
+        }
+      }
+    }
+
+    for (auto& state : states) {
+      if (!state.transaction) {
+        continue;
+      }
+      if (state.metadata.isolation == IsolationLevel::NON_TRANSACTIONAL) {
+        if (state.metadata_future.wait_for(0s) != std::future_status::ready) {
+          continue;
+        }
+        state.metadata = state.metadata_future.get();
+      }
+      tserver::GetTransactionStatusRequestPB req;
+      req.set_tablet_id(state.metadata.status_tablet);
+      req.set_transaction_id(state.metadata.transaction_id.data,
+                             state.metadata.transaction_id.size());
+      state.status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
+          GetTransactionStatus, &rpcs)(
+              TransactionRpcDeadline(), nullptr /* tablet */, client_.get(), &req);
+    }
+    for (auto& state : states) {
+      if (!state.transaction) {
+        continue;
+      }
+      state.CheckStatus();
+      if (!state.transaction) {
+        --active_transactions;
+      }
+    }
+  }
+
+  for (auto& state : states) {
+    ASSERT_EQ(state.commit_future.wait_for(NonTsanVsTsan(3s, 15s)), std::future_status::ready);
+  }
 }
 
 } // namespace client

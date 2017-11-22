@@ -37,6 +37,12 @@ namespace client {
 typedef std::function<void(const Status&)> Waiter;
 typedef std::function<void(const Status&)> CommitCallback;
 
+struct TransactionPrepareData {
+  TransactionMetadata metadata;
+  HybridTime propagated_hybrid_time;
+  HybridTime read_time;
+};
+
 // YBTransaction is a representation of single transaction.
 // After YBTransaction is created, it could be used during construction of YBSession,
 // to mark that this session will send commands related to this transaction.
@@ -50,8 +56,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // waiter, that will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
-               TransactionMetadata* metadata,
-               HybridTime* propagated_hybrid_time);
+               TransactionPrepareData* prepare_data);
 
   // Notifies transaction that specified ops were flushed with some status.
   void Flushed(
@@ -63,8 +68,13 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Utility function for Commit.
   std::future<Status> CommitFuture();
 
+  // Aborts this transaction.
+  void Abort();
+
   // Returns transaction ID.
   const TransactionId& id() const;
+
+  std::shared_future<TransactionMetadata> TEST_GetMetadata() const;
 
  private:
   class Impl;

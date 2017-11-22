@@ -85,6 +85,14 @@ Int RandomUniformInt(Int min, Int max, std::mt19937_64* rng = nullptr) {
 }
 
 template <class Int>
+bool RandomWithChance(Int chance, std::mt19937_64* rng = nullptr) {
+  if (!rng) {
+    rng = &ThreadLocalRandom();
+  }
+  return RandomUniformInt(static_cast<Int>(0), chance - 1, rng) == 0;
+}
+
+template <class Int>
 Int RandomUniformInt(std::mt19937_64* rng = nullptr) {
   typedef std::numeric_limits<Int> Limits;
   return RandomUniformInt<Int>(Limits::min(), Limits::max(), rng);

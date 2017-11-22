@@ -179,6 +179,31 @@ bool AsyncRpc::IsLocalCall() const {
   return tablet_invoker_.IsLocalCall();
 }
 
+namespace {
+
+void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::WriteRequestPB* req) {
+  metadata.ToPB(req->mutable_write_batch()->mutable_transaction());
+}
+
+void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRequestPB* req) {
+  metadata.ToPB(req->mutable_transaction());
+}
+
+} // namespace
+
+template <class Request>
+void AsyncRpc::FillRequest(Request* req) {
+  req->set_tablet_id(tablet_invoker_.tablet()->tablet_id());
+  req->set_include_trace(IsTracingEnabled());
+  auto& transaction_data = batcher_->transaction_prepare_data();
+  if (transaction_data.propagated_hybrid_time.is_valid()) {
+    req->set_propagated_hybrid_time(transaction_data.propagated_hybrid_time.ToUint64());
+  }
+  if (!transaction_data.metadata.transaction_id.is_nil()) {
+    SetTransactionMetadata(transaction_data.metadata, req);
+  }
+}
+
 void AsyncRpc::SendRpcToTserver() {
   MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (async_rpc_metrics_)
@@ -193,13 +218,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   TRACE_TO(trace_, "WriteRpc initiated to $0", tablet->tablet_id());
   const Schema& schema = GetSchema(table()->schema());
 
-  req_.set_tablet_id(tablet->tablet_id());
-  req_.set_include_trace(IsTracingEnabled());
-  const auto& transaction = batcher->transaction_metadata();
-  if (!transaction.transaction_id.is_nil()) {
-    transaction.ToPB(req_.mutable_write_batch()->mutable_transaction());
-    req_.set_propagated_hybrid_time(batcher->propagated_hybrid_time().ToUint64());
-  }
+  FillRequest(&req_);
 
   switch (batcher->external_consistency_mode()) {
     case yb::client::YBSession::CLIENT_PROPAGATED:
@@ -418,13 +437,12 @@ ReadRpc::ReadRpc(
     : AsyncRpc(batcher, tablet, ops, yb_consistency_level) {
   TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
   req_.set_consistency_level(yb_consistency_level);
-  req_.set_tablet_id(tablet->tablet_id());
-  req_.set_include_trace(IsTracingEnabled());
-  req_.set_propagated_hybrid_time(batcher->propagated_hybrid_time().ToUint64());
-  const auto& transaction = batcher->transaction_metadata();
-  if (!transaction.transaction_id.is_nil()) {
-    transaction.ToPB(req_.mutable_transaction());
+  FillRequest(&req_);
+  const auto& transaction = batcher->transaction_prepare_data();
+  if (transaction.read_time.is_valid()) {
+    req_.set_read_hybrid_time(transaction.read_time.ToUint64());
   }
+
   int ctr = 0;
   for (auto& op : ops_) {
     switch (op->yb_op->type()) {

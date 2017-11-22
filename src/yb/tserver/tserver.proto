@@ -281,6 +281,8 @@ message ReadRequestPB {
   optional TransactionMetadataPB transaction = 7;
 
   optional fixed64 propagated_hybrid_time = 8;
+
+  optional fixed64 read_hybrid_time = 9;
 }
 
 message ReadResponsePB {

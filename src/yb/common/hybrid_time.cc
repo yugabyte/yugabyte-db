@@ -58,7 +58,18 @@ void HybridTime::AppendAsUint64To(std::string* dst) const {
 }
 
 string HybridTime::ToString() const {
-  return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), GetLogicalValue());
+  switch (v) {
+    case kInvalidHybridTimeValue:
+      return "<invalid>";
+    case kMaxHybridTimeValue:
+      return "<max>";
+    case kMinHybridTimeValue:
+      return "<min>";
+    case kInitialHybridTimeValue:
+      return "<initial>";
+    default:
+      return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), GetLogicalValue());
+  }
 }
 
 string HybridTime::ToDebugString() const {
