@@ -227,4 +227,16 @@ public class MetricConfigTest extends FakeDBApplication {
             "avg({saved_name=~\"node_memory_Cached|node_memory_Buffers|node_memory_MemFree\", " +
             "group_by=\"saved_name\"})")));
   }
+
+  @Test
+  public void testMetricAggregationKeywordWithout() {
+    JsonNode configJson = Json.parse(
+        "{\"metric\": \"node_disk_bytes_read\"," +
+        "\"function\": \"rate|sum without (device)|avg\"," +
+        "\"range\": \"1m\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    String query = metricConfig.getQuery(new HashMap<>());
+    assertThat(query, allOf(notNullValue(), equalTo("avg(sum without (device)(rate(node_disk_bytes_read[1m])))")));
+  }
 }
