@@ -66,9 +66,6 @@ DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
-DEFINE_int32(redis_num_replicas, 3, "Replication factor for the .redis table");
-DEFINE_int32(redis_num_tablets, 16, "Number of tablets to create in the .redis table");
-
 #define EXIT_NOT_OK_PREPEND(status, msg) \
   do { \
     Status _s = (status); \
@@ -574,8 +571,6 @@ Status ClusterAdminClient::SetupRedisTable() {
   // Try to create the table.
   gscoped_ptr<yb::client::YBTableCreator> table_creator(yb_client_->NewTableCreator());
   Status s = table_creator->table_name(table_name)
-                              .num_tablets(FLAGS_redis_num_tablets)
-                              .num_replicas(FLAGS_redis_num_replicas)
                               .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
                               .Create();
   // If we could create it, then all good!
