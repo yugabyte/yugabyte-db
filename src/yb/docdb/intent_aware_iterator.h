@@ -23,7 +23,6 @@
 
 namespace yb {
 
-class HybridTime;
 class DocHybridTime;
 class TransactionStatusManager;
 
@@ -35,12 +34,18 @@ class Value;
 // for caller. Implementation relies on intents order in RocksDB, which is determined by intent key
 // format. If (sub)key A goes before/after (sub)key B, all intents for A should go before/after all
 // intents for (sub)key B.
-// Might ignore values with HT higher than high_ht for performance optimization.
+//
+// When seeking to some (sub)dockey, it will ignore values for this (sub)dockey
+// (except write intents written by the same transaction) with HT higher than high_ht.
+//
 // For intents from the same transaction, intent with maximal HT would be picked, ignoring high_ht.
 // And returned as key with time equals to high_ht.
 // Intent data format:
 //   kIntentPrefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.
 // TxnId, IntentType, HybridTime are all prefixed with their respective value types.
+//
+// KeyBytes passed to Seek* methods should not contain hybrid time.
+// HybridTime of subdoc_key in Seek* methods would be ignored.
 class IntentAwareIterator {
  public:
   IntentAwareIterator(
@@ -55,10 +60,6 @@ class IntentAwareIterator {
   // Seek to the smallest key which is greater or equal than doc_key.
   CHECKED_STATUS Seek(const DocKey& doc_key);
 
-  // Seek to the smallest which is greater or equal than doc_key. If we seek to exact doc_key,
-  // it will have time no later than hybrid_time.
-  CHECKED_STATUS Seek(const DocKey& doc_key, const HybridTime& hybrid_time);
-
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
   CHECKED_STATUS SeekWithoutHt(const KeyBytes& key_bytes);
@@ -68,7 +69,7 @@ class IntentAwareIterator {
   CHECKED_STATUS SeekForwardWithoutHt(const KeyBytes& key_bytes);
 
   // Seek forward to specified subdoc key.
-  CHECKED_STATUS SeekForward(const SubDocKey& subdoc_key);
+  CHECKED_STATUS SeekForwardIgnoreHt(const SubDocKey& subdoc_key);
 
   // Seek past specified subdoc key.
   CHECKED_STATUS SeekPastSubKey(const SubDocKey& subdoc_key);
@@ -79,6 +80,7 @@ class IntentAwareIterator {
   bool valid();
   Slice key();
   Slice value();
+  HybridTime high_ht() { return high_ht_; }
 
   // If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
   // max_deleted_ts, we update max_deleted_ts and result_value (unless it is nullptr).
@@ -90,16 +92,10 @@ class IntentAwareIterator {
   // It could be a simple value as well, not necessarily kTombstone or kObject.
   CHECKED_STATUS FindLastWriteTime(
       const KeyBytes& key_bytes_without_ht,
-      HybridTime scan_ht,
       DocHybridTime* max_deleted_ts,
       Value* result_value);
 
  private:
-  // Seek on regular sub-iterator. Regular key-value pairs are final non-intent values written to
-  // RocksDB either directly bypassing cross-shard transactions or already resolved from intents
-  // during intents cleanup.
-  void SeekRegular(const KeyBytes& key_bytes);
-
   // Seek forward on regular sub-iterator.
   void SeekForwardRegular(const KeyBytes& key_bytes);
 
@@ -107,14 +103,10 @@ class IntentAwareIterator {
   // transaction (stored in txn_op_context) by considered time are considered as suitable.
 
   // Seek intent sub-iterator to latest suitable intent starting with intent_key_prefix.
-  // If we seek for exact key specified by intent_key_prefix, it will have time no later than
-  // high_ht.
   // intent_iter_ will be positioned to first intent for the smallest key greater than
   // resolved_intent_sub_doc_key_encoded_.
-  // If is_forward flag is specified and iterator already positioned far enough - does not perform
-  // seek.
-  CHECKED_STATUS SeekToSuitableIntent(const KeyBytes &intent_key_prefix, HybridTime high_ht,
-      bool is_forward = false);
+  // If iterator already positioned far enough - does not perform seek.
+  CHECKED_STATUS SeekForwardToSuitableIntent(const KeyBytes &intent_key_prefix);
 
   // Seek intent sub-iterator forward to latest suitable intent for first available key.
   // intent_iter_ will be positioned to first intent for the smallest key greater than
@@ -136,7 +128,7 @@ class IntentAwareIterator {
   // Note: For performance reasons resolved_intent_sub_doc_key_encoded_ is not updated by this
   // function and should be updated after we have found latest suitable intent for the key by
   // calling UpdateResolvedIntentSubDocKeyEncoded.
-  CHECKED_STATUS ProcessIntent(const HybridTime& high_ht);
+  CHECKED_STATUS ProcessIntent();
 
   void UpdateResolvedIntentSubDocKeyEncoded();
   void DebugDump();

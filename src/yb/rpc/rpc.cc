@@ -87,9 +87,12 @@ void RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
 
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
   while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kWaiting)) {
-    if (expected_state == RpcRetrierState::kFinished ||
-        expected_state == RpcRetrierState::kWaiting) {
-      LOG(DFATAL) << "DelayedRetry failed, state: " << yb::ToString(expected_state);
+    if (expected_state == RpcRetrierState::kFinished) {
+      LOG(WARNING) << "Retry of finished command: " << rpc->ToString();
+      return;
+    }
+    if (expected_state == RpcRetrierState::kWaiting) {
+      LOG(DFATAL) << "DelayedRetry of already waiting command: " << rpc->ToString();
       return;
     }
   }

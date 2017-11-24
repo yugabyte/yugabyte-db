@@ -236,7 +236,6 @@ yb::Status GetSubDocument(
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
-    HybridTime scan_ts = HybridTime::kMax,
     MonoDelta table_ttl = Value::kMaxTtl,
     const std::vector<PrimitiveValue>* projection = nullptr,
     bool return_type_only = false,

@@ -27,7 +27,6 @@
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status.h"
@@ -35,6 +34,8 @@
 
 namespace yb {
 namespace docdb {
+
+class IntentAwareIterator;
 
 // An adapter between SQL-mapped-to-document-DB and Kudu's RowwiseIterator.
 class DocRowwiseIterator : public common::QLRowwiseIteratorIf {

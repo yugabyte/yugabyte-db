@@ -29,6 +29,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/subdocument.h"
@@ -300,14 +301,12 @@ void PrepareTransactionWriteBatch(
 
 namespace {
 
-CHECKED_STATUS SeekToLowerBound(const SubDocKeyBound& lower_bound, const HybridTime& hybrid_time,
+CHECKED_STATUS SeekToLowerBound(const SubDocKeyBound& lower_bound,
                                 IntentAwareIterator* iter) {
-  auto seek_key = lower_bound;
-  seek_key.SetHybridTimeForReadPath(hybrid_time);
   if (lower_bound.is_exclusive()) {
-    RETURN_NOT_OK(iter->SeekPastSubKey(seek_key));
+    RETURN_NOT_OK(iter->SeekPastSubKey(lower_bound));
   } else {
-    RETURN_NOT_OK(iter->SeekForward(seek_key));
+    RETURN_NOT_OK(iter->SeekForwardIgnoreHt(lower_bound));
   }
   return Status::OK();
 }
@@ -327,7 +326,6 @@ CHECKED_STATUS BuildSubDocument(
     IntentAwareIterator* iter,
     const SubDocKey &subdocument_key,
     SubDocument* subdocument,
-    const HybridTime high_ts,
     DocHybridTime low_ts,
     MonoDelta table_ttl,
     const SubDocKeyBound& low_subkey,
@@ -335,13 +333,12 @@ CHECKED_STATUS BuildSubDocument(
   DCHECK(!subdocument_key.has_hybrid_time());
   DOCDB_DEBUG_LOG("subdocument_key=$0, high_ts=$1, low_ts=$2, table_ttl=$3",
                   subdocument_key.ToString(),
-                  high_ts.ToDebugString(),
+                  iter->high_ht().ToDebugString(),
                   low_ts.ToString(),
                   table_ttl.ToString());
   const KeyBytes encoded_key = subdocument_key.Encode();
 
   while (true) {
-
     SubDocKey found_key;
     Value doc_value;
 
@@ -357,10 +354,9 @@ CHECKED_STATUS BuildSubDocument(
 
     rocksdb::Slice value = iter->value();
 
-    if (high_ts < found_key.hybrid_time()) {
-      found_key.SetHybridTimeForReadPath(high_ts);
+    if (iter->high_ht() < found_key.hybrid_time()) {
       DOCDB_DEBUG_LOG("SeekForward: $0", found_key.ToString());
-      RETURN_NOT_OK(iter->SeekForward(found_key));
+      RETURN_NOT_OK(iter->SeekForwardIgnoreHt(found_key));
       continue;
     }
 
@@ -382,7 +378,7 @@ CHECKED_STATUS BuildSubDocument(
       if (!ttl.Equals(Value::kMaxTtl)) {
         const HybridTime expiry =
             server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
-        if (high_ts.CompareTo(expiry) > 0) {
+        if (iter->high_ht().CompareTo(expiry) > 0) {
           // Treat the value as a tombstone written at expiry time.
           if (low_ts.hybrid_time() > expiry) {
             // We should have expiry > hybrid time from key > low_ts.
@@ -412,7 +408,7 @@ CHECKED_STATUS BuildSubDocument(
 
         if (IsObjectType(doc_value.value_type()) && low_subkey.IsValid()) {
           // Try to seek to the low_subkey for efficiency.
-          RETURN_NOT_OK(SeekToLowerBound(low_subkey, high_ts, iter));
+          RETURN_NOT_OK(SeekToLowerBound(low_subkey, iter));
         } else {
           DOCDB_DEBUG_LOG("SeekPastSubKey: $0", found_key.ToString());
           RETURN_NOT_OK(iter->SeekPastSubKey(found_key));
@@ -424,12 +420,12 @@ CHECKED_STATUS BuildSubDocument(
               "Expected primitive value type, got $0", doc_value.value_type());
         }
 
-        DCHECK_GE(high_ts, write_time.hybrid_time());
+        DCHECK_GE(iter->high_ht(), write_time.hybrid_time());
         if (ttl.Equals(Value::kMaxTtl)) {
           doc_value.mutable_primitive_value()->SetTtl(-1);
         } else {
           int64_t time_since_write_seconds = (
-              server::HybridClock::GetPhysicalValueMicros(high_ts) -
+              server::HybridClock::GetPhysicalValueMicros(iter->high_ht()) -
               server::HybridClock::GetPhysicalValueMicros(write_time.hybrid_time())) /
               MonoTime::kMicrosecondsPerSecond;
           int64_t ttl_seconds = std::max(static_cast<int64_t>(0),
@@ -455,9 +451,8 @@ CHECKED_STATUS BuildSubDocument(
     // TODO: what if found_key is the same as before? We'll get into an infinite recursion then.
     found_key.remove_hybrid_time();
 
-    RETURN_NOT_OK(BuildSubDocument(iter, found_key, &descendant, high_ts, low_ts, table_ttl,
-                                   low_subkey,
-                                   high_subkey));
+    RETURN_NOT_OK(BuildSubDocument(iter, found_key, &descendant, low_ts, table_ttl,
+                                   low_subkey, high_subkey));
     if (descendant.value_type() == ValueType::kInvalidValueType) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
@@ -465,7 +460,7 @@ CHECKED_STATUS BuildSubDocument(
 
     if (low_subkey.IsValid() && !low_subkey.CanInclude(found_key)) {
       // The value provided is lower than what we are looking for, seek to the lower bound.
-      RETURN_NOT_OK(SeekToLowerBound(low_subkey, high_ts, iter));
+      RETURN_NOT_OK(SeekToLowerBound(low_subkey, iter));
       continue;
     }
 
@@ -506,7 +501,7 @@ yb::Status GetSubDocument(
       db, BloomFilterMode::USE_BLOOM_FILTER, doc_key_encoded.AsSlice(), query_id, txn_op_context,
       scan_ht);
   return GetSubDocument(
-      iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl,
+      iter.get(), subdocument_key, result, doc_found, table_ttl,
       nullptr /* projection */, return_type_only, false /* is_iter_valid */, low_subkey,
       high_subkey);
 }
@@ -516,7 +511,6 @@ yb::Status GetSubDocument(
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
-    const HybridTime scan_ht,
     MonoDelta table_ttl,
     const vector<PrimitiveValue>* projection,
     bool return_type_only,
@@ -534,7 +528,7 @@ yb::Status GetSubDocument(
   // detailed example.
   *doc_found = false;
   DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", subdocument_key.ToString(),
-      scan_ht.ToDebugString());
+                  db_iter->high_ht().ToDebugString());
   DocHybridTime max_deleted_ts(DocHybridTime::kMin);
 
   SubDocKey found_subdoc_key;
@@ -550,7 +544,7 @@ yb::Status GetSubDocument(
 
   // Check ancestors for init markers and tombstones, update max_deleted_ts with them.
   for (const PrimitiveValue& subkey : subdocument_key.subkeys()) {
-    RETURN_NOT_OK(db_iter->FindLastWriteTime(key_bytes, scan_ht, &max_deleted_ts, nullptr));
+    RETURN_NOT_OK(db_iter->FindLastWriteTime(key_bytes, &max_deleted_ts, nullptr));
     subkey.AppendToKey(&key_bytes);
   }
 
@@ -559,7 +553,7 @@ yb::Status GetSubDocument(
 
   // Check for init-marker / tombstones at the top level, update max_deleted_ts.
   Value doc_value = Value(PrimitiveValue(ValueType::kInvalidValueType));
-  RETURN_NOT_OK(db_iter->FindLastWriteTime(key_bytes, scan_ht, &max_deleted_ts, &doc_value));
+  RETURN_NOT_OK(db_iter->FindLastWriteTime(key_bytes, &max_deleted_ts, &doc_value));
 
   if (return_type_only) {
     *doc_found = doc_value.value_type() != ValueType::kInvalidValueType;
@@ -569,8 +563,8 @@ yb::Status GetSubDocument(
 
   if (projection == nullptr) {
     *result = SubDocument(ValueType::kInvalidValueType);
-    RETURN_NOT_OK(BuildSubDocument(db_iter, subdocument_key, result, scan_ht, max_deleted_ts,
-        table_ttl, low_subkey, high_subkey));
+    RETURN_NOT_OK(BuildSubDocument(
+        db_iter, subdocument_key, result, max_deleted_ts, table_ttl, low_subkey, high_subkey));
     *doc_found = result->value_type() != ValueType::kInvalidValueType;
     if (*doc_found && doc_value.value_type() == ValueType::kRedisSet) {
       RETURN_NOT_OK(result->ConvertToRedisSet());
@@ -590,8 +584,9 @@ yb::Status GetSubDocument(
     // This seek is to initialize the iterator for BuildSubDocument call.
     RETURN_NOT_OK(db_iter->SeekForwardWithoutHt(
         projection_subdockey.Encode(/* include_hybrid_time */ false)));
-    RETURN_NOT_OK(BuildSubDocument(db_iter, projection_subdockey, &descendant, scan_ht,
-        max_deleted_ts, table_ttl, low_subkey, high_subkey));
+    RETURN_NOT_OK(BuildSubDocument(
+        db_iter, projection_subdockey, &descendant, max_deleted_ts, table_ttl, low_subkey,
+        high_subkey));
     if (descendant.value_type() != ValueType::kInvalidValueType) {
       *doc_found = true;
     }

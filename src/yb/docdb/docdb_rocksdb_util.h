@@ -23,13 +23,14 @@
 #include "yb/rocksdb/options.h"
 
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/value.h"
 #include "yb/util/slice.h"
 #include "yb/tablet/tablet_options.h"
 
 namespace yb {
 namespace docdb {
+
+class IntentAwareIterator;
 
 // Seek to a given prefix and hybrid_time. If an expired value is found, it is still considered
 // "valid" for the purpose of this function, but the value get transformed into a tombstone (a

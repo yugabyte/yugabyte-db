@@ -21,6 +21,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/db/compaction.h"
@@ -90,7 +91,7 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   } else {
     row_key_ = DocKey();
   }
-  RETURN_NOT_OK(db_iter_->Seek(row_key_, hybrid_time_));
+  RETURN_NOT_OK(db_iter_->Seek(row_key_));
   row_ready_ = false;
 
   if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
@@ -167,8 +168,9 @@ bool DocRowwiseIterator::HasNext() const {
     KeyBytes old_key(db_iter_->key());
     // The iterator is positioned by the previous GetSubDocument call
     // (which places the iterator outside the previous doc_key).
-    status_ = GetSubDocument(db_iter_.get(), SubDocKey(row_key_), &row_, &doc_found, hybrid_time_,
-        TableTTL(schema_), &projection_subkeys_);
+    status_ = GetSubDocument(
+        db_iter_.get(), SubDocKey(row_key_), &row_, &doc_found, TableTTL(schema_),
+        &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
     if (!status_.ok()) {
       // Defer error reporting to NextBlock().
@@ -185,8 +187,8 @@ bool DocRowwiseIterator::HasNext() const {
         // Defer error reporting to NextBlock().
         return true;
       }
-      status_ = GetSubDocument(db_iter_.get(), SubDocKey(row_key_), &full_row, &doc_found,
-          hybrid_time_, TableTTL(schema_));
+      status_ = GetSubDocument(
+          db_iter_.get(), SubDocKey(row_key_), &full_row, &doc_found, TableTTL(schema_));
       if (!status_.ok()) {
         // Defer error reporting to NextBlock().
         return true;
