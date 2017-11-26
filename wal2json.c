@@ -37,6 +37,7 @@ typedef struct
 	bool		include_types;		/* include data types */
 	bool		include_type_oids;	/* include data type oids */
 	bool		include_typmod;		/* include typmod in types */
+	bool		include_not_null;	/* include not-null constraints */
 
 	bool		pretty_print;		/* pretty-print JSON? */
 	bool		write_in_chunks;	/* write in chunks? */
@@ -111,6 +112,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->pretty_print = false;
 	data->write_in_chunks = false;
 	data->include_lsn = false;
+	data->include_not_null = false;
 
 	data->nr_changes = 0;
 
@@ -198,6 +200,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->include_typmod = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->include_typmod))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "include-not-null") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "include-not-null argument is null");
+				data->include_not_null = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_not_null))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -417,6 +432,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	StringInfoData		colnames;
 	StringInfoData		coltypes;
 	StringInfoData		coltypeoids;
+	StringInfoData		colnotnulls;
 	StringInfoData		colvalues;
 	char				*comma = "";
 
@@ -426,6 +442,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	initStringInfo(&coltypes);
 	if (data->include_type_oids)
 		initStringInfo(&coltypeoids);
+	if (data->include_not_null)
+		initStringInfo(&colnotnulls);
 	initStringInfo(&colvalues);
 
 	/*
@@ -462,6 +480,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&coltypes, "\t\t\t\"columntypes\": [");
 			if (data->include_type_oids)
 				appendStringInfoString(&coltypeoids, "\t\t\t\"columntypeoids\": [");
+			if (data->include_not_null)
+				appendStringInfoString(&colnotnulls, "\t\t\t\"columnoptionals\": [");
 			appendStringInfoString(&colvalues, "\t\t\t\"columnvalues\": [");
 		}
 		else
@@ -470,6 +490,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			appendStringInfoString(&coltypes, "\"columntypes\":[");
 			if (data->include_type_oids)
 				appendStringInfoString(&coltypeoids, "\"columntypeoids\": [");
+			if (data->include_not_null)
+				appendStringInfoString(&colnotnulls, "\"columnoptionals\": [");
 			appendStringInfoString(&colvalues, "\"columnvalues\":[");
 		}
 	}
@@ -572,6 +594,15 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			{
 				Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
 				appendStringInfo(&coltypes, "%s\"%s\"", comma, NameStr(type_form->typname));
+			}
+
+			/* oldkeys doesn't print not-null constraints */
+			if (!replident && data->include_not_null)
+			{
+				if (attr->attnotnull)
+					appendStringInfo(&colnotnulls, "%sfalse", comma);
+				else
+					appendStringInfo(&colnotnulls, "%strue", comma);
 			}
 		}
 
@@ -678,6 +709,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				appendStringInfoString(&coltypes, "],\n");
 			if (data->include_type_oids)
 				appendStringInfoString(&coltypeoids, "],\n");
+			if (data->include_not_null)
+				appendStringInfoString(&colnotnulls, "],\n");
 			if (hasreplident)
 				appendStringInfoString(&colvalues, "],\n");
 			else
@@ -690,6 +723,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 				appendStringInfoString(&coltypes, "],");
 			if (data->include_type_oids)
 				appendStringInfoString(&coltypeoids, "],");
+			if (data->include_not_null)
+				appendStringInfoString(&colnotnulls, "],");
 			if (hasreplident)
 				appendStringInfoString(&colvalues, "],");
 			else
@@ -703,12 +738,16 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		appendStringInfoString(ctx->out, coltypes.data);
 	if (data->include_type_oids)
 		appendStringInfoString(ctx->out, coltypeoids.data);
+	if (data->include_not_null)
+		appendStringInfoString(ctx->out, colnotnulls.data);
 	appendStringInfoString(ctx->out, colvalues.data);
 
 	pfree(colnames.data);
 	pfree(coltypes.data);
 	if (data->include_type_oids)
 		pfree(coltypeoids.data);
+	if (data->include_not_null)
+		pfree(colnotnulls.data);
 	pfree(colvalues.data);
 }
 

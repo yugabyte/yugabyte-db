@@ -7,6 +7,19 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2js
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'nosuchopt', '42');
 
+-- don't include not-null constraint by default
+CREATE TABLE table_optional (
+a smallserial,
+b integer,
+c boolean not null,
+PRIMARY KEY(a)
+);
+INSERT INTO table_optional (b, c) VALUES(NULL, TRUE);
+UPDATE table_optional SET b = 123 WHERE a = 1;
+DELETE FROM table_optional WHERE a = 1;
+DROP TABLE table_optional;
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'include-not-null', '1');
+
 -- By default don't write in chunks
 CREATE TABLE x ();
 DROP TABLE x;
