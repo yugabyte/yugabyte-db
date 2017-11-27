@@ -109,7 +109,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
-      false /* is_on_nav_bar */);
+      true /* is_on_nav_bar */, "fa fa-dashboard");
   server->RegisterPathHandler(
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
