@@ -365,8 +365,8 @@ class ClusterControl():
     def setup_redis(self):
         self.set_master_addresses(self.get_number_servers("master"))
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
-        os.system("{} --master_addresses {} --redis_num_replicas {} setup_redis_table".format(
-            yb_admin_binary_path, self.options.master_addresses, self.options.replication_factor))
+        os.system("{} --master_addresses {} setup_redis_table".format(
+            yb_admin_binary_path, self.options.master_addresses))
 
 
 if __name__ == "__main__":
