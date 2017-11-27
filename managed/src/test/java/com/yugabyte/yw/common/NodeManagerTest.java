@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -36,6 +37,7 @@ import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -413,6 +415,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, createInvalidParams(t));
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleSetupServer.Params"));
       }
@@ -424,6 +427,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, createInvalidParams(t));
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleConfigureServers.Params"));
       }
@@ -460,6 +464,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.2";
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(),
             is("Unable to fetch yugabyte release for version: 0.0.2")));
@@ -539,7 +544,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
       }
@@ -601,6 +606,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.setProperty("taskSubType", Install.toString());
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(),
             is("Unable to fetch yugabyte release for version: 0.0.2")));
@@ -623,7 +629,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Null processType property.")));
       }
@@ -641,7 +647,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Empty GFlags data provided")));
       }
@@ -677,8 +683,9 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, createInvalidParams(t));
+        fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleDestroyServer.Params"));
+        assertThat(re.getMessage(), is("NodeTaskParams is not DestroyUniverse.Params"));
       }
     }
   }
@@ -688,7 +695,7 @@ public class NodeManagerTest extends FakeDBApplication {
     Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
       expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
-      NodeTaskParams params = new NodeTaskParams();
+      DestroyUniverse.Params params = new DestroyUniverse.Params();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
@@ -696,17 +703,6 @@ public class NodeManagerTest extends FakeDBApplication {
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
       verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
           t.region.provider.getConfig());
-    }
-  }
-
-  @Test
-  public void testListNodeCommandWithInvalidParam() {
-    for (TestData t : testData) {
-      try {
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, createInvalidParams(t));
-      } catch (RuntimeException re) {
-        assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleUpdateNodeInfo.Params"));
-      }
     }
   }
 
@@ -731,6 +727,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, createInvalidParams(t));
+        fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleClusterServerCtl.Params"));
       }

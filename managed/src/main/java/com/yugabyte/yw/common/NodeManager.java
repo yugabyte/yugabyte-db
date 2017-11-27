@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -305,6 +306,9 @@ public class NodeManager extends DevopsBase {
       }
       case Destroy:
       {
+        if (!(nodeTaskParam instanceof DestroyUniverse.Params)) {
+          throw new RuntimeException("NodeTaskParams is not DestroyUniverse.Params");
+        }
         commandArgs.add("--instance_type");
         commandArgs.add(nodeTaskParam.instanceType);
         if (nodeTaskParam.deviceInfo != null) {
