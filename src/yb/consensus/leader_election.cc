@@ -177,13 +177,14 @@ ElectionResult::ElectionResult(ConsensusTerm election_term,
 LeaderElection::LeaderElection(const RaftConfigPB& config,
                                PeerProxyFactory* proxy_factory,
                                const VoteRequestPB& request,
-                               gscoped_ptr<VoteCounter> vote_counter,
+                               std::unique_ptr<VoteCounter> vote_counter,
                                MonoDelta timeout,
+                               TEST_SuppressVoteRequest suppress_vote_request,
                                ElectionDecisionCallback decision_callback)
-    : has_responded_(false),
-      request_(request),
-      vote_counter_(vote_counter.Pass()),
-      timeout_(std::move(timeout)),
+    : request_(request),
+      vote_counter_(std::move(vote_counter)),
+      timeout_(timeout),
+      suppress_vote_request_(suppress_vote_request),
       decision_callback_(std::move(decision_callback)) {
   for (const RaftPeerPB& peer : config.peers()) {
     if (request.candidate_uuid() == peer.permanent_uuid()) continue;
@@ -196,9 +197,9 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
 
     voting_follower_uuids_.push_back(peer.permanent_uuid());
 
-    gscoped_ptr<VoterState> state(new VoterState());
+    auto state = std::make_unique<VoterState>();
     state->proxy_status = proxy_factory->NewProxy(peer, &state->proxy);
-    InsertOrDie(&voter_state_, peer.permanent_uuid(), state.release());
+    CHECK(voter_state_.emplace(peer.permanent_uuid(), std::move(state)).second);
   }
 
   // Ensure that the candidate has already voted for itself.
@@ -208,14 +209,14 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
   CHECK_EQ(vote_counter_->GetTotalVotesCounted() + voting_follower_uuids_.size(),
            vote_counter_->GetTotalExpectedVotes())
       << "Expected different number of followers. Follower UUIDs: ["
-      << JoinStringsIterator(voting_follower_uuids_.begin(), voting_follower_uuids_.end(), ", ")
+      << yb::ToString(voting_follower_uuids_)
       << "]; RaftConfig: {" << config.ShortDebugString() << "}";
 }
 
 LeaderElection::~LeaderElection() {
   std::lock_guard<Lock> guard(lock_);
   DCHECK(has_responded_); // We must always call the callback exactly once.
-  STLDeleteValues(&voter_state_);
+  voter_state_.clear();
 }
 
 void LeaderElection::Run() {
@@ -230,7 +231,9 @@ void LeaderElection::Run() {
     VoterState* state = nullptr;
     {
       std::lock_guard<Lock> guard(lock_);
-      state = FindOrDie(voter_state_, voter_uuid);
+      auto it = voter_state_.find(voter_uuid);
+      CHECK(it != voter_state_.end());
+      state = it->second.get();
       // Safe to drop the lock because voter_state_ is not mutated outside of
       // the constructor / destructor. We do this to avoid deadlocks below.
     }
@@ -256,11 +259,15 @@ void LeaderElection::Run() {
     state->request = request_;
     state->request.set_dest_uuid(voter_uuid);
 
-    state->proxy->RequestConsensusVoteAsync(
-        &state->request, &state->response, &state->rpc,
-        // We use gutil Bind() for the refcounting and std::bind to adapt the
-        // gutil Callback to a thunk.
-        std::bind(&Closure::Run, Bind(&LeaderElection::VoteResponseRpcCallback, this, voter_uuid)));
+    LeaderElectionPtr retained_self = this;
+    if (!suppress_vote_request_) {
+      state->proxy->RequestConsensusVoteAsync(
+          &state->request, &state->response, &state->rpc,
+          std::bind(&LeaderElection::VoteResponseRpcCallback, this, voter_uuid, retained_self));
+    } else {
+      state->response.set_responder_uuid(voter_uuid);
+      VoteResponseRpcCallback(voter_uuid, retained_self);
+    }
   }
 }
 
@@ -295,10 +302,13 @@ void LeaderElection::CheckForDecision() {
   }
 }
 
-void LeaderElection::VoteResponseRpcCallback(const std::string& voter_uuid) {
+void LeaderElection::VoteResponseRpcCallback(const std::string& voter_uuid,
+                                             const LeaderElectionPtr& self) {
   {
     std::lock_guard<Lock> guard(lock_);
-    VoterState* state = FindOrDie(voter_state_, voter_uuid);
+    auto it = voter_state_.find(voter_uuid);
+    CHECK(it != voter_state_.end());
+    VoterState* state = it->second.get();
 
     // Check for RPC errors.
     if (!state->rpc.status().ok()) {

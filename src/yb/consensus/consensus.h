@@ -45,13 +45,15 @@
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
-#include "yb/util/enums.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -124,6 +126,8 @@ class ConsensusAppendCallback {
  private:
 };
 
+YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
+
 // The external interface for a consensus peer.
 //
 // Note: Even though Consensus points to Log, it needs to be destroyed
@@ -180,11 +184,15 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   //    with pending_commit = true.
   // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
   //    this would contain the uuid of the old leader.
-  virtual CHECKED_STATUS StartElection(
+  CHECKED_STATUS StartElection(
       ElectionMode mode,
       const bool pending_commit = false,
       const OpId& must_be_committed_opid = OpId::default_instance(),
-      const std::string& originator_uuid = std::string()) = 0;
+      const std::string& originator_uuid = std::string(),
+      TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse) {
+    return DoStartElection(
+        mode, pending_commit, must_be_committed_opid, originator_uuid, suppress_vote_request);
+  }
 
   // We tried to step down, so you protege become leader.
   // But it failed to win election, so we should reset our withhold time and try to reelect ourself.
@@ -380,6 +388,13 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   };
 
  private:
+  virtual CHECKED_STATUS DoStartElection(
+      ElectionMode mode,
+      const bool pending_commit,
+      const OpId& must_be_committed_opid,
+      const std::string& originator_uuid,
+      TEST_SuppressVoteRequest suppress_vote_request) = 0;
+
   DISALLOW_COPY_AND_ASSIGN(Consensus);
 };
 

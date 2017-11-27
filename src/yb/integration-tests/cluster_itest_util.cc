@@ -662,10 +662,12 @@ Status FindTabletLeader(const vector<TServerDetails*>& tservers,
 
 Status StartElection(const TServerDetails* replica,
                      const string& tablet_id,
-                     const MonoDelta& timeout) {
+                     const MonoDelta& timeout,
+                     consensus::TEST_SuppressVoteRequest suppress_vote_request) {
   RunLeaderElectionRequestPB req;
   req.set_dest_uuid(replica->uuid());
   req.set_tablet_id(tablet_id);
+  req.set_suppress_vote_request(suppress_vote_request);
   RunLeaderElectionResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout);

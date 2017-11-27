@@ -440,6 +440,8 @@ message RunLeaderElectionRequestPB {
   // If we lost election, we would notify originator about this fact.
   // So it would reset its withold timeout and try to become a leader again.
   optional bytes originator_uuid = 4;
+
+  optional bool suppress_vote_request = 5;
 }
 
 message RunLeaderElectionResponsePB {

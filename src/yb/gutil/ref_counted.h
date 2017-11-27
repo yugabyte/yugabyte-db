@@ -357,6 +357,11 @@ scoped_refptr<T> make_scoped_refptr(T* t) {
   return scoped_refptr<T>(t);
 }
 
+template<class T, class... Args>
+scoped_refptr<T> make_scoped_refptr(Args&&... args) {
+  return scoped_refptr<T>(new T(std::forward<Args>(args)...));
+}
+
 // equal_to and hash implementations for templated scoped_refptrs suitable for
 // use with STL unordered_* containers.
 template <class T>

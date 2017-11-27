@@ -50,6 +50,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/common/entity_ids.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
@@ -257,9 +258,12 @@ Status FindTabletLeader(const vector<TServerDetails*>& tservers,
 // 'timeout' only refers to the RPC asking the peer to start an election. The
 // StartElection() RPC does not block waiting for the results of the election,
 // and neither does this call.
-Status StartElection(const TServerDetails* replica,
-                     const TabletId& tablet_id,
-                     const MonoDelta& timeout);
+Status StartElection(
+    const TServerDetails* replica,
+    const TabletId& tablet_id,
+    const MonoDelta& timeout,
+    consensus::TEST_SuppressVoteRequest suppress_vote_request =
+        consensus::TEST_SuppressVoteRequest::kFalse);
 
 // Cause a leader to step down on the specified server.
 // 'timeout' refers to the RPC timeout waiting synchronously for stepdown to

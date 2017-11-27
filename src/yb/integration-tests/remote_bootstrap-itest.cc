@@ -522,7 +522,8 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   // election on the follower. The election will fail asynchronously but we
   // just wait until we see that its term has incremented.
   ASSERT_OK(cluster_->tablet_server(kLeaderIndex)->Pause());
-  ASSERT_OK(itest::StartElection(follower_ts, tablet_id, timeout));
+  ASSERT_OK(itest::StartElection(
+      follower_ts, tablet_id, timeout, consensus::TEST_SuppressVoteRequest::kTrue));
   int64_t term = 0;
   for (int i = 0; i < 1000; i++) {
     consensus::ConsensusStatePB cstate;
@@ -541,11 +542,6 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   // Wait until the tablet has been tombstoned on the follower.
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id,
                                                  tablet::TABLET_DATA_TOMBSTONED, timeout));
-
-  // Restart the follower's TS so that the leader's TS won't get its queued
-  // vote request messages. This is a hack but seems to work.
-  cluster_->tablet_server(kFollowerIndex)->Shutdown();
-  ASSERT_OK(cluster_->tablet_server(kFollowerIndex)->Restart());
 
   // Now wake the leader. It should detect that the follower needs to be
   // remotely bootstrapped and proceed to bring it back up to date.

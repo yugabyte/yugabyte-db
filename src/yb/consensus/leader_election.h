@@ -145,6 +145,9 @@ struct ElectionResult {
   const MicrosTime old_leader_ht_lease_expiration;
 };
 
+class LeaderElection;
+typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
+
 // Driver class to run a leader election.
 //
 // The caller must pass a callback to the driver, which will be called exactly
@@ -176,9 +179,12 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   // Set up a new leader election driver.
   //
   // The 'vote_counter' must be initialized with the candidate's own yes vote.
-  LeaderElection(const RaftConfigPB& config, PeerProxyFactory* proxy_factory,
+  LeaderElection(const RaftConfigPB& config,
+                 PeerProxyFactory* proxy_factory,
                  const VoteRequestPB& request,
-                 gscoped_ptr<VoteCounter> vote_counter, MonoDelta timeout,
+                 std::unique_ptr<VoteCounter> vote_counter,
+                 MonoDelta timeout,
+                 TEST_SuppressVoteRequest suppress_vote_request,
                  ElectionDecisionCallback decision_callback);
 
   // Run the election: send the vote request to followers.
@@ -199,7 +205,7 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
     VoteResponsePB response;
   };
 
-  typedef std::unordered_map<std::string, VoterState*> VoterStateMap;
+  typedef std::unordered_map<std::string, std::unique_ptr<VoterState>> VoterStateMap;
   typedef simple_spinlock Lock;
 
   // This class is refcounted.
@@ -210,7 +216,7 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   void CheckForDecision();
 
   // Callback called when the RPC responds.
-  void VoteResponseRpcCallback(const std::string& voter_uuid);
+  void VoteResponseRpcCallback(const std::string& voter_uuid, const LeaderElectionPtr& self);
 
   // Record vote from specified peer.
   void RecordVoteUnlocked(const std::string& voter_uuid, ElectionVote vote);
@@ -238,16 +244,18 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   boost::optional<ElectionResult> result_;
 
   // Whether we have responded via the callback yet.
-  bool has_responded_;
+  bool has_responded_ = false;
 
   // Election request to send to voters.
   const VoteRequestPB request_;
 
   // Object to count the votes.
-  const gscoped_ptr<VoteCounter> vote_counter_;
+  const std::unique_ptr<VoteCounter> vote_counter_;
 
   // Timeout for sending RPCs.
   const MonoDelta timeout_;
+
+  TEST_SuppressVoteRequest suppress_vote_request_;
 
   // Callback invoked to notify the caller of an election decision.
   const ElectionDecisionCallback decision_callback_;

@@ -417,11 +417,12 @@ Status RaftConsensus::EmulateElection() {
   return BecomeLeaderUnlocked();
 }
 
-Status RaftConsensus::StartElection(
+Status RaftConsensus::DoStartElection(
     ElectionMode mode,
     const bool pending_commit,
     const OpId& must_be_committed_opid,
-    const std::string& originator_uuid) {
+    const std::string& originator_uuid,
+    TEST_SuppressVoteRequest suppress_vote_request) {
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
@@ -429,7 +430,7 @@ Status RaftConsensus::StartElection(
     LOG(INFO) << "Election start skipped as do_not_start_election_test_only flag is set to true.";
     return Status::OK();
   }
-  scoped_refptr<LeaderElection> election;
+  LeaderElectionPtr election;
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
@@ -497,7 +498,8 @@ Status RaftConsensus::StartElection(
       // Initialize the VoteCounter.
       int num_voters = CountVoters(active_config);
       int majority_size = MajoritySize(num_voters);
-      gscoped_ptr<VoteCounter> counter(new VoteCounter(num_voters, majority_size));
+      auto counter = std::make_unique<VoteCounter>(num_voters, majority_size);
+
       // Vote for ourselves.
       // TODO: Consider using a separate Mutex for voting, which must sync to disk.
       RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
@@ -519,8 +521,9 @@ Status RaftConsensus::StartElection(
           active_config,
           peer_proxy_factory_.get(),
           request,
-          counter.Pass(),
+          std::move(counter),
           timeout,
+          suppress_vote_request,
           Bind(&RaftConsensus::ElectionCallback, this, originator_uuid)));
 
       // Clear the pending election op id so that we won't start the same pending election again.

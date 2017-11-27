@@ -54,7 +54,7 @@ using strings::Substitute;
 
 namespace {
 
-const int kLeaderElectionTimeoutSecs = 10;
+const MonoDelta kLeaderElectionTimeout = MonoDelta::FromSeconds(10);
 
 // Generate list of voter uuids.
 static vector<string> GenVoterUUIDs(int num_voters) {
@@ -131,16 +131,16 @@ class LeaderElectionTest : public YBTest {
                                   int num_pre_observers,
                                   int num_observers,
                                   bool enable_delay);
-  gscoped_ptr<VoteCounter> InitVoteCounter(int num_voters, int majority_size);
+  std::unique_ptr<VoteCounter> InitVoteCounter(int num_voters, int majority_size);
 
   // Voter 0 is the high-term voter.
-  scoped_refptr<LeaderElection> SetUpElectionWithHighTermVoter(ConsensusTerm election_term);
+  LeaderElectionPtr SetUpElectionWithHighTermVoter(ConsensusTerm election_term);
 
   // Predetermine the election results using the specified number of
   // grant / deny / error responses.
   // num_grant must be at least 1, for the candidate to vote for itself.
   // num_grant + num_deny + num_error must add up to an odd number.
-  scoped_refptr<LeaderElection> SetUpElectionWithGrantDenyErrorVotes(ConsensusTerm election_term,
+  LeaderElectionPtr SetUpElectionWithGrantDenyErrorVotes(ConsensusTerm election_term,
                                                                      int num_grant,
                                                                      int num_deny,
                                                                      int num_error);
@@ -253,22 +253,22 @@ void LeaderElectionTest::InitDelayableMockedProxies(int num_voters,
   }
 }
 
-gscoped_ptr<VoteCounter> LeaderElectionTest::InitVoteCounter(int num_voters, int majority_size) {
-  gscoped_ptr<VoteCounter> counter(new VoteCounter(num_voters, majority_size));
+std::unique_ptr<VoteCounter> LeaderElectionTest::InitVoteCounter(
+    int num_voters, int majority_size) {
+  auto counter = std::make_unique<VoteCounter>(num_voters, majority_size);
   bool duplicate;
   CHECK_OK(counter->RegisterVote(candidate_uuid_, VOTE_GRANTED, &duplicate));
   CHECK(!duplicate);
-  return counter.Pass();
+  return counter;
 }
 
-scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithHighTermVoter(
-    ConsensusTerm election_term) {
+LeaderElectionPtr LeaderElectionTest::SetUpElectionWithHighTermVoter(ConsensusTerm election_term) {
   const int kNumVoters = 3;
   const int kMajoritySize = 2;
 
   InitUUIDs(kNumVoters, 0);
   InitDelayableMockedProxies(kNumVoters, 0, 0, 0, true);
-  gscoped_ptr<VoteCounter> counter = InitVoteCounter(kNumVoters, kMajoritySize);
+  auto counter = InitVoteCounter(kNumVoters, kMajoritySize);
 
   VoteResponsePB response;
   response.set_responder_uuid(voter_uuids_[0]);
@@ -292,15 +292,13 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithHighTermVoter
   request.set_candidate_term(election_term);
   request.set_tablet_id(tablet_id_);
 
-  scoped_refptr<LeaderElection> election(
-      new LeaderElection(config_, proxy_factory_.get(), request, counter.Pass(),
-                         MonoDelta::FromSeconds(kLeaderElectionTimeoutSecs),
-                         Bind(&LeaderElectionTest::ElectionCallback,
-                              Unretained(this))));
-  return election;
+  return make_scoped_refptr<LeaderElection>(
+      config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
+      TEST_SuppressVoteRequest::kFalse,
+      Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
 }
 
-scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithGrantDenyErrorVotes(
+LeaderElectionPtr LeaderElectionTest::SetUpElectionWithGrantDenyErrorVotes(
     ConsensusTerm election_term, int num_grant, int num_deny, int num_error) {
   const int kNumVoters = num_grant + num_deny + num_error;
   CHECK_GE(num_grant, 1);       // Gotta vote for yourself.
@@ -309,7 +307,7 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithGrantDenyErro
 
   InitUUIDs(kNumVoters, 0);
   InitDelayableMockedProxies(kNumVoters, 0, 0, 0, false); // Don't delay the vote responses.
-  gscoped_ptr<VoteCounter> counter = InitVoteCounter(kNumVoters, kMajoritySize);
+  auto counter = InitVoteCounter(kNumVoters, kMajoritySize);
   int num_grant_followers = num_grant - 1;
 
   // Set up mocked responses based on the params specified in the method arguments.
@@ -348,12 +346,10 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithGrantDenyErro
   request.set_candidate_term(election_term);
   request.set_tablet_id(tablet_id_);
 
-  scoped_refptr<LeaderElection> election(
-      new LeaderElection(config_, proxy_factory_.get(), request, counter.Pass(),
-                         MonoDelta::FromSeconds(kLeaderElectionTimeoutSecs),
-                         Bind(&LeaderElectionTest::ElectionCallback,
-                              Unretained(this))));
-  return election;
+  return make_scoped_refptr<LeaderElection>(
+      config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
+      TEST_SuppressVoteRequest::kFalse,
+      Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
 }
 
 // All peers respond "yes", no failures.
@@ -377,7 +373,7 @@ TEST_F(LeaderElectionTest, TestPerfectElection) {
 
           InitUUIDs(num_voters, num_pre_voters + num_pre_observers + num_observers);
           InitNoOpPeerProxies(num_voters, num_pre_voters, num_pre_observers, num_observers);
-          gscoped_ptr<VoteCounter> counter = InitVoteCounter(num_voters, majority_size);
+          auto counter = InitVoteCounter(num_voters, majority_size);
 
           VoteRequestPB request;
           LOG(INFO) << "candidate_uuid_: " << candidate_uuid_;
@@ -385,11 +381,10 @@ TEST_F(LeaderElectionTest, TestPerfectElection) {
           request.set_candidate_term(election_term);
           request.set_tablet_id(tablet_id_);
 
-          scoped_refptr<LeaderElection> election(
-              new LeaderElection(config_, proxy_factory_.get(), request, counter.Pass(),
-                                 MonoDelta::FromSeconds(kLeaderElectionTimeoutSecs),
-                                 Bind(&LeaderElectionTest::ElectionCallback,
-                                      Unretained(this))));
+          auto election = make_scoped_refptr<LeaderElection>(
+              config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
+              TEST_SuppressVoteRequest::kFalse,
+              Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
           election->Run();
           latch_.Wait();
 
@@ -413,7 +408,7 @@ TEST_F(LeaderElectionTest, TestPerfectElection) {
 // have arrived at a majority decision.
 TEST_F(LeaderElectionTest, TestHigherTermBeforeDecision) {
   const ConsensusTerm kElectionTerm = 2;
-  scoped_refptr<LeaderElection> election = SetUpElectionWithHighTermVoter(kElectionTerm);
+  auto election = SetUpElectionWithHighTermVoter(kElectionTerm);
   election->Run();
 
   // This guy has a higher term.
@@ -438,7 +433,7 @@ TEST_F(LeaderElectionTest, TestHigherTermBeforeDecision) {
 // have arrived at a majority decision of "yes".
 TEST_F(LeaderElectionTest, TestHigherTermAfterDecision) {
   const ConsensusTerm kElectionTerm = 2;
-  scoped_refptr<LeaderElection> election = SetUpElectionWithHighTermVoter(kElectionTerm);
+  auto election = SetUpElectionWithHighTermVoter(kElectionTerm);
   election->Run();
 
   // This guy will vote "yes".
@@ -465,8 +460,8 @@ TEST_F(LeaderElectionTest, TestWithDenyVotes) {
   const int kNumGrant = 2;
   const int kNumDeny = 3;
   const int kNumError = 0;
-  scoped_refptr<LeaderElection> election =
-      SetUpElectionWithGrantDenyErrorVotes(kElectionTerm, kNumGrant, kNumDeny, kNumError);
+  auto election = SetUpElectionWithGrantDenyErrorVotes(
+      kElectionTerm, kNumGrant, kNumDeny, kNumError);
   LOG(INFO) << "Running";
   election->Run();
 
@@ -486,8 +481,8 @@ TEST_F(LeaderElectionTest, TestWithErrorVotes) {
   const int kNumGrant = 1;
   const int kNumDeny = 0;
   const int kNumError = 4;
-  scoped_refptr<LeaderElection> election =
-      SetUpElectionWithGrantDenyErrorVotes(kElectionTerm, kNumGrant, kNumDeny, kNumError);
+  auto election = SetUpElectionWithGrantDenyErrorVotes(
+      kElectionTerm, kNumGrant, kNumDeny, kNumError);
   election->Run();
 
   latch_.Wait();
@@ -519,12 +514,11 @@ TEST_F(LeaderElectionTest, TestFailToCreateProxy) {
   request.set_candidate_term(kElectionTerm);
   request.set_tablet_id(tablet_id_);
 
-  gscoped_ptr<VoteCounter> counter = InitVoteCounter(kNumVoters, kMajoritySize);
-  scoped_refptr<LeaderElection> election(
-      new LeaderElection(config_, proxy_factory_.get(), request, counter.Pass(),
-                         MonoDelta::FromSeconds(kLeaderElectionTimeoutSecs),
-                         Bind(&LeaderElectionTest::ElectionCallback,
-                              Unretained(this))));
+  auto counter = InitVoteCounter(kNumVoters, kMajoritySize);
+  auto election = make_scoped_refptr<LeaderElection>(
+      config_, proxy_factory_.get(), request, std::move(counter), kLeaderElectionTimeout,
+      TEST_SuppressVoteRequest::kFalse,
+      Bind(&LeaderElectionTest::ElectionCallback, Unretained(this)));
   election->Run();
   latch_.Wait();
   ASSERT_EQ(kElectionTerm, result_->election_term);
