@@ -12,7 +12,7 @@ googleAnalytics = "UA-104956980-1"
 [params]
 	# General information
 	author = "Team YugaByte"
-	description = "Cloud-native DB for mission-critical apps"
+	description = "YugaByte, a cloud-native DB for mission-critical applications"
 	copyright = "YugaByte, Inc."
 	block_indexing = false
 
@@ -144,134 +144,7 @@ googleAnalytics = "UA-104956980-1"
 #	url = "explore/zero-downtime-reconfig/"
 #	weight = 26
 
-[[menu.main]]
-	name   = "Architecture"
-	identifier = "architecture"
-	url = "architecture/"
-	weight = 30
 
-[[menu.main]]
-	name   = "Concepts"
-	parent = "architecture"
-	identifier = "concepts"
-	url = "architecture/concepts/"
-	weight = 31
-
-[[menu.main]]
-	name   = "Single Node"
-	parent = "concepts"
-	url = "architecture/concepts/single-node/"
-	weight = 32
-
-[[menu.main]]
-	name   = "Universe, YB-TServer, YB-Master"
-	parent = "concepts"
-	url = "architecture/concepts/universe/"
-	weight = 33
-
-[[menu.main]]
-	name   = "Sharding"
-	parent = "concepts"
-	url = "architecture/concepts/sharding/"
-	weight = 34
-
-[[menu.main]]
-	name   = "Replication"
-	parent = "concepts"
-	url = "architecture/concepts/replication/"
-	weight = 35
-
-[[menu.main]]
-	name   = "Persistence"
-	parent = "concepts"
-	url = "architecture/concepts/persistence/"
-	weight = 36
-
-[[menu.main]]
-	name   = "Query Layer"
-	parent = "concepts"
-	url = "architecture/concepts/yql/"
-	weight = 37
-
-[[menu.main]]
-	name   = "Acknowledgements"
-	parent = "concepts"
-	url = "architecture/concepts/acknowledgements/"
-	weight = 38
-
-[[menu.main]]
-	name   = "Core Functions"
-	parent = "architecture"
-	identifier = "core-functions"
-	url = "architecture/core-functions/"
-	weight = 39
-
-[[menu.main]]
-	name   = "Universe Creation"
-	parent = "core-functions"
-	url = "architecture/core-functions/universe-creation/"
-	weight = 40
-
-[[menu.main]]
-	name   = "Table Creation"
-	parent = "core-functions"
-	url = "architecture/core-functions/table-creation/"
-	weight = 41
-
-[[menu.main]]
-	name   = "Write IO Path"
-	parent = "core-functions"
-	url = "architecture/core-functions/write-path/"
-	weight = 42
-
-[[menu.main]]
-	name   = "Read IO Path"
-	parent = "core-functions"
-	url = "architecture/core-functions/read-path/"
-	weight = 43
-
-[[menu.main]]
-	name   = "High Availability"
-	parent = "core-functions"
-	url = "architecture/core-functions/high-availability/"
-	weight = 44
-
-#[[menu.main]]
-#	name   = "Operations"
-#	parent = "architecture"
-#	url = "architecture/operations/"
-#	weight = 95
-
-#[[menu.main]]
-#	name   = "Enterprise Features"
-#	parent = "architecture"
-#	url = "architecture/enterprise-features/"
-#	weight = 100
-
-[[menu.main]]
-	name   = "Comparisons"
-	parent = "architecture"
-	identifier = "comparisons"
-	url = "architecture/comparisons/"
-	weight = 50
-
-[[menu.main]]
-	name   = "Apache Cassandra"
-	parent = "comparisons"
-	url = "architecture/comparisons/cassandra/"
-	weight = 51
-
-[[menu.main]]
-	name   = "Redis"
-	parent = "comparisons"
-	url = "architecture/comparisons/redis/"
-	weight = 52
-
-[[menu.main]]
-	name   = "Apache HBase"
-	parent = "comparisons"
-	url = "architecture/comparisons/hbase/"
-	weight = 53
 
 [[menu.main]]
 	name   = "Develop"
@@ -318,9 +191,9 @@ googleAnalytics = "UA-104956980-1"
 	weight = 63
 
 [[menu.main]]
-	name   = "Administer"
+	name   = "Configure Cloud Providers"
 	parent = "enterprise-edition"
-	url    = "deploy/enterprise-edition/admin/"
+	url    = "deploy/enterprise-edition/configure-cloud-providers/"
 	weight = 64
 
 [[menu.main]]
@@ -330,10 +203,182 @@ googleAnalytics = "UA-104956980-1"
 	weight = 70
 
 [[menu.main]]
+	name   = "Enterprise Edition"
+	identifier = "manage-ee"
+	parent = "manage"
+	url    = "manage/enterprise-edition/"
+	weight = 71
+
+[[menu.main]]
+	name   = "Create Universe"
+	parent = "manage-ee"
+	url    = "manage/enterprise-edition/create-universe/"
+	weight = 72
+
+[[menu.main]]
+	name   = "Edit Universe"
+	parent = "manage-ee"
+	url    = "manage/enterprise-edition/edit-universe/"
+	weight = 73
+
+[[menu.main]]
+	name   = "Edit Config Flags"
+	parent = "manage-ee"
+	url    = "manage/enterprise-edition/edit-config/"
+	weight = 74
+
+[[menu.main]]
+	name   = "Upgrade Universe"
+	parent = "manage-ee"
+	url    = "manage/enterprise-edition/upgrade-universe/"
+	weight = 75
+
+[[menu.main]]
+	name   = "Delete Universe"
+	parent = "manage-ee"
+	url    = "manage/enterprise-edition/delete-universe/"
+	weight = 76
+
+[[menu.main]]
 	name = "Diagnostics Reporting"
 	parent = "manage"
 	url = "manage/diagnostics-reporting/"
-	weight = 71
+	weight = 80
+
+[[menu.main]]
+	name   = "Architecture"
+	identifier = "architecture"
+	url = "architecture/"
+	weight = 90
+
+[[menu.main]]
+	name   = "Concepts"
+	parent = "architecture"
+	identifier = "concepts"
+	url = "architecture/concepts/"
+	weight = 91
+
+[[menu.main]]
+	name   = "Single Node"
+	parent = "concepts"
+	url = "architecture/concepts/single-node/"
+	weight = 92
+
+[[menu.main]]
+	name   = "Universe, YB-TServer, YB-Master"
+	parent = "concepts"
+	url = "architecture/concepts/universe/"
+	weight = 93
+
+[[menu.main]]
+	name   = "Sharding"
+	parent = "concepts"
+	url = "architecture/concepts/sharding/"
+	weight = 94
+
+[[menu.main]]
+	name   = "Replication"
+	parent = "concepts"
+	url = "architecture/concepts/replication/"
+	weight = 95
+
+[[menu.main]]
+	name   = "Persistence"
+	parent = "concepts"
+	url = "architecture/concepts/persistence/"
+	weight = 96
+
+[[menu.main]]
+	name   = "Query Layer"
+	parent = "concepts"
+	url = "architecture/concepts/yql/"
+	weight = 97
+
+[[menu.main]]
+	name   = "Acknowledgements"
+	parent = "concepts"
+	url = "architecture/concepts/acknowledgements/"
+	weight = 98
+
+[[menu.main]]
+	name   = "Core Functions"
+	parent = "architecture"
+	identifier = "core-functions"
+	url = "architecture/core-functions/"
+	weight = 99
+
+[[menu.main]]
+	name   = "Universe Creation"
+	parent = "core-functions"
+	url = "architecture/core-functions/universe-creation/"
+	weight = 100
+
+[[menu.main]]
+	name   = "Table Creation"
+	parent = "core-functions"
+	url = "architecture/core-functions/table-creation/"
+	weight = 101
+
+[[menu.main]]
+	name   = "Write IO Path"
+	parent = "core-functions"
+	url = "architecture/core-functions/write-path/"
+	weight = 102
+
+[[menu.main]]
+	name   = "Read IO Path"
+	parent = "core-functions"
+	url = "architecture/core-functions/read-path/"
+	weight = 103
+
+[[menu.main]]
+	name   = "High Availability"
+	parent = "core-functions"
+	url = "architecture/core-functions/high-availability/"
+	weight = 104
+
+#[[menu.main]]
+#	name   = "Operations"
+#	parent = "architecture"
+#	url = "architecture/operations/"
+#	weight = 105
+
+#[[menu.main]]
+#	name   = "Enterprise Features"
+#	parent = "architecture"
+#	url = "architecture/enterprise-features/"
+#	weight = 106
+
+[[menu.main]]
+	name   = "Comparisons"
+	parent = "architecture"
+	identifier = "comparisons"
+	url = "architecture/comparisons/"
+	weight = 107
+
+[[menu.main]]
+	name   = "Apache Cassandra"
+	parent = "comparisons"
+	url = "architecture/comparisons/cassandra/"
+	weight = 108
+
+[[menu.main]]
+	name   = "MongoDB"
+	parent = "comparisons"
+	url = "architecture/comparisons/mongodb/"
+	weight = 109
+
+[[menu.main]]
+	name   = "Redis"
+	parent = "comparisons"
+	url = "architecture/comparisons/redis/"
+	weight = 110
+
+[[menu.main]]
+	name   = "Apache HBase"
+	parent = "comparisons"
+	url = "architecture/comparisons/hbase/"
+	weight = 111
 
 [[menu.main]]
 	name   = "Client API Reference"
@@ -671,7 +716,7 @@ googleAnalytics = "UA-104956980-1"
 	name = "HSET"
 	weight = 218
 	parent = "api-redis"
-	url = "api/redis/hmet/"
+	url = "api/redis/hset/"
 
 [[menu.main]]
 	name = "HSTRLEN"

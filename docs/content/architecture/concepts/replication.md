@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Data Replication with Raft Consensus
-weight: 35
+weight: 95
 ---
 
 YugaByte replicates data in order to survive failures while continuing to maintain consistency of

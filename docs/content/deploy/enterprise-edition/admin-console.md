@@ -6,7 +6,7 @@ weight: 63
 
 ## Prerequisites
 
-YugaWare, the YugaByte admin console, is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production or performance or failure mode testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or simple functional testing, you can also use the [Community Edition](/quick-start/install).
+YugaWare, the YugaByte Admin Console, is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production or performance or failure mode testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or simple functional testing, you can also use the [Community Edition](/quick-start/install).
 
 A dedicated host or VM with the following characteristics is needed for YugaWare to run via Replicated.
 
@@ -44,9 +44,9 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://aws.amazon.com/ec2/instance-types/) or higher instance running Ubuntu 16.04. If you are running in the US West (Oregon) Region, use `ami-a58d0dc5` to launch a new instance if you don't already have one.
 
 
-## Install on Internet-connected host
+## Step 1. Install Replicated 
 
-### Install Replicated
+### On an Internet-connected host
 
 YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated. 
 
@@ -75,9 +75,9 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated-success.png)
 
-## Install on airgapped host
+Next step is install YugaWare as described in the [section below](/deploy/enterprise-edition/admin-console/#step-2-install-yugaware-via-replicated).
 
-### Install Replicated
+### On an airgapped host
 
 An “airgapped” host has no path to inbound or outbound Internet traffic at all. In order to install Replicated and YugaWare on such a host, we first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host.
 
@@ -124,12 +124,13 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated-success.png)
 
+Next step is install YugaWare as described in the [section below](/deploy/enterprise-edition/admin-console/#step-2-install-yugaware-via-replicated).
 
-### Install YugaWare via Replicated
+## Step 2. Install YugaWare via Replicated
 
-#### Setup HTTPS for Replicated
+### Setup HTTPS for Replicated
 
-Launch Replicated UI by going to [http://yugaware-host-public-ip:8800] (http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated admin console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated admin console.
+Launch Replicated UI by going to [http://yugaware-host-public-ip:8800] (http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
 
 ![Replicated Browser TLS](/images/replicated-browser-tls.png)
 
@@ -140,11 +141,11 @@ You can provide your own custom SSL certificate along with a hostname.
 
 ![Replicated HTTPS setup](/images/replicated-https.png)
 
-The simplest option is use a self-signed cert for now and add the custom SSL certificate later. Note that you will have to connect to the Replicated admin console only using IP address (as noted below).
+The simplest option is use a self-signed cert for now and add the custom SSL certificate later. Note that you will have to connect to the Replicated Admin Console only using IP address (as noted below).
 
 ![Replicated Self Signed Cert](/images/replicated-selfsigned.png)
 
-#### Upload License File
+### Upload License File
 
 Now we are ready to upload the YugaByte license file received from YugaByte Support. 
 
@@ -152,20 +153,20 @@ Now we are ready to upload the YugaByte license file received from YugaByte Supp
 
 Two options to install YugaWare are presented.
 
-#### Online Install
+### Online Install
 ![Replicated License Online Install](/images/replicated-license-online-install-option.png)
 
 ![Replicated License Online Progress](/images/replicated-license-progress.png)
 
-#### Airgapped Install
+### Airgapped Install
 ![Replicated License Airgapped Install](/images/replicated-license-airgapped-install-option.png)
 
 ![Replicated License Airgapped Path](/images/replicated-license-airgapped-path.png)
 
 ![Replicated License Airgapped Progress](/images/replicated-license-airgapped-progress.png)
 
-#### Secure Replicated
-The next step is to add a password to protect the Replicated admin console (note that this admin console is for Replicated and is different from YugaWare, the admin console for YugaByte).
+### Secure Replicated
+The next step is to add a password to protect the Replicated Admin Console (note that this Admin Console is for Replicated and is different from YugaWare, the Admin Console for YugaByte).
 
 ![Replicated Password](/images/replicated-password.png)
 
@@ -175,7 +176,7 @@ Replicated is going to perform a set of pre-flight checks to ensure that the hos
 
 Clicking Continue above will bring us to YugaWare configuration.
 
-## Configure 
+## Step 3. Configure YugaWare
 
 Configuring YugaWare is really simple. A randomly generated password for the YugaWare config database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the YugaWare host where all the YugaWare data will be stored.  Clicking Save on this page will take us to the Replicated Dashboard.
 
@@ -205,16 +206,15 @@ By clicking on the top right dropdown or going directly to [http://yugaware-host
 
 ![Profile](/images/profile.png)
 
-Now you are ready to administer YugaByte clusters as documented [here](/deploy/enterprise-edition/admin/).
+Next step is to configure one or more cloud providers in YugaWare as documented [here](/deploy/enterprise-edition/configure-cloud-providers/).
 
-## Backup 
+## Step 4. Maintain YugaWare
+
+### Backup 
 
 We recommend a weekly machine snapshot and weekly backups of `/opt/yugabyte`.
 
 Doing a machine snapshot and backing up the above directory before performing an update is recommended as well.
-
-
-## Maintain 
 
 ### Upgrade
 
@@ -245,5 +245,5 @@ rm -rf /opt/yugabyte
 
 ```
 
-And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated)
+And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated).
 

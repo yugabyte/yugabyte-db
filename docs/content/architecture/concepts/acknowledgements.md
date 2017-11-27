@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Acknowledgements
-weight: 38
+weight: 98
 ---
 
 The YugaByte code base has leveraged several open source projects as a starting point.

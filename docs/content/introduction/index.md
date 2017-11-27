@@ -11,6 +11,7 @@ weight: 2
     </div>
     <div class="text">
       Overview
+      <div class="caption">What is YugaByte DB and how is it unique?</div>
     </div>
   </a>
 
@@ -20,6 +21,7 @@ weight: 2
     </div>
     <div class="text">
       Core Features
+      <div class="caption">Key features of YugaByte DB.</div>
     </div>
   </a>
 
@@ -29,6 +31,7 @@ weight: 2
     </div>
     <div class="text">
       Benefits
+      <div class="caption">Key benefits of YugaByte DB.</div>
     </div>
   </a>
 </div>

@@ -23,7 +23,7 @@ Here's the command to install these packages.
 $ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel file
 ```
 
-## Download and install
+## Step 1. Download and install
 
 ### Download
 
@@ -54,7 +54,7 @@ $ ./bin/configure
 $ mkdir /home/centos/disk1 /home/centos/disk2
 ```
 
-## Start YB-Masters
+## Step 2. Start YB-Masters
 
 Execute the following steps on each of the instances. 
 
@@ -98,7 +98,7 @@ I0912 16:11:06.899287 27220 raft_consensus.cc:738] T 000000000000000000000000000
 
 Now we are ready to start the yb-tservers.
 
-## Start YB-TServers
+## Step 3. Start YB-TServers
 
 Execute the following steps on each of the instances. 
 
@@ -150,7 +150,7 @@ I0912 22:26:39.111896  3162 ts_manager.cc:97] Registered new tablet server { per
 I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "60042249ad9e45b5a5d90f10fc2320dc" instance_seqno: 1505255201010923 } with Master
 ```
 
-## Setup Redis service
+## Step 4: Setup Redis service
 
 While the CQL service is turned on by default after all the yb-tservers start, the Redis service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 3 instances. The command below will add the special Redis table into the DB and also start the Redis server on port 6379 on all instances.
 
@@ -158,7 +158,7 @@ While the CQL service is turned on by default after all the yb-tservers start, t
 $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 setup_redis_table
 ```
 
-## Connect clients
+## Step 5: Connect clients
 
 - Clients can connect to YugaByte's CQL service at `172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042`
 

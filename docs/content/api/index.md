@@ -11,6 +11,7 @@ weight: 120
     </div>
     <div class="text">
       Apache Cassandra Query Language (CQL)
+      <div class="caption">Complete reference for YugaByte's support for CQL.</div>
     </div>
   </a>
 
@@ -20,6 +21,7 @@ weight: 120
     </div>
     <div class="text">
       Redis
+      <div class="caption">Complete reference for YugaByte's support for Redis commands.</div>
     </div>
   </a>
 </div>

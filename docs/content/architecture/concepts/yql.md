@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: YugaByte Query Layer (YQL)
-weight: 37
+weight: 97
 ---
 
 The YQL layer implements the server-side of multiple protocols/APIs that YugaByte supports.

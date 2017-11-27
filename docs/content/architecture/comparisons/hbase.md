@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: YugaByte DB vs. Apache HBase
-weight: 53
+weight: 111
 ---
 
 ## Simpler software stack

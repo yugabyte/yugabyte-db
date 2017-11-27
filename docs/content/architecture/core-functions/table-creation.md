@@ -1,7 +1,7 @@
 ---
 date: 2016-03-09T20:08:11+01:00
 title: Table Creation
-weight: 41
+weight: 101
 ---
 
 The user issued table creation is handled by the YB-Master leader, and is an asychronous API. The
@@ -11,22 +11,32 @@ RAFT group to make it resilient to failures.
 
 The table creation is accomplished by the YB-Master leader using the following steps:
 
-* Validates the table schema and creates the desired number of tablets for the table. These tablets
+## Step 1. Validation
+Validates the table schema and creates the desired number of tablets for the table. These tablets
 are not yet assigned to YB-TServers.
-* Replicates the table schema as well as the newly created (and still unassigned) tablets to the
+
+## Step 2. Replication
+Replicates the table schema as well as the newly created (and still unassigned) tablets to the
 YB-Master RAFT group. This ensures that the table creation can succeed even if the current YB-Master
 leader fails.
-* At this point, the asynchronous table creation API returns a success, since the operation can
+
+## Step 3. Acknowledgement
+At this point, the asynchronous table creation API returns a success, since the operation can
 proceed even if the current YB-Master leader fails.
-* Assigns each of the tablets to as many YB-TServers as the replication factor of the table. The
+
+## Step 4. Execution
+Assigns each of the tablets to as many YB-TServers as the replication factor of the table. The
 tablet-peer placement is done in such a manner as to ensure that the desired fault tolerance is
 achieved and the YB-TServers are evenly balanced with respect to the number of tablets they are
 assigned. Note that in certain deployment scenarios, the assignment of the tablets to YB-TServers
 may need to satisfy many more constraints such as distributing the individual replicas of each
 tablet across multiple cloud providers, regions and availability zones.
-* Keeps track of the entire tablet assignment operation and can report on its progress and completion
+
+## Step 5. Continuous Monitoring
+Keeps track of the entire tablet assignment operation and can report on its progress and completion
 to user issued APIs.
 
+## An Example
 
 Let us take our standard example of creating a table in a YugaByte universe with 4 nodes. Also, as
 before, let us say the table has 16 tablets and a replication factor of 3. The table creation
