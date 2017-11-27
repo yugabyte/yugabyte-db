@@ -56,6 +56,9 @@ DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
 DEFINE_int64(db_block_size_bytes, 32 * 1024,
              "Size of RocksDB block (in bytes).");
 
+DEFINE_int64(db_write_buffer_size, -1,
+             "Size of RocksDB write buffer (in bytes). -1 to use default.");
+
 DEFINE_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 DEFINE_int32(max_nexts_to_avoid_seek, 8,
@@ -317,6 +320,9 @@ void InitRocksDBOptions(
   options->initial_seqno = FLAGS_initial_seqno;
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
   options->memory_monitor = tablet_options.memory_monitor;
+  if (FLAGS_db_write_buffer_size != -1) {
+    options->write_buffer_size = FLAGS_db_write_buffer_size;
+  }
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
       tablet_options.listeners.end()); // Append listeners

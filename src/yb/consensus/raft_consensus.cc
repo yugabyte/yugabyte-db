@@ -311,6 +311,8 @@ RaftConsensus::RaftConsensus(
       lost_leadership_listener_(std::move(lost_leadership_listener)) {
   DCHECK_NOTNULL(log_.get());
 
+  CHECK_NE(table_type_, KUDU_COLUMNAR_TABLE_TYPE);
+
   state_.reset(new ReplicaState(options,
                                 peer_uuid,
                                 cmeta.Pass(),

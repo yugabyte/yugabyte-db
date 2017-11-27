@@ -435,6 +435,7 @@ void RaftConsensusITest::AddFlagsForLogRolls(vector<string>* extra_tserver_flags
   extra_tserver_flags->push_back("--log_min_segments_to_retain=1");
   extra_tserver_flags->push_back("--log_min_seconds_to_retain=0");
   extra_tserver_flags->push_back("--maintenance_manager_polling_interval_ms=100");
+  extra_tserver_flags->push_back("--db_write_buffer_size=100000");
 }
 
 // Test that we can retrieve the permanent uuid of a server running
@@ -1054,8 +1055,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
   // Disable follower eviction to maintain the original intent of this test.
   vector<string> extra_flags = { "--evict_failed_followers=false" };
   AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
-  ASSERT_NO_FATALS(BuildAndStart(extra_flags, std::vector<std::string>(),
-                                 TableType::KUDU_COLUMNAR_TABLE_TYPE));
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags, std::vector<std::string>()));
 
   string leader_uuid;
   int64_t orig_term;
@@ -2622,7 +2622,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   AddFlagsForLogRolls(&ts_flags);  // For CauseFollowerToFallBehindLogGC().
   vector<string> master_flags;
   LOG(INFO) << __func__ << ": starting the cluster";
-  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags, TableType::KUDU_COLUMNAR_TABLE_TYPE));
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
   auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
@@ -2650,8 +2650,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
 TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   vector<string> extra_flags;
   AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
-  ASSERT_NO_FATALS(BuildAndStart(extra_flags, {"--enable_load_balancing=true"},
-                                 TableType::KUDU_COLUMNAR_TABLE_TYPE));
+  ASSERT_NO_FATALS(BuildAndStart(extra_flags, {"--enable_load_balancing=true"}));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
 

@@ -249,7 +249,6 @@ struct MirrorTable {
     RETURN_NOT_OK(table_creator->table_name(kTableName)
              .schema(&schema)
              .num_replicas(3)
-             .table_type(YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
              .Create());
     return Status::OK();
   }
