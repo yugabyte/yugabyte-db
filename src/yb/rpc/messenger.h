@@ -53,6 +53,7 @@
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/concurrent_value.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -198,7 +199,7 @@ class Messenger {
 
   scoped_refptr<MetricEntity> metric_entity() const { return metric_entity_; }
 
-  const scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
+  scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
 
   scoped_refptr<Histogram> outgoing_queue_time() { return outgoing_queue_time_; }
 
@@ -242,10 +243,7 @@ class Messenger {
 
   // RPC services that handle inbound requests.
   RpcServicesMap rpc_services_;
-  std::atomic<RpcServicesMap*> rpc_services_cache_ = {nullptr};
-
-  // The following atomic is used like lock when we change rpc_service_cache_.
-  mutable std::atomic<int> rpc_services_lock_count_ = {0};
+  mutable ConcurrentValue<RpcServicesMap> rpc_services_cache_;
 
   std::vector<Reactor*> reactors_;
 

@@ -293,7 +293,9 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   // AddRequestPartialPB is missing the 'y' field.
   AddResponsePB resp;
   RpcController controller;
-  Status s = p.SyncRequest("Add", req, &resp, &controller);
+  RemoteMethod method(yb::rpc_test::CalculatorServiceIf::static_service_name(),
+                      GenericCalculatorService::AddMethod()->method_name());
+  Status s = p.SyncRequest(&method, req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s.ToString();
   // Remote error messages always contain file name and line number.
   ASSERT_STR_CONTAINS(s.ToString(), "Invalid argument (");
@@ -335,7 +337,8 @@ TEST_F(RpcStubTest, TestCallMissingMethod) {
           server_endpoint_,
           yb::rpc_test::CalculatorServiceIf::static_service_name());
 
-  Status s = DoTestSyncCall(p, "DoesNotExist");
+  RemoteMethod method(yb::rpc_test::CalculatorServiceIf::static_service_name(), "DoesNotExist");
+  Status s = DoTestSyncCall(p, &method);
   ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "with an invalid method name: DoesNotExist");
 }

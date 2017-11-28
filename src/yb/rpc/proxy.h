@@ -107,7 +107,7 @@ class Proxy {
   //           thereafter. It may be invoked either on the caller's thread
   //           or by an RPC IO thread, and thus should take care to not
   //           block or perform any heavy CPU work.
-  void AsyncRequest(const std::string& method,
+  void AsyncRequest(const RemoteMethod* method,
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
                     RpcController* controller,
@@ -115,7 +115,7 @@ class Proxy {
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
-  CHECKED_STATUS SyncRequest(const std::string& method,
+  CHECKED_STATUS SyncRequest(const RemoteMethod* method,
                      const google::protobuf::Message& req,
                      google::protobuf::Message* resp,
                      RpcController* controller) const;
@@ -128,9 +128,9 @@ class Proxy {
 
   const std::string service_name_;
   std::shared_ptr<Messenger> messenger_;
-  ConnectionId conn_id_;
-  mutable std::atomic<bool> is_started_;
-  mutable std::atomic_uint num_calls_;
+  std::vector<ConnectionId> conn_ids_;
+  mutable std::atomic<bool> is_started_{false};
+  mutable std::atomic<size_t> num_calls_{0};
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
   const bool call_local_service_;
 

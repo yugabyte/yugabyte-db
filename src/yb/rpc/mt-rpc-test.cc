@@ -55,24 +55,23 @@ namespace rpc {
 class MultiThreadedRpcTest : public RpcTestBase {
  public:
   // Make a single RPC call.
-  void SingleCall(const Endpoint& server_addr, const char* method_name,
+  void SingleCall(const Endpoint& server_addr, const RemoteMethod* method,
                   Status* result, CountDownLatch* latch) {
     LOG(INFO) << "Connecting to " << server_addr;
     shared_ptr<Messenger> client_messenger(CreateMessenger("ClientSC"));
     Proxy p(client_messenger, server_addr, GenericCalculatorService::static_service_name());
-    *result = DoTestSyncCall(p, method_name);
+    *result = DoTestSyncCall(p, method);
     latch->CountDown();
   }
 
   // Make RPC calls until we see a failure.
-  void HammerServer(const Endpoint& server_addr, const char* method_name,
-                    Status* last_result) {
+  void HammerServer(const Endpoint& server_addr, const RemoteMethod* method, Status* last_result) {
     shared_ptr<Messenger> client_messenger(CreateMessenger("ClientHS"));
-    HammerServerWithMessenger(server_addr, method_name, last_result, client_messenger);
+    HammerServerWithMessenger(server_addr, method, last_result, client_messenger);
   }
 
   void HammerServerWithMessenger(
-      const Endpoint& server_addr, const char* method_name, Status* last_result,
+      const Endpoint& server_addr, const RemoteMethod* method, Status* last_result,
       const shared_ptr<Messenger>& messenger) {
     LOG(INFO) << "Connecting to " << server_addr;
     Proxy p(messenger, server_addr, GenericCalculatorService::static_service_name());
@@ -80,7 +79,7 @@ class MultiThreadedRpcTest : public RpcTestBase {
     int i = 0;
     while (true) {
       i++;
-      Status s = DoTestSyncCall(p, method_name);
+      Status s = DoTestSyncCall(p, method);
       if (!s.ok()) {
         // Return on first failure.
         LOG(INFO) << "Call failed. Shutting down client thread. Ran " << i << " calls: "
@@ -113,7 +112,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownDuringService) {
   for (int i = 0; i < kNumThreads; i++) {
     ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
       &MultiThreadedRpcTest::HammerServer, this, server_addr,
-      GenericCalculatorService::kAddMethodName, &statuses[i], &threads[i]));
+      GenericCalculatorService::AddMethod(), &statuses[i], &threads[i]));
   }
 
   SleepFor(MonoDelta::FromMilliseconds(50));
@@ -139,7 +138,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
   Status status;
   ASSERT_OK(yb::Thread::Create("test", "test",
       &MultiThreadedRpcTest::HammerServerWithMessenger, this, server_addr,
-      GenericCalculatorService::kAddMethodName, &status, client_messenger, &thread));
+      GenericCalculatorService::AddMethod(), &status, client_messenger, &thread));
 
   // Shut down the messenger after a very brief sleep. This often will race so that the
   // call gets submitted to the messenger before shutdown, but the negotiation won't have
@@ -202,7 +201,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
       &MultiThreadedRpcTest::SingleCall, this, server_addr,
-      GenericCalculatorService::kAddMethodName, &status[i], &latch, &threads[i]));
+      GenericCalculatorService::AddMethod(), &status[i], &latch, &threads[i]));
   }
 
   // One should immediately fail due to backpressure. The latch is only initialized

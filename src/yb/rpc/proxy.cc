@@ -74,35 +74,36 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
   CHECK(messenger != nullptr);
   DCHECK(!service_name_.empty()) << "Proxy service name must not be blank";
 
-  conn_id_.set_remote(remote);
-  is_started_.store(false, std::memory_order_release);
-  num_calls_.store(0, std::memory_order_release);
+  LOG(INFO) << "Create proxy to " << service_name_ << " at " << remote;
+  size_t num_connections_to_server = FLAGS_num_connections_to_server;
+  conn_ids_.reserve(num_connections_to_server);
+  while (conn_ids_.size() != num_connections_to_server) {
+    conn_ids_.emplace_back(remote, conn_ids_.size());
+  }
 }
 
 Proxy::~Proxy() {
 }
 
-void Proxy::AsyncRequest(const string& method,
+void Proxy::AsyncRequest(const RemoteMethod* method,
                          const google::protobuf::Message& req,
                          google::protobuf::Message* resp,
                          RpcController* controller,
                          ResponseCallback callback) const {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
-  uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;
-  auto indexed_conn_id = conn_id_;
-  indexed_conn_id.set_idx(idx);
+  uint8_t idx = num_calls_.fetch_add(1) % conn_ids_.size();
 
   controller->call_ =
       call_local_service_ ?
-      std::make_shared<LocalOutboundCall>(indexed_conn_id,
-                                          RemoteMethod(service_name_, method),
+      std::make_shared<LocalOutboundCall>(conn_ids_[idx],
+                                          method,
                                           outbound_call_metrics_,
                                           resp,
                                           controller,
                                           std::move(callback)) :
-      std::make_shared<OutboundCall>(indexed_conn_id,
-                                     RemoteMethod(service_name_, method),
+      std::make_shared<OutboundCall>(conn_ids_[idx],
+                                     method,
                                      outbound_call_metrics_,
                                      resp,
                                      controller,
@@ -139,7 +140,7 @@ void Proxy::AsyncRequest(const string& method,
 }
 
 
-Status Proxy::SyncRequest(const string& method,
+Status Proxy::SyncRequest(const RemoteMethod* method,
                           const google::protobuf::Message& req,
                           google::protobuf::Message* resp,
                           RpcController* controller) const {

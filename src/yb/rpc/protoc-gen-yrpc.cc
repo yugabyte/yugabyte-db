@@ -667,13 +667,15 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         Print(printer, *subs,
         "::yb::Status $service_name$Proxy::$rpc_name$(const $request$ &req, $response$ *resp,\n"
         "                                     ::yb::rpc::RpcController *controller) {\n"
-        "  return SyncRequest(\"$rpc_name$\", req, resp, controller);\n"
+        "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
+        "  return SyncRequest(&method, req, resp, controller);\n"
         "}\n"
         "\n"
         "void $service_name$Proxy::$rpc_name$Async(const $request$ &req,\n"
         "                     $response$ *resp, ::yb::rpc::RpcController *controller,\n"
         "                     ::yb::rpc::ResponseCallback callback) {\n"
-        "  AsyncRequest(\"$rpc_name$\", req, resp, controller, std::move(callback));\n"
+        "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
+        "  AsyncRequest(&method, req, resp, controller, std::move(callback));\n"
         "}\n"
         "\n");
         subs->Pop();

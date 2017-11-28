@@ -47,9 +47,11 @@
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -76,23 +78,17 @@ class RpcController;
 // This class is copyable for STL compatibility, but not assignable (use CopyFrom() for that).
 class ConnectionId {
  public:
-  ConnectionId();
-
   // Convenience constructor.
-  explicit ConnectionId(const Endpoint& remote);
+  ConnectionId(const Endpoint& remote, size_t idx) : remote_(remote), idx_(idx) {}
 
   // The remote address.
-  void set_remote(const Endpoint& remote);
   const Endpoint& remote() const { return remote_; }
-
-  void set_idx(uint8_t idx);
   uint8_t idx() const { return idx_; }
 
   // Returns a string representation of the object, not including the password field.
   std::string ToString() const;
 
   size_t HashCode() const;
-  bool Equals(const ConnectionId& other) const;
 
  private:
   // Remember to update HashCode() and Equals() when new fields are added.
@@ -183,6 +179,8 @@ class CallResponse {
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
 
+typedef ThreadSafeObjectPool<RemoteMethodPB> RemoteMethodPool;
+
 // Tracks the status of a call on the client side.
 //
 // This is an internal-facing class -- clients interact with the
@@ -194,7 +192,7 @@ class CallResponse {
 // of different threads, making it tricky to enforce single ownership.
 class OutboundCall : public RpcCall {
  public:
-  OutboundCall(const ConnectionId& conn_id, const RemoteMethod& remote_method,
+  OutboundCall(const ConnectionId& conn_id, const RemoteMethod* remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                google::protobuf::Message* response_storage,
                RpcController* controller, ResponseCallback callback);
@@ -246,14 +244,14 @@ class OutboundCall : public RpcCall {
   ////////////////////////////////////////////////////////////
 
   const ConnectionId& conn_id() const { return conn_id_; }
-  const RemoteMethod& remote_method() const { return remote_method_; }
+  const RemoteMethod& remote_method() const { return *remote_method_; }
   const ResponseCallback &callback() const { return callback_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
   google::protobuf::Message* response() const { return response_; }
 
   int32_t call_id() const {
-    return header_.call_id();
+    return call_id_;
   }
 
   Trace* trace() {
@@ -304,24 +302,23 @@ class OutboundCall : public RpcCall {
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
+  void InitHeader(RequestHeader* header);
+
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread
   // reads them.
   mutable simple_spinlock lock_;
-  State state_;
+  std::atomic<State> state_ = {READY};
   Status status_;
   gscoped_ptr<ErrorStatusPB> error_pb_;
 
   // Call the user-provided callback.
   void CallCallback();
 
-  // The RPC header.
-  // Parts of this (eg the call ID) are only assigned once this call has been
-  // passed to the reactor thread and assigned a connection.
-  RequestHeader header_;
+  int32_t call_id_;
 
   // The remote method being called.
-  const RemoteMethod remote_method_;
+  const RemoteMethod* remote_method_;
 
   ResponseCallback callback_;
 
@@ -335,6 +332,8 @@ class OutboundCall : public RpcCall {
   scoped_refptr<Trace> trace_;
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
+
+  RemoteMethodPool* remote_method_pool_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

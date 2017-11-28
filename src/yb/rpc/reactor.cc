@@ -580,11 +580,9 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
 
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
-    ConnectionId conn_id(conn->remote());
     bool erased = false;
     for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
-      conn_id.set_idx(idx);
-      auto it = client_conns_.find(conn_id);
+      auto it = client_conns_.find(ConnectionId(conn->remote(), idx));
       if (it != client_conns_.end() && it->second.get() == conn) {
         client_conns_.erase(it);
         erased = true;
@@ -756,6 +754,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
 }
 
 void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {
+  bool was_empty;
   {
     std::unique_lock<simple_spinlock> l(pending_tasks_lock_);
     if (closing_) {
@@ -764,9 +763,12 @@ void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {
       task->Abort(ShutdownError(false));
       return;
     }
+    was_empty = pending_tasks_.empty();
     pending_tasks_.push_back(std::move(task));
   }
-  WakeThread();
+  if (was_empty) {
+    WakeThread();
+  }
 }
 
 bool Reactor::DrainTaskQueue(std::vector<std::shared_ptr<ReactorTask>>* tasks) {

@@ -104,3 +104,6 @@ race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
 
 # Bug in tacopie
 race:tacopie::utils::thread_pool
+
+# Usages of URCU
+race:yb::internal::ConcurrentValue

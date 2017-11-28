@@ -24,12 +24,13 @@ namespace rpc {
 using std::shared_ptr;
 
 LocalOutboundCall::LocalOutboundCall(
-    const ConnectionId& conn_id, const RemoteMethod& remote_method,
+    const ConnectionId& conn_id, const RemoteMethod* remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
     : OutboundCall(
-          conn_id, remote_method, outbound_call_metrics, response_storage, controller, callback) {
+          conn_id, remote_method, outbound_call_metrics, response_storage, controller,
+          std::move(callback)) {
 }
 
 Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) {

@@ -27,7 +27,7 @@ class LocalYBInboundCall;
 // A short-circuited outbound call.
 class LocalOutboundCall : public OutboundCall {
  public:
-  LocalOutboundCall(const ConnectionId& conn_id, const RemoteMethod& remote_method,
+  LocalOutboundCall(const ConnectionId& conn_id, const RemoteMethod* remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                     google::protobuf::Message* response_storage,
                     RpcController* controller, ResponseCallback callback);

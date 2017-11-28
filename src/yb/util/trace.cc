@@ -47,6 +47,8 @@
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/object_pool.h"
+#include "yb/util/size_literals.h"
 
 DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 
@@ -149,9 +151,8 @@ void InitGetCurrentMicrosFast() {
   initial_micros_offset -= mid;
 }
 
-int64_t GetCurrentMicrosFast() {
+int64_t GetCurrentMicrosFast(MonoTime now) {
   std::call_once(init_get_current_micros_fast_flag, InitGetCurrentMicrosFast);
-  auto now = MonoTime::FineNow();
   return initial_micros_offset + now.GetDeltaSinceMin().ToMicroseconds();
 }
 
@@ -183,59 +184,61 @@ struct TraceEntry {
 
   uint32_t message_len;
   TraceEntry* next;
-
-  // The actual trace message follows the entry header.
-  const char* message() const {
-    return EndOfObject(this);
-  }
-
-  char* message() {
-    return EndOfObject(this);
-  }
+  char message[0];
 
   void Dump(std::ostream* out) const {
     *out << const_basename(file_path) << ':' << line_number
          << "] ";
-    out->write(message(), message_len);
+    out->write(message, message_len);
   }
 };
 
-Trace::Trace()
-    : entries_head_(nullptr),
-      entries_tail_(nullptr) {
+Trace::Trace() {
+}
+
+ThreadSafeObjectPool<ThreadSafeArena>& ArenaPool() {
+  static ThreadSafeObjectPool<ThreadSafeArena> result([] {
+    return new ThreadSafeArena(8_KB, 128_KB);
+  });
+  return result;
 }
 
 Trace::~Trace() {
   auto* arena = arena_.load(std::memory_order_acquire);
   if (arena) {
-    delete arena;
+    arena->Reset();
+    ArenaPool().Release(arena);
   }
 }
 
 ThreadSafeArena* Trace::GetAndInitArena() {
   auto* arena = arena_.load(std::memory_order_acquire);
   if (arena == nullptr) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    arena = arena_.load(std::memory_order_relaxed);
-    if (arena == nullptr) {
-      arena = new ThreadSafeArena(1024, 128 * 1024);
-      arena_.store(arena, std::memory_order_release);
+    arena = ArenaPool().Take();
+    ThreadSafeArena* existing_arena = nullptr;
+    if (arena_.compare_exchange_strong(existing_arena, arena, std::memory_order_release)) {
+      return arena;
+    } else {
+      ArenaPool().Release(arena);
+      return existing_arena;
     }
   }
   return arena;
 }
 
-void Trace::SubstituteAndTrace(const char* file_path, int line_number, StringPiece format) {
+void Trace::SubstituteAndTrace(
+    const char* file_path, int line_number, MonoTime now, StringPiece format) {
   int msg_len = format.size();
   DCHECK_NE(msg_len, 0) << "Bad format specification";
-  TraceEntry* entry = NewEntry(msg_len, file_path, line_number);
+  TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
   if (entry == nullptr) return;
-  memcpy(entry->message(), format.data(), msg_len);
+  memcpy(entry->message, format.data(), msg_len);
   AddEntry(entry);
 }
 
 void Trace::SubstituteAndTrace(const char* file_path,
                                int line_number,
+                               MonoTime now,
                                StringPiece format,
                                const SubstituteArg& arg0, const SubstituteArg& arg1,
                                const SubstituteArg& arg2, const SubstituteArg& arg3,
@@ -248,23 +251,23 @@ void Trace::SubstituteAndTrace(const char* file_path,
 
   int msg_len = strings::internal::SubstitutedSize(format, args_array);
   DCHECK_NE(msg_len, 0) << "Bad format specification";
-  TraceEntry* entry = NewEntry(msg_len, file_path, line_number);
+  TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
   if (entry == nullptr) return;
-  SubstituteToBuffer(format, args_array, entry->message());
+  SubstituteToBuffer(format, args_array, entry->message);
   AddEntry(entry);
 }
 
-TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number) {
+TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number, MonoTime now) {
   auto* arena = GetAndInitArena();
-  int size = sizeof(TraceEntry) + msg_len;
-  uint8_t* dst = static_cast<uint8_t*>(arena->AllocateBytesAligned(size, alignof(TraceEntry)));
+  size_t size = offsetof(TraceEntry, message) + msg_len;
+  void* dst = arena->AllocateBytesAligned(size, alignof(TraceEntry));
   if (dst == nullptr) {
     LOG(ERROR) << "NewEntry(msg_len, " << file_path << ", " << line_number
         << ") received nullptr from AllocateBytes.\n So far:" << DumpToString(true);
     return nullptr;
   }
   TraceEntry* entry = new (dst) TraceEntry;
-  entry->timestamp = MonoTime::Now(MonoTime::FINE);
+  entry->timestamp = now;
   entry->message_len = msg_len;
   entry->file_path = file_path;
   entry->line_number = line_number;
@@ -280,7 +283,7 @@ void Trace::AddEntry(TraceEntry* entry) {
   } else {
     DCHECK(entries_head_ == nullptr);
     entries_head_ = entry;
-    trace_start_time_usec_ = GetCurrentMicrosFast();
+    trace_start_time_usec_ = GetCurrentMicrosFast(entry->timestamp);
   }
   entries_tail_ = entry;
 }
@@ -346,7 +349,7 @@ void PlainTrace::Trace(const char *file_path, int line_number, const char *messa
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (size_ < kMaxEntries) {
       if (size_ == 0) {
-        trace_start_time_usec_ = GetCurrentMicrosFast();
+        trace_start_time_usec_ = GetCurrentMicrosFast(timestamp);
       }
       entries_[size_] = {file_path, line_number, message, timestamp};
       ++size_;

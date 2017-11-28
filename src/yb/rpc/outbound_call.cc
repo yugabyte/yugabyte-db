@@ -34,7 +34,9 @@
 #include <string>
 #include <mutex>
 #include <vector>
+
 #include <boost/functional/hash.hpp>
+
 #include <gflags/gflags.h>
 
 #include "yb/gutil/strings/substitute.h"
@@ -47,6 +49,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
+#include "yb/util/concurrent_value.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/memory/memory.h"
@@ -99,7 +102,8 @@ std::atomic<int32_t> call_id_ = {0};
 
 int32_t NextCallId() {
   for (;;) {
-    auto result = ++call_id_;
+    auto result = call_id_.fetch_add(1, std::memory_order_acquire);
+    ++result;
     if (result > 0) {
       return result;
     }
@@ -108,6 +112,50 @@ int32_t NextCallId() {
   }
 }
 
+class RemoteMethodsCache {
+ public:
+  RemoteMethodPool* Find(const RemoteMethod& method) {
+    {
+      auto cache = concurrent_cache_.get();
+      auto it = cache->find(method);
+      if (it != cache->end()) {
+        return it->second;
+      }
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = cache_.find(method);
+    if (it == cache_.end()) {
+      auto result = std::make_shared<RemoteMethodPool>([method]() -> RemoteMethodPB* {
+        auto remote_method = new RemoteMethodPB();
+        method.ToPB(remote_method);
+        return remote_method;
+      });
+      cache_.emplace(method, result);
+      PtrCache new_ptr_cache;
+      for (const auto& p : cache_) {
+        new_ptr_cache.emplace(p.first, p.second.get());
+      }
+      concurrent_cache_.Set(std::move(new_ptr_cache));
+      return result.get();
+    }
+
+    return it->second.get();
+  }
+
+  static RemoteMethodsCache& Instance() {
+    static RemoteMethodsCache instance;
+    return instance;
+  }
+
+ private:
+  typedef std::unordered_map<
+      RemoteMethod, std::shared_ptr<RemoteMethodPool>, RemoteMethodHash> Cache;
+  typedef std::unordered_map<RemoteMethod, RemoteMethodPool*, RemoteMethodHash> PtrCache;
+  std::mutex mutex_;
+  Cache cache_;
+  ConcurrentValue<PtrCache> concurrent_cache_;
+};
+
 } // namespace
 
 ///
@@ -115,24 +163,25 @@ int32_t NextCallId() {
 ///
 
 OutboundCall::OutboundCall(
-    const ConnectionId& conn_id, const RemoteMethod& remote_method,
+    const ConnectionId& conn_id, const RemoteMethod* remote_method,
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
     : conn_id_(conn_id),
-      start_(MonoTime::Now(MonoTime::FINE)),
+      start_(MonoTime::FineNow()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
-      state_(READY),
+      call_id_(NextCallId()),
       remote_method_(remote_method),
       callback_(std::move(callback)),
       trace_(new Trace),
-      outbound_call_metrics_(outbound_call_metrics) {
+      outbound_call_metrics_(outbound_call_metrics),
+      remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)) {
   if (PREDICT_FALSE(VLOG_IS_ON(1))) {
-    TRACE_TO(trace_, "Outbound Call initiated to $0", conn_id.ToString());
+    TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated to $0", conn_id_.ToString());
   } else {
     // Avoid expensive conn_id.ToString() in production.
-    TRACE_TO(trace_, "Outbound Call initiated.");
+    TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
   }
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
@@ -140,10 +189,7 @@ OutboundCall::OutboundCall(
 
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
-           << (controller->timeout().Initialized() ? controller->timeout().ToString() : "none");
-  header_.set_call_id(NextCallId());
-  remote_method.ToPB(header_.mutable_remote_method());
-  start_ = MonoTime::Now(MonoTime::FINE);
+           << (controller_->timeout().Initialized() ? controller_->timeout().ToString() : "none");
 }
 
 OutboundCall::~OutboundCall() {
@@ -185,11 +231,6 @@ Status OutboundCall::SetRequestParam(const Message& message) {
   using serialization::SerializeHeader;
   using serialization::SerializeMessage;
 
-  const MonoDelta &timeout = controller_->timeout();
-  if (timeout.Initialized()) {
-    header_.set_timeout_millis(timeout.ToMilliseconds());
-  }
-
   size_t message_size = 0;
   auto status = SerializeMessage(message,
                                  /* param_buf */ nullptr,
@@ -201,7 +242,11 @@ Status OutboundCall::SetRequestParam(const Message& message) {
     return status;
   }
   size_t header_size = 0;
-  status = SerializeHeader(header_, message_size, &buffer_, message_size, &header_size);
+
+  RequestHeader header;
+  InitHeader(&header);
+  status = SerializeHeader(header, message_size, &buffer_, message_size, &header_size);
+  remote_method_pool_->Release(header.release_remote_method());
   if (!status.ok()) {
     return status;
   }
@@ -243,43 +288,36 @@ string OutboundCall::StateName(State state) {
   }
 }
 
-void OutboundCall::set_state(State new_state) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  set_state_unlocked(new_state);
-}
-
 OutboundCall::State OutboundCall::state() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return state_;
+  return state_.load(std::memory_order_acquire);
 }
 
-void OutboundCall::set_state_unlocked(State new_state) {
+void OutboundCall::set_state(State new_state) {
+  auto old_state = state_.exchange(new_state, std::memory_order_acquire);
   // Sanity check state transitions.
   DVLOG(3) << "OutboundCall " << this << " (" << ToString() << ") switching from " <<
-    StateName(state_) << " to " << StateName(new_state);
+    StateName(old_state) << " to " << StateName(new_state);
   switch (new_state) {
     case ON_OUTBOUND_QUEUE:
-      DCHECK_EQ(state_, READY);
+      DCHECK_EQ(old_state, READY);
       break;
     case SENT:
-      DCHECK_EQ(state_, ON_OUTBOUND_QUEUE);
+      DCHECK_EQ(old_state, ON_OUTBOUND_QUEUE);
       break;
     case TIMED_OUT:
-      DCHECK(state_ == SENT || state_ == ON_OUTBOUND_QUEUE) << "Real state: " << state_;
+      DCHECK(old_state == SENT || old_state == ON_OUTBOUND_QUEUE) << "Real state: " << old_state;
       break;
     case FINISHED_SUCCESS:
-      DCHECK_EQ(state_, SENT);
+      DCHECK_EQ(old_state, SENT);
       break;
     case FINISHED_ERROR:
-      DCHECK(state_ == SENT || state_ == ON_OUTBOUND_QUEUE || state_ == READY)
-          << "Real state: " << state_;
+      DCHECK(old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY)
+          << "Real state: " << old_state;
       break;
     default:
       // No sanity checks for others.
       break;
   }
-
-  state_ = new_state;
 }
 
 void OutboundCall::CallCallback() {
@@ -305,12 +343,12 @@ void OutboundCall::CallCallback() {
 }
 
 void OutboundCall::SetResponse(CallResponse&& resp) {
-  TRACE_TO(trace_, "Response received.");
+  auto now = MonoTime::FineNow();
+  TRACE_TO_WITH_TIME(trace_, now, "Response received.");
   // Track time taken to be responded.
 
   if (outbound_call_metrics_) {
-    outbound_call_metrics_->time_to_response->Increment(
-        MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
+    outbound_call_metrics_->time_to_response->Increment(now.GetDeltaSince(start_).ToMicroseconds());
   }
   call_response_ = std::move(resp);
   Slice r(call_response_.serialized_response());
@@ -341,24 +379,24 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
 }
 
 void OutboundCall::SetQueued() {
+  auto end_time = MonoTime::FineNow();
   // Track time taken to be queued.
   if (outbound_call_metrics_) {
-    auto end_time = MonoTime::Now(MonoTime::FINE);
     outbound_call_metrics_->queue_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
   set_state(ON_OUTBOUND_QUEUE);
-  TRACE_TO(trace_, "Queued.");
+  TRACE_TO_WITH_TIME(trace_, end_time, "Queued.");
 }
 
 void OutboundCall::SetSent() {
+  auto end_time = MonoTime::FineNow();
   buffer_ = RefCntBuffer();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
-    auto end_time = MonoTime::Now(MonoTime::FINE);
     outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
   set_state(SENT);
-  TRACE_TO(trace_, "Call Sent.");
+  TRACE_TO_WITH_TIME(trace_, end_time, "Call Sent.");
 }
 
 void OutboundCall::SetFinished() {
@@ -384,7 +422,7 @@ void OutboundCall::SetFailed(const Status &status,
     } else {
       CHECK(!err_pb);
     }
-    set_state_unlocked(FINISHED_ERROR);
+    set_state(FINISHED_ERROR);
   }
   CallCallback();
 }
@@ -394,24 +432,23 @@ void OutboundCall::SetTimedOut() {
   {
     auto status = STATUS_FORMAT(TimedOut,
                                 "$0 RPC to $1 timed out after $2",
-                                remote_method_.method_name(),
+                                remote_method_->method_name(),
                                 conn_id_.remote(),
                                 controller_->timeout());
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = std::move(status);
-    set_state_unlocked(TIMED_OUT);
+    set_state(TIMED_OUT);
   }
   CallCallback();
 }
 
 bool OutboundCall::IsTimedOut() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return state_ == TIMED_OUT;
+  return state_.load(std::memory_order_acquire) == TIMED_OUT;
 }
 
 bool OutboundCall::IsFinished() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  switch (state_) {
+  auto state = state_.load(std::memory_order_acquire);
+  switch (state) {
     case READY:
     case ON_OUTBOUND_QUEUE:
     case SENT:
@@ -420,10 +457,9 @@ bool OutboundCall::IsFinished() const {
     case FINISHED_ERROR:
     case FINISHED_SUCCESS:
       return true;
-    default:
-      LOG(FATAL) << "Unknown call state: " << state_;
-      return false;
   }
+  LOG(FATAL) << "Unknown call state: " << state;
+  return false;
 }
 
 Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {
@@ -431,14 +467,13 @@ Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {
 }
 
 string OutboundCall::ToString() const {
-  return Format("RPC call $0 -> $1 , state=$2.",
-                remote_method_.ToString(), conn_id_, StateName(state_));
+  return Format("RPC call $0 -> $1 , state=$2.", *remote_method_, conn_id_, StateName(state_));
 }
 
 bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
-  resp->mutable_header()->CopyFrom(header_);
+  InitHeader(resp->mutable_header());
   resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
@@ -446,24 +481,22 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   return true;
 }
 
+void OutboundCall::InitHeader(RequestHeader* header) {
+  header->set_call_id(call_id_);
+
+  const MonoDelta &timeout = controller_->timeout();
+  if (timeout.Initialized()) {
+    header->set_timeout_millis(timeout.ToMilliseconds());
+  }
+  header->set_allocated_remote_method(remote_method_pool_->Take());
+}
+
 ///
 /// ConnectionId
 ///
 
-ConnectionId::ConnectionId() {}
-
-ConnectionId::ConnectionId(const Endpoint& remote) {
-  remote_ = remote;
-}
-
-void ConnectionId::set_remote(const Endpoint& remote) {
-  remote_ = remote;
-}
-
-void ConnectionId::set_idx(uint8_t idx) { idx_ = idx; }
-
 string ConnectionId::ToString() const {
-  return Format("{remote=$0, idx=$1}", remote_, idx_);
+  return Format("{ remote: $0 idx: $1 }", remote_, idx_);
 }
 
 size_t ConnectionId::HashCode() const {

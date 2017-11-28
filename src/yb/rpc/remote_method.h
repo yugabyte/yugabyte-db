@@ -34,6 +34,8 @@
 
 #include <string>
 
+#include <boost/functional/hash.hpp>
+
 namespace yb {
 namespace rpc {
 
@@ -65,6 +67,19 @@ class RemoteMethod {
   std::string service_name_;
   std::string method_name_;
 };
+
+struct RemoteMethodHash {
+  size_t operator()(const RemoteMethod& remote_method) const {
+    size_t seed = 0;
+    boost::hash_combine(seed, remote_method.service_name());
+    boost::hash_combine(seed, remote_method.method_name());
+    return seed;
+  }
+};
+
+inline bool operator==(const RemoteMethod& lhs, const RemoteMethod& rhs) {
+  return lhs.service_name() == rhs.service_name() && lhs.method_name() == rhs.method_name();
+}
 
 } // namespace rpc
 } // namespace yb

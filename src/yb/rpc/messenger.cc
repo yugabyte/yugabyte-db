@@ -371,7 +371,6 @@ Messenger::~Messenger() {
   std::lock_guard<percpu_rwlock> guard(lock_);
   CHECK(closing_) << "Should have already shut down";
   STLDeleteElements(&reactors_);
-  delete rpc_services_cache_.load();
 }
 
 size_t Messenger::max_concurrent_requests() const {
@@ -466,35 +465,17 @@ int64_t Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& f
 void Messenger::UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard) {
   DCHECK_ONLY_NOTNULL(guard);
 
-  auto* new_cache = !rpc_services_.empty() ? new RpcServicesMap(rpc_services_) : nullptr;
-  auto* old = rpc_services_cache_.exchange(new_cache);
-
-  if (old) {
-    // Service cache update is quite rare situation otherwise rpc_service is quite frequent.
-    // Because of this we use "atomic lock" in rpc_service and busy wait in UpdateServicesCache.
-    // So we could process rpc_service quickly, and stuck in UpdateServicesCache for sometime.
-    while (rpc_services_lock_count_ != 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    delete old;
-  }
+  rpc_services_cache_.Set(rpc_services_);
 }
 
-const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_name) const {
-  BOOST_SCOPE_EXIT(&rpc_services_lock_count_) {
-    --rpc_services_lock_count_;
-  } BOOST_SCOPE_EXIT_END;
-  ++rpc_services_lock_count_;
-  scoped_refptr<RpcService> result;
-  auto* cache = atomic_load(&rpc_services_cache_);
-  if (cache != nullptr) {
-    auto it = cache->find(service_name);
-    if (it != cache->end()) {
-      // Since our cache is a cache of whole rpc_services_ map, we could check only it.
-      result = it->second;
-    }
+scoped_refptr<RpcService> Messenger::rpc_service(const string& service_name) const {
+  auto cache = rpc_services_cache_.get();
+  auto it = cache->find(service_name);
+  if (it != cache->end()) {
+    // Since our cache is a cache of whole rpc_services_ map, we could check only it.
+    return it->second;
   }
-  return result;
+  return scoped_refptr<RpcService>();
 }
 
 } // namespace rpc

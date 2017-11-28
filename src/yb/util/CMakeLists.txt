@@ -125,6 +125,7 @@ set(UTIL_SRCS
   cache.cc
   cache_metrics.cc
   coding.cc
+  concurrent_value.cc
   condition_variable.cc
   crc.cc
   crypt.cc

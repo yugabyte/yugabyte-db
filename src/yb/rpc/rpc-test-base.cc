@@ -95,6 +95,7 @@ const char* GenericCalculatorService::kFullServiceName = "yb.rpc.GenericCalculat
 const char* GenericCalculatorService::kAddMethodName = "Add";
 const char* GenericCalculatorService::kSleepMethodName = "Sleep";
 const char* GenericCalculatorService::kSendStringsMethodName = "SendStrings";
+const char* GenericCalculatorService::kDisconnectMethodName = "Disconnect";
 
 const char* GenericCalculatorService::kFirstString =
     "1111111111111111111111111111111111111111111111111111111111";
@@ -348,7 +349,7 @@ void RpcTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-CHECKED_STATUS RpcTestBase::DoTestSyncCall(const Proxy& p, const char* method) {
+CHECKED_STATUS RpcTestBase::DoTestSyncCall(const Proxy& p, const RemoteMethod* method) {
   AddRequestPB req;
   req.set_x(RandomUniformInt<uint32_t>());
   req.set_y(RandomUniformInt<uint32_t>());
@@ -376,10 +377,8 @@ void RpcTestBase::DoTestSidecar(const Proxy& p,
   SendStringsResponsePB resp;
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
-  auto status = p.SyncRequest(GenericCalculatorService::kSendStringsMethodName,
-      req,
-      &resp,
-      &controller);
+  auto status = p.SyncRequest(
+      GenericCalculatorService::SendStringsMethod(), req, &resp, &controller);
 
   ASSERT_EQ(expected_code, status.code()) << "Invalid status received: " << status.ToString();
 
@@ -407,7 +406,7 @@ void RpcTestBase::DoTestExpectTimeout(const Proxy& p, const MonoDelta& timeout) 
   c.set_timeout(timeout);
   Stopwatch sw;
   sw.start();
-  Status s = p.SyncRequest(GenericCalculatorService::kSleepMethodName, req, &resp, &c);
+  Status s = p.SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &c);
   ASSERT_FALSE(s.ok());
   sw.stop();
 
