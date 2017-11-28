@@ -64,19 +64,23 @@ export default class OnPremConfigJSON extends Component {
             <Highlight className='json'>{this.sampleJsonPretty}</Highlight>
           </Col>
           <Col lg={5} id="sample-panel-item">
-            <YBPanelItem name={configTitle} hideToolBox={true}>
-              <AceEditor
-              theme="github"
-              mode="json"
-              onChange={this.onChange}
-              name="dc-config-val"
-              value={this.props.configJsonVal}
-              style={editorStyle}
-              editorProps={{$blockScrolling: true}}
-              showPrintMargin={false}
-              wrapEnabled={true}
+            <YBPanelItem
+              header={configTitle}
+              body={
+                <AceEditor
+                  theme="github"
+                  mode="json"
+                  onChange={this.onChange}
+                  name="dc-config-val"
+                  value={this.props.configJsonVal}
+                  style={editorStyle}
+                  editorProps={{$blockScrolling: true}}
+                  showPrintMargin={false}
+                  wrapEnabled={true}
+                />
+              }
+              hideToolBox={true}
             />
-            </YBPanelItem>
           </Col>
         </Row>
         <Row>

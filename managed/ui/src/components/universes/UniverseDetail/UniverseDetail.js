@@ -13,7 +13,7 @@ import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
 import { UniverseResources } from '../UniverseResources';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import { YBTabsPanel } from '../../panels';
+import { YBTabsPanel, YBPanelItem } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
@@ -85,27 +85,31 @@ class UniverseDetail extends Component {
     });
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-        <div className="content-panel content-panel-margin-top">
-          <div className="universe-detail-flex-container">
-            <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
-          </div>
-          <Row>
-            <Col lg={5}>
-              <UniverseInfoPanel universeInfo={currentUniverse.data}
-                                customerId={localStorage.getItem("customer_id")} />
-            </Col>
-            <Col lg={7}>
-              <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                                  universeInfo={currentUniverse.data} />
-            </Col>
-          </Row>
-          <Row>
-            <Col lg={12}>
-              <RegionMap universe={currentUniverse.data} type={"Universe"} />
-              <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
-            </Col>
-          </Row>
-        </div>
+        <YBPanelItem
+          body={
+            <div>
+              <div className="universe-detail-flex-container">
+                <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
+              </div>
+              <Row>
+                <Col lg={5}>
+                  <UniverseInfoPanel universeInfo={currentUniverse.data}
+                                    customerId={localStorage.getItem("customer_id")} />
+                </Col>
+                <Col lg={7}>
+                  <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
+                                      universeInfo={currentUniverse.data} />
+                </Col>
+              </Row>
+              <Row>
+                <Col lg={12}>
+                  <RegionMap universe={currentUniverse.data} type={"Universe"} />
+                  <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
+                </Col>
+              </Row>
+            </div>
+          }
+        />
       </Tab>,
       <Tab eventKey={"tables"} title="Tables" key="tables-tab"mountOnEnter={true} unmountOnExit={true}>
         <ListTablesContainer/>
@@ -140,7 +144,7 @@ class UniverseDetail extends Component {
     );
 
     return (
-      <Grid id="page-wrapper" fluid={true} className="universe-details-new">
+      <Grid id="page-wrapper" fluid={true} className="universe-details">
         <Row>
           <Col lg={10} sm={8} xs={6}>
             {/* UNIVERSE NAME */}

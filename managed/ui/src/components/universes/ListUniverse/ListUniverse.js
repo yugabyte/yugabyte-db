@@ -23,7 +23,7 @@ export default class ListUniverse extends Component {
       <div id="page-wrapper">
         <Row className="header-row">
           <Col xs={6}>
-            <h2 className="page-topnav-title">Universes</h2>
+            <h2 className="content-title">Universes</h2>
             <HighlightedStatsPanelContainer />
           </Col>
           <Col xs={6} className="universe-table-header-action">
