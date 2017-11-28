@@ -54,24 +54,24 @@ using std::vector;
 using strings::Substitute;
 
 bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
-const auto& table_id = tablet->table()->id();
-// Set the placement information on a per-table basis, only once.
-if (!state_->placement_by_table_.count(table_id)) {
-  PlacementInfoPB pb;
-  {
-    auto l = tablet->table()->LockForRead();
-    // If we have a custom per-table placement policy, use that.
-    if (l->data().pb.replication_info().has_live_replicas()) {
-      pb.CopyFrom(l->data().pb.replication_info().live_replicas());
-    } else {
-      // Otherwise, default to cluster policy.
-      pb.CopyFrom(GetClusterPlacementInfo());
+  const auto& table_id = tablet->table()->id();
+  // Set the placement information on a per-table basis, only once.
+  if (!state_->placement_by_table_.count(table_id)) {
+    PlacementInfoPB pb;
+    {
+      auto l = tablet->table()->LockForRead();
+      // If we have a custom per-table placement policy, use that.
+      if (l->data().pb.replication_info().has_live_replicas()) {
+        pb.CopyFrom(l->data().pb.replication_info().live_replicas());
+      } else {
+        // Otherwise, default to cluster policy.
+        pb.CopyFrom(GetClusterPlacementInfo());
+      }
     }
+    state_->placement_by_table_[table_id] = std::move(pb);
   }
-  state_->placement_by_table_[table_id] = std::move(pb);
-}
 
-return state_->UpdateTablet(tablet);
+  return state_->UpdateTablet(tablet);
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetPlacementByTablet(const TabletId& tablet_id) const {
@@ -101,6 +101,16 @@ ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
   ResetState();
 
   catalog_manager_ = cm;
+}
+
+// Reduce remaining_tasks by pending_tasks value, after sanitizing inputs.
+void set_remaining(int pending_tasks, int* remaining_tasks) {
+  if (pending_tasks > *remaining_tasks) {
+    LOG(WARNING) << "Pending tasks > max allowed tasks: " << pending_tasks << " > "
+                 << *remaining_tasks;
+    *remaining_tasks = 0;
+  }
+  *remaining_tasks -= pending_tasks;
 }
 
 // Needed as we have a unique_ptr to the forward declared ClusterLoadState class.
@@ -136,23 +146,9 @@ void ClusterLoadBalancer::RunLoadBalancer() {
               << pending_stepdown_leader_tasks;
   }
 
-  if (pending_add_replica_tasks > remaining_adds) {
-    LOG(WARNING) << "pending adds > max allowed adds: " << pending_add_replica_tasks << " > "
-                 << remaining_adds;
-  }
-  remaining_adds -= pending_add_replica_tasks;
-
-  if (pending_remove_replica_tasks > remaining_removals) {
-    LOG(WARNING) << "pending removals > max allowed removals: " << pending_remove_replica_tasks
-                 << " > " << remaining_removals;
-  }
-  remaining_removals -= pending_remove_replica_tasks;
-
-  if (pending_stepdown_leader_tasks > remaining_leader_moves) {
-    LOG(WARNING) << "pending leader stepdowns > max allowed leader stepdowns: "
-                 << pending_stepdown_leader_tasks << " > " << remaining_leader_moves;
-  }
-  remaining_leader_moves -= pending_stepdown_leader_tasks;
+  set_remaining(pending_add_replica_tasks, &remaining_adds);
+  set_remaining(pending_remove_replica_tasks, &remaining_removals);
+  set_remaining(pending_stepdown_leader_tasks, &remaining_leader_moves);
 
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
@@ -651,21 +647,17 @@ bool ClusterLoadBalancer::HandleRemoveReplicas(
     const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
     auto comparator = ClusterLoadState::Comparator(state_.get());
     vector<TabletServerId> sorted_ts(tablet_servers.begin(), tablet_servers.end());
+    DCHECK_GT(sorted_ts.size(), 0);
     // Sort in reverse to first try to remove a replica from the highest loaded TS.
     sort(sorted_ts.rbegin(), sorted_ts.rend(), comparator);
-    // TODO(bogdan): Hack around not wanting to step down leaders.
     string remove_candidate = sorted_ts[0];
-    if (remove_candidate == tablet_meta.leader_uuid) {
-      if (sorted_ts.size() == 1) {
-        continue;
-      } else {
-        remove_candidate = sorted_ts[1];
-      }
+    if (remove_candidate == tablet_meta.leader_uuid && SkipLeaderAsVictim(tablet_id)) {
+      continue;
     }
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;
-    // Do not force remove leader for normal case.
-    RemoveReplica(tablet_id, remove_candidate, false);
+    // Do force leader stepdown, as we are either not the leader or we are allowed to step down.
+    RemoveReplica(tablet_id, remove_candidate, true);
     return true;
   }
   return false;

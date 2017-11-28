@@ -32,9 +32,9 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
 
-  void SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const string& ts_uuid,
+  void SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,
-                          const string& new_leader_uuid) override {
+                          const TabletServerId& new_leader_uuid) override {
     // Do nothing.
   }
 
@@ -59,9 +59,9 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   TableInfoMap table_map_;
   PlacementInfoPB cluster_placement_;
   BlacklistPB blacklist_;
-  vector<string> pending_add_replica_tasks_;
-  vector<string> pending_remove_replica_tasks_;
-  vector<string> pending_stepdown_leader_tasks_;
+  vector<TabletId> pending_add_replica_tasks_;
+  vector<TabletId> pending_remove_replica_tasks_;
+  vector<TabletId> pending_stepdown_leader_tasks_;
 };
 
 } // namespace master

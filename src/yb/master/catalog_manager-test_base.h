@@ -842,9 +842,9 @@ class TestLoadBalancerBase {
   TabletInfoMap& tablet_map_;
   TableInfoMap& table_map_;
   PlacementInfoPB& cluster_placement_;
-  vector<string>& pending_add_replica_tasks_;
-  vector<string>& pending_remove_replica_tasks_;
-  vector<string>& pending_stepdown_leader_tasks_;
+  vector<TabletId>& pending_add_replica_tasks_;
+  vector<TabletId>& pending_remove_replica_tasks_;
+  vector<TabletId>& pending_stepdown_leader_tasks_;
 };
 
 } // namespace master
