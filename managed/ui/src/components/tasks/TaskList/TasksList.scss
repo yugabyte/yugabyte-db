@@ -3,22 +3,3 @@
 @import "_style/colors.scss";
 
 
-.task-list-header + div {
-  .react-bs-table-search-form {
-    position: relative;
-    height: 0;
-    .form-control {
-      position: absolute;
-      top: -76px;
-      right: -20px;
-      border-radius: 4px;
-      height: 42px;
-      font-size: 14px;
-    }
-  }
-  .react-bs-table-tool-bar {
-    height: 0;
-    margin: 0;
-  }
-}
-

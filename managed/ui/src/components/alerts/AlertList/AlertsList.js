@@ -1,17 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {Row, Col} from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { YBPanelItem } from '../../panels';
 
 export default class AlertsList extends Component {
   render() {
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     return (
-      <div id="page-wrapper">
-        <Row className="header-row">
-          <Col lg={12}>
-            <h2 className="page-topnav-title">Alerts</h2>
+      <div>
+        <h2 className="content-title">Alerts</h2>
+        <YBPanelItem
+          body={
             <BootstrapTable data={[]} bodyStyle={tableBodyContainer} pagination={true}>
               <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
               <TableHeaderColumn dataField="createTime" columnClassName="no-border" className="no-border" dataAlign="left">
@@ -24,8 +24,8 @@ export default class AlertsList extends Component {
                 Message
               </TableHeaderColumn>
             </BootstrapTable>
-          </Col>
-        </Row>
+          }
+        />
       </div>
     );
   }

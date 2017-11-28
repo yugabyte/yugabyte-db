@@ -2,21 +2,26 @@
 
 import React, { Component } from 'react';
 
-import './YBPanelItem.css';
+import './YBPanelItem.scss';
 
 export default class YBPanelItem extends Component {
 
   render() {
-    const { name, children} = this.props;
-    const headerTextClass = "";
+    const { noBackground, className, children } = this.props;
+    const bodyClassName = "body " + (noBackground ? "body-transparent" : "");
     return (
-      <div>
-        <div className="x_panel">
-          <div className="x_title clearfix">
-            <h3 className={headerTextClass}>{name}</h3>
+      <div className={"content-panel "+className}>
+        {this.props.header &&
+          <div className="header">
+            {this.props.header}
           </div>
-          {children}
-        </div>
+        }
+        {this.props.body &&
+          <div className={bodyClassName}>
+            {this.props.body}
+            {children}
+          </div>
+        }
       </div>
     );
   }

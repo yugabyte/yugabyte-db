@@ -33,7 +33,7 @@ class DataCenterConfiguration extends Component {
     );
     return (
       <div>
-        <h2 className="page-topnav-title">Cloud Provider Configuration</h2>
+        <h2 className="content-title">Cloud Provider Configuration</h2>
         <YBTabsPanel defaultTab="aws" activeTab={this.props.params.tab} id="config-tab-panel" className="config-tabs" routePrefix="/config/">
           <Tab eventKey="aws" title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
             <ProviderConfigurationContainer providerType="aws" />
