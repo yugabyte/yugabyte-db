@@ -70,6 +70,16 @@ DEFINE_bool(durable_wal_write, false,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
 TAG_FLAG(durable_wal_write, stable);
 
+DEFINE_int32(interval_durable_wal_write_ms, 1000,
+            "Interval in ms after which the Log/WAL should explicitly call fsync(). "
+            "If 0 fsysnc() is not called.");
+TAG_FLAG(interval_durable_wal_write_ms, stable);
+
+DEFINE_int32(bytes_durable_wal_write_mb, 1,
+             "Amount of data in MB after which the Log/WAL should explicitly call fsync(). "
+             "If 0 fsysnc() is not called.");
+TAG_FLAG(bytes_durable_wal_write_mb, stable);
+
 DEFINE_bool(log_preallocate_segments, true,
             "Whether the WAL should preallocate the entire segment before writing to it");
 TAG_FLAG(log_preallocate_segments, advanced);
@@ -114,6 +124,10 @@ LogOptions::LogOptions()
     : segment_size_bytes(FLAGS_log_segment_size_bytes == 0 ? FLAGS_log_segment_size_mb * 1_MB
                                                            : FLAGS_log_segment_size_bytes),
       durable_wal_write(FLAGS_durable_wal_write),
+      interval_durable_wal_write(FLAGS_interval_durable_wal_write_ms > 0 ?
+                                     MonoDelta::FromMilliseconds(
+                                         FLAGS_interval_durable_wal_write_ms) : MonoDelta()),
+      bytes_durable_wal_write_mb(FLAGS_bytes_durable_wal_write_mb),
       preallocate_segments(FLAGS_log_preallocate_segments),
       async_preallocate_segments(FLAGS_log_async_preallocate_segments) {
 }

@@ -214,8 +214,40 @@ TEST_F(LogTest, TestFsync) {
   opid.set_index(1);
 
   ASSERT_OK(AppendNoOp(&opid));
-
   ASSERT_OK(log_->Close());
+}
+
+// Tests interval for durable wal write
+TEST_F(LogTest, TestFsyncInterval) {
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(1);
+  BuildLog();
+
+  OpId opid;
+  opid.set_term(0);
+  opid.set_index(1);
+
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(2));
+  ASSERT_OK(AppendNoOp(&opid));
+  ASSERT_OK(log_->Close());
+}
+
+// Tests data size for durable wal write
+TEST_F(LogTest, TestFsyncDataSize) {
+  options_.bytes_durable_wal_write_mb = 1;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(10000);
+  BuildLog();
+
+  OpId opid;
+  opid.set_term(0);
+  opid.set_index(1);
+
+  int size;
+  ASSERT_OK(AppendNoOps(&opid, 100 * 1024, &size));
+  SleepFor(MonoDelta::FromMilliseconds(1));
+  ASSERT_OK(AppendNoOp(&opid));
+  ASSERT_OK(log_->Close());
+  LOG(INFO)<< "Wrote " << size << " batches to log";
 }
 
 // Regression test for part of KUDU-735:

@@ -48,6 +48,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
+#include "yb/util/monotime.h"
 
 // Used by other classes, now part of the API.
 DECLARE_bool(durable_wal_write);
@@ -82,6 +83,12 @@ struct LogOptions {
 
   // Whether to call fsync on every call to Append().
   bool durable_wal_write;
+
+  // If non-zero, call fsync on a call to Append() every interval of time.
+  MonoDelta interval_durable_wal_write;
+
+  // If non-zero, call fsync on a call to Append() if more than given amount of data to sync.
+  int32_t bytes_durable_wal_write_mb;
 
   // Whether to fallocate segments before writing to them.
   bool preallocate_segments;

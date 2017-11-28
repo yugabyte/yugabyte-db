@@ -88,6 +88,10 @@ void ConditionVariable::Wait() const {
 #endif
 }
 
+bool ConditionVariable::WaitUntil(const MonoTime& wait_timeout_deadline) const {
+  return TimedWait(wait_timeout_deadline - MonoTime::FineNow());
+}
+
 bool ConditionVariable::TimedWait(const MonoDelta& max_time) const {
   ThreadRestrictions::AssertWaitAllowed();
 

@@ -59,10 +59,13 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+
+using yb::operator"" _MB;
 
 // Log retention configuration.
 // -----------------------------
@@ -86,7 +89,7 @@ TAG_FLAG(log_min_seconds_to_retain, advanced);
 
 // Group commit configuration.
 // -----------------------------
-DEFINE_int32(group_commit_queue_size_bytes, 4 * 1024 * 1024,
+DEFINE_int32(group_commit_queue_size_bytes, 4_MB,
              "Maximum size of the group commit queue in bytes");
 TAG_FLAG(group_commit_queue_size_bytes, advanced);
 
@@ -176,12 +179,20 @@ void Log::AppendThread::RunThread() {
     std::vector<LogEntryBatch*> entry_batches;
     ElementDeleter d(&entry_batches);
 
+    MonoTime wait_timeout_deadline = MonoTime::kMax;
+    if ((log_->interval_durable_wal_write_)
+        && log_->periodic_sync_needed_.load()) {
+      wait_timeout_deadline = log_->periodic_sync_earliest_unsync_entry_time_
+          + log_->interval_durable_wal_write_;
+    }
+
     // We shut down the entry_queue when it's time to shut down the append
     // thread, which causes this call to return false, while still populating
     // the entry_batches vector with the final set of log entry batches that
     // were enqueued. We finish processing this last bunch of log entry batches
     // before exiting the main RunThread() loop.
-    if (PREDICT_FALSE(!log_->entry_queue()->BlockingDrainTo(&entry_batches))) {
+    if (PREDICT_FALSE(!log_->entry_queue()->BlockingDrainTo(&entry_batches,
+                                                            wait_timeout_deadline))) {
       shutting_down = true;
     }
 
@@ -207,6 +218,12 @@ void Log::AppendThread::RunThread() {
         if (!entry_batch->callback().is_null()) {
           entry_batch->callback().Run(s);
         }
+      } else if (!log_->sync_disabled_) {
+        if (!log_->periodic_sync_needed_.load()) {
+          log_->periodic_sync_needed_.store(true);
+          log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::FineNow();
+        }
+        log_->periodic_sync_unsynced_bytes_ += entry_batch->total_size_bytes();
       }
     }
 
@@ -303,6 +320,8 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       entry_batch_queue_(FLAGS_group_commit_queue_size_bytes),
       append_thread_(new AppendThread(this)),
       durable_wal_write_(options_.durable_wal_write),
+      interval_durable_wal_write_(options_.interval_durable_wal_write),
+      bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
       sync_disabled_(false),
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity) {
@@ -339,6 +358,12 @@ Status Log::Init() {
 
   if (durable_wal_write_) {
     YB_LOG_FIRST_N(INFO, 1) << "durable_wal_write is turned on.";
+  } else if (interval_durable_wal_write_) {
+    YB_LOG_FIRST_N(INFO, 1) << "interval_durable_wal_write_ms is turned on to sync every "
+                            << interval_durable_wal_write_.ToMilliseconds() << " ms.";
+  } else if (bytes_durable_wal_write_mb_ > 0) {
+    YB_LOG_FIRST_N(INFO, 1) << "bytes_durable_wal_write_mb is turned on to sync every "
+     << bytes_durable_wal_write_mb_ << " MB of data.";
   } else {
     YB_LOG_FIRST_N(INFO, 1) << "durable_wal_write is turned off. Buffered IO will be used for WAL.";
   }
@@ -607,24 +632,43 @@ Status Log::Sync() {
   TRACE_EVENT0("log", "Sync");
   SCOPED_LATENCY_METRIC(metrics_, sync_latency);
 
-  if (PREDICT_FALSE(FLAGS_log_inject_latency && !sync_disabled_)) {
-    Random r(GetCurrentTimeMicros());
-    int sleep_ms = r.Normal(FLAGS_log_inject_latency_ms_mean,
-                            FLAGS_log_inject_latency_ms_stddev);
-    if (sleep_ms > 0) {
-      LOG(INFO) << "T " << tablet_id_ << ": Injecting "
-                << sleep_ms << "ms of latency in Log::Sync()";
-      SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
+  if (!sync_disabled_ ) {
+    if (PREDICT_FALSE(FLAGS_log_inject_latency)) {
+      Random r(GetCurrentTimeMicros());
+      int sleep_ms = r.Normal(FLAGS_log_inject_latency_ms_mean,
+                              FLAGS_log_inject_latency_ms_stddev);
+      if (sleep_ms > 0) {
+        LOG(INFO) << "T " << tablet_id_ << ": Injecting "
+                  << sleep_ms << "ms of latency in Log::Sync()";
+        SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
+      }
     }
-  }
 
-  if (durable_wal_write_ && !sync_disabled_) {
-    LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
-      RETURN_NOT_OK(active_segment_->Sync());
+    bool timed_or_data_limit_sync = false;
+    if (!durable_wal_write_ && periodic_sync_needed_.load()) {
+      if (interval_durable_wal_write_) {
+        if (MonoTime::FineNow() > periodic_sync_earliest_unsync_entry_time_
+            + interval_durable_wal_write_) {
+          timed_or_data_limit_sync = true;
+        }
+      }
+      if (bytes_durable_wal_write_mb_ > 0) {
+        if (periodic_sync_unsynced_bytes_ >= bytes_durable_wal_write_mb_ * 1_MB) {
+          timed_or_data_limit_sync = true;
+        }
+      }
+    }
 
-      if (log_hooks_) {
-        RETURN_NOT_OK_PREPEND(log_hooks_->PostSyncIfFsyncEnabled(),
-                              "PostSyncIfFsyncEnabled hook failed");
+    if (durable_wal_write_ || timed_or_data_limit_sync) {
+      periodic_sync_needed_.store(false);
+      periodic_sync_unsynced_bytes_ = 0;
+      LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
+            RETURN_NOT_OK(active_segment_->Sync());
+
+        if (log_hooks_) {
+          RETURN_NOT_OK_PREPEND(log_hooks_->PostSyncIfFsyncEnabled(),
+                                "PostSyncIfFsyncEnabled hook failed");
+        }
       }
     }
   }

@@ -77,8 +77,8 @@
 // For a discussion of the many very subtle implementation details, see the FAQ
 // at the end of condition_variable_win.cc.
 
-#ifndef BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_
-#define BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_
+#ifndef YB_UTIL_CONDITION_VARIABLE_H
+#define YB_UTIL_CONDITION_VARIABLE_H
 
 #include <pthread.h>
 
@@ -106,6 +106,9 @@ class ConditionVariable {
   // Returns true if we were Signal()'ed, or false if 'max_time' elapsed.
   bool TimedWait(const MonoDelta& max_time) const;
 
+  // Returns true if we were Signal()'ed, or false if wait_timeout_deadline is reached.
+  bool WaitUntil(const MonoTime& wait_timeout_deadline) const;
+
   // Broadcast() revives all waiting threads.
   void Broadcast();
   // Signal() revives one waiting thread.
@@ -125,4 +128,4 @@ class ConditionVariable {
 
 }  // namespace yb
 
-#endif  // BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_
+#endif  // YB_UTIL_CONDITION_VARIABLE_H

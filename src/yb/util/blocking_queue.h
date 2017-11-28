@@ -118,6 +118,10 @@ class BlockingQueue {
   // Get all elements from the queue and append them to a
   // vector. Returns false if shutdown prior to getting the elements.
   bool BlockingDrainTo(std::vector<T>* out) {
+    return BlockingDrainTo(out, MonoTime::kMax);
+  }
+
+  bool BlockingDrainTo(std::vector<T>* out, const MonoTime& wait_timeout_deadline) {
     MutexLock l(lock_);
     while (true) {
       if (!list_.empty()) {
@@ -133,7 +137,9 @@ class BlockingQueue {
       if (shutdown_) {
         return false;
       }
-      not_empty_.Wait();
+      if (!not_empty_.WaitUntil(wait_timeout_deadline)) {
+        return true;
+      }
     }
   }
 

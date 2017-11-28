@@ -33,6 +33,7 @@
 #ifndef YB_CONSENSUS_LOG_H_
 #define YB_CONSENSUS_LOG_H_
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
@@ -410,7 +411,22 @@ class Log : public RefCountedThreadSafe<Log> {
   // If true, sync on all appends.
   bool durable_wal_write_;
 
-  // If true, ignore the 'durable_wal_write_' flag above.
+  // If non-zero, sync every interval of time.
+  MonoDelta interval_durable_wal_write_;
+
+  // If non-zero, sync if more than given amount of data to sync.
+  int32_t bytes_durable_wal_write_mb_;
+
+  // Keeps track of oldest entry which needs to be synced.
+  MonoTime periodic_sync_earliest_unsync_entry_time_ = MonoTime::kMin;
+
+  // For periodic sync, indicates if there are entries to be sync'ed.
+  std::atomic<bool> periodic_sync_needed_ = {false};
+
+  // For periodic sync, indicates number of bytes which need to be sync'ed.
+  size_t periodic_sync_unsynced_bytes_ = 0;
+
+  // If true, ignore the 'durable_wal_write_' flags above.
   // This is used to disable fsync during bootstrap.
   bool sync_disabled_;
 
