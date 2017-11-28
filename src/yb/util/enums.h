@@ -77,7 +77,7 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
 #define YB_ENUM_MAX_OP(s, data, x) \
     (YB_ENUM_MAX_ENUM_NAME data, \
      YB_ENUM_MAX_PREFIX data, \
-     constexpr_max(YB_ENUM_MAX_VALUE data, YB_ENUM_MAX_ENUM_NAME data::YB_ENUM_ITEM_NAME(x)))
+     yb::constexpr_max(YB_ENUM_MAX_VALUE data, YB_ENUM_MAX_ENUM_NAME data::YB_ENUM_ITEM_NAME(x)))
 
 #define YB_DEFINE_ENUM_IMPL(enum_name, prefix, list) \
   enum class enum_name { \

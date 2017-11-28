@@ -31,6 +31,11 @@ constexpr T1 constexpr_max(const T1& t1, const T2& t2, const Args&&... args) {
   return constexpr_max(t1, constexpr_max(t2, args...));
 }
 
+template <class T>
+constexpr T ceil_div(const T& n, const T& div) {
+  return (n + div - 1) / div;
+}
+
 }  // namespace yb
 
 #endif // YB_UTIL_MATH_UTIL_H_

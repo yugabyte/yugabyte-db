@@ -25,12 +25,13 @@
 
 #include "yb/rocksdb/filter_policy.h"
 
-#include "yb/util/slice.h"
 #include "yb/rocksdb/table/block_based_filter_block.h"
 #include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/coding.h"
+#include "yb/util/slice.h"
+#include "yb/util/math_util.h"
 
 namespace rocksdb {
 
@@ -42,10 +43,11 @@ typedef FilterPolicy::FilterType FilterType;
 namespace {
 static const double LOG2 = log(2);
 
-// Assuming single threaded access to this function.
-inline void AddHash(uint32_t h, char* data, uint32_t num_lines,
-    uint32_t total_bits, size_t num_probes) {
-  assert(num_lines > 0 && total_bits > 0);
+inline void AddHash(uint32_t h, char* data, uint32_t num_lines, uint32_t total_bits,
+    size_t num_probes) {
+  DCHECK_GT(num_lines, 0);
+  DCHECK_GT(total_bits, 0);
+  DCHECK_EQ(num_lines % 2, 1);
 
   const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
   uint32_t b = (h % num_lines) * (CACHE_LINE_SIZE * 8);
@@ -136,8 +138,7 @@ class FullFilterBitsBuilder : public FilterBitsBuilder {
 };
 
 uint32_t FullFilterBitsBuilder::GetTotalBitsForLocality(uint32_t total_bits) {
-  uint32_t num_lines =
-      (total_bits + CACHE_LINE_SIZE * 8 - 1) / (CACHE_LINE_SIZE * 8);
+  uint32_t num_lines = yb::ceil_div(total_bits, CACHE_LINE_SIZE * 8);
 
   // Make num_lines an odd number to make sure more bits are involved
   // when determining which block.
@@ -314,7 +315,7 @@ class BloomFilterPolicy : public FilterPolicy {
 
     // For small n, we can see a very high false positive rate.  Fix it
     // by enforcing a minimum bloom filter length.
-    if (bits < 64) bits = 64;
+    bits = std::max<size_t>(bits, 128);
 
     size_t bytes = (bits + 7) / 8;
     bits = bytes * 8;
@@ -416,20 +417,30 @@ class FixedSizeFilterBitsBuilder : public FilterBitsBuilder {
   void operator=(const FixedSizeFilterBitsBuilder&) = delete;
 
   FixedSizeFilterBitsBuilder(uint32_t total_bits, double error_rate)
-      : total_bits_(total_bits),
-      error_rate_(error_rate) {
-    assert(error_rate > 0);
-    assert(total_bits > 0);
-    assert(total_bits % (CACHE_LINE_SIZE * 8) == 0);
+      : error_rate_(error_rate) {
+    DCHECK_GT(error_rate, 0);
+    DCHECK_GT(total_bits, 0);
+    num_lines_ = yb::ceil_div(total_bits, CACHE_LINE_SIZE * 8);
+    // AddHash implementation gives much higher false positive rate when num_lines_ is even, so
+    // make sure it is odd.
+    if (num_lines_ % 2 == 0) {
+      // For small filter blocks - add one line, so we can have enough keys in block.
+      // For bigger filter block - remove one line, so filter block will fit desired size.
+      if (num_lines_ * CACHE_LINE_SIZE < 4096) {
+        num_lines_++;
+      } else {
+        num_lines_--;
+      }
+    }
+    total_bits_ = num_lines_ * CACHE_LINE_SIZE * 8;
 
     const double minus_log_error_rate = -log(error_rate_);
-    assert(minus_log_error_rate > 0);
-    num_lines_ = total_bits_ / (CACHE_LINE_SIZE * 8);
+    DCHECK_GT(minus_log_error_rate, 0);
     num_probes_ = static_cast<size_t> (minus_log_error_rate / LOG2);
     num_probes_ = std::max<size_t>(num_probes_, 1);
     num_probes_ = std::min<size_t>(num_probes_, 255);
     const double max_keys = total_bits_ * LOG2 * LOG2 / minus_log_error_rate;
-    assert(max_keys < std::numeric_limits<size_t>::max());
+    DCHECK_LT(max_keys, std::numeric_limits<size_t>::max());
     max_keys_ = static_cast<size_t> (max_keys);
     keys_added_ = 0;
 
@@ -485,11 +496,9 @@ class FixedSizeFilterPolicy : public FilterPolicy {
       : total_bits_(total_bits),
         error_rate_(error_rate),
         logger_(logger) {
-    assert(error_rate > 0);
-    num_probes_ = static_cast<size_t> (-log(error_rate) / LOG2);
-    num_lines_ = total_bits_ / 8 - FixedSizeFilterBitsBuilder::kMetaDataSize;
-    assert(num_probes_ > 0);
-    assert(num_lines_ > 0);
+    DCHECK_GT(error_rate, 0);
+    // Make sure num_probes > 0.
+    DCHECK_GT(static_cast<int64_t> (-log(error_rate) / LOG2), 0);
   }
 
   virtual FilterType GetFilterType() const override { return FilterType::kFixedSizeFilter; }
@@ -522,8 +531,6 @@ class FixedSizeFilterPolicy : public FilterPolicy {
 
   uint32_t total_bits_;
   double error_rate_;
-  size_t num_probes_;
-  uint32_t num_lines_;
   Logger* logger_;
 };
 

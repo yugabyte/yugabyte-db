@@ -29,14 +29,15 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
 #include <vector>
+#include <gflags/gflags.h>
 
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/arena.h"
+#include "yb/util/enums.h"
 
 using GFLAGS::ParseCommandLineFlags;
 
@@ -46,12 +47,12 @@ namespace rocksdb {
 
 static const int kVerbose = 1;
 
-static Slice Key(int i, char* buffer) {
+static Slice Key(size_t i, char* buffer) {
   memcpy(buffer, &i, sizeof(i));
   return Slice(buffer, sizeof(i));
 }
 
-static int NextLength(int length) {
+static size_t NextLength(size_t length) {
   if (length < 10) {
     length += 1;
   } else if (length < 100) {
@@ -122,9 +123,9 @@ class BloomTest : public testing::Test {
   }
 
   double FalsePositiveRate() {
-    char buffer[sizeof(int)];
-    int result = 0;
-    for (int i = 0; i < 10000; i++) {
+    char buffer[sizeof(size_t)];
+    size_t result = 0;
+    for (size_t i = 0; i < 10000; i++) {
       if (Matches(Key(i + 1000000000, buffer))) {
         result++;
       }
@@ -134,8 +135,8 @@ class BloomTest : public testing::Test {
 };
 
 TEST_F(BloomTest, EmptyFilter) {
-  ASSERT_TRUE(! Matches("hello"));
-  ASSERT_TRUE(! Matches("world"));
+  ASSERT_TRUE(!Matches("hello"));
+  ASSERT_TRUE(!Matches("world"));
 }
 
 TEST_F(BloomTest, Small) {
@@ -143,20 +144,20 @@ TEST_F(BloomTest, Small) {
   Add("world");
   ASSERT_TRUE(Matches("hello"));
   ASSERT_TRUE(Matches("world"));
-  ASSERT_TRUE(! Matches("x"));
-  ASSERT_TRUE(! Matches("foo"));
+  ASSERT_TRUE(!Matches("x"));
+  ASSERT_TRUE(!Matches("foo"));
 }
 
 TEST_F(BloomTest, VaryingLengths) {
-  char buffer[sizeof(int)];
+  char buffer[sizeof(size_t)];
 
   // Count number of filters that significantly exceed the false positive rate
-  int mediocre_filters = 0;
-  int good_filters = 0;
+  size_t mediocre_filters = 0;
+  size_t good_filters = 0;
 
-  for (int length = 1; length <= 10000; length = NextLength(length)) {
+  for (size_t length = 1; length <= 10000; length = NextLength(length)) {
     Reset();
-    for (int i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; i++) {
       Add(Key(i, buffer));
     }
     Build();
@@ -164,7 +165,7 @@ TEST_F(BloomTest, VaryingLengths) {
     ASSERT_LE(FilterSize(), (size_t)((length * 10 / 8) + 40)) << length;
 
     // All added keys must match
-    for (int i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; i++) {
       ASSERT_TRUE(Matches(Key(i, buffer)))
           << "Length " << length << "; key " << i;
     }
@@ -172,43 +173,101 @@ TEST_F(BloomTest, VaryingLengths) {
     // Check false positive rate
     double rate = FalsePositiveRate();
     if (kVerbose >= 1) {
-      fprintf(stderr, "False positives: %5.2f%% @ length = %6d ; bytes = %6d\n",
-              rate*100.0, length, static_cast<int>(FilterSize()));
+      LOG(INFO) << StringPrintf(
+          "False positives: %5.2f%% @ length = %6zu ; bytes = %6zu\n", rate * 100.0, length,
+          FilterSize());
     }
     ASSERT_LE(rate, 0.02);   // Must not be over 2%
-    if (rate > 0.0125) mediocre_filters++;  // Allowed, but not too often
-    else good_filters++;
+    if (rate > 0.0125)
+      mediocre_filters++;  // Allowed, but not too often
+    else
+      good_filters++;
   }
   if (kVerbose >= 1) {
-    fprintf(stderr, "Filters: %d good, %d mediocre\n",
-            good_filters, mediocre_filters);
+    LOG(INFO) << StringPrintf("Filters: %zu good, %zu mediocre\n", good_filters, mediocre_filters);
   }
   ASSERT_LE(mediocre_filters, good_filters/5);
 }
 
 // Different bits-per-byte
 
-class FullBloomTest : public testing::Test {
+class BloomTestContext {
+ public:
+  virtual ~BloomTestContext() {}
+
+  virtual const FilterPolicy& filter_policy() const = 0;
+  virtual size_t max_keys() const = 0;
+  virtual void CheckFilterSize(size_t filter_size, size_t num_keys) const = 0;
+};
+
+class FullFilterBloomTestContext : public BloomTestContext {
+ public:
+  const FilterPolicy& filter_policy() const override { return *filter_policy_.get(); }
+
+  size_t max_keys() const override { return 10000; }
+
+  void CheckFilterSize(size_t filter_size, size_t num_keys) const override {
+    ASSERT_LE(filter_size, (size_t)((num_keys * 10 / 8) + 128 + 5)) << num_keys;
+  }
+
  private:
-  const FilterPolicy* policy_;
+  std::unique_ptr<const FilterPolicy> filter_policy_{
+      NewBloomFilterPolicy(FLAGS_bits_per_key, false)};
+};
+
+class FixedSizeFilterBloomTestContext : public BloomTestContext {
+ public:
+  const FilterPolicy& filter_policy() const override { return *filter_policy_.get(); }
+
+  // For fixed-size filter we limit maximum number of keys depending on total bits in test itself
+  // by checking ShouldFlush().
+  size_t max_keys() const override { return std::numeric_limits<size_t>::max(); }
+
+  void CheckFilterSize(size_t filter_size, size_t num_keys) const override {
+    ASSERT_LE(filter_size, FilterPolicy::kDefaultFixedSizeFilterBits / 8 + 64 + 5) << num_keys;
+  }
+
+ private:
+  std::unique_ptr<const FilterPolicy> filter_policy_{
+      NewFixedSizeFilterPolicy(
+          FilterPolicy::kDefaultFixedSizeFilterBits, FilterPolicy::kDefaultFixedSizeFilterErrorRate,
+          nullptr)};
+};
+
+YB_DEFINE_ENUM(BuilderReaderBloomTestType, (kFullFilter)(kFixedSizeFilter));
+
+namespace {
+
+std::unique_ptr<const BloomTestContext> CreateContext(BuilderReaderBloomTestType type) {
+  switch (type) {
+    case BuilderReaderBloomTestType::kFullFilter:
+      return std::make_unique<FullFilterBloomTestContext>();
+    case BuilderReaderBloomTestType::kFixedSizeFilter:
+      return std::make_unique<FixedSizeFilterBloomTestContext>();
+  }
+  FATAL_INVALID_ENUM_VALUE(BuilderReaderBloomTestType, type);
+}
+
+} // namespace
+
+class BuilderReaderBloomTest : public testing::Test,
+    public ::testing::WithParamInterface<BuilderReaderBloomTestType> {
+ protected:
+  std::unique_ptr<const BloomTestContext> context_;
   std::unique_ptr<FilterBitsBuilder> bits_builder_;
   std::unique_ptr<FilterBitsReader> bits_reader_;
   std::unique_ptr<const char[]> buf_;
   size_t filter_size_;
 
  public:
-  FullBloomTest() :
-      policy_(NewBloomFilterPolicy(FLAGS_bits_per_key, false)),
+  BuilderReaderBloomTest() :
+      context_(CreateContext(GetParam())),
       filter_size_(0) {
     Reset();
   }
 
-  ~FullBloomTest() {
-    delete policy_;
-  }
-
   void Reset() {
-    bits_builder_.reset(policy_->GetFilterBitsBuilder());
+    bits_builder_.reset(context_->filter_policy().GetFilterBitsBuilder());
     bits_reader_.reset(nullptr);
     buf_.reset(nullptr);
     filter_size_ = 0;
@@ -218,9 +277,13 @@ class FullBloomTest : public testing::Test {
     bits_builder_->AddKey(s);
   }
 
+  bool ShouldFlush() {
+    return bits_builder_->IsFull();
+  }
+
   void Build() {
     Slice filter = bits_builder_->Finish(&buf_);
-    bits_reader_.reset(policy_->GetFilterBitsReader(filter));
+    bits_reader_.reset(context_->filter_policy().GetFilterBitsReader(filter));
     filter_size_ = filter.size();
   }
 
@@ -236,9 +299,9 @@ class FullBloomTest : public testing::Test {
   }
 
   double FalsePositiveRate() {
-    char buffer[sizeof(int)];
-    int result = 0;
-    for (int i = 0; i < 10000; i++) {
+    char buffer[sizeof(size_t)];
+    size_t result = 0;
+    for (size_t i = 0; i < 10000; i++) {
       if (Matches(Key(i + 1000000000, buffer))) {
         result++;
       }
@@ -247,13 +310,13 @@ class FullBloomTest : public testing::Test {
   }
 };
 
-TEST_F(FullBloomTest, FullEmptyFilter) {
+TEST_P(BuilderReaderBloomTest, FullEmptyFilter) {
   // Empty filter is not match, at this level
   ASSERT_TRUE(!Matches("hello"));
   ASSERT_TRUE(!Matches("world"));
 }
 
-TEST_F(FullBloomTest, FullSmall) {
+TEST_P(BuilderReaderBloomTest, FullSmall) {
   Add("hello");
   Add("world");
   ASSERT_TRUE(Matches("hello"));
@@ -262,33 +325,38 @@ TEST_F(FullBloomTest, FullSmall) {
   ASSERT_TRUE(!Matches("foo"));
 }
 
-TEST_F(FullBloomTest, FullVaryingLengths) {
-  char buffer[sizeof(int)];
+TEST_P(BuilderReaderBloomTest, FullVaryingLengths) {
+  char buffer[sizeof(size_t)];
 
   // Count number of filters that significantly exceed the false positive rate
-  int mediocre_filters = 0;
-  int good_filters = 0;
+  size_t mediocre_filters = 0;
+  size_t good_filters = 0;
 
-  for (int length = 1; length <= 10000; length = NextLength(length)) {
+  for (size_t length = 1; !ShouldFlush() && length < context_->max_keys();
+      length = NextLength(length)) {
     Reset();
-    for (int i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; i++) {
       Add(Key(i, buffer));
+      if (ShouldFlush()) {
+        length = i + 1;
+        break;
+      }
     }
     Build();
 
-    ASSERT_LE(FilterSize(), (size_t)((length * 10 / 8) + 128 + 5)) << length;
+    context_->CheckFilterSize(FilterSize(), length);
 
     // All added keys must match
-    for (int i = 0; i < length; i++) {
-      ASSERT_TRUE(Matches(Key(i, buffer)))
-          << "Length " << length << "; key " << i;
+    for (size_t i = 0; i < length; i++) {
+      ASSERT_TRUE(Matches(Key(i, buffer))) << "Length " << length << "; key " << i;
     }
 
     // Check false positive rate
     double rate = FalsePositiveRate();
     if (kVerbose >= 1) {
-      fprintf(stderr, "False positives: %5.2f%% @ length = %6d ; bytes = %6d\n",
-              rate*100.0, length, static_cast<int>(FilterSize()));
+      LOG(INFO) << StringPrintf(
+          "False positives: %5.2f%% @ length = %6zu ; bytes = %6zu\n", rate * 100.0, length,
+          FilterSize());
     }
     ASSERT_LE(rate, 0.02);   // Must not be over 2%
     if (rate > 0.0125)
@@ -297,11 +365,14 @@ TEST_F(FullBloomTest, FullVaryingLengths) {
       good_filters++;
   }
   if (kVerbose >= 1) {
-    fprintf(stderr, "Filters: %d good, %d mediocre\n",
-            good_filters, mediocre_filters);
+    LOG(INFO) << StringPrintf("Filters: %zu good, %zu mediocre\n", good_filters, mediocre_filters);
   }
   ASSERT_LE(mediocre_filters, good_filters/5);
 }
+
+INSTANTIATE_TEST_CASE_P(, BuilderReaderBloomTest, ::testing::Values(
+    BuilderReaderBloomTestType::kFullFilter,
+    BuilderReaderBloomTestType::kFixedSizeFilter));
 
 }  // namespace rocksdb
 
