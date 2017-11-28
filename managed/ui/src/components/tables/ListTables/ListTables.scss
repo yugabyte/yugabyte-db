@@ -3,16 +3,15 @@
 @import "_style/colors.scss";
 
 .table-type-logo {
-  width: 30px;
+  width: auto;
   height: 30px;
   margin-bottom: 4px;
 }
 
 .table-search-bar {
   position: relative;
-  top: 1px;
   width: 200px;
-  height: 44px;
+  height: 42px;
   border: 1px solid $YB_GRAY;
   border-radius: 4px;
   padding-left: 10px;
@@ -33,21 +32,16 @@
 }
 
 .table-container-title {
-  font-size: 20px;
-  font-weight: 500;
-  margin-bottom: 16px;
-  margin-top: 20px;
   .table-type-count {
     display: inline-block;
-    margin-left: 20px;
 
     img {
-      margin-right: 4px;
+      margin-top: 10px;
+      margin-right: 20px;
+      float: left;
     }
-
-    span {
-      font-size: 14px;
-      font-weight: 500;
+    div {
+      margin-right: 35px;
     }
   }
 }

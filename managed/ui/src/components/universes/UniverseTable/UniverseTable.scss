@@ -68,7 +68,7 @@ a:hover .universe-name-cell {
     flex: 1 auto;
   }
   & > *:last-child {
-    flex: 0 0 150px;
+    flex: 0 0 250px;
   }
 }
 
@@ -120,7 +120,7 @@ a:hover .universe-name-cell {
 .list-universe-status-container {
   .universe-status {
     float: right;
-    margin-top: 15px;
+    margin-top: 8px;
     margin-left: 0;
   }
 }
@@ -128,8 +128,6 @@ a:hover .universe-name-cell {
 .list-universe-status-container .pending {
   display: block;
   float: none;
-  margin-left: 40%;
-  width: 60%;
 
   .progress {
       width: 100%;
@@ -193,8 +191,6 @@ a:hover .universe-name-cell {
 }
 
 .status-pending-display-container {
-  color: $YB_ORANGE;
-  float: right;
 
   .fa-spin {
     font-weight: 600;

@@ -2,29 +2,12 @@
 
 import React, { Component } from 'react';
 import moment from 'moment';
-import { DescriptionItem, YBFormattedNumber } from '../../common/descriptors';
+import { YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
-import {YBLoadingIcon} from '../../common/indicators';
+import { YBLoadingIcon } from '../../common/indicators';
+import { YBStatsBlock } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
 import {isDefinedNotNull, isNonEmptyObject} from "../../../utils/ObjectUtils";
-
-class StatsPanelComponent extends Component {
-  render() {
-    const {value, label} = this.props;
-    return (
-      <div className="tile_stats_count text-center">
-        <DescriptionItem>
-          <div className="count">
-            {value}
-          </div>
-        </DescriptionItem>
-        <span className="count_top">
-          {label}
-        </span>
-      </div>
-    );
-  }
-}
 
 export default class HighlightedStatsPanel extends Component {
   render() {
@@ -53,9 +36,9 @@ export default class HighlightedStatsPanel extends Component {
     );
     return (
       <div className="tile_count highlighted-stats-panel">
-        <StatsPanelComponent value={universeList.data.length} label={"Universes"}/>
-        <StatsPanelComponent value={numNodes} label={"Nodes"}/>
-        <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
+        <YBStatsBlock value={universeList.data.length} label={"Universes"}/>
+        <YBStatsBlock value={numNodes} label={"Nodes"}/>
+        <YBStatsBlock value={formattedCost} label={"Per Month"}/>
       </div>
     );
   }

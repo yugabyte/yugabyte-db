@@ -759,7 +759,7 @@ class UniverseForm extends Component {
                isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
       );
     }
-    const pageTitle = this.props.type === "Create" ? <h2 className="page-topnav-title"><span>{this.props.type} universe</span></h2> : <h2 className="page-topnav-title">{this.props.formValues.universeName}<span> - {this.props.type.toLowerCase()} universe </span></h2>;
+    const pageTitle = this.props.type === "Create" ? <h2 className="content-title"><span>{this.props.type} universe</span></h2> : <h2 className="content-title">{this.props.formValues.universeName}<span> - {this.props.type.toLowerCase()} universe </span></h2>;
     return (
 
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">

@@ -6,7 +6,8 @@ import { isValidObject } from '../../../utils/ObjectUtils';
 import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
-import {YBFormattedNumber} from '../../common/descriptors';
+import { YBFormattedNumber } from '../../common/descriptors';
+import { YBPanelItem } from '../../panels';
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -75,9 +76,11 @@ export default class TaskListTable extends Component {
     };
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     return (
-      <div id="page-wrapper" className="dashboard-widget-container">
-        <h2 className="task-list-header page-topnav-title">{title}</h2>
-        <div className="content-panel content-panel-margin-top">
+      <YBPanelItem
+        header={
+          <h2 className="task-list-header content-title">{title}</h2>
+        }
+        body={
           <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
                           search multiColumnSearch searchPlaceholder='Search by Name or Type'>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
@@ -105,8 +108,8 @@ export default class TaskListTable extends Component {
             </TableHeaderColumn>
             <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort/>
           </BootstrapTable>
-        </div>
-      </div>
+        }
+      />
     );
   }
 }

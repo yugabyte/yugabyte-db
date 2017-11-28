@@ -1,12 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Dropdown, MenuItem, Row, Col, Grid , FormControl} from 'react-bootstrap';
+import { Dropdown, MenuItem, FormControl} from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
 import { withRouter, browserHistory } from 'react-router';
 import _ from 'lodash';
 
 import { YBButton } from '../../common/forms/fields';
+import { YBPanelItem } from '../../panels';
+import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
 import './GraphPanelHeader.scss';
@@ -283,10 +285,22 @@ class GraphPanelHeader extends Component {
       );
     }
     return (
-      <Grid className="x_panel graph-panel">
-        <Row className="x_title">
-          <Col md={12}>
-            <div className="pull-right">
+      <YBPanelItem
+        className="graph-panel"
+        header={
+          <FlexContainer>
+
+            <h2 className="content-title">Metrics</h2>
+            <FlexGrow power={1}>
+              <div className="filter-container">
+                {universePicker}
+                <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
+                            selectedUniverse={this.state.currentSelectedUniverse}
+                            selectedNode={this.state.currentSelectedNode}/>
+                <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
+              </div>
+            </FlexGrow>
+            <FlexGrow>
               <form name="GraphPanelFilterForm">
                 <div id="reportrange" className="pull-right">
                   {datePicker}
@@ -301,24 +315,14 @@ class GraphPanelHeader extends Component {
                   </Dropdown>
                 </div>
               </form>
-            </div>
-
-            <h2 className="page-topnav-title">Metrics</h2>
-            <div className="filter-container">
-              {universePicker}
-              <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
-                          selectedUniverse={this.state.currentSelectedUniverse}
-                          selectedNode={this.state.currentSelectedNode}/>
-              <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
-            </div>
-          </Col>
-        </Row>
-        <Row>
-          <Col md={12}>
-            {this.props.children}
-          </Col>
-        </Row>
-      </Grid>
+            </FlexGrow>
+          </FlexContainer>
+        }
+        body={
+          this.props.children
+        }
+        noBackground
+      />
     );
   }
 }

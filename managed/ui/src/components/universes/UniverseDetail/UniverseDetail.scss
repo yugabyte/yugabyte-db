@@ -6,6 +6,7 @@
   margin:0 0 12px 0px;
   color: $YB_DARK_GRAY;
   padding-left: 0px;
+  display: none;
   a{
     i{
       color: $YB_DARK_GRAY;
@@ -55,6 +56,9 @@
   .progress {
     margin-bottom: 0px;
   }
+  .status-pending-display-container {
+    margin-top: 0;
+  }
   .status-pending-progress-container {
     top: 4px;
   }
@@ -75,29 +79,21 @@
   float: left;
   margin-top: 10px;
 }
-
-.universe-details-new {
   .universe-detail-status-container {
     float: left;
     position: fixed;
     z-index: 1031;
-    top: 15px;
-    left: 128px;
-    @media (max-width: 991px) {
-      left: 115px;
-    }
+    top: 8px;
+    left: 120px;
   }
   .universe-detail {
-    margin-top: 28px;
+    margin-top: 56px;
     @media (max-width: 767px) {
       margin-top: 75px;
     }
-    .page-topnav-title {
+    .content-title {
       position: static;
       margin-right: 30px;
-    }
-    .content-panel-margin-top {
-      margin-top: 14px;
     }
     .nav-tabs {
       position: fixed;
@@ -107,10 +103,7 @@
       height: 57px;
       right: 0;
       left: 90px;
-      padding: 0 28px;
-      @media (max-width: 991px) {
-        padding: 0 15px;
-      }
+      padding: 0 20px;
       @media (max-width: 767px) {
         height: 114px;
         padding-top: 57px;
@@ -161,16 +154,14 @@
         }
       }
       .table-container-title {
-        .pull-right {
-          margin-top: 15px;
+        h2 {
+          margin-bottom: 3px;
         }
-      }
-      .react-bs-table-search-form {
-        margin-right: -22px;
-      }
-      .react-bs-table-tool-bar {
-        .btn-group {
-          display: block;
+        .pull-right {
+          margin-top: 45px;
+        }
+        .pull-left {
+          height: 90px;
         }
       }
     }
@@ -179,10 +170,7 @@
     position: fixed;
     z-index: 1000;
     top: 60px;
-    right: 38px;
-    @media (max-width: 991px) {
-      right: 25px;
-    }
+    right: 30px;
     padding: 0;
     padding-top: 9px;
     width: auto;
@@ -199,12 +187,12 @@
       display: inline-block;
     }
   }
-}
-.page-topnav-title {
+.content-title {
   position: fixed;
   z-index: 1031;
-  top: 15px;
-  left: 128px;
+  top: 8px;
+  left: 120px;
+  margin-bottom: 0;
   @media (max-width: 991px) {
     left: 115px;
   }
@@ -214,8 +202,9 @@
 }
 
 .universe-detail {
-  .page-topnav-title {
+  .content-title {
     position: static;
     margin-right: 30px;
+    z-index: 1;
   }
 }

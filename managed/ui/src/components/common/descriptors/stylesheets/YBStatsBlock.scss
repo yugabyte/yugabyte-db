@@ -1,0 +1,41 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+.tile_stats_count {
+  text-align: left;
+  margin-right: 40px;
+  min-width: 70px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+}
+
+.tile_stats_count:first-child {
+  border-left: none;
+}
+.tile_stats_count .count, .tile_stats_count .count span {
+  font-size: 28px;
+  line-height: 30px;
+  font-weight: 600;
+  color: $YB_VIOLET_TEXT;
+}
+.tile_stats_count span {
+  font-size: 12px;
+  font-weight: 300;
+}
+.tile_stats_count .count_bottom i {
+  width: 12px;
+}
+
+@media (min-width:768px) {
+  .tile_stats_count span {
+    font-size: 12px;
+  }
+}
+@media (min-width:992px) {
+  .tile_stats_count:first-child:before {
+    border-left: 0;
+  }
+}
