@@ -36,9 +36,11 @@ QLTestBase::~QLTestBase() {
 
 //--------------------------------------------------------------------------------------------------
 
-void QLTestBase::CreateSimulatedCluster() {
-  // Start mini-cluster with 1 tserver, config client options
-  cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+void QLTestBase::CreateSimulatedCluster(int num_tablet_servers) {
+  // Start mini-cluster with given number of tservers (default: 1), config client options
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = num_tablet_servers;
+  cluster_.reset(new MiniCluster(env_.get(), opts));
   ASSERT_OK(cluster_->Start());
   YBClientBuilder builder;
   builder.add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str());

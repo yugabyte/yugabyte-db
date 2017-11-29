@@ -73,13 +73,15 @@ namespace tserver {
 
 MiniTabletServer::MiniTabletServer(const string& fs_root,
                                    uint16_t rpc_port,
-                                   const TabletServerOptions& extra_opts)
+                                   const TabletServerOptions& extra_opts,
+                                   int index)
   : started_(false),
-    opts_(extra_opts) {
+    opts_(extra_opts),
+    index_(index + 1) {
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
-  opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.1:$0", rpc_port);
+  opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.$0:$1", index_, rpc_port);
   opts_.webserver_opts.port = 0;
   opts_.fs_opts.wal_paths = { fs_root };
   opts_.fs_opts.data_paths = { fs_root };
@@ -130,7 +132,7 @@ void MiniTabletServer::CleanTabletLogs() {
 
 Status MiniTabletServer::Restart() {
   CHECK(started_);
-  opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.1:$0", bound_rpc_addr().port());
+  opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.$0:$1", index_, bound_rpc_addr().port());
   opts_.webserver_opts.port = bound_http_addr().port();
   Shutdown();
   RETURN_NOT_OK(Start());

@@ -19,6 +19,8 @@
 #include "yb/util/yb_partition.h"
 #include "yb/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/master.h"
+#include "yb/master/ts_manager.h"
 
 using std::string;
 using std::unique_ptr;
@@ -1175,6 +1177,42 @@ TEST_F(TestQLQuery, TestSystemTablesWithRestart) {
 
   // Verify system table query still works.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
+}
+
+TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
+  // Init the simulated cluster and wait for tservers.
+  int num_tservers = 3;
+  ASSERT_NO_FATALS(CreateSimulatedCluster(num_tservers));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(num_tservers));
+
+  // Verify system peers table.
+  TestQLProcessor* processor = GetQLProcessor();
+  ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
+  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  ASSERT_EQ(num_tservers - 1, row_block->row_count());
+
+  auto ts_manager = cluster_->leader_mini_master()->master()->ts_manager();
+  NodeInstancePB instance;
+  instance.set_permanent_uuid("test");
+  instance.set_instance_seqno(0);
+
+  // Use an invalid hostname for registration.
+  master::TSRegistrationPB registration;
+  auto hostport_pb = registration.mutable_common()->add_rpc_addresses();
+  const string invalid_host = "randomhost";
+  hostport_pb->set_host(invalid_host);
+  hostport_pb->set_port(123);
+
+  std::shared_ptr<master::TSDescriptor> desc;
+  ASSERT_OK(ts_manager->RegisterTS(instance, registration, &desc));
+
+  // Verify the peers table and ensure the invalid host is not present.
+  ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
+  row_block = processor->row_block();
+  ASSERT_EQ(num_tservers - 1, row_block->row_count());
+  for (const auto& row : row_block->rows()) {
+    ASSERT_NE(invalid_host, row.column(0).inetaddress_value().ToString());
+  }
 }
 
 TEST_F(TestQLQuery, TestPagination) {

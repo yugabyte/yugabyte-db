@@ -237,7 +237,7 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   EnsurePortsAllocated(0 /* num_masters (will pick default) */, new_idx + 1);
   const uint16_t ts_rpc_port = tserver_rpc_ports_[new_idx];
   gscoped_ptr<MiniTabletServer> tablet_server(
-    new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts));
+    new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts, new_idx));
 
   // set the master addresses
   auto master_addr = std::make_shared<vector<HostPort>>();

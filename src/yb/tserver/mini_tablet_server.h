@@ -56,7 +56,7 @@ class TabletServer;
 class MiniTabletServer {
  public:
   MiniTabletServer(const std::string& fs_root, uint16_t rpc_port,
-                   const TabletServerOptions& extra_opts = TabletServerOptions());
+                   const TabletServerOptions& extra_opts = TabletServerOptions(), int index = 0);
   ~MiniTabletServer();
 
   // Return the options which will be used to start the tablet server.
@@ -113,8 +113,8 @@ class MiniTabletServer {
 
  private:
   bool started_;
-
   TabletServerOptions opts_;
+  int index_;
 
   gscoped_ptr<FsManager> fs_manager_;
   gscoped_ptr<TabletServer> server_;

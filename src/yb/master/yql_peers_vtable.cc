@@ -65,30 +65,33 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
       // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
       // so pick the first one.
       const string& ts_host = ts_info.registration().common().rpc_addresses(0).host();
-      RETURN_NOT_OK(addr.FromString(ts_host));
+      if (addr.FromString(ts_host).ok()) {
+        QLRow &row = (*vtable)->Extend();
+        RETURN_NOT_OK(SetColumnValue(kPeer, addr, &row));
+        RETURN_NOT_OK(SetColumnValue(kRPCAddress, addr, &row));
+        RETURN_NOT_OK(SetColumnValue(kPreferredIp, addr, &row));
 
-      QLRow& row = (*vtable)->Extend();
-      RETURN_NOT_OK(SetColumnValue(kPeer, addr, &row));
-      RETURN_NOT_OK(SetColumnValue(kRPCAddress, addr, &row));
-      RETURN_NOT_OK(SetColumnValue(kPreferredIp, addr, &row));
+        // Datacenter and rack.
+        CloudInfoPB cloud_info = ts_info.registration().common().cloud_info();
+        RETURN_NOT_OK(SetColumnValue(kDataCenter, cloud_info.placement_region(), &row));
+        RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
 
-      // Datacenter and rack.
-      CloudInfoPB cloud_info = ts_info.registration().common().cloud_info();
-      RETURN_NOT_OK(SetColumnValue(kDataCenter, cloud_info.placement_region(), &row));
-      RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
+        // HostId.
+        Uuid host_id;
+        RETURN_NOT_OK(host_id.FromHexString(ts_info.tserver_instance().permanent_uuid()));
+        RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
 
-      // HostId.
-      Uuid host_id;
-      RETURN_NOT_OK(host_id.FromHexString(ts_info.tserver_instance().permanent_uuid()));
-      RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
+        // schema_version.
+        Uuid schema_version;
+        RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+        RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
 
-      // schema_version.
-      Uuid schema_version;
-      CHECK_OK(schema_version.FromString(master::kDefaultSchemaVersion));
-      RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
-
-      // Tokens.
-      RETURN_NOT_OK(SetColumnValue(kTokens, util::GetTokensValue(index, descs.size()), &row));
+        // Tokens.
+        RETURN_NOT_OK(SetColumnValue(kTokens, util::GetTokensValue(index, descs.size()), &row));
+      } else {
+        LOG (WARNING) << strings::Substitute("Skipping host $0, since we couldn't resolve it to an "
+                                                 "IP address", ts_host);
+      }
     }
     index++;
   }

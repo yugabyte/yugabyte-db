@@ -179,7 +179,7 @@ class QLTestBase : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Create simulated cluster.
-  void CreateSimulatedCluster();
+  void CreateSimulatedCluster(int num_tablet_servers = 1);
 
   // Create ql processor.
   TestQLProcessor *GetQLProcessor();
