@@ -74,8 +74,6 @@ Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
 Status Tablet::RestoreCheckpoint(const std::string& dir) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
-  CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
-
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
   const rocksdb::SequenceNumber sequence_number = rocksdb_->GetLatestSequenceNumber();
