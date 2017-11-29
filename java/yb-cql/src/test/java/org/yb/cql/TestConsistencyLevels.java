@@ -47,7 +47,12 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   private static final int NUM_ROWS = 1000;
 
-  private static final int NUM_OPS = 100;
+  private static final int NUM_OPS = 1000;
+
+  @Override
+  public boolean waitForTServersAtMasterLeader() throws Exception {
+    return super.waitForTServersAtMasterLeader();
+  }
 
   private static final int WAIT_FOR_REPLICATION_TIMEOUT_MS = 30000;
 
@@ -70,6 +75,16 @@ public class TestConsistencyLevels extends BaseCQLTest {
     // We need to destroy the mini cluster since we don't want metrics from one test to interfere
     // with another.
     destroyMiniCluster();
+  }
+
+  protected void createMiniClusterWithSameRegion() throws Exception {
+    // Create a cluster with tservers in the same region.
+    List<List<String>> tserverArgs = new ArrayList<>();
+    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
+      tserverArgs.add(Arrays.asList(String.format("--placement_region=%s%d", REGION_PREFIX, 1)));
+    }
+    createMiniCluster(1, tserverArgs);
+
   }
 
   protected void createMiniClusterWithPlacementRegion() throws Exception {
@@ -240,7 +255,6 @@ public class TestConsistencyLevels extends BaseCQLTest {
       Metrics tserverMetrics = new Metrics(tserver_webaddress.getHostText(),
         tserver_webaddress.getPort(), "server");
       long tserverNumOpsBefore = tserverMetrics.getHistogram(TSERVER_READ_METRIC).totalCount;
-
       Metrics cqlproxyMetrics = new Metrics(cqlproxy_webaddress.getHostText(),
         cqlproxy_webaddress.getPort(), "server");
       long cqlproxyNumOpsBefore = cqlproxyMetrics.getHistogram(CQLPROXY_SELECT_METRIC).totalCount;
@@ -266,5 +280,57 @@ public class TestConsistencyLevels extends BaseCQLTest {
       assertTrue(NUM_OPS <=
         cqlproxyMetrics.getHistogram(CQLPROXY_SELECT_METRIC).totalCount - cqlproxyNumOpsBefore);
     }
+  }
+
+  @Test
+  public void testRoundRobinBetweenReplicas() throws Exception {
+    // Destroy existing cluster and recreate it.
+    destroyMiniCluster();
+
+    // Set a high refresh interval, so that this does not mess with our metrics.
+    MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS = Integer.MAX_VALUE;
+    createMiniClusterWithSameRegion();
+    setUpCqlClient();
+    setUpTable();
+
+    String stmt = "select * from " + DEFAULT_TEST_KEYSPACE + "." + TABLE_NAME + ";";
+    PreparedStatement prepare_stmt = session.prepare(stmt).
+                                     setConsistencyLevel(ConsistencyLevel.ONE);
+    for (int j = 0; j < NUM_OPS; j++) {
+      session.execute(prepare_stmt.bind());
+    }
+
+    Map<HostAndPort, MiniYBDaemon> tservers = miniCluster.getTabletServers();
+    long totalOps = 0;
+    long maxOps = 0, minOps = NUM_OPS + 1;
+    HostAndPort cqlproxy_webaddress = null;
+    for (Map.Entry<HostAndPort, MiniYBDaemon> entry: tservers.entrySet()) {
+      cqlproxy_webaddress = HostAndPort.fromParts(entry.getKey().getHostText(), entry
+              .getValue().getCqlWebPort());
+      Metrics cqlproxyMetrics = new Metrics(cqlproxy_webaddress.getHostText(),
+              cqlproxy_webaddress.getPort(), "server");
+      long cqlproxyNumOps = cqlproxyMetrics.getHistogram(CQLPROXY_SELECT_METRIC).totalCount;
+      assertTrue(cqlproxyNumOps > NUM_OPS/(STANDARD_DEVIATION_FACTOR*NUM_TABLET_SERVERS));
+      LOG.info("CQL Proxy Num Ops: " + cqlproxyNumOps);
+    }
+
+    for (LocatedTablet.Replica replica : tablet.getReplicas()) {
+      String host = replica.getRpcHost();
+      int webPort = tservers.get(HostAndPort.fromParts(host, replica.getRpcPort())).getWebPort();
+
+      Metrics metrics = new Metrics(host, webPort, "server");
+      long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
+      LOG.info("Num ops for tserver: " + replica.toString() + " : " + numOps);
+      totalOps += numOps;
+      if (numOps > maxOps) {
+        maxOps = numOps;
+      }
+      if (numOps < minOps) {
+        minOps = numOps;
+      }
+      assertTrue(numOps > NUM_OPS/(STANDARD_DEVIATION_FACTOR*NUM_TABLET_SERVERS));
+    }
+    assertTrue(totalOps <= NUM_OPS);
+    assertTrue((maxOps - minOps) < NUM_OPS/(STANDARD_DEVIATION_FACTOR*NUM_TABLET_SERVERS));
   }
 }

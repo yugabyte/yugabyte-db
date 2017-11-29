@@ -46,6 +46,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static final String NUM_MASTERS_PROP = "NUM_MASTERS";
   protected static final int NUM_TABLET_SERVERS = 3;
   protected static final int DEFAULT_NUM_MASTERS = 3;
+  protected static final int STANDARD_DEVIATION_FACTOR = 2;
 
   // Number of masters that will be started for this test if we're starting
   // a cluster.
