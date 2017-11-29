@@ -398,7 +398,7 @@ void CallHome::BuildJsonAndSend() {
 void CallHome::DoCallHome() {
   if (server_type_ == ServerType::MASTER &&
       !master()->catalog_manager()->CheckIsLeaderAndReady().ok()) {
-    LOG(INFO) << "This master instance is not a leader. Skipping call home";
+    VLOG(3) << "This master instance is not a leader. Skipping call home";
   } else {
     BuildJsonAndSend();
   }
