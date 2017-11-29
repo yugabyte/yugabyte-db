@@ -97,7 +97,6 @@ DistributionContext = collections.namedtuple(
          'dest_dir',
          'os_package_manager',
          'verbose_mode',
-         'include_system_libs',
          'include_licenses'])
 
 
@@ -225,7 +224,6 @@ class LibraryPackager:
                  build_dir,
                  seed_executable_patterns,
                  dest_dir,
-                 include_system_libs=True,
                  verbose_mode=False,
                  include_licenses=False):
         build_dir = realpath(build_dir)
@@ -242,7 +240,6 @@ class LibraryPackager:
             dest_dir=dest_dir,
             build_dir=build_dir,
             os_package_manager=Yum() if include_licenses else None,
-            include_system_libs=include_system_libs,
             verbose_mode=verbose_mode,
             include_licenses=include_licenses
             )
@@ -316,7 +313,7 @@ class LibraryPackager:
 
         ld_library_path = ":".join(
             ["${BASH_SOURCE%/*}/../lib/" + category
-             for category in ['system', 'yb', 'yb-thirdparty', 'linuxbrew']] + SYSTEM_LIBRARY_PATHS
+             for category in ['system', 'yb', 'yb-thirdparty', 'linuxbrew']]
         )
         for seed_executable_glob in self.seed_executable_patterns:
             re_match = re.match(r'^build/latest/(.*)$', seed_executable_glob)
@@ -363,10 +360,6 @@ class LibraryPackager:
 
         categories = sorted(set([dep.get_category() for dep in all_deps]))
         for category, deps_in_category in group_by(all_deps, lambda dep: dep.get_category()):
-            if category == 'system':
-                # We completely skip all system dependencies. They are supposed to be installed
-                # separately on the target system.
-                continue
             logging.info("Found {} dependencies in category '{}':".format(
                 len(deps_in_category), category))
 
@@ -448,6 +441,5 @@ if __name__ == '__main__':
                                seed_executable_patterns=release_manifest['bin'],
                                dest_dir=args.dest_dir,
                                verbose_mode=args.verbose,
-                               include_system_libs=not args.no_system_libs,
                                include_licenses=args.include_licenses)
     packager.package_binaries()

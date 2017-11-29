@@ -1225,7 +1225,7 @@ activate_virtualenv() {
   fi
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
-    pip install virtualenv
+    pip install virtualenv --user
     (
       set -x
       mkdir -p "$virtualenv_parent_dir"

@@ -115,7 +115,6 @@ def main():
             seed_executable_patterns=release_util.get_binary_path(),
             dest_dir=yb_distribution_dir,
             verbose_mode=args.verbose,
-            include_system_libs=not args.no_system_libs,
             include_licenses=args.include_licenses)
     library_packager.package_binaries()
 
