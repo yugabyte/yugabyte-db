@@ -3955,11 +3955,8 @@ bindvar:
   '?' {
     $$ = MAKE_NODE(@1, PTBindVar);
   }
-  | ':' IDENT {
+  | ':' NonReservedWord {
     $$ = MAKE_NODE(@1, PTBindVar, $2);
-  }
-  | ':' unreserved_keyword {
-    $$ = MAKE_NODE(@1, PTBindVar, parser_->MakeString($2));
   }
   | ':' ICONST {
     PTConstVarInt::SharedPtr pt_constvarint = MAKE_NODE(@1, PTConstVarInt, $2);

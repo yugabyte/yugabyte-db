@@ -131,8 +131,12 @@ TEST_F(QLTestParser, TestQLParser) {
   // Valid statement: SELECT statement with ":" named bind marker.
   PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = :v1 AND c2 = :v2;");
 
-  // Valid statement: SELECT statement with ":" named quoted-identifier bind marker.
+  // Valid statement: SELECT statement with ":" named bind marker: quoted-identifier.
   PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = :\"V1\" AND c2 = :\"V2\";");
+
+  // Valid statement: SELECT statement with ":" named bind marker: type-name identifier.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = :timestamp AND c2 = :text;");
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = :binary AND c2 = :int;");
 
   // Valid statement: INSERT statement with ":" number bind marker.
   PARSE_VALID_STMT("INSERT INTO t (c1, c2) VALUES (:1, :2);");
@@ -154,6 +158,10 @@ TEST_F(QLTestParser, TestQLParser) {
 
   // Invalid statement: CREATE TABLE with "?" bind marker.
   PARSE_INVALID_STMT("CREATE TABLE t (c int PRIMARY KEY) WITH default_time_to_live = ?;");
+
+  // Invalid statement: SELECT statement with ":" named bind marker: reserved keyword.
+  PARSE_INVALID_STMT("SELECT * FROM t WHERE c1 = :true;");
+  PARSE_INVALID_STMT("SELECT * FROM t WHERE c1 = :table;");
 
   // Invalid statement: CREATE with invalid prop value.
   PARSE_INVALID_STMT("CREATE TABLE human_resource"
