@@ -159,20 +159,6 @@ class RemoteBootstrapClient {
   // downloaded as part of initiating the remote bootstrap session.
   CHECKED_STATUS WriteConsensusMetadata();
 
-  // Download all blocks belonging to a tablet sequentially.
-  //
-  // Blocks are given new IDs upon creation. On success, 'new_superblock_'
-  // is populated to reflect the new block IDs and should be used in lieu
-  // of 'superblock_' henceforth.
-  CHECKED_STATUS DownloadBlocks();
-
-  // Download the block specified by 'block_id'.
-  //
-  // On success:
-  // - 'block_id' is set to the new ID of the downloaded block.
-  // - 'block_count' is incremented.
-  CHECKED_STATUS DownloadAndRewriteBlock(BlockIdPB* block_id, int* block_count, int num_blocks);
-
   // Download a single block.
   // Data block is opened with options so that it will fsync() on close.
   //

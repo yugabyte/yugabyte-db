@@ -101,9 +101,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation> operation, DriverType ty
       mutable_state()->set_consensus_round(
         consensus_->NewRound(std::move(replicate_msg),
                              Bind(&OperationDriver::ReplicationFinished, Unretained(this))));
-      if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-        mutable_state()->consensus_round()->SetAppendCallback(this);
-      }
+      mutable_state()->consensus_round()->SetAppendCallback(this);
     }
   }
 
@@ -168,7 +166,6 @@ void OperationDriver::ExecuteAsync() {
 
 void OperationDriver::HandleConsensusAppend() {
   // YB tables only.
-  CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   ADOPT_TRACE(trace());
   operation_->Start();
   auto* const replicate_msg = operation_->state()->consensus_round()->replicate_msg().get();
@@ -205,11 +202,9 @@ Status OperationDriver::PrepareAndStart() {
     repl_state_copy = replication_state_;
   }
 
-  if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ||
-      repl_state_copy != NOT_REPLICATING) {
-    // For Kudu tables and for non-leader codepath in YB tables, we want to call Start() as soon
-    // as possible, because the operation already has the hybrid_time assigned. This will get a
-    // bit simpler as Kudu tables go away.
+  if (repl_state_copy != NOT_REPLICATING) {
+    // We want to call Start() as soon as possible, because the operation already has the
+    // hybrid_time assigned.
     operation_->Start();
   }
 
@@ -233,16 +228,6 @@ Status OperationDriver::PrepareAndStart() {
   switch (repl_state_copy) {
     case NOT_REPLICATING:
     {
-      ReplicateMsg* replicate_msg = operation_->state()->consensus_round()->replicate_msg().get();
-
-      if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-        // Kudu tables only: set the hybrid_time in the message, now that it's prepared.
-        replicate_msg->set_hybrid_time(operation_->state()->hybrid_time().ToUint64());
-
-        // For YB tables, we set the hybrid_time at the same time as we append the entry to the
-        // consensus queue, to guarantee that hybrid_times increase monotonically with Raft indexes.
-      }
-
       {
         std::lock_guard<simple_spinlock> lock(lock_);
         replication_state_ = REPLICATING;
@@ -405,8 +390,6 @@ Status OperationDriver::ApplyAsync() {
       // the order.
       ApplyTask();
       return Status::OK();
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      return apply_pool_->SubmitClosure(Bind(&OperationDriver::ApplyTask, Unretained(this)));
   }
   LOG(FATAL) << "Invalid table type: " << table_type_;
   return STATUS_FORMAT(IllegalState, "Invalid table type: $0", table_type_);
@@ -450,13 +433,6 @@ void OperationDriver::ApplyTask() {
     }
 
     operation_->PreCommit();
-
-    // We only write the "commit" records to the local log for legacy Kudu tables. We are not
-    // writing these records for RocksDB-based tables.
-    if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      TRACE_EVENT1("operation", "AsyncAppendCommit", "operation", this);
-      CHECK_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(DoNothingStatusCB)));
-    }
 
     Finalize();
   }

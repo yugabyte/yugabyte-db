@@ -42,7 +42,6 @@ namespace yb {
 namespace client {
 
 class YBError;
-class KuduInsert;
 
 namespace internal {
 

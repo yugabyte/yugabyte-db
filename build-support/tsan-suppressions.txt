@@ -33,18 +33,9 @@ race:evpipe_write
 race:evpipe_init
 race:epoll_ctl
 
-# concurrent btree uses optimistic concurrency, needs to be annotated a bunch
-# more before it would pass. Relatively confident that it is correct based on
-# a lot of stress testing.
-race:concurrent_btree.h
-
 # We're currently a little lax on using atomic instructions for mutations where
 # we might need to. There are possible bugs lurking here, though likely we are
 # hiding behind x86 TSO for now.
-race:yb::tablet::ApplyMutationsAndGenerateUndos
-race:yb::tablet::MemRowSet::Iterator::ApplyMutationsToProjectedRow
-race:yb::tablet::MemRowSet::Iterator::FetchRows
-race:yb::tablet::Mutation::*
 race:yb::RowChangeListDecoder::Init
 
 # GLog's fatal signal handler isn't signal-safe -- it allocates memory.

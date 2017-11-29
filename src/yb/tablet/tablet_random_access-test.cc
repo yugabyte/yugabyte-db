@@ -50,8 +50,6 @@ DEFINE_int32(sleep_between_background_ops_ms, 100,
              "number of milliseconds to sleep between flushing or compacting");
 DEFINE_int32(update_delete_ratio, 4, "ratio of update:delete when mutating existing rows");
 
-DECLARE_int32(deltafile_default_block_size);
-
 using std::string;
 using std::vector;
 
@@ -61,7 +59,6 @@ enum TestOp {
   TEST_DELETE,
   TEST_FLUSH_OPS,
   TEST_FLUSH_TABLET,
-  TEST_COMPACT_TABLET,
   TEST_NUM_OP_TYPES // max value for enum
 };
 MAKE_ENUM_LIMITS(TestOp, TEST_INSERT, TEST_NUM_OP_TYPES);
@@ -75,7 +72,6 @@ const char* TestOp_names[] = {
   "TEST_DELETE",
   "TEST_FLUSH_OPS",
   "TEST_FLUSH_TABLET",
-  "TEST_COMPACT_TABLET"
 };
 
 // Test which does only random operations against a tablet, including update and random
@@ -95,9 +91,6 @@ class TestRandomAccess : public YBTabletTest {
     OverrideFlagForSlowTests("runtime_seconds", "10");
     OverrideFlagForSlowTests("sleep_between_background_ops_ms", "1000");
 
-    // Set a small block size to increase chances that a single update will span
-    // multiple delta blocks.
-    FLAGS_deltafile_default_block_size = 1024;
     expected_tablet_state_.resize(FLAGS_keyspace_size);
   }
 
@@ -165,15 +158,8 @@ class TestRandomAccess : public YBTabletTest {
 
   // Wakes up periodically to perform a flush or compaction.
   void BackgroundOpThread() {
-    int n_flushes = 0;
     while (!done_.WaitFor(MonoDelta::FromMilliseconds(FLAGS_sleep_between_background_ops_ms))) {
       CHECK_OK(tablet()->Flush(tablet::FlushMode::kSync));
-      ++n_flushes;
-      switch (n_flushes % 3) {
-        case 1:
-          CHECK_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
-          break;
-      }
     }
   }
 
@@ -230,33 +216,11 @@ class TestRandomAccess : public YBTabletTest {
     CHECK_OK(iter->Init(&spec));
 
     string ret = VALUE_NOT_FOUND;
-    if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      vector<string> results;
-      CHECK_OK(IterateToStringList(iter.get(), &results));
-      if (results.size() == 1)
-        return results[0];
-      return VALUE_NOT_FOUND;
-    }
-
-    int n_results = 0;
-    Arena arena(1024, 4*1024*1024);
-    RowBlock block(schema, 100, &arena);
-    while (iter->HasNext()) {
-      arena.Reset();
-      CHECK_OK(iter->NextBlock(&block));
-      for (int i = 0; i < block.nrows(); i++) {
-        // We expect to only get exactly one result per read.
-        CHECK_EQ(n_results, 0)
-          << "Already got result when looking up row "
-          << key << ": " << ret
-          << " and now have new matching row: "
-          << schema.DebugRow(block.row(i))
-          << "  iterator: " << iter->ToString();
-        ret = schema.DebugRow(block.row(i));
-        n_results++;
-      }
-    }
-    return ret;
+    std::vector<string> results;
+    CHECK_OK(IterateToStringList(iter.get(), &results));
+    if (results.size() == 1)
+      return results[0];
+    return VALUE_NOT_FOUND;
   }
 
  protected:
@@ -288,7 +252,6 @@ TEST_F(TestRandomAccess, Test) {
 void GenerateTestCase(vector<TestOp>* ops, int len) {
   bool exists = false;
   bool ops_pending = false;
-  bool worth_compacting = false;
   ops->clear();
   unsigned int random_seed = SeedRandom();
   while (ops->size() < len) {
@@ -319,13 +282,6 @@ void GenerateTestCase(vector<TestOp>* ops, int len) {
         break;
       case TEST_FLUSH_TABLET:
         ops->push_back(TEST_FLUSH_TABLET);
-        worth_compacting = true;
-        break;
-      case TEST_COMPACT_TABLET:
-        if (worth_compacting) {
-          ops->push_back(TEST_COMPACT_TABLET);
-          worth_compacting = false;
-        }
         break;
       default:
         LOG(FATAL);
@@ -382,9 +338,6 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
       case TEST_FLUSH_TABLET:
         ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
         break;
-      case TEST_COMPACT_TABLET:
-        ASSERT_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
-        break;
       default:
         LOG(FATAL) << test_op;
     }
@@ -426,7 +379,6 @@ TEST_F(TestRandomAccess, TestFuzz1) {
     TEST_INSERT,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-    TEST_COMPACT_TABLET
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }
@@ -444,7 +396,6 @@ TEST_F(TestRandomAccess, TestFuzz2) {
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
     TEST_DELETE,
-    TEST_COMPACT_TABLET,
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }
@@ -458,7 +409,6 @@ TEST_F(TestRandomAccess, TestFuzz3) {
     TEST_FLUSH_TABLET,
     TEST_INSERT,
     TEST_DELETE,
-    TEST_COMPACT_TABLET
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }
@@ -469,7 +419,6 @@ TEST_F(TestRandomAccess, TestFuzz4) {
     TEST_INSERT,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-    TEST_COMPACT_TABLET,
     TEST_DELETE,
     TEST_INSERT,
     TEST_UPDATE,
@@ -484,7 +433,6 @@ TEST_F(TestRandomAccess, TestFuzz4) {
     TEST_DELETE,
     TEST_FLUSH_OPS,
     TEST_FLUSH_TABLET,
-    TEST_COMPACT_TABLET
   };
   RunFuzzCase(vector<TestOp>(test_ops, test_ops + arraysize(test_ops)));
 }

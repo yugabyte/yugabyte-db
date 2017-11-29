@@ -110,9 +110,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using strings::Substitute;
-using tablet::ColumnDataPB;
-using tablet::DeltaDataPB;
-using tablet::RowSetDataPB;
 using tablet::TabletDataState;
 using tablet::TabletDataState_Name;
 using tablet::TabletMetadata;
@@ -229,13 +226,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   }
 
   LOG(INFO) << "Received superblock: " << resp.superblock().ShortDebugString();
-  if (resp.superblock().table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    string files;
-    for (const auto& file : resp.superblock().rocksdb_files()) {
-      files += "Name: " + file.name() + " -- size: " + std::to_string(file.size_bytes()) + ", ";
-    }
-    LOG(INFO) << "RocksDB files: " << files;
+  string files;
+  for (const auto& file : resp.superblock().rocksdb_files()) {
+    files += "Name: " + file.name() + " -- size: " + std::to_string(file.size_bytes()) + ", ";
   }
+  LOG(INFO) << "RocksDB files: " << files;
 
   session_id_ = resp.session_id();
   LOG(INFO) << "Began remote bootstrap session " << session_id_;
@@ -351,13 +346,7 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   status_listener_ = CHECK_NOTNULL(status_listener);
 
   VLOG(2) << "Fetching table_type: " << TableType_Name(meta_->table_type());
-  if (meta_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    RETURN_NOT_OK(DownloadRocksDBFiles());
-  } else {
-    // Download all the files (serially, for now, but in parallel in the future).
-    RETURN_NOT_OK(DownloadBlocks());
-  }
-
+  RETURN_NOT_OK(DownloadRocksDBFiles());
   RETURN_NOT_OK(DownloadWALs());
   return Status::OK();
 }
@@ -367,11 +356,7 @@ Status RemoteBootstrapClient::Finish() {
   CHECK(started_);
 
   CHECK(downloaded_wal_);
-  if (meta_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    CHECK(downloaded_blocks_);
-  } else {
-    CHECK(downloaded_rocksdb_files_);
-  }
+  CHECK(downloaded_rocksdb_files_);
 
   RETURN_NOT_OK(WriteConsensusMetadata());
 
@@ -576,61 +561,6 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   return Status::OK();
 }
 
-Status RemoteBootstrapClient::DownloadBlocks() {
-  CHECK(started_);
-
-  // Count up the total number of blocks to download.
-  int num_blocks = 0;
-  for (const RowSetDataPB& rowset : superblock_->rowsets()) {
-    num_blocks += rowset.columns_size();
-    num_blocks += rowset.redo_deltas_size();
-    num_blocks += rowset.undo_deltas_size();
-    if (rowset.has_bloom_block()) {
-      num_blocks++;
-    }
-    if (rowset.has_adhoc_index_block()) {
-      num_blocks++;
-    }
-  }
-
-  // Download each block, writing the new block IDs into the new superblock
-  // as each block downloads.
-  gscoped_ptr<TabletSuperBlockPB> new_sb(new TabletSuperBlockPB());
-  new_sb->CopyFrom(*superblock_);
-  int block_count = 0;
-  LOG_WITH_PREFIX(INFO) << "Starting download of " << num_blocks << " data blocks...";
-  for (RowSetDataPB& rowset : *new_sb->mutable_rowsets()) {
-    for (ColumnDataPB& col : *rowset.mutable_columns()) {
-      RETURN_NOT_OK(DownloadAndRewriteBlock(col.mutable_block(),
-                                            &block_count, num_blocks));
-    }
-    for (DeltaDataPB& redo : *rowset.mutable_redo_deltas()) {
-      RETURN_NOT_OK(DownloadAndRewriteBlock(redo.mutable_block(),
-                                            &block_count, num_blocks));
-    }
-    for (DeltaDataPB& undo : *rowset.mutable_undo_deltas()) {
-      RETURN_NOT_OK(DownloadAndRewriteBlock(undo.mutable_block(),
-                                            &block_count, num_blocks));
-    }
-    if (rowset.has_bloom_block()) {
-      RETURN_NOT_OK(DownloadAndRewriteBlock(rowset.mutable_bloom_block(),
-                                            &block_count, num_blocks));
-    }
-    if (rowset.has_adhoc_index_block()) {
-      RETURN_NOT_OK(DownloadAndRewriteBlock(rowset.mutable_adhoc_index_block(),
-                                            &block_count, num_blocks));
-    }
-  }
-
-  // The orphaned physical block ids at the remote have no meaning to us.
-  new_sb->clear_orphaned_blocks();
-  new_superblock_.swap(new_sb);
-
-  downloaded_blocks_ = true;
-
-  return Status::OK();
-}
-
 Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   VLOG_WITH_PREFIX(1) << "Downloading WAL segment with seqno " << wal_segment_seqno;
   DataIdPB data_id;
@@ -672,21 +602,6 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
                           "Unable to make copy of consensus metadata");
   }
 
-  return Status::OK();
-}
-
-Status RemoteBootstrapClient::DownloadAndRewriteBlock(BlockIdPB* block_id,
-                                                      int* block_count, int num_blocks) {
-  BlockId old_block_id(BlockId::FromPB(*block_id));
-  UpdateStatusMessage(Substitute("Downloading block $0 ($1/$2)",
-                                 old_block_id.ToString(), *block_count,
-                                 num_blocks));
-  BlockId new_block_id;
-  RETURN_NOT_OK_PREPEND(DownloadBlock(old_block_id, &new_block_id),
-      "Unable to download block with id " + old_block_id.ToString());
-
-  new_block_id.CopyToPB(block_id);
-  (*block_count)++;
   return Status::OK();
 }
 

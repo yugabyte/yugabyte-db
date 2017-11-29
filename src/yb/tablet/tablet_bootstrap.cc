@@ -217,7 +217,6 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
                                   ConsensusBootstrapInfo* consensus_info) {
   string tablet_id = meta_->tablet_id();
-  TableType table_type = meta_->table_type();
 
   // Replay requires a valid Consensus metadata file to exist in order to
   // compare the committed consensus configuration seqno with the log entries and also to persist
@@ -236,20 +235,12 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
                               TabletDataState_Name(tablet_data_state));
   }
 
-  if (table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    meta_->PinFlush();
-  }
-
   listener_->StatusMessage("Bootstrap starting.");
 
   if (VLOG_IS_ON(1)) {
     TabletSuperBlockPB super_block;
     RETURN_NOT_OK(meta_->ToSuperBlock(&super_block));
     VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
-  }
-
-  if (table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    RETURN_NOT_OK(flushed_stores_.InitFrom(*meta_.get()));
   }
 
   bool has_blocks;
@@ -309,9 +300,6 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
            make_scoped_refptr(new FlushInflightsToLogCallback(tablet_.get(),
                                                               log_))));
   tablet_->MarkFinishedBootstrapping();
-  if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    RETURN_NOT_OK(tablet_->metadata()->UnPinFlush());
-  }
   listener_->StatusMessage(message);
   rebuilt_tablet->reset(tablet_.release());
   rebuilt_log->swap(log_);
@@ -326,17 +314,7 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
   }
-  switch (tablet->table_type()) {
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      *has_blocks = tablet->num_rowsets() != 0;
-      break;
-    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-    case TableType::REDIS_TABLE_TYPE:
-      *has_blocks = tablet->HasSSTables();
-      break;
-    default:
-      LOG(FATAL) << "Invalid table type " << tablet->table_type();
-  }
+  *has_blocks = tablet->HasSSTables();
   tablet_ = std::move(tablet);
   return Status::OK();
 }
@@ -484,17 +462,8 @@ Status TabletBootstrap::HandleEntry(ReplayState* state, std::unique_ptr<LogEntry
       RETURN_NOT_OK(HandleReplicateMessage(state, entry_ptr));
       break;
     case log::COMMIT:
-      if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-        // check the unpaired ops for the matching replicate msg, abort if not found
-        RETURN_NOT_OK(HandleCommitMessage(state, entry_ptr));
-      } else if (entry.has_commit() && entry.commit().op_type() == consensus::NO_OP) {
-        // These entry types are still expected to appear when a no-op is replicated. We should
-        // eventually get rid of them too for non-Kudu tables.
-        entry_ptr->reset();
-      } else {
-        LOG(FATAL) << "COMMIT entries other than no-ops should not be used by non-Kudu tables: "
-            << entry.ShortDebugString();
-      }
+      CHECK(entry.has_commit() && entry.commit().op_type() == consensus::NO_OP);
+      entry_ptr->reset();
       break;
     default:
       return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
@@ -517,9 +486,8 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   // This sets the monotonic counter to at least replicate.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate.monotonic_counter());
 
-  const bool non_kudu = tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE;
   const OpId op_id = replicate_entry.replicate().id();
-  if (non_kudu && op_id.index() == state->last_stored_op_id.index()) {
+  if (op_id.index() == state->last_stored_op_id.index()) {
     // We need to set the committed OpId to be at least what's been applied to RocksDB. The reason
     // we could not do it before starting log replay is that we don't know the term number of the
     // last write operation flushed into a RocksDB SSTable, even though we know its Raft index
@@ -554,7 +522,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   // Append the replicate message to the log as is
   RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get()));
 
-  if (non_kudu && op_id.index() <= state->last_stored_op_id.index()) {
+  if (op_id.index() <= state->last_stored_op_id.index()) {
     // Do not update the bootstrap in-memory state for log records that have already been applied
     // to RocksDB, or were overwritten by a later entry with a higher term that has already been
     // applied to RocksDB.
@@ -580,140 +548,18 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
 
   CHECK(state->pending_replicates.emplace(op_id.index(), std::move(*replicate_entry_ptr)).second);
 
-  if (non_kudu) {
-    CHECK(replicate.has_committed_op_id())
-        << "Replicate message has no committed_op_id for table type "
-        << TableType_Name(tablet_->table_type()) << ". Replicate message:\n"
-        << replicate.DebugString();
+  CHECK(replicate.has_committed_op_id())
+      << "Replicate message has no committed_op_id for table type "
+      << TableType_Name(tablet_->table_type()) << ". Replicate message:\n"
+      << replicate.DebugString();
 
-    // For RocksDB-backed tables we include the commit index as of the time a REPLICATE entry was
-    // added to the leader's log into that entry. This allows us to decide when we can replay a
-    // REPLICATE entry during bootstrap without Kudu's local COMMIT messages.
-    state->UpdateCommittedOpId(replicate.committed_op_id());
+  // For RocksDB-backed tables we include the commit index as of the time a REPLICATE entry was
+  // added to the leader's log into that entry. This allows us to decide when we can replay a
+  // REPLICATE entry during bootstrap without Kudu's local COMMIT messages.
+  state->UpdateCommittedOpId(replicate.committed_op_id());
 
-    state->ApplyCommittedPendingReplicates(
-        std::bind(&TabletBootstrap::HandleEntryPair, this, _1, nullptr));
-  }
-  return Status::OK();
-}
-
-// Takes ownership of 'commit_entry' on OK status.
-Status TabletBootstrap::HandleCommitMessage(ReplayState* state,
-                                            std::unique_ptr<LogEntryPB>* commit_entry_ptr) {
-  LogEntryPB& commit_entry = **commit_entry_ptr;
-  // We don't use COMMIT messages at all for RocksDB-backed tables.
-  CHECK_EQ(tablet_->table_type(), TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  DCHECK(commit_entry.has_commit()) << "Not a commit message: " << commit_entry.DebugString();
-
-  // Match up the COMMIT record with the original entry that it's applied to.
-  const OpId& committed_op_id = commit_entry.commit().commited_op_id();
-  state->UpdateCommittedOpId(committed_op_id);
-
-  // If there are no pending replicates, or if this commit's index is lower than the
-  // the first pending replicate on record this is likely an orphaned commit.
-  if (state->pending_replicates.empty() ||
-      (*state->pending_replicates.begin()).first > committed_op_id.index()) {
-    VLOG_WITH_PREFIX(2) << "Found orphaned commit for " << committed_op_id;
-    RETURN_NOT_OK(CheckOrphanedCommitAlreadyFlushed(commit_entry.commit()));
-    stats_.orphaned_commits++;
-    commit_entry_ptr->reset();
-    return Status::OK();
-  }
-
-  // If this commit does not correspond to the first replicate message in the pending
-  // replicates set we keep it to apply later...
-  if ((*state->pending_replicates.begin()).first != committed_op_id.index()) {
-    if (!ContainsKey(state->pending_replicates, committed_op_id.index())) {
-      return STATUS(Corruption, Substitute("Could not find replicate for commit: $0",
-                                           commit_entry.ShortDebugString()));
-    }
-    VLOG_WITH_PREFIX(2) << "Adding pending commit for " << committed_op_id;
-    CHECK(state->pending_commits.emplace(committed_op_id.index(),
-                                         std::move(*commit_entry_ptr)).second);
-    return Status::OK();
-  }
-
-  // ... if it does, we apply it and all the commits that immediately follow in the sequence.
-  OpId last_applied = commit_entry.commit().commited_op_id();
-  RETURN_NOT_OK(ApplyCommitMessage(state, commit_entry));
-  commit_entry_ptr->reset();
-
-  auto iter = state->pending_commits.begin();
-  while (iter != state->pending_commits.end()) {
-    if ((*iter).first == last_applied.index() + 1) {
-      std::unique_ptr<LogEntryPB> buffered_commit_entry = std::move(iter->second);
-      state->pending_commits.erase(iter++);
-      last_applied = buffered_commit_entry->commit().commited_op_id();
-      RETURN_NOT_OK(ApplyCommitMessage(state, *buffered_commit_entry));
-      continue;
-    }
-    break;
-  }
-
-  return Status::OK();
-}
-
-bool TabletBootstrap::AreAllStoresAlreadyFlushed(const CommitMsg& commit) {
-  for (const OperationResultPB& op_result : commit.result().ops()) {
-    for (const MemStoreTargetPB& mutated_store : op_result.mutated_stores()) {
-      if (!flushed_stores_.WasStoreAlreadyFlushed(mutated_store)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool TabletBootstrap::AreAnyStoresAlreadyFlushed(const CommitMsg& commit) {
-  for (const OperationResultPB& op_result : commit.result().ops()) {
-    for (const MemStoreTargetPB& mutated_store : op_result.mutated_stores()) {
-      if (flushed_stores_.WasStoreAlreadyFlushed(mutated_store)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-Status TabletBootstrap::CheckOrphanedCommitAlreadyFlushed(const CommitMsg& commit) {
-  if (!AreAllStoresAlreadyFlushed(commit)) {
-    TabletSuperBlockPB super;
-    WARN_NOT_OK(meta_->ToSuperBlock(&super), LogPrefix() + "Couldn't build TabletSuperBlockPB");
-    return STATUS(Corruption, Substitute("CommitMsg was orphaned but it referred to "
-        "unflushed stores. Commit: $0. TabletMetadata: $1", commit.ShortDebugString(),
-        super.ShortDebugString()));
-  }
-  return Status::OK();
-}
-
-Status TabletBootstrap::ApplyCommitMessage(ReplayState* state, const LogEntryPB& commit_entry) {
-  const OpId& committed_op_id = commit_entry.commit().commited_op_id();
-  VLOG_WITH_PREFIX(2) << "Applying commit for " << committed_op_id;
-  // They should also have an associated replicate index (it may have been in a
-  // deleted log segment though).
-  auto it = state->pending_replicates.find(committed_op_id.index());
-
-  if (it != state->pending_replicates.end()) {
-    std::unique_ptr<LogEntryPB> pending_replicate_entry = std::move(it->second);
-    state->pending_replicates.erase(it);
-    // We found a replicate with the same index, make sure it also has the same
-    // term.
-    if (!OpIdEquals(committed_op_id, pending_replicate_entry->replicate().id())) {
-      string error_msg = Substitute("Committed operation's OpId: $0 didn't match the"
-          "commit message's committed OpId: $1. Pending operation: $2, Commit message: $3",
-          pending_replicate_entry->replicate().id().ShortDebugString(),
-          committed_op_id.ShortDebugString(),
-          pending_replicate_entry->replicate().ShortDebugString(),
-          commit_entry.commit().ShortDebugString());
-      LOG_WITH_PREFIX(DFATAL) << error_msg;
-      return STATUS(Corruption, error_msg);
-    }
-    RETURN_NOT_OK(HandleEntryPair(pending_replicate_entry.get(), &commit_entry));
-    stats_.ops_committed++;
-  } else {
-    stats_.orphaned_commits++;
-    RETURN_NOT_OK(CheckOrphanedCommitAlreadyFlushed(commit_entry.commit()));
-  }
+  state->ApplyCommittedPendingReplicates(
+      std::bind(&TabletBootstrap::HandleEntryPair, this, _1, nullptr));
 
   return Status::OK();
 }
@@ -831,41 +677,17 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // all committed entries in the right order, even when the Raft index of entries we encounter in
   // the log jumps back and the term gets increased due to leader changes and logical log
   // "truncation".
-  bool non_kudu = tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE;
   auto persistent_op_id = MinimumOpId();
-  if (non_kudu) {
-    auto flushed_op_id = tablet_->MaxPersistentOpId();
-    persistent_op_id.set_term(flushed_op_id.term);
-    persistent_op_id.set_index(flushed_op_id.index);
-  }
+  auto flushed_op_id = tablet_->MaxPersistentOpId();
+  persistent_op_id.set_term(flushed_op_id.term);
+  persistent_op_id.set_index(flushed_op_id.index);
   ReplayState state(persistent_op_id);
 
-  if (non_kudu) {
-    LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
-                          << state.last_stored_op_id.ShortDebugString();
-  }
+  LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
+                        << state.last_stored_op_id.ShortDebugString();
 
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader_->GetSegmentsSnapshot(&segments));
-
-  // The first thing to do is to rewind the tablet's schema back to the schema
-  // as of the point in time where the logs begin. We must replay the writes
-  // in the logs with the correct point-in-time schema.
-  //
-  // We only do this for legacy Kudu columnar-format tables. For QL tables,
-  // the write transactions write docdb key values directly, without checking the schema.
-  // This means that we can replay them without rewinding the schema. Entries for columns
-  // that were deleted will still be cleaned up by the compaction filter.
-  if (!segments.empty() && tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    const scoped_refptr<ReadableLogSegment>& segment = segments[0];
-    // Set the point-in-time schema for the tablet based on the log header.
-    Schema pit_schema;
-    RETURN_NOT_OK_PREPEND(SchemaFromPB(segment->header().schema(), &pit_schema),
-                          "Couldn't decode log segment schema");
-    RETURN_NOT_OK_PREPEND(tablet_->RewindSchemaForBootstrap(
-                              pit_schema, segment->header().schema_version()),
-                          "couldn't set point-in-time schema");
-  }
 
   // We defer opening the log until here, so that we properly reproduce the
   // point-in-time schema from the log we're reading into the log we're
@@ -925,15 +747,6 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
         DumpReplayStateToLog(state);
         return STATUS(Corruption, "Had orphaned commits at the end of replay.");
       }
-      if (AreAnyStoresAlreadyFlushed(entry.second->commit())) {
-        LOG(INFO) << "Dumping replay state to log";
-        DumpReplayStateToLog(state);
-        TabletSuperBlockPB super;
-        WARN_NOT_OK(meta_->ToSuperBlock(&super), "Couldn't build TabletSuperBlockPB.");
-        return STATUS(Corruption, Substitute("CommitMsg was pending but it referred to "
-            "flushed stores. Commit: $0. TabletMetadata: $1",
-            entry.second->commit().ShortDebugString(), super.ShortDebugString()));
-      }
     }
   }
 
@@ -986,26 +799,23 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // "orphaned replicates". This will make sure we don't try to write to RocksDB with
     // non-monotonic sequence ids, but still create ConsensusRound instances for writes that have
     // not been persisted into RocksDB.
-    if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE ||
-        e.first > state.rocksdb_applied_index) {
+    if (e.first > state.rocksdb_applied_index) {
       consensus_info->orphaned_replicates.emplace_back(e.second->release_replicate());
     }
   }
-  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    LOG(INFO) << "rocksdb_applied_index=" << state.rocksdb_applied_index
-              << ", number of orphaned replicates=" << consensus_info->orphaned_replicates.size();
-    // In case there were no log records that told us that the commit index advanced past
-    // rocksdb_applied_index, update safe time with the timestamp of the latest log record that
-    // had rocksdb_applied_index as its index, because that entry must be the one that was
-    // committed.
-    tablet_->mvcc_manager()->OfflineAdjustSafeTime(state.rocksdb_last_entry_hybrid_time);
-    if (tablet_->mvcc_manager()->GetMaxSafeTimeToReadAt() == HybridTime::kMin &&
-        state.rocksdb_applied_index > 0) {
-      return STATUS(Corruption,
-                    "Even though RocksDB is not empty, we were not able to set safe time "
-                    "correctly on tablet bootstrap. Did we fail to keep at least one committed "
-                    "entry in the log?");
-    }
+  LOG(INFO) << "rocksdb_applied_index=" << state.rocksdb_applied_index
+            << ", number of orphaned replicates=" << consensus_info->orphaned_replicates.size();
+  // In case there were no log records that told us that the commit index advanced past
+  // rocksdb_applied_index, update safe time with the timestamp of the latest log record that
+  // had rocksdb_applied_index as its index, because that entry must be the one that was
+  // committed.
+  tablet_->mvcc_manager()->OfflineAdjustSafeTime(state.rocksdb_last_entry_hybrid_time);
+  if (tablet_->mvcc_manager()->GetMaxSafeTimeToReadAt() == HybridTime::kMin &&
+      state.rocksdb_applied_index > 0) {
+    return STATUS(Corruption,
+                  "Even though RocksDB is not empty, we were not able to set safe time "
+                  "correctly on tablet bootstrap. Did we fail to keep at least one committed "
+                  "entry in the log?");
   }
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;
@@ -1023,49 +833,23 @@ Status TabletBootstrap::AppendCommitMsg(const CommitMsg& commit_msg) {
 
 Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
                                          const CommitMsg* commit_msg) {
+  DCHECK(commit_msg == nullptr);
   DCHECK(replicate_msg->has_hybrid_time());
+
   WriteRequestPB* write = replicate_msg->mutable_write_request();
+
+  DCHECK(write->has_write_batch());
 
   WriteOperationState operation_state(nullptr, write, nullptr);
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
   operation_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
   tablet_->StartOperation(&operation_state);
-  if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // In case of RocksDB-backed tables we will call ApplyRowOperations, which will itself call
-    // StartApplying.
-    tablet_->StartApplying(&operation_state);
-  }
 
   // Use committed OpId for mem store anchoring.
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
-  if (write->has_row_operations()) {
-    DCHECK(!write->has_write_batch());
-    DCHECK_EQ(tablet_->table_type(), TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  }
-
-  if (write->has_write_batch()) {
-    DCHECK(!write->has_row_operations());
-    DCHECK_NE(tablet_->table_type(), TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  }
-
-  if (write->has_row_operations() || write->has_write_batch()) {
-    RETURN_NOT_OK(PlayRowOperations(&operation_state,
-                                    commit_msg == nullptr ? nullptr : &commit_msg->result()));
-  }
-
-  if (commit_msg != nullptr) {
-    // Append the commit msg to the log but replace the result with the new one.
-    LogEntryPB commit_entry;
-    commit_entry.set_type(log::COMMIT);
-    CommitMsg* commit = commit_entry.mutable_commit();
-    commit->CopyFrom(*commit_msg);
-    operation_state.ReleaseTxResultPB(commit->mutable_result());
-    RETURN_NOT_OK(log_->Append(&commit_entry));
-  }
-
-  return Status::OK();
+  return PlayRowOperations(&operation_state, nullptr);
 }
 
 Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
@@ -1154,177 +938,11 @@ Status TabletBootstrap::PlayRowOperations(WriteOperationState* operation_state,
   RETURN_NOT_OK_PREPEND(SchemaFromPB(operation_state->request()->schema(), &inserts_schema),
                         "Couldn't decode client schema");
 
-  RETURN_NOT_OK_PREPEND(
-      tablet_->DecodeWriteOperations(&inserts_schema, operation_state),
-      Substitute("Could not decode row operations: $0",
-                 operation_state->request()->row_operations().ShortDebugString()));
-
   if (result != nullptr) {
     CHECK_EQ(operation_state->row_ops().size(), result->ops_size());
   }
 
-  switch (tablet_->table_type()) {
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      RETURN_NOT_OK_PREPEND(tablet_->AcquireKuduRowLocks(operation_state),
-                            "Failed to acquire row locks");
-      RETURN_NOT_OK(FilterAndApplyOperations(operation_state, result));
-      break;
-    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-    case TableType::REDIS_TABLE_TYPE:
-      tablet_->ApplyRowOperations(operation_state);
-      break;
-    default:
-      LOG(FATAL) << "Invalid table type: " << tablet_->table_type();
-  }
-
-  return Status::OK();
-}
-
-Status TabletBootstrap::FilterAndApplyOperations(WriteOperationState* operation_state,
-                                                 const TxResultPB* orig_result) {
-  int32_t op_idx = 0;
-  for (RowOp* op : operation_state->row_ops()) {
-    const OperationResultPB* orig_op_result =
-        orig_result == nullptr ? nullptr : &orig_result->ops(op_idx++);
-
-    // check if the operation failed in the original transaction
-    if (orig_op_result != nullptr && PREDICT_FALSE(orig_op_result->has_failed_status())) {
-      Status status = StatusFromPB(orig_op_result->failed_status());
-      if (VLOG_IS_ON(1)) {
-        VLOG_WITH_PREFIX(1) << "Skipping operation that originally resulted in error. OpId: "
-                            << operation_state->op_id().DebugString() << " op index: "
-                            << op_idx - 1 << " original error: "
-                            << status.ToString();
-      }
-      op->SetFailed(status);
-      continue;
-    }
-
-    // Check if it should be filtered out because it's already flushed.
-    switch (op->decoded_op.type) {
-      case RowOperationsPB::INSERT:
-        stats_.inserts_seen++;
-        if (orig_op_result == nullptr || !orig_op_result->flushed()) {
-          RETURN_NOT_OK(FilterInsert(operation_state, op, orig_op_result));
-        } else {
-          op->SetAlreadyFlushed();
-          stats_.inserts_ignored++;
-          continue;
-        }
-        break;
-      case RowOperationsPB::UPDATE:
-      case RowOperationsPB::DELETE:
-        stats_.mutations_seen++;
-        if (orig_op_result == nullptr || !orig_op_result->flushed()) {
-          RETURN_NOT_OK(FilterMutate(operation_state, op, orig_op_result));
-        } else {
-          op->SetAlreadyFlushed();
-          stats_.mutations_ignored++;
-          continue;
-        }
-        break;
-      default:
-        LOG_WITH_PREFIX(FATAL) << "Bad op type: " << op->decoded_op.type;
-        break;
-    }
-    if (op->result != nullptr) {
-      continue;
-    }
-
-    // Actually apply it.
-    tablet_->ApplyKuduRowOperation(operation_state, op);
-    DCHECK(op->result != nullptr);
-
-    // We expect that the above Apply() will always succeed, because we're
-    // applying an operation that we know succeeded before the server
-    // restarted. If it doesn't succeed, something is wrong and we are
-    // diverging from our prior state, so bail.
-    if (op->result->has_failed_status()) {
-      return STATUS(Corruption, "Operation which previously succeeded failed "
-                                "during log replay",
-                                Substitute("Op: $0\nFailure: $1",
-                                           op->ToString(*tablet_->schema()),
-                                           op->result->failed_status().ShortDebugString()));
-    }
-  }
-  return Status::OK();
-}
-
-Status TabletBootstrap::FilterInsert(WriteOperationState* operation_state,
-                                     RowOp* op,
-                                     const OperationResultPB* op_result) {
-  DCHECK_EQ(op->decoded_op.type, RowOperationsPB::INSERT);
-  if (op_result == nullptr) return Status::OK();
-
-  if (PREDICT_FALSE(op_result->mutated_stores_size() != 1 ||
-                    !op_result->mutated_stores(0).has_mrs_id())) {
-    return STATUS(Corruption, Substitute("Insert operation result must have an mrs_id: $0",
-                                         op_result->ShortDebugString()));
-  }
-  // check if the insert is already flushed
-  if (flushed_stores_.WasStoreAlreadyFlushed(op_result->mutated_stores(0))) {
-    if (VLOG_IS_ON(1)) {
-      VLOG_WITH_PREFIX(1) << "Skipping insert that was already flushed. OpId: "
-                          << operation_state->op_id().DebugString()
-                          << " flushed to: " << op_result->mutated_stores(0).mrs_id()
-                          << " latest durable mrs id: "
-                          << tablet_->metadata()->last_durable_mrs_id();
-    }
-
-    op->SetAlreadyFlushed();
-    stats_.inserts_ignored++;
-  }
-  return Status::OK();
-}
-
-Status TabletBootstrap::FilterMutate(WriteOperationState* operation_state,
-                                     RowOp* op,
-                                     const OperationResultPB* op_result) {
-  DCHECK(op->decoded_op.type == RowOperationsPB::UPDATE ||
-         op->decoded_op.type == RowOperationsPB::DELETE)
-    << RowOperationsPB::Type_Name(op->decoded_op.type);
-  if (op_result == nullptr) return Status::OK();
-
-  int num_mutated_stores = op_result->mutated_stores_size();
-  if (PREDICT_FALSE(num_mutated_stores == 0 || num_mutated_stores > 2)) {
-    return STATUS(Corruption, Substitute("Mutations must have one or two mutated_stores: $0",
-                                         op_result->ShortDebugString()));
-  }
-
-  // The mutation may have been duplicated, so we'll check whether any of the
-  // output targets was "unflushed".
-  int num_unflushed_stores = 0;
-  for (const MemStoreTargetPB& mutated_store : op_result->mutated_stores()) {
-    if (!flushed_stores_.WasStoreAlreadyFlushed(mutated_store)) {
-      num_unflushed_stores++;
-    } else {
-      if (VLOG_IS_ON(1)) {
-        string mutation = op->decoded_op.changelist.ToString(*tablet_->schema());
-        VLOG_WITH_PREFIX(1) << "Skipping mutation to " << mutated_store.ShortDebugString()
-                            << " that was already flushed. "
-                            << "OpId: " << operation_state->op_id().DebugString();
-      }
-    }
-  }
-
-  if (num_unflushed_stores == 0) {
-    // The mutation was fully flushed.
-    op->SetFailed(STATUS(AlreadyPresent, "Update was already flushed."));
-    stats_.mutations_ignored++;
-    return Status::OK();
-  }
-
-  if (num_unflushed_stores == 2) {
-    // 18:47 < dralves> off the top of my head, if we crashed before writing the meta
-    //                  at the end of a flush/compation then both mutations could
-    //                  potentually be considered unflushed
-    // This case is not currently covered by any tests -- we need to add test coverage
-    // for this. See KUDU-218. It's likely the correct behavior is just to apply the edit,
-    // ie not fatal below.
-    LOG_WITH_PREFIX(DFATAL) << "TODO: add test coverage for case where op is unflushed "
-                            << "in both duplicated targets";
-  }
-
+  tablet_->ApplyRowOperations(operation_state);
   return Status::OK();
 }
 
@@ -1334,56 +952,6 @@ void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
 
 string TabletBootstrap::LogPrefix() const {
   return Substitute("T $0 P $1: ", meta_->tablet_id(), meta_->fs_manager()->uuid());
-}
-
-// ============================================================================
-//  Class FlushedStoresSnapshot.
-// ============================================================================
-Status FlushedStoresSnapshot::InitFrom(const TabletMetadata& meta) {
-  CHECK(flushed_dms_by_drs_id_.empty()) << "already initted";
-  last_durable_mrs_id_ = meta.last_durable_mrs_id();
-  for (const shared_ptr<RowSetMetadata>& rsmd : meta.rowsets()) {
-    if (!InsertIfNotPresent(&flushed_dms_by_drs_id_, rsmd->id(),
-                            rsmd->last_durable_redo_dms_id())) {
-      return STATUS(Corruption, Substitute(
-          "Duplicate DRS ID $0 in tablet metadata. "
-          "Found DRS $0 with last durable redo DMS ID $1 while trying to "
-          "initialize DRS $0 with last durable redo DMS ID $2",
-          rsmd->id(),
-          flushed_dms_by_drs_id_[rsmd->id()],
-          rsmd->last_durable_redo_dms_id()));
-    }
-  }
-  return Status::OK();
-}
-
-bool FlushedStoresSnapshot::WasStoreAlreadyFlushed(const MemStoreTargetPB& target) const {
-  if (target.has_mrs_id()) {
-    DCHECK(!target.has_rs_id());
-    DCHECK(!target.has_dms_id());
-
-    // The original mutation went to the MRS. It is flushed if it went to an MRS
-    // with a lower ID than the latest flushed one.
-    return target.mrs_id() <= last_durable_mrs_id_;
-  } else {
-    // The original mutation went to a DRS's delta store.
-    int64_t last_durable_dms_id;
-    if (!FindCopy(flushed_dms_by_drs_id_, target.rs_id(), &last_durable_dms_id)) {
-      // if we have no data about this RowSet, then it must have been flushed and
-      // then deleted.
-      // TODO: how do we avoid a race where we get an update on a rowset before
-      // it is persisted? add docs about the ordering of flush.
-      return true;
-    }
-
-    // If the original rowset that we applied the edit to exists, check whether
-    // the edit was in a flushed DMS or a live one.
-    if (target.dms_id() <= last_durable_dms_id) {
-      return true;
-    }
-
-    return false;
-  }
 }
 
 // ============================================================================

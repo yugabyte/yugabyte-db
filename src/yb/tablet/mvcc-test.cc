@@ -80,7 +80,7 @@ class MvccTest : public YBTest {
 };
 
 TEST_F(MvccTest, TestMvccBasic) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
   MvccSnapshot snap;
 
   // Initial state should not have any committed transactions.
@@ -116,7 +116,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 }
 
 TEST_F(MvccTest, TestMvccMultipleInFlight) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
   MvccSnapshot snap;
 
   // Start hybrid_time 1, hybrid_time 2
@@ -185,7 +185,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
 TEST_F(MvccTest, TestOutOfOrderTxns) {
   scoped_refptr<Clock> hybrid_clock(new HybridClock());
   ASSERT_OK(hybrid_clock->Init());
-  MvccManager mgr(hybrid_clock);
+  MvccManager mgr(hybrid_clock, EnforceInvariants::kFalse);
 
   // Start a normal non-commit-wait txn.
   HybridTime normal_txn = mgr.StartOperation();
@@ -225,7 +225,7 @@ TEST_F(MvccTest, TestOutOfOrderTxns) {
 // This is disconnected from the current time (whatever is returned from clock->Now())
 // for replication/bootstrap.
 TEST_F(MvccTest, TestOfflineOperations) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   // set the clock to some time in the "future"
   clock_->Update(HybridTime(100));
@@ -262,7 +262,7 @@ TEST_F(MvccTest, TestOfflineOperations) {
 }
 
 TEST_F(MvccTest, TestScopedOperation) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
   MvccSnapshot snap;
 
   {
@@ -380,7 +380,7 @@ TEST_F(MvccTest, TestMayHaveUncommittedOperationsBefore) {
 }
 
 TEST_F(MvccTest, TestAreAllOperationsCommitted) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   // start several transactions and take snapshots along the way
   HybridTime tx1 = mgr.StartOperation();
@@ -416,7 +416,7 @@ TEST_F(MvccTest, TestAreAllOperationsCommitted) {
 }
 
 TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithNoInflights) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
   thread waiting_thread = thread(
       &MvccTest::WaitForSnapshotAtTSThread, this, &mgr, clock_->Now());
 
@@ -426,8 +426,7 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithNoInflights) {
 }
 
 TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithInFlights) {
-
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   HybridTime tx1 = mgr.StartOperation();
   HybridTime tx2 = mgr.StartOperation();
@@ -446,7 +445,7 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithInFlights) {
 }
 
 TEST_F(MvccTest, TestWaitForApplyingOperationsToCommit) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   HybridTime tx1 = mgr.StartOperation();
   HybridTime tx2 = mgr.StartOperation();
@@ -475,8 +474,7 @@ TEST_F(MvccTest, TestWaitForApplyingOperationsToCommit) {
 }
 
 TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapAtHybridTimeWithInFlights) {
-
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   // Operations with hybrid_time 1 through 3
   HybridTime tx1 = mgr.StartOperation();
@@ -510,8 +508,7 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapAtHybridTimeWithInFlights) {
 // Test that if we abort a transaction we don't advance the safe time and don't
 // add the transaction to the committed set.
 TEST_F(MvccTest, TestTxnAbort) {
-
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   // Operations with hybrid_times 1 through 3
   HybridTime tx1 = mgr.StartOperation();
@@ -541,8 +538,8 @@ TEST_F(MvccTest, TestTxnAbort) {
 // This tests for a bug we were observing, where a clean snapshot would not
 // coalesce to the latest hybrid_time, for offline transactions.
 TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineOperations) {
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
-  MvccManager mgr(clock_.get());
   clock_->Update(HybridTime(20));
 
   ASSERT_OK(mgr.StartOperationAtHybridTime(HybridTime(10)));
@@ -566,7 +563,8 @@ TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineOperations) {
 //
 // Any other transition should fire a CHECK failure.
 TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
+
   MvccSnapshot snap;
 
   EXPECT_DEATH({
@@ -626,7 +624,7 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
 }
 
 TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
 
   // Operations with hybrid_time 1 through 3
   HybridTime tx1 = mgr.StartOperation();
@@ -641,7 +639,8 @@ TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
 }
 
 TEST_F(MvccTest, TestMaxSafeTimeToReadAt) {
-  MvccManager mgr(clock_.get());
+  MvccManager mgr(clock_.get(), EnforceInvariants::kFalse);
+
   auto apply_and_commit = [&](HybridTime tx_to_commit) {
     mgr.StartApplyingOperation(tx_to_commit);
     mgr.CommitOperation(tx_to_commit);

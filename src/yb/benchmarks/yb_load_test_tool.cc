@@ -94,8 +94,6 @@ DEFINE_bool(
     "Whether to drop the table if it already exists. If true, the table is deleted and "
     "then recreated");
 
-DEFINE_bool(use_kv_table, true, "Use key-value table type backed by RocksDB");
-
 DEFINE_int64(value_size_bytes, 16, "Size of each value in a row being inserted");
 
 DEFINE_bool(
@@ -316,9 +314,7 @@ void CreateYBTable(const YBTableName &table_name, const shared_ptr<YBClient> &cl
           .schema(&schema)
           .split_rows(splits)
           .num_replicas(FLAGS_num_replicas)
-          .table_type(
-              FLAGS_use_kv_table ? yb::client::YBTableType::YQL_TABLE_TYPE
-                                 : yb::client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
+          .table_type(yb::client::YBTableType::YQL_TABLE_TYPE)
           .Create();
   if (!table_creation_status.ok()) {
     LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();

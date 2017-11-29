@@ -986,10 +986,6 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       }
       break;
     }
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      LOG(FATAL) << "Currently, read requests are only supported for Redis and QL table type. "
-                 << "Existing tablet's table type is: " << tablet->table_type();
-      break;
     default:
       LOG(FATAL) << "Unknown table type: " << tablet->table_type();
       break;

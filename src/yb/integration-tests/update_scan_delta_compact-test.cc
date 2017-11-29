@@ -50,7 +50,6 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
-DECLARE_int32(flush_threshold_mb);
 DECLARE_int32(log_segment_size_mb);
 DECLARE_int32(maintenance_manager_polling_interval_ms);
 DEFINE_int32(mbs_for_flushes_and_rolls, 1, "How many MBs are needed to flush and roll");
@@ -182,7 +181,6 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
   OverrideFlagForSlowTests("mbs_for_flushes_and_rolls", "8");
   // Setting this high enough that we see the effects of flushes and compactions.
   OverrideFlagForSlowTests("maintenance_manager_polling_interval_ms", "2000");
-  FLAGS_flush_threshold_mb = FLAGS_mbs_for_flushes_and_rolls;
   FLAGS_log_segment_size_mb = FLAGS_mbs_for_flushes_and_rolls;
   if (!AllowSlowTests()) {
     // Make it run more often since it's not a long test.

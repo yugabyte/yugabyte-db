@@ -71,8 +71,6 @@ class WriteResponsePB;
 
 namespace tablet {
 struct RowOp;
-class RowSetKeyProbe;
-struct TabletComponents;
 class Tablet;
 
 using docdb::LockBatch;
@@ -141,11 +139,6 @@ class WriteOperationState : public OperationState {
   // WriteOperationState object.
   void SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOperation> mvcc_tx);
 
-  // Set the Tablet components that this transaction will write into.
-  // Called exactly once at the beginning of Apply, before applying its
-  // in-memory edits.
-  void set_tablet_components(const scoped_refptr<const TabletComponents>& components);
-
   // Take a shared lock on the given schema lock.
   // This is required prior to decoding rows so that the schema does
   // not change in between performing the projection and applying
@@ -164,10 +157,6 @@ class WriteOperationState : public OperationState {
   const Schema* schema_at_decode_time() const {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     return schema_at_decode_time_;
-  }
-
-  const TabletComponents* tablet_components() const {
-    return tablet_components_.get();
   }
 
   // Notifies the MVCC manager that this operation is about to start applying
@@ -198,11 +187,6 @@ class WriteOperationState : public OperationState {
     return row_ops_;
   }
 
-  void swap_row_ops(std::vector<RowOp*>* new_ops) {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    row_ops_.swap(*new_ops);
-  }
-
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
   std::vector<std::unique_ptr<docdb::QLWriteOperation>>* ql_write_ops() {
@@ -215,8 +199,6 @@ class WriteOperationState : public OperationState {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     docdb_locks_ = std::move(docdb_locks);
   }
-
-  void UpdateMetricsForOp(const RowOp& op);
 
   // Releases all the DocDB locks acquired by this transaction.
   void ReleaseDocDbLocks(Tablet* tablet);
@@ -267,9 +249,6 @@ class WriteOperationState : public OperationState {
   //                we actually get counterexamples for this in tests.
   std::mutex mvcc_tx_mutex_;
 
-  // The tablet components, acquired at the same time as mvcc_tx_ is set.
-  scoped_refptr<const TabletComponents> tablet_components_;
-
   // A lock held on the tablet's schema. Prevents concurrent schema change
   // from racing with a write.
   shared_lock<rw_semaphore> schema_lock_;
@@ -303,10 +282,10 @@ class WriteOperation : public Operation {
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows. This results in adding 'RowOp' objects for each of the operations
   // into the WriteOperationState.
-  virtual CHECKED_STATUS Prepare() override;
+  CHECKED_STATUS Prepare() override;
 
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
-  virtual void Start() override;
+  void Start() override;
 
   // Executes an Apply for a write transaction.
   //
@@ -326,16 +305,16 @@ class WriteOperation : public Operation {
   // are placed in the queue (but not necessarily in the same order of the
   // original requests) which is already a requirement of the consensus
   // algorithm.
-  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
+  CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
 
   // Releases the row locks (Early Lock Release).
-  virtual void PreCommit() override;
+  void PreCommit() override;
 
   // If result == COMMITTED, commits the mvcc transaction and updates
   // the metrics, if result == ABORTED aborts the mvcc transaction.
-  virtual void Finish(OperationResult result) override;
+  void Finish(OperationResult result) override;
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
  private:
   // this transaction's start time

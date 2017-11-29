@@ -111,9 +111,6 @@ METRIC_DEFINE_counter(tablet, key_file_lookups, "Key File Lookups",
 METRIC_DEFINE_counter(tablet, delta_file_lookups, "Delta File Lookups",
                       yb::MetricUnit::kProbes,
                       "Number of times a delta file was consulted");
-METRIC_DEFINE_counter(tablet, mrs_lookups, "MemRowSet Lookups",
-                      yb::MetricUnit::kProbes,
-                      "Number of times a MemRowSet was consulted.");
 METRIC_DEFINE_counter(tablet, bytes_flushed, "Bytes Flushed",
                       yb::MetricUnit::kBytes,
                       "Amount of data that has been flushed to disk by this tablet.");
@@ -176,16 +173,6 @@ METRIC_DEFINE_histogram(
     tablet, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
     "Time taken to acquire key locks for a write operation", 60000000LU, 2);
 
-METRIC_DEFINE_gauge_uint32(tablet, flush_dms_running,
-  "DeltaMemStore Flushes Running",
-  yb::MetricUnit::kMaintenanceOperations,
-  "Number of delta memstore flushes currently running.");
-
-METRIC_DEFINE_gauge_uint32(tablet, flush_mrs_running,
-  "MemRowSet Flushes Running",
-  yb::MetricUnit::kMaintenanceOperations,
-  "Number of MemRowSet flushes currently running.");
-
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
   yb::MetricUnit::kMaintenanceOperations,
@@ -200,16 +187,6 @@ METRIC_DEFINE_gauge_uint32(tablet, delta_major_compact_rs_running,
   "Major Delta Compactions Running",
   yb::MetricUnit::kMaintenanceOperations,
   "Number of delta major compactions currently running.");
-
-METRIC_DEFINE_histogram(tablet, flush_dms_duration,
-  "DeltaMemStore Flush Duration",
-  yb::MetricUnit::kMilliseconds,
-  "Time spent flushing DeltaMemStores.", 60000LU, 1);
-
-METRIC_DEFINE_histogram(tablet, flush_mrs_duration,
-  "MemRowSet Flush Duration",
-  yb::MetricUnit::kMilliseconds,
-  "Time spent flushing MemRowSets.", 60000LU, 1);
 
 METRIC_DEFINE_histogram(tablet, compact_rs_duration,
   "RowSet Compaction Duration",
@@ -239,25 +216,13 @@ namespace tablet {
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
 TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
-  : MINIT(rows_inserted),
-    MINIT(rows_updated),
-    MINIT(rows_deleted),
-    MINIT(insertions_failed_dup_key),
-    MINIT(scanner_rows_returned),
+  : MINIT(scanner_rows_returned),
     MINIT(scanner_cells_returned),
     MINIT(scanner_bytes_returned),
     MINIT(scanner_rows_scanned),
     MINIT(scanner_cells_scanned_from_disk),
     MINIT(scanner_bytes_scanned_from_disk),
     MINIT(scans_started),
-    MINIT(bloom_lookups),
-    MINIT(key_file_lookups),
-    MINIT(delta_file_lookups),
-    MINIT(mrs_lookups),
-    MINIT(bytes_flushed),
-    MINIT(bloom_lookups_per_op),
-    MINIT(key_file_lookups_per_op),
-    MINIT(delta_file_lookups_per_op),
     MINIT(commit_wait_duration),
     MINIT(snapshot_read_inflight_wait_duration),
     MINIT(redis_read_latency),
@@ -265,36 +230,10 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(write_lock_latency),
     MINIT(write_op_duration_client_propagated_consistency),
     MINIT(write_op_duration_commit_wait_consistency),
-    GINIT(flush_dms_running),
-    GINIT(flush_mrs_running),
-    GINIT(compact_rs_running),
-    GINIT(delta_minor_compact_rs_running),
-    GINIT(delta_major_compact_rs_running),
-    MINIT(flush_dms_duration),
-    MINIT(flush_mrs_duration),
-    MINIT(compact_rs_duration),
-    MINIT(delta_minor_compact_rs_duration),
-    MINIT(delta_major_compact_rs_duration),
     MINIT(leader_memory_pressure_rejections) {
 }
 #undef MINIT
 #undef GINIT
-
-void TabletMetrics::AddProbeStats(const ProbeStats& stats) {
-  bloom_lookups->IncrementBy(stats.blooms_consulted);
-  key_file_lookups->IncrementBy(stats.keys_consulted);
-  delta_file_lookups->IncrementBy(stats.deltas_consulted);
-  mrs_lookups->IncrementBy(stats.mrs_consulted);
-
-  bloom_lookups_per_op->Increment(stats.blooms_consulted);
-  key_file_lookups_per_op->Increment(stats.keys_consulted);
-  delta_file_lookups_per_op->Increment(stats.deltas_consulted);
-
-  TRACE("ProbeStats: bloom_lookups=$0,key_file_lookups=$1,"
-        "delta_file_lookups=$2,mrs_lookups=$3",
-        stats.blooms_consulted, stats.keys_consulted,
-        stats.deltas_consulted, stats.mrs_consulted);
-}
 
 ScopedTabletMetricsTracker::ScopedTabletMetricsTracker(scoped_refptr<Histogram> latency)
     : latency_(latency), start_time_(MonoTime::FineNow()) {}

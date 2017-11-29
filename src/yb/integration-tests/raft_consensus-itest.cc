@@ -1459,13 +1459,8 @@ void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
   CHECK_OK(SchemaToPB(schema_, write_req->mutable_schema()));
   write_req->set_tablet_id(tablet_id_);
   int32_t key = static_cast<int32_t>(id.index() * 10000 + id.term());
-  if (table_type() == client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    AddTestRowToPB(RowOperationsPB::INSERT, schema_, key, id.term(),
-                   id.ShortDebugString(), write_req->mutable_row_operations());
-  } else {
-    string str_val = Substitute("term: $0 index: $1", id.term(), id.index());
-    AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
-  }
+  string str_val = Substitute("term: $0 index: $1", id.term(), id.index());
+  AddKVToPB(key, key + 10, str_val, write_req->mutable_write_batch());
 }
 
 // Regression test for KUDU-644:
@@ -2394,7 +2389,6 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   ts_flags.push_back("--log_cache_size_limit_mb=1");
   ts_flags.push_back("--log_segment_size_mb=1");
   ts_flags.push_back("--log_async_preallocate_segments=false");
-  ts_flags.push_back("--flush_threshold_mb=1");
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=300");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));

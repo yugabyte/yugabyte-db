@@ -561,6 +561,7 @@ void LookupRpc::DoSendRpcCb(const Status& status,
 RemoteTabletPtr MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
   VLOG(2) << "Processing master response " << ToString(locations);
+  LOG(INFO) << "Processing master response " << ToString(locations);
 
   RemoteTabletPtr result;
   bool first = true;

@@ -58,9 +58,6 @@ static Status PBToClientTableType(
     TableType table_type_from_pb,
     YBTableType* client_table_type) {
   switch (table_type_from_pb) {
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      *client_table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE;
-      return Status::OK();
     case TableType::YQL_TABLE_TYPE:
       *client_table_type = YBTableType::YQL_TABLE_TYPE;
       return Status::OK();

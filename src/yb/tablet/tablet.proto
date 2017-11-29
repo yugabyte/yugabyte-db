@@ -109,7 +109,6 @@ message TabletStatusPB {
   // DEPRECATED.
   optional bytes end_key = 6;
   optional PartitionPB partition = 9;
-  optional int64 estimated_on_disk_size = 7;
 }
 
 // Used to present the maintenance manager's internal state.

@@ -117,26 +117,6 @@ struct ReplayState {
   HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
 };
 
-// Information from the tablet metadata which indicates which data was
-// flushed prior to this restart.
-//
-// We take a snapshot of this information at the beginning of the bootstrap
-// process so that we can allow compactions and flushes to run during bootstrap
-// without confusing our tracking of flushed stores.
-class FlushedStoresSnapshot {
- public:
-  FlushedStoresSnapshot() {}
-  Status InitFrom(const TabletMetadata& meta);
-
-  bool WasStoreAlreadyFlushed(const MemStoreTargetPB& target) const;
-
- private:
-  int64_t last_durable_mrs_id_;
-  unordered_map<int64_t, int64_t> flushed_dms_by_drs_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(FlushedStoresSnapshot);
-};
-
 // Bootstraps an existing tablet by opening the metadata from disk, and rebuilding soft
 // state by playing log segments. A bootstrapped tablet can then be added to an existing
 // consensus configuration as a LEARNER, which will bring its state up to date with the
@@ -229,51 +209,16 @@ class TabletBootstrap {
   Status PlayRowOperations(WriteOperationState* operation_state,
                            const TxResultPB* result);
 
-  // Pass through all of the decoded operations in operation_state. For
-  // each op:
-  // - if it was previously failed, mark as failed
-  // - if it previously succeeded but was flushed, mark as skipped
-  // - otherwise, re-apply to the tablet being bootstrapped.
-  Status FilterAndApplyOperations(WriteOperationState* operation_state,
-                                  const TxResultPB* orig_result);
-
-  // Filter a single insert operation, setting it to failed if
-  // it was already flushed.
-  Status FilterInsert(WriteOperationState* operation_state,
-                      RowOp* op,
-                      const OperationResultPB* op_result);
-
-  // Filter a single mutate operation, setting it to failed if
-  // it was already flushed.
-  Status FilterMutate(WriteOperationState* operation_state,
-                      RowOp* op,
-                      const OperationResultPB* op_result);
-
-  // Returns whether all the stores that are referred to in the commit
-  // message are already flushed.
-  bool AreAllStoresAlreadyFlushed(const consensus::CommitMsg& commit);
-
-  // Returns whether there is any store that is referred to in the commit
-  // message that is already flushed.
-  bool AreAnyStoresAlreadyFlushed(const consensus::CommitMsg& commit);
-
   void DumpReplayStateToLog(const ReplayState& state);
 
   // Handlers for each type of message seen in the log during replay.
   CHECKED_STATUS HandleEntry(ReplayState* state, std::unique_ptr<log::LogEntryPB>* entry);
   CHECKED_STATUS HandleReplicateMessage(
       ReplayState* state, std::unique_ptr<log::LogEntryPB>* replicate_entry);
-  CHECKED_STATUS HandleCommitMessage(
-      ReplayState* state, std::unique_ptr<log::LogEntryPB>* commit_entry);
-  CHECKED_STATUS ApplyCommitMessage(ReplayState* state, const log::LogEntryPB& commit_entry);
   CHECKED_STATUS HandleEntryPair(
       log::LogEntryPB* replicate_entry, const log::LogEntryPB* commit_entry);
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
       consensus::ReplicateMsg* replicate, const consensus::CommitMsg* commit);
-
-  // Checks that an orphaned commit message is actually irrelevant, i.e that the
-  // data stores it refers to are already flushed.
-  Status CheckOrphanedCommitAlreadyFlushed(const consensus::CommitMsg& commit);
 
   // Decodes a HybridTime from the provided string and updates the clock
   // with it.
@@ -328,9 +273,6 @@ class TabletBootstrap {
     // Number of COMMIT messages for which a corresponding REPLICATE was not found.
     int orphaned_commits;
   } stats_;
-
-  // Snapshot of which stores were flushed prior to restart.
-  FlushedStoresSnapshot flushed_stores_;
 
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
 

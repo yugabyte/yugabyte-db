@@ -576,7 +576,6 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   ts_flags.push_back("--log_segment_size_mb=1");
   ts_flags.push_back("--log_async_preallocate_segments=false");
   ts_flags.push_back("--log_min_segments_to_retain=100");
-  ts_flags.push_back("--flush_threshold_mb=0"); // Constantly flush.
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=10");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));

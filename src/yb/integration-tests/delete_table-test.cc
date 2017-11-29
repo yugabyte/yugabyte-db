@@ -744,7 +744,6 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   const int kNumTabletServers = 5;
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--flush_threshold_mb=0");  // Always be flushing.
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=100");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
@@ -806,7 +805,6 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   // Flush quickly since we wait for a flush to occur.
-  ts_flags.push_back("--flush_threshold_mb=0");
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=100");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));

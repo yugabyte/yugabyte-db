@@ -55,12 +55,8 @@ class OperationState;
 
 // All metrics associated with a Operation.
 struct OperationMetrics {
-  OperationMetrics();
   void Reset();
-  int successful_inserts;
-  int successful_updates;
-  int successful_deletes;
-  uint64_t commit_wait_duration_usec;
+  uint64_t commit_wait_duration_usec = 0;
 };
 
 // Base class for transactions.

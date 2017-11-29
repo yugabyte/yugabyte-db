@@ -57,11 +57,6 @@
 
 namespace yb {
 namespace tablet {
-class RowSetMetadata;
-class RowSetMetadataUpdate;
-
-typedef std::vector<std::shared_ptr<RowSetMetadata> > RowSetMetadataVector;
-typedef std::unordered_set<int64_t> RowSetMetadataIds;
 
 extern const int64 kNoDurableMemStore;
 
@@ -115,14 +110,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                              const Partition& partition,
                              const TabletDataState& initial_tablet_data_state,
                              scoped_refptr<TabletMetadata>* metadata);
-
-  // Create a  tablet metadata instance without reading or writing to superblocks.
-  // For testing purposes.
-  static CHECKED_STATUS TEST_CreateDummyWithSchema(scoped_refptr<TabletMetadata>* metadata,
-                                                   const Schema& schema);
-
-  static void CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
-                                std::vector<BlockIdPB>* block_ids);
 
   const std::string& tablet_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
@@ -196,17 +183,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   CHECKED_STATUS Flush();
 
-  // Updates the metadata in the following ways:
-  // 1. Adds rowsets from 'to_add'.
-  // 2. Removes rowsets from 'to_remove'.
-  // 3. Adds orphaned blocks from 'to_remove'.
-  // 4. Updates the last durable MRS ID from 'last_durable_mrs_id',
-  //    assuming it's not kNoMrsFlushed.
-  static const int64_t kNoMrsFlushed = -1;
-  CHECKED_STATUS UpdateAndFlush(const RowSetMetadataIds& to_remove,
-                        const RowSetMetadataVector& to_add,
-                        int64_t last_durable_mrs_id);
-
   // Adds the blocks referenced by 'block_ids' to 'orphaned_blocks_'.
   //
   // This set will be written to the on-disk metadata in any subsequent
@@ -241,13 +217,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // Returns Status::IllegalState if the tablet data state is not TABLET_DATA_DELETED.
   CHECKED_STATUS DeleteSuperBlock();
 
-  // Create a new RowSetMetadata for this tablet.
-  // Does not add the new rowset to the list of rowsets. Use one of the Update()
-  // calls to do so.
-  CHECKED_STATUS CreateRowSet(std::shared_ptr<RowSetMetadata> *rowset, const Schema& schema);
-
-  const RowSetMetadataVector& rowsets() const { return rowsets_; }
-
   FsManager *fs_manager() const { return fs_manager_; }
 
   int64_t last_durable_mrs_id() const { return last_durable_mrs_id_; }
@@ -274,13 +243,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   void AddDeletedColumn(const DeletedColumn& col) {
     deleted_cols_.push_back(col);
   }
-
-  // ==========================================================================
-  // Stuff used by the tests
-  // ==========================================================================
-  const RowSetMetadata *GetRowSetForTests(int64_t id) const;
-
-  RowSetMetadata *GetRowSetForTests(int64_t id);
 
  private:
   friend class RefCountedThreadSafe<TabletMetadata>;
@@ -322,13 +284,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const TabletSuperBlockPB &pb);
 
   // Requires 'data_lock_'.
-  CHECKED_STATUS UpdateUnlocked(const RowSetMetadataIds& to_remove,
-                        const RowSetMetadataVector& to_add,
-                        int64_t last_durable_mrs_id);
-
-  // Requires 'data_lock_'.
-  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
-                              const RowSetMetadataVector& rowsets) const;
+  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) const;
 
   // Requires 'data_lock_'.
   void AddOrphanedBlocksUnlocked(const std::vector<BlockId>& block_ids);
@@ -365,9 +321,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   Partition partition_;
 
   FsManager* const fs_manager_;
-  RowSetMetadataVector rowsets_;
-
-  base::subtle::Atomic64 next_rowset_idx_;
 
   int64_t last_durable_mrs_id_;
 

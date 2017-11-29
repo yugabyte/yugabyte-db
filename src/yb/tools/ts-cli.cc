@@ -428,10 +428,6 @@ static int TsCliMain(int argc, char** argv) {
       std::cout << "Table name: " << ts.table_name() << std::endl;
       std::cout << "Partition: " << partition_schema.PartitionDebugString(partition, schema)
                 << std::endl;
-      if (ts.has_estimated_on_disk_size()) {
-        std::cout << "Estimated on disk size: " <<
-            HumanReadableNumBytes::ToString(ts.estimated_on_disk_size()) << std::endl;
-      }
       std::cout << "Schema: " << schema.ToString() << std::endl;
     }
   } else if (op == kAreTabletsRunningOp) {

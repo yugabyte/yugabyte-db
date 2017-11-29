@@ -52,7 +52,6 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/metadata.h"
-#include "yb/tablet/rowset_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -179,36 +178,6 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
   }
 }
 
-Status TabletMetadata::TEST_CreateDummyWithSchema(scoped_refptr<TabletMetadata>* metadata,
-                                                  const Schema& schema) {
-  scoped_refptr<TabletMetadata> ret(new TabletMetadata(nullptr, "test_tablet"));
-  RETURN_NOT_OK(ret->Flush());
-  metadata->swap(ret);
-  metadata->get()->SetSchema(schema, 0);
-  return Status::OK();
-}
-
-void TabletMetadata::CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
-                                       std::vector<BlockIdPB>* block_ids) {
-  for (const RowSetDataPB& rowset : superblock.rowsets()) {
-    for (const ColumnDataPB& column : rowset.columns()) {
-      block_ids->push_back(column.block());
-    }
-    for (const DeltaDataPB& redo : rowset.redo_deltas()) {
-      block_ids->push_back(redo.block());
-    }
-    for (const DeltaDataPB& undo : rowset.undo_deltas()) {
-      block_ids->push_back(undo.block());
-    }
-    if (rowset.has_bloom_block()) {
-      block_ids->push_back(rowset.bloom_block());
-    }
-    if (rowset.has_adhoc_index_block()) {
-      block_ids->push_back(rowset.adhoc_index_block());
-    }
-  }
-}
-
 Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
                                         const boost::optional<consensus::OpId>& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
@@ -224,31 +193,25 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
   // we have been deleted.
   {
     std::lock_guard<LockType> l(data_lock_);
-    for (const shared_ptr<RowSetMetadata>& rsmd : rowsets_) {
-      AddOrphanedBlocksUnlocked(rsmd->GetAllBlocks());
-    }
-    rowsets_.clear();
     tablet_data_state_ = delete_type;
     if (last_logged_opid) {
       tombstone_last_logged_opid_ = *last_logged_opid;
     }
   }
 
-  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    rocksdb::Options rocksdb_options;
-    TabletOptions tablet_options;
-    docdb::InitRocksDBOptions(
-        &rocksdb_options, tablet_id_, nullptr /* statistics */, tablet_options);
+  rocksdb::Options rocksdb_options;
+  TabletOptions tablet_options;
+  docdb::InitRocksDBOptions(
+      &rocksdb_options, tablet_id_, nullptr /* statistics */, tablet_options);
 
-    LOG(INFO) << "Destroying RocksDB at: " << rocksdb_dir_;
-    rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);
+  LOG(INFO) << "Destroying RocksDB at: " << rocksdb_dir_;
+  rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);
 
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to destroy RocksDB at: " << rocksdb_dir_ << ": "
-                 << status.ToString();
-    } else {
-      LOG(INFO) << "Successfully destroyed RocksDB at: " << rocksdb_dir_;
-    }
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to destroy RocksDB at: " << rocksdb_dir_ << ": "
+               << status.ToString();
+  } else {
+    LOG(INFO) << "Successfully destroyed RocksDB at: " << rocksdb_dir_;
   }
 
   // Flushing will sync the new tablet_data_state_ to disk and will now also
@@ -301,7 +264,6 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
       tablet_id_(std::move(tablet_id)),
       partition_(std::move(partition)),
       fs_manager_(fs_manager),
-      next_rowset_idx_(0),
       last_durable_mrs_id_(kNoDurableMemStore),
       schema_(new Schema(schema)),
       schema_version_(0),
@@ -328,7 +290,6 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager, string tablet_id)
     : state_(kNotLoadedYet),
       tablet_id_(std::move(tablet_id)),
       fs_manager_(fs_manager),
-      next_rowset_idx_(0),
       schema_(nullptr),
       tombstone_last_logged_opid_(MinimumOpId()),
       num_flush_pins_(0),
@@ -399,14 +360,6 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
       deleted_cols_.push_back(col);
     }
 
-    rowsets_.clear();
-    for (const RowSetDataPB& rowset_pb : superblock.rowsets()) {
-      gscoped_ptr<RowSetMetadata> rowset_meta;
-      RETURN_NOT_OK(RowSetMetadata::Load(this, rowset_pb, &rowset_meta));
-      next_rowset_idx_ = std::max(next_rowset_idx_, rowset_meta->id() + 1);
-      rowsets_.push_back(shared_ptr<RowSetMetadata>(rowset_meta.release()));
-    }
-
     for (const BlockIdPB& block_pb : superblock.orphaned_blocks()) {
       orphaned_blocks.push_back(BlockId::FromPB(block_pb));
     }
@@ -426,16 +379,6 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
   }
 
   return Status::OK();
-}
-
-Status TabletMetadata::UpdateAndFlush(const RowSetMetadataIds& to_remove,
-                                      const RowSetMetadataVector& to_add,
-                                      int64_t last_durable_mrs_id) {
-  {
-    std::lock_guard<LockType> l(data_lock_);
-    RETURN_NOT_OK(UpdateUnlocked(to_remove, to_add, last_durable_mrs_id));
-  }
-  return Flush();
 }
 
 void TabletMetadata::AddOrphanedBlocks(const vector<BlockId>& blocks) {
@@ -514,7 +457,7 @@ Status TabletMetadata::Flush() {
     }
     needs_flush_ = false;
 
-    RETURN_NOT_OK(ToSuperBlockUnlocked(&pb, rowsets_));
+    RETURN_NOT_OK(ToSuperBlockUnlocked(&pb));
 
     // Make a copy of the orphaned blocks list which corresponds to the superblock
     // that we're writing. It's important to take this local copy to avoid a race
@@ -541,37 +484,6 @@ Status TabletMetadata::Flush() {
 void TabletMetadata::SetPreFlushCallback(StatusClosure callback) {
   MutexLock lock(flush_lock_);
   pre_flush_callback_ = std::move(callback);
-}
-
-Status TabletMetadata::UpdateUnlocked(
-    const RowSetMetadataIds& to_remove,
-    const RowSetMetadataVector& to_add,
-    int64_t last_durable_mrs_id) {
-  DCHECK(data_lock_.is_locked());
-  CHECK_NE(state_, kNotLoadedYet);
-  if (last_durable_mrs_id != kNoMrsFlushed) {
-    DCHECK_GE(last_durable_mrs_id, last_durable_mrs_id_);
-    last_durable_mrs_id_ = last_durable_mrs_id;
-  }
-
-  RowSetMetadataVector new_rowsets = rowsets_;
-  auto it = new_rowsets.begin();
-  while (it != new_rowsets.end()) {
-    if (ContainsKey(to_remove, (*it)->id())) {
-      AddOrphanedBlocksUnlocked((*it)->GetAllBlocks());
-      it = new_rowsets.erase(it);
-    } else {
-      it++;
-    }
-  }
-
-  for (const shared_ptr<RowSetMetadata>& meta : to_add) {
-    new_rowsets.push_back(meta);
-  }
-  rowsets_ = new_rowsets;
-
-  TRACE("TabletMetadata updated");
-  return Status::OK();
 }
 
 Status TabletMetadata::ReplaceSuperBlock(const TabletSuperBlockPB &pb) {
@@ -609,11 +521,10 @@ Status TabletMetadata::ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) co
 Status TabletMetadata::ToSuperBlock(TabletSuperBlockPB* super_block) const {
   // acquire the lock so that rowsets_ doesn't get changed until we're finished.
   std::lock_guard<LockType> l(data_lock_);
-  return ToSuperBlockUnlocked(super_block, rowsets_);
+  return ToSuperBlockUnlocked(super_block);
 }
 
-Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
-                                            const RowSetMetadataVector& rowsets) const {
+Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) const {
   DCHECK(data_lock_.is_locked());
   // Convert to protobuf
   TabletSuperBlockPB pb;
@@ -627,10 +538,6 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
   pb.set_table_type(table_type_);
   pb.set_rocksdb_dir(rocksdb_dir_);
   pb.set_wal_dir(wal_dir_);
-
-  for (const shared_ptr<RowSetMetadata>& meta : rowsets) {
-    meta->ToProtobuf(pb.add_rowsets());
-  }
 
   DCHECK(schema_->has_column_ids());
   RETURN_NOT_OK_PREPEND(SchemaToPB(*schema_, pb.mutable_schema()),
@@ -651,34 +558,6 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
 
   super_block->Swap(&pb);
   return Status::OK();
-}
-
-Status TabletMetadata::CreateRowSet(shared_ptr<RowSetMetadata> *rowset,
-                                    const Schema& schema) {
-  AtomicWord rowset_idx = Barrier_AtomicIncrement(&next_rowset_idx_, 1) - 1;
-  gscoped_ptr<RowSetMetadata> scoped_rsm;
-  RETURN_NOT_OK(RowSetMetadata::CreateNew(this, rowset_idx, &scoped_rsm));
-  rowset->reset(DCHECK_NOTNULL(scoped_rsm.release()));
-  return Status::OK();
-}
-
-const RowSetMetadata *TabletMetadata::GetRowSetForTests(int64_t id) const {
-  for (const shared_ptr<RowSetMetadata>& rowset_meta : rowsets_) {
-    if (rowset_meta->id() == id) {
-      return rowset_meta.get();
-    }
-  }
-  return nullptr;
-}
-
-RowSetMetadata *TabletMetadata::GetRowSetForTests(int64_t id) {
-  std::lock_guard<LockType> l(data_lock_);
-  for (const shared_ptr<RowSetMetadata>& rowset_meta : rowsets_) {
-    if (rowset_meta->id() == id) {
-      return rowset_meta.get();
-    }
-  }
-  return nullptr;
 }
 
 void TabletMetadata::SetSchema(const Schema& schema, uint32_t version) {

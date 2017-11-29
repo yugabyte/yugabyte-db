@@ -225,27 +225,14 @@ class LogTestBase : public YBTest {
     replicate->set_hybrid_time(clock_->Now().ToUint64());
     WriteRequestPB *batch_request = replicate->mutable_write_request();
     ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
-    if (table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      AddTestRowToPB(RowOperationsPB::INSERT, schema_,
-                     opid.index(),
-                     0,
-                     "this is a test insert",
-                     batch_request->mutable_row_operations());
-      AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
-                     opid.index() + 1,
-                     0,
-                     "this is a test mutate",
-                     batch_request->mutable_row_operations());
-    } else {
-      if (writes.empty()) {
-        const int opid_index_as_int = static_cast<int>(opid.index());
-        writes.emplace_back(opid_index_as_int, 0, "this is a test insert");
-        writes.emplace_back(opid_index_as_int + 1, 0, "this is a test mutate");
-      }
-      auto write_batch = batch_request->mutable_write_batch();
-      for (const auto &w : writes) {
-        AddKVToPB(std::get<0>(w), std::get<1>(w), std::get<2>(w), write_batch);
-      }
+    if (writes.empty()) {
+      const int opid_index_as_int = static_cast<int>(opid.index());
+      writes.emplace_back(opid_index_as_int, 0, "this is a test insert");
+      writes.emplace_back(opid_index_as_int + 1, 0, "this is a test mutate");
+    }
+    auto write_batch = batch_request->mutable_write_batch();
+    for (const auto &w : writes) {
+      AddKVToPB(std::get<0>(w), std::get<1>(w), std::get<2>(w), write_batch);
     }
 
     batch_request->set_tablet_id(kTestTablet);

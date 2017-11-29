@@ -52,7 +52,7 @@ using client::YBClientBuilder;
 using client::YBTableType;
 using client::YBColumnSchema;
 using client::YBError;
-using client::KuduInsert;
+using client::YBqlWriteOp;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
@@ -61,7 +61,6 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBValue;
-using client::KuduOperation;
 using std::shared_ptr;
 using std::make_pair;
 using std::map;
@@ -243,14 +242,13 @@ struct MirrorTable {
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    RETURN_NOT_OK(table_creator->table_name(kTableName)
-             .schema(&schema)
-             .num_replicas(3)
-             .Create());
-    return Status::OK();
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    return table_creator->table_name(kTableName)
+        .schema(&schema)
+        .num_replicas(3)
+        .Create();
   }
 
   bool TryInsert(int32_t row_key, int32_t rand) {
@@ -369,21 +367,30 @@ struct MirrorTable {
 
   Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
     shared_ptr<YBSession> session = client_->NewSession();
-    shared_ptr<YBTable> table;
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(15 * 1000);
+    shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    shared_ptr<KuduOperation> op;
-    switch (op_type) {
-      case INSERT: op.reset(table->NewInsert()); break;
-      case UPDATE: op.reset(table->NewUpdate()); break;
-      case DELETE: op.reset(table->NewDelete()); break;
-    }
+    auto op = CreateOp(table, op_type);
+    auto* const req = op->mutable_request();
+    bool first = true;
+    auto schema = table->schema();
     for (const auto& d : data) {
-      if (d.second == RowState::kNullValue) {
-        CHECK_OK(op->mutable_row()->SetNull(d.first));
-      } else {
-        CHECK_OK(op->mutable_row()->SetInt32(d.first, d.second));
+      if (first) {
+        req->add_hashed_column_values()->mutable_value()->set_int32_value(d.second);
+        first = false;
+        continue;
+      }
+      auto column_value = req->add_column_values();
+      for (size_t i = 0; i < schema.num_columns(); ++i) {
+        if (schema.Column(i).name() == d.first) {
+          column_value->set_column_id(schema.ColumnId(i));
+          auto value = column_value->mutable_expr()->mutable_value();
+          if (d.second != RowState::kNullValue) {
+            value->set_int32_value(d.second);
+          }
+          break;
+        }
       }
     }
     RETURN_NOT_OK(session->Apply(op));
@@ -395,6 +402,18 @@ struct MirrorTable {
     client::CollectedErrors errors = session->GetPendingErrors();
     CHECK_EQ(errors.size(), 1);
     return errors[0]->status();
+  }
+
+  shared_ptr<YBqlWriteOp> CreateOp(const shared_ptr<YBTable>& table, OpType op_type) {
+    switch (op_type) {
+      case INSERT:
+        return shared_ptr<YBqlWriteOp>(table->NewQLInsert());
+      case UPDATE:
+        return shared_ptr<YBqlWriteOp>(table->NewQLUpdate());
+      case DELETE:
+        return shared_ptr<YBqlWriteOp>(table->NewQLDelete());
+    }
+    return shared_ptr<YBqlWriteOp>();
   }
 
   shared_ptr<YBClient> client_;

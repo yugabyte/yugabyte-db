@@ -49,32 +49,11 @@ set(TABLET_SRCS
   operations/operation_tracker.cc
   operations/update_txn_operation.cc
   operations/write_operation.cc
-  cfile_set.cc
-  compaction.cc
-  compaction_policy.cc
-  delta_key.cc
-  diskrowset.cc
   lock_manager.cc
   maintenance_manager.cc
-  memrowset.cc
-  multi_column_writer.cc
-  mutation.cc
   mvcc.cc
   row_op.cc
-  rowset.cc
-  rowset_info.cc
-  rowset_tree.cc
-  svg_dump.cc
   tablet_metadata.cc
-  rowset_metadata.cc
-  deltafile.cc
-  deltamemstore.cc
-  delta_applier.cc
-  delta_compaction.cc
-  delta_iterator_merger.cc
-  delta_stats.cc
-  delta_store.cc
-  delta_tracker.cc
   key_value_iterator.cc
   tablet_retention_policy.cc
   prepare_thread.cc
@@ -127,7 +106,3 @@ ADD_YB_TEST(lock_manager-test)
 ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)
-
-# Some tests don't have dependencies on other tablet stuff
-set(YB_TEST_LINK_LIBS yb_util gutil ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(cbtree-test RUN_SERIAL true)

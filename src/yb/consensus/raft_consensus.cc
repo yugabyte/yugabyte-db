@@ -311,8 +311,6 @@ RaftConsensus::RaftConsensus(
       lost_leadership_listener_(std::move(lost_leadership_listener)) {
   DCHECK_NOTNULL(log_.get());
 
-  CHECK_NE(table_type_, KUDU_COLUMNAR_TABLE_TYPE);
-
   state_.reset(new ReplicaState(options,
                                 peer_uuid,
                                 cmeta.Pass(),
@@ -919,21 +917,19 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
     state_->NewIdUnlocked(round->replicate_msg()->mutable_id());
 
-    if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      ReplicateMsg* const replicate_msg = round->replicate_msg().get();
+    ReplicateMsg* const replicate_msg = round->replicate_msg().get();
 
-      // In YB tables we include the last committed id into every REPLICATE log record so we can
-      // perform local bootstrap more efficiently.
-      replicate_msg->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
+    // In YB tables we include the last committed id into every REPLICATE log record so we can
+    // perform local bootstrap more efficiently.
+    replicate_msg->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
 
-      // We use this callback to transform write operations by substituting the hybrid_time into
-      // the write batch inside the write operation.
-      //
-      // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-      auto* const append_cb = round->append_callback();
-      if (append_cb != nullptr) {
-        append_cb->HandleConsensusAppend();
-      }
+    // We use this callback to transform write operations by substituting the hybrid_time into
+    // the write batch inside the write operation.
+    //
+    // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
+    auto* const append_cb = round->append_callback();
+    if (append_cb != nullptr) {
+      append_cb->HandleConsensusAppend();
     }
 
     Status s = state_->AddPendingOperation(round);
@@ -2691,16 +2687,6 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
         LOG(WARNING) << "Could not clear pending state : " << s.ToString();
       }
     }
-  } else if (table_type_ == KUDU_COLUMNAR_TABLE_TYPE) {
-    // Use these commit messages ONLY for RocksDB-backed tables.
-    VLOG(1) << state_->LogPrefixThreadSafe() << "Committing " << op_type_str << " with op id "
-            << round->id();
-    gscoped_ptr<CommitMsg> commit_msg(new CommitMsg);
-    commit_msg->set_op_type(round->replicate_msg()->op_type());
-    *commit_msg->mutable_commited_op_id() = round->id();
-
-    WARN_NOT_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(&DoNothingStatusCB)),
-                "Unable to append commit message");
   }
 
   client_cb.Run(status);

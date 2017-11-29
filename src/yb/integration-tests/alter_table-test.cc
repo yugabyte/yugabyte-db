@@ -66,7 +66,6 @@ DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(heartbeat_interval_ms);
-DECLARE_int32(flush_threshold_mb);
 DECLARE_bool(use_hybrid_clock);
 DECLARE_int32(ht_lease_duration_ms);
 
@@ -113,8 +112,6 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
     FLAGS_use_hybrid_clock = false;
     FLAGS_ht_lease_duration_ms = 0;
-    ANNOTATE_BENIGN_RACE(&FLAGS_flush_threshold_mb,
-                         "safe to change at runtime");
     ANNOTATE_BENIGN_RACE(&FLAGS_enable_maintenance_manager,
                          "safe to change at runtime");
   }
@@ -544,8 +541,6 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
   // Reduce flush threshold so that we get both on-disk data
   // for the alter as well as in-MRS data.
   // This also increases chances of a race.
-  FLAGS_flush_threshold_mb = 3;
-
   const int kNumRows = AllowSlowTests() ? 100000 : 1000;
   InsertRows(0, kNumRows);
 
@@ -561,8 +556,6 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
 
   LOG(INFO) << "Verifying that the new default shows up";
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
-
-
 }
 
 TEST_F(AlterTableTest, TestCompactionAfterDrop) {
@@ -718,9 +711,6 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
-
-  // Compact
-  ASSERT_OK(tablet_peer_->tablet()->Compact(tablet::Tablet::FORCE_COMPACT_ALL));
 }
 
 
@@ -820,9 +810,6 @@ void AlterTableTest::ScannerThread() {
 // Test altering a table while also sending a lot of writes,
 // checking for races between the two.
 TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
-  // Increase chances of a race between flush and alter.
-  FLAGS_flush_threshold_mb = 3;
-
   scoped_refptr<Thread> writer;
   CHECK_OK(Thread::Create(
       "test", "inserter", std::bind(&AlterTableTest::InserterThread, this), &writer));

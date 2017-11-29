@@ -216,9 +216,6 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
       tablet_id_or_link = EscapeForHtmlToString(id);
     }
     string n_bytes = "";
-    if (status.has_estimated_on_disk_size()) {
-      n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
-    }
     string partition = peer->tablet_metadata()
                            ->partition_schema()
                             .PartitionDebugString(peer->status_listener()->partition(),
@@ -340,14 +337,6 @@ void TabletServerPathHandlers::HandleTabletPage(const Webserver::WebRequest& req
   // List of links to various tablet-specific info pages
   *output << "<ul>";
 
-  if (peer->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Link to output svg of current DiskRowSet layout over keyspace.
-    *output << "<li>" << Substitute("<a href=\"/tablet-rowsetlayout-svg?id=$0\">$1</a>",
-                                    UrlEncodeToString(tablet_id),
-                                    "Rowset Layout Diagram")
-            << "</li>" << endl;
-  }
-
   // Link to consensus status page.
   *output << "<li>" << Substitute("<a href=\"/tablet-consensus-status?id=$0\">$1</a>",
                                   UrlEncodeToString(tablet_id),
@@ -377,8 +366,6 @@ void TabletServerPathHandlers::HandleTabletSVGPage(const Webserver::WebRequest& 
 
   *output << "<h1>Rowset Layout Diagram for Tablet "
           << TabletLink(id) << "</h1>\n";
-  tablet->PrintRSLayout(output);
-
 }
 
 void TabletServerPathHandlers::HandleLogAnchorsPage(const Webserver::WebRequest& req,

@@ -1198,7 +1198,7 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                                   string* data_root_dir,
                                                   string* wal_root_dir) {
   // Skip sys catalog table and kudu table from modifying the map.
-  if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  if (table_id == master::kSysCatalogTableId) {
     return;
   }
   MutexLock l(dir_assignment_lock_);
@@ -1260,8 +1260,8 @@ void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
                                             const TableType table_type,
                                             const string& data_root_dir,
                                             const string& wal_root_dir) {
-  // Skip sys catalog table and kudu table from modifying the map.
-  if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  // Skip sys catalog table from modifying the map.
+  if (table_id == master::kSysCatalogTableId) {
     return;
   }
   MutexLock l(dir_assignment_lock_);
@@ -1315,8 +1315,8 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
                                            const TableType table_type,
                                            const string& data_root_dir,
                                            const string& wal_root_dir) {
-  // Skip sys catalog table and kudu table from modifying the map.
-  if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  // Skip sys catalog table from modifying the map.
+  if (table_id == master::kSysCatalogTableId) {
     return;
   }
   MutexLock l(dir_assignment_lock_);

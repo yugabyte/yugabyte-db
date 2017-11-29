@@ -258,7 +258,6 @@ void TabletPeer::Shutdown() {
   // to ensure that any currently running operation finishes before we proceed with
   // the rest of the shutdown sequence. In particular, a maintenance operation could
   // indirectly end up calling into the log, which we are about to shut down.
-  if (tablet_) tablet_->UnregisterMaintenanceOps();
   UnregisterMaintenanceOps();
 
   if (consensus_) consensus_->Shutdown();
@@ -419,9 +418,6 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) const {
   status_listener_->partition().ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
-  if (tablet_) {
-    status_pb_out->set_estimated_on_disk_size(tablet_->EstimateOnDiskSize());
-  }
 }
 
 Status TabletPeer::RunLogGC() {
@@ -529,27 +525,25 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     *min_index = std::min(*min_index, transaction_coordinator->PrepareGC());
   }
 
-  if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
-    int64_t last_committed_write_index = tablet_->last_committed_write_index();
-    int64_t max_persistent_index = tablet_->MaxPersistentOpId().index;
-    // Check whether we had writes after last persistent entry.
-    // Note that last_committed_write_index could be zero if logs were cleaned before restart.
-    // So correct check is 'less', and NOT 'not equals to'.
-    if (max_persistent_index < last_committed_write_index) {
-      *min_index = std::min(*min_index, max_persistent_index);
-    }
+  int64_t last_committed_write_index = tablet_->last_committed_write_index();
+  int64_t max_persistent_index = tablet_->MaxPersistentOpId().index;
+  // Check whether we had writes after last persistent entry.
+  // Note that last_committed_write_index could be zero if logs were cleaned before restart.
+  // So correct check is 'less', and NOT 'not equals to'.
+  if (max_persistent_index < last_committed_write_index) {
+    *min_index = std::min(*min_index, max_persistent_index);
+  }
 
-    // We keep at least one committed operation in the log so that we can always recover safe time
-    // during bootstrap.
-    OpId committed_op_id;
-    const Status get_committed_op_id_status =
-        consensus()->GetLastOpId(OpIdType::COMMITTED_OPID, &committed_op_id);
-    if (!get_committed_op_id_status.IsNotFound()) {
-      // NotFound is returned by local consensus. We should get rid of this logic once local
-      // consensus is gone.
-      RETURN_NOT_OK(get_committed_op_id_status);
-      *min_index = std::min(*min_index, static_cast<int64_t>(committed_op_id.index()));
-    }
+  // We keep at least one committed operation in the log so that we can always recover safe time
+  // during bootstrap.
+  OpId committed_op_id;
+  const Status get_committed_op_id_status =
+      consensus()->GetLastOpId(OpIdType::COMMITTED_OPID, &committed_op_id);
+  if (!get_committed_op_id_status.IsNotFound()) {
+    // NotFound is returned by local consensus. We should get rid of this logic once local
+    // consensus is gone.
+    RETURN_NOT_OK(get_committed_op_id_status);
+    *min_index = std::min(*min_index, static_cast<int64_t>(committed_op_id.index()));
   }
 
   return Status::OK();
@@ -673,21 +667,9 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  if (table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    gscoped_ptr<MaintenanceOp> mrs_flush_op(new FlushMRSOp(this));
-    maint_mgr->RegisterOp(mrs_flush_op.get());
-    maintenance_ops_.push_back(mrs_flush_op.release());
-
-    gscoped_ptr<MaintenanceOp> dms_flush_op(new FlushDeltaMemStoresOp(this));
-    maint_mgr->RegisterOp(dms_flush_op.get());
-    maintenance_ops_.push_back(dms_flush_op.release());
-  }
-
   gscoped_ptr<MaintenanceOp> log_gc(new LogGCOp(this));
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(log_gc.release());
-
-  tablet_->RegisterMaintenanceOps(maint_mgr);
 }
 
 void TabletPeer::UnregisterMaintenanceOps() {

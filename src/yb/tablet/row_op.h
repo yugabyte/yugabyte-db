@@ -36,8 +36,9 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/common/row_operations.h"
-#include "yb/tablet/rowset.h"
+
 #include "yb/tablet/lock_manager.h"
+#include "yb/tablet/tablet.pb.h"
 
 namespace yb {
 
@@ -67,11 +68,6 @@ struct RowOp {
 
   // The original operation as decoded from the client request.
   DecodedRowOperation decoded_op;
-
-  // The key probe structure contains the row key in both key-encoded and
-  // ContiguousRow formats, bloom probe structure, etc. This is set during
-  // the "prepare" phase.
-  gscoped_ptr<RowSetKeyProbe> key_probe;
 
   // The row lock which has been acquired for this row. Set during the "prepare"
   // phase.

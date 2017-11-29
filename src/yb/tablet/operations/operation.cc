@@ -99,17 +99,7 @@ void OperationCompletionCallback::OperationCompleted() {}
 
 OperationCompletionCallback::~OperationCompletionCallback() {}
 
-OperationMetrics::OperationMetrics()
-  : successful_inserts(0),
-    successful_updates(0),
-    successful_deletes(0),
-    commit_wait_duration_usec(0) {
-}
-
 void OperationMetrics::Reset() {
-  successful_inserts = 0;
-  successful_updates = 0;
-  successful_deletes = 0;
   commit_wait_duration_usec = 0;
 }
 

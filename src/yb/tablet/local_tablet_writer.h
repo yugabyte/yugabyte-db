@@ -114,25 +114,13 @@ class LocalTabletWriter {
     }
 
     tx_state_.reset(new WriteOperationState(nullptr, &req_, nullptr));
-    // Note: Order of lock/decode differs for these two table types, anyway temporary as KUDU
-    // codepath will be removed once all tests are converted to QL.
-    if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get()));
-      RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
-    } else {
-      RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
-      RETURN_NOT_OK(tablet_->AcquireKuduRowLocks(tx_state_.get()));
-    }
+    RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get()));
     tablet_->StartOperation(tx_state_.get());
 
     // Create a "fake" OpId and set it in the OperationState for anchoring.
-    if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      tx_state_->mutable_op_id()->set_term(0);
-      tx_state_->mutable_op_id()->set_index(
-          Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
-    } else {
-      tx_state_->mutable_op_id()->CopyFrom(consensus::MaximumOpId());
-    }
+    tx_state_->mutable_op_id()->set_term(0);
+    tx_state_->mutable_op_id()->set_index(
+        Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
 
     tablet_->ApplyRowOperations(tx_state_.get());
 

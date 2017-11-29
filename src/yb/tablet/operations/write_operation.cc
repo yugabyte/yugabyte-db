@@ -101,18 +101,6 @@ Status WriteOperation::Prepare() {
     return s;
   }
 
-  auto* tablet = tablet_peer()->tablet();
-
-  Status s = tablet->DecodeWriteOperations(&client_schema, state());
-  if (!s.ok()) {
-    // TODO: is MISMATCHED_SCHEMA always right here? probably not.
-    state()->completion_callback()->set_error(s, TabletServerErrorPB::MISMATCHED_SCHEMA);
-    return s;
-  }
-
-  // Acquire Kudu row locks. This is Kudu-specific and has no effect for YB tables.
-  RETURN_NOT_OK(tablet->AcquireKuduRowLocks(state()));
-
   TRACE("PREPARE: finished.");
   return Status::OK();
 }
@@ -139,30 +127,8 @@ Status WriteOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
 
   tablet->ApplyRowOperations(state());
 
-  if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Add per-row errors to the result, update metrics.
-    int i = 0;
-    for (const RowOp* op : state()->row_ops()) {
-     if (state()->response() != nullptr && op->result->has_failed_status()) {
-       // Replicas disregard the per row errors, for now
-       // TODO check the per-row errors against the leader's, at least in debug mode
-       WriteResponsePB::PerRowErrorPB* error = state()->response()->add_per_row_errors();
-       error->set_row_index(i);
-       error->mutable_error()->CopyFrom(op->result->failed_status());
-      }
-
-      state()->UpdateMetricsForOp(*op);
-      i++;
-    }
-
-    // Create the Commit message
-    commit_msg->reset(new CommitMsg());
-    state()->ReleaseTxResultPB((*commit_msg)->mutable_result());
-    (*commit_msg)->set_op_type(WRITE_OP);
-  } else {
-    // We don't use COMMIT messages for non-Kudu tables.
-    commit_msg->reset(nullptr);
-  }
+  // We don't use COMMIT messages for non-Kudu tables.
+  commit_msg->reset(nullptr);
 
   return Status::OK();
 }
@@ -191,12 +157,6 @@ void WriteOperation::Finish(OperationResult result) {
 
   TabletMetrics* metrics = state()->tablet_peer()->tablet()->metrics();
   if (metrics) {
-    // TODO: should we change this so it's actually incremented by the
-    // Tablet code itself instead of this wrapper code?
-    metrics->rows_inserted->IncrementBy(state()->metrics().successful_inserts);
-    metrics->rows_updated->IncrementBy(state()->metrics().successful_updates);
-    metrics->rows_deleted->IncrementBy(state()->metrics().successful_deletes);
-
     if (type() == consensus::LEADER) {
       if (state()->external_consistency_mode() == COMMIT_WAIT) {
         metrics->commit_wait_duration->Increment(state()->metrics().commit_wait_duration_usec);
@@ -256,13 +216,6 @@ void WriteOperationState::SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOper
   mvcc_tx_ = std::move(mvcc_tx);
 }
 
-void WriteOperationState::set_tablet_components(
-    const scoped_refptr<const TabletComponents>& components) {
-  DCHECK(!tablet_components_) << "Already set";
-  DCHECK(components);
-  tablet_components_ = components;
-}
-
 void WriteOperationState::AcquireSchemaLock(rw_semaphore* schema_lock) {
   TRACE("Acquiring schema lock in shared mode");
   shared_lock<rw_semaphore> temp(*schema_lock);
@@ -311,38 +264,9 @@ void WriteOperationState::ReleaseTxResultPB(TxResultPB* result) const {
   }
 }
 
-void WriteOperationState::UpdateMetricsForOp(const RowOp& op) {
-  if (op.result->has_failed_status()) {
-    return;
-  }
-  switch (op.decoded_op.type) {
-    case RowOperationsPB::INSERT:
-      tx_metrics_.successful_inserts++;
-      break;
-    case RowOperationsPB::UPDATE:
-      tx_metrics_.successful_updates++;
-      break;
-    case RowOperationsPB::DELETE:
-      tx_metrics_.successful_deletes++;
-      break;
-    case RowOperationsPB::UNKNOWN:
-    case RowOperationsPB::SPLIT_ROW:
-      break;
-  }
-}
-
 void WriteOperationState::ReleaseDocDbLocks(Tablet* tablet) {
   // Free DocDB multi-level locks.
   docdb_locks_.Reset();
-
-  if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // The code below is kudu-only and will be removed, along with the tablet parameter.
-    for (RowOp *op : row_ops_) {
-      op->row_lock.Release();
-    }
-  } else {
-    CHECK(row_ops_.empty());
-  }
 }
 
 WriteOperationState::~WriteOperationState() {
@@ -358,7 +282,6 @@ void WriteOperationState::Reset() {
   Commit();
   tx_metrics_.Reset();
   hybrid_time_ = HybridTime::kInvalidHybridTime;
-  tablet_components_ = nullptr;
   schema_at_decode_time_ = nullptr;
 }
 

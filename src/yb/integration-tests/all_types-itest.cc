@@ -223,10 +223,6 @@ class AllTypesItest : public YBTest {
 
   Status CreateCluster() {
     vector<string> ts_flags;
-    // Set the flush threshold low so that we have flushes and test the on-disk formats.
-    ts_flags.push_back("--flush_threshold_mb=1");
-    // Set the major delta compaction ratio low enough that we trigger a lot of them.
-    ts_flags.push_back("--tablet_delta_store_major_compact_min_ratio=0.001");
 
     ExternalMiniClusterOptions opts;
     opts.num_tablet_servers = kNumTabletServers;

@@ -103,7 +103,6 @@ enum CompressionType {
 enum TableType {
   option allow_alias = true;
 
-  KUDU_COLUMNAR_TABLE_TYPE = 1;
   YQL_TABLE_TYPE = 2;
   REDIS_TABLE_TYPE = 3;
 

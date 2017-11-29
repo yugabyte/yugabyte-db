@@ -41,6 +41,8 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/server/clock.h"
+
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -206,9 +208,13 @@ class MvccSnapshot {
 // NOTE: we do not support "rollback" of in-memory edits. Thus, once we call
 // StartApplyingOperation(), the operation _must_ commit.
 //
+
+YB_STRONGLY_TYPED_BOOL(EnforceInvariants);
+
 class MvccManager {
  public:
-  explicit MvccManager(const scoped_refptr<server::Clock>& clock, bool enforce_invariants = false);
+  explicit MvccManager(const scoped_refptr<server::Clock>& clock,
+                       EnforceInvariants enforce_invariants);
 
   // Begin a new transaction, assigning it a transaction ID.
   // Callers should generally prefer using the ScopedWriteOperation class defined

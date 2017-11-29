@@ -79,8 +79,6 @@ using log::LogAnchorRegistry;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
 using strings::Substitute;
-using tablet::ColumnDataPB;
-using tablet::DeltaDataPB;
 using tablet::YBTabletTest;
 using tablet::TabletPeer;
 using tablet::TabletPeerClass;

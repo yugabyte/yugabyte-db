@@ -108,7 +108,6 @@ class TabletInvoker;
 // This must match TableType in common.proto.
 // We have static_assert's in tablet-test.cc to verify this.
 enum YBTableType {
-  KUDU_COLUMNAR_TABLE_TYPE = 1,
   YQL_TABLE_TYPE = 2,
   REDIS_TABLE_TYPE = 3,
   UNKNOWN_TABLE_TYPE = -1

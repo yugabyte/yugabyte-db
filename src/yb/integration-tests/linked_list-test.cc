@@ -109,11 +109,6 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
     common_flags.push_back("--skip_remove_old_recovery_dir");
 
     vector<string> ts_flags(common_flags);
-    if (FLAGS_stress_flush_compact) {
-      // Set the flush threshold low so that we have a mix of flushed and unflushed
-      // operations in the WAL, when we bootstrap.
-      ts_flags.push_back("--flush_threshold_mb=1");
-    }
     if (FLAGS_stress_wal_gc) {
       // Set the size of the WAL segments low so that some can be GC'd.
       ts_flags.push_back("--log_segment_size_mb=1");

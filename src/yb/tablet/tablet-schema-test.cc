@@ -174,8 +174,6 @@ TEST_F(TestTabletSchema, TestWrite) {
   InsertRow(client_schema_, s2Key);
   VerifyTabletRows(s2, keys);
 
-  // Try compact all (different schemas)
-  ASSERT_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
   VerifyTabletRows(s2, keys);
 }
 
@@ -210,8 +208,6 @@ TEST_F(TestTabletSchema, TestReInsert) {
                                            Substitute("c2=$0", c2_write_default)));
   VerifyTabletRows(s2, keys);
 
-  // Try compact all (different schemas)
-  ASSERT_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
   VerifyTabletRows(s2, keys);
 }
 

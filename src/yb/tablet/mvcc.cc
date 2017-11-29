@@ -49,7 +49,8 @@
 
 namespace yb { namespace tablet {
 
-MvccManager::MvccManager(const scoped_refptr<server::Clock>& clock, bool enforce_invariants)
+MvccManager::MvccManager(const scoped_refptr<server::Clock>& clock,
+                         EnforceInvariants enforce_invariants)
     : no_new_transactions_at_or_before_(HybridTime::kMin),
       earliest_in_flight_(HybridTime::kMax),
       max_write_timestamp_(HybridTime::kMin),

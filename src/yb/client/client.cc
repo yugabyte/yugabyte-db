@@ -190,8 +190,6 @@ static void LoggingAdapterCB(YBLoggingCallback* user_cb,
 
 static TableType ClientToPBTableType(YBTableType table_type) {
   switch (table_type) {
-    case YBTableType::KUDU_COLUMNAR_TABLE_TYPE:
-      return TableType::KUDU_COLUMNAR_TABLE_TYPE;
     case YBTableType::YQL_TABLE_TYPE:
       return TableType::YQL_TABLE_TYPE;
     case YBTableType::REDIS_TABLE_TYPE:

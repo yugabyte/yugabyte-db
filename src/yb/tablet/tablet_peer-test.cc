@@ -415,9 +415,6 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
-  // Flush DMS to release the anchor.
-  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-
   earliest_needed = static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
   total_segments = log->GetLogReader()->num_segments();
   // We should only hang onto one segment due to no anchors.
@@ -453,35 +450,6 @@ TEST_P(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->Start(info));
   // We don't wait on consensus on purpose.
   ASSERT_OK(tablet_peer_->RunLogGC());
-}
-
-TEST_P(TabletPeerTest, TestFlushOpsPerfImprovements) {
-  MaintenanceOpStats stats;
-
-  // Just on the threshold and not enough time has passed for a time-based flush.
-  stats.set_ram_anchored(64 * 1024 * 1024);
-  FlushOpPerfImprovementPolicy::SetPerfImprovementForFlush(&stats, 1);
-  ASSERT_EQ(0.0, stats.perf_improvement());
-  stats.Clear();
-
-  // Just on the threshold and enough time has passed, we'll have a low improvement.
-  stats.set_ram_anchored(64 * 1024 * 1024);
-  FlushOpPerfImprovementPolicy::SetPerfImprovementForFlush(&stats, 3 * 60 * 1000);
-  ASSERT_GT(stats.perf_improvement(), 0.01);
-  stats.Clear();
-
-  // Way over the threshold, number is much higher than 1.
-  stats.set_ram_anchored(128 * 1024 * 1024);
-  FlushOpPerfImprovementPolicy::SetPerfImprovementForFlush(&stats, 1);
-  ASSERT_LT(1.0, stats.perf_improvement());
-  stats.Clear();
-
-  // Below the threshold but have been there a long time, closing in to 1.0.
-  stats.set_ram_anchored(30 * 1024 * 1024);
-  FlushOpPerfImprovementPolicy::SetPerfImprovementForFlush(&stats, 60 * 50 * 1000);
-  ASSERT_LT(0.7, stats.perf_improvement());
-  ASSERT_GT(1.0, stats.perf_improvement());
-  stats.Clear();
 }
 
 INSTANTIATE_TEST_CASE_P(Rocks, TabletPeerTest, ::testing::Values(YQL_TABLE_TYPE));

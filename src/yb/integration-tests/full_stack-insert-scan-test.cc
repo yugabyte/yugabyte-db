@@ -360,7 +360,6 @@ void FullStackInsertScanTest::FlushToDisk() {
     for (const scoped_refptr<TabletPeer>& peer : peers) {
       Tablet* tablet = peer->tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      ASSERT_OK(tablet->Compact(Tablet::FORCE_COMPACT_ALL));
     }
   }
 }

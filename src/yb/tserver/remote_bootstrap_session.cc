@@ -58,9 +58,6 @@ using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
 using std::shared_ptr;
 using strings::Substitute;
-using tablet::ColumnDataPB;
-using tablet::DeltaDataPB;
-using tablet::RowSetDataPB;
 using tablet::TabletMetadata;
 using tablet::TabletPeer;
 using tablet::TabletSuperBlockPB;
@@ -198,42 +195,28 @@ Status RemoteBootstrapSession::Init() {
                         Substitute("Unable to access superblock for tablet $0",
                                    tablet_id));
 
-  // Anchor the data blocks by opening them and adding them to the cache.
-  //
-  // All subsequent requests should reuse the opened blocks.
-  if (tablet_superblock_.table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    vector<BlockIdPB> data_blocks;
-    TabletMetadata::CollectBlockIdPBs(tablet_superblock_, &data_blocks);
-    for (const BlockIdPB& block_id : data_blocks) {
-      LOG(INFO) << "Opening block " << block_id.DebugString();
-      RETURN_NOT_OK(OpenBlockUnlocked(BlockId::FromPB(block_id)));
-    }
-  }
-
   // Get the latest opid in the log at this point in time so we can re-anchor.
   OpId last_logged_opid;
   tablet_peer_->log()->GetLatestEntryOpId(&last_logged_opid);
 
-  if (tablet_superblock_.table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    auto tablet = tablet_peer_->shared_tablet();
-    if (PREDICT_FALSE(!tablet)) {
-      return STATUS(IllegalState, "Tablet is not running");
-    }
-
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
-    auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
-    RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
-                          Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
-
-    auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
-    checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
-
-    // Clear any previous rocksdb files in the superblock. Each session should create a new list
-    // based the checkpoint directory files.
-    tablet_superblock_.clear_rocksdb_files();
-    RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
-                                           tablet_superblock_.mutable_rocksdb_files()));
+  auto tablet = tablet_peer_->shared_tablet();
+  if (PREDICT_FALSE(!tablet)) {
+    return STATUS(IllegalState, "Tablet is not running");
   }
+
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
+  RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
+                        Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
+
+  auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
+  checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
+
+  // Clear any previous rocksdb files in the superblock. Each session should create a new list
+  // based the checkpoint directory files.
+  tablet_superblock_.clear_rocksdb_files();
+  RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
+                                         tablet_superblock_.mutable_rocksdb_files()));
 
   // Get the current segments from the log, including the active segment.
   // The Log doesn't add the active segment to the log reader's list until
