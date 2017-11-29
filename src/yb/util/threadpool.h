@@ -29,14 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_THREAD_POOL_H
-#define YB_UTIL_THREAD_POOL_H
+#ifndef YB_UTIL_THREADPOOL_H
+#define YB_UTIL_THREADPOOL_H
 
+#include <deque>
 #include <functional>
-#include <list>
 #include <memory>
 #include <string>
-#include <vector>
+#include <unordered_set>
 
 #include <gtest/gtest_prod.h>
 
@@ -46,6 +46,7 @@
 #include "yb/gutil/port.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/condition_variable.h"
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status.h"
@@ -53,7 +54,9 @@
 namespace yb {
 
 class Histogram;
+class Thread;
 class ThreadPool;
+class ThreadPoolToken;
 class Trace;
 
 class Runnable {
@@ -118,6 +121,24 @@ class ThreadPoolBuilder {
 // Thread pool with a variable number of threads.
 // The pool can execute a class that implements the Runnable interface, or a
 // std::function, which can be obtained via std::bind().
+// Tasks submitted directly to the thread pool enter a FIFO queue and are
+// dispatched to a worker thread when one becomes free. Tasks may also be
+// submitted via ThreadPoolTokens. The token Wait() and Shutdown() functions
+// can then be used to block on logical groups of tasks.
+//
+// A token operates in one of two ExecutionModes, determined at token
+// construction time:
+// 1. SERIAL: submitted tasks are run one at a time.
+// 2. CONCURRENT: submitted tasks may be run in parallel. This isn't unlike
+//    tasks submitted without a token, but the logical grouping that tokens
+//    impart can be useful when a pool is shared by many contexts (e.g. to
+//    safely shut down one context, to derive context-specific metrics, etc.).
+//
+// Tasks submitted without a token or via ExecutionMode::CONCURRENT tokens are
+// processed in FIFO order. On the other hand, ExecutionMode::SERIAL tokens are
+// processed in a round-robin fashion, one task at a time. This prevents them
+// from starving one another. However, tokenless (and CONCURRENT token-based)
+// tasks can starve SERIAL token-based tasks.
 //
 // Usage Example:
 //    static void Func(int n) { ... }
@@ -166,11 +187,18 @@ class ThreadPool {
   // Returns true if the pool reached the idle state, false otherwise.
   bool WaitFor(const MonoDelta& delta);
 
-  // Return the current number of tasks waiting in the queue.
-  // Typically used for metrics.
-  int queue_length() const {
-    return ANNOTATE_UNPROTECTED_READ(queue_size_);
-  }
+  // Allocates a new token for use in token-based task submission. All tokens
+  // must be destroyed before their ThreadPool is destroyed.
+  //
+  // There is no limit on the number of tokens that may be allocated.
+  enum class ExecutionMode {
+    // Tasks submitted via this token will be executed serially.
+    SERIAL,
+
+    // Tasks submitted via this token may be executed concurrently.
+    CONCURRENT,
+  };
+  std::unique_ptr<ThreadPoolToken> NewToken(ExecutionMode mode);
 
   // Attach a histogram which measures the queue length seen by tasks when they enter
   // the thread pool's queue.
@@ -185,15 +213,14 @@ class ThreadPool {
 
  private:
   friend class ThreadPoolBuilder;
+  friend class ThreadPoolToken;
+
 
   // Create a new thread pool using a builder.
   explicit ThreadPool(const ThreadPoolBuilder& builder);
 
   // Initialize the thread pool by starting the minimum number of threads.
   CHECKED_STATUS Init();
-
-  // Clear all entries from queue_. Requires that lock_ is held.
-  void ClearQueue();
 
   // Dispatcher responsible for dequeueing and executing the tasks
   void DispatchThread(bool permanent);
@@ -204,14 +231,21 @@ class ThreadPool {
  private:
   FRIEND_TEST(TestThreadPool, TestThreadPoolWithNoMinimum);
   FRIEND_TEST(TestThreadPool, TestVariableSizeThreadPool);
+  // Aborts if the current thread is a member of this thread pool.
+  void CheckNotPoolThreadUnlocked();
 
-  struct QueueEntry {
+  struct Task {
     std::shared_ptr<Runnable> runnable;
     Trace* trace;
 
     // Time at which the entry was submitted to the pool.
     MonoTime submit_time;
   };
+  // Submits a task to be run via token.
+  Status DoSubmit(std::shared_ptr<Runnable> r, ThreadPoolToken* token);
+
+  // Releases token 't' and invalidates it.
+  void ReleaseToken(ThreadPoolToken* t);
 
   const std::string name_;
   const int min_threads_;
@@ -226,8 +260,32 @@ class ThreadPool {
   ConditionVariable not_empty_;
   int num_threads_;
   int active_threads_;
-  int queue_size_;
-  std::list<QueueEntry> queue_;
+
+  // Total number of client tasks queued, either directly (queue_) or
+  // indirectly (tokens_).
+  // Protected by lock_.
+  int total_queued_tasks_;
+
+  // All allocated tokens.
+  // Tokens are owned by the clients.
+  //
+  // Protected by lock_.
+  std::unordered_set<ThreadPoolToken*> tokens_;
+
+  // FIFO of tokens from which tasks should be executed. Does not own the
+  // tokens; they are owned by clients and are removed from the FIFO on shutdown.
+  //
+  // Protected by lock_.
+  std::deque<ThreadPoolToken*> queue_;
+
+  // Pointers to all running threads. Raw pointers are safe because a Thread
+  // may only go out of scope after being removed from threads_.
+  //
+  // Protected by lock_.
+  std::unordered_set<Thread*> threads_;
+
+  // ExecutionMode::CONCURRENT token used by the pool for tokenless submission.
+  std::unique_ptr<ThreadPoolToken> tokenless_;
 
   scoped_refptr<Histogram> queue_length_histogram_;
   scoped_refptr<Histogram> queue_time_us_histogram_;
@@ -236,5 +294,125 @@ class ThreadPool {
   DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };
 
+// All possible token states. Legal state transitions:
+//   kIdle      -> kRunning: task is submitted via token
+//   kIdle      -> kQuiesced: token or pool is shut down
+//   kRunning   -> kIdle: worker thread finishes executing a task and
+//                      there are no more tasks queued to the token
+//   kRunning   -> kQuiescing: token or pool is shut down while worker thread
+//                           is executing a task
+//   kRunning   -> kQuiesced: token or pool is shut down
+//   kQuiescing -> kQuiesced:  worker thread finishes executing a task
+//                           belonging to a shut down token or pool
+YB_DEFINE_ENUM(ThreadPoolTokenState,
+                   // Token has no queued tasks.
+                   (kIdle)
+
+                   // A worker thread is running one of the token's previously queued tasks.
+                   (kRunning)
+
+                   // No new tasks may be submitted to the token. A worker thread is still
+                   // running a previously queued task.
+                   (kQuiescing)
+
+                   // No new tasks may be submitted to the token. There are no active tasks
+                   // either. At this state, the token may only be destroyed.
+                   (kQuiesced));
+
+// Entry point for token-based task submission and blocking for a particular
+// thread pool. Tokens can only be created via ThreadPool::NewToken().
+//
+// All functions are thread-safe. Mutable members are protected via the
+// ThreadPool's lock.
+class ThreadPoolToken {
+ public:
+  // Destroys the token.
+  //
+  // May be called on a token with outstanding tasks, as Shutdown() will be
+  // called first to take care of them.
+  ~ThreadPoolToken();
+
+  // Submits a function using the yb Closure system.
+  Status SubmitClosure(Closure c) WARN_UNUSED_RESULT;
+
+  // Submits a function bound using boost::bind(&FuncName, args...).
+  Status SubmitFunc(const std::function<void()> f) WARN_UNUSED_RESULT;
+
+  // Submits a Runnable class.
+  Status Submit(std::shared_ptr<Runnable> r) WARN_UNUSED_RESULT;
+
+  // Marks the token as unusable for future submissions. Any queued tasks not
+  // yet running are destroyed. If tasks are in flight, Shutdown() will wait
+  // on their completion before returning.
+  void Shutdown();
+
+  // Waits until all the tasks submitted via this token are completed.
+  void Wait();
+
+  // Waits for all submissions using this token are complete, or until 'until'
+  // time is reached.
+  //
+  // Returns true if all submissions are complete, false otherwise.
+  bool WaitUntil(const MonoTime& until);
+
+  // Waits for all submissions using this token are complete, or until 'delta'
+  // time elapses.
+  //
+  // Returns true if all submissions are complete, false otherwise.
+  bool WaitFor(const MonoDelta& delta);
+
+ private:
+  friend class ThreadPool;
+
+  // Returns a textual representation of 's' suitable for debugging.
+  static const char* StateToString(ThreadPoolTokenState s);
+
+  // Constructs a new token.
+  //
+  // The token may not outlive its thread pool ('pool').
+  ThreadPoolToken(ThreadPool* pool, ThreadPool::ExecutionMode mode);
+
+  // Changes this token's state to 'new_state' taking actions as needed.
+  void Transition(ThreadPoolTokenState new_state);
+
+  // Returns true if this token has a task queued and ready to run, or if a
+  // task belonging to this token is already running.
+  bool IsActive() const {
+    return state_ == ThreadPoolTokenState::kRunning ||
+           state_ == ThreadPoolTokenState::kQuiescing;
+  }
+
+  // Returns true if new tasks may be submitted to this token.
+  bool MaySubmitNewTasks() const {
+    return state_ != ThreadPoolTokenState::kQuiescing &&
+           state_ != ThreadPoolTokenState::kQuiesced;
+  }
+
+  ThreadPoolTokenState state() const { return state_; }
+  ThreadPool::ExecutionMode mode() const { return mode_; }
+
+  // Token's configured execution mode.
+  const ThreadPool::ExecutionMode mode_;
+
+  // Pointer to the token's thread pool.
+  ThreadPool* pool_;
+
+  // Token state machine.
+  ThreadPoolTokenState state_;
+
+  // Queued client tasks.
+  std::deque<ThreadPool::Task> entries_;
+
+  // Condition variable for "token is idle". Waiters wake up when the token
+  // transitions to kIdle or kQuiesced.
+  ConditionVariable not_running_cond_;
+
+  // Number of worker threads currently executing tasks belonging to this
+  // token.
+  int active_threads_;
+
+  DISALLOW_COPY_AND_ASSIGN(ThreadPoolToken);
+};
+
 } // namespace yb
-#endif
+#endif // YB_UTIL_THREADPOOL_H
