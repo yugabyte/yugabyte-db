@@ -34,7 +34,6 @@ class Tablet : public yb::tablet::Tablet {
   CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
 
   // Create snapshot for this tablet.
-  // This operation will trigger a flush on the current MemRowSet.
   CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state);
 
   // Restore snapshot for this tablet.
