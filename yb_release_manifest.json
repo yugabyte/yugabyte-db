@@ -5,8 +5,6 @@
           "build/latest/bin/yb-pbc-dump",
           "build/latest/bin/yb-master",
           "build/latest/bin/yb-tserver",
-          "build/latest/bin/yb-fs_dump",
-          "build/latest/bin/yb-fs_list",
           "build/latest/bin/yb-ysck",
           "build/latest/bin/yb-ts-cli",
           "build/latest/bin/yb-redisserver",
