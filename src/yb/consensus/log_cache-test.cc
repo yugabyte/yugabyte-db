@@ -188,6 +188,12 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
   OpId preceding;
   ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
   ASSERT_EQ(1, messages.size());
+
+  // Should yield one op also in the 'cache miss' case.
+  messages.clear();
+  cache_->EvictThroughOp(50);
+  ASSERT_OK(cache_->ReadOps(0, 100, &messages, &preceding));
+  ASSERT_EQ(1, messages.size());
 }
 
 // Tests that the cache returns STATUS(NotFound, "") if queried for messages after an

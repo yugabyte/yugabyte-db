@@ -329,7 +329,7 @@ Status LogCache::ReadOps(int64_t after_op_index,
         CHECK_EQ(next_index, msg->id().index());
 
         remaining_space -= TotalByteSizeForMessage(*msg);
-        if (remaining_space > 0) {
+        if (remaining_space > 0 || messages->empty()) {
           messages->push_back(msg);
           next_index++;
         }
