@@ -8,7 +8,7 @@ import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
 import './OnPremConfiguration.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { YBLoadingIcon } from '../../common/indicators';
+import { YBLoading } from '../../common/indicators';
 
 const PROVIDER_TYPE = "onprem";
 const initialState = {
@@ -261,7 +261,7 @@ export default class OnPremConfiguration extends Component {
       return <span/>;
     }
     else if (getPromiseState(configuredProviders).isLoading()) {
-      return <YBLoadingIcon/>;
+      return <YBLoading />;
     } else if (getPromiseState(configuredProviders).isSuccess()) {
       const providerFound = configuredProviders.data.find(provider => provider.code === 'onprem');
       if (isDefinedNotNull(providerFound)) {

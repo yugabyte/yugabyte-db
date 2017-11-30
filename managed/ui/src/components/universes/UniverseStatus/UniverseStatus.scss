@@ -89,7 +89,12 @@
   display: inline-block;
   color: $YB_ORANGE;
   float: right;
-  margin-top: 8px;
+  .yb-circle {
+    margin: 0;
+    display: inline-block;
+    top: 8px;
+    right: 3px;
+  }
 }
 
 .status-pending-display-container .fa-spin {

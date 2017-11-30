@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
-import {YBLoadingIcon} from '../../common/indicators';
+import { YBLoading } from '../../common/indicators';
 import { isValidObject } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
@@ -116,7 +116,7 @@ export default class UniverseDisplayPanel extends Component {
         </div>
       );
     } else {
-      return <YBLoadingIcon/>;
+      return <YBLoading />;
     }
   }
 }

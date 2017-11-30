@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import moment from 'moment';
 import { YBFormattedNumber } from '../../common/descriptors';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { YBLoadingIcon } from '../../common/indicators';
+import { YBLoading } from '../../common/indicators';
 import { YBStatsBlock } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
 import {isDefinedNotNull, isNonEmptyObject} from "../../../utils/ObjectUtils";
@@ -15,7 +15,7 @@ export default class HighlightedStatsPanel extends Component {
     let numNodes = 0;
     let totalCost = 0;
     if (getPromiseState(universeList).isLoading()) {
-      return <YBLoadingIcon/>;
+      return <YBLoading />;
     }
     if (!(getPromiseState(universeList).isSuccess() || getPromiseState(universeList).isEmpty())) {
       return <span/>;
