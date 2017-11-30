@@ -1134,7 +1134,6 @@ run_tests_on_spark() {
   local return_code
   local run_tests_args=(
     --build-root "$BUILD_ROOT"
-    --build-type "$build_type"
     --save_report_to_build_dir
   )
   if is_jenkins && [[ -d "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" ]]; then

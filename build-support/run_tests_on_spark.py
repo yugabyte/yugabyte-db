@@ -445,6 +445,19 @@ def fatal_error(msg):
 
 def collect_tests(args):
     cpp_test_descriptors = []
+
+    if args.cpp_test_program_regexp and args.cpp_test_program_list:
+        raise RuntimeException(
+            "--cpp_test_program_regexp and --cpp_test_program_list cannot both be specified "
+            "at the same time.")
+
+    if args.cpp_test_program_list:
+        logging.info("Reading the list of C++ test programs to run from '{}'".format(
+            args.cpp_test_program_list))
+        with open(args.cpp_test_program_list) as test_prog_list_file:
+            args.cpp_test_program_regexp = '|'.join(
+                sorted(set([line.strip() for line in test_prog_list_file]) - set([''])))
+
     if args.run_cpp_tests:
         cpp_test_descriptors = collect_cpp_tests(args.max_tests, args.cpp_test_program_regexp)
 
@@ -512,8 +525,6 @@ def main():
                              'failed tests using a file produced with --failed_test_list.')
     parser.add_argument('--build-root', dest='build_root', required=True,
                         help='Build root (e.g. ~/code/yugabyte/build/debug-gcc-dynamic-community)')
-    parser.add_argument('--build-type', dest='build_type', required=False,
-                        help='Build type (e.g. debug, release, tsan, or asan)')
     parser.add_argument('--max-tests', type=int, dest='max_tests',
                         help='Maximum number of tests to run. Useful when debugging this script '
                              'for faster iteration. This number of tests will be randomly chosen '
@@ -534,6 +545,9 @@ def main():
                              'work even if neither --reports-dir or --write_report are specified.')
     parser.add_argument('--cpp_test_program_regexp',
                         help='A regular expression to filter C++ test program names on.')
+    parser.add_argument('--cpp_test_program_list',
+                        help='File name to read the list of C++ test progarms to run from, one '
+                             'per line.')
     parser.add_argument('--num_repetitions', type=int, default=1,
                         help='Number of times to run each test.')
     parser.add_argument('--failed_test_list',

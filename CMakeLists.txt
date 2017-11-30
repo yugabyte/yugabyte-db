@@ -416,7 +416,8 @@ endif()
 # Generate a Clang compile_commands.json "compilation database" file for use
 # with various development tools, such as Vim's YouCompleteMe plugin.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
-if ("$ENV{CMAKE_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
+if ("$ENV{CMAKE_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR
+    "$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
   set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 endif()
 
@@ -1584,8 +1585,11 @@ if ("${YB_EDITION}" STREQUAL "enterprise")
   include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
 endif()
 
-# This file contains dependencies in the following form, separated by '\n' (escaped newline),
-# all on one line:
+
+# We could not accumulate multiple lines in YB_ALL_DEPS due to a CMake bug with cache variables,
+# but we can write multiple lines in the output file.
+string(REPLACE "\\n" "\n" YB_ALL_DEPS_FINAL "${YB_ALL_DEPS}")
+# This file wlll contains dependencies in the following form, separated by newlines:
 # target: dep1;dep2;..;depN
-# The same target can appear on the left hand side of multiple such "lines".
-file(WRITE "${YB_BUILD_ROOT}/yb_all_deps.txt" "${YB_ALL_DEPS}")
+# The same target can appear on the left hand side of multiple such lines.
+file(WRITE "${YB_BUILD_ROOT}/yb_cmake_deps.txt" "${YB_ALL_DEPS_FINAL}")

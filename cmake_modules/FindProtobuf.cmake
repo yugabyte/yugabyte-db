@@ -116,6 +116,7 @@ function(PROTOBUF_GENERATE_CPP SRCS HDRS TGTS)
     # Ensure that the protobuf file is within the source root.
     # This is a requirement of protoc.
     FILE(RELATIVE_PATH PROTO_REL_TO_ROOT "${ARG_SOURCE_ROOT}" "${ABS_FIL}")
+    FILE(RELATIVE_PATH PROTO_REL_TO_YB_SRC_ROOT "${YB_SRC_ROOT}" "${ABS_FIL}")
 
     GET_FILENAME_COMPONENT(REL_DIR "${PROTO_REL_TO_ROOT}" PATH)
 
@@ -146,8 +147,11 @@ function(PROTOBUF_GENERATE_CPP SRCS HDRS TGTS)
     # This custom target enforces that there's just one invocation of protoc
     # when there are multiple consumers of the generated files. The target name
     # must be unique; adding parts of the filename helps ensure this.
-    set(TGT_NAME ${REL_DIR}${FIL})
-    string(REPLACE "/" "-" TGT_NAME ${TGT_NAME})
+    set(TGT_NAME "gen_${PROTO_REL_TO_YB_SRC_ROOT}")
+    string(REPLACE "@" "_" TGT_NAME ${TGT_NAME})
+    string(REPLACE "." "_" TGT_NAME ${TGT_NAME})
+    string(REPLACE "-" "_" TGT_NAME ${TGT_NAME})
+    string(REPLACE "/" "_" TGT_NAME ${TGT_NAME})
     add_custom_target(${TGT_NAME}
       DEPENDS "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
     list(APPEND ${TGTS} "${TGT_NAME}")

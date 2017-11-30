@@ -19,6 +19,9 @@ import os
 import re
 import time
 
+from yb.common_util import get_build_type_from_build_root  # nopep8
+
+
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
 # a "test descriptor" (a string that identifies a particular test).
 #
@@ -154,7 +157,6 @@ ClockSyncCheckResult = collections.namedtuple(
 
 
 def set_global_conf_from_args(args):
-    build_type = args.build_type
     build_root = os.path.realpath(args.build_root)
 
     # This module is expected to be under python/yb.
@@ -162,21 +164,12 @@ def set_global_conf_from_args(args):
 
     # Ensure that build_root is consistent with yb_src_root above.
     yb_src_root_from_build_root = os.path.dirname(os.path.dirname(build_root))
-    assert yb_src_root == yb_src_root_from_build_root, \
-        "Inconsistent YB_SRC_ROOT from module location ({}) vs. BUILD_ROOT ({})".format(
-            yb_src_root, yb_src_root_from_build_root)
 
-    build_root_basename = os.path.basename(build_root)
-    if build_type is None:
-        # Figure out build_type based on build path.
-        build_type = build_root_basename.split('-')[0]
-        logging.info("Autodetected build type as '{}' based on build root basename '{}'".format(
-            build_type, build_root_basename
-        ))
-    else:
-        assert build_root_basename.startswith(build_type + '-'), (
-                "Inconsistent build root '{}': the directory name must start with build type "
-                "followed by '-', and build type is '{}'.").format(build_root, build_type)
+    build_type = get_build_type_from_build_root(build_root)
+
+    assert yb_src_root == yb_src_root_from_build_root, \
+        ("An inconstency between YB_SRC_ROOT derived from module location ({}) vs. the one derived "
+         "from BUILD_ROOT ({})").format(yb_src_root, yb_src_root_from_build_root)
     global global_conf
     global_conf = GlobalTestConfig(
             build_root=build_root,

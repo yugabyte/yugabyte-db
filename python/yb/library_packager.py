@@ -57,7 +57,7 @@ from six.moves import urllib
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from yb.command_util import run_program, mkdir_p  # nopep8
 from yb.linuxbrew import get_linuxbrew_dir  # nopep8
-from yb.common_util import YB_THIRDPARTY_DIR, YB_SRC_ROOT  # nopep8
+from yb.common_util import YB_THIRDPARTY_DIR, YB_SRC_ROOT, sorted_grouped_by  # nopep8
 
 
 # A resolved shared library dependency shown by ldd.
@@ -84,10 +84,6 @@ PATCHELF_NOT_AN_ELF_EXECUTABLE = 'not an ELF executable'
 PATCHELF_PATH = os.path.join(LINUXBREW_HOME, 'bin', 'patchelf')
 
 LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
-
-
-def group_by(arr, key_fn):
-    return [(k, list(v)) for (k, v) in itertools.groupby(sorted(arr, key=key_fn), key_fn)]
 
 
 # This is an alternative to global variables, bundling a few commonly used things.
@@ -350,7 +346,7 @@ class LibraryPackager:
 
         all_deps = sorted(set(all_deps))
 
-        for dep_name, deps in group_by(all_deps, lambda dep: dep.name):
+        for dep_name, deps in sorted_grouped_by(all_deps, lambda dep: dep.name):
             targets = sorted(set([dep.target for dep in deps]))
             if len(targets) > 1:
                 raise RuntimeException(
@@ -359,7 +355,8 @@ class LibraryPackager:
                     ))
 
         categories = sorted(set([dep.get_category() for dep in all_deps]))
-        for category, deps_in_category in group_by(all_deps, lambda dep: dep.get_category()):
+        for category, deps_in_category in sorted_grouped_by(all_deps,
+                                                            lambda dep: dep.get_category()):
             logging.info("Found {} dependencies in category '{}':".format(
                 len(deps_in_category), category))
 

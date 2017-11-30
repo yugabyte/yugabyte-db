@@ -64,6 +64,11 @@
 #   Default: 0
 #     Compile the code and build a package, but don't run tests.
 #
+#   YB_RUN_AFFECTED_TESTS_ONLY
+#   Default: 0
+#     Try to auto-detect the set of C++ tests to run for the current set of changes relative to
+#     origin/master.
+#
 # Portions Copyright (c) YugaByte, Inc.
 
 set -euo pipefail
@@ -149,8 +154,6 @@ fi
 
 MAX_NUM_PARALLEL_TESTS=3
 
-YB_BUILD_CPP=${YB_BUILD_CPP:-1}
-
 # gather core dumps
 ulimit -c unlimited
 
@@ -167,11 +170,24 @@ set_build_root --no-readonly
 
 set_common_test_paths
 
+log "Running Python doctest tests for Python files in the $YB_SRC_ROOT/python directory"
+export PYTHONPATH="$YB_SRC_ROOT/python"
+IFS=$'\n'
+python_files=( $( find "$YB_SRC_ROOT/python" -name "*.py" -type f ) )
+unset IFS
+
+for python_file in "${python_files[@]}"; do
+  ( set -x; python -m doctest "$python_file" )
+done
+
 check_python_script_syntax
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
+YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
+export YB_RUN_AFFECTED_TESTS_ONLY
+
 if is_jenkins; then
   # Delete the build root by default on Jenkins.
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-0}
@@ -202,12 +218,12 @@ if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
     build_root_deleted=true
   else
     log "Deleting BUILD_ROOT ('$BUILD_ROOT')."
-    rm -rf "$BUILD_ROOT"
+    ( set -x; rm -rf "$BUILD_ROOT" )
     build_root_deleted=true
   fi
 fi
 
-if ! $build_root_deleted; then
+if ! "$build_root_deleted"; then
   log "Skipped deleting BUILD_ROOT ('$BUILD_ROOT'), only deleting $YB_TEST_LOG_ROOT_DIR."
   rm -rf "$YB_TEST_LOG_ROOT_DIR"
 fi
@@ -216,6 +232,9 @@ if is_jenkins; then
   log "Deleting yb-test-logs from all subdirectories of $YB_BUILD_PARENT_DIR so that Jenkins " \
       "does not get confused with old JUnit-style XML files."
   ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
+
+  log "Deleting old release archives from '$YB_BUILD_PARENT_DIR'"
+  ( set -x; rm -rf "$YB_BUILD_PARENT_DIR/yugabyte-"*"-$build_type-"*".tar.gz" )
 fi
 
 if [[ ! -d $BUILD_ROOT ]]; then
@@ -246,61 +265,18 @@ fi
 
 configure_remote_build
 
-should_build_thirdparty=true
-parent_dir_for_shared_thirdparty=""
-if is_src_root_on_nfs; then
-  parent_dir_for_shared_thirdparty=$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY
-fi
-
-if [[ -d $parent_dir_for_shared_thirdparty ]]; then
-  # TODO: make this option available in yb_build.sh as well.
-  set +e
-  # We name shared prebuilt thirdparty directories on NFS like this:
-  # /n/jenkins/thirdparty/yugabyte-thirdparty-YYYY-MM-DDTHH_MM_SS
-  # This is why sorting and taking the last entry makes sense below.
-  set +e
-  existing_thirdparty_dirs=( $(
-    ls -d "$parent_dir_for_shared_thirdparty/yugabyte-thirdparty-"*/thirdparty | sort --reverse
-  ) )
-  set -e
-  if [[ ${#existing_thirdparty_dirs[@]} -gt 0 ]]; then
-    for existing_thirdparty_dir in "${existing_thirdparty_dirs[@]}"; do
-      if [[ ! -d $existing_thirdparty_dir ]]; then
-        log "Warning: third-party directory '$existing_thirdparty_dir' not found, skipping."
-        continue
-      fi
-      if [[ -e $existing_thirdparty_dir/.yb_thirdparty_do_not_use ]]; then
-        log "Skipping '$existing_thirdparty_dir' because of a 'do not use' flag file."
-        continue
-      fi
-      if [[ -d $existing_thirdparty_dir ]]; then
-        log "Using existing third-party dependencies from $existing_thirdparty_dir"
-        if is_jenkins; then
-          log "Cleaning the old dedicated third-party dependency build in '$YB_SRC_ROOT/thirdparty'"
-          unset YB_THIRDPARTY_DIR
-          "$YB_SRC_ROOT/thirdparty/clean_thirdparty.sh" --all
-        fi
-        export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
-        should_build_thirdparty=false
-        break
-      fi
-    done
-  fi
-  if "$should_build_thirdparty"; then
-    log "Even though the top-level directory '$parent_dir_for_shared_thirdparty'" \
-        "exists, we could not find a prebuilt shared third-party directory there that exists " \
-        "and does not have a 'do not use' flag file inside. Falling back to building our own " \
-        "third-party dependencies."
+find_shared_thirdparty_dir
+if ! "$found_shared_thirdparty_dir"; then
+  if [[ ${NO_REBUILD_THIRDPARTY:-} == "1" ]]; then
+    log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
+  else
+    log "Starting third-party dependency build"
+    time thirdparty/build-thirdparty.sh
+    log "Third-party dependency build finished (see timing information above)"
   fi
 fi
 
-if "$should_build_thirdparty"; then
-  log "Starting third-party dependency build"
-  time thirdparty/build-thirdparty.sh
-  log "Third-party dependency build finished (see timing information above)"
-fi
-
-# We built or found third-party dependencies above. Do not attempt to download or build them in in
+# We built or found third-party dependencies above. Do not attempt to download or build them in
 # further steps.
 export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
 export NO_REBUILD_THIRDPARTY=1
@@ -316,50 +292,18 @@ fi
 
 # Configure the build
 #
-# ASAN/TSAN can't build the Python bindings because the exported YB client
-# library (which the bindings depend on) is missing ASAN/TSAN symbols.
 
 cd "$BUILD_ROOT"
-cmake_cmd_line="cmake ${cmake_opts[@]}"
-DO_COVERAGE=0
-EXTRA_TEST_FLAGS=""
-# TODO: use "case" below.
-if [[ $BUILD_TYPE == "asan" ]]; then
-  log "Starting ASAN build"
-  run_build_cmd $cmake_cmd_line "$YB_SRC_ROOT"
-  log "CMake invocation for ASAN build finished (see timing information above)"
-elif [[ $BUILD_TYPE == "tsan" ]]; then
-  log "Starting TSAN build"
-  run_build_cmd $cmake_cmd_line -DYB_USE_TSAN=1 "$YB_SRC_ROOT"
-  log "CMake invocation for TSAN build finished (see timing information above)"
-  EXTRA_TEST_FLAGS+=" -LE no_tsan"
-elif [[ $BUILD_TYPE == "coverage" ]]; then
-  DO_COVERAGE=1
-  log "Starting coverage build"
-  run_build_cmd $cmake_cmd_line -DYB_GENERATE_COVERAGE=1 "$YB_SRC_ROOT"
-  log "CMake invocation for coverage build finished (see timing information above)"
-elif [[ $BUILD_TYPE == "lint" ]]; then
-  # Create empty test logs or else Jenkins fails to archive artifacts, which
-  # results in the build failing.
-  mkdir -p Testing/Temporary
-  mkdir -p "$TEST_LOG_DIR"
 
-  log "Starting lint build"
-  set +e
-  time (
-    set -e
-    $cmake_cmd_line "$YB_SRC_ROOT"
-    make lint
-  ) 2>&1 | tee "$TEST_LOG_DIR"/lint.log
-  exit_code=$?
-  set -e
-  log "Lint build finished (see timing information above)"
-  exit $exit_code
-elif [[ $SKIP_CPP_MAKE == "0" ]]; then
-  log "Running CMake with CMAKE_BUILD_TYPE set to $cmake_build_type"
-  run_build_cmd $cmake_cmd_line "$YB_SRC_ROOT"
-  log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
+if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
+  (
+    set -x
+    # Remove the compilation command file, even if we have not deleted the build root.
+    rm -f "$BUILD_ROOT/compile_commands.json"
+  )
 fi
+
+time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only
 
 # Only enable test core dumps for certain build types.
 if [[ $BUILD_TYPE != "asan" ]]; then
@@ -464,13 +408,21 @@ show_disk_usage
 # End of the C++ code build.
 # -------------------------------------------------------------------------------------------------
 
+if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
+  (
+    set -x
+    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+      --build-root "$BUILD_ROOT" self-test --rebuild-graph
+  )
+fi
+
 set_asan_tsan_options
 
 if [[ $YB_BUILD_JAVA == "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
   set_mvn_parameters
 
-  heading "Building and testing java..."
+  heading "Building Java code..."
   if [[ -n ${JAVA_HOME:-} ]]; then
     export PATH=$JAVA_HOME/bin:$PATH
   fi
@@ -478,24 +430,26 @@ if [[ $YB_BUILD_JAVA == "1" ]]; then
 
   ( set -x; mvn clean )
 
-  # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
-  # into ~/.m2/repository.
-  random_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
-  yb_java_project_version=yugabyte-jenkins-$random_id
+  if is_jenkins; then
+    # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
+    # into ~/.m2/repository.
+    random_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
+    yb_java_project_version=yugabyte-jenkins-$random_id
 
-  yb_new_group_id=org.yb$random_id
-  find . -name "pom.xml" \
-         -exec sed -i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" {} \;
+    yb_new_group_id=org.yb$random_id
+    find . -name "pom.xml" \
+           -exec sed -i "s#<groupId>org[.]yb</groupId>#<groupId>$yb_new_group_id</groupId>#g" {} \;
 
-  commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
-  commit_msg+="during testing"
-  (
-    set -x
-    mvn versions:set -DnewVersion="$yb_java_project_version"
-    git add -A .
-    git commit -m "$commit_msg"
-  )
-  unset commit_msg
+    commit_msg="Updating version to $yb_java_project_version and groupId to $yb_new_group_id "
+    commit_msg+="during testing"
+    (
+      set -x
+      mvn versions:set -DnewVersion="$yb_java_project_version"
+      git add -A .
+      git commit -m "$commit_msg"
+    )
+    unset commit_msg
+  fi
 
   java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
   if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" \
@@ -515,18 +469,31 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then
     if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
       log "Will run tests on Spark"
-      extra_args=""
+      extra_args=()
       if [[ $YB_BUILD_JAVA == "1" ]]; then
-        extra_args+="--java"
+        extra_args+=( "--java" )
       fi
       if [[ $YB_BUILD_CPP == "1" ]]; then
-        extra_args+=" --cpp"
+        extra_args+=( "--cpp" )
       fi
-      if ! run_tests_on_spark $extra_args; then
+      if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
+        test_program_list_path="$BUILD_ROOT/affected_cxx_test_programs.txt"
+        "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+            --build-root "$BUILD_ROOT" \
+            --git-diff origin/master \
+            --output-test-list "$test_program_list_path" \
+            affected
+        extra_args+=( "--cpp_test_program_list" "$test_program_list_path" )
+        unset test_program_list_path
+      fi
+      set +u  # bacause extra_args can be empty
+      if ! run_tests_on_spark "${extra_args[@]}"; then
+        set -u
         EXIT_STATUS=1
         FAILURES+=$'Distributed tests on Spark (C++ and/or Java) failed\n'
         log "Some tests that were run on Spark failed"
       fi
+      set -u
       unset extra_args
     else
       log "Neither C++ or Java tests are enabled, nothing to run on Spark."
@@ -551,15 +518,6 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         set -e
       fi
       log "Finished running C++ tests (see timing information above)"
-
-      if [[ $DO_COVERAGE == "1" ]]; then
-        heading "Generating coverage report..."
-        if ! $YB_SRC_ROOT/thirdparty/gcovr-3.0/scripts/gcovr -r $YB_SRC_ROOT --xml \
-            > $BUILD_ROOT/coverage.xml ; then
-          EXIT_STATUS=1
-          FAILURES+=$'Coverage report failed\n'
-        fi
-      fi
     fi
 
     if [[ $YB_BUILD_JAVA == "1" ]]; then
@@ -577,8 +535,10 @@ fi
 
 # Finished running tests.
 
-log "Testing creating a distribution package"
-"$YB_SRC_ROOT/yb_release" --force --skip_build
+if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]]; then
+  log "Testing creating a distribution package"
+  "$YB_SRC_ROOT/yb_release" --force --skip_build
+fi
 
 set -e
 

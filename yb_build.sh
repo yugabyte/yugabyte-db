@@ -32,6 +32,8 @@ Options:
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
   --force-no-run-cmake, --fnrcm
     The opposite of --force-run-cmake. Makes sure we do not run CMake.
+  --cmake-only
+    Only run CMake, don't run any other build steps.
   --clean
     Remove the build directory before building.
   --clean-thirdparty
@@ -60,6 +62,9 @@ Options:
     Skip building third-party libraries, even if the thirdparty directory has changed in git.
   --no-prebuilt-thirdparty
     Don't download prebuilt third-party libraries, build them locally instead.
+  --use-shared-thirdparty, --ustp, --stp, --us3p, --s3p
+    Try to find and use a shared third-party directory (in YugaByte's build environment these
+    third-party directories are under $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY)
   --show-compiler-cmd-line, --sccl
     Show compiler command line.
   --{no,skip}-{test-existence-check,check-test-existence}
@@ -113,8 +118,7 @@ Options:
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
 Supported target keywords:
-  ...-test
-    Build and run a C++ test
+  ...-test           - build and run a C++ test
   [yb-]master        - master executable
   [yb-]tserver       - tablet server executable
   daemons            - both yb-master and yb-tserver
@@ -198,6 +202,8 @@ original_args=( "$@" )
 java_with_assembly=false
 mvn_opts=""
 java_only=false
+cmake_only=false
+use_shared_thirdparty=false
 
 export YB_EXTRA_GTEST_FLAGS=""
 
@@ -228,6 +234,9 @@ while [ $# -gt 0 ]; do
     ;;
     --force-no-run-cmake|--fnrcm)
       force_no_run_cmake=true
+    ;;
+    --cmake-only)
+      cmake_only=true
     ;;
     --clean)
       clean_before_build=true
@@ -296,6 +305,9 @@ while [ $# -gt 0 ]; do
     ;;
     --prebuilt-thirdparty|--with-prebuilt-thirdparty)
       export YB_PREFER_PREBUILT_THIRDPARTY=1
+    ;;
+    --use-shared-thirdparty|--ustp|--stp|--us3p|--s3p)
+      use_shared_thirdparty=true
     ;;
     --show-compiler-cmd-line|--sccl)
       export YB_SHOW_COMPILER_COMMAND_LINE=1
@@ -421,6 +433,10 @@ if "$force_run_cmake" && "$force_no_run_cmake"; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
+if "$cmake_only" && [[ $force_no_run_cmake == "true" || $java_only == "true" ]]; then
+  fatal "--cmake-only is incompatible with --force-no-run-cmake or --java-only"
+fi
+
 if "$should_run_ctest"; then
   if [[ -n $cxx_test_name ]]; then
     fatal "--cxx-test (run one C++ test) is mutually exclusive with --ctest (run a number of tests)"
@@ -454,6 +470,10 @@ if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != "$YB_SRC_ROOT/thirdpart
   log "YB_THIRDPARTY_DIR ('$YB_THIRDPARTY_DIR') is not what we expect based on the source root " \
       "('$YB_SRC_ROOT/thirdparty'), not attempting to rebuild third-party dependencies."
   export NO_REBUILD_THIRDPARTY=1
+fi
+
+if "$use_shared_thirdparty"; then
+  find_shared_thirdparty_dir
 fi
 
 configure_remote_build
@@ -560,8 +580,8 @@ log "Using make parallelism of $YB_MAKE_PARALLELISM" \
 
 set_build_env_vars
 
-if "$build_cxx"; then
-  if ( "$force_run_cmake" || [[ ! -f Makefile ]] ) && \
+if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
+  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f Makefile ]] ) && \
      ! "$force_no_run_cmake"; then
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
       build_compiler_if_necessary
@@ -573,10 +593,10 @@ if "$build_cxx"; then
     cmake_end_time_sec=$(date +%s)
   fi
 
-  if "$rocksdb_only"; then
-    make_opts+=( build_rocksdb_all_targets )
+  if "$cmake_only"; then
+    log "CMake has been invoked, stopping here (--cmake-only specified)."
+    exit
   fi
-
   if [[ "${#object_files_to_delete[@]}" -gt 0 ]]; then
     log_empty_line
     log "Deleting object files corresponding to: ${object_files_to_delete[@]}"

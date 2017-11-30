@@ -75,6 +75,7 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
     # Ensure that the protobuf file is within the source root.
     # This is a requirement of protoc.
     FILE(RELATIVE_PATH PROTO_REL_TO_ROOT "${ARG_SOURCE_ROOT}" "${ABS_FIL}")
+    FILE(RELATIVE_PATH PROTO_REL_TO_YB_SRC_ROOT "${YB_SRC_ROOT}" "${ABS_FIL}")
 
     GET_FILENAME_COMPONENT(REL_DIR "${PROTO_REL_TO_ROOT}" PATH)
 
@@ -92,7 +93,8 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
     list(APPEND ${HDRS} "${PROTO_H_OUT}" "${SERVICE_H}" "${PROXY_H}")
 
     add_custom_command(
-      OUTPUT "${SERVICE_CC}" "${SERVICE_H}" "${PROXY_CC}" "${PROXY_H}"
+      OUTPUT "${SERVICE_CC}" "${SERVICE_H}"
+             "${PROXY_CC}" "${PROXY_H}"
              "${PROTO_CC_OUT}" "${PROTO_H_OUT}"
       COMMAND  ${PROTOBUF_PROTOC_EXECUTABLE}
       ARGS --plugin $<TARGET_FILE:protoc-gen-yrpc>
@@ -111,9 +113,11 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
     # This custom target enforces that there's just one invocation of protoc
     # when there are multiple consumers of the generated files. The target name
     # must be unique; adding parts of the filename helps ensure this.
-    set(TGT_NAME ${REL_DIR}${FIL})
-    string(REPLACE "/" "-" TGT_NAME ${TGT_NAME})
-    string(REPLACE "@" "-" TGT_NAME ${TGT_NAME})
+    set(TGT_NAME "gen_${PROTO_REL_TO_YB_SRC_ROOT}")
+    string(REPLACE "@" "_" TGT_NAME ${TGT_NAME})
+    string(REPLACE "." "_" TGT_NAME ${TGT_NAME})
+    string(REPLACE "-" "_" TGT_NAME ${TGT_NAME})
+    string(REPLACE "/" "_" TGT_NAME ${TGT_NAME})
     add_custom_target(${TGT_NAME}
       DEPENDS "${SERVICE_CC}" "${SERVICE_H}"
       "${PROXY_CC}" "${PROXY_H}"
