@@ -10,6 +10,7 @@ import {
 import NodeConnectModal from './NodeConnectModal';
 import { isNodeRemovable } from 'utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { YBLoadingIcon } from '../../common/indicators';
 
 export default class NodeDetails extends Component {
   constructor(props) {
@@ -68,7 +69,7 @@ export default class NodeDetails extends Component {
     }
 
     const inLoadingOrInitState = this.isNodeStatusLoadingOrInit();
-    const loadingIcon = <i className="fa fa-spinner fa-spin" />;
+    const loadingIcon = <YBLoadingIcon size='inline' />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
 

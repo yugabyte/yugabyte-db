@@ -18,8 +18,8 @@ import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
-import {getPromiseState} from 'utils/PromiseUtils';
-import {YBLoadingIcon} from '../../common/indicators';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { YBLoading } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import './UniverseDetail.scss';
 
@@ -70,7 +70,7 @@ class UniverseDetail extends Component {
       return <UniverseFormContainer type="Create"/>;
     }
     if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
-      return <YBLoadingIcon/>;
+      return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
     }
@@ -213,7 +213,7 @@ class UniverseTaskList extends Component {
     const universeTaskHistoryArray = [];
     let universeTaskHistory = <span/>;
     if (getPromiseState(universeTasks).isLoading()) {
-      universeTaskHistory = <YBLoadingIcon/>;
+      universeTaskHistory = <YBLoading />;
     }
     const currentUniverseTasks = universeTasks.data[currentUniverse.data.universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {

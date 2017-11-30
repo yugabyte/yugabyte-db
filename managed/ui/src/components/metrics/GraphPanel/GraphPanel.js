@@ -5,7 +5,7 @@ import PropTypes from 'prop-types';
 import { Accordion, Panel } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
-import {YBLoadingIcon} from '../../common/indicators';
+import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 
 const panelTypes = {
@@ -127,7 +127,7 @@ class GraphPanel extends Component {
   render() {
     const { type, graph: { metrics }} = this.props;
 
-    let panelItem = <YBLoadingIcon />;
+    let panelItem = <YBLoading />;
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
       we basically would have metrics data keyed off panel type. So we
