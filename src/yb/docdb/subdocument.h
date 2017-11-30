@@ -160,12 +160,12 @@ class SubDocument : public PrimitiveValue {
                                    WriteAction write_action);
 
   // Construct a QLValuePB from a SubDocument.
-  static void ToQLValuePB(SubDocument doc,
+  static void ToQLValuePB(const SubDocument& doc,
                           const std::shared_ptr<QLType>& ql_type,
                           QLValuePB* v);
 
   // Construct a QLExpressionPB from a SubDocument.
-  static void ToQLExpressionPB(SubDocument doc,
+  static void ToQLExpressionPB(const SubDocument& doc,
                                const std::shared_ptr<QLType>& ql_type,
                                QLExpressionPB* ql_expr);
 

@@ -378,7 +378,7 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
   }
 }
 
-void SubDocument::ToQLValuePB(SubDocument doc,
+void SubDocument::ToQLValuePB(const SubDocument& doc,
                               const shared_ptr<QLType>& ql_type,
                               QLValuePB* ql_value) {
   // interpreting empty collections as null values following Cassandra semantics
@@ -442,7 +442,7 @@ void SubDocument::ToQLValuePB(SubDocument doc,
   LOG(FATAL) << "Unsupported datatype in SubDocument: " << ql_type->ToString();
 }
 
-void SubDocument::ToQLExpressionPB(SubDocument doc,
+void SubDocument::ToQLExpressionPB(const SubDocument& doc,
                                    const shared_ptr<QLType>& ql_type,
                                    QLExpressionPB* ql_expr) {
   ToQLValuePB(doc, ql_type, ql_expr->mutable_value());
