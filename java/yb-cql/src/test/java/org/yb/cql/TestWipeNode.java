@@ -30,9 +30,13 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
+import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertNotNull;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
 public class TestWipeNode  extends BaseCQLTest {
 
@@ -43,6 +47,22 @@ public class TestWipeNode  extends BaseCQLTest {
     for (int i = 0; i < numRows; i++) {
       session.execute(String.format("INSERT INTO %s (c1, c2) values (%d, %d)", tableName, i, i));
     }
+  }
+
+  private String getContentForUrl(URL url) throws Exception {
+    String content = "";
+    BufferedReader in = new BufferedReader(
+        new InputStreamReader(url.openConnection().getInputStream()));
+    try {
+      String inputLine;
+      while ((inputLine = in.readLine()) != null) {
+        content += inputLine;
+      }
+    } finally {
+      in.close();
+    }
+
+    return content;
   }
 
   /**
@@ -96,24 +116,14 @@ public class TestWipeNode  extends BaseCQLTest {
         URL url = new URL(String.format("http://%s:%d/tablet-consensus-status?id=%s",
             ybDaemon.getLocalhostIP(), ybDaemon.getWebPort(),
             new String(tablet.getTabletId())));
-        BufferedReader in = new BufferedReader(
-            new InputStreamReader(url.openConnection().getInputStream()));
-        try {
-          String inputLine;
-          String content = "";
-          while ((inputLine = in.readLine()) != null) {
-            content += inputLine;
-          }
 
-          LOG.info("Content for " + url + ", " + content);
-          // Validate that there are no OPs pending replication.
-          if (content.indexOf("LogCacheStats(num_ops=0") == -1) {
-            LOG.error(String.format("Ops still pending replication for tablet: %s",
-                tablet.toString()));
-            return false;
-          }
-        } finally {
-          in.close();
+        String content = getContentForUrl(url);
+        LOG.info("Content for " + url + ", " + content);
+        // Validate that there are no OPs pending replication.
+        if (content.indexOf("LogCacheStats(num_ops=0") == -1) {
+          LOG.error(String.format("Ops still pending replication for tablet: %s",
+              tablet.toString()));
+          return false;
         }
       }
       return true;
@@ -121,5 +131,19 @@ public class TestWipeNode  extends BaseCQLTest {
 
     // Writes should still succeed.
     writeRows(tableName, 100);
+
+    // Verify master reports the correct number of tablet servers.
+    assertEquals(NUM_TABLET_SERVERS,
+        miniCluster.getClient().listTabletServers().getTabletServersCount());
+
+    // Verify the master webpage.
+    HostAndPort leaderMaster = miniCluster.getClient().getLeaderMasterHostAndPort();
+    MiniYBDaemon leaderMasterDaemon = miniCluster.getMasters().get(leaderMaster);
+    URL leaderMasterUrl = new URL(String.format("http://%s:%d/",
+        leaderMasterDaemon.getLocalhostIP(), leaderMasterDaemon.getWebPort()));
+    String leaderMasterHome = getContentForUrl(leaderMasterUrl);
+    LOG.info("Content for " + leaderMasterUrl + ", " + leaderMasterHome);
+
+    assertTrue(Pattern.matches(".*Num Nodes \\(TServers\\) [^0-9]*3.*", leaderMasterHome));
   }
 }

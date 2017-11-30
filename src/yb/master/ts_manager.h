@@ -52,7 +52,8 @@ namespace master {
 class TSDescriptor;
 class TSRegistrationPB;
 
-typedef std::vector<std::shared_ptr<TSDescriptor> > TSDescriptorVector;
+using TSDescSharedPtr = std::shared_ptr<TSDescriptor>;
+using TSDescriptorVector = std::vector<TSDescSharedPtr>;
 typedef std::string TabletServerId;
 
 // Tracks the servers that the master has heard from, along with their
@@ -75,43 +76,45 @@ class TSManager {
   // current instance ID for the TS, then a NotFound status is returned.
   // Otherwise, *desc is set and OK is returned.
   CHECKED_STATUS LookupTS(const NodeInstancePB& instance,
-                  std::shared_ptr<TSDescriptor>* desc);
+                          TSDescSharedPtr* desc);
 
   // Lookup the tablet server descriptor for the given UUID.
   // Returns false if the TS has never registered.
   // Otherwise, *desc is set and returns true.
   bool LookupTSByUUID(const std::string& uuid,
-                        std::shared_ptr<TSDescriptor>* desc);
+                      TSDescSharedPtr* desc);
 
   // Register or re-register a tablet server with the manager.
   //
   // If successful, *desc reset to the registered descriptor.
   CHECKED_STATUS RegisterTS(const NodeInstancePB& instance,
-                    const TSRegistrationPB& registration,
-                    std::shared_ptr<TSDescriptor>* desc);
+                            const TSRegistrationPB& registration,
+                            TSDescSharedPtr* desc);
 
   // Return all of the currently registered TS descriptors into the provided
   // list.
-  void GetAllDescriptors(std::vector<std::shared_ptr<TSDescriptor> >* descs) const;
+  void GetAllDescriptors(TSDescriptorVector* descs) const;
 
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat recently, indicating that they're alive and well.
-  void GetAllLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor> >* descs) const;
+  void GetAllLiveDescriptors(TSDescriptorVector* descs) const;
 
   // Get the TS count.
   int GetCount() const;
 
   // Return the tablet server descriptor running on the given port.
-  const std::shared_ptr<TSDescriptor> GetTSDescriptor(const HostPortPB& host_port) const;
+  const TSDescSharedPtr GetTSDescriptor(const HostPortPB& host_port) const;
 
-  bool IsTSLive(const std::shared_ptr<TSDescriptor>& ts) const;
+  static bool IsTSLive(const TSDescSharedPtr& ts);
 
  private:
 
+  void GetDescriptors(std::function<bool(const TSDescSharedPtr&)> condition,
+                      TSDescriptorVector* descs) const;
+
   mutable rw_spinlock lock_;
 
-  typedef std::unordered_map<
-    std::string, std::shared_ptr<TSDescriptor> > TSDescriptorMap;
+  typedef std::unordered_map<std::string, TSDescSharedPtr> TSDescriptorMap;
   TSDescriptorMap servers_by_id_;
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);

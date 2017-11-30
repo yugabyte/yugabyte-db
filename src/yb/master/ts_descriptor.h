@@ -200,6 +200,15 @@ class TSDescriptor {
 
   std::string ToString() const;
 
+  // Indicates that this descriptor was removed from the cluster and shouldn't be surfaced.
+  bool IsRemoved() const {
+    return removed_;
+  }
+
+  void SetRemoved() {
+    removed_ = true;
+  }
+
  private:
   template <class TProxy>
   CHECKED_STATUS GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
@@ -264,6 +273,12 @@ class TSDescriptor {
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;
+
+  // We don't remove TSDescriptor's from the master's in memory map since several classes hold
+  // references to this object and those would be invalidated if we remove the descriptor from
+  // the master's map. As a result, we just store a boolean indicating this entry is removed and
+  // shouldn't be surfaced.
+  bool removed_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };
