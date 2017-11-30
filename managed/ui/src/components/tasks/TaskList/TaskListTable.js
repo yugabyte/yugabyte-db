@@ -8,6 +8,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
 import { YBFormattedNumber } from '../../common/descriptors';
 import { YBPanelItem } from '../../panels';
+import { YBLoadingIcon } from '../../common/indicators';
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -53,11 +54,11 @@ export default class TaskListTable extends Component {
         case "Success":
           return <span className="yb-success-color"><i className='fa fa-check'/> Completed</span>;
         case "Initializing":
-          return <span className="yb-pending-color"><i className='fa fa-spinner fa-spin'/> Initializing</span>;
+          return <span className="yb-pending-color"><YBLoadingIcon size="inline" /> Initializing</span>;
         case "Running":
           return (
             <span className="yb-pending-color">
-              <i className='fa fa-spinner fa-spin'/>Pending ({percentFormatter(row.percentComplete, row)})
+              <YBLoadingIcon size="inline" />Pending ({percentFormatter(row.percentComplete, row)})
           </span>
           );
         case "Failure":

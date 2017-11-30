@@ -4,10 +4,10 @@ import React, {Component} from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { YBTextInput } from '../../../common/forms/fields';
-import {Field} from 'redux-form';
-import {getPromiseState} from 'utils/PromiseUtils';
-import {YBLoadingIcon} from '../../../common/indicators';
-import {isNonEmptyObject, } from 'utils/ObjectUtils';
+import { Field } from 'redux-form';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { YBLoading } from '../../../common/indicators';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
 import Dropzone from 'react-dropzone';
 import { reduxForm } from 'redux-form';
 
@@ -52,7 +52,7 @@ class GCPProviderInitView extends Component {
   render() {
     const { handleSubmit, configuredProviders} = this.props;
     if (getPromiseState(configuredProviders).isLoading()) {
-      return <YBLoadingIcon/>;
+      return <YBLoading />;
     }
     let gcpConfigFileName = "";
     if (isNonEmptyObject(this.state.gcpConfig)) {

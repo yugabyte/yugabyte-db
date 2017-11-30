@@ -9,7 +9,7 @@ import ProviderResultView from './views/ProviderResultView';
 import ProviderBootstrapView from './views/ProviderBootstrapView';
 import AWSProviderInitView from './views/AWSProviderInitView';
 import GCPProviderInitView from './views/GCPProviderInitView';
-import YBloadingIcon from '../../common/indicators/YBLoadingIcon';
+import { YBLoading } from '../../common/indicators';
 
 class ProviderConfiguration extends Component {
   constructor(props) {
@@ -116,7 +116,7 @@ class ProviderConfiguration extends Component {
       if (isNonEmptyArray(configuredRegions.data)) {
         regions = configuredRegions.data.filter((region) => region.provider.uuid === currentProvider.uuid);
       }
-      let providerInfo = [
+      const providerInfo = [
         {name: "Name", data: currentProvider.name},
         {name: "SSH Key", data: keyPairName},
       ];
@@ -188,7 +188,7 @@ class ProviderConfiguration extends Component {
     if (this.state.currentView === 'init') {
       currentProviderView = this.getInitView();
     } else if (this.state.currentView === "loading") {
-      currentProviderView = <YBloadingIcon/>;
+      currentProviderView = <YBLoading />;
     } else if (this.state.currentView === 'bootstrap') {
       currentProviderView = this.getBootstrapView();
     } else if (this.state.currentView === 'result') {

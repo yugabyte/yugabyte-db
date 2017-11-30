@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { TaskProgressBar, TaskProgressStepBar  } from '..';
 import { isValidObject } from '../../../utils/ObjectUtils';
-import { YBLoadingIcon } from '../../common/indicators';
+import { YBLoading } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 
 export default class TaskProgress extends Component {
@@ -60,7 +60,7 @@ export default class TaskProgress extends Component {
     if (taskUUIDs.length === 0) {
       return <span />;
     } else if (taskProgressPromise.isLoading() || taskProgressPromise.isInit()) {
-      return <YBLoadingIcon/>;
+      return <YBLoading />;
     }
     if (type === "StepBar") {
       return <TaskProgressStepBar progressData={taskProgressData.data}/>;
