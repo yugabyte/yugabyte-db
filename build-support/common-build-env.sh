@@ -349,6 +349,10 @@ set_build_root() {
   detect_edition
   BUILD_ROOT+="-$YB_EDITION"
 
+  if using_ninja; then
+    BUILD_ROOT+="-ninja"
+  fi
+
   normalize_build_root
 
   if "$make_build_root_readonly"; then
@@ -637,6 +641,20 @@ set_cmake_build_type_and_compiler_type() {
 
   cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
   cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
+
+  if using_ninja; then
+    cmake_opts+=( -G Ninja )
+    make_program=ninja
+    if ! which ninja &>/dev/null && using_linuxbrew; then
+      make_program=$YB_LINUXBREW_DIR/bin/ninja
+    fi
+    make_file=build.ninja
+  else
+    make_program=make
+    make_file=Makefile
+  fi
+
+  cmake_opts+=( -DCMAKE_MAKE_PROGRAM=$make_program )
 }
 
 set_mvn_parameters() {
@@ -952,6 +970,14 @@ detect_linuxbrew() {
 
 using_linuxbrew() {
   if [[ $YB_USING_LINUXBREW == true ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+using_ninja() {
+  if [[ ${YB_USE_NINJA:-} == "1" ]]; then
     return 0
   else
     return 1

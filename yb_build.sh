@@ -100,7 +100,7 @@ Options:
     Run a clean build without asking for confirmation even if a clean build was recently done.
   --with-assembly
     Build the java code with assembly (basically builds the yb-sample-apps.jar as well)
-  -j <parallelism>
+  -j <parallelism>, -j<parallelism>
     Build using the given number of concurrent jobs (defaults to the number of CPUs).
   --remote
     Prefer a remote build on an auto-scaling cluster of build workers. The parallelism is picked
@@ -113,6 +113,9 @@ Options:
     Specify additional Maven options for Java build/tests.
   --java-only
     Only build Java code
+  --ninja
+    Use the Ninja backend instead of Make for CMake. This provides faster build speed in case
+    most part of the code is already built.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -361,6 +364,9 @@ while [ $# -gt 0 ]; do
       export YB_MAKE_PARALLELISM=$2
       shift
     ;;
+    -j[1-9])
+      export YB_MAKE_PARALLELISM=${1#-j}
+    ;;
     --remote)
       export YB_REMOTE_BUILD=1
       if [[ ! -f "$YB_BUILD_WORKERS_FILE" ]]; then
@@ -413,6 +419,9 @@ while [ $# -gt 0 ]; do
     --mvn-opts)
       mvn_opts+=" $2"
       shift
+    ;;
+    --ninja)
+      export YB_USE_NINJA=1
     ;;
     *)
       echo "Invalid option: '$1'" >&2
@@ -581,7 +590,7 @@ log "Using make parallelism of $YB_MAKE_PARALLELISM" \
 set_build_env_vars
 
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
-  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f Makefile ]] ) && \
+  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
      ! "$force_no_run_cmake"; then
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
       build_compiler_if_necessary
@@ -607,12 +616,13 @@ if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
     log_empty_line
   fi
 
-  log "Running make in $PWD"
+  log "Running $make_program in $PWD"
   make_start_time_sec=$(date +%s)
   set +u +e  # "set -u" may cause failures on empty lists
   time (
     set -x
-    make "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" "${make_targets[@]}"
+
+    "$make_program" "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" "${make_targets[@]}"
   )
 
   exit_code=$?
