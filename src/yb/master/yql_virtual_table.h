@@ -40,16 +40,17 @@ class YQLVirtualTable : public common::QLStorageIf {
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
-                             HybridTime req_hybrid_time,
+                             const ReadHybridTime& read_time,
                              std::unique_ptr<common::QLRowwiseIteratorIf>* iter) const override;
+
   CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,
-                                  const HybridTime& hybrid_time,
-                                  const Schema& schema,
-                                  bool include_static_columns,
-                                  const Schema& static_projection,
-                                  std::unique_ptr<common::QLScanSpec>* spec,
-                                  std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                  HybridTime* req_hybrid_time) const override;
+                                 const ReadHybridTime& read_time,
+                                 const Schema& schema,
+                                 bool include_static_columns,
+                                 const Schema& static_projection,
+                                 std::unique_ptr<common::QLScanSpec>* spec,
+                                 std::unique_ptr<common::QLScanSpec>* static_row_spec,
+                                 ReadHybridTime* req_read_time) const override;
   const Schema& schema() const { return schema_; }
 
   const TableName& table_name() const { return table_name_; }

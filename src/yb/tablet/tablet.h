@@ -258,11 +258,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       LockBatch *keys_locked, vector<RedisResponsePB>* responses);
 
   CHECKED_STATUS HandleRedisReadRequest(
-      HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
+      const ReadHybridTime& read_time,
+      const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
   CHECKED_STATUS HandleQLReadRequest(
-      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+      const ReadHybridTime& read_time,
+      const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data) override;
 
@@ -459,6 +461,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS StartDocWriteOperation(
       const docdb::DocOperations &doc_ops,
+      const ReadHybridTime& read_time,
       LockBatch *keys_locked,
       docdb::KeyValueWriteBatchPB* write_batch);
 
@@ -629,16 +632,24 @@ typedef std::shared_ptr<Tablet> TabletPtr;
 // when created, and deregisters the read point when this object is destructed.
 class ScopedReadOperation {
  public:
-  explicit ScopedReadOperation(
-      AbstractTablet* tablet, HybridTime timestamp = HybridTime::kInvalidHybridTime);
+  ScopedReadOperation() : tablet_(nullptr) {}
+  ScopedReadOperation(ScopedReadOperation&& rhs)
+      : tablet_(rhs.tablet_), read_time_(rhs.read_time_) {
+    rhs.tablet_ = nullptr;
+  }
+
+  explicit ScopedReadOperation(AbstractTablet* tablet, const ReadHybridTime& read_time);
+
+  ScopedReadOperation(const ScopedReadOperation&) = delete;
+  void operator=(const ScopedReadOperation&) = delete;
 
   ~ScopedReadOperation();
 
-  HybridTime GetReadTimestamp();
+  const ReadHybridTime& read_time() const { return read_time_; }
 
  private:
   AbstractTablet* tablet_;
-  HybridTime timestamp_;
+  ReadHybridTime read_time_;
 };
 
 class Tablet::Iterator : public RowwiseIterator {

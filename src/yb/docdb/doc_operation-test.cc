@@ -97,7 +97,7 @@ class DocOperationTest : public DocDBTestBase {
     QLWriteOperation ql_write_op(
         ql_writereq_pb, schema, ql_writeresp_pb, kNonTransactionalOperationContext);
     DocWriteBatch doc_write_batch(rocksdb());
-    CHECK_OK(ql_write_op.Apply(&doc_write_batch, rocksdb(), HybridTime()));
+    CHECK_OK(ql_write_op.Apply({&doc_write_batch, ReadHybridTime()}));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
 
@@ -208,7 +208,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(rocksdb());
     QLResultSet resultset;
-    EXPECT_OK(read_op.Execute(ql_storage, read_time, schema, query_schema, &resultset));
+    EXPECT_OK(read_op.Execute(
+        ql_storage, ReadHybridTime::SingleTime(read_time), schema, query_schema, &resultset));
 
     // Transfer the column values from result set to rowblock.
     for (const auto& rsrow : resultset.rsrows()) {
@@ -229,9 +230,9 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->set_type(REDIS_TYPE_STRING);
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(&redis_write_operation_pb, HybridTime::kMax);
+  RedisWriteOperation redis_write_operation(&redis_write_operation_pb);
   DocWriteBatch doc_write_batch(db);
-  ASSERT_OK(redis_write_operation.Apply(&doc_write_batch, db, HybridTime()));
+  ASSERT_OK(redis_write_operation.Apply({&doc_write_batch, ReadHybridTime()}));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
@@ -374,8 +375,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
 
   Schema schema = CreateSchema();
   ScanSpec scan_spec;
-  DocRowwiseIterator iter(
-      schema, schema, kNonTransactionalOperationContext, rocksdb(), HybridTime(3000));
+  DocRowwiseIterator iter(schema, schema, kNonTransactionalOperationContext, rocksdb(),
+                          ReadHybridTime::FromUint64(3000));
   ASSERT_OK(iter.Init(&scan_spec));
   ASSERT_FALSE(iter.HasNext());
 
@@ -407,7 +408,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                              rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter(
       schema, schema, kNonTransactionalOperationContext, rocksdb(),
-      HybridClock::HybridTimeFromMicroseconds(3000));
+      ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   ASSERT_TRUE(ql_iter.HasNext());
   QLTableRow value_map;
@@ -455,7 +456,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                                     rocksdb::kDefaultQueryId);
   DocRowwiseIterator ql_iter_system(
       schema, schema, kNonTransactionalOperationContext, rocksdb(),
-      HybridClock::HybridTimeFromMicroseconds(3000));
+      ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   ASSERT_TRUE(ql_iter_system.HasNext());
   QLTableRow value_map_system;
@@ -592,7 +593,7 @@ void DocOperationRangeFilterTest::TestWithSortingType(ColumnSchema::SortingType 
       DocQLScanSpec ql_scan_spec(schema, -1, -1, hashed_components, &condition,
                                  rocksdb::kDefaultQueryId, is_forward_scan);
       DocRowwiseIterator ql_iter(schema, schema, boost::none, rocksdb(),
-          HybridClock::HybridTimeFromMicroseconds(3000));
+          ReadHybridTime::FromMicros(3000));
       ASSERT_OK(ql_iter.Init(ql_scan_spec));
       LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
       it = expected_rows.begin();

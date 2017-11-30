@@ -149,7 +149,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2000));
+        ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
@@ -189,7 +189,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(5000));
+        ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init(&scan_spec));
     RowBlock row_block(projection, 10, &arena);
 
@@ -264,7 +264,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2500));
+        ReadHybridTime::FromMicros(2500));
     ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
@@ -328,7 +328,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2800, w=1)]) -> 20000
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2800));
+        ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
@@ -387,7 +387,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2800));
+        ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
@@ -437,7 +437,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2800));
+        ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
@@ -467,8 +467,8 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorMultipleDeletes) {
 
   MonoDelta ttl = MonoDelta::FromMilliseconds(1);
   MonoDelta ttl_expiry = MonoDelta::FromMilliseconds(2);
-  HybridTime read_time = server::HybridClock::AddPhysicalTimeToHybridTime(
-      HybridTime::FromMicros(2800), ttl_expiry);
+  auto read_time = ReadHybridTime::SingleTime(server::HybridClock::AddPhysicalTimeToHybridTime(
+      HybridTime::FromMicros(2800), ttl_expiry));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
       PrimitiveValue("row1_c"),
@@ -586,7 +586,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2800));
+        ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(&scan_spec));
     RowBlock row_block(projection, 10, &arena);
 
@@ -638,7 +638,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000, w=1)]) -> "row1
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
-        HybridTime::FromMicros(2800));
+        ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init(&scan_spec));
     RowBlock row_block(projection, 10, &arena);
 
@@ -811,7 +811,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p
 
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, rocksdb(), HybridTime::FromMicros(2000));
+        projection, schema, txn_context, rocksdb(), ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
@@ -848,9 +848,10 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p
 
   // Scan at a later hybrid_time.
 
+  LOG(INFO) << "===============================================";
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, rocksdb(), HybridTime::FromMicros(5000));
+        projection, schema, txn_context, rocksdb(), ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init(&scan_spec));
     RowBlock row_block(projection, 10, &arena);
 
@@ -888,7 +889,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p
 
   {
     DocRowwiseIterator iter(
-        projection, schema, txn_context, rocksdb(), HybridTime::FromMicros(6000));
+        projection, schema, txn_context, rocksdb(), ReadHybridTime::FromMicros(6000));
     ASSERT_OK(iter.Init(&scan_spec));
     RowBlock row_block(projection, 10, &arena);
 

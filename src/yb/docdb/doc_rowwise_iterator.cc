@@ -59,13 +59,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     const Schema &schema,
     const TransactionOperationContextOpt& txn_op_context,
     rocksdb::DB *db,
-    HybridTime hybrid_time,
+    const ReadHybridTime& read_time,
     yb::util::PendingOperationCounter* pending_op_counter)
     : projection_(projection),
       schema_(schema),
       txn_op_context_(txn_op_context),
-      is_forward_scan_(true),
-      hybrid_time_(hybrid_time),
+      read_time_(read_time),
       db_(db),
       has_bound_key_(false),
       pending_op_(pending_op_counter),
@@ -86,7 +85,7 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   // default to not using bloom filters on scans for these codepaths.
   db_iter_ = CreateIntentAwareIterator(
       db_, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none /* user_key_for_filter */,
-      spec->query_id(), txn_op_context_, hybrid_time_);
+      spec->query_id(), txn_op_context_, read_time_);
 
   if (spec != nullptr && spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
@@ -127,7 +126,7 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
   const Slice row_key_encoded_as_slice = row_key_encoded.AsSlice();
 
   db_iter_ = CreateIntentAwareIterator(
-      db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, hybrid_time_,
+      db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, read_time_,
       doc_spec.CreateFileFilter());
 
   RETURN_NOT_OK(db_iter_->SeekWithoutHt(row_key_encoded));
@@ -508,7 +507,7 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
     DVLOG(3) << "No Next SubDocKey";
     return Status::OK();
   }
-  *sub_doc_key = SubDocKey(row_key_, hybrid_time_);
+  *sub_doc_key = SubDocKey(row_key_, read_time_.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
   return Status::OK();
 }

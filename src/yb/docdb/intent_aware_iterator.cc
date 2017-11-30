@@ -31,12 +31,12 @@ namespace docdb {
 
 namespace {
 
-KeyBytes GetIntentPrefixForKeyWithoutHt(const KeyBytes& key_bytes) {
+KeyBytes GetIntentPrefixForKeyWithoutHt(const Slice& key) {
   KeyBytes intent_key_bytes;
   // Since caller guarantees that key_bytes doesn't have hybrid time, we can simply prepend
   // kIntentPrefix in order to get prefix for all related intents.
   intent_key_bytes.AppendValueType(ValueType::kIntentPrefix);
-  intent_key_bytes.Append(key_bytes);
+  intent_key_bytes.AppendRawBytes(key);
   return intent_key_bytes;
 }
 
@@ -95,10 +95,9 @@ Result<HybridTime> GetTxnCommitTime(
       }
     }
   }
-  DOCDB_DEBUG_LOG(
-      "transaction_id $0 at $1: status: $2, status_time: $3", yb::ToString(transaction_id),
-      ToString(time), ToString(txn_status_result->status),
-      ToString(txn_status_result->status_time));
+  VLOG(4) << "Transaction_id " << transaction_id << " at " << time
+          << ": status: " << ToString(txn_status_result->status)
+          << ", status_time: " << txn_status_result->status_time;
   if (txn_status_result->status == TransactionStatus::ABORTED) {
     local_commit_time = GetTxnLocalCommitTime(txn_status_manager, transaction_id, time);
     return local_commit_time.is_valid() ? local_commit_time : HybridTime::kMin;
@@ -109,6 +108,10 @@ Result<HybridTime> GetTxnCommitTime(
   }
 }
 
+CHECKED_STATUS CreateTryAgain() {
+  return STATUS(TryAgain, "Value was written in nearest future, restart read");
+}
+
 struct DecodeStrongWriteIntentResult {
   Slice intent_prefix;
   Slice intent_value;
@@ -116,7 +119,17 @@ struct DecodeStrongWriteIntentResult {
 
   // Whether this intent from the same transaction as specified in context.
   bool same_transaction = false;
+
+  std::string ToString() const {
+    return Format("{ intent_prefix: $0 intent_value: $1 value_time: $2 same_transaction: $3 }",
+                  intent_prefix.ToDebugString(), intent_value.ToDebugString(), value_time,
+                  same_transaction);
+  }
 };
+
+std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult& result) {
+  return out << result.ToString();
+}
 
 // Decodes intent based on intent_iterator and its transaction commit time if intent is a strong
 // write intent and transaction is already committed at specified time or it is current transaction.
@@ -124,7 +137,8 @@ struct DecodeStrongWriteIntentResult {
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
 Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
-    TransactionOperationContext txn_op_context, HybridTime time, rocksdb::Iterator* intent_iter) {
+    TransactionOperationContext txn_op_context, const ReadHybridTime& read_time,
+    rocksdb::Iterator* intent_iter) {
   IntentType intent_type;
   DocHybridTime intent_ht;
   DecodeStrongWriteIntentResult result;
@@ -139,11 +153,13 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
       result.value_time = intent_ht;
     } else {
       Result<HybridTime> commit_ht = GetTxnCommitTime(
-          &txn_op_context.txn_status_manager, *txn_id, time);
+          &txn_op_context.txn_status_manager, *txn_id, read_time.limit);
       RETURN_NOT_OK(commit_ht);
-      DOCDB_DEBUG_LOG(
-          "transaction_id $0 at $1 commit time: $2", yb::ToString(*txn_id),
-          ToString(time), ToString(*commit_ht));
+      VLOG(4) << "Transaction id: " << *txn_id << " at " << read_time
+              << " commit time: " << *commit_ht;
+      if (*commit_ht > read_time.read) {
+        return CreateTryAgain();
+      }
       result.value_time = DocHybridTime(*commit_ht);
     }
   } else {
@@ -181,9 +197,10 @@ bool DebugHasHybridTime(const Slice& subdoc_key_encoded) {
 IntentAwareIterator::IntentAwareIterator(
     rocksdb::DB* rocksdb,
     const rocksdb::ReadOptions& read_opts,
-    HybridTime high_ht,
+    const ReadHybridTime& read_time,
     const TransactionOperationContextOpt& txn_op_context)
-    : high_ht_(high_ht), txn_op_context_(txn_op_context) {
+    : read_time_(read_time),
+      txn_op_context_(txn_op_context) {
   if (txn_op_context.is_initialized()) {
     intent_iter_ = docdb::CreateRocksDBIterator(rocksdb,
                                                 docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -197,54 +214,61 @@ Status IntentAwareIterator::Seek(const DocKey &doc_key) {
   return SeekWithoutHt(doc_key.Encode());
 }
 
-Status IntentAwareIterator::SeekWithoutHt(const KeyBytes& key_bytes) {
+Status IntentAwareIterator::SeekWithoutHt(const Slice& key) {
+  VLOG(4) << "SeekWithoutHt(" << key.ToDebugString() << ")";
   DOCDB_DEBUG_SCOPE_LOG(
-      key_bytes.ToString(),
+      key.ToDebugString(),
       std::bind(&IntentAwareIterator::DebugDump, this));
+  ROCKSDB_SEEK(iter_.get(), key);
+  SkipFutureRecords();
   if (intent_iter_) {
-    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key_bytes).AsSlice());
+    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key));
     RETURN_NOT_OK(SeekForwardToSuitableIntent());
   }
-  ROCKSDB_SEEK(iter_.get(), key_bytes.AsSlice());
   return Status::OK();
 }
 
-Status IntentAwareIterator::SeekForwardWithoutHt(const KeyBytes& key_bytes) {
+Status IntentAwareIterator::SeekForwardWithoutHt(const Slice& key) {
+  VLOG(4) << "SeekForwardWithoutHt(" << key.ToDebugString() << ")";
   DOCDB_DEBUG_SCOPE_LOG(
-      key_bytes.ToString(),
+      key.ToDebugString(),
       std::bind(&IntentAwareIterator::DebugDump, this));
+  RETURN_NOT_OK(SeekForwardRegular(key));
   if (intent_iter_) {
-    RETURN_NOT_OK(SeekForwardToSuitableIntent(GetIntentPrefixForKeyWithoutHt(key_bytes)));
+    RETURN_NOT_OK(SeekForwardToSuitableIntent(GetIntentPrefixForKeyWithoutHt(key)));
   }
-  SeekForwardRegular(key_bytes);
   return Status::OK();
 }
 
 Status IntentAwareIterator::SeekForwardIgnoreHt(const SubDocKey& subdoc_key) {
+  VLOG(4) << "SeekForwardIgnoreHt(" << subdoc_key.ToString() << ")";
   auto subdoc_key_encoded = subdoc_key.Encode(false /* include_hybrid_time */);
-  AppendDocHybridTime(DocHybridTime(high_ht_, kMaxWriteId), &subdoc_key_encoded);
+  AppendDocHybridTime(DocHybridTime(read_time_.limit, kMaxWriteId), &subdoc_key_encoded);
   return SeekForwardWithoutHt(subdoc_key_encoded);
 }
 
 Status IntentAwareIterator::SeekPastSubKey(const SubDocKey& subdoc_key) {
+  VLOG(4) << "SeekPastSubKey(" << subdoc_key.ToString() << ")";
+  docdb::SeekPastSubKey(subdoc_key, iter_.get());
+  SkipFutureRecords();
   if (intent_iter_) {
     KeyBytes intent_prefix = GetIntentPrefixForKey(subdoc_key);
     // Skip all intents for subdoc_key.
     intent_prefix.mutable_data()->push_back(static_cast<char>(ValueType::kIntentType) + 1);
     RETURN_NOT_OK(SeekForwardToSuitableIntent(intent_prefix));
   }
-  docdb::SeekPastSubKey(subdoc_key, iter_.get());
   return Status::OK();
 }
 
 Status IntentAwareIterator::SeekOutOfSubDoc(const SubDocKey& subdoc_key) {
+  VLOG(4) << "SeekOutOfSubDoc(" << subdoc_key.ToString() << ")";
+  RETURN_NOT_OK(SeekForwardRegular(subdoc_key.AdvanceOutOfSubDoc()));
   if (intent_iter_) {
     KeyBytes intent_prefix = GetIntentPrefixForKey(subdoc_key);
     // See comment for SubDocKey::AdvanceOutOfSubDoc.
     intent_prefix.AppendValueType(ValueType::kMaxByte);
     RETURN_NOT_OK(SeekForwardToSuitableIntent(intent_prefix));
   }
-  SeekForwardRegular(subdoc_key.AdvanceOutOfSubDoc());
   return Status::OK();
 }
 
@@ -274,38 +298,37 @@ Status IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
     return SeekToLastDocKey();
   }
   iter_->Prev();
-  DocKey prev_key;
   if (!iter_->Valid()) {
+    iter_valid_ = false; // TODO(dtxn) support reverse scan with read restart
     return Status::OK();
   }
   Slice key_slice = iter_->key();
+  DocKey prev_key;
   RETURN_NOT_OK(prev_key.DecodeFrom(&key_slice));
   RETURN_NOT_OK(Seek(prev_key));
   return Status::OK();
 }
 
 bool IntentAwareIterator::valid() {
-  return iter_->Valid() || has_resolved_intent_;
+  return iter_valid_ || resolved_intent_state_ == ResolvedIntentState::kValid;
 }
 
 bool IntentAwareIterator::IsEntryRegular() {
-  if (iter_->Valid()) {
-    if (has_resolved_intent_) {
-      return (iter_->key().compare(resolved_intent_sub_doc_key_encoded_.AsSlice()) < 0);
-    } else {
-      return true;
-    }
-  } else {
+  if (PREDICT_FALSE(!iter_valid_)) {
     return false;
   }
+  if (resolved_intent_state_ == ResolvedIntentState::kValid) {
+    return iter_->key().compare(resolved_intent_sub_doc_key_encoded_) < 0;
+  }
+  return true;
 }
 
 Slice IntentAwareIterator::key() {
   if (IsEntryRegular()) {
     return iter_->key();
   } else {
-    DCHECK(has_resolved_intent_);
-    return resolved_intent_sub_doc_key_encoded_.AsSlice();
+    DCHECK_EQ(ResolvedIntentState::kValid, resolved_intent_state_);
+    return resolved_intent_sub_doc_key_encoded_;
   }
 }
 
@@ -313,34 +336,43 @@ Slice IntentAwareIterator::value() {
   if (IsEntryRegular()) {
     return iter_->value();
   } else {
-    DCHECK(has_resolved_intent_);
-    return resolved_intent_value_.AsSlice();
+    DCHECK_EQ(ResolvedIntentState::kValid, resolved_intent_state_);
+    return resolved_intent_value_;
   }
 }
 
-void IntentAwareIterator::SeekForwardRegular(const KeyBytes& key_bytes) {
-  docdb::SeekForward(key_bytes, iter_.get());
+Status IntentAwareIterator::SeekForwardRegular(const Slice& slice, const Slice& prefix) {
+  docdb::SeekForward(slice, iter_.get());
+  SkipFutureRecords();
+  return Status::OK();
 }
 
 Status IntentAwareIterator::ProcessIntent() {
-  auto decode_result = DecodeStrongWriteIntent(txn_op_context_.get(), high_ht_, intent_iter_.get());
+  auto decode_result = DecodeStrongWriteIntent(
+      txn_op_context_.get(), read_time_, intent_iter_.get());
   RETURN_NOT_OK(decode_result);
+  VLOG(4) << "Intent decode: " << intent_iter_->key().ToDebugString()
+          << " => " << intent_iter_->value().ToDebugString() << ", result: " << *decode_result;
   DOCDB_DEBUG_LOG(
       "resolved_intent_txn_dht_: $0 value_time: $1 high_ht: $2",
       resolved_intent_txn_dht_.ToString(),
       decode_result->value_time.ToString(),
-      high_ht_.ToString());
+      read_time_.read.ToString());
   auto real_time = decode_result->same_transaction ? intent_dht_from_same_txn_
                                                    : resolved_intent_txn_dht_;
   if (decode_result->value_time > real_time &&
-      (decode_result->same_transaction || decode_result->value_time.hybrid_time() <= high_ht_)) {
-    if (!has_resolved_intent_) {
+      (decode_result->same_transaction ||
+           decode_result->value_time.hybrid_time() <= read_time_.limit)) {
+    if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
       resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
-      has_resolved_intent_ = true;
+      auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+      resolved_intent_state_ =
+          decode_result->intent_prefix.starts_with(prefix) ? ResolvedIntentState::kValid
+                                                           : ResolvedIntentState::kInvalidPrefix;
     }
     if (decode_result->same_transaction) {
       intent_dht_from_same_txn_ = decode_result->value_time;
-      resolved_intent_txn_dht_ = DocHybridTime(high_ht_, kMaxWriteId);
+      resolved_intent_txn_dht_ = DocHybridTime(read_time_.read, kMaxWriteId);
     } else {
       resolved_intent_txn_dht_ = decode_result->value_time;
     }
@@ -354,36 +386,47 @@ void IntentAwareIterator::UpdateResolvedIntentSubDocKeyEncoded() {
       resolved_intent_key_prefix_.data().data() + 1, resolved_intent_key_prefix_.size() - 1);
   resolved_intent_sub_doc_key_encoded_.AppendValueType(ValueType::kHybridTime);
   resolved_intent_sub_doc_key_encoded_.AppendHybridTime(resolved_intent_txn_dht_);
-  DOCDB_DEBUG_LOG(
-      "Resolved intent SubDocKey: $0", DebugDumpKeyToStr(resolved_intent_sub_doc_key_encoded_));
+  VLOG(4) << "Resolved intent SubDocKey: "
+          << DebugDumpKeyToStr(resolved_intent_sub_doc_key_encoded_);
 }
 
 Status IntentAwareIterator::SeekForwardToSuitableIntent(const KeyBytes &intent_key_prefix) {
   DOCDB_DEBUG_SCOPE_LOG(intent_key_prefix.ToString(),
                         std::bind(&IntentAwareIterator::DebugDump, this));
-  if (has_resolved_intent_ && resolved_intent_key_prefix_.CompareTo(intent_key_prefix) >= 0) {
+  if (resolved_intent_state_ != ResolvedIntentState::kNoIntent &&
+      resolved_intent_key_prefix_.CompareTo(intent_key_prefix) >= 0) {
     return Status::OK();
   }
-  docdb::SeekForward(intent_key_prefix.AsSlice(), intent_iter_.get());
+  docdb::SeekForward(intent_key_prefix, intent_iter_.get());
   return SeekForwardToSuitableIntent();
 }
 
 Status IntentAwareIterator::SeekForwardToSuitableIntent() {
   DOCDB_DEBUG_SCOPE_LOG("", std::bind(&IntentAwareIterator::DebugDump, this));
-  has_resolved_intent_ = false;
+  resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   resolved_intent_txn_dht_ = DocHybridTime::kMin;
+  auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
 
   // Find latest suitable intent for the first SubDocKey having suitable intents.
-  while (intent_iter_->Valid() && GetKeyType(intent_iter_->key()) == KeyType::kIntentKey) {
-    if (has_resolved_intent_ &&
+  while (intent_iter_->Valid()) {
+    auto intent_key = intent_iter_->key();
+    if (GetKeyType(intent_key) != KeyType::kIntentKey) {
+      break;
+    }
+    VLOG(4) << "Intent found: " << intent_key.ToDebugString();
+    if (resolved_intent_state_ != ResolvedIntentState::kNoIntent &&
         // Only scan intents for the first SubDocKey having suitable intents.
-        !IsIntentForTheSameKey(intent_iter_->key(), resolved_intent_key_prefix_.AsSlice())) {
+        !IsIntentForTheSameKey(intent_key, resolved_intent_key_prefix_)) {
+      break;
+    }
+    intent_key.consume_byte();
+    if (!intent_key.starts_with(prefix)) {
       break;
     }
     RETURN_NOT_OK(ProcessIntent());
     intent_iter_->Next();
   }
-  if (has_resolved_intent_) {
+  if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     UpdateResolvedIntentSubDocKeyEncoded();
   }
   return Status::OK();
@@ -401,8 +444,8 @@ void IntentAwareIterator::DebugDump() {
       LOG(INFO) << "intent_iter_->key(): " << intent_iter_->key().ToDebugString();
     }
   }
-  LOG(INFO) << "has_resolved_intent_: " << has_resolved_intent_;
-  if (has_resolved_intent_) {
+  LOG(INFO) << "resolved_intent_state_: " << yb::ToString(resolved_intent_state_);
+  if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     LOG(INFO) << "resolved_intent_sub_doc_key_encoded_: "
               << DebugDumpKeyToStr(resolved_intent_sub_doc_key_encoded_);
   }
@@ -422,14 +465,15 @@ Status IntentAwareIterator::FindLastWriteTime(
       key_bytes_without_ht.ToString() + ", " + yb::ToString(max_deleted_ts) + ", "
           + yb::ToString(result_value),
       std::bind(&IntentAwareIterator::DebugDump, this));
-  DCHECK(!DebugHasHybridTime(key_bytes_without_ht.AsSlice()));
+  DCHECK(!DebugHasHybridTime(key_bytes_without_ht));
 
   bool found_later_intent_result = false;
   if (intent_iter_) {
     const auto intent_prefix = GetIntentPrefixForKeyWithoutHt(key_bytes_without_ht);
     RETURN_NOT_OK(SeekForwardToSuitableIntent(intent_prefix));
-    if (has_resolved_intent_ && resolved_intent_txn_dht_ > *max_deleted_ts
-        && resolved_intent_key_prefix_.CompareTo(intent_prefix) == 0) {
+    if (resolved_intent_state_ == ResolvedIntentState::kValid &&
+        resolved_intent_txn_dht_ > *max_deleted_ts &&
+        resolved_intent_key_prefix_.CompareTo(intent_prefix) == 0) {
       *max_deleted_ts = resolved_intent_txn_dht_;
       found_later_intent_result = true;
     }
@@ -438,14 +482,14 @@ Status IntentAwareIterator::FindLastWriteTime(
   {
     KeyBytes key_with_ts = key_bytes_without_ht;
     key_with_ts.AppendValueType(ValueType::kHybridTime);
-    key_with_ts.AppendHybridTimeForSeek(high_ht_);
-    SeekForwardRegular(key_with_ts);
+    key_with_ts.AppendHybridTimeForSeek(read_time_.limit);
+    RETURN_NOT_OK(SeekForwardRegular(key_with_ts, key_bytes_without_ht));
   }
 
   DocHybridTime hybrid_time;
   bool found_later_regular_result = false;
 
-  if (iter_->Valid()) {
+  if (iter_valid_) {
     bool only_lacks_ht = false;
         RETURN_NOT_OK(key_bytes_without_ht.OnlyLacksHybridTimeFrom(iter_->key(), &only_lacks_ht));
     if (only_lacks_ht) {
@@ -462,11 +506,68 @@ Status IntentAwareIterator::FindLastWriteTime(
     if (found_later_regular_result) {
       RETURN_NOT_OK(result_value->Decode(iter_->value()));
     } else if (found_later_intent_result) {
-      RETURN_NOT_OK(result_value->Decode(resolved_intent_value_.AsSlice()));
+      RETURN_NOT_OK(result_value->Decode(resolved_intent_value_));
     }
   }
 
   return Status::OK();
+}
+
+void IntentAwareIterator::PushPrefix(const Slice& prefix) {
+  prefix_stack_.push_back(prefix);
+  SkipFutureRecords();
+  SkipFutureIntents();
+}
+
+void IntentAwareIterator::PopPrefix() {
+  prefix_stack_.pop_back();
+  SkipFutureRecords();
+  SkipFutureIntents();
+}
+
+void IntentAwareIterator::SkipFutureRecords() {
+  auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+  while (iter_->Valid()) {
+    if (!iter_->key().starts_with(prefix)) {
+      VLOG(4) << "Unmatched prefix: " << iter_->key().ToDebugString()
+              << ", prefix: " << prefix.ToDebugString();
+      iter_valid_ = false;
+      return;
+    }
+    DocHybridTime doc_ht;
+    auto decode_status = doc_ht.DecodeFromEnd(iter_->key());
+    LOG_IF(DFATAL, !decode_status.ok()) << "Decode key failed: " << decode_status
+                                        << ", key: " << iter_->key().ToDebugString();
+    if (decode_status.ok() && doc_ht.hybrid_time() <= read_time_.limit) {
+      iter_valid_ = true;
+      return;
+    }
+    VLOG(4) << "Skipping because of time: " << iter_->key().ToDebugString();
+    iter_->Next(); // TODO(dtxn) use seek with the same key, but read limit as doc hybrid time.
+  }
+  iter_valid_ = false;
+}
+
+void IntentAwareIterator::SkipFutureIntents() {
+  if (!intent_iter_) {
+    return;
+  }
+  auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
+  if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
+    VLOG(4) << "Checking resolved intent: " << resolved_intent_key_prefix_.ToString()
+            << ", against new prefix: " << prefix.ToDebugString();
+    auto resolved_intent_key_prefix = resolved_intent_key_prefix_.AsSlice();
+    resolved_intent_key_prefix.consume_byte();
+    auto compare_result = resolved_intent_key_prefix.compare_prefix(prefix);
+    if (compare_result == 0) {
+      resolved_intent_state_ = ResolvedIntentState::kValid;
+      return;
+    } else if (compare_result > 0) {
+      resolved_intent_state_ = ResolvedIntentState::kInvalidPrefix;
+      return;
+    }
+  }
+  CHECK_OK(SeekForwardToSuitableIntent()); // TODO(dtxn) remember&report error
 }
 
 }  // namespace docdb

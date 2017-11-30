@@ -25,23 +25,24 @@ namespace docdb {
 
 // Implementation of QLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
 class QLRocksDBStorage : public common::QLStorageIf {
-
  public:
   explicit QLRocksDBStorage(rocksdb::DB *rocksdb);
+
   CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
-                             HybridTime req_hybrid_time,
+                             const ReadHybridTime& read_time,
                              std::unique_ptr<common::QLRowwiseIteratorIf> *iter) const override;
+
   CHECKED_STATUS BuildQLScanSpec(const QLReadRequestPB& request,
-                                  const HybridTime& hybrid_time,
-                                  const Schema& schema,
-                                  bool include_static_columns,
-                                  const Schema& static_projection,
-                                  std::unique_ptr<common::QLScanSpec>* spec,
-                                  std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                  HybridTime* req_hybrid_time) const override;
+                                 const ReadHybridTime& read_time,
+                                 const Schema& schema,
+                                 bool include_static_columns,
+                                 const Schema& static_projection,
+                                 std::unique_ptr<common::QLScanSpec>* spec,
+                                 std::unique_ptr<common::QLScanSpec>* static_row_spec,
+                                 ReadHybridTime* req_read_time) const override;
  private:
   rocksdb::DB *const rocksdb_;
 };

@@ -93,4 +93,8 @@ MonoTime TransactionRpcDeadline() {
   return MonoTime::FineNow() + MonoDelta::FromSeconds(NonTsanVsTsan(15, 5));
 }
 
+bool TransactionOperationContext::transactional() const {
+  return !transaction_id.is_nil();
+}
+
 } // namespace yb

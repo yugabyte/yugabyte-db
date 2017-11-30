@@ -16,16 +16,19 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/value.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/value.h"
-#include "yb/util/slice.h"
 #include "yb/tablet/tablet_options.h"
+
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {
@@ -111,7 +114,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& transaction_context,
-    HybridTime high_ht,
+    const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The

@@ -613,18 +613,17 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   docdb::DocOperations doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
-  const HybridTime read_hybrid_time = clock_->Now();
   WriteRequestPB batch_request;
   SetupKeyValueBatch(redis_write_request, &batch_request);
   auto* redis_write_batch = batch_request.mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
-    doc_ops.emplace_back(new RedisWriteOperation(
-        redis_write_batch->Mutable(i), read_hybrid_time));
+    doc_ops.emplace_back(new RedisWriteOperation(redis_write_batch->Mutable(i)));
   }
+  auto read_time = ReadHybridTime::FromPB(*redis_write_request);
   RETURN_NOT_OK(StartDocWriteOperation(
-      doc_ops, keys_locked, redis_write_request->mutable_write_batch()));
+      doc_ops, read_time, keys_locked, redis_write_request->mutable_write_batch()));
   for (size_t i = 0; i < doc_ops.size(); i++) {
     responses->emplace_back(
         (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
@@ -633,20 +632,21 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
+Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
 
-  docdb::RedisReadOperation doc_op(redis_read_request);
-  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), timestamp));
+  docdb::RedisReadOperation doc_op(redis_read_request, rocksdb_.get(), read_time);
+  RETURN_NOT_OK(doc_op.Execute());
   *response = std::move(doc_op.response());
   return Status::OK();
 }
 
 Status Tablet::HandleQLReadRequest(
-    HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+    const ReadHybridTime& read_time,
+    const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
@@ -661,7 +661,7 @@ Status Tablet::HandleQLReadRequest(
       CreateTransactionOperationContext(transaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandleQLReadRequest(
-      timestamp, ql_read_request, *txn_op_ctx, response, rows_data);
+      read_time, ql_read_request, *txn_op_ctx, response, rows_data);
 }
 
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
@@ -717,8 +717,9 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
       doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp, *txn_op_ctx));
     }
   }
+  auto read_time = ReadHybridTime::FromPB(*ql_write_request);
   RETURN_NOT_OK(StartDocWriteOperation(
-      doc_ops, keys_locked, ql_write_request->mutable_write_batch()));
+      doc_ops, read_time, keys_locked, ql_write_request->mutable_write_batch()));
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
     // If the QL write op returns a rowblock, move the op to the transaction state to return the
@@ -898,7 +899,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
       }
     }
   }
-  return StartDocWriteOperation(doc_ops, keys_locked, write_batch);
+  return StartDocWriteOperation(doc_ops, ReadHybridTime(), keys_locked, write_batch);
 }
 
 Status Tablet::Flush(FlushMode mode) {
@@ -1149,8 +1150,9 @@ Status Tablet::QLCaptureConsistentIterators(
   TransactionOperationContextOpt txn_op_ctx =
       CreateTransactionOperationContext(transaction_id);
   iters->clear();
+  auto read_time = ReadHybridTime::SingleTime(snap.LastCommittedHybridTime());
   iters->push_back(std::make_shared<DocRowwiseIterator>(
-      *projection, *schema(), txn_op_ctx, rocksdb_.get(), snap.LastCommittedHybridTime(),
+      *projection, *schema(), txn_op_ctx, rocksdb_.get(), read_time,
       // We keep the pending operation counter incremented while the iterator exists so that
       // RocksDB does not get deallocated while we're using it.
       &pending_op_counter_));
@@ -1179,6 +1181,7 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
 } // namespace
 
 Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
+                                      const ReadHybridTime& read_time,
                                       LockBatch *keys_locked,
                                       KeyValueWriteBatchPB* write_batch) {
   auto isolation_level = GetIsolationLevel(*write_batch, transaction_participant_.get());
@@ -1188,12 +1191,10 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
       doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_, keys_locked,
       &need_read_snapshot);
 
-  HybridTime hybrid_time;
-  unique_ptr<ScopedReadOperation> read_txn;
-  if (need_read_snapshot) {
-    read_txn.reset(new ScopedReadOperation(this));
-    hybrid_time = read_txn->GetReadTimestamp();
-  }
+  auto read_op = need_read_snapshot ? ScopedReadOperation(this, read_time)
+                                    : ScopedReadOperation();
+  auto real_read_time = need_read_snapshot ? read_op.read_time()
+                                           : ReadHybridTime::SingleTime(clock_->Now());
 
   if (*isolation_level == IsolationLevel::NON_TRANSACTIONAL &&
       metadata_->schema().table_properties().is_transactional()) {
@@ -1209,7 +1210,7 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
   // We expect all read operations for this transaction to be done in ApplyDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
   RETURN_NOT_OK(docdb::ApplyDocWriteOperation(
-      doc_ops, hybrid_time, rocksdb_.get(), write_batch, &monotonic_counter_));
+      doc_ops, real_read_time, rocksdb_.get(), write_batch, &monotonic_counter_));
 
   if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     auto result = docdb::ResolveTransactionConflicts(*write_batch,
@@ -1391,18 +1392,24 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
   }
 }
 
-ScopedReadOperation::ScopedReadOperation(AbstractTablet* tablet, HybridTime timestamp)
-    : tablet_(tablet),
-      timestamp_(timestamp.is_valid() ? timestamp : tablet_->SafeTimestampToRead()) {
-  tablet_->RegisterReaderTimestamp(timestamp_);
+ScopedReadOperation::ScopedReadOperation(
+    AbstractTablet* tablet, const ReadHybridTime& read_time)
+    : tablet_(tablet), read_time_(read_time) {
+  if (!read_time_.read.is_valid()) {
+    read_time_.read = tablet->SafeTimestampToRead();
+  }
+  if (!read_time_.limit.is_valid()) {
+    read_time_.limit = read_time_.read;
+  }
+
+  DCHECK_GE(read_time_.limit, read_time_.read);
+  tablet_->RegisterReaderTimestamp(read_time_.read);
 }
 
 ScopedReadOperation::~ScopedReadOperation() {
-  tablet_->UnregisterReader(timestamp_);
-}
-
-HybridTime ScopedReadOperation::GetReadTimestamp() {
-  return timestamp_;
+  if (tablet_) {
+    tablet_->UnregisterReader(read_time_.read);
+  }
 }
 
 }  // namespace tablet

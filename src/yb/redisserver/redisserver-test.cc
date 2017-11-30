@@ -479,15 +479,17 @@ TEST_F(TestRedisService, HugeCommandInline) {
   DoRedisTestInt(__LINE__, {"DEL", "foo"}, 1);
   SyncClient();
   value[0]  = 'A';
-  DoRedisTestOk(__LINE__, {"HMSET", "map_key1", "subkey1", value, "subkey2", value,
-      "subkey3", value});
+  DoRedisTestOk(
+      __LINE__, {"HMSET", "map_key1", "subkey1", value, "subkey2", value, "subkey3", value});
   SyncClient();
-  DoRedisTestArray(__LINE__, {"HGETALL", "map_key1"}, {"subkey1", value, "subkey2", value,
-      "subkey3", value});
+  DoRedisTestArray(
+      __LINE__, {"HGETALL", "map_key1"}, {"subkey1", value, "subkey2", value, "subkey3", value});
   SyncClient();
   value[0]  = 'B';
-  DoRedisTestExpectError(__LINE__, {"HMSET", "map_key1", "subkey1", value, "subkey2",
-      value, "subkey3", value, "subkey4", value});
+  DoRedisTestExpectError(
+      __LINE__,
+      {"HMSET", "map_key1", "subkey1", value, "subkey2", value, "subkey3", value,
+          "subkey4", value});
   SyncClient();
   VerifyCallbacks();
 }
@@ -1158,6 +1160,7 @@ TEST_F(TestRedisService, TestTsRangeByTime) {
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "+inf"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "-inf"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-inf", "-inf"}, {});
+  SyncClient();
 
   // Test infinity with int64 min, max.
   DoRedisTestOk(__LINE__, {"TSADD", "ts_inf",

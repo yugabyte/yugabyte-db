@@ -382,6 +382,7 @@ class TransactionState {
     CHECK_EQ(status_, TransactionStatus::PENDING);
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
+    VLOG(4) << "Commit time: " << commit_time_;
     status_ = TransactionStatus::COMMITTED;
     unnotified_tablets_.insert(data.state.tablets().begin(), data.state.tablets().end());
     for (const auto& tablet : unnotified_tablets_) {

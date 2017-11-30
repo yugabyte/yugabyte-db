@@ -37,6 +37,9 @@ using namespace std::placeholders;
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
+DEFINE_uint64(transaction_read_skew_usec, 50000,
+              "Transaction read clock skew in usec. Is maximum allowed time delta between servers "
+              "of a single cluster.");
 
 namespace yb {
 namespace client {
@@ -51,6 +54,7 @@ class YBTransaction::Impl final {
                   TabletId(),
                   RandomUniformInt<uint64_t>(),
                   manager->Now()},
+        read_limit_ht_(metadata_.start_time.AddMicroseconds(FLAGS_transaction_read_skew_usec)),
         log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
         heartbeat_handle_(manager->rpcs().InvalidHandle()),
         commit_handle_(manager->rpcs().InvalidHandle()),
@@ -92,14 +96,15 @@ class YBTransaction::Impl final {
       }
     }
 
-    prepare_data->propagated_hybrid_time = manager_->Now();
+    prepare_data->propagated_ht = manager_->Now();
     if (has_tablets_without_parameters) {
       prepare_data->metadata = metadata_;
     } else {
       prepare_data->metadata.transaction_id = metadata_.transaction_id;
     }
     if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      prepare_data->read_time = metadata_.start_time;
+      prepare_data->read_time.read = metadata_.start_time;
+      prepare_data->read_time.limit = metadata_.start_time; // TODO(dtxn) read_limit_ht_;
     }
     return true;
   }
@@ -396,6 +401,7 @@ class YBTransaction::Impl final {
   YBTransaction* const transaction_;
 
   TransactionMetadata metadata_;
+  HybridTime read_limit_ht_;
 
   const std::string log_prefix_;
   bool requested_status_tablet_ = false;

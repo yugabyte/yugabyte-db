@@ -944,17 +944,15 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   Status s;
-  // If timestamp in invalid, read time would be picked as tablet->SafeTimestampToRead().
-  HybridTime timestamp = req->has_read_hybrid_time() ? HybridTime(req->read_hybrid_time())
-                                                     : HybridTime::kInvalidHybridTime;
-
-  tablet::ScopedReadOperation read_tx(tablet.get(), timestamp);
+  tablet::ScopedReadOperation read_tx(tablet.get(), ReadHybridTime::FromPB(*req));
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
       for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
         RedisResponsePB redis_response;
         s = tablet->HandleRedisReadRequest(
-            read_tx.GetReadTimestamp(), redis_read_req, &redis_response);
+            read_tx.read_time(),
+            redis_read_req,
+            &redis_response);
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         resp->add_redis_batch()->Swap(&redis_response);
       }
@@ -974,7 +972,11 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         int rows_data_sidecar_idx = 0;
         TRACE("Start HandleQLReadRequest");
         s = tablet->HandleQLReadRequest(
-            read_tx.GetReadTimestamp(), ql_read_req, req->transaction(), &ql_response, &rows_data);
+            read_tx.read_time(),
+            ql_read_req,
+            req->transaction(),
+            &ql_response,
+            &rows_data);
         TRACE("Done HandleQLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
         if (rows_data.get() != nullptr) {

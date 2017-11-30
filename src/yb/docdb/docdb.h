@@ -24,6 +24,7 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_key.h"
@@ -112,11 +113,12 @@ void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& 
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-Status ApplyDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                              const HybridTime& hybrid_time,
-                              rocksdb::DB *rocksdb,
-                              KeyValueWriteBatchPB* write_batch,
-                              std::atomic<int64_t>* monotonic_counter);
+CHECKED_STATUS ApplyDocWriteOperation(
+    const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const ReadHybridTime& read_time,
+    rocksdb::DB *rocksdb,
+    KeyValueWriteBatchPB* write_batch,
+    std::atomic<int64_t>* monotonic_counter);
 
 void PrepareNonTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
@@ -255,7 +257,7 @@ yb::Status GetSubDocument(
     const TransactionOperationContextOpt& txn_op_context,
     SubDocument* result,
     bool* doc_found,
-    HybridTime scan_ts = HybridTime::kMax,
+    const ReadHybridTime& read_time = ReadHybridTime::Max(),
     MonoDelta table_ttl = Value::kMaxTtl,
     bool return_type_only = false,
     const SubDocKeyBound& low_subkey = SubDocKeyBound(),

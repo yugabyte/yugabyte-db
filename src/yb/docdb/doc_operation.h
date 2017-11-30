@@ -23,6 +23,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
@@ -32,6 +33,11 @@ namespace yb {
 namespace docdb {
 
 class DocWriteBatch;
+
+struct DocOperationApplyData {
+  DocWriteBatch* doc_write_batch;
+  ReadHybridTime read_time;
+};
 
 class DocOperation {
  public:
@@ -43,8 +49,7 @@ class DocOperation {
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
   virtual void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const = 0;
-  virtual CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) = 0;
+  virtual CHECKED_STATUS Apply(const DocOperationApplyData& data) = 0;
 };
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
@@ -58,74 +63,90 @@ class KuduWriteOperation: public DocOperation {
 
   void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
-  CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
+  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
  private:
   DocPath doc_path_;
   PrimitiveValue value_;
 };
 
-class RedisWriteOperation: public DocOperation {
+// Redis value data with attached type of this value.
+// Used internally by RedisWriteOperation.
+struct RedisValue {
+  RedisDataType type;
+  std::string value;
+};
+
+class RedisWriteOperation : public DocOperation {
  public:
   // Construct a RedisWriteOperation. Content of request will be swapped out by the constructor.
-  RedisWriteOperation(RedisWriteRequestPB* request, HybridTime read_hybrid_time)
-      : response_(), read_hybrid_time_(read_hybrid_time) { request_.Swap(request); }
+  explicit RedisWriteOperation(RedisWriteRequestPB* request) {
+    request_.Swap(request);
+  }
 
   bool RequireReadSnapshot() const override { return false; }
 
-  CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
+  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
   void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
   const RedisResponsePB &response();
 
  private:
-  CHECKED_STATUS ApplySet(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyGetSet(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyAppend(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyDel(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplySetRange(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyIncr(DocWriteBatch *doc_write_batch, int64_t incr = 1);
-  CHECKED_STATUS ApplyPush(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyInsert(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyPop(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyAdd(DocWriteBatch *doc_write_batch);
-  CHECKED_STATUS ApplyRemove(DocWriteBatch *doc_write_batch);
+  Result<RedisDataType> GetValueType(const DocOperationApplyData& data, int subkey_index = -1);
+  Result<RedisValue> GetValue(const DocOperationApplyData& data, int subkey_index = -1);
+
+  CHECKED_STATUS ApplySet(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyGetSet(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyAppend(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyDel(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplySetRange(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyIncr(const DocOperationApplyData& data, int64_t incr = 1);
+  CHECKED_STATUS ApplyPush(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyPop(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyAdd(const DocOperationApplyData& data);
+  CHECKED_STATUS ApplyRemove(const DocOperationApplyData& data);
 
   RedisWriteRequestPB request_;
   RedisResponsePB response_;
-  HybridTime read_hybrid_time_;
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId > (&request_); }
 };
 
 class RedisReadOperation {
  public:
-  explicit RedisReadOperation(const yb::RedisReadRequestPB& request) : request_(request) {}
+  explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
+                              rocksdb::DB* db,
+                              const ReadHybridTime& read_time)
+      : request_(request), db_(db), read_time_(read_time) {}
 
-  CHECKED_STATUS Execute(rocksdb::DB *rocksdb, const HybridTime& hybrid_time);
+  CHECKED_STATUS Execute();
 
   const RedisResponsePB &response();
 
  private:
+  Result<RedisDataType> GetValueType(int subkey_index = -1);
+  Result<RedisValue> GetValue(int subkey_index = -1);
+
   int ApplyIndex(int32_t index, const int32_t len);
-  CHECKED_STATUS ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteGet();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
-  CHECKED_STATUS ExecuteHGetAllLikeCommands(rocksdb::DB *rocksdb,
-                                    HybridTime hybrid_time,
+  CHECKED_STATUS ExecuteHGetAllLikeCommands(
                                     ValueType value_type,
                                     bool add_keys,
                                     bool add_values);
-  CHECKED_STATUS ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time);
-  CHECKED_STATUS ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
-  CHECKED_STATUS ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
-  CHECKED_STATUS ExecuteCollectionGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  CHECKED_STATUS ExecuteStrLen();
+  CHECKED_STATUS ExecuteExists();
+  CHECKED_STATUS ExecuteGetRange();
+  CHECKED_STATUS ExecuteCollectionGetRange();
+
+  rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
-  rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
+  rocksdb::DB* db_;
+  ReadHybridTime read_time_;
 };
 
 class QLWriteOperation : public DocOperation {
@@ -139,8 +160,7 @@ class QLWriteOperation : public DocOperation {
 
   void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
-  CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
+  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
 
   const QLWriteRequestPB& request() const { return request_; }
   QLResponsePB* response() const { return response_; }
@@ -152,20 +172,16 @@ class QLWriteOperation : public DocOperation {
   // Initialize hashed_doc_key_ and/or pk_doc_key_.
   CHECKED_STATUS InitializeKeys(bool hashed_key, bool primary_key);
 
-  CHECKED_STATUS ReadColumns(rocksdb::DB *rocksdb,
-                             const HybridTime& hybrid_time,
+  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
                              Schema *static_projection,
                              Schema *non_static_projection,
-                             QLTableRow *table_row,
-                             const rocksdb::QueryId query_id);
+                             QLTableRow *table_row);
 
   CHECKED_STATUS IsConditionSatisfied(const QLConditionPB& condition,
-                                      rocksdb::DB *rocksdb,
-                                      const HybridTime& hybrid_time,
+                                      const DocOperationApplyData& data,
                                       bool* should_apply,
                                       std::unique_ptr<QLRowBlock>* rowblock,
-                                      QLTableRow* table_row,
-                                      const rocksdb::QueryId query_id);
+                                      QLTableRow* table_row);
 
   CHECKED_STATUS DeleteRow(DocWriteBatch* doc_write_batch,
                            const DocPath row_path);
@@ -205,7 +221,7 @@ class QLReadOperation {
       : request_(request), txn_op_context_(txn_op_context) {}
 
   CHECKED_STATUS Execute(const common::QLStorageIf& ql_storage,
-                         const HybridTime& hybrid_time,
+                         const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema& query_schema,
                          QLResultSet* result_set);

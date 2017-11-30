@@ -23,7 +23,10 @@
 #include "yb/client/transaction_manager.h"
 
 #include "yb/ql/util/statement_result.h"
+
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/test_clock.h"
+
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -41,6 +44,7 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_uint64(transaction_check_interval_usec);
+DECLARE_uint64(transaction_read_skew_usec);
 
 namespace yb {
 namespace client {
@@ -124,7 +128,8 @@ class QLTransactionTest : public QLDmlTestBase {
     FLAGS_transaction_table_default_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
     FLAGS_log_min_seconds_to_retain = 5;
-    scoped_refptr<server::Clock> clock(new server::HybridClock);
+    server::ClockPtr clock(
+        clock_ = new server::TestClock(server::ClockPtr(new server::HybridClock)));
     ASSERT_OK(clock->Init());
     transaction_manager_.emplace(client_, clock);
   }
@@ -252,12 +257,35 @@ class QLTransactionTest : public QLDmlTestBase {
 
   TableHandle table_;
   boost::optional<TransactionManager> transaction_manager_;
+  server::TestClock* clock_;
 };
 
 TEST_F(QLTransactionTest, Simple) {
   WriteData();
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, DISABLED_ReadRestart) {
+  google::FlagSaver saver;
+
+  FLAGS_transaction_read_skew_usec = 250000;
+
+  WriteData();
+
+  std::this_thread::sleep_for(5s);
+
+  server::TestClockDeltaChanger delta_changer(-100ms, clock_);
+  auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
+                                            IsolationLevel::SNAPSHOT_ISOLATION);
+  auto session = CreateSession(true /* read_only */, tc);
+  for (size_t r = 0; r != kNumRows; ++r) {
+    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+    ASSERT_TRUE(!row.ok() && row.status().IsTryAgain()) << "Bad row: " << row;
+  }
+  VerifyData();
+
+  CHECK_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, InsertUpdate) {

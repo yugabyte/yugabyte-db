@@ -178,6 +178,11 @@ message WriteRequestPB {
   optional fixed64 propagated_hybrid_time = 5;
 
   optional bool include_trace = 6 [ default = false ];
+
+  // See ReadHybridTime for explation of next two fields.
+  optional fixed64 read_ht = 12;
+
+  optional fixed64 read_limit_ht = 13;
 }
 
 message WriteResponsePB {
@@ -282,7 +287,10 @@ message ReadRequestPB {
 
   optional fixed64 propagated_hybrid_time = 8;
 
-  optional fixed64 read_hybrid_time = 9;
+  // See ReadHybridTime for explation of next two fields.
+  optional fixed64 read_ht = 9;
+
+  optional fixed64 read_limit_ht = 10;
 }
 
 message ReadResponsePB {

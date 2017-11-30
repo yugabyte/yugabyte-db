@@ -187,6 +187,7 @@ class Slice {
   //   == 0 iff "*this" == "b",
   //   >  0 iff "*this" >  "b"
   int compare(const Slice& b) const;
+  int compare_prefix(const Slice& b) const;
 
   size_t hash() const noexcept;
 
@@ -284,6 +285,10 @@ inline int Slice::compare(const Slice& b) const {
     else if (size_ > b.size_) r = +1;
   }
   return r;
+}
+
+inline int Slice::compare_prefix(const Slice& b) const {
+  return Slice(data_, std::min(size_, b.size_)).compare(b);
 }
 
 inline size_t Slice::hash() const noexcept {

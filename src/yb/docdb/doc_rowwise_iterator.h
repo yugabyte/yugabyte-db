@@ -26,6 +26,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_scanspec.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -46,7 +47,7 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
                      const Schema &schema,
                      const TransactionOperationContextOpt& txn_op_context,
                      rocksdb::DB *db,
-                     HybridTime hybrid_time = HybridTime::kMax,
+                     const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
   virtual ~DocRowwiseIterator();
 
@@ -138,9 +139,9 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
 
   const TransactionOperationContextOpt txn_op_context_;
 
-  bool is_forward_scan_;
+  bool is_forward_scan_ = true;
 
-  HybridTime hybrid_time_;
+  const ReadHybridTime read_time_;
 
   rocksdb::DB* const db_;
 

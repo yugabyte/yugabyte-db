@@ -275,8 +275,9 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(&req, schema, &resp, boost::none);
-  RETURN_NOT_OK(op.Apply(doc_write_batch, db_fixture->rocksdb(),
-                         HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
+  RETURN_NOT_OK(op.Apply({
+      doc_write_batch,
+      ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
   return Status::OK();
 }
 

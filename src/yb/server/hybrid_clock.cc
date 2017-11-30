@@ -507,7 +507,7 @@ uint64_t HybridClock::GetPhysicalValueNanos(const HybridTime& hybrid_time) {
 }
 
 HybridTime HybridClock::HybridTimeFromMicroseconds(uint64_t micros) {
-  return HybridTime(micros << kBitsToShift);
+  return HybridTime::FromMicros(micros);
 }
 
 HybridTime HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(

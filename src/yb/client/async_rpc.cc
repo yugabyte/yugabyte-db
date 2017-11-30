@@ -196,8 +196,14 @@ void AsyncRpc::FillRequest(Request* req) {
   req->set_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req->set_include_trace(IsTracingEnabled());
   auto& transaction_data = batcher_->transaction_prepare_data();
-  if (transaction_data.propagated_hybrid_time.is_valid()) {
-    req->set_propagated_hybrid_time(transaction_data.propagated_hybrid_time.ToUint64());
+  if (transaction_data.propagated_ht.is_valid()) {
+    req->set_propagated_hybrid_time(transaction_data.propagated_ht.ToUint64());
+  }
+  if (transaction_data.read_time.read.is_valid()) {
+    req->set_read_ht(transaction_data.read_time.read.ToUint64());
+  }
+  if (transaction_data.read_time.limit.is_valid()) {
+    req->set_read_limit_ht(transaction_data.read_time.limit.ToUint64());
   }
   if (!transaction_data.metadata.transaction_id.is_nil()) {
     SetTransactionMetadata(transaction_data.metadata, req);
@@ -438,10 +444,6 @@ ReadRpc::ReadRpc(
   TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
   req_.set_consistency_level(yb_consistency_level);
   FillRequest(&req_);
-  const auto& transaction = batcher->transaction_prepare_data();
-  if (transaction.read_time.is_valid()) {
-    req_.set_read_hybrid_time(transaction.read_time.ToUint64());
-  }
 
   int ctr = 0;
   for (auto& op : ops_) {

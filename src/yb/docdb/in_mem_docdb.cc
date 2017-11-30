@@ -142,7 +142,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
     // since this is not supported.
     const Status get_doc_status = yb::docdb::GetSubDocument(
         rocksdb, subdoc_key, query_id, kNonTransactionalOperationContext, &subdoc, &doc_found,
-        hybrid_time);
+        ReadHybridTime::SingleTime(hybrid_time));
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
       LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, IncludeBinary::kTrue);

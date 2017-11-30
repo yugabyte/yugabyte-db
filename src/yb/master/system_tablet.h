@@ -42,11 +42,13 @@ class SystemTablet : public tablet::AbstractTablet {
   HybridTime SafeTimestampToRead() const override;
 
   CHECKED_STATUS HandleRedisReadRequest(
-      HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
+      const ReadHybridTime& read_time,
+      const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
 
   CHECKED_STATUS HandleQLReadRequest(
-      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
+      const ReadHybridTime& read_time,
+      const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data) override;
 

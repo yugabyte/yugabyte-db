@@ -31,7 +31,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const Schema& projection,
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
-    HybridTime req_hybrid_time,
+    const ReadHybridTime& read_time,
     std::unique_ptr<common::QLRowwiseIteratorIf>* iter)
     const {
   std::unique_ptr<QLRowBlock> vtable;
@@ -59,15 +59,15 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
   return Status::OK();
 }
 
-CHECKED_STATUS YQLVirtualTable::BuildQLScanSpec(const QLReadRequestPB& request,
-                                                 const HybridTime& hybrid_time,
-                                                 const Schema& schema,
-                                                 const bool include_static_columns,
-                                                 const Schema& static_projection,
-                                                 std::unique_ptr<common::QLScanSpec>* spec,
-                                                 std::unique_ptr<common::QLScanSpec>*
-                                                 static_row_spec,
-                                                 HybridTime* req_hybrid_time) const {
+CHECKED_STATUS YQLVirtualTable::BuildQLScanSpec(
+    const QLReadRequestPB& request,
+    const ReadHybridTime& read_time,
+    const Schema& schema,
+    const bool include_static_columns,
+    const Schema& static_projection,
+    std::unique_ptr<common::QLScanSpec>* spec,
+    std::unique_ptr<common::QLScanSpec>* static_row_spec,
+    ReadHybridTime* req_read_time) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
@@ -75,7 +75,7 @@ CHECKED_STATUS YQLVirtualTable::BuildQLScanSpec(const QLReadRequestPB& request,
   spec->reset(new common::QLScanSpec(
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       request.is_forward_scan()));
-  *req_hybrid_time = hybrid_time;
+  *req_read_time = read_time;
   return Status::OK();
 }
 

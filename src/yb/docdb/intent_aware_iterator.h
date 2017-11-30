@@ -16,10 +16,13 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/options.h"
+#include "yb/common/read_hybrid_time.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
+
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 
 namespace yb {
 
@@ -29,6 +32,8 @@ class TransactionStatusManager;
 namespace docdb {
 
 class Value;
+
+YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
 // for caller. Implementation relies on intents order in RocksDB, which is determined by intent key
@@ -51,7 +56,7 @@ class IntentAwareIterator {
   IntentAwareIterator(
       rocksdb::DB* rocksdb,
       const rocksdb::ReadOptions& read_opts,
-      HybridTime high_ht,
+      const ReadHybridTime& read_time,
       const TransactionOperationContextOpt& txn_op_context);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
@@ -62,11 +67,11 @@ class IntentAwareIterator {
 
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  CHECKED_STATUS SeekWithoutHt(const KeyBytes& key_bytes);
+  CHECKED_STATUS SeekWithoutHt(const Slice& key);
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
-  CHECKED_STATUS SeekForwardWithoutHt(const KeyBytes& key_bytes);
+  CHECKED_STATUS SeekForwardWithoutHt(const Slice& key);
 
   // Seek forward to specified subdoc key.
   CHECKED_STATUS SeekForwardIgnoreHt(const SubDocKey& subdoc_key);
@@ -84,10 +89,19 @@ class IntentAwareIterator {
   // provided
   CHECKED_STATUS PrevDocKey(const DocKey& doc_key);
 
+  // Adds new value to prefix stack. The top value of this stack is used to filter
+  // returned entries. After seek we check whether currently pointed value has active prefix.
+  // If not, than it means that we are out of range of interest and iterator becomes invalid.
+  void PushPrefix(const Slice& prefix);
+
+  // Removes top value from prefix stack. This iteration could became valid after poping prefix,
+  // if new top prefix is a prefix of currently pointed value.
+  void PopPrefix();
+
   bool valid();
   Slice key();
   Slice value();
-  HybridTime high_ht() { return high_ht_; }
+  ReadHybridTime read_time() { return read_time_; }
 
   // If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
   // max_deleted_ts, we update max_deleted_ts and result_value (unless it is nullptr).
@@ -104,7 +118,13 @@ class IntentAwareIterator {
 
  private:
   // Seek forward on regular sub-iterator.
-  void SeekForwardRegular(const KeyBytes& key_bytes);
+  CHECKED_STATUS SeekForwardRegular(const Slice& slice, const Slice& prefix = Slice());
+
+  // Skips regular entries with hybrid time after read limit.
+  void SkipFutureRecords();
+
+  // Skips intents with hybrid time after read limit.
+  void SkipFutureIntents();
 
   // Strong write intents which are either committed or written by the current
   // transaction (stored in txn_op_context) by considered time are considered as suitable.
@@ -143,13 +163,14 @@ class IntentAwareIterator {
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular();
 
-  const HybridTime high_ht_; // Ignoring values with higher HT.
+  const ReadHybridTime read_time_;
   const TransactionOperationContextOpt txn_op_context_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
   std::unique_ptr<rocksdb::Iterator> iter_;
+  bool iter_valid_ = false;
 
   // Following fields contain information related to resolved suitable intent.
-  bool has_resolved_intent_ = false;
+  ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   // kIntentPrefix + SubDocKey (no HT).
   KeyBytes resolved_intent_key_prefix_;
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
@@ -158,6 +179,23 @@ class IntentAwareIterator {
   DocHybridTime intent_dht_from_same_txn_ = DocHybridTime::kMin;
   KeyBytes resolved_intent_sub_doc_key_encoded_;
   KeyBytes resolved_intent_value_;
+  std::vector<Slice> prefix_stack_;
+};
+
+// Utility class that controls stack of prefixes in IntentAwareIterator.
+class IntentAwareIteratorPrefixScope {
+ public:
+  IntentAwareIteratorPrefixScope(const Slice& prefix, IntentAwareIterator* iterator)
+      : iterator_(iterator) {
+    iterator->PushPrefix(prefix);
+  }
+
+  ~IntentAwareIteratorPrefixScope() {
+    iterator_->PopPrefix();
+  }
+
+ private:
+  IntentAwareIterator* iterator_;
 };
 
 } // namespace docdb

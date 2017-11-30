@@ -183,6 +183,8 @@ class KeyBytes {
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
 
+  operator Slice() const { return Slice(data_); }
+
   // @return This key prefix as a string reference. Assumes the reference won't be used beyond
   //         the lifetime of this object.
   const std::string& AsStringRef() const { return data_; }

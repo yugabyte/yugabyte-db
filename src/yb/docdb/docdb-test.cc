@@ -212,7 +212,7 @@ class DocDBTest: public DocDBTestBase {
     // https://yugabyte.atlassian.net/browse/ENG-2177
     EXPECT_OK(GetSubDocument(
         rocksdb(), subdoc_key, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-        &doc_from_rocksdb, &subdoc_found_in_rocksdb, ht));
+        &doc_from_rocksdb, &subdoc_found_in_rocksdb, ReadHybridTime::SingleTime(ht)));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
       return;
@@ -1848,7 +1848,7 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb:
                              /* is_lower_bound */ false);
   EXPECT_OK(GetSubDocument(
       rocksdb, subdoc_to_search, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      doc_from_rocksdb, subdoc_found, ht, Value::kMaxTtl,
+      doc_from_rocksdb, subdoc_found, ReadHybridTime::SingleTime(ht), Value::kMaxTtl,
       false, lower_bound, upper_bound));
 }
 
@@ -2003,7 +2003,7 @@ TEST_F(DocDBTest, TestCompactionForCollectionsWithTTL) {
   EXPECT_OK(GetSubDocument(
       rocksdb(), SubDocKey(collection_key), rocksdb::kDefaultQueryId,
       kNonTransactionalOperationContext, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
-      HybridTime::FromMicros(1200)));
+      ReadHybridTime::FromMicros(1200)));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
 
   for (int i = 0; i < num_subkeys * 2; i++) {

@@ -34,12 +34,15 @@ class AbstractTablet {
   virtual const std::string& tablet_id() const = 0;
 
   virtual CHECKED_STATUS HandleRedisReadRequest(
-      HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
+      const ReadHybridTime& read_time,
+      const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
 
   virtual CHECKED_STATUS HandleQLReadRequest(
-      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
-      const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
+      const ReadHybridTime& read_time,
+      const QLReadRequestPB& ql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data) = 0;
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
@@ -52,8 +55,10 @@ class AbstractTablet {
 
  protected:
   CHECKED_STATUS HandleQLReadRequest(
-      HybridTime timestamp, const QLReadRequestPB& ql_read_request,
-      const TransactionOperationContextOpt& txn_op_context, QLResponsePB* response,
+      const ReadHybridTime& read_time,
+      const QLReadRequestPB& ql_read_request,
+      const TransactionOperationContextOpt& txn_op_context,
+      QLResponsePB* response,
       gscoped_ptr<faststring>* rows_data);
 };
 

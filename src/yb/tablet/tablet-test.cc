@@ -215,7 +215,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
   // Collect the expected rows.
   vector<string> rows;
   ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), this->client_schema_, &rows));
-  ASSERT_EQ(rows.size(), max_rows);
+  ASSERT_EQ(max_rows, rows.size());
 }
 
 // Test that when a row has been updated many times, it always yields

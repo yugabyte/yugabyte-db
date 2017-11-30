@@ -21,6 +21,7 @@
 #include <unordered_set>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/client/client_fwd.h"
@@ -37,10 +38,17 @@ namespace client {
 typedef std::function<void(const Status&)> Waiter;
 typedef std::function<void(const Status&)> CommitCallback;
 
+// When Batch plans to execute some operations in context of transaction, it asks
+// transaction to make some preparations. This struct contans result of those preparations.
 struct TransactionPrepareData {
+  // Transaction metadata that should be sent to tserver with those operations.
   TransactionMetadata metadata;
-  HybridTime propagated_hybrid_time;
-  HybridTime read_time;
+
+  // Propagated hybrid time.
+  HybridTime propagated_ht;
+
+  // Read time.
+  ReadHybridTime read_time;
 };
 
 // YBTransaction is a representation of single transaction.

@@ -19,8 +19,10 @@ namespace yb {
 namespace tablet {
 
 CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
-    HybridTime timestamp, const QLReadRequestPB& ql_read_request,
-    const TransactionOperationContextOpt& txn_op_context, QLResponsePB* response,
+    const ReadHybridTime& read_time,
+    const QLReadRequestPB& ql_read_request,
+    const TransactionOperationContextOpt& txn_op_context,
+    QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
 
   // TODO(Robert): verify that all key column values are provided
@@ -42,7 +44,7 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
   QLResultSet resultset;
   TRACE("Start Execute");
-  const Status s = doc_op.Execute(QLStorage(), timestamp, schema, query_schema, &resultset);
+  const Status s = doc_op.Execute(QLStorage(), read_time, schema, query_schema, &resultset);
   TRACE("Done Execute");
   if (!s.ok()) {
     response->set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);

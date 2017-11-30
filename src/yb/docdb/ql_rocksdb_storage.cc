@@ -29,23 +29,21 @@ CHECKED_STATUS QLRocksDBStorage::GetIterator(
     const Schema& projection,
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
-    HybridTime req_hybrid_time,
+    const ReadHybridTime& read_time,
     std::unique_ptr<common::QLRowwiseIteratorIf> *iter) const {
-  iter->reset(new DocRowwiseIterator(
-      projection, schema, txn_op_context, rocksdb_, req_hybrid_time));
+  iter->reset(new DocRowwiseIterator(projection, schema, txn_op_context, rocksdb_, read_time));
   return Status::OK();
 }
 
 CHECKED_STATUS QLRocksDBStorage::BuildQLScanSpec(const QLReadRequestPB& request,
-    const HybridTime& hybrid_time,
-    const Schema& schema,
-    const bool include_static_columns,
-    const Schema& static_projection,
-    std::unique_ptr<common::QLScanSpec>* spec,
-    std::unique_ptr<common::QLScanSpec>*
-    static_row_spec,
-    HybridTime* req_hybrid_time)
-const {
+                                                 const ReadHybridTime& read_time,
+                                                 const Schema& schema,
+                                                 const bool include_static_columns,
+                                                 const Schema& static_projection,
+                                                 std::unique_ptr<common::QLScanSpec>* spec,
+                                                 std::unique_ptr<common::QLScanSpec>*
+                                                 static_row_spec,
+                                                 ReadHybridTime* req_read_time) const {
   // Populate dockey from QL key columns.
   int32_t hash_code = request.has_hash_code() ?
       static_cast<docdb::DocKeyHash>(request.hash_code()) : -1;
@@ -57,15 +55,16 @@ const {
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
 
-  *req_hybrid_time = hybrid_time;
+  *req_read_time = read_time;
   SubDocKey start_sub_doc_key;
   // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
   if (request.has_paging_state() &&
       request.paging_state().has_next_row_key() &&
       !request.paging_state().next_row_key().empty()) {
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
-        RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    *req_hybrid_time = start_sub_doc_key.hybrid_time();
+    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+    req_read_time->read = start_sub_doc_key.hybrid_time();
+    // TODO(dtxn) What should we do with read_limit_ht here?
 
     // If we start the scan with a specific primary key, the normal scan spec we return below will
     // not include the static columns if any for the start key. We need to return a separate scan

@@ -104,6 +104,8 @@ struct TransactionOperationContext {
       : transaction_id(transaction_id_),
         txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
 
+  bool transactional() const;
+
   TransactionId transaction_id;
   TransactionStatusManager& txn_status_manager;
 };

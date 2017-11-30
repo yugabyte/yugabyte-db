@@ -142,10 +142,26 @@ class HybridTime {
     return HybridTime(v - 1);
   }
 
+  HybridTime AddMicroseconds(MicrosTime micros) const {
+    if (is_special()) return *this;
+    return HybridTime(v + (micros << kBitsForLogicalComponent));
+  }
+
   // Sets this hybrid time from 'value'
   CHECKED_STATUS FromUint64(uint64_t value);
 
   HybridTimeRepr value() const { return v; }
+
+  bool is_special() const {
+    switch (v) {
+      case kMinHybridTimeValue: FALLTHROUGH_INTENDED;
+      case kMaxHybridTimeValue: FALLTHROUGH_INTENDED;
+      case kInvalidHybridTimeValue:
+        return true;
+      default:
+        return false;
+    }
+  }
 
   bool operator <(const HybridTime& other) const {
     return CompareTo(other) < 0;
