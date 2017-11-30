@@ -20,12 +20,11 @@
   export YB_EC2_KEY_PAIR_NAME=no-such-key
   ```
 * Install aws cli utility for your platform. Follow the instructions at http://docs.aws.amazon.com/cli/latest/userguide/installing.html
-* Sync YugaByte release from AWS S3.
+* Download YugaByte EE release from AWS S3.
 ```
   cd /opt/yugabyte/releases/
-  aws s3 sync s3://no-such-url/{release}  {release}
+  aws s3 sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
 ```
-* Go into the release folder and delete the yugabyte-ce-{release}-centos-x86_64.tar, so that you are only left with yugabyte-ee-{release}-centos-x86_64.tar
 
 #### On a mac, run the following:
 * Install SBT and Node
