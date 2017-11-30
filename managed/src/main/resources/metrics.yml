@@ -67,7 +67,7 @@ tserver_rpcs_per_sec_by_universe:
     server_type: "yb_tserver"
     service_type: "TabletServerService"
     service_method: "Read|Write"
-  group_by: "service_method"
+  group_by: "service_method, node_prefix"
   layout:
     xaxis:
       type: "date"
