@@ -105,11 +105,20 @@ a {
   }
 
   li > .node-toggle {
-    transform: rotateZ(0);
-    transition: transform 0.2s;
+    .open {
+      display: none;
+    }
+    .closed {
+      display: inline-block;
+    }
   }
   li.open > .node-toggle {
-    transform: rotateZ(-180deg) !important;
+    .open {
+      display: inline-block;
+    }
+    .closed {
+      display: none;
+    }
   }
 
   li .section {
