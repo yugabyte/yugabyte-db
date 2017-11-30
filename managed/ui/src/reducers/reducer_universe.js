@@ -120,10 +120,10 @@ export default function(state = INITIAL_STATE, action) {
         isNonEmptyArray(universeReadWriteMetricList) &&
         universeReadWriteMetricList.forEach(function(metricData){
           for(let counter = 0; counter < currentUniverseList.length; counter++) {
-            if (currentUniverseList[counter].universeDetails.nodePrefix === metricData.name) {
-              if (metricData.labels["type"] === "rpc_TabletServerService_Read.num") {
+            if (currentUniverseList[counter].universeDetails.nodePrefix.trim() === metricData.name.trim()) {
+              if (metricData.labels["service_method"] === "Read") {
                 currentUniverseList[counter]["readData"] = metricData;
-              } else if (metricData.labels["type"] === "rpc_TabletServerService_Write.num") {
+              } else if (metricData.labels["service_method"] === "Write") {
                 currentUniverseList[counter]["writeData"] = metricData;
               }
             }
