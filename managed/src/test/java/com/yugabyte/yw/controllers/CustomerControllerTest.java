@@ -206,6 +206,64 @@ public class CustomerControllerTest extends WithApplication {
   }
 
   @Test
+  public void testCustomerMetricsWithValidTableNameParams() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
+    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.addUniverseUUID(u2.universeUUID);
+    customer.save();
+
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
+    params.put("start", "1479281737");
+    params.put("nodePrefix", "host-1");
+    params.put("tableName", "redis");
+
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+      (Map<String, String>) queryParams.capture());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    String tableName = filters.get("table_name").asText();
+    assertThat(tableName, allOf(notNullValue(), equalTo("redis")));
+  }
+
+  @Test
+  public void testCustomerMetricsWithoutTableNameParams() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
+    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.addUniverseUUID(u2.universeUUID);
+    customer.save();
+
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
+    params.put("start", "1479281737");
+    params.put("nodePrefix", "host-1");
+
+
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+      (Map<String, String>) queryParams.capture());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    assertThat(filters.get("table_name"), nullValue());
+  }
+
+
+  @Test
   public void testCustomerMetricsExceptionThrown() {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
@@ -245,7 +303,7 @@ public class CustomerControllerTest extends WithApplication {
 
     route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
     verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
-                                        (Map<String, String>) queryParams.capture());
+      (Map<String, String>) queryParams.capture());
 
     assertThat(metricKeys.getValue(), is(notNullValue()));
     assertThat(queryParams.getValue(), is(notNullValue()));
@@ -278,7 +336,7 @@ public class CustomerControllerTest extends WithApplication {
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
     verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
-                                        (Map<String, String>) queryParams.capture());
+      (Map<String, String>) queryParams.capture());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodePrefix = filters.get("node_prefix").asText();
@@ -318,7 +376,7 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerReleases() {
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases,
-        ImmutableMap.of("0.0.1", "yugabyte-0.0.1.tar.gz"));
+      ImmutableMap.of("0.0.1", "yugabyte-0.0.1.tar.gz"));
     Result result = getReleases(customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -357,7 +415,7 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerHostInfo() {
     JsonNode response = Json.parse("{\"foo\": \"bar\"}");
     when(mockCloudQueryHelper.currentHostInfo(Common.CloudType.aws,
-        ImmutableList.of("instance-id", "vpc-id", "privateIp", "region"))).thenReturn(response);
+      ImmutableList.of("instance-id", "vpc-id", "privateIp", "region"))).thenReturn(response);
     Result result = getHostInfo(customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
