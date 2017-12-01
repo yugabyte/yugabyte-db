@@ -1028,6 +1028,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      vector<TabletInfo*>* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table);
+  CHECKED_STATUS CreateTabletsFromTable(const vector<Partition>& partitions,
+                                        const scoped_refptr<TableInfo>& table,
+                                        std::vector<TabletInfo*>* tablets);
 
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_

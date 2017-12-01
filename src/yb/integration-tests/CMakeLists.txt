@@ -50,6 +50,7 @@ target_link_libraries(integration-tests
   tserver
   tserver_test_util
   master
+  ql_api
   ysck
   yb_client
   yb_client_test_util
@@ -83,6 +84,7 @@ ADD_YB_TEST(master_sysnamespace-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_path_handlers-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_failover-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_config-itest RESOURCE_LOCK "master-rpc-ports")
+ADD_YB_TEST(system_table_fault_tolerance RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(raft_consensus-itest RUN_SERIAL true)
 ADD_YB_TEST(flush-test RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-itest)

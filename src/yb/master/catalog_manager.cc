@@ -179,6 +179,11 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
 DEFINE_test_flag(uint64, inject_latency_during_remote_bootstrap_secs, 0,
                  "Number of seconds to sleep during a remote bootstrap.");
 
+DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, false,
+                 "This is only used in tests to simulate a failure where the table information is "
+                 "persisted in syscatalog, but the tablet information is not yet persisted and "
+                 "there is a failure.");
+
 DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
 
@@ -998,40 +1003,62 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
+  bool create_table = true;
   if (table != nullptr) {
-    LOG(INFO) << strings::Substitute("Table $0.$1 already created, skipping initialization",
-                                     namespace_name, table_name);
-    // Initialize the appropriate system tablet.
-    if (vtable != nullptr) {
-      vector<scoped_refptr<TabletInfo>> tablets;
-      table->GetAllTablets(&tablets);
+    // There might have been a failure after writing the table but before writing the tablets. As
+    // a result, if we don't find any tablets, we try to create the tablets only again.
+    vector<scoped_refptr<TabletInfo>> tablets;
+    table->GetAllTablets(&tablets);
+    if (!tablets.empty()) {
+      LOG(INFO) << strings::Substitute("Table $0.$1 already created, skipping initialization",
+                                       namespace_name, table_name);
+      // Initialize the appropriate system tablet.
       DCHECK_EQ(1, tablets.size());
       system_tablet.reset(
           new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
-      RETURN_NOT_OK(sys_tables_handler_.AddTablet(system_tablet));
+      return sys_tables_handler_.AddTablet(system_tablet);
+    } else {
+      // Table is already created, only need to create tablets now.
+      LOG(INFO) << strings::Substitute("Table $0.$1 already created, but tablets have not been "
+                                       "created. Creating only the respective tablets...",
+                                       namespace_name, table_name);
+      create_table = false;
     }
-    return Status::OK();
   }
 
   vector<TabletInfo*> tablets;
-  // Fill in details for system.peers table.
-  CreateTableRequestPB req;
-  req.set_name(table_name);
-  req.set_table_type(TableType::YQL_TABLE_TYPE);
 
   // Create partitions.
-  vector <Partition> partitions;
+  vector<Partition> partitions;
   PartitionSchemaPB partition_schema_pb;
   partition_schema_pb.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(partition_schema_pb, schema, &partition_schema));
   RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
 
-  RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
-                    &tablets, nullptr, &table));
+  if (create_table) {
+    // Fill in details for the system table.
+    CreateTableRequestPB req;
+    req.set_name(table_name);
+    req.set_table_type(TableType::YQL_TABLE_TYPE);
+
+    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
+                                      &tablets, nullptr, &table));
+    LOG(INFO) << "Inserted new table info into CatalogManager maps: "
+              << namespace_name << "." << table_name;
+
+    // Update the on-disk table state to "running".
+    table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
+    RETURN_NOT_OK(sys_catalog_->AddItem(table.get()));
+    LOG(INFO) << "Wrote table to system catalog: " << ToString(table);
+  } else {
+    // Still need to create the tablets.
+    RETURN_NOT_OK(CreateTabletsFromTable(partitions, table, &tablets));
+  }
+
   DCHECK_EQ(1, tablets.size());
-  LOG(INFO) << "Inserted new table and tablet info into CatalogManager maps: "
-            << namespace_name << "." << table_name;
+  // We use LOG_ASSERT here since this is expected to crash in some unit tests.
+  LOG_ASSERT(!FLAGS_catalog_manager_simulate_system_table_create_failure);
 
   // Write Tablets to sys-tablets (in "running" state since we don't want the loadbalancer to
   // assign these tablets since this table is virtual)
@@ -1041,23 +1068,18 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   RETURN_NOT_OK(sys_catalog_->AddItems(tablets));
   LOG(INFO) << "Wrote tablets to system catalog: " << ToString(tablets);
 
-  // Update the on-disk table state to "running".
-  table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
-  RETURN_NOT_OK(sys_catalog_->AddItem(table.get()));
-  LOG(INFO) << "Wrote table to system catalog: " << ToString(table);
-
   // Commit the in-memory state.
-  table->mutable_metadata()->CommitMutation();
+  if (create_table) {
+    table->mutable_metadata()->CommitMutation();
+  }
 
   for (TabletInfo *tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  if (vtable != nullptr) {
-    // Finally create the appropriate tablet object.
-    system_tablet.reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
-    RETURN_NOT_OK(sys_tables_handler_.AddTablet(system_tablet));
-  }
+  // Finally create the appropriate tablet object.
+  system_tablet.reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+  RETURN_NOT_OK(sys_tables_handler_.AddTablet(system_tablet));
 
   return Status::OK();
 }
@@ -1518,6 +1540,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   return Status::OK();
 }
 
+Status CatalogManager::CreateTabletsFromTable(const vector<Partition>& partitions,
+                                              const scoped_refptr<TableInfo>& table,
+                                              std::vector<TabletInfo*>* tablets) {
+  // Create the TabletInfo objects in state PREPARING.
+  for (const Partition& partition : partitions) {
+    PartitionPB partition_pb;
+    partition.ToPB(&partition_pb);
+    tablets->push_back(CreateTabletInfo(table.get(), partition_pb));
+  }
+
+  // Add the table/tablets to the in-memory map for the assignment.
+  table->AddTablets(*tablets);
+  for (TabletInfo* tablet : *tablets) {
+    InsertOrDie(&tablet_map_, tablet->tablet_id(), tablet);
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
@@ -1536,21 +1576,10 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   table_ids_map_[(*table)->id()] = *table;
   table_names_map_[{namespace_id, req.name()}] = *table;
 
-  // Create the TabletInfo objects in state PREPARING.
-  for (const Partition& partition : partitions) {
-    PartitionPB partition_pb;
-    partition.ToPB(&partition_pb);
-    tablets->push_back(CreateTabletInfo((*table).get(), partition_pb));
-  }
+  RETURN_NOT_OK(CreateTabletsFromTable(partitions, *table, tablets));
 
-  // Add the table/tablets to the in-memory map for the assignment.
   if (resp != nullptr) {
     resp->set_table_id((*table)->id());
-  }
-
-  (*table)->AddTablets(*tablets);
-  for (TabletInfo* tablet : *tablets) {
-    InsertOrDie(&tablet_map_, tablet->tablet_id(), tablet);
   }
 
   return Status::OK();
