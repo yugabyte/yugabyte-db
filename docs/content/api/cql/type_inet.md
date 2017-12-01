@@ -1,7 +1,7 @@
 ---
 title: INET Type
 summary: IP Address String
-weight: 141
+weight: 1410
 ---
 
 ## Synopsis

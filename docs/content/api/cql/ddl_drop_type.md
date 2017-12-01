@@ -1,7 +1,7 @@
 ---
 title: DROP TYPE
 summary: Drop a user-defined datatype
-weight: 128
+weight: 1280
 ---
 
 ## Synopsis

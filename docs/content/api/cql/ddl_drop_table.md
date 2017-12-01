@@ -1,7 +1,7 @@
 ---
 title: DROP TABLE
 summary: Remove a table
-weight: 127
+weight: 1270
 ---
 
 ## Synopsis

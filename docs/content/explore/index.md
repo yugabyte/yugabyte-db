@@ -1,18 +1,15 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: Explore Core Features
-weight: 20
+weight: 200
 ---
 
-<div>
-  <p>You can use your local cluster to explore all the core features of YugaByte DB.</p>
+You can use your [local cluster](/quick-start/) to explore all the core features of YugaByte DB.
 
-<!--
-  <a class="section-link icon-offset" href="/explore/auto-sharding">
-    <div class="icon"><i class="fa fa-object-group" aria-hidden="true"></i></div>
-    <div class="text">Auto Sharding</div>
+<div>
+  <a class="section-link icon-offset" href="/explore/linear-scalability">
+    <div class="icon"><i class="fa fa-line-chart" aria-hidden="true"></i></div>
+    <div class="text">Linear Scalability</div>
   </a>
--->
 
   <a class="section-link icon-offset" href="/explore/fault-tolerance">
     <div class="icon">
@@ -23,15 +20,12 @@ weight: 20
     </div>
   </a>
 
-  <a class="section-link icon-offset" href="/explore/linear-scalability">
-    <div class="icon"><i class="fa fa-line-chart" aria-hidden="true"></i></div>
-    <div class="text">Linear Scalability</div>
+<!--
+  <a class="section-link icon-offset" href="/explore/auto-sharding">
+    <div class="icon"><i class="fa fa-object-group" aria-hidden="true"></i></div>
+    <div class="text">Auto Sharding</div>
   </a>
-
-  <a class="section-link icon-offset" href="/explore/tunable-reads">
-    <div class="icon"><i class="fa fa-wrench" aria-hidden="true"></i></div>
-    <div class="text">Tunable Reads</div>
-  </a>
+-->
 
   <a class="section-link icon-offset" href="/explore/auto-rebalancing">
     <div class="icon">
@@ -40,6 +34,11 @@ weight: 20
     <div class="text">
       Auto Rebalancing
     </div>
+  </a>
+
+  <a class="section-link icon-offset" href="/explore/tunable-reads">
+    <div class="icon"><i class="fa fa-wrench" aria-hidden="true"></i></div>
+    <div class="text">Tunable Reads</div>
   </a>
 
 <!--

@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Frequently Asked Questions
-weight: 245
+weight: 2460
 ---
 
 ## Product
@@ -44,9 +43,9 @@ Yes, the Community Edition is a completely open source, fully functioning versio
 
 ### How do the Community Edition and the Enterprise Edition differ from each other?
 
-[Community Edition](/quick-start/) is the best choice for the individual developer looking to develop applications and deploy YugaByte DB into production with traditional DevOps tools. 
+[Community Edition](/quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with tradtional DevOps tools. 
 
-[Enterprise Edition](/deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment flexibility and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters).
+[Enterprise Edition](/deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters).
 
 A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/product/compare/).
 

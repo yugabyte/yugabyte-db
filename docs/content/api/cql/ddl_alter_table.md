@@ -1,7 +1,7 @@
 ---
 title: ALTER TABLE
 summary: Change the schema of a table
-weight: 122
+weight: 1220
 ---
 
 ## Synopsis

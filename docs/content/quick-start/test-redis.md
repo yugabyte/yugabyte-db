@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: Test YugaByte Redis
-weight: 14
+weight: 140
 ---
 
 After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte's Redis service.

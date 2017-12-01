@@ -1,6 +1,6 @@
 ---
 title: SMEMBERS
-weight: 230
+weight: 2300
 ---
 ## SYNOPSIS
 <b>`SMEMBERS key`</b><br>

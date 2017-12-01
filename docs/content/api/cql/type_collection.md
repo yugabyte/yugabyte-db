@@ -1,7 +1,7 @@
 ---
 title: Collection Types
 summary: MAP, SET and LIST types
-weight: 139
+weight: 1390
 ---
 
 ## Synopsis

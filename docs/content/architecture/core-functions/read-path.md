@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Read IO Path
-weight: 103
+weight: 1030
 ---
 
 Let us take the case of a single key read. 

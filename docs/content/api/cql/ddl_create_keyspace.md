@@ -1,7 +1,7 @@
 ---
 title: CREATE KEYSPACE
 summary: Create a new database
-weight: 123
+weight: 1230
 ---
 
 ## Synopsis

@@ -1,7 +1,7 @@
 ---
 title: UPDATE
 summary: Change values of a row in a table
-weight: 132
+weight: 1320
 ---
 
 ## Synopsis

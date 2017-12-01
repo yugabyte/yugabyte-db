@@ -1,4 +1,3 @@
-
 - Run cqlsh to connect to the service.
 
 ```sh

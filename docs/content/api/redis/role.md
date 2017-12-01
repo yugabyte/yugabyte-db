@@ -1,8 +1,8 @@
 ---
 title: ROLE
-weight: 224
+weight: 2240
 ---
-YugaByte only has master nodes for Redis services during the Beta releases.
+YugaByte DB only has `master` role for Redis services during the Beta releases.
 
 ## SYNOPSIS
 <b>`ROLE`</b><br>

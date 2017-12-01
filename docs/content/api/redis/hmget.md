@@ -1,6 +1,6 @@
 ---
 title: HMGET
-weight: 216
+weight: 2160
 ---
 
 ## SYNOPSIS

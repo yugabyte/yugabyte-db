@@ -1,12 +1,11 @@
 ---
-date: 2016-03-09T19:56:50+01:00
 title: Configure Cloud Providers
-weight: 64
+weight: 640
 ---
 
 This section details how to configure cloud providers for YugaByte DB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least 1 cloud provider.
 
-![Configure Cloud Provider](/images/configure-cloud-provider.png)
+![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
 
 ## Prerequisites
 
@@ -22,7 +21,7 @@ You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.co
 
 ### Private cloud or on-premises data centers
 
-The prerequisites here are same as that of the [Community Edition](/deploy/community-edition/#prerequisites).
+The prerequisites here are same as that of the [Community Edition](/deploy/multi-node-cluster/#prerequisites).
 
 ## Amazon Web Services
 
@@ -34,17 +33,17 @@ YugaWare ensures that YugaByte DB nodes run inside your own AWS account and are 
 
 3. Creates a new [AWS VPC](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-vpc.html) for YugaByte instances and then peers them with YugaWare's own VPC
 
-![Configure AWS](/images/configure-aws-1.png)
+![Configure AWS](/images/ee/configure-aws-1.png)
 
-![AWS Configuration in Progress](/images/configure-aws-2.png)
+![AWS Configuration in Progress](/images/ee/configure-aws-2.png)
 
-![AWS Configured Successfully](/images/configure-aws-3.png)
+![AWS Configured Successfully](/images/ee/configure-aws-3.png)
 
 Now we are ready to create a YugaByte universe on AWS.
 
 ## Google Cloud Platform
 
-![AWS Configured Successfully](/images/configure-gcp-3.png)
+![AWS Configured Successfully](/images/ee/configure-gcp-3.png)
 
 ## Microsoft Azure
 
@@ -56,9 +55,9 @@ The [local cluster] (/quick-start/install/) approach is great for testing operat
 
 Go to the Docker tab in the Configuration section and click Setup to initialize Docker as a cloud provider. Note that Docker Platform is already installed on the YugaWare host when you installed Replicated.
 
-![Configure Docker](/images/configure-docker-1.png)
+![Configure Docker](/images/ee/configure-docker-1.png)
 
-![Docker Configured Successfully](/images/configure-docker-2.png)
+![Docker Configured Successfully](/images/ee/configure-docker-2.png)
 
 As you can see above, the above initialization setup creates 2 dummy regions (US West and US East) with 3 dummy availability zones each. Now we are ready to create a containerized YugaByte universe running on the YugaWare host.
 
@@ -89,11 +88,11 @@ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel collectd 
 
 ### Configure the On-Premises Datacenter provider
 
-![Configure On-Premises Datacenter Provider](/images/configure-onprem-1.png)
+![Configure On-Premises Datacenter Provider](/images/ee/configure-onprem-1.png)
 
-![On-Premises Datacenter Provider Configuration in Progress](/images/configure-onprem-2.png)
+![On-Premises Datacenter Provider Configuration in Progress](/images/ee/configure-onprem-2.png)
 
-![On-Premises Datacenter Provider Configured Successfully](/images/configure-onprem-3.png)
+![On-Premises Datacenter Provider Configured Successfully](/images/ee/configure-onprem-3.png)
 
 ## Next Step
 

@@ -1,7 +1,7 @@
 ---
 title: Builtin Operator Call
 summary: Compounding expression using operators.
-weight: 134
+weight: 1340
 ---
 
 An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in YugaByte.

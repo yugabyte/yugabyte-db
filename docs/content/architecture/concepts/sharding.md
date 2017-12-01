@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Data Sharding into Tablets
-weight: 94
+weight: 940
 ---
 
 User tables are implicitly managed as multiple shards by the system. These shards are referred to as

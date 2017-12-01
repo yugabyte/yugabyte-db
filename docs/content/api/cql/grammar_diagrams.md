@@ -1,7 +1,6 @@
 ---
 title: Grammar Diagrams
 summary: Diagrams of the grammar rules
-weight: 137
 ---
 
 ## DDL Statements

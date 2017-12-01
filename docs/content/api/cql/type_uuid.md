@@ -1,7 +1,7 @@
 ---
 title: UUID and TIMEUUID
 summary: UUID types
-weight: 146
+weight: 1460
 ---
 
 ## Synopsis

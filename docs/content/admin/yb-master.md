@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: yb-master
-weight: 244
+weight: 2440
 ---
 
 `yb-master`, located in the bin directory of YugaByte home, is the [YB-Master] (/architecture/concepts/universe/#yb-master) binary.

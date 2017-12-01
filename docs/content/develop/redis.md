@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Redis Apps
-weight: 56
+weight: 560
 ---
 
 ## RedisKeyValue

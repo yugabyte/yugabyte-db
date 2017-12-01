@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: Test YugaByte CQL
-weight: 13
+weight: 130
 ---
 
 After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte's CQL service.

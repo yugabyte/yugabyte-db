@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: Install YugaByte DB
-weight: 11
+weight: 110
 ---
 
 <ul class="nav nav-tabs">

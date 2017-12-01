@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Single Node
-weight: 92
+weight: 920
 ---
 
 Every YugaByte DB node is comprised of 2 layers, **YBase** and **YQL**. YBase, the core data fabric, is a highly available, distributed system with strong write consistency, tunable read consistency, and an advanced log-structured row/document-oriented storage. It includes several optimizations for handling ever-growing datasets efficiently. YQL is the upper/edge layer that has the API specific aspects - for example, the server-side implementation of Apache Cassandra Query Language and Redis protocols, and the corresponding query/command compilation and run-time (data type representations, built-in operations, etc.).

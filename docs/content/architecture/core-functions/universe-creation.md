@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Universe Creation
-weight: 100
+weight: 1000
 ---
 
 ## Step 1. Start YB-Masters

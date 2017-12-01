@@ -1,7 +1,7 @@
 ---
 title: TEXT Type
 summary: String of Unicode characters
-weight: 144
+weight: 1440
 ---
 
 ## Synopsis

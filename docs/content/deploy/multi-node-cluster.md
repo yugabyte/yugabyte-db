@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T00:11:02+01:00
-title: Community Edition
-weight: 61
+title: Multi-Node Cluster
+weight: 610
 ---
 
 Multi-node clusters of YugaByte Community Edition can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.

@@ -10,9 +10,9 @@ Download the YugaByte CE package as shown below.
 
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.0.0-centos.tar.gz
-$ tar xvfz yugabyte-ce-0.9.0.0-centos.tar.gz
-$ cd yugabyte-0.9.0.0/
+$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.0.1-centos.tar.gz
+$ tar xvfz yugabyte-ce-0.9.0.1-centos.tar.gz
+$ cd yugabyte-0.9.0.1/
 ```
 
 ## Configure

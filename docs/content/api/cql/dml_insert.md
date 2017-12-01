@@ -1,7 +1,7 @@
 ---
 title: INSERT
 summary: Add a new row to a table
-weight: 120
+weight: 1200
 ---
 
 ## Synopsis

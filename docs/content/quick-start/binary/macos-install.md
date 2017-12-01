@@ -22,3 +22,12 @@ Setup loopback IP addresses on your localhost so that every node in the 3 node l
 $ sudo ifconfig lo0 alias 127.0.0.2
 $ sudo ifconfig lo0 alias 127.0.0.3
 ```
+
+Add some more IP addresses to cover the add node scenarios of the [Explore Core Features](/explore/) section.
+
+```sh
+$ sudo ifconfig lo0 alias 127.0.0.4
+$ sudo ifconfig lo0 alias 127.0.0.5
+$ sudo ifconfig lo0 alias 127.0.0.6
+$ sudo ifconfig lo0 alias 127.0.0.7
+```

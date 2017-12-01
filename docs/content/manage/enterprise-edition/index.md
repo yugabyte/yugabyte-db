@@ -1,6 +1,6 @@
 ---
 title: Enterprise Edition
-weight: 71
+weight: 710
 ---
 
 <div>

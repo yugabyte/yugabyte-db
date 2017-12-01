@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T20:08:11+01:00
 title: Develop Apps
-weight: 54
+weight: 540
 ---
 
 The YugaByte DB package ships with multiple Apache Cassandra Query Language (CQL) and Redis sample apps that you can use as a starting point for developing your own application. The CQL apps available are `CassandraHelloWorld`, `CassandraKeyValue`, `CassandraStockTicker`, `CassandraTimeseries`, `CassandraUserId`, `CassandraSparkWordCount`. The Redis apps available are `RedisKeyValue` and `RedisPipelinedKeyValue`.

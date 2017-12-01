@@ -46,823 +46,827 @@ googleAnalytics = "UA-104956980-1"
 	name   = "Introduction"
 	identifier = "intro"
 	url    = "introduction/"
-	weight = 2
+	weight = 20
 
 [[menu.main]]
 	name = "Overview"
 	parent = "intro"
 	url = "introduction/overview/"
-	weight = 3
+	weight = 30
 
 [[menu.main]]
 	name = "Core Features"
 	parent = "intro"
 	url = "introduction/core-features/"
-	weight = 4
+	weight = 40
 
 [[menu.main]]
 	name = "Benefits"
 	parent = "intro"
 	url = "introduction/benefits/"
-	weight = 5
+	weight = 50
 
 [[menu.main]]
 	name = "Quick Start"
 	identifier = "quick-start"
 	url = "quick-start/"
-	weight = 10
+	weight = 100
 
 [[menu.main]]
 	name = "1. Install YugaByte DB"
 	parent = "quick-start"
 	url = "quick-start/install/"
-	weight = 11
+	weight = 110
 
 [[menu.main]]
 	name = "2. Create Local Cluster"
 	parent = "quick-start"
 	url = "quick-start/create-local-cluster/"
-	weight = 12
+	weight = 120
 
 [[menu.main]]
 	name = "3. Test YugaByte CQL"
 	parent = "quick-start"
 	url = "quick-start/test-cql/"
-	weight = 13
+	weight = 130
 
 [[menu.main]]
 	name = "4. Test YugaByte Redis"
 	parent = "quick-start"
 	url = "quick-start/test-redis/"
-	weight = 14
+	weight = 140
 
 [[menu.main]]
 	name = "5. Run Sample Apps"
 	parent = "quick-start"
 	url = "quick-start/run-sample-apps/"
-	weight = 15
+	weight = 150
 
 [[menu.main]]
 	name = "Explore Core Features"
 	identifier = "explore"
 	url = "explore/"
-	weight = 20
-
-#[[menu.main]]
-#	name = "1. Auto Sharding"
-#	parent = "explore"
-#	url = "explore/auto-sharding/"
-#	weight = 21
+	weight = 200
 
 [[menu.main]]
-	name = "1. Fault Tolerance"
-	parent = "explore"
-	url = "explore/fault-tolerance/"
-	weight = 22
-
-[[menu.main]]
-	name = "2. Linear Scalability"
+	name = "1. Linear Scalability"
 	parent = "explore"
 	url = "explore/linear-scalability/"
-	weight = 23
+	weight = 210
 
 [[menu.main]]
-	name = "3. Tunable Reads"
+	name = "2. Fault Tolerance"
 	parent = "explore"
-	url = "explore/tunable-reads/"
-	weight = 24
+	url = "explore/fault-tolerance/"
+	weight = 220
+
+#[[menu.main]]
+#	name = "3. Auto Sharding"
+#	parent = "explore"
+#	url = "explore/auto-sharding/"
+#	weight = 230
 
 [[menu.main]]
-	name = "4. Auto Rebalancing"
+	name = "3. Auto Rebalancing"
 	parent = "explore"
 	url = "explore/auto-rebalancing/"
-	weight = 25
+	weight = 240
 
 #[[menu.main]]
 #	name = "6. Zero Downtime Reconfig"
 #	parent = "explore"
 #	url = "explore/zero-downtime-reconfig/"
-#	weight = 26
+#	weight = 250
 
-
+[[menu.main]]
+	name = "4. Tunable Reads"
+	parent = "explore"
+	url = "explore/tunable-reads/"
+	weight = 260
 
 [[menu.main]]
 	name   = "Develop"
 	identifier = "develop"
 	url    = "develop/"
-	weight = 54
+	weight = 540
 
 [[menu.main]]
 	name = "CQL Apps"
 	parent = "develop"
 	url = "develop/cql/"
-	weight = 55
+	weight = 550
 
 [[menu.main]]
 	name = "Redis Apps"
 	parent = "develop"
 	url = "develop/redis/"
-	weight = 56
+	weight = 560
 
 [[menu.main]]
 	name   = "Deploy"
 	identifier = "deploy"
 	url    = "deploy/"
-	weight = 60
+	weight = 600
 
 [[menu.main]]
-	name = "Community Edition"
+	name = "Multi-Node Cluster"
 	parent = "deploy"
-	identifier = "community-edition"
-	url = "deploy/community-edition/"
-	weight = 61
+	identifier = "multi-node-cluster"
+	url = "deploy/multi-node-cluster/"
+	weight = 610
 
 [[menu.main]]
 	name = "Enterprise Edition"
 	parent = "deploy"
 	identifier = "enterprise-edition"
 	url = "deploy/enterprise-edition/"
-	weight = 62
+	weight = 620
 
 [[menu.main]]
 	name = "Install Admin Console"
 	parent = "enterprise-edition"
 	url = "deploy/enterprise-edition/admin-console/"
-	weight = 63
+	weight = 630
 
 [[menu.main]]
 	name   = "Configure Cloud Providers"
 	parent = "enterprise-edition"
 	url    = "deploy/enterprise-edition/configure-cloud-providers/"
-	weight = 64
+	weight = 640
 
 [[menu.main]]
 	name   = "Manage"
 	identifier = "manage"
 	url    = "manage/"
-	weight = 70
+	weight = 700
+
+[[menu.main]]
+	name = "Troubleshoot"
+	parent = "manage"
+	url = "manage/troubleshoot/"
+	weight = 701
+
+[[menu.main]]
+	name = "Diagnostics Reporting"
+	parent = "manage"
+	url = "manage/diagnostics-reporting/"
+	weight = 702
 
 [[menu.main]]
 	name   = "Enterprise Edition"
 	identifier = "manage-ee"
 	parent = "manage"
 	url    = "manage/enterprise-edition/"
-	weight = 71
+	weight = 710
 
 [[menu.main]]
 	name   = "Create Universe"
 	parent = "manage-ee"
 	url    = "manage/enterprise-edition/create-universe/"
-	weight = 72
+	weight = 720
 
 [[menu.main]]
 	name   = "Edit Universe"
 	parent = "manage-ee"
 	url    = "manage/enterprise-edition/edit-universe/"
-	weight = 73
+	weight = 730
 
 [[menu.main]]
 	name   = "Edit Config Flags"
 	parent = "manage-ee"
 	url    = "manage/enterprise-edition/edit-config/"
-	weight = 74
+	weight = 740
 
 [[menu.main]]
 	name   = "Upgrade Universe"
 	parent = "manage-ee"
 	url    = "manage/enterprise-edition/upgrade-universe/"
-	weight = 75
+	weight = 750
 
 [[menu.main]]
 	name   = "Delete Universe"
 	parent = "manage-ee"
 	url    = "manage/enterprise-edition/delete-universe/"
-	weight = 76
-
-[[menu.main]]
-	name = "Diagnostics Reporting"
-	parent = "manage"
-	url = "manage/diagnostics-reporting/"
-	weight = 80
+	weight = 760
 
 [[menu.main]]
 	name   = "Architecture"
 	identifier = "architecture"
 	url = "architecture/"
-	weight = 90
+	weight = 900
 
 [[menu.main]]
 	name   = "Concepts"
 	parent = "architecture"
 	identifier = "concepts"
 	url = "architecture/concepts/"
-	weight = 91
+	weight = 910
 
 [[menu.main]]
 	name   = "Single Node"
 	parent = "concepts"
 	url = "architecture/concepts/single-node/"
-	weight = 92
+	weight = 920
 
 [[menu.main]]
 	name   = "Universe, YB-TServer, YB-Master"
 	parent = "concepts"
 	url = "architecture/concepts/universe/"
-	weight = 93
+	weight = 930
 
 [[menu.main]]
 	name   = "Sharding"
 	parent = "concepts"
 	url = "architecture/concepts/sharding/"
-	weight = 94
+	weight = 940
 
 [[menu.main]]
 	name   = "Replication"
 	parent = "concepts"
 	url = "architecture/concepts/replication/"
-	weight = 95
+	weight = 950
 
 [[menu.main]]
 	name   = "Persistence"
 	parent = "concepts"
 	url = "architecture/concepts/persistence/"
-	weight = 96
+	weight = 960
 
 [[menu.main]]
 	name   = "Query Layer"
 	parent = "concepts"
 	url = "architecture/concepts/yql/"
-	weight = 97
+	weight = 970
 
 [[menu.main]]
 	name   = "Acknowledgements"
 	parent = "concepts"
 	url = "architecture/concepts/acknowledgements/"
-	weight = 98
+	weight = 980
 
 [[menu.main]]
 	name   = "Core Functions"
 	parent = "architecture"
 	identifier = "core-functions"
 	url = "architecture/core-functions/"
-	weight = 99
+	weight = 990
 
 [[menu.main]]
 	name   = "Universe Creation"
 	parent = "core-functions"
 	url = "architecture/core-functions/universe-creation/"
-	weight = 100
+	weight = 1000
 
 [[menu.main]]
 	name   = "Table Creation"
 	parent = "core-functions"
 	url = "architecture/core-functions/table-creation/"
-	weight = 101
+	weight = 1010
 
 [[menu.main]]
 	name   = "Write IO Path"
 	parent = "core-functions"
 	url = "architecture/core-functions/write-path/"
-	weight = 102
+	weight = 1020
 
 [[menu.main]]
 	name   = "Read IO Path"
 	parent = "core-functions"
 	url = "architecture/core-functions/read-path/"
-	weight = 103
+	weight = 1030
 
 [[menu.main]]
 	name   = "High Availability"
 	parent = "core-functions"
 	url = "architecture/core-functions/high-availability/"
-	weight = 104
+	weight = 1040
 
 #[[menu.main]]
 #	name   = "Operations"
 #	parent = "architecture"
 #	url = "architecture/operations/"
-#	weight = 105
+#	weight = 1050
 
 #[[menu.main]]
 #	name   = "Enterprise Features"
 #	parent = "architecture"
 #	url = "architecture/enterprise-features/"
-#	weight = 106
+#	weight = 1060
 
 [[menu.main]]
 	name   = "Comparisons"
 	parent = "architecture"
 	identifier = "comparisons"
 	url = "architecture/comparisons/"
-	weight = 107
+	weight = 1070
 
 [[menu.main]]
 	name   = "Apache Cassandra"
 	parent = "comparisons"
 	url = "architecture/comparisons/cassandra/"
-	weight = 108
+	weight = 1080
 
 [[menu.main]]
 	name   = "MongoDB"
 	parent = "comparisons"
 	url = "architecture/comparisons/mongodb/"
-	weight = 109
+	weight = 1090
 
 [[menu.main]]
 	name   = "Redis"
 	parent = "comparisons"
 	url = "architecture/comparisons/redis/"
-	weight = 110
+	weight = 1100
 
 [[menu.main]]
 	name   = "Apache HBase"
 	parent = "comparisons"
 	url = "architecture/comparisons/hbase/"
-	weight = 111
+	weight = 1110
 
 [[menu.main]]
 	name   = "Client API Reference"
-	weight = 120
-	url = "api/"
 	identifier = "API"
+	url = "api/"
+	weight = 1200
 
 [[menu.main]]
 	name = "Apache Cassandra"
-	weight = 121
+	weight = 1210
 	identifier = "api-cql"
 	parent = "API"
 	url = "api/cql/"
 
 [[menu.main]]
 	name = "ALTER TABLE"
-	weight = 122
+	weight = 1220
 	parent = "api-cql"
 	url = "api/cql/ddl_alter_table/"
 
 [[menu.main]]
 	name = "CREATE KEYSPACE"
-	weight = 123
+	weight = 1230
 	parent = "api-cql"
 	url = "api/cql/ddl_create_keyspace/"
 
 [[menu.main]]
 	name = "CREATE TABLE"
-	weight = 124
+	weight = 1240
 	parent = "api-cql"
 	url = "api/cql/ddl_create_table/"
 
 [[menu.main]]
 	name = "CREATE TYPE"
-	weight = 125
+	weight = 1250
 	parent = "api-cql"
 	url = "api/cql/ddl_create_type/"
 
 [[menu.main]]
 	name = "DROP KEYSPACE"
-	weight = 126
+	weight = 1260
 	parent = "api-cql"
 	url = "api/cql/ddl_drop_keyspace/"
 
 [[menu.main]]
 	name = "DROP TABLE"
-	weight = 127
+	weight = 1270
 	parent = "api-cql"
 	url = "api/cql/ddl_drop_table/"
 
 [[menu.main]]
 	name = "DROP TYPE"
-	weight = 128
+	weight = 1280
 	parent = "api-cql"
 	url = "api/cql/ddl_drop_type/"
 
 [[menu.main]]
 	name = "USE"
-	weight = 129
+	weight = 1290
 	parent = "api-cql"
 	url = "api/cql/ddl_use/"
 
 [[menu.main]]
 	name = "INSERT"
-	weight = 130
+	weight = 1300
 	parent = "api-cql"
 	url = "api/cql/dml_insert/"
 
 [[menu.main]]
 	name = "SELECT"
-	weight = 131
+	weight = 1310
 	parent = "api-cql"
 	url = "api/cql/dml_select/"
 
 [[menu.main]]
 	name = "UPDATE"
-	weight = 132
+	weight = 1320
 	parent = "api-cql"
 	url = "api/cql/dml_update/"
 
 [[menu.main]]
 	name = "DELETE"
-	weight = 133
+	weight = 1330
 	parent = "api-cql"
 	url = "api/cql/dml_delete/"
 
 [[menu.main]]
 	name = "Simple Value"
-	weight = 134
+	weight = 1340
 	parent = "api-cql"
 	url = "api/cql/expr_simple/"
 
 [[menu.main]]
 	name = "Subscript"
-	weight = 135
+	weight = 1350
 	parent = "api-cql"
 	url = "api/cql/expr_subscript/"
 
 [[menu.main]]
 	name = "Operator Call"
-	weight = 136
+	weight = 1360
 	parent = "api-cql"
 	url = "api/cql/expr_ocall/"
 
 [[menu.main]]
 	name = "Function Call"
-	weight = 137
+	weight = 1370
 	parent = "api-cql"
 	url = "api/cql/expr_fcall/"
 
 [[menu.main]]
 	name = "BIGINT"
-	weight = 138
+	weight = 1380
 	parent = "api-cql"
 	url = "api/cql/type_int/"
 
 [[menu.main]]
 	name = "BLOB"
-	weight = 139
+	weight = 1390
 	parent = "api-cql"
 	url = "api/cql/type_blob/"
 
 [[menu.main]]
 	name = "BOOLEAN"
-	weight = 140
+	weight = 1400
 	parent = "api-cql"
 	url = "api/cql/type_bool/"
 
 [[menu.main]]
 	name = "COUNTER"
-	weight = 141
+	weight = 1410
 	parent = "api-cql"
 	url = "api/cql/type_int/"
 
 [[menu.main]]
 	name = "DECIMAL"
-	weight = 142
+	weight = 1420
 	parent = "api-cql"
 	url = "api/cql/type_number/"
 
 [[menu.main]]
 	name = "DOUBLE"
-	weight = 143
+	weight = 1430
 	parent = "api-cql"
 	url = "api/cql/type_number/"
 
 [[menu.main]]
 	name = "FLOAT"
-	weight = 144
+	weight = 1440
 	parent = "api-cql"
 	url = "api/cql/type_number/"
 
 [[menu.main]]
 	name = "FROZEN"
-	weight = 145
+	weight = 1450
 	parent = "api-cql"
 	url = "api/cql/type_frozen/"
 
 [[menu.main]]
 	name = "INET"
-	weight = 146
+	weight = 1460
 	parent = "api-cql"
 	url = "api/cql/type_inet/"
 
 [[menu.main]]
 	name = "INT"
-	weight = 147
+	weight = 1470
 	parent = "api-cql"
 	url = "api/cql/type_int/"
 
 [[menu.main]]
 	name = "LIST"
-	weight = 148
+	weight = 1480
 	parent = "api-cql"
 	url = "api/cql/type_collection/"
 
 [[menu.main]]
 	name = "MAP"
-	weight = 149
+	weight = 1490
 	parent = "api-cql"
 	url = "api/cql/type_collection/"
 
 [[menu.main]]
 	name = "SET"
-	weight = 150
+	weight = 1500
 	parent = "api-cql"
 	url = "api/cql/type_collection/"
 
 [[menu.main]]
 	name = "SMALLINT"
-	weight = 151
+	weight = 1510
 	parent = "api-cql"
 	url = "api/cql/type_int/"
 
 [[menu.main]]
 	name = "TEXT"
-	weight = 152
+	weight = 1520
 	parent = "api-cql"
 	url = "api/cql/type_text/"
 
 [[menu.main]]
 	name = "TIMESTAMP"
-	weight = 153
+	weight = 1530
 	parent = "api-cql"
 	url = "api/cql/type_timestamp/"
 
 [[menu.main]]
 	name = "TIMEUUID"
-	weight = 154
+	weight = 1540
 	parent = "api-cql"
 	url = "api/cql/type_uuid/"
 
 [[menu.main]]
 	name = "TINYINT"
-	weight = 155
+	weight = 1550
 	parent = "api-cql"
 	url = "api/cql/type_int/"
 
 [[menu.main]]
 	name = "UUID"
-	weight = 156
+	weight = 1560
 	parent = "api-cql"
 	url = "api/cql/type_uuid/"
 
 [[menu.main]]
 	name = "Redis"
-	weight = 200
+	weight = 2000
 	identifier = "api-redis"
 	parent = "API"
 	url = "api/redis/"
 
 [[menu.main]]
 	name = "APPEND"
-	weight = 201
+	weight = 2010
 	parent = "api-redis"
 	url = "api/redis/append/"
 
 [[menu.main]]
 	name = "AUTH"
-	weight = 202
+	weight = 2020
 	parent = "api-redis"
 	url = "api/redis/auth/"
 
 [[menu.main]]
 	name = "CONFIG"
-	weight = 203
+	weight = 2030
 	parent = "api-redis"
 	url = "api/redis/config/"
 
 [[menu.main]]
 	name = "DEL"
-	weight = 204
+	weight = 2040
 	parent = "api-redis"
 	url = "api/redis/del/"
 
 [[menu.main]]
 	name = "ECHO"
-	weight = 205
+	weight = 2050
 	parent = "api-redis"
 	url = "api/redis/echo/"
 
 [[menu.main]]
 	name = "EXISTS"
-	weight = 206
+	weight = 2060
 	parent = "api-redis"
 	url = "api/redis/exists/"
 
 [[menu.main]]
 	name = "GET"
-	weight = 207
+	weight = 2070
 	parent = "api-redis"
 	url = "api/redis/get/"
 
 [[menu.main]]
 	name = "GETRANGE"
-	weight = 208
+	weight = 2080
 	parent = "api-redis"
 	url = "api/redis/getrange/"
 
 [[menu.main]]
 	name = "GETSET"
-	weight = 209
+	weight = 2090
 	parent = "api-redis"
 	url = "api/redis/getset/"
 
 [[menu.main]]
 	name = "HDEL"
-	weight = 210
+	weight = 2100
 	parent = "api-redis"
 	url = "api/redis/hdel/"
 
 [[menu.main]]
 	name = "HEXISTS"
-	weight = 211
+	weight = 2110
 	parent = "api-redis"
 	url = "api/redis/hexists/"
 
 [[menu.main]]
 	name = "HGET"
-	weight = 212
+	weight = 2120
 	parent = "api-redis"
 	url = "api/redis/hget/"
 
 [[menu.main]]
 	name = "HGETALL"
-	weight = 213
+	weight = 2130
 	parent = "api-redis"
 	url = "api/redis/hgetall/"
 
 [[menu.main]]
 	name = "HKEYS"
-	weight = 214
+	weight = 2140
 	parent = "api-redis"
 	url = "api/redis/hkeys/"
 
 [[menu.main]]
 	name = "HLEN"
-	weight = 215
+	weight = 2150
 	parent = "api-redis"
 	url = "api/redis/hlen/"
 
 [[menu.main]]
 	name = "HMGET"
-	weight = 216
+	weight = 2160
 	parent = "api-redis"
 	url = "api/redis/hmget/"
 
 [[menu.main]]
 	name = "HMSET"
-	weight = 217
+	weight = 2170
 	parent = "api-redis"
 	url = "api/redis/hmset/"
 
 [[menu.main]]
 	name = "HSET"
-	weight = 218
+	weight = 2180
 	parent = "api-redis"
 	url = "api/redis/hset/"
 
 [[menu.main]]
 	name = "HSTRLEN"
-	weight = 219
+	weight = 2190
 	parent = "api-redis"
 	url = "api/redis/hstrlen/"
 
 [[menu.main]]
 	name = "HVALS"
-	weight = 220
+	weight = 2200
 	parent = "api-redis"
 	url = "api/redis/hvals/"
 
 [[menu.main]]
 	name = "INCR"
-	weight = 221
+	weight = 2210
 	parent = "api-redis"
 	url = "api/redis/incr/"
 
 [[menu.main]]
 	name = "MGET"
-	weight = 222
+	weight = 2220
 	parent = "api-redis"
 	url = "api/redis/mget/"
 
 [[menu.main]]
 	name = "MSET"
-	weight = 223
+	weight = 2230
 	parent = "api-redis"
 	url = "api/redis/mset/"
 
 [[menu.main]]
 	name = "ROLE"
-	weight = 224
+	weight = 2240
 	parent = "api-redis"
 	url = "api/redis/role/"
 
 [[menu.main]]
 	name = "SADD"
-	weight = 225
+	weight = 2250
 	parent = "api-redis"
 	url = "api/redis/sadd/"
 
 [[menu.main]]
 	name = "SCARD"
-	weight = 226
+	weight = 2260
 	parent = "api-redis"
 	url = "api/redis/scard/"
 
 [[menu.main]]
 	name = "SET"
-	weight = 227
+	weight = 2270
 	parent = "api-redis"
 	url = "api/redis/set/"
 
 [[menu.main]]
 	name = "SETRANGE"
-	weight = 228
+	weight = 2280
 	parent = "api-redis"
 	url = "api/redis/setrange/"
 
 [[menu.main]]
 	name = "SISMEMBER"
-	weight = 229
+	weight = 2290
 	parent = "api-redis"
 	url = "api/redis/sismember/"
 
 [[menu.main]]
 	name = "SMEMBERS"
-	weight = 230
+	weight = 2300
 	parent = "api-redis"
 	url = "api/redis/smembers/"
 
 [[menu.main]]
 	name = "SREM"
-	weight = 231
+	weight = 2310
 	parent = "api-redis"
 	url = "api/redis/srem/"
 
 [[menu.main]]
 	name = "STRLEN"
-	weight = 232
+	weight = 2320
 	parent = "api-redis"
 	url = "api/redis/strlen/"
 
 [[menu.main]]
 	name = "TSADD"
-	weight = 233
+	weight = 2330
 	parent = "api-redis"
 	url = "api/redis/tsadd/"
 
 [[menu.main]]
 	name = "TSGET"
-	weight = 234
+	weight = 2340
 	parent = "api-redis"
 	url = "api/redis/tsget/"
 
 [[menu.main]]
 	name = "TSRANGEBYTIME"
-	weight = 235
+	weight = 2350
 	parent = "api-redis"
 	url = "api/redis/tsrangebytime/"
 
 [[menu.main]]
 	name = "TSREM"
-	weight = 236
+	weight = 2360
 	parent = "api-redis"
 	url = "api/redis/tsrem/"
 
 [[menu.main]]
 	name   = "Admin Reference"
-	weight = 240
+	weight = 2400
 	url = "admin/"
 	identifier = "admin"
 
 [[menu.main]]
 	name = "yb-ctl"
-	weight = 241
+	weight = 2410
 	identifier = "yb-ctl"
 	parent = "admin"
 	url = "admin/yb-ctl/"
 
 [[menu.main]]
 	name = "yb-docker-ctl"
-	weight = 242
+	weight = 2420
 	identifier = "yb-docker-ctl"
 	parent = "admin"
 	url = "admin/yb-docker-ctl/"
 
 [[menu.main]]
 	name = "docker-compose"
-	weight = 243
+	weight = 2430
 	identifier = "docker-compose"
 	parent = "admin"
 	url = "admin/docker-compose/"
 
 [[menu.main]]
 	name = "yb-master"
-	weight = 244
+	weight = 2440
 	identifier = "yb-master"
 	parent = "admin"
 	url = "admin/yb-master/"
 
 [[menu.main]]
 	name = "yb-tserver"
-	weight = 245
+	weight = 2450
 	identifier = "yb-tserver"
 	parent = "admin"
 	url = "admin/yb-tserver/"
@@ -870,7 +874,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "FAQs"
 	url    = "faq/"
-	weight = 245
+	weight = 2460
 
 [blackfriday]
 	smartypants	= true

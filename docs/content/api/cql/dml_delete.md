@@ -1,6 +1,7 @@
 ---
 title: DELETE
 summary: Deletes rows from a table.
+weight: 1330
 ---
 
 ## Synopsis

@@ -1,16 +1,15 @@
 ---
-date: 2016-03-08T21:07:13+01:00
 title: Core Features
-weight: 4
+weight: 40
 ---
 
 ## Linear scalability
 
-The figure below represents a single YugaByte DB cluster, also known as a Universe. Each node in the universe runs the YugaByte Tablet Server (aka YB-TServer) and optionally the YugaByte Master Server (aka the YB-Master). Note that the number of YB-Masters in an universe equals the replication factor configured for the universe. More details can be found [here](/architecture/concepts/universe/).
+The figure below represents a single YugaByte DB cluster, also known as a Universe. Each node in the universe runs the YugaByte Tablet Server (aka YB-TServer) and optionally the YugaByte Master Server (aka the YB-Master). Note that the number of YB-Masters in an universe equals the replication factor configured for the universe. More details can be found in the [Architecture](/architecture/concepts/universe/) section.
 
 Each node runs on top of a instance that provides a Linux-based compute and a set of persistent disks, preferably locally attached SSDs. The cloud provider can be any of the major public cloud providers, an on-premises datacenter or even Docker engine. Universes can be linearly expanded to add new nodes in an existing availability zone, or a new availabilty zone or even new regions at any point of time. They can also be shrinked to remove unused nodes as per business needs all without taking any downtime or performance slowdown.
 
-![YugaByte Architecture](/images/linear-scalability.png)
+![YugaByte DB Architecture](/images/linear-scalability.png)
 
 Shards of tables, also known as [tablets](/architecture/concepts/sharding/), are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API](https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in [DocDB](/architecture/concepts/persistence/), YugaByte DB's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is [consistently replicated](/architecture/concepts/replication/) onto other nodes using the [Raft distributed consensus algorithm](https://raft.github.io/raft.pdf).
 
@@ -20,7 +19,13 @@ YugaByte DB's architecture is completely decentralized and hence has no single p
 
 ## Multi-active availability
 
-In terms of the CAP theorem, YugaByte DB is a Consistent and Partition-tolerant (CP) database. It provides High Availability (HA) for most practical situations even while remaining strongly consistent. While this may seem a violation of the CAP theorem, that is not the case since CAP treats availability as a binary option whereas YugaByte treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available). During network partitions, the replicas for the impacted tablets form two groups: majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. **Multi-active availability** here refers to YugaByte's ability to serve reads in any partition of a cluster. Note that requiring majority of replicas to synchronously agree on the value written is by design to ensure strong write consistency and thus obviate the need for any unpredictable background anti-entropy operations. 
+In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c-for-cap-theorem-8e9b78600e6d), YugaByte DB is a Consistent and Partition-tolerant (CP) database. It ensures High Availability (HA) for most practical situations even while remaining strongly consistent. While this may seem to be a violation of the CAP theorem, that is not the case. CAP treats availability as a binary option whereas YugaByte DB treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available). 
+
+- During network partitions or node failures, the replicas of the impacted tablets (whose leaders got partitioned out or lost) form two grounps: a majority partition that can still establish a Raft consensus and a minority partition that cannot establish such a consensus (given the lack of quorum). The replicas in the majority partition elect a new leader among themselves in a matter of seconds and are ready to accept new writes after the leader election completes. For these few seconds till the new leader is elected, the DB is unable to accept new writes given the design choice of prioritizing consistency over availabililty. All the leader replicas in the minority partition lose their leadership during these few seconds and hence become followers. 
+
+- Majority partitions are available for both reads and writes. Minority partitions are available for reads only (even if the data may get stale as time passes) but not available for writes. **Multi-active availability** refers to YugaByte DB's ability to serve writes on any node of a non-partitioned cluster and reads on any node of a partitioned cluster.
+
+- The above approach obviates the need for any unpredictable background anti-entropy operations as well as need to establish quorum at read time. As shown in the [YCSB benchmarks against Apache Cassandra](https://forum.yugabyte.com/t/ycsb-benchmark-results-for-yugabyte-and-apache-cassandra-again-with-p99-latencies/99), YugaByte DB delivers predictable p99 latencies as well as 3x read throughput that is also timeline-consistent (given no quorum is needed at read time).
 
 ## Zero data loss writes
 
@@ -28,7 +33,7 @@ Writes (and background data rebalancing in general) are guaranteed to be zero da
 
 ![Strongly consistent writes](/images/strongly-consistent-writes.png)
 
-## Low latency, always-on reads
+## Low latency, timeline-consistent, always-on reads
 
 YugaByte DB enables a spectrum of consistency options when it comes to reads while keeping writes always strongly consistent via sync replication (based on Raft distributed consensus). The read consistency options that can be set on a per client basis are Strong (default), Bounded staleness, Session, Consistent Prefix. Eventual consistency is not supported given that such a consistency level is not appropriate for mission-critical applications.
 

@@ -1,7 +1,7 @@
 ---
 title: Simple Expressions
 summary: Columns, constants, and null.
-weight: 135
+weight: 1350
 ---
 
 Simple expression can be either a column, a constant, or NULL.

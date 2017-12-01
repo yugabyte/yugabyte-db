@@ -1,7 +1,7 @@
 ---
 title: Non-integer Numbers
 summary: FLOAT, DOUBLE, and DECIMAL
-weight: 143
+weight: 1430
 ---
 
 ## Synopsis

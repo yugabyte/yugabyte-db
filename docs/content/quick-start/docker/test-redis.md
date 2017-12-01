@@ -1,4 +1,3 @@
-
 - Run redis-cli to connect to the service.
 
 ```sh

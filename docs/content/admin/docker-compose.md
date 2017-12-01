@@ -1,7 +1,6 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: docker-compose
-weight: 243
+weight: 2430
 ---
 
 Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters.
@@ -18,7 +17,7 @@ $ docker pull yugabytedb/yugabyte
 ### Create a docker-compose.yaml file
 
 ```sh
-version: '3'
+version: '2'
 
 services:
   yb-master:
@@ -75,5 +74,5 @@ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
 ## Stop the cluster
 
 ```sh
-docker rm -f $(docker ps -aq)
+docker-compose down
 ```

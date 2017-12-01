@@ -1,7 +1,7 @@
 ---
 title: SELECT
 summary: Retrieves rows from a table
-weight: 131
+weight: 1310
 ---
 
 ## Synopsis

@@ -1,216 +1,41 @@
 ---
-date: 2016-03-09T00:11:02+01:00
 title: Fault Tolerance
-weight: 22
+weight: 220
 ---
 
-YugaByte can automatically handle failures and therfore provides [high availability](/architecture/core-functions/high-availability/) for both Redis as well as Cassandra tables. In this tutorial, we will look at how fault tolerance is achieved for CQL, but the same steps would work for Redis tables as well. We will create these tables with a replication factor = 5 that allows a [fault tolerance](/architecture/concepts/replication/) of 2. We will then insert some data through one of the nodes, and query the data from another node. We will then kill two nodes (one by one) and make sure we are able to successfully query and write data after each of these faults.
+YugaByte DB can automatically handle failures and therefore provides [high availability](/architecture/core-functions/high-availability/) for both Redis as well as Cassandra tables. In this tutorial, we will look at how fault tolerance is achieved for CQL, but the same steps would work for Redis tables as well. We will create these tables with a replication factor = 5 that allows a [fault tolerance](/architecture/concepts/replication/) of 2. We will then insert some data through one of the nodes, and query the data from another node. We will then kill two nodes (one by one) and make sure we are able to successfully query and write data after each of these faults.
 
-## Step 1. Setup - create universe
+If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](/quick-start/install/) guide.
 
-If you have a previously running local universe, destroy it using the following:
+<ul class="nav nav-tabs">
+  <li class="active">
+    <a data-toggle="tab" href="#docker">
+      <i class="icon-docker"></i>
+      Docker
+    </a>
+  </li>
+  <li >
+    <a data-toggle="tab" href="#macos">
+      <i class="fa fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a data-toggle="tab" href="#linux">
+      <i class="fa fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+</ul>
 
-```sh
-./bin/yb-ctl destroy
-```
-
-Start a new local universe with replication factor 5.
-
-```sh
-./bin/yb-ctl --replication_factor 5 create
-```
-
-Connect to cqlsh on node 1.
-
-```sh
-./bin/cqlsh 127.0.0.1
-Connected to local cluster at 127.0.0.1:9042.
-[cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-Use HELP for help.
-cqlsh>
-```
-
-Create a CQL keyspace and a table.
-
-```sh
-cqlsh> CREATE KEYSPACE users;
-cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
-	                               email text,
-	                               password text,
-	                               profile frozen<map<text, text>>);
-```
-
-
-## Step 2. Insert CQL data through node 1
-
-Connect to node 1 using cqlsh by doing the following.
-
-```sh
-cqlsh 127.0.0.1
-```
-
-Now insert some data by typing the following into cqlsh shell we joined above.
-
-```sh
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
-  (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
-   {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
-  );
-
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
-  (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
-   {'firstname': 'Sherlock', 'lastname': 'Holmes'}
-  );
-
-```
-
-Query all the rows.
-
-```sh
-cqlsh> SELECT email, profile FROM users.profile;
-
- email                        | profile
-------------------------------+---------------------------------------------------------------
-      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
- sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
-
-(2 rows)
-```
-
-
-## Step 3. Read data through another nodes
-
-Let us now query the data from node 5.
-
-```sh
-# Connect to node 5
-./bin/cqlsh 127.0.0.5
-
-cqlsh> SELECT email, profile FROM users.profile;
-
- email                        | profile
-------------------------------+---------------------------------------------------------------
-      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
- sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
-
-(2 rows)
-```
-
-## Step 4. Verify killing one node has no impact
-
-We have 5 nodes in this universe. You can verify this by running the following.
-
-```sh
-$ ./bin/yb-ctl status
-...
-2017-11-19 23:20:35,029 INFO: Server is running: type=tserver, node_id=1, ...
-2017-11-19 23:20:35,061 INFO: Server is running: type=tserver, node_id=2, ...
-2017-11-19 23:20:35,094 INFO: Server is running: type=tserver, node_id=3, ...
-2017-11-19 23:20:35,128 INFO: Server is running: type=tserver, node_id=4, ...
-2017-11-19 23:20:35,155 INFO: Server is running: type=tserver, node_id=5, ...
-```
-
-Let us kill node 5 by doing the following.
-
-```sh
-./bin/yb-ctl remove_node 5
-```
-
-Now running the status command should show only 4 nodes:
-
-```sh
-$ ./bin/yb-ctl status
-...
-2017-11-19 23:20:35,029 INFO: Server is running: type=tserver, node_id=1, ...
-2017-11-19 23:20:35,061 INFO: Server is running: type=tserver, node_id=2, ...
-2017-11-19 23:20:35,094 INFO: Server is running: type=tserver, node_id=3, ...
-2017-11-19 23:20:35,128 INFO: Server is running: type=tserver, node_id=4, ...
-2017-11-19 23:22:12,997 INFO: Server type=tserver node_id=5 is not running
-```
-
-Now connect to node 4.
-
-```sh
-./bin/cqlsh 127.0.0.4
-```
-
-Let us insert some data.
-
-```sh
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
-  (3000, 'austin.powers@yugabyte.com', 'imGroovy',
-   {'firstname': 'Austin', 'lastname': 'Powers'});
-```
-
-Now query the data.
-
-```sh
-cqlsh> SELECT email, profile FROM users.profile;
-
- email                        | profile
-------------------------------+---------------------------------------------------------------
-      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
- sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
-   austin.powers@yugabyte.com |                 {'firstname': 'Austin', 'lastname': 'Powers'}
-
-(3 rows)
-```
-
-
-## Step 5. Verify killing second node has no impact
-
-Let us kill node 1.
-
-```sh
-./bin/yb-ctl remove_node 1
-```
-
-We can check the status to verify:
-
-```sh
-$ ./bin/yb-ctl status
-...
-2017-11-19 23:31:02,183 INFO: Server type=tserver node_id=1 is not running
-2017-11-19 23:31:02,217 INFO: Server is running: type=tserver, node_id=2, ...
-2017-11-19 23:31:02,245 INFO: Server is running: type=tserver, node_id=3, ...
-2017-11-19 23:31:02,278 INFO: Server is running: type=tserver, node_id=4, ...
-2017-11-19 23:31:02,308 INFO: Server type=tserver node_id=5 is not running
-```
-
-Now let us connect to node 2.
-
-```sh
-./bin/cqlsh 127.0.0.2
-```
-
-Insert some data.
-
-```sh
-cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
-  (4000, 'superman@yugabyte.com', 'iCanFly',
-   {'firstname': 'Clark', 'lastname': 'Kent'});
-```
-
-Run the query.
-
-```sh
-cqlsh> SELECT email, profile FROM users.profile;
-
- email                        | profile
-------------------------------+---------------------------------------------------------------
-        superman@yugabyte.com |                    {'firstname': 'Clark', 'lastname': 'Kent'}
-      james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
- sherlock.holmes@yugabyte.com |               {'firstname': 'Sherlock', 'lastname': 'Holmes'}
-   austin.powers@yugabyte.com |                 {'firstname': 'Austin', 'lastname': 'Powers'}
-
-(4 rows)
-```
-
-
-## Step 6. Clean up (optional)
-
-Optionally, you can shutdown the local cluster created in Step 1.
-
-```sh
-$ ./bin/yb-ctl destroy
-```
+<div class="tab-content">
+  <div id="docker" class="tab-pane fade in active">
+    {{% includeMarkdown "/explore/docker/fault-tolerance.md" /%}}
+  </div>
+  <div id="macos" class="tab-pane fade">
+    {{% includeMarkdown "/explore/binary/fault-tolerance.md" /%}}
+  </div>
+  <div id="linux" class="tab-pane fade">
+    {{% includeMarkdown "/explore/binary/fault-tolerance.md" /%}}
+  </div> 
+</div>

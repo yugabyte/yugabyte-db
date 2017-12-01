@@ -1,6 +1,6 @@
 ---
 title: SETRANGE
-weight: 228
+weight: 2280
 ---
 ## SYNOPSIS
 <b>`SETRANGE key offset value`</b><br>
