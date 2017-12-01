@@ -116,6 +116,9 @@ class GraphPanel extends Component {
     if (isNonEmptyArray(this.props.nodePrefixes)) {
       params.nodePrefix = this.props.nodePrefixes[0];
     }
+    if (isNonEmptyString(this.props.tableName)) {
+      params.tableName = this.props.tableName;
+    }
 
     this.props.queryMetrics(params, type);
   }
