@@ -12,7 +12,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import './TableDetail.scss';
 import { ItemStatus } from '../../common/indicators';
 import { TableSchema, BulkImportContainer, DropTableContainer } from '../../tables';
-import {GraphPanelHeaderContainer, GraphPanelContainer} from '../../metrics';
+import { CustomerMetricsPanel } from '../../metrics';
 
 export default class TableDetail extends Component {
   static propTypes = {
@@ -64,16 +64,11 @@ export default class TableDetail extends Component {
     let tableMetricsContent = <span/>;
     if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentTableDetail)) {
       const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
-      const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
       const tableName = currentTableDetail.tableDetails.tableName;
-      const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
-        return <GraphPanelContainer key={idx} type={type} nodePrefixes={nodePrefixes} tableName={tableName}/>;
-      });
-
       tableMetricsContent =
-        (<GraphPanelHeaderContainer origin={"table"}>
-          {graphPanelContainers}
-        </GraphPanelHeaderContainer>);
+        (<CustomerMetricsPanel origin={"table"}
+                               tableName={tableName}
+                               nodePrefixes={nodePrefixes} />);
     }
 
     const tabElements = [
