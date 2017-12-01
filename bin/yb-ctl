@@ -229,6 +229,8 @@ class ClusterControl():
         www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
         if os.path.isdir(www_path):
             command_list.append("--webserver_doc_root \"{}\"".format(www_path))
+        if bool(os.getenv('YB_DISABLE_CALLHOME')):
+            command_list.append('--callhome_enabled=false')
         # Add custom args per type of server
         command_list.extend(specific_arg_list)
         # Redirect out and err and launch in the background
