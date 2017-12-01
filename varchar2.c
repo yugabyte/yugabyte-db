@@ -22,7 +22,6 @@
 PG_FUNCTION_INFO_V1(varchar2in);
 PG_FUNCTION_INFO_V1(varchar2out);
 PG_FUNCTION_INFO_V1(varchar2);
-PG_FUNCTION_INFO_V1(varchar2typmodin);
 PG_FUNCTION_INFO_V1(varchar2recv);
 
 /*

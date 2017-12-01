@@ -23,7 +23,6 @@
 PG_FUNCTION_INFO_V1(nvarchar2in);
 PG_FUNCTION_INFO_V1(nvarchar2out);
 PG_FUNCTION_INFO_V1(nvarchar2);
-PG_FUNCTION_INFO_V1(nvarchar2typmodin);
 PG_FUNCTION_INFO_V1(nvarchar2recv);
 
 /*

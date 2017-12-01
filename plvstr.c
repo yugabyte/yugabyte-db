@@ -28,7 +28,6 @@
 
 PG_FUNCTION_INFO_V1(plvstr_rvrs);
 PG_FUNCTION_INFO_V1(plvstr_normalize);
-PG_FUNCTION_INFO_V1(plvstr_is_prefix);
 PG_FUNCTION_INFO_V1(plvstr_is_prefix_text);
 PG_FUNCTION_INFO_V1(plvstr_is_prefix_int);
 PG_FUNCTION_INFO_V1(plvstr_is_prefix_int64);
