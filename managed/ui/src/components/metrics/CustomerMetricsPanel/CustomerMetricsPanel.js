@@ -1,32 +1,36 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import Measure from 'react-measure';
 import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
+import PropTypes from 'prop-types';
+
+const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
 
 export default class CustomerMetricsPanel extends Component {
-  state = {
-    dimensions: {},
-  }
+  static propTypes = {
+    origin: PropTypes.oneOf(['customer', 'universe', 'table']).isRequired,
+    nodePrefixes: PropTypes.array,
+    width: PropTypes.number,
+    tableName: PropTypes.string
+  };
 
-  onResize(dimensions) {
-    dimensions.width -= 2;
-    this.setState({dimensions});
-  }
+  static defaultProps = {
+    nodePrefixes:[],
+    tableName: null,
+    width: null
+  };
 
   render() {
-    const {origin, nodePrefixes} = this.props;
+    const { origin, nodePrefixes, width, tableName } = this.props;
+    const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
+      return (<GraphPanelContainer key={idx} type={type} width={width}
+                  nodePrefixes={nodePrefixes} tableName={tableName} />);
+    });
+
     return (
-      <Measure onMeasure={this.onResize.bind(this)}>
-        <GraphPanelHeaderContainer origin={origin}>
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"proxies"} />
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"server"} />
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"cql"} />
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"redis"} />
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"tserver"} />
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"lsmdb"} />
-        </GraphPanelHeaderContainer>
-      </Measure>
+      <GraphPanelHeaderContainer origin={origin}>
+        {graphPanelContainers}
+      </GraphPanelHeaderContainer>
     );
   }
 }

@@ -5,7 +5,7 @@ import { Link, withRouter, browserHistory} from 'react-router';
 import { Grid, Row, Col, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { UniverseInfoPanel, ResourceStringPanel } from '../../panels';
-import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
+import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
@@ -79,10 +79,6 @@ class UniverseDetail extends Component {
     }
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
-    const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
-    const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
-      return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />;
-    });
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
         <YBPanelItem
@@ -119,9 +115,7 @@ class UniverseDetail extends Component {
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
         <div className="universe-detail-content-container">
-          <GraphPanelHeaderContainer origin={"universe"}>
-            {graphPanelContainers}
-          </GraphPanelHeaderContainer>
+          <CustomerMetricsPanel origin={"universe"} width={width} nodePrefixes={nodePrefixes} />
         </div>
       </Tab>,
       <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab" mountOnEnter={true} unmountOnExit={true}>
