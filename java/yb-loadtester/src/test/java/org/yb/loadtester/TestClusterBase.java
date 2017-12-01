@@ -157,9 +157,7 @@ public class TestClusterBase extends BaseCQLTest {
 
     public LoadTester(String workload, String cqlContactPoints) throws Exception {
       String args[] = {"--workload", workload, "--nodes", cqlContactPoints,
-        "--print_all_exceptions", "--num_threads_read", "1", "--num_threads_write", "1",
-        "--refresh_partition_metadata_seconds",
-        Integer.toString(PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS)};
+        "--print_all_exceptions", "--num_threads_read", "1", "--num_threads_write", "1"};
       CmdLineOpts configuration = CmdLineOpts.createFromArgs(args);
       testRunner = new Main(configuration);
     }
@@ -369,8 +367,8 @@ public class TestClusterBase extends BaseCQLTest {
 
     assertEquals(100, (int) client.getLoadMoveCompletion().getPercentCompleted());
 
-    // Wait for the partition aware policy to refresh, to remove old tservers before we kill them.
-    Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
 
     // Kill the old tablet servers.
     // TODO: Check that the blacklisted tablet servers have no tablets assigned.
@@ -422,8 +420,8 @@ public class TestClusterBase extends BaseCQLTest {
       // Wait for the load to be balanced across the cluster.
       assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS * 2));
 
-      // Wait for the partition aware policy to refresh.
-      Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
+      // Wait for the partition metadata to refresh.
+      Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     }
 
     verifyStateAfterTServerAddition();
@@ -470,8 +468,8 @@ public class TestClusterBase extends BaseCQLTest {
     // Wait for load to balance across the target number of tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, toRF));
 
-    // Wait for the partition aware policy to refresh.
-    Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     LOG.info("Load Balance Done.");
 
     verifyClusterHealth(toRF);

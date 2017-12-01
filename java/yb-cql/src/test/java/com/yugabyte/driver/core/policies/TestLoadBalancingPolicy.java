@@ -25,6 +25,7 @@ import com.datastax.driver.core.utils.UUIDs;
 
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.IOMetrics;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
 import org.apache.commons.lang3.RandomStringUtils;
@@ -232,6 +233,10 @@ public class TestLoadBalancingPolicy extends BaseCQLTest {
 
         list.add(list_set);
       }
+
+      // Wait to ensure the partitions metadata was updated.
+      // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
+      Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
 
       UserType udt_type = cluster.getMetadata()
           .getKeyspace(DEFAULT_TEST_KEYSPACE)

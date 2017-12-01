@@ -20,7 +20,7 @@ namespace yb {
 namespace master {
 
 YQLPartitionsVTable::YQLPartitionsVTable(const Master* const master)
-    : YQLVirtualTable(master::kSystemSchemaPartitionsTableName, master, CreateSchema()) {
+    : YQLVirtualTable(master::kSystemPartitionsTableName, master, CreateSchema()) {
 }
 
 Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
@@ -46,13 +46,16 @@ Status YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request,
     std::vector<scoped_refptr<TabletInfo> > tablets;
     table->GetAllTablets(&tablets);
     for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+      TabletLocationsPB tabletLocationsPB;
+      Status s = catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB);
+      // Skip not-found tablets: they might not be running yet or have been deleted.
+      if (!s.ok()) {
+        continue;
+      }
 
       QLRow& row = (*vtable)->Extend();
       RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
       RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
-
-      TabletLocationsPB tabletLocationsPB;
-      RETURN_NOT_OK(catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB));
 
       const PartitionPB& partition = tabletLocationsPB.partition();
       RETURN_NOT_OK(SetColumnValue(kStartKey, partition.partition_key_start(), &row));

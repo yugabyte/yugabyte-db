@@ -25,6 +25,8 @@ SystemTablesHandler::SystemTablesHandler()
                        string(kSystemPeersTableName)),
         std::make_pair(string(kSystemNamespaceId),
                        string(kSystemLocalTableName)),
+        std::make_pair(string(kSystemNamespaceId),
+                       string(kSystemPartitionsTableName)),
         std::make_pair(string(kSystemSchemaNamespaceId),
                        string(kSystemSchemaAggregatesTableName)),
         std::make_pair(string(kSystemSchemaNamespaceId),
@@ -43,8 +45,6 @@ SystemTablesHandler::SystemTablesHandler()
                        string(kSystemSchemaKeyspacesTableName)),
         std::make_pair(string(kSystemSchemaNamespaceId),
                        string(kSystemSchemaTablesTableName)),
-        std::make_pair(string(kSystemSchemaNamespaceId),
-                       string(kSystemSchemaPartitionsTableName)),
         std::make_pair(string(kSystemAuthNamespaceId),
                        string(kSystemAuthRolesTableName)),
     }) {

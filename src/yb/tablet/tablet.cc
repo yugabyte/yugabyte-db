@@ -701,19 +701,35 @@ Status Tablet::HandleQLReadRequest(
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                 const size_t row_count,
                                                 QLResponsePB* response) const {
-  // If there is no hash column in the read request, this is a full-table query. And if there is no
-  // paging state in the response, we are done reading from the current tablet. In this case, we
-  // should return the exclusive end partition key of this tablet if not empty which is the start
-  // key of the next tablet. Do so only if the request has no row count limit, or there is and we
-  // haven't hit it, or we are asked to return paging state even when we have hit the limit.
-  // Otherwise, leave the paging state empty which means we are completely done reading for the
-  // whole SELECT statement.
-  if (ql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
-      (!ql_read_request.has_limit() || row_count < ql_read_request.limit() ||
-          ql_read_request.return_paging_state())) {
-    const string& next_partition_key = metadata_->partition().partition_key_end();
-    if (!next_partition_key.empty()) {
-      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+
+  // If the response does not have a paging state, it means we are done reading the current tablet.
+  // But, if the request does not have the hash columns set, this must be a table-scan, so we need
+  // to decide if we are done or if we need to move to the next tablet.
+  // If we did not reach the:
+  //   1. max number of results (LIMIT clause -- if set)
+  //   2. end of the table (this was the last tablet)
+  //   3. max partition key (upper bound condition using 'token' -- if set)
+  // we set the paging state to point to the exclusive end partition key of this tablet, which is
+  // the start key of the next tablet).
+  if (ql_read_request.hashed_column_values().empty() && !response->has_paging_state()) {
+
+    // Check we did not reach the results limit.
+    // If return_paging_state is set, it means the request limit is actually just the page size.
+    if (!ql_read_request.has_limit() ||
+        row_count < ql_read_request.limit() ||
+        ql_read_request.return_paging_state()) {
+
+      // Check we did not reach the last tablet.
+      const string& next_partition_key = metadata_->partition().partition_key_end();
+      if (!next_partition_key.empty()) {
+        uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(next_partition_key);
+
+        // Check we did not reach the max partition key.
+        if (!ql_read_request.has_max_hash_code() ||
+            next_hash_code <= ql_read_request.max_hash_code()) {
+          response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+        }
+      }
     }
   }
 

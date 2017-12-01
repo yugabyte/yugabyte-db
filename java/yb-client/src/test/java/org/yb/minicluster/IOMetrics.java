@@ -82,6 +82,14 @@ public class IOMetrics {
     return this;
   }
 
+  public int readCount() {
+    return localReadCount + remoteReadCount;
+  }
+
+  public int writeCount() {
+    return localWriteCount + remoteWriteCount;
+  }
+
   @Override
   public String toString() {
     return "local read = " + localReadCount +

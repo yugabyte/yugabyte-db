@@ -33,15 +33,6 @@ import static org.junit.Assert.fail;
 
 public class TestBindVariable extends BaseCQLTest {
 
-  private void testBindServerError(String stmt, Object... values) {
-    try {
-      session.execute(stmt, values);
-      fail("Statement \"" + stmt + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.ServerError e) {
-      LOG.info("Expected exception", e);
-    }
-  }
-
   private void testInvalidBindStatement(String stmt, Object... values) {
     try {
       session.execute(stmt, values);
@@ -1382,11 +1373,11 @@ public class TestBindVariable extends BaseCQLTest {
         "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", Long.MIN_VALUE);
 
     // timestamp value of wrong types.
-    testBindServerError(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+    testInvalidBindStatement(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
         "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", new Integer(100));
-    testBindServerError(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+    testInvalidBindStatement(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
         "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", "abc");
-    testBindServerError(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
+    testInvalidBindStatement(String.format("INSERT INTO %s (h1, h2, r1, r2, v1, v2) " +
         "VALUES (0, '0', 0, '0', 0, ?) USING TIMESTAMP ?", tableName), "0", new Float(3.0));
 
     LOG.info("End test");

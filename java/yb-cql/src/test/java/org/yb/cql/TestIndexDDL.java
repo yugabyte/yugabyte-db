@@ -19,6 +19,7 @@ import org.junit.Test;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
+import org.yb.minicluster.MiniYBCluster;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -38,6 +39,10 @@ public class TestIndexDDL extends BaseCQLTest {
     // Create test indexes with range and non-primary-key columns.
     session.execute("create index i1 on test_create_index (r1, r2) covering (c1, c4);");
     session.execute("create index i2 on test_create_index (c4) covering (c1, c2);");
+
+    // Wait to ensure the partitions metadata was updated.
+    // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
 
     // Verify the indexes.
     TableMetadata table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE)
@@ -106,6 +111,10 @@ public class TestIndexDDL extends BaseCQLTest {
     session.execute("create index i2 on test_clustering_index ((c1, c2), c3, c4) " +
                     "with clustering order by (c3 asc, c4 desc) covering (c5);");
 
+    // Wait to ensure the partitions metadata was updated.
+    // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
     // Verify the indexes.
     TableMetadata table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE)
                           .getTable("test_clustering_index");
@@ -147,6 +156,10 @@ public class TestIndexDDL extends BaseCQLTest {
     // Create test index.
     session.execute("create index i1 on test_drop_index (r1, r2) covering (c1, c2);");
 
+    // Wait to ensure the partitions metadata was updated.
+    // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
     // Verify the index.
     TableMetadata table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE)
                           .getTable("test_drop_index");
@@ -156,6 +169,11 @@ public class TestIndexDDL extends BaseCQLTest {
 
     // Drop test index.
     session.execute("drop index i1;");
+
+    // Wait to ensure the partitions metadata was updated.
+    // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
     table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getTable("test_drop_index");
     assertNull(table.getIndex("i1"));
     assertNull(session.execute("select options from system_schema.indexes " +
@@ -164,6 +182,11 @@ public class TestIndexDDL extends BaseCQLTest {
 
     // Create another test index by the same name. Verify new index is created.
     session.execute("create index i1 on test_drop_index (c1, c2) covering (c3, c4);");
+
+    // Wait to ensure the partitions metadata was updated.
+    // Schema change should trigger a refresh but playing it safe in case debouncer will delay it.
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
     table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getTable("test_drop_index");
     assertEquals("CREATE INDEX i1 ON cql_test_keyspace.test_drop_index (c1, c2, h1, h2, r1, r2);",
                  table.getIndex("i1").asCQLQuery());
@@ -183,8 +206,6 @@ public class TestIndexDDL extends BaseCQLTest {
     // Create test index.
     session.execute("create index i1 on test_drop_cascade (r1, r2) covering (c1, c2);");
     session.execute("create index i2 on test_drop_cascade (c4) covering (c1);");
-    TableMetadata table = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE)
-                          .getTable("test_drop_cascade");
     assertIndexOptions("test_drop_cascade", "i1", "Row[{target=r1, r2, h1, h2, covering=c1, c2}]");
     assertIndexOptions("test_drop_cascade", "i2", "Row[{target=c4, h1, h2, r1, r2, covering=c1}]");
 

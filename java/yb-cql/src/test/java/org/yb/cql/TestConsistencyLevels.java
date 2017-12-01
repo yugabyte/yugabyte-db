@@ -47,12 +47,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   private static final int NUM_ROWS = 1000;
 
-  private static final int NUM_OPS = 1000;
-
-  @Override
-  public boolean waitForTServersAtMasterLeader() throws Exception {
-    return super.waitForTServersAtMasterLeader();
-  }
+  private static final int NUM_OPS = 100;
 
   private static final int WAIT_FOR_REPLICATION_TIMEOUT_MS = 30000;
 
@@ -232,8 +227,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
           DCAwareRoundRobinPolicy.builder()
           .withLocalDc(REGION_PREFIX + i)
           .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
-          .build(),
-          PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS)).build();
+          .build())).build();
       Session session = cluster.connect();
 
       // Find the tserver, cqlproxy for this region.

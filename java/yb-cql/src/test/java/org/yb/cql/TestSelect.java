@@ -14,10 +14,13 @@ package org.yb.cql;
 
 import java.util.*;
 
+import com.yugabyte.driver.core.TableSplitMetadata;
+import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import org.junit.Test;
 
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 
@@ -826,5 +829,75 @@ public class TestSelect extends BaseCQLTest {
     runInvalidStmt("INSERT INTO test_select (t.h1) VALUES (1);");
     runInvalidStmt("UPDATE test_select SET t.h1 = 1;");
     runInvalidStmt("DELETE t.h1 FROM test_select;");
+  }
+
+  @Test
+  public void testScanLimitsWithToken() throws Exception {
+    // The main test for 'token' scans is ql-query-test.cc/TestScanWithBounds which checks that the
+    // correct results are returned.
+    // Therefore, it ensures that we are hitting all the right tablets.
+    // However, hitting extra tablets (outside the scan range) never yields any new results, so that
+    // test would not catch redundant tablet reads.
+    //
+    // This test only checks that the expected number of partitions (tablets) are hit when doing
+    // table scans with upper/lower bounds via 'token'.
+    // Since we know all the needed ones are hit (based on ql-query-test.cc/TestScanWithBounds),
+    // this ensures we are not doing redundant reads.
+    // TODO (Mihnea) Find a way to integrate these two tests into one.
+
+    session.execute("CREATE TABLE test_token_limits(h int primary key, v int);");
+
+    // Wait to ensure the partitions metadata was updated.
+    // Schema change should trigger a refresh but playing it safe in case debouncing will delay it.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
+    // Get the number of partitions of the source table.
+    TableSplitMetadata tableSplitMetadata =
+        cluster.getMetadata().getTableSplitMetadata(DEFAULT_TEST_KEYSPACE, "test_token_limits");
+    Integer[] keys = tableSplitMetadata.getPartitionMap().navigableKeySet().toArray(new Integer[0]);
+    // Need at least 3 partitions for this test to make sense -- current default for tests is 9.
+    assertTrue(keys.length >= 3);
+
+    PreparedStatement select =
+        session.prepare("SELECT * FROM test_token_limits where token(h) >= ? and token(h) < ?");
+
+    // Scan [first, last) partitions interval -- should hit all partitions except last.
+    {
+      // Get the initial metrics.
+      Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+      session.execute(select.bind(PartitionAwarePolicy.YBToCqlHashCode(keys[0]),
+                                  PartitionAwarePolicy.YBToCqlHashCode(keys[keys.length - 1])));
+      // Check the metrics again.
+      IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+      // Check all but one partitions were hit.
+      assertEquals(keys.length - 1, totalMetrics.readCount());
+    }
+
+    // Scan [first, second) partitions interval -- should hit just first partition.
+    {
+      // Get the initial metrics.
+      Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+
+      // Execute query.
+      session.execute(select.bind(PartitionAwarePolicy.YBToCqlHashCode(keys[0]),
+                                  PartitionAwarePolicy.YBToCqlHashCode(keys[1])));
+      // Check the metrics again.
+      IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+      // Check only one partition was hit.
+      assertEquals(1, totalMetrics.readCount());
+    }
+
+    // Scan [second-to-last, last) partitions interval -- should hit just second-to-last partition.
+    {
+      // Get the initial metrics.
+      Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
+      // Execute query.
+      session.execute(select.bind(PartitionAwarePolicy.YBToCqlHashCode(keys[keys.length - 2]),
+                                  PartitionAwarePolicy.YBToCqlHashCode(keys[keys.length - 1])));
+      // Get the metrics again.
+      IOMetrics totalMetrics = getCombinedMetrics(initialMetrics);
+      // Check only one partition was hit.
+      assertEquals(1, totalMetrics.readCount());
+    }
   }
 }

@@ -29,10 +29,13 @@
       <artifactId>yb-cql</artifactId>
       <type>test-jar</type>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>yb-cql</artifactId>
+      <!-- Exclude Cassandra driver because it is already included by Spark -->
+      <exclusions>
+        <exclusion>
+          <groupId>com.yugabyte</groupId>
+          <artifactId>cassandra-driver-core</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>
@@ -64,24 +67,8 @@
       <artifactId>jedis</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.datastax.spark</groupId>
-      <!-- Using unshaded jar and excluding dependencies of YB-Cql to avoid conflicts -->
-      <artifactId>spark-cassandra-connector-unshaded_2.10</artifactId>
-      <!-- Exclude netty-all dependency to avoid conflict (ENG-1971) -->
-      <exclusions>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty-all</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>com.yugabyte</groupId>
-          <artifactId>cassandra-driver-core</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>com.google.guava</groupId>
-          <artifactId>guava</artifactId>
-        </exclusion>
-      </exclusions>
+      <groupId>com.yugabyte.spark</groupId>
+      <artifactId>spark-cassandra-connector_2.10</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>

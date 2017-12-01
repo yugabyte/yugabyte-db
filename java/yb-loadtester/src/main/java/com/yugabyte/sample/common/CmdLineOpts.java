@@ -53,6 +53,7 @@ public class CmdLineOpts {
     CassandraSparkWordCount,
     RedisKeyValue,
     RedisPipelinedKeyValue,
+    CassandraSparkKeyValueCopy,
   }
 
   // The class type of the app needed to spawn new objects.
@@ -306,18 +307,6 @@ public class CmdLineOpts {
       LOG.info("Drop table name: " + AppBase.appConfig.tableName);
       AppBase.appConfig.shouldDropTable = true;
     }
-    if (cmd.hasOption("refresh_partition_metadata_seconds")) {
-      int refreshFrequencySeconds = Integer.parseInt(
-        cmd.getOptionValue("refresh_partition_metadata_seconds"));
-
-      if (refreshFrequencySeconds <= 0) {
-        LOG.warn(String.format("Invalid --refresh_partition_metadata_seconds provided: %d, using " +
-          "the default %d instead", refreshFrequencySeconds, AppBase.appConfig
-          .partitionMetadataRefreshSeconds));
-      } else {
-        AppBase.appConfig.partitionMetadataRefreshSeconds = refreshFrequencySeconds;
-      }
-    }
     LOG.info("Num unique keys to insert: " + AppBase.appConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
         (AppBase.appConfig.numKeysToWrite - AppBase.appConfig.numUniqueKeysToWrite));
@@ -392,8 +381,6 @@ public class CmdLineOpts {
         "Disable Yugabyte load-balancing policy.");
     options.addOption("print_all_exceptions", false,
       "Print all exceptions encountered on the client, instead of sampling.");
-    options.addOption("refresh_partition_metadata_seconds", true,
-      "The interval (in seconds) after which we should refresh the partition metadata.");
     options.addOption("skip_workload", false, "Skip running workload.");
 
     // Options for CassandraTimeseries workload.
@@ -426,6 +413,7 @@ public class CmdLineOpts {
                       "[CassandraBatchKeyValue] Number of keys to write in a batch.");
 
     options.addOption("with_local_dc", true, "Local DC name.");
+
     // Options for CassandraSparkWordCount app.
     options.addOption("wordcount_input_file", true,
                       "[CassandraSparkWordCount] Input file with words to count.");
@@ -435,6 +423,13 @@ public class CmdLineOpts {
 
     options.addOption("wordcount_output_table", true,
                       "[CassandraSparkWordCount] Output table to write wordcounts to.");
+
+    // Options for CassandraSparkKeyValueCopy app.
+    options.addOption("keyvaluecopy_input_table", true,
+        "[CassandraSparkKeyValueCopy] Input table with text keys and blob values.");
+
+    options.addOption("keyvaluecopy_output_table", true,
+        "[CassandraSparkKeyValueCopy] Output table to copy the key-value pairs to.");
 
     // Options for Redis Pipelined Key Value
     options.addOption(

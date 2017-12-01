@@ -459,10 +459,13 @@ ReadRpc::ReadRpc(
 
 ReadRpc::~ReadRpc() {
   MonoTime end_time = MonoTime::Now();
-  if (async_rpc_metrics_) {
+
+  // Get locality metrics if enabled, but skip for system tables as those go to the master.
+  if (async_rpc_metrics_ && !table()->name().is_system()) {
     scoped_refptr<Histogram> read_rpc_time = IsLocalCall() ?
                                              async_rpc_metrics_->local_read_rpc_time :
                                              async_rpc_metrics_->remote_read_rpc_time;
+
     read_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
 }

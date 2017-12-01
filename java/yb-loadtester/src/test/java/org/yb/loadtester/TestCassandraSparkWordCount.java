@@ -30,7 +30,7 @@ public class TestCassandraSparkWordCount extends BaseCQLTest {
 
     private CassandraSparkWordCount app = new CassandraSparkWordCount();
 
-    @Ignore
+    @Test
     public void testDefaultRun() throws Exception {
         // Set up config.
         String nodes = miniCluster.getCQLContactPoints().stream()

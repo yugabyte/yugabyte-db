@@ -71,11 +71,11 @@
     <maven-s3-wagon.version>1.2.1</maven-s3-wagon.version>
     <maven-source-plugin.version>3.0.1</maven-source-plugin.version>
     <commons-codec.version>1.10</commons-codec.version>
-    <spark-cassandra-connector.version>2.0.0</spark-cassandra-connector.version>
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
-    <cassandra-driver-core.version>3.2.0-yb-9</cassandra-driver-core.version>
+    <cassandra-driver-core.version>3.2.0-yb-10</cassandra-driver-core.version>
+    <spark-cassandra-connector.version>2.0.5-yb-1</spark-cassandra-connector.version>
     <lz4.version>1.3.0</lz4.version>
     <snappy.version>1.1.4</snappy.version>
     <commons-cli.version>1.2</commons-cli.version>
@@ -495,9 +495,8 @@
         <version>${commons-codec.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.datastax.spark</groupId>
-        <!-- Using unshaded jar and excluding dependencies of YB-Cql to avoid conflicts -->
-        <artifactId>spark-cassandra-connector-unshaded_2.10</artifactId>
+        <groupId>com.yugabyte.spark</groupId>
+        <artifactId>spark-cassandra-connector_2.10</artifactId>
         <version>${spark-cassandra-connector.version}</version>
       </dependency>
       <dependency>

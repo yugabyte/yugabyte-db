@@ -82,8 +82,8 @@ public class TestRF1Cluster extends TestClusterBase {
     // Wait for load to balance across the three tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, 3));
 
-    // Wait for the partition aware policy to refresh.
-    Thread.sleep(2 * PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS * 1000);
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     LOG.info("Load Balance Done.");
   }
 }

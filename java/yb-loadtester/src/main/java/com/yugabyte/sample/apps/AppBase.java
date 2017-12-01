@@ -124,16 +124,15 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (cassandra_cluster == null) {
       Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(nodes);
       if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
-        builder.withLoadBalancingPolicy((new PartitionAwarePolicy(
+        builder.withLoadBalancingPolicy(new PartitionAwarePolicy(
             DCAwareRoundRobinPolicy.builder()
               .withLocalDc(appConfig.localDc)
               .withUsedHostsPerRemoteDc(Integer.MAX_VALUE)
               .allowRemoteDCsForLocalConsistencyLevel()
-              .build(),
-            appConfig.partitionMetadataRefreshSeconds)));
+              .build()));
       } else if (!appConfig.disableYBLoadBalancingPolicy) {
         builder.withLoadBalancingPolicy(
-          new PartitionAwarePolicy(appConfig.partitionMetadataRefreshSeconds));
+          new PartitionAwarePolicy());
       }
       cassandra_cluster = builder.build();
       LOG.debug("Connected to cluster: " + cassandra_cluster.getClusterName());

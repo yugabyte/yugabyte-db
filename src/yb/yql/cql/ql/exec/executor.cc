@@ -506,7 +506,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
-    RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
+    st = (PTExprToPB(tnode->limit(), &limit_pb));
+    if (PREDICT_FALSE(!st.ok())) {
+      return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+    }
+
     if (limit_pb.has_value() && IsNull(limit_pb.value())) {
       return exec_context_->Error("LIMIT value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
     }
@@ -660,14 +664,20 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   shared_ptr<YBqlWriteOp> insert_op(table->NewQLInsert());
   QLWriteRequestPB *req = insert_op->mutable_request();
 
-  // Set the ttl
-  RETURN_NOT_OK(TtlToPB(tnode, req));
+  // Set the ttl.
+  Status s = TtlToPB(tnode, req);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  }
 
-  // Set the timestamp
-  RETURN_NOT_OK(TimestampToPB(tnode, req));
+  // Set the timestamp.
+  s = TimestampToPB(tnode, req);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Set the values for columns.
-  Status s = ColumnArgsToPB(table, tnode, req);
+  s = ColumnArgsToPB(table, tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -698,12 +708,15 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   shared_ptr<YBqlWriteOp> delete_op(table->NewQLDelete());
   QLWriteRequestPB *req = delete_op->mutable_request();
 
-  // Set the timestamp
-  RETURN_NOT_OK(TimestampToPB(tnode, req));
+  // Set the timestamp.
+  Status s = TimestampToPB(tnode, req);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
-  Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
+  s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
                              tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
@@ -747,11 +760,17 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
-  // Set the ttl
-  RETURN_NOT_OK(TtlToPB(tnode, req));
+  // Set the ttl.
+  s = TtlToPB(tnode, req);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  }
 
-  // Set the timestamp
-  RETURN_NOT_OK(TimestampToPB(tnode, req));
+  // Set the timestamp.
+  s = TimestampToPB(tnode, req);
+  if (PREDICT_FALSE(!s.ok())) {
+    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(table, tnode, update_op->mutable_request());

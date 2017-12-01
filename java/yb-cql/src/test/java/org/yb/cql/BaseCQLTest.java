@@ -65,8 +65,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final String TSERVER_READ_METRIC =
     "handler_latency_yb_tserver_TabletServerService_Read";
 
-  protected static final int PARTITION_POLICY_REFRESH_FREQUENCY_SECONDS = 10;
-
   protected Cluster cluster;
   protected Session session;
 
@@ -460,7 +458,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   public RocksDBMetrics getRocksDBMetric(String tableName) throws IOException {
     Set<String> tabletIDs = new HashSet<>();
-    for (Row row : session.execute("SELECT id FROM system_schema.partitions " +
+    for (Row row : session.execute("SELECT id FROM system.partitions " +
                                    "WHERE keyspace_name = ? and table_name = ?;",
                                    DEFAULT_TEST_KEYSPACE, tableName).all()) {
       tabletIDs.add(ServerInfo.UUIDToHostString(row.getUUID("id")));

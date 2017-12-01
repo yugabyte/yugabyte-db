@@ -27,7 +27,7 @@ public class TestTimestampDataType extends BaseCQLTest {
   // Utility function for timestamp tests: Generates a comprehensive map from valid date-time inputs
   // to corresponding Date values -- includes both integer and string inputs.
   Map<String, Date> generateTimestampMap() {
-    Map<String, Date> ts_values = new HashMap();
+    Map<String, Date> ts_values = new HashMap<>();
     Calendar cal = new GregorianCalendar();
 
     // adding some Integer input values

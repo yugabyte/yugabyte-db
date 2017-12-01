@@ -929,7 +929,7 @@ Status CatalogManager::PrepareSystemTables() {
   RETURN_NOT_OK((PrepareSystemTableTemplate<QLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLPartitionsVTable>(
-      kSystemSchemaPartitionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+      kSystemPartitionsTableName, kSystemNamespaceName, kSystemNamespaceId)));
 
   // System auth tables
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(

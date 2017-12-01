@@ -273,7 +273,7 @@ public class TestSystemTables extends BaseCQLTest {
     assertTrue(verifySystemSchemaTables(results, "system_schema", "views"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "keyspaces"));
     assertTrue(verifySystemSchemaTables(results, "system_schema", "tables"));
-    assertTrue(verifySystemSchemaTables(results, "system_schema", "partitions"));
+    assertTrue(verifySystemSchemaTables(results, "system", "partitions"));
     assertTrue(verifySystemSchemaTables(results, "system", "peers"));
     assertTrue(verifySystemSchemaTables(results, "system", "local"));
     assertTrue(verifySystemSchemaTables(results, "system_auth", "roles"));
@@ -414,7 +414,7 @@ public class TestSystemTables extends BaseCQLTest {
     session.execute("CREATE TABLE test_keyspace.test_table (k int PRIMARY KEY);");
 
     // Select partitions of test table.
-    List<Row> partitions = session.execute("SELECT * FROM system_schema.partitions WHERE " +
+    List<Row> partitions = session.execute("SELECT * FROM system.partitions WHERE " +
                                            "keyspace_name = 'test_keyspace' AND " +
                                            "table_name = 'test_table';").all();
     // Add 1 to account for tserver started in testSystemPeersTable().

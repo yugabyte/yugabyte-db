@@ -35,6 +35,7 @@ static const char* const kSystemTracesNamespaceName = "system_traces";
 
 static const char* const kSystemPeersTableName = "peers";
 static const char* const kSystemLocalTableName = "local";
+static const char* const kSystemPartitionsTableName = "partitions";
 
 static const char* const kSystemSchemaAggregatesTableName = "aggregates";
 static const char* const kSystemSchemaColumnsTableName = "columns";
@@ -45,7 +46,6 @@ static const char* const kSystemSchemaTypesTableName = "types";
 static const char* const kSystemSchemaViewsTableName = "views";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
-static const char* const kSystemSchemaPartitionsTableName = "partitions";
 
 static const char* const kSystemAuthRolesTableName = "roles";
 

@@ -246,7 +246,7 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
     ql_read_request_->set_max_hash_code(
           PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
   } else {
-    // Otherwise, set the parititon key to the hash_code (lower bound of the token range).
+    // Otherwise, set the partition key to the hash_code (lower bound of the token range).
     if (ql_read_request_->has_hash_code()) {
       uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
       *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
