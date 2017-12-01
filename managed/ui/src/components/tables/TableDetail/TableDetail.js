@@ -7,11 +7,12 @@ import { Link } from 'react-router';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
-import { isValidObject } from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import './TableDetail.scss';
 import { ItemStatus } from '../../common/indicators';
 import { TableSchema, BulkImportContainer, DropTableContainer } from '../../tables';
+import {GraphPanelHeaderContainer, GraphPanelContainer} from '../../metrics';
 
 export default class TableDetail extends Component {
   static propTypes = {
@@ -60,6 +61,21 @@ export default class TableDetail extends Component {
     if (isValidObject(currentTableDetail)) {
       tableSchemaContent = <TableSchema tableInfo={currentTableDetail}/>;
     }
+    let tableMetricsContent = <span/>;
+    if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentTableDetail)) {
+      const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
+      const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
+      const tableName = currentTableDetail.tableDetails.tableName;
+      const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
+        return <GraphPanelContainer key={idx} type={type} nodePrefixes={nodePrefixes} tableName={tableName}/>;
+      });
+
+      tableMetricsContent =
+        (<GraphPanelHeaderContainer origin={"table"}>
+          {graphPanelContainers}
+        </GraphPanelHeaderContainer>);
+    }
+
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         {tableInfoContent}
@@ -67,7 +83,9 @@ export default class TableDetail extends Component {
       <Tab eventKey={"schema"} title="Schema" key="tables-tab">
         {tableSchemaContent}
       </Tab>,
-      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab"/>
+      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
+        {tableMetricsContent}
+      </Tab>
     ];
     let tableName = "";
     if (isValidObject(currentTableDetail.tableDetails)) {

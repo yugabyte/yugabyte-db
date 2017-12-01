@@ -113,6 +113,9 @@ public class CustomerController extends AuthenticatedController {
         filterJson.put("exported_instance", params.remove("nodeName"));
       }
     }
+    if (params.containsKey("tableName")) {
+      filterJson.put("table_name", params.remove("tableName"));
+    }
     params.put("filters", Json.stringify(filterJson));
     try {
       JsonNode response = metricQueryHelper.query(formData.get().metrics, params);
