@@ -62,10 +62,8 @@ PTDmlStmt::~PTDmlStmt() {
 }
 
 CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
-  YBTableName name = table_name();
-
-  return sem_context->LookupTable(name, &table_, &table_columns_, &num_key_columns_,
-                                  &num_hash_key_columns_, &is_system_, IsWriteOp(), table_loc());
+  return sem_context->LookupTable(table_name(), table_loc(), IsWriteOp(), &table_, &is_system_,
+                                  &table_columns_, &num_key_columns_, &num_hash_key_columns_);
 }
 
 // Node semantics analysis.

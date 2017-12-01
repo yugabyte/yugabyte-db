@@ -74,6 +74,7 @@
 #include "yb/ql/ptree/pt_create_table.h"
 #include "yb/ql/ptree/pt_create_type.h"
 #include "yb/ql/ptree/pt_create_index.h"
+#include "yb/ql/ptree/pt_truncate.h"
 #include "yb/ql/ptree/pt_drop.h"
 #include "yb/ql/ptree/pt_type.h"
 #include "yb/ql/ptree/pt_name.h"
@@ -197,6 +198,9 @@ using namespace yb::ql;
                           CreateStmt schema_stmt TableElement TableConstraint
                           columnDef ColConstraint ColConstraintElem
                           ConstraintElem ConstraintAttr
+
+                          // Truncate table.
+                          TruncateStmt
 
                           // Drop.
                           DropStmt
@@ -323,7 +327,7 @@ using namespace yb::ql;
 // Name nodes.
 %type <PName>             indirection_el columnElem
 
-%type <PQualifiedNameListNode> insert_column_list any_name_list
+%type <PQualifiedNameListNode> insert_column_list any_name_list relation_expr_list
 
 %type <PQualifiedName>    qualified_name indirection relation_expr
                           insert_target insert_column_item opt_indirection
@@ -415,7 +419,7 @@ using namespace yb::ql;
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
                           RuleActionStmt RuleActionStmtOrEmpty RuleStmt
-                          SecLabelStmt TransactionStmt TruncateStmt
+                          SecLabelStmt TransactionStmt
                           UnlistenStmt VacuumStmt
                           VariableResetStmt VariableSetStmt VariableShowStmt
                           ViewStmt CheckPointStmt CreateConversionStmt
@@ -511,7 +515,7 @@ using namespace yb::ql;
                           TableFuncElementList opt_type_modifiers prep_type_clause
                           execute_param_clause opt_enum_val_list enum_val_list
                           table_func_column_list create_generic_options
-                          alter_generic_options relation_expr_list dostmt_opt_list
+                          alter_generic_options dostmt_opt_list
                           transform_element_list transform_type_list opt_fdw_options
                           fdw_options for_locking_items
                           locked_rels_list extract_list overlay_list position_list substr_list
@@ -768,6 +772,9 @@ stmt:
     $$ = $1;
   }
   | CreateStmt {
+    $$ = $1;
+  }
+  | TruncateStmt {
     $$ = $1;
   }
   | DropStmt {
@@ -2841,8 +2848,11 @@ relation_expr:
 
 relation_expr_list:
   relation_expr {
+    $$ = MAKE_NODE(@1, PTQualifiedNameListNode, $1);
   }
   | relation_expr_list ',' relation_expr {
+    $1->Append($3);
+    $$ = $1;
   }
 ;
 
@@ -5306,7 +5316,6 @@ inactive_stmt:
   | RuleStmt
   | SecLabelStmt
   | TransactionStmt
-  | TruncateStmt
   | UnlistenStmt
   | VacuumStmt
   | VariableResetStmt
@@ -7282,12 +7291,13 @@ ReassignOwnedStmt:
 
 TruncateStmt:
   TRUNCATE opt_table relation_expr_list opt_restart_seqs opt_drop_behavior {
+    $$ = MAKE_NODE(@1, PTTruncateStmt, $3);
   }
 ;
 
 opt_restart_seqs:
-  CONTINUE_P IDENTITY_P   { $$ = false; }
-  | RESTART IDENTITY_P    { $$ = true; }
+  CONTINUE_P IDENTITY_P   { $$ = false; PARSER_CQL_INVALID(@1); }
+  | RESTART IDENTITY_P    { $$ = true; PARSER_CQL_INVALID(@1); }
   | /* EMPTY */           { $$ = false; }
 ;
 

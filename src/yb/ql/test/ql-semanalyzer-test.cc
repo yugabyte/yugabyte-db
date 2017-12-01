@@ -20,6 +20,7 @@ namespace ql {
 
 using std::make_shared;
 using std::string;
+using strings::Substitute;
 
 class QLTestAnalyzer: public QLTestBase {
  public:
@@ -229,6 +230,26 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (c);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 ((r1), c);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2) COVERING (c);", &parse_tree);
+}
+
+TEST_F(QLTestAnalyzer, TestTruncate) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h int PRIMARY KEY);"));
+
+  // Analyze the TRUNCATE statement.
+  ParseTree::UniPtr parse_tree;
+  ANALYZE_VALID_STMT("TRUNCATE TABLE t;", &parse_tree);
+  ANALYZE_VALID_STMT(Substitute("TRUNCATE TABLE $0.t;", kDefaultKeyspaceName), &parse_tree);
+
+  // No such keyspace
+  ANALYZE_INVALID_STMT("TRUNCATE TABLE invalid_keyspace.t;", &parse_tree);
+  // No such table
+  ANALYZE_INVALID_STMT("TRUNCATE TABLE invalid_table;", &parse_tree);
+  // Only one table can be truncated in each statement.
+  ANALYZE_INVALID_STMT("TRUNCATE TABLE t1, t2;", &parse_tree);
+  // Invalid qualified table name.
+  ANALYZE_INVALID_STMT("TRUNCATE TABLE k.t.c;", &parse_tree);
 }
 
 TEST_F(QLTestAnalyzer, TestMisc) {

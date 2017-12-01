@@ -199,5 +199,16 @@ TEST_F(QLTestParser, TestCreateIndex) {
   PARSE_INVALID_STMT("CREATE INDEX k.i ON k.t (c1, c2, c3, c4);");
 }
 
+TEST_F(QLTestParser, TestTruncate) {
+  // Valid statement: TRUNCATE [TABLE] [keyspace.]table.
+  PARSE_VALID_STMT("TRUNCATE t;");
+  PARSE_VALID_STMT("TRUNCATE TABLE t;");
+  PARSE_VALID_STMT("TRUNCATE TABLE k.t;");
+
+  // Invalid statement: invalid target type.
+  PARSE_INVALID_STMT("TRUNCATE KEYSPACE k;");
+  PARSE_INVALID_STMT("TRUNCATE TYPE t;");
+}
+
 }  // namespace ql
 }  // namespace yb

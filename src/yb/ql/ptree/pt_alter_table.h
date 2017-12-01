@@ -162,7 +162,6 @@ class PTAlterTable : public TreeNode {
 
   int num_key_columns_;
   int num_hash_key_columns_;
-  bool is_system_;
 };
 
 }  // namespace ql

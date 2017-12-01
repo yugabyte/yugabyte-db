@@ -170,7 +170,10 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
     case OBJECT_TABLE: FALLTHROUGH_INTENDED;
     case OBJECT_TYPE:
       if (ptnames_.size() > 2) {
-        return sem_context->Error(this, "Invalid table or type name",
+        return sem_context->Error(this,
+                                  strings::Substitute("Invalid $0 name",
+                                                      object_type == OBJECT_TABLE ?
+                                                      "table" : "type").c_str(),
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }
       if (ptnames_.size() == 1) {

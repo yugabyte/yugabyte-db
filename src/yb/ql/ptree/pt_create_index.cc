@@ -38,14 +38,12 @@ PTCreateIndex::~PTCreateIndex() {
 
 CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Look up indexed table.
-  bool is_system = false;
+  bool is_system_ignored;
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
-  YBTableName table_name = relation_->ToTableName();
-  RETURN_NOT_OK(sem_context->LookupTable(table_name, &table_, &column_descs_, &num_key_columns_,
-                                         &num_hash_key_columns_, &is_system,
-                                         true /* write only */, relation_->loc(),
-                                         true /* with_column_definitions */, &column_definitions_));
-  DCHECK(!is_system);
+  RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
+                                         true /* write_table */, &table_, &is_system_ignored,
+                                         &column_descs_, &num_key_columns_, &num_hash_key_columns_,
+                                         &column_definitions_));
 
   // Save context state, and set "this" as current create-table statement in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();

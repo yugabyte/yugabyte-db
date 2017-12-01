@@ -41,6 +41,7 @@ enum class TreeNodeOpcode {
   kPTAlterTable,
   kPTCreateType,
   kPTCreateIndex,
+  kPTTruncateStmt,
   kPTDropStmt,
   kPTSelectStmt,
   kPTInsertStmt,

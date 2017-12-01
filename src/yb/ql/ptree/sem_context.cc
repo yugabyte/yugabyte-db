@@ -45,15 +45,17 @@ SemContext::~SemContext() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* table,
-                                       MCVector<ColumnDesc>* table_columns,
-                                       int* num_key_columns, int* num_hash_key_columns,
-                                       bool* is_system, bool write_only, const YBLocation& loc,
-                                       const bool with_column_definition,
-                                       MCVector<PTColumnDefinition::SharedPtr>*
-                                       column_definitions) {
+Status SemContext::LookupTable(const YBTableName& name,
+                               const YBLocation& loc,
+                               const bool write_table,
+                               shared_ptr<YBTable>* table,
+                               bool* is_system,
+                               MCVector<ColumnDesc>* col_descs,
+                               int* num_key_columns,
+                               int* num_hash_key_columns,
+                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
   *is_system = name.is_system();
-  if (*is_system && write_only && client::FLAGS_yb_system_namespace_readonly) {
+  if (*is_system && write_table && client::FLAGS_yb_system_namespace_readonly) {
     return Error(loc, ErrorCode::SYSTEM_NAMESPACE_READONLY);
   }
 
@@ -66,49 +68,54 @@ CHECKED_STATUS SemContext::LookupTable(YBTableName name, shared_ptr<YBTable>* ta
 
   const YBSchema& schema = (*table)->schema();
   const int num_columns = schema.num_columns();
-  *num_key_columns = schema.num_key_columns();
-  *num_hash_key_columns = schema.num_hash_key_columns();
-
-  table_columns->resize(num_columns);
-  if (with_column_definition) {
-    column_definitions->resize(num_columns);
+  if (num_key_columns != nullptr) {
+    *num_key_columns = schema.num_key_columns();
   }
-  for (int idx = 0; idx < num_columns; idx++) {
-    // Find the column descriptor.
-    const YBColumnSchema col = schema.Column(idx);
-    (*table_columns)[idx].Init(idx,
-                               schema.ColumnId(idx),
-                               col.name(),
-                               idx < *num_hash_key_columns,
-                               idx < *num_key_columns,
-                               col.is_static(),
-                               col.is_counter(),
-                               col.type(),
-                               YBColumnSchema::ToInternalDataType(col.type()));
+  if (num_hash_key_columns != nullptr) {
+    *num_hash_key_columns = schema.num_hash_key_columns();
+  }
 
-    // Insert the column descriptor, and column definition if requested, to symbol table.
-    MCSharedPtr<MCString> col_name = MCMakeShared<MCString>(PSemMem(), col.name().c_str());
-    RETURN_NOT_OK(MapSymbol(*col_name, &(*table_columns)[idx]));
-    if (with_column_definition) {
-      const PTBaseType::SharedPtr datatype =
-          PTBaseType::FromQLType(PSemMem(), (*table_columns)[idx].ql_type());
-      (*column_definitions)[idx] = PTColumnDefinition::MakeShared(PSemMem(),
-                                                                  nullptr /* loc */,
-                                                                  col_name,
-                                                                  datatype,
-                                                                  nullptr /* qualifiers */);
-      if ((*table_columns)[idx].is_static()) {
-        (*column_definitions)[idx]->set_is_static();
+  if (col_descs != nullptr) {
+    col_descs->resize(num_columns);
+    if (column_definitions != nullptr) {
+      column_definitions->resize(num_columns);
+    }
+    for (int idx = 0; idx < num_columns; idx++) {
+      // Find the column descriptor.
+      const YBColumnSchema col = schema.Column(idx);
+      (*col_descs)[idx].Init(idx,
+                             schema.ColumnId(idx),
+                             col.name(),
+                             idx < *num_hash_key_columns,
+                             idx < *num_key_columns,
+                             col.is_static(),
+                             col.is_counter(),
+                             col.type(),
+                             YBColumnSchema::ToInternalDataType(col.type()));
+
+      // Insert the column descriptor, and column definition if requested, to symbol table.
+      MCSharedPtr<MCString> col_name = MCMakeShared<MCString>(PSemMem(), col.name().c_str());
+      RETURN_NOT_OK(MapSymbol(*col_name, &(*col_descs)[idx]));
+      if (column_definitions != nullptr) {
+        const PTBaseType::SharedPtr datatype =
+            PTBaseType::FromQLType(PSemMem(), (*col_descs)[idx].ql_type());
+        (*column_definitions)[idx] = PTColumnDefinition::MakeShared(PSemMem(),
+                                                                    nullptr /* loc */,
+                                                                    col_name,
+                                                                    datatype,
+                                                                    nullptr /* qualifiers */);
+        if (col.is_static()) {
+          (*column_definitions)[idx]->set_is_static();
+        }
+        RETURN_NOT_OK(MapSymbol(*col_name, (*column_definitions)[idx].get()));
       }
-      RETURN_NOT_OK(MapSymbol(*col_name, (*column_definitions)[idx].get()));
     }
   }
 
   return Status::OK();
-
 }
 
-CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
+Status SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
   if (symtab_[name].column_ != nullptr) {
     return Error(entry, ErrorCode::DUPLICATE_COLUMN);
   }
@@ -116,7 +123,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *e
   return Status::OK();
 }
 
-CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTAlterColumnDefinition *entry) {
+Status SemContext::MapSymbol(const MCString& name, PTAlterColumnDefinition *entry) {
   if (symtab_[name].alter_column_ != nullptr) {
     return Error(entry, ErrorCode::DUPLICATE_COLUMN);
   }
@@ -124,7 +131,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTAlterColumnDefiniti
   return Status::OK();
 }
 
-CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
+Status SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
   if (symtab_[name].create_table_ != nullptr) {
     return Error(entry, ErrorCode::DUPLICATE_TABLE);
   }
@@ -132,7 +139,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTCreateTable *entry)
   return Status::OK();
 }
 
-CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
+Status SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
   if (symtab_[name].column_desc_ != nullptr) {
     LOG(FATAL) << "Entries of the same symbol are inserted"
                << ", Existing entry = " << symtab_[name].column_desc_
@@ -142,7 +149,7 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
   return Status::OK();
 }
 
-CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTTypeField *entry) {
+Status SemContext::MapSymbol(const MCString& name, PTTypeField *entry) {
   if (symtab_[name].type_field_ != nullptr) {
     return Error(entry, ErrorCode::DUPLICATE_TYPE_FIELD);
   }
@@ -164,7 +171,7 @@ shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_na
 }
 
 std::shared_ptr<QLType> SemContext::GetUDType(const string &keyspace_name,
-                                               const string &type_name) {
+                                              const string &type_name) {
   bool cache_used = false;
   shared_ptr<QLType> type = ql_env_->GetUDType(keyspace_name, type_name, &cache_used);
 

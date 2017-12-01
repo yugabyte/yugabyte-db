@@ -45,11 +45,11 @@ PTAlterTable::~PTAlterTable() {
 
 CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
   // Populate internal table_ variable.
+  bool is_system_ignored;
   RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
-  YBTableName table_name = name_->ToTableName();
-  RETURN_NOT_OK(sem_context->LookupTable(table_name, &table_, &table_columns_, &num_key_columns_,
-                                         &num_hash_key_columns_, &is_system_,
-                                         /* write only = */true, name_->loc()));
+  RETURN_NOT_OK(sem_context->LookupTable(name_->ToTableName(), name_->loc(), true /* write_table */,
+                                         &table_, &is_system_ignored, &table_columns_,
+                                         &num_key_columns_, &num_hash_key_columns_));
 
   // Save context state, and set "this" as current table being altered.
   SymbolEntry cached_entry = *sem_context->current_processing_id();

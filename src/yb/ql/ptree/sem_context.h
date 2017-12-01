@@ -100,12 +100,15 @@ class SemContext : public ProcessContext {
   }
 
   //------------------------------------------------------------------------------------------------
-  // Load symbol table for DML and Alter Table.
-  CHECKED_STATUS LookupTable(client::YBTableName name, std::shared_ptr<client::YBTable>* table,
-                             MCVector<ColumnDesc>* table_columns,
-                             int* num_key_columns, int* num_hash_key_columns,
-                             bool* is_system, bool write_only, const YBLocation& loc,
-                             bool with_column_definition = false,
+  // Load table schema into symbol table.
+  CHECKED_STATUS LookupTable(const client::YBTableName& name,
+                             const YBLocation& loc,
+                             bool write_table,
+                             std::shared_ptr<client::YBTable>* table,
+                             bool* is_system,
+                             MCVector<ColumnDesc>* col_descs = nullptr,
+                             int* num_key_columns = nullptr,
+                             int* num_hash_key_columns = nullptr,
                              MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
 
   //------------------------------------------------------------------------------------------------
