@@ -193,3 +193,31 @@ Use mbutil to generate base map pngs.
 git clone git://github.com/mapbox/mbutil.git
 sudo python setup.py install
 Upload to S3 bucket, make sure permissions are open, set content/type to "image/png"
+
+#### Troubleshooting 
+##### PSQL FATAL: Ident authentication failed for user "root"
+ To fix this issue, login to local postgres 
+ ```
+  On Centos/Ubuntu connect to postgres
+  sudo -u root psql -d yugaware
+  On Mac
+  psql -d yugaware
+ ```
+ And locate the hba_file location like this
+ ```
+ postgres=# show hba_file ;
+  hba_file
+ --------------------------------------
+  /etc/postgresql/9.3/main/pg_hba.conf
+ (1 row)
+ ```
+ Edit the file and make sure change the method from "intent" to "trust" for localhost
+ ```
+ host    all             all             127.0.0.1/32            trust
+ ```
+
+##### java.lang.OutOfMemoryError: GC overhead limit exceeded
+ To fix this issue, do the following
+ ```
+    echo SBT_OPTS="-XX:MaxPermSize=4G -Xmx4096M" > ~/.sbt_config
+ ```
