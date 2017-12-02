@@ -66,6 +66,10 @@ public class InstanceType extends Model {
   private static final Find<InstanceTypeKey, InstanceType> find =
     new Find<InstanceTypeKey, InstanceType>() {};
 
+  public static InstanceType get(Common.CloudType providerCode, String instanceTypeCode) {
+    return InstanceType.get(providerCode.toString(), instanceTypeCode);
+  }
+
   public static InstanceType get(String providerCode, String instanceTypeCode) {
     InstanceType instanceType = find.byId(InstanceTypeKey.create(instanceTypeCode, providerCode));
     if (instanceType == null) {

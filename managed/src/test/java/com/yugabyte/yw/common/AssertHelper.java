@@ -34,8 +34,7 @@ public class AssertHelper {
   public static void assertErrorResponse(Result result, String errorStr) {
     if (errorStr != null) {
         JsonNode json = Json.parse(contentAsString(result));
-        assertThat(json.get("error").toString(), allOf(notNullValue(),
-                containsString(errorStr)));
+        assertThat(json.get("error").toString(), allOf(notNullValue(), containsString(errorStr)));
     }
   }
 

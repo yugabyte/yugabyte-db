@@ -4,14 +4,13 @@ import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import {
-  isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject
-} from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
-import { isNodeRemovable } from 'utils/UniverseUtils';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoadingIcon } from '../../common/indicators';
-import {YBButton} from '../../common/forms/fields';
+import { YBButton } from '../../common/forms/fields';
+import { isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase,
+  isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster, isNodeRemovable } from '../../../utils/UniverseUtils';
 
 export default class NodeDetails extends Component {
   constructor(props) {
@@ -138,12 +137,17 @@ export default class NodeDetails extends Component {
       }
     };
 
+    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    if (!isNonEmptyObject(primaryCluster)) {
+      return <span />;
+    }
+
     return (
       <YBPanelItem
         header={
           <div>
             <div className='pull-right'>
-              { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} providerUUID={currentUniverse.data.provider.uuid} />}
+              { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} providerUUID={primaryCluster.userIntent.provider} />}
             </div>
             <h2 className='content-title'>Nodes</h2>
           </div>
@@ -166,24 +170,6 @@ export default class NodeDetails extends Component {
           </div>
         }
       />
-      // <YBPanelItem name="Nodes">
-      //   { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} providerUUID={currentUniverse.data.provider.uuid} />}
-      //   <div className="content-panel content-panel-margin-top">
-      //     <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
-      //       <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
-      //       <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
-      //       <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
-      //         Master
-      //       </TableHeaderColumn>
-      //       <TableHeaderColumn dataField="isTServer" dataFormat={ formatIpPort } formatExtraData="tserver" >
-      //         TServer
-      //       </TableHeaderColumn>
-      //       <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
-      //       <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
-      //       <TableHeaderColumn dataField="nodeAction" dataFormat={getNodeAction}>Action</TableHeaderColumn>
-      //     </BootstrapTable>
-      //   </div>
-      // </YBPanelItem>
     );
   }
 }

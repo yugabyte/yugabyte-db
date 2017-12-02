@@ -7,7 +7,8 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { YBStatsBlock } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
-import {isDefinedNotNull, isNonEmptyObject} from "../../../utils/ObjectUtils";
+import { isDefinedNotNull, isNonEmptyObject } from "../../../utils/ObjectUtils";
+import { getPrimaryCluster } from "../../../utils/UniverseUtils";
 
 export default class HighlightedStatsPanel extends Component {
   render() {
@@ -22,9 +23,12 @@ export default class HighlightedStatsPanel extends Component {
     }
 
     universeList.data.forEach(function (universeItem) {
-      if (isNonEmptyObject(universeItem.universeDetails) && isNonEmptyObject(universeItem.universeDetails.userIntent)
-          && isDefinedNotNull(universeItem.universeDetails.userIntent.numNodes)) {
-        numNodes += universeItem.universeDetails.userIntent.numNodes;
+      if (isNonEmptyObject(universeItem.universeDetails)) {
+        const primaryCluster = getPrimaryCluster(universeItem.universeDetails.clusters);
+        if (isDefinedNotNull(primaryCluster) && isDefinedNotNull(primaryCluster.userIntent) &&
+            isDefinedNotNull(primaryCluster.userIntent.numNodes)) {
+          numNodes += primaryCluster.userIntent.numNodes;
+        }
       }
       if (isDefinedNotNull(universeItem.pricePerHour)) {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();

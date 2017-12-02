@@ -4,11 +4,11 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -128,6 +128,7 @@ public class NodeManagerTest extends FakeDBApplication {
     UUID uuid = UUID.randomUUID();
     return Universe.create("Test universe " + uuid.toString(), uuid, 1L);
   }
+
   private void buildValidParams(TestData testData, NodeTaskParams params, Universe universe) {
     params.cloud = testData.cloudType;
     params.azUuid = testData.zone.uuid;
@@ -303,7 +304,8 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testProvisionNodeCommand() {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, createUniverse());
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
 
@@ -319,7 +321,8 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testProvisionNodeCommandWithSpotPrice() {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, createUniverse());
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
       if (t.cloudType.equals(Common.CloudType.aws)) {
@@ -342,7 +345,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(t, params, createUniverse());
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
       addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
 
@@ -685,7 +689,7 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, createInvalidParams(t));
         fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), is("NodeTaskParams is not DestroyUniverse.Params"));
+        assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleDestroyServer.Params"));
       }
     }
   }
@@ -695,8 +699,10 @@ public class NodeManagerTest extends FakeDBApplication {
     Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
       expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
-      DestroyUniverse.Params params = new DestroyUniverse.Params();
+      AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       buildValidParams(t, params, createUniverse());
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params));
@@ -740,7 +746,8 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      buildValidParams(t, params, createUniverse());
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
       params.process = "master";
       params.command = "create";
 

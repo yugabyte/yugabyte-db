@@ -6,16 +6,17 @@ import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailur
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
          getNodeInstancesForProvider, getNodesInstancesForProviderResponse, getSuggestedSpotPrice,
-         getSuggestedSpotPriceResponse, resetSuggestedSpotPrice } from 'actions/cloud';
+         getSuggestedSpotPriceResponse, resetSuggestedSpotPrice } from '../../../actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
          configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
          configureUniverseResources, configureUniverseResourcesResponse,
          checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
          fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
-         fetchUniverseTasksResponse } from 'actions/universe';
+         fetchUniverseTasksResponse } from '../../../actions/universe';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, normalizeToPositiveFloat }
-  from 'utils/ObjectUtils';
+  from '../../../utils/ObjectUtils';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -136,34 +137,29 @@ function mapStateToProps(state, ownProps) {
     "useSpotPrice": IN_DEVELOPMENT_MODE
   };
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
-    const userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;
-    data.universeName = currentUniverse.data.name;
-    data.formType = "edit";
-    data.provider = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
-    data.numNodes = userIntent && userIntent.numNodes;
-    data.isMultiAZ = userIntent && userIntent.isMultiAZ;
-    data.instanceType = userIntent && userIntent.instanceType;
-    data.ybSoftwareVersion = userIntent && userIntent.ybSoftwareVersion;
-    data.accessKeyCode = userIntent && userIntent.accessKeyCode;
-    data.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
-    data.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
-    if (isDefinedNotNull(currentUniverse.data.universeDetails)  && userIntent.isMultiAZ) {
-      data.regionList = currentUniverse.data.regions && currentUniverse.data.regions.map(function (item, idx) {
+    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    if (isDefinedNotNull(primaryCluster)) {
+      const userIntent = primaryCluster.userIntent;
+      data.universeName = currentUniverse.data.name;
+      data.formType = "edit";
+      data.provider = userIntent.provider;
+      data.numNodes = userIntent.numNodes;
+      data.isMultiAZ = userIntent.isMultiAZ;
+      data.instanceType = userIntent.instanceType;
+      data.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      data.accessKeyCode = userIntent.accessKeyCode;
+      data.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
+      data.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
+      data.regionList = primaryCluster.regions.map((item) => {
         return {value: item.uuid, name: item.name, label: item.name};
       });
-    } else {
-      data.regionList = [{
-        value: currentUniverse.data.regions[0].uuid,
-        name: currentUniverse.data.regions[0].name,
-        label: currentUniverse.data.regions[0].name
-      }];
+      data.masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
+        return {name: key, value: userIntent.masterGFlags[key]};
+      });
+      data.tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
+        return {name: key, value: userIntent.tserverGFlags[key]};
+      });
     }
-    data.masterGFlags = Object.keys(userIntent.masterGFlags).map(function(key){
-      return {name: key, value: userIntent.masterGFlags[key]};
-    });
-    data.tserverGFlags = Object.keys(userIntent.tserverGFlags).map(function(key){
-      return {name: key, value: userIntent.tserverGFlags[key]};
-    });
   }
 
   const selector = formValueSelector('UniverseForm');

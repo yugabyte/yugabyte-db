@@ -6,14 +6,14 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
@@ -82,8 +82,10 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        Universe.get(params.universeUUID).getUniverseDetails().userIntent;
+    UserIntent userIntent = Universe.get(params.universeUUID)
+                                    .getUniverseDetails()
+                                    .retrievePrimaryCluster()
+                                    .userIntent;
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase("yugabyte-default")) {
@@ -306,8 +308,8 @@ public class NodeManager extends DevopsBase {
       }
       case Destroy:
       {
-        if (!(nodeTaskParam instanceof DestroyUniverse.Params)) {
-          throw new RuntimeException("NodeTaskParams is not DestroyUniverse.Params");
+        if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
+          throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
         commandArgs.add("--instance_type");
         commandArgs.add(nodeTaskParam.instanceType);

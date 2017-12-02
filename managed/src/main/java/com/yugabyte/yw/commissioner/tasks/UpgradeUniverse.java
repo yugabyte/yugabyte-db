@@ -62,7 +62,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
           throw new IllegalArgumentException("Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
-        if (taskParams().ybSoftwareVersion.equals(universe.getUniverseDetails().userIntent.ybSoftwareVersion)) {
+        if (taskParams().ybSoftwareVersion.equals(universe.getUniverseDetails().retrievePrimaryCluster().userIntent.ybSoftwareVersion)) {
           throw new IllegalArgumentException("Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
       }
@@ -236,7 +236,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     // Set the cloud name.
     params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = Universe.get(taskParams().universeUUID).getUniverseDetails().userIntent.deviceInfo;
+    params.deviceInfo = Universe.get(taskParams().universeUUID).getUniverseDetails().retrievePrimaryCluster().userIntent.deviceInfo;
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

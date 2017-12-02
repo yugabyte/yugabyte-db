@@ -122,7 +122,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
       placementInfoPB.setNumReplicas(numReplicas);
       LOG.info("Starting modify config with {} masters.", numReplicas);
       // Create the placement info for the universe.
-      PlacementInfo placementInfo = universe.getUniverseDetails().placementInfo;
+      PlacementInfo placementInfo = universe.getUniverseDetails().retrievePrimaryCluster().placementInfo;
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
         for (PlacementRegion placementRegion : placementCloud.regionList) {

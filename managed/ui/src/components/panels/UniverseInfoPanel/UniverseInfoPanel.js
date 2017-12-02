@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import { FormattedDate } from 'react-intl';
 import { ROOT_URL } from '../../../config';
 import { DescriptionList } from '../../common/descriptors';
+import { getPrimaryCluster } from "../../../utils/UniverseUtils";
 
 export default class UniverseInfoPanel extends Component {
   static propTypes = {
@@ -12,13 +13,12 @@ export default class UniverseInfoPanel extends Component {
   };
 
   render() {
-    const { universeInfo, customerId } = this.props;
-    const { universeDetails } = universeInfo;
-    const { userIntent } = universeDetails;
+    const { universeInfo, universeInfo: {universeDetails: {clusters}}, customerId } = this.props;
+    const primaryCluster = getPrimaryCluster(clusters);
+    const userIntent = primaryCluster && primaryCluster.userIntent;
     const universeId = universeInfo.universeUUID;
     const formattedCreationDate = (
-      <FormattedDate value={universeInfo.creationDate}
-                     year='numeric' month='long' day='2-digit'
+      <FormattedDate value={universeInfo.creationDate} year='numeric' month='long' day='2-digit'
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
     );
     const endpointUrl = ROOT_URL + "/customers/" + customerId +

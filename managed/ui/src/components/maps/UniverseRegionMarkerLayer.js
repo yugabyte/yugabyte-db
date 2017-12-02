@@ -6,24 +6,33 @@ import { divIcon } from 'leaflet';
 import MapMarker from './MapMarker';
 import {getPointsOnCircle} from 'utils/ObjectUtils';
 import './stylesheets/universeRegionMarkerLayer.scss';
+import { getPrimaryCluster } from "../../utils/UniverseUtils";
+import { isDefinedNotNull } from "../../utils/ObjectUtils";
 
 export default class UniverseRegionMarkerLayer extends Component {
   constructor(props) {
     super(props);
     this.getCurrentRegion = this.getCurrentRegion.bind(this);
   }
+
   getCurrentRegion(regionUUID) {
-    const {universe} = this.props;
-    const markerData =  universe.regions;
-    const currentRegion = markerData.find(function(markerItem){
-      return markerItem.uuid === regionUUID ;
-    });
-    return currentRegion;
+    const {universe: {universeDetails: {clusters}}} = this.props;
+    const primaryCluster = getPrimaryCluster(clusters);
+    if (isDefinedNotNull(primaryCluster)) {
+      const markerData = primaryCluster.regions;
+      return markerData.find((markerItem) => markerItem.uuid === regionUUID);
+    }
+    return null;
   }
+
   render() {
     const self = this;
-    const { universe } = this.props;
-    const cloudList = universe.universeDetails.placementInfo.cloudList;
+    const { universe: {universeDetails: {clusters}} } = this.props;
+    const primaryCluster = getPrimaryCluster(clusters);
+    if (!isDefinedNotNull(primaryCluster) || !isDefinedNotNull(primaryCluster.placementInfo)) {
+      return <span />;
+    }
+    const cloudList = primaryCluster.placementInfo.cloudList;
     const azMarkerPoints = [];
     const markerDataArray = [];
     cloudList.forEach(function(cloudItem){

@@ -18,6 +18,7 @@ import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
+import {getPrimaryCluster} from "../../../utils/UniverseUtils";
 
 const initialState = {
   instanceTypeSelected: '',
@@ -155,9 +156,8 @@ class UniverseForm extends Component {
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
     const currentState = this.state;
-    universeTaskParams.userIntent = {
+    const userIntent = {
       universeName: formValues.universeName,
-
       provider: currentState.providerSelected,
       regionList: currentState.regionList,
       numNodes: currentState.numNodes,
@@ -171,30 +171,42 @@ class UniverseForm extends Component {
     };
 
     if (isNonEmptyObject(formValues.masterGFlags)) {
-      universeTaskParams.userIntent["masterGFlags"] = formValues.masterGFlags;
+      userIntent["masterGFlags"] = formValues.masterGFlags;
     }
     if (isNonEmptyObject(formValues.tserverGFlags)) {
-      universeTaskParams.userIntent["tserverGFlags"] = formValues.tserverGFlags;
+      userIntent["tserverGFlags"] = formValues.tserverGFlags;
     }
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isNonEmptyArray(currentState.regionList)) {
       this.props.cloud.providers.data.forEach(function (providerItem) {
-        if (providerItem.uuid === universeTaskParams.userIntent.provider) {
-          universeTaskParams.userIntent.providerType = providerItem.code;
+        if (providerItem.uuid === userIntent.provider) {
+          userIntent.providerType = providerItem.code;
         }
       });
-      universeTaskParams.userIntent.regionList = formValues.regionList.map(item => item.value);
+      userIntent.regionList = formValues.regionList.map(item => item.value);
+      const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
+      if (isDefinedNotNull(primaryCluster)) {
+        primaryCluster.userIntent = userIntent;
+      } else {
+        universeTaskParams.clusters = [{clusterType: 'PRIMARY', userIntent: userIntent}];
+      }
       this.handleUniverseConfigure(universeTaskParams);
     }
   }
 
   handleUniverseConfigure(universeTaskParams) {
     const {universe: {currentUniverse}} = this.props;
-    const checkSpotPrice = universeTaskParams.userIntent.providerType === 'aws' && !this.state.gettingSuggestedSpotPrice;
+    const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
+    if (!isNonEmptyObject(primaryCluster)) return;
+    const checkSpotPrice = primaryCluster.userIntent.providerType === 'aws' && !this.state.gettingSuggestedSpotPrice;
     if (isDefinedNotNull(this.state.instanceTypeSelected) && isNonEmptyArray(this.state.regionList) &&
-        (!checkSpotPrice || _.isEqual(this.state.spotPrice, normalizeToPositiveFloat(this.state.spotPrice)))) {
-      if (isNonEmptyObject(currentUniverse.data) &&
-        areIntentsEqual(currentUniverse.data.universeDetails.userIntent, universeTaskParams.userIntent)) {
-        this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
+        (!checkSpotPrice || _.isEqual(this.state.spotPrice.toString(), normalizeToPositiveFloat(this.state.spotPrice.toString())))) {
+      if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
+        const prevPrimaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+        const nextPrimaryCluster = getPrimaryCluster(universeTaskParams.clusters);
+        if (isNonEmptyObject(prevPrimaryCluster) && isNonEmptyObject(nextPrimaryCluster) &&
+            areIntentsEqual(prevPrimaryCluster.userIntent, nextPrimaryCluster.userIntent)) {
+          this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
+        }
       } else {
         this.props.submitConfigureUniverse(universeTaskParams);
       }
@@ -216,9 +228,11 @@ class UniverseForm extends Component {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
     }
     if (this.props.type === "Edit") {
-      const {universe: {currentUniverse}, universe: {currentUniverse: {data: {universeDetails: {userIntent}}}}} = this.props;
-      const providerUUID = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
-      const isMultiAZ = userIntent.isMultiAZ;
+      const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      const userIntent = primaryCluster && primaryCluster.userIntent;
+      const providerUUID = userIntent && userIntent.provider;
+      const isMultiAZ = userIntent && userIntent.isMultiAZ;
       if (userIntent && providerUUID) {
         const ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
         this.setState({
@@ -239,11 +253,11 @@ class UniverseForm extends Component {
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
-      if (currentUniverse.data.provider.code === "onprem") {
+      if (primaryCluster.userIntent.providerType === "onprem") {
         this.props.fetchNodeInstanceList(providerUUID);
       }
       // If Edit Case Set Initial Configuration
-      this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
+      this.props.getExistingUniverseConfiguration(universeDetails);
     }
   }
 
@@ -341,10 +355,12 @@ class UniverseForm extends Component {
   // Compare state variables against existing user intent
   hasFieldChanged() {
     const {universe: {currentUniverse}} = this.props;
-    if (isEmptyObject(currentUniverse.data)) {
+    if (isEmptyObject(currentUniverse.data) || isEmptyObject(currentUniverse.data.universeDetails)) {
       return true;
     }
-    const existingIntent = _.clone(currentUniverse.data.universeDetails.userIntent, true);
+    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    const existingIntent = isNonEmptyObject(primaryCluster) ?
+      _.clone(primaryCluster.userIntent, true) : null;
     const currentIntent = this.getCurrentUserIntent();
     return !areIntentsEqual(existingIntent, currentIntent);
   }
@@ -355,8 +371,7 @@ class UniverseForm extends Component {
     // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
     if (!_.isEqual(this.state, prevState) && isNonEmptyObject(currentProvider) && (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem")) {
       if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider.code !== "onprem"))
-        && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
-
+          && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
         if (isNonEmptyObject(currentUniverse.data)) {
           if (this.hasFieldChanged()) {
             this.configureUniverseNodeList();
@@ -416,27 +431,25 @@ class UniverseForm extends Component {
   getFormPayload() {
     const {formValues, universe: {universeConfigTemplate}} = this.props;
     const submitPayload = _.clone(universeConfigTemplate.data, true);
-    submitPayload.userIntent.universeName = formValues.universeName;
-    submitPayload.userIntent.spotPrice = 0.0;
-    if (this.state.useSpotPrice) {
-      submitPayload.userIntent.spotPrice = parseFloat(this.state.spotPrice);
-    }
+    submitPayload.clusters.forEach((cluster) => {
+      cluster.userIntent.universeName = formValues.universeName;
+      cluster.userIntent.spotPrice = 0.0;
+      if (this.state.useSpotPrice) {
+        cluster.userIntent.spotPrice = parseFloat(this.state.spotPrice);
+      }
 
-    submitPayload.userIntent.masterGFlags = formValues.masterGFlags.map(function(masterFlag){
-      if (isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value)) {
+      cluster.userIntent.masterGFlags = formValues.masterGFlags.filter((masterFlag) => {
+        return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
+      }).map((masterFlag) => {
         return {name: masterFlag.name, value: masterFlag.value};
-      } else {
-        return null;
-      }
-    }).filter(Boolean);
+      });
 
-    submitPayload.userIntent.tserverGFlags = formValues.tserverGFlags.map(function(tserverFlag){
-      if (isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value)) {
+      cluster.userIntent.tserverGFlags = formValues.tserverGFlags.filter((tserverFlag) => {
+        return isNonEmptyString(tserverFlag.name) && isNonEmptyString(tserverFlag.value);
+      }).map((tserverFlag) => {
         return {name: tserverFlag.name, value: tserverFlag.value};
-      } else {
-        return null;
-      }
-    }).filter(Boolean);
+      });
+    });
     
     return submitPayload;
   }
@@ -508,24 +521,26 @@ class UniverseForm extends Component {
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
-    if (isNonEmptyObject(currentUniverse.data) && showModal
-      && !this.props.universe.showModal && visibleModal === "universeModal") {
-      const userIntent = currentUniverse.data.universeDetails.userIntent;
-      this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
-      const providerUUID = currentUniverse.data.provider.uuid;
-      const isMultiAZ = true;
-      if (userIntent && providerUUID) {
-        this.setState({
-          providerSelected: providerUUID,
-          azCheckState: isMultiAZ,
-          instanceTypeSelected: userIntent.instanceType,
-          numNodes: userIntent.numNodes,
-          replicationFactor: userIntent.replicationFactor,
-          ybSoftwareVersion: userIntent.ybSoftwareVersion,
-          regionList: userIntent.regionList,
-          accessKeyCode: userIntent.accessKeyCode,
-          deviceInfo: userIntent.deviceInfo
-        });
+    if (isNonEmptyObject(currentUniverse.data) && showModal && !this.props.universe.showModal &&
+        visibleModal === "universeModal") {
+      const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+      if (isDefinedNotNull(primaryCluster)) {
+        const userIntent = primaryCluster.userIntent;
+        this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
+        const isMultiAZ = true;
+        if (isNonEmptyObject(userIntent) && isNonEmptyObject(userIntent.provider)) {
+          this.setState({
+            providerSelected: userIntent.provider,
+            azCheckState: isMultiAZ,
+            instanceTypeSelected: userIntent.instanceType,
+            numNodes: userIntent.numNodes,
+            replicationFactor: userIntent.replicationFactor,
+            ybSoftwareVersion: userIntent.ybSoftwareVersion,
+            regionList: userIntent.regionList,
+            accessKeyCode: userIntent.accessKeyCode,
+            deviceInfo: userIntent.deviceInfo
+          });
+        }
       }
     }
 
@@ -562,7 +577,10 @@ class UniverseForm extends Component {
       }, 0);
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
       if (this.props.type === "Edit") {
-        numNodesAvailable += currentUniverse.data.universeDetails.userIntent.numNodes;
+        const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+        if (isDefinedNotNull(primaryCluster)) {
+          numNodesAvailable += primaryCluster.userIntent.numNodes;
+        }
       }
       this.setState({maxNumNodes: numNodesAvailable});
     }

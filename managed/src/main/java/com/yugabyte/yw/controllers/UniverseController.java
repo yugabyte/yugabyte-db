@@ -3,15 +3,19 @@
 package com.yugabyte.yw.controllers;
 
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
@@ -33,7 +37,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.yb.client.YBClient;
-import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
@@ -141,13 +144,14 @@ public class UniverseController extends AuthenticatedController {
     }
     try {
       // Set the provider code.
-      Provider provider = Provider.find.byId(UUID.fromString(taskParams.userIntent.provider));
+      Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+      Provider provider = Provider.find.byId(UUID.fromString(primaryCluster.userIntent.provider));
       String providerCode = provider.code;
-      taskParams.userIntent.providerType = CloudType.valueOf(providerCode);
-      updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.placementInfo);
+      primaryCluster.userIntent.providerType = CloudType.valueOf(providerCode);
+      updatePlacementInfo(taskParams.nodeDetailsSet, primaryCluster.placementInfo);
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
-      Universe universe = Universe.create(taskParams.userIntent.universeName,
+      Universe universe = Universe.create(primaryCluster.userIntent.universeName,
         taskParams.universeUUID,
         customer.getCustomerId());
       LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
@@ -209,7 +213,7 @@ public class UniverseController extends AuthenticatedController {
       // Get the universe. This makes sure that a universe of this name does exist
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
-      updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.placementInfo);
+      updatePlacementInfo(taskParams.nodeDetailsSet, taskParams.retrievePrimaryCluster().placementInfo);
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
       UUID taskUUID = commissioner.submit(TaskType.EditUniverse, taskParams);
@@ -301,7 +305,6 @@ public class UniverseController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
     // There is no staleness of a delete request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
-    taskParams.cloud = universe.getUniverseDetails().userIntent.providerType;
     taskParams.customerUUID = customerUUID;
     taskParams.isForceDelete = isForceDelete;
     // Submit the task to destroy the universe.
@@ -527,7 +530,6 @@ public class UniverseController extends AuthenticatedController {
 
   private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     ArrayNode nodeSetArray = null;
     int expectedUniverseVersion = -1;
     if (formData.get("nodeDetailsSet") != null) {
@@ -537,31 +539,46 @@ public class UniverseController extends AuthenticatedController {
     if (formData.get("expectedUniverseVersion") != null) {
       expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
     }
-    ObjectNode userIntent = (ObjectNode) formData.get("userIntent");
-    if (userIntent == null ) {
-      throw new Exception("userIntent: This field is required");
+    ArrayNode clustersJsonArray = (ArrayNode) formData.get("clusters");
+    if (clustersJsonArray == null) {
+      throw new Exception("clusters: This field is required");
     }
-    Map<String, String> masterGFlagsMap = serializeGFlagListToMap(userIntent, "masterGFlags");
-    Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(userIntent, "tserverGFlags");
-    formData.set("userIntent", userIntent);
-    taskParams = mapper.treeToValue(formData, UniverseDefinitionTaskParams.class);
-    if (nodeSetArray != null) {
-      Set<NodeDetails> nodeDetailSet = new HashSet<NodeDetails>();
-      for (JsonNode nodeItem : nodeSetArray) {
-        ObjectNode tempObjectNode = ((ObjectNode) nodeItem);
-        NodeDetails node = mapper.treeToValue(tempObjectNode, NodeDetails.class);
-        nodeDetailSet.add(node);
+    ArrayNode newClustersJsonArray = Json.newArray();
+    List<Cluster> clusters = new ArrayList<>();
+    for (int i = 0; i < clustersJsonArray.size(); ++i) {
+      ObjectNode clusterJson = (ObjectNode) clustersJsonArray.get(i);
+      if (clusterJson.has("regions")) {
+        clusterJson.remove("regions");
       }
-      taskParams.nodeDetailsSet = nodeDetailSet;
+      ObjectNode userIntent = (ObjectNode) clusterJson.get("userIntent");
+      if (userIntent == null ) {
+        throw new Exception("userIntent: This field is required");
+      }
+      Map<String, String> masterGFlagsMap = serializeGFlagListToMap(userIntent, "masterGFlags");
+      Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(userIntent, "tserverGFlags");
+      clusterJson.set("userIntent", userIntent);
+      newClustersJsonArray.add(clusterJson);
+      Cluster cluster = mapper.treeToValue(clusterJson, Cluster.class);
+      cluster.userIntent.masterGFlags = masterGFlagsMap;
+      cluster.userIntent.tserverGFlags = tserverGFlagsMap;
+      clusters.add(cluster);
     }
-    taskParams.userIntent.masterGFlags = masterGFlagsMap;
-    taskParams.userIntent.tserverGFlags = tserverGFlagsMap;
+    formData.set("clusters", newClustersJsonArray);
+    UniverseDefinitionTaskParams taskParams = mapper.treeToValue(formData,
+        UniverseDefinitionTaskParams.class);
+    taskParams.clusters = clusters;
+    if (nodeSetArray != null) {
+      taskParams.nodeDetailsSet = new HashSet<>();
+      for (JsonNode nodeItem : nodeSetArray) {
+        taskParams.nodeDetailsSet.add(mapper.treeToValue(nodeItem, NodeDetails.class));
+      }
+    }
     taskParams.expectedUniverseVersion = expectedUniverseVersion;
     return taskParams;
   }
 
   /**
-   * Method serializes the GFlag ObjectNode into a Map and then deletes it from it's parent node.
+   * Method serializes the GFlag ObjectNode into a Map and then deletes it from its parent node.
    * @param formNode Parent FormObject for the GFlag Node.
    * @param listType Type of GFlag object
    * @return Serialized JSON array into Map
@@ -571,11 +588,9 @@ public class UniverseController extends AuthenticatedController {
     JsonNode formNodeList = formNode.get(listType);
     if (formNodeList != null && formNodeList.isArray()) {
       ArrayNode flagNodeArray = (ArrayNode) formNodeList;
-      for (int counter = 0; counter < flagNodeArray.size(); counter++) {
-        if (flagNodeArray.get(counter).get("name") != null) {
-          String key = flagNodeArray.get(counter).get("name").asText();
-          String value = flagNodeArray.get(counter).get("value").asText();
-          gflagMap.put(key, value);
+      for (JsonNode gflagNode : flagNodeArray) {
+        if (gflagNode.has("name")) {
+          gflagMap.put(gflagNode.get("name").asText(), gflagNode.get("value").asText());
         }
       }
     }

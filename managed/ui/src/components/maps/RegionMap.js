@@ -7,11 +7,12 @@ import { sortBy } from 'lodash';
 import { Map, TileLayer } from 'react-leaflet';
 import MapMarker from './MapMarker';
 import 'leaflet/dist/leaflet.css';
-import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import MarkerClusterLayer from './MarkerClusterLayer';
 import UniverseRegionMarkerLayer from './UniverseRegionMarkerLayer';
 import {MAP_SERVER_URL} from '../../config';
 import './stylesheets/RegionMap.scss';
+import { getPrimaryCluster } from '../../utils/UniverseUtils';
+import { isNonEmptyArray, isDefinedNotNull } from '../../utils/ObjectUtils';
 
 export default class RegionMap extends Component {
   static propTypes = {
@@ -22,7 +23,7 @@ export default class RegionMap extends Component {
   static defaultProps = {
     showLabels: false,
     showRegionLegend: true,
-  }
+  };
 
   constructor(props) {
     super(props);
@@ -38,10 +39,14 @@ export default class RegionMap extends Component {
     const { regions, type, showLabels, showRegionLabels, universe } = this.props;
     let regionMarkers = [];
     let bounds = [[61.96, 105.78], [-21.96, -95.78]];
-    const regionData = type !== "Universe" ? regions : universe.regions;
+    let regionData = regions;
+    if (type === "Universe") {
+      const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
+      if (isDefinedNotNull(primaryCluster)) regionData = primaryCluster.regions;
+    }
     const regionLatLngs = regionData.map(function (region, idx) {
       let markerType = type;
-      if (isValidObject(region.providerCode)) {
+      if (isDefinedNotNull(region.providerCode)) {
         markerType = region.providerCode;
       }
       const numChildren = region.zones.length;

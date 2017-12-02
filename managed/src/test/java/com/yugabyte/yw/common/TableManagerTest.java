@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -17,7 +18,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -80,13 +80,14 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.universeUUID = testUniverse.universeUUID;
 
     uniParams.nodePrefix = "yb-1-" + testUniverse.name;
-    uniParams.userIntent = new UniverseDefinitionTaskParams.UserIntent();
-    uniParams.userIntent.accessKeyCode = keyCode;
-    uniParams.userIntent.ybSoftwareVersion = "0.0.1";
-    uniParams.userIntent.numNodes = 3;
-    uniParams.userIntent.replicationFactor = 3;
-    uniParams.userIntent.isMultiAZ = true;
-    uniParams.userIntent.regionList = getMockRegionUUIDs(3);
+    UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.accessKeyCode = keyCode;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.numNodes = 3;
+    userIntent.replicationFactor = 3;
+    userIntent.isMultiAZ = true;
+    userIntent.regionList = getMockRegionUUIDs(3);
+    uniParams.upsertPrimaryCluster(userIntent, null);
   }
 
   private List<String> getExpectedCommmand(BulkImportParams bulkImportParams,
@@ -102,7 +103,7 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add(pkPath);
     cmd.add("--instance_count");
     if (bulkImportParams.instanceCount == 0) {
-      cmd.add(Integer.toString(uniParams.userIntent.numNodes * 8));
+      cmd.add(Integer.toString(uniParams.retrievePrimaryCluster().userIntent.numNodes * 8));
     } else {
       cmd.add(Integer.toString(bulkImportParams.instanceCount));
     }
@@ -137,14 +138,14 @@ public class TableManagerTest extends FakeDBApplication {
     BulkImportParams bulkImportParams = new BulkImportParams();
     UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
     buildValidParams(bulkImportParams, uniTaskParams);
+    UserIntent userIntent = uniTaskParams.retrievePrimaryCluster().userIntent;
     testUniverse.setUniverseDetails(uniTaskParams);
     testUniverse = Universe.saveDetails(testUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(uniTaskParams.userIntent, uniTaskParams.nodePrefix));
+        ApiUtils.mockUniverseUpdater(userIntent, uniTaskParams.nodePrefix));
 
     List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
     Map<String, String> expectedEnvVars = testProvider.getConfig();
-    expectedEnvVars.put("AWS_DEFAULT_REGION",
-        Region.get(uniTaskParams.userIntent.regionList.get(0)).code);
+    expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
     tableManager.tableCommand(bulkImportParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
@@ -156,14 +157,14 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.instanceCount = 5;
     UniverseDefinitionTaskParams uniTaskParams = new UniverseDefinitionTaskParams();
     buildValidParams(bulkImportParams, uniTaskParams);
+    UserIntent userIntent = uniTaskParams.retrievePrimaryCluster().userIntent;
     testUniverse.setUniverseDetails(uniTaskParams);
     testUniverse = Universe.saveDetails(testUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(uniTaskParams.userIntent, uniTaskParams.nodePrefix));
+        ApiUtils.mockUniverseUpdater(userIntent, uniTaskParams.nodePrefix));
 
     List<String> expectedCommand = getExpectedCommmand(bulkImportParams, uniTaskParams);
     Map<String, String> expectedEnvVars = testProvider.getConfig();
-    expectedEnvVars.put("AWS_DEFAULT_REGION",
-        Region.get(uniTaskParams.userIntent.regionList.get(0)).code);
+    expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
     tableManager.tableCommand(bulkImportParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);

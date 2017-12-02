@@ -17,8 +17,9 @@ import { YBTabsPanel, YBPanelItem } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
-import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
+import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import './UniverseDetail.scss';
@@ -70,9 +71,16 @@ class UniverseDetail extends Component {
   }
 
   render() {
-    const { universe: { currentUniverse, showModal, visibleModal }, universe, location: {query}} = this.props;
-    const placementInfoRegionList = isNonEmptyObject(currentUniverse.data) ? currentUniverse.data.universeDetails.placementInfo.cloudList[0].regionList : [];
-    if (this.props.location.pathname === "/universes/create") {
+    const {
+      universe,
+      universe: { currentUniverse, showModal, visibleModal },
+      location: { query, pathname },
+      showSoftwareUpgradesModal,
+      showGFlagsModal,
+      showDeleteUniverseModal,
+      closeModal
+    } = this.props;
+    if (pathname === "/universes/create") {
       return <UniverseFormContainer type="Create"/>;
     }
     if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
@@ -85,6 +93,16 @@ class UniverseDetail extends Component {
     }
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
+    let placementInfoRegionList = [];
+    if (isNonEmptyObject(currentUniverse.data)) {
+      const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+      if (isNonEmptyObject(primaryCluster) &&
+          isNonEmptyObject(primaryCluster.placementInfo) &&
+          isNonEmptyArray(primaryCluster.placementInfo.cloudList) &&
+          isNonEmptyObject(primaryCluster.placementInfo.cloudList[0])) {
+        placementInfoRegionList = primaryCluster.placementInfo.cloudList[0].regionList;
+      }
+    }
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
         <YBPanelItem
@@ -113,7 +131,7 @@ class UniverseDetail extends Component {
           }
         />
       </Tab>,
-      <Tab eventKey={"tables"} title="Tables" key="tables-tab"mountOnEnter={true} unmountOnExit={true}>
+      <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
         <ListTablesContainer/>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab" mountOnEnter={true} unmountOnExit={true}>
@@ -169,18 +187,18 @@ class UniverseDetail extends Component {
                         btnText="Edit" btnIcon="fa fa-database" onClick={this.onEditUniverseButtonClick} />
 
               <DropdownButton title="More" id="bg-nested-dropdown" pullRight>
-                <MenuItem eventKey="1" onClick={this.props.showSoftwareUpgradesModal}>
+                <MenuItem eventKey="1" onClick={showSoftwareUpgradesModal}>
 
                   <YBLabelWithIcon icon="fa fa-refresh fa-fw">
                     Upgrade Software
                   </YBLabelWithIcon>
                 </MenuItem>
-                <MenuItem eventKey="2" onClick={this.props.showGFlagsModal} >
+                <MenuItem eventKey="2" onClick={showGFlagsModal} >
                   <YBLabelWithIcon icon="fa fa-flag fa-fw">
                     Edit GFlags
                   </YBLabelWithIcon>
                 </MenuItem>
-                <MenuItem eventKey="2" onClick={this.props.showDeleteUniverseModal} >
+                <MenuItem eventKey="2" onClick={showDeleteUniverseModal} >
                   <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
                     Delete Universe
                   </YBLabelWithIcon>
@@ -190,9 +208,9 @@ class UniverseDetail extends Component {
           </Col>
           <RollingUpgradeFormContainer modalVisible={showModal &&
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
-                                       onHide={this.props.closeModal} />
+                                       onHide={closeModal} />
           <DeleteUniverseContainer visible={showModal && visibleModal==="deleteUniverseModal"}
-                                   onHide={this.props.closeModal} title="Delete Universe"/>
+                                   onHide={closeModal} title="Delete Universe"/>
         </Row>
 
         <Measure onMeasure={this.onResize.bind(this)}>

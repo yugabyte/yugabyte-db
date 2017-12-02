@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import org.yb.ColumnSchema.SortOrder;
 
@@ -43,17 +44,18 @@ public class ApiUtils {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.cloud = cloudType;
-        universeDetails.userIntent = new UserIntent();
-        universeDetails.userIntent.providerType = cloudType;
-        universeDetails.userIntent.accessKeyCode = "yugabyte-default";
+        UserIntent userIntent = new UserIntent();
+        userIntent.providerType = cloudType;
+        userIntent.accessKeyCode = "yugabyte-default";
         // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = universeDetails.userIntent.replicationFactor;
+        userIntent.numNodes = userIntent.replicationFactor;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
-              idx <= universeDetails.userIntent.replicationFactor);
+              idx <= userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
         universeDetails.nodePrefix = nodePrefix;
         universe.setUniverseDetails(universeDetails);
       }
@@ -80,15 +82,13 @@ public class ApiUtils {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = userIntent;
-        universeDetails.placementInfo = PlacementInfoUtil.getPlacementInfo(userIntent);
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        PlacementInfo placementInfo = PlacementInfoUtil.getPlacementInfo(userIntent);
+        universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node =
-              getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
-                  setMasters && idx <= universeDetails.userIntent.replicationFactor);
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
+              setMasters && idx <= userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
@@ -102,14 +102,15 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.userIntent = new UserIntent();
+        UserIntent userIntent = new UserIntent();
         // Add a desired number of nodes.
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        universeDetails.userIntent.numNodes = universeDetails.userIntent.replicationFactor;
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
+        userIntent.numNodes = userIntent.replicationFactor;
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running);
           universeDetails.nodeDetailsSet.add(node);
         }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
 
         NodeDetails node = getDummyNodeDetails(4, NodeDetails.NodeState.BeingDecommissioned);
         universeDetails.nodeDetailsSet.add(node);

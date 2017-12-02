@@ -7,6 +7,8 @@ import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle } fr
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
 import './RollingUpgradeForm.scss';
+import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
+import { isDefinedNotNull } from "../../../../utils/ObjectUtils";
 
 class FlagInput extends Component {
   render() {
@@ -73,7 +75,18 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent, nodePrefix}, universeUUID}}}, reset} = this.props;
+    const {
+      reset,
+      universe: {
+        visibleModal,
+        currentUniverse: {
+          data: {
+            universeDetails: {clusters, nodePrefix},
+            universeUUID
+          }
+        }
+      }
+    } = this.props;
     const payload = {};
     if (visibleModal === "softwareUpgradesModal") {
       payload.taskType = "Software";
@@ -82,10 +95,13 @@ export default class RollingUpgradeForm extends Component {
     } else {
       return;
     }
+    const primaryCluster = getPrimaryCluster(clusters);
+    if (!isDefinedNotNull(primaryCluster)) {
+      return;
+    }
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
     payload.rollingUpgrade = values.rollingUpgrade;
     payload.universeUUID = universeUUID;
-    payload.userIntent = userIntent;
     payload.nodePrefix = nodePrefix;
     let masterGFlagList = [];
     let tserverGFlagList = [];
@@ -107,8 +123,9 @@ export default class RollingUpgradeForm extends Component {
         }
       }).filter(Boolean);
     }
-    payload.masterGFlags = masterGFlagList;
-    payload.tserverGFlags = tserverGFlagList;
+    primaryCluster.userIntent.masterGFlags = masterGFlagList;
+    primaryCluster.userIntent.tserverGFlags = tserverGFlagList;
+    payload.clusters = [primaryCluster];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     this.props.submitRollingUpgradeForm(payload, universeUUID, reset);
