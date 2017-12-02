@@ -68,6 +68,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
@@ -217,7 +218,11 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode universeDetails = json.get("universeDetails");
     assertNotNull(universeDetails);
-    JsonNode userIntentJson = universeDetails.get("userIntent");
+    JsonNode clustersJson = universeDetails.get("clusters");
+    assertNotNull(clustersJson);
+    JsonNode primaryClusterJson = clustersJson.get(0);
+    assertNotNull(primaryClusterJson);
+    JsonNode userIntentJson = primaryClusterJson.get("userIntent");
     assertNotNull(userIntentJson);
     assertThat(userIntentJson.get("replicationFactor").asInt(), allOf(notNullValue(), equalTo(3)));
     assertThat(userIntentJson.get("isMultiAZ").asBoolean(), allOf(notNullValue(), equalTo(true)));
@@ -267,7 +272,7 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseCreateWithInvalidParams() {
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject());
-    assertBadRequest(result, "userIntent: This field is required");
+    assertBadRequest(result, "clusters: This field is required");
   }
 
   @Test
@@ -285,7 +290,8 @@ public class UniverseControllerTest extends WithApplication {
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     bodyJson.set("regionList", regionList);
-    topJson.set("userIntent", bodyJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
+    topJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
@@ -314,7 +320,8 @@ public class UniverseControllerTest extends WithApplication {
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     bodyJson.set("regionList", regionList);
-    topJson.set("userIntent", bodyJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
+    topJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
@@ -335,7 +342,7 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject());
-    assertBadRequest(result, "userIntent: This field is required");
+    assertBadRequest(result, "clusters: This field is required");
   }
 
   @Test
@@ -362,7 +369,8 @@ public class UniverseControllerTest extends WithApplication {
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     bodyJson.set("regionList", regionList);
-    topJson.set("userIntent", bodyJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
+    topJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
@@ -404,7 +412,8 @@ public class UniverseControllerTest extends WithApplication {
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     bodyJson.set("regionList", regionList);
-    topJson.set("userIntent", bodyJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
+    topJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
@@ -445,7 +454,8 @@ public class UniverseControllerTest extends WithApplication {
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     bodyJson.set("regionList", regionList);
-    topJson.set("userIntent", bodyJson);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
+    topJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
@@ -455,7 +465,11 @@ public class UniverseControllerTest extends WithApplication {
     assertValue(json, "universeUUID", u.universeUUID.toString());
     JsonNode universeDetails = json.get("universeDetails");
     assertNotNull(universeDetails);
-    assertNotNull(universeDetails.get("userIntent"));
+    JsonNode clustersJson = universeDetails.get("clusters");
+    assertNotNull(clustersJson);
+    JsonNode primaryClusterJson = clustersJson.get(0);
+    assertNotNull(primaryClusterJson);
+    assertNotNull(primaryClusterJson.get("userIntent"));
 
     // Try universe expand only, and re-check.
     bodyJson.put("numNodes", 9);
@@ -465,7 +479,11 @@ public class UniverseControllerTest extends WithApplication {
     assertValue(json, "universeUUID", u.universeUUID.toString());
     universeDetails = json.get("universeDetails");
     assertNotNull(universeDetails);
-    assertNotNull(universeDetails.get("userIntent"));
+    clustersJson = universeDetails.get("clusters");
+    assertNotNull(clustersJson);
+    primaryClusterJson = clustersJson.get(0);
+    assertNotNull(primaryClusterJson);
+    assertNotNull(primaryClusterJson.get("userIntent"));
   }
 
   @Test
@@ -487,10 +505,10 @@ public class UniverseControllerTest extends WithApplication {
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = new UserIntent();
-        universeDetails.userIntent.providerType = CloudType.aws;
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        UserIntent userIntent = new UserIntent();
+        userIntent.providerType = CloudType.aws;
+        universeDetails.upsertPrimaryCluster(userIntent, null);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -784,16 +802,16 @@ public class UniverseControllerTest extends WithApplication {
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.userIntent = getTestUserIntent(r, p, i, 5);
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.placementInfo = null;
+    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
     PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
-    List<PlacementInfo.PlacementAZ> azList = taskParams.placementInfo.cloudList.get(0).regionList.get(0).azList;
+    Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+    List<PlacementInfo.PlacementAZ> azList = primaryCluster.placementInfo.cloudList.get(0).regionList.get(0).azList;
     assertEquals(azList.size(), 2);
     PlacementInfo.PlacementAZ paz = azList.get(0);
     paz.numNodesInAZ += 2;
-    taskParams.userIntent.numNodes += 2;
-    Map<UUID, Integer> azUUIDToNumNodeMap = getAzUuidToNumNodes(taskParams.placementInfo);
+    primaryCluster.userIntent.numNodes += 2;
+    Map<UUID, Integer> azUUIDToNumNodeMap = getAzUuidToNumNodes(primaryCluster.placementInfo);
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
@@ -823,7 +841,7 @@ public class UniverseControllerTest extends WithApplication {
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
-    utd.userIntent = getTestUserIntent(r, p, i, 5);
+    utd.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
     PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
     u.setUniverseDetails(utd);
     u.save();
@@ -834,8 +852,9 @@ public class UniverseControllerTest extends WithApplication {
       azUuidToNumNodes.put(entry.getKey(), entry.getValue() + 1);
     }
     UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
-    editTestUTD.userIntent.numNodes = totalNumNodesAfterExpand;
-    editTestUTD.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
+    Cluster primaryCluster = editTestUTD.retrievePrimaryCluster();
+    primaryCluster.userIntent.numNodes = totalNumNodesAfterExpand;
+    primaryCluster.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, Json.toJson(editTestUTD));

@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+import { getPrimaryCluster } from "./UniverseUtils";
+
 const _ = require('lodash');
 
 export function isDefinedNotNull(obj) {
@@ -144,21 +146,25 @@ export function arePlacementInfoEqual(placementInfo1, placementInfo2) {
 }
 
 export function areUniverseConfigsEqual(config1, config2) {
+  const primaryCluster1 = config1 && getPrimaryCluster(config1.clusters);
+  const primaryCluster2 = config2 && getPrimaryCluster(config2.clusters);
+  const clustersEqual = (isNonEmptyObject(primaryCluster1) && isNonEmptyObject(primaryCluster2)) ||
+                        (!isNonEmptyObject(primaryCluster1) && !isNonEmptyObject(primaryCluster2));
   let userIntentsEqual = true;
   let placementObjectsEqual = true;
-  if (config1 && config2) {
-    if (config1.userIntent && config2.userIntent) {
-      userIntentsEqual = areIntentsEqual(config1.userIntent, config2.userIntent);
+  if (isNonEmptyObject(primaryCluster1) && isNonEmptyObject(primaryCluster2)) {
+    if (primaryCluster1.userIntent && primaryCluster2.userIntent) {
+      userIntentsEqual = areIntentsEqual(primaryCluster1.userIntent, primaryCluster2.userIntent);
     } else {
-      userIntentsEqual = _.isEqual(config1.userIntent, config2.userIntent);
+      userIntentsEqual = _.isEqual(primaryCluster1.userIntent, primaryCluster2.userIntent);
     }
-    if (isNonEmptyObject(config1.placementInfo) && isNonEmptyObject(config2.placementInfo)) {
-      placementObjectsEqual = arePlacementInfoEqual(config1.placementInfo, config2.placementInfo);
+    if (isNonEmptyObject(primaryCluster1.placementInfo) && isNonEmptyObject(primaryCluster2.placementInfo)) {
+      placementObjectsEqual = arePlacementInfoEqual(primaryCluster1.placementInfo, primaryCluster2.placementInfo);
     } else {
-      placementObjectsEqual = _.isEqual(config1.placementInfo, config2.placementInfo);
+      placementObjectsEqual = _.isEqual(primaryCluster1.placementInfo, primaryCluster2.placementInfo);
     }
   }
-  return userIntentsEqual && placementObjectsEqual;
+  return clustersEqual && userIntentsEqual && placementObjectsEqual;
 }
 
 // TODO: Move this function to NumberUtils.js?

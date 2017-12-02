@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +16,7 @@ import java.util.UUID;
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
 
-  public static class Params extends NodeTaskParams {
+  public static class Params extends UniverseTaskParams {
     public UUID customerUUID;
     public Boolean isForceDelete;
   }

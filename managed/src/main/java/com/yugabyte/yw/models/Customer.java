@@ -116,10 +116,10 @@ public class Customer extends Model {
 
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(String providerCode) {
-    Set<Universe> universes = getUniverses();
-    return universes.stream()
-           .filter(u -> u.getUniverseDetails().userIntent.provider.equals(providerCode))
-           .collect(Collectors.toSet());
+    return getUniverses()
+        .stream()
+        .filter(u -> u.getUniverseDetails().retrievePrimaryCluster().userIntent.provider.equals(providerCode))
+        .collect(Collectors.toSet());
   }
 
   public static final Find<UUID, Customer> find = new Find<UUID, Customer>() {

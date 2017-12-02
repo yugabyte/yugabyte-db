@@ -10,6 +10,7 @@ import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
 import {UniverseStatusContainer} from '../../universes';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 const moment = require('moment');
 
 export default class UniverseTable extends Component {
@@ -105,10 +106,9 @@ class YBUniverseItem extends Component {
 
 class CellLocationPanel extends Component {
   render() {
-    const {universe, universe: {universeDetails: {userIntent}}} = this.props;
-    const regionList = universe.regions && universe.regions.map(function(regionItem, idx){
-      return regionItem.name;
-    }).join(", ");
+    const {universe, universe: {universeDetails}} = this.props;
+    const regionList = universe.regions && universe.regions.map((item) => item.name).join(", ");
+    const userIntent = getPrimaryCluster(universeDetails.clusters).userIntent;
     return (
       <div >
         <Row className={"cell-position-detail"}>

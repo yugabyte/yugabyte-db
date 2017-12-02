@@ -9,9 +9,10 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 
 public class UniverseTaskParams extends AbstractTaskParams {
 
+  // The primary device info.
   public DeviceInfo deviceInfo;
 
-  // The cloud provider to get node details.
+  // The primary cloud provider to get node details.
   public CloudType cloud;
 
   // The universe against which this node's details should be saved.

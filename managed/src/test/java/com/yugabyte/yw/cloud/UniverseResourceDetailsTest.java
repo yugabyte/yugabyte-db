@@ -33,11 +33,8 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeDecommiss
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -100,7 +97,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.userIntent = userIntent;
+    params.upsertPrimaryCluster(userIntent, null);
     params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator, numIterations);
     params.cloud = Common.CloudType.valueOf(provider.code);
 
@@ -147,7 +144,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.userIntent = userIntent;
+    params.upsertPrimaryCluster(userIntent, null);
     params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
     params.cloud = Common.CloudType.valueOf(provider.code);
 

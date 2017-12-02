@@ -27,6 +27,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -74,10 +77,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
         universeDetails.cloud = taskParams().cloud;
-        universeDetails.userIntent = taskParams().userIntent;
         universeDetails.nodePrefix = taskParams().nodePrefix;
-        universeDetails.placementInfo = taskParams().placementInfo;
         universeDetails.universeUUID = taskParams().universeUUID;
+        Cluster cluster = taskParams().retrievePrimaryCluster();
+        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -158,8 +161,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
       // Update in-memory map.
-      Map<String, NodeInstance> nodeMap =
-        NodeInstance.pickNodes(onpremAzToNodes, universeDetails.userIntent.instanceType);
+      String instanceType = universeDetails.retrievePrimaryCluster().userIntent.instanceType;
+      Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
       for (NodeDetails node : taskParams().nodeDetailsSet) {
         // TODO: use the UUID to select the node, but this requires a refactor of the tasks/params
         // to more easily trickle down this uuid into all locations.
@@ -178,12 +181,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
+    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().userIntent.deviceInfo;
+      params.deviceInfo = userIntent.deviceInfo;
       // Set the cloud name.
-      params.cloud = taskParams().userIntent.providerType;
+      params.cloud = userIntent.providerType;
       // Set the region code.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -193,9 +197,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Pick one of the subnets in a round robin fashion.
       params.subnetId = node.cloudInfo.subnet_id;
       // Set the instance type.
-      params.instanceType = taskParams().userIntent.instanceType;
+      params.instanceType = userIntent.instanceType;
       // Set the spot price.
-      params.spotPrice = taskParams().userIntent.spotPrice;
+      params.spotPrice = userIntent.spotPrice;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);
@@ -214,12 +218,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
+    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().userIntent.deviceInfo;
+      params.deviceInfo = userIntent.deviceInfo;
       // Set the cloud name.
-      params.cloud = taskParams().userIntent.providerType;
+      params.cloud = userIntent.providerType;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -247,12 +252,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
                                                  boolean isMasterInShellMode) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
+    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().userIntent.deviceInfo;
+      params.deviceInfo = userIntent.deviceInfo;
       // Set the cloud name.
-      params.cloud = taskParams().userIntent.providerType;
+      params.cloud = userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -264,7 +270,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
-      params.ybSoftwareVersion = taskParams().userIntent.ybSoftwareVersion;
+      params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.type = UpgradeUniverse.UpgradeTaskType.Everything;
@@ -278,11 +284,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createGFlagsOverrideTasks(
-      Collection<NodeDetails> nodes, ServerType taskType) {
+  public SubTaskGroup createGFlagsOverrideTasks(Collection<NodeDetails> nodes,
+                                                ServerType taskType) {
     // Skip if no extra flags for this type server.
-    if (taskType.equals(ServerType.MASTER) && taskParams().userIntent.masterGFlags.isEmpty() ||
-        taskType.equals(ServerType.TSERVER) && taskParams().userIntent.tserverGFlags.isEmpty()) {
+    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+    if (taskType.equals(ServerType.MASTER) && userIntent.masterGFlags.isEmpty() ||
+        taskType.equals(ServerType.TSERVER) && userIntent.tserverGFlags.isEmpty()) {
       return null;
     }
 
@@ -292,7 +299,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the cloud name.
       params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().userIntent.deviceInfo;
+      params.deviceInfo = userIntent.deviceInfo;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -303,8 +310,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.type = UpgradeUniverse.UpgradeTaskType.GFlags;
       params.setProperty("processType", taskType.toString());
       params.gflags = taskType.equals(ServerType.MASTER)
-        ? taskParams().userIntent.masterGFlags
-        : taskParams().userIntent.tserverGFlags;
+        ? userIntent.masterGFlags
+        : userIntent.tserverGFlags;
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
       subTaskGroup.addTask(task);
@@ -326,7 +333,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       // Set the cloud name.
-      params.cloud = taskParams().userIntent.providerType;
+      params.cloud = taskParams().retrievePrimaryCluster().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -359,7 +366,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       // Set the cloud name.
-      params.cloud = taskParams().userIntent.providerType;
+      params.cloud = taskParams().retrievePrimaryCluster().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -415,13 +422,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("UpdatePlacementInfo", executor);
+    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
-    params.cloud = taskParams().userIntent.providerType;
+    params.cloud = userIntent.providerType;
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
     // Set the number of masters.
-    params.numReplicas = taskParams().userIntent.replicationFactor;
+    params.numReplicas = userIntent.replicationFactor;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<String>();
@@ -449,6 +457,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (taskParams().nodePrefix == null) {
       throw new RuntimeException(getName() + ": nodePrefix not set");
     }
-    PlacementInfoUtil.verifyNodesAndRF(taskParams().userIntent.numNodes, taskParams().userIntent.replicationFactor);
+    UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+    PlacementInfoUtil.verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
   }
 }

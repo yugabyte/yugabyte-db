@@ -24,6 +24,9 @@ public class NodeDetails {
   // The AZ UUID (the YB UUID for the AZ) into which the node is deployed.
   public UUID azUuid;
 
+  // The UUID of the cluster that this node belongs to.
+  public UUID clusterUuid;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.

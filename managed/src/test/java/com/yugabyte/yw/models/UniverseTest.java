@@ -91,7 +91,7 @@ public class UniverseTest extends FakeDBApplication {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = new UserIntent();
+        UserIntent userIntent = new UserIntent();
 
         // Create some subnets.
         List<String> subnets = new ArrayList<String>();
@@ -100,9 +100,9 @@ public class UniverseTest extends FakeDBApplication {
         subnets.add("subnet-3");
 
         // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 5;
+        userIntent.numNodes = 5;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -118,6 +118,7 @@ public class UniverseTest extends FakeDBApplication {
           node.nodeIdx = idx;
           universeDetails.nodeDetailsSet.add(node);
         }
+        universeDetails.upsertPrimaryCluster(userIntent, null);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -189,12 +190,12 @@ public class UniverseTest extends FakeDBApplication {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = new UserIntent();
+        UserIntent userIntent = new UserIntent();
 
         // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 3;
+        userIntent.numNodes = 3;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
+        for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -209,6 +210,7 @@ public class UniverseTest extends FakeDBApplication {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
+          universeDetails.upsertPrimaryCluster(userIntent, null);
           universeDetails.nodeDetailsSet.add(node);
         }
         universe.setUniverseDetails(universeDetails);
@@ -275,22 +277,27 @@ public class UniverseTest extends FakeDBApplication {
         u.getUniverseDetails()));
     assertThat(universeJson.get("resources").asText(), allOf(notNullValue(),
         equalTo(resources.asText())));
-    JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
+    JsonNode clustersListJson = universeJson.get("universeDetails").get("clusters");
+    assertThat(clustersListJson, notNullValue());
+    assertTrue(clustersListJson.isArray());
+    assertEquals(1, clustersListJson.size());
+    JsonNode clusterJson = clustersListJson.get(0);
+    JsonNode userIntentJson = clusterJson.get("userIntent");
     assertTrue(userIntentJson.get("regionList").isArray());
     assertEquals(3, userIntentJson.get("regionList").size());
     JsonNode masterGFlags = userIntentJson.get("masterGFlags");
     assertThat(masterGFlags, is(notNullValue()));
     assertTrue(masterGFlags.isObject());
 
-    JsonNode regionsNode = universeJson.get("regions");
+    JsonNode providerNode = userIntentJson.get("provider");
+    assertThat(providerNode, notNullValue());
+    assertThat(providerNode.asText(), allOf(notNullValue(),
+        equalTo(defaultProvider.uuid.toString())));
+
+    JsonNode regionsNode = clusterJson.get("regions");
     assertThat(regionsNode, is(notNullValue()));
     assertTrue(regionsNode.isArray());
     assertEquals(3, regionsNode.size());
-
-    JsonNode providerNode = universeJson.get("provider");
-    assertThat(providerNode, is(notNullValue()));
-    assertThat(providerNode.get("uuid").asText(), allOf(notNullValue(),
-        equalTo(defaultProvider.uuid.toString())));
   }
 
   @Test
@@ -302,12 +309,10 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
         equalTo(u.universeUUID.toString())));
-    JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
-    assertTrue(userIntentJson.get("regionList").isNull());
-    JsonNode regionsNode = universeJson.get("regions");
-    assertNull(regionsNode);
-    JsonNode providerNode = universeJson.get("provider");
-    assertNull(providerNode);
+    JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
+    assertTrue(clusterJson.get("userIntent").get("regionList").isNull());
+    assertNull(clusterJson.get("regions"));
+    assertNull(clusterJson.get("provider"));
   }
 
   @Test
@@ -325,15 +330,15 @@ public class UniverseTest extends FakeDBApplication {
 
     // Update in-memory user intent so userDetails no longer has null gflags, but json still does
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
-    udtp.userIntent.masterGFlags = new HashMap<>();
+    udtp.retrievePrimaryCluster().userIntent.masterGFlags = new HashMap<>();
     u.setUniverseDetails(udtp);
 
     // Verify returned json is generated from the non-json userDetails object
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(),
         equalTo(u.universeUUID.toString())));
-    JsonNode userIntentJson = universeJson.get("universeDetails").get("userIntent");
-    JsonNode masterGFlags = userIntentJson.get("masterGFlags");
+    JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
+    JsonNode masterGFlags = clusterJson.get("userIntent").get("masterGFlags");
     assertThat(masterGFlags, is(notNullValue()));
     assertTrue(masterGFlags.isObject());
     JsonNode providerNode = universeJson.get("provider");
@@ -354,13 +359,10 @@ public class UniverseTest extends FakeDBApplication {
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
-    JsonNode userIntentJson =
-            universeJson.get("universeDetails").get("userIntent");
-    assertTrue(userIntentJson.get("regionList").isArray());
-    JsonNode regionsNode = universeJson.get("regions");
-    assertNull(regionsNode);
-    JsonNode providerNode = universeJson.get("provider");
-    assertNull(providerNode);
+    JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
+    assertTrue(clusterJson.get("userIntent").get("regionList").isArray());
+    assertNull(clusterJson.get("regions"));
+    assertNull(clusterJson.get("provider"));
   }
 
   @Test
@@ -371,24 +373,24 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(),
                allOf(notNullValue(), equalTo(u.universeUUID.toString())));
-    JsonNode univDetailsGflagsJson =
-        universeJson.get("universeDetails").get("userIntent").get("masterGFlags");
-    assertThat(univDetailsGflagsJson, is(notNullValue()));
-    assertEquals(0, univDetailsGflagsJson.size());
+    JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
+    JsonNode masterGFlags = clusterJson.get("userIntent").get("masterGFlags");
+    assertThat(masterGFlags, is(notNullValue()));
+    assertEquals(0, masterGFlags.size());
   }
 
   @Test
   public void testFromJSONWithFlags() {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.userIntent = getBaseIntent();
-    Map<String, String> gflagMap = new HashMap<>();
-    gflagMap.put("emulate_redis_responses", "false");
-    taskParams.userIntent.masterGFlags = gflagMap;
-    JsonNode universeJson = Json.toJson(taskParams);
+    UserIntent userIntent = getBaseIntent();
+    userIntent.masterGFlags = new HashMap<>();
+    userIntent.masterGFlags.put("emulate_redis_responses", "false");
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    JsonNode clusterJson = Json.toJson(taskParams).get("clusters").get(0);
 
-    assertThat(universeJson.get("userIntent").get("masterGFlags").get("emulate_redis_responses"), is(notNullValue()));
+    assertThat(clusterJson.get("userIntent").get("masterGFlags").get("emulate_redis_responses"), notNullValue());
   }
 
   private UserIntent getBaseIntent() {

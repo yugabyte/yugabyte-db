@@ -193,11 +193,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createDestroyServerTasks(Collection<NodeDetails> nodes, Boolean isForceDelete) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
-      DestroyUniverse.Params params = new DestroyUniverse.Params();
+      AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
       // Set the cloud name.
-      params.cloud = taskParams().cloud;
+      params.cloud = CloudType.valueOf(node.cloudInfo.cloud);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.

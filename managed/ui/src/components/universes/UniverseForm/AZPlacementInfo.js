@@ -18,10 +18,10 @@ const statusTypes =
     noFieldsChanged: {currentStatusIcon: "fa fa-times", currentStatusString: "At Least One Field Must Be Modified", currentStatusClass: "yb-fail-color"}
   };
 
-export default class AZSelectorTable extends Component {
+export default class AZPlacementInfo extends Component {
   static propTypes = {
     placementInfo: PropTypes.object.isRequired
-  }
+  };
   render() {
     const {placementInfo} = this.props;
     if (!isNonEmptyObject(placementInfo)) {

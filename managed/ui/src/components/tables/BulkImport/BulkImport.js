@@ -3,7 +3,9 @@
 import React, { Component } from 'react';
 import { Field } from 'redux-form';
 import { YBModal, YBTextInputWithLabel } from '../../common/forms/fields';
-import { isValidObject, trimString, normalizeToPositiveInt } from '../../../utils/ObjectUtils';
+import { trimString, normalizeToPositiveInt, isDefinedNotNull, isNonEmptyObject }
+  from '../../../utils/ObjectUtils';
+import { getPrimaryCluster } from "../../../utils/UniverseUtils";
 
 export default class BulkImport extends Component {
 
@@ -15,26 +17,32 @@ export default class BulkImport extends Component {
   confirmBulkImport(values) {
     const {
       currentTableDetail: { tableDetails: { tableName, keyspace }, tableUUID, universeUUID },
-      universeDetails
+      universeDetails: { clusters },
+      onHide,
+      bulkImport
     } = this.props;
-    const instanceCount = values["instanceCount"] === undefined ?
-      universeDetails.userIntent.numNodes * 8 :
-      values["instanceCount"];
+    const primaryCluster = getPrimaryCluster(clusters);
+    const instanceCount = isDefinedNotNull(values["instanceCount"]) ?
+      values["instanceCount"] :
+      primaryCluster.userIntent.numNodes * 8;
     const payload = {
       "tableName": tableName,
       "keyspace": keyspace,
       "s3Bucket": values["s3Bucket"],
       "instanceCount": instanceCount
     };
-    this.props.onHide();
-    this.props.bulkImport(universeUUID, tableUUID, payload);
+    onHide();
+    bulkImport(universeUUID, tableUUID, payload);
   }
 
   render() {
     const { visible, onHide, currentTableDetail, handleSubmit, universeDetails } = this.props;
 
-    if (isValidObject(currentTableDetail.tableDetails) && isValidObject(universeDetails)
-      && isValidObject(universeDetails.userIntent)) {
+    if (isNonEmptyObject(currentTableDetail.tableDetails) && isNonEmptyObject(universeDetails)) {
+      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
+      if (!isNonEmptyObject(primaryCluster)) {
+        return <span />;
+      }
       const tableName = currentTableDetail.tableDetails.tableName;
       const keyspace = currentTableDetail.tableDetails.keyspace;
       const s3label = "S3 Bucket with data to be loaded into " + keyspace + "." + tableName;
@@ -52,7 +60,7 @@ export default class BulkImport extends Component {
             <Field name="instanceCount"
                    component={YBTextInputWithLabel}
                    label={"Number of task instances for EMR job"}
-                   placeHolder={universeDetails.userIntent.numNodes * 8}
+                   placeHolder={primaryCluster.userIntent.numNodes * 8}
                    normalize={normalizeToPositiveInt} />
           </YBModal>
         </div>
