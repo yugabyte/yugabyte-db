@@ -4,11 +4,16 @@ package com.yugabyte.yw.cloud;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -19,6 +24,8 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 
 public class UniverseResourceDetails {
+  public static final Logger LOG = LoggerFactory.getLogger(UniverseResourceDetails.class);
+
   public double pricePerHour = 0;
   public double ebsPricePerHour = 0;
   public int numCores = 0;
@@ -32,8 +39,8 @@ public class UniverseResourceDetails {
     pricePerHour += price;
   }
 
-  public void addEBSCostPerHour(double price) {
-    ebsPricePerHour += price;
+  public void addEBSCostPerHour(double ebsPrice) {
+    ebsPricePerHour += ebsPrice;
   }
 
   public void addVolumeCount(double volCount) {
@@ -57,17 +64,17 @@ public class UniverseResourceDetails {
   }
 
   public void addNumNodes(int numNodes) {
-    this.numNodes = numNodes;
+    this.numNodes += numNodes;
   }
 
   public void addPrice(UniverseDefinitionTaskParams params) {
-    Provider provider = Provider.get(UUID.fromString(params.userIntent.provider));
 
     // Calculate price
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
-    DeviceInfo deviceInfo = params.userIntent.deviceInfo;
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
+      UserIntent userIntent = params.retrieveClusterByUuid(nodeDetails.clusterUuid).userIntent;
+      Provider provider = Provider.get(UUID.fromString(userIntent.provider));
 
       if (!nodeDetails.isActive()) {
         continue;
@@ -75,10 +82,11 @@ public class UniverseResourceDetails {
       Region region = Region.getByCode(provider, nodeDetails.cloudInfo.region);
 
       // Add price of instance, using spotPrice if this universe is a spotPrice-based universe.
-      if (params.cloud.equals(Common.CloudType.aws) && params.userIntent.spotPrice > 0.0) {
-        hourlyPrice += params.userIntent.spotPrice;
+      if (userIntent.providerType.equals(Common.CloudType.aws) && userIntent.spotPrice > 0.0) {
+        hourlyPrice += userIntent.spotPrice;
       } else {
-        PriceComponent instancePrice = PriceComponent.get(provider.code, region.code, params.userIntent.instanceType);
+        PriceComponent instancePrice = PriceComponent.get(provider.code, region.code,
+                                                          userIntent.instanceType);
         if (instancePrice == null) {
           continue;
         }
@@ -87,12 +95,12 @@ public class UniverseResourceDetails {
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
-      if (deviceInfo.ebsType != null && params.cloud.equals(Common.CloudType.aws)) {
-        Integer numVolumes = deviceInfo.numVolumes;
-        Integer diskIops = deviceInfo.diskIops;
-        Integer volumeSize = deviceInfo.volumeSize;
+      if (userIntent.deviceInfo.ebsType != null && params.cloud.equals(Common.CloudType.aws)) {
+        Integer numVolumes = userIntent.deviceInfo.numVolumes;
+        Integer diskIops = userIntent.deviceInfo.diskIops;
+        Integer volumeSize = userIntent.deviceInfo.volumeSize;
         PriceComponent sizePrice;
-        switch (deviceInfo.ebsType) {
+        switch (userIntent.deviceInfo.ebsType) {
           case IO1:
             PriceComponent piopsPrice = PriceComponent.get(provider.code, region.code, IO1_PIOPS);
             sizePrice = PriceComponent.get(provider.code, region.code, IO1_SIZE);
@@ -116,24 +124,38 @@ public class UniverseResourceDetails {
 
     // Add price to details
     addCostPerHour(Double.parseDouble(String.format("%.4f", hourlyPrice)));
-    if (deviceInfo.ebsType != null) {
-      addEBSCostPerHour(Double.parseDouble(String.format("%.4f", hourlyEBSPrice)));
-    }
+    addEBSCostPerHour(Double.parseDouble(String.format("%.4f", hourlyEBSPrice)));
   }
 
+  /**
+   * Create a UniverseResourceDetails object, which contains info on the various pricing and
+   * other sorts of resources used by this universe.
+   *
+   * @param nodes Nodes that make up this universe.
+   * @param params Parameters describing this universe.
+   * @return a UniverseResourceDetails object containing info on the universe's resources.
+   */
   public static UniverseResourceDetails create(Collection<NodeDetails> nodes,
                                                UniverseDefinitionTaskParams params) {
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addNumNodes(params.userIntent.numNodes);
-    Common.CloudType cloudType = params.userIntent.providerType;
+    for (Cluster cluster : params.clusters) {
+      details.addNumNodes(cluster.userIntent.numNodes);
+    }
     for (NodeDetails node : nodes) {
       if (node.isActive()) {
-        ResourceUtil.mergeResourceDetails(
-            params.userIntent.deviceInfo,
-            cloudType,
-            node.cloudInfo.instance_type,
-            node.cloudInfo.az,
-            details);
+        UserIntent userIntent = params.retrieveClusterByUuid(node.clusterUuid).userIntent;
+        details.addVolumeCount(userIntent.deviceInfo.numVolumes);
+        details.addVolumeSizeGB(userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+        details.addAz(node.cloudInfo.az);
+        InstanceType instanceType = InstanceType.get(userIntent.providerType,
+            node.cloudInfo.instance_type);
+        if (instanceType == null) {
+          LOG.error("Couldn't find instance type " + node.cloudInfo.instance_type +
+              " for provider " + userIntent.providerType);
+        } else {
+          details.addMemSizeGB(instanceType.memSizeGB);
+          details.addNumCores(instanceType.numCores);
+        }
       }
     }
     details.addPrice(params);

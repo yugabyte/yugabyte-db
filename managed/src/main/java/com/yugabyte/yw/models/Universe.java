@@ -19,6 +19,7 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -82,31 +84,27 @@ public class Universe extends Model {
   }
 
   public JsonNode toJson() {
-    ObjectNode json = Json.newObject();
-    json.put("universeUUID", universeUUID.toString());
-    json.put("name", name);
-    json.put("creationDate", creationDate.toString());
-    json.set("universeDetails", Json.toJson(getUniverseDetails()));
-    json.put("version", version);
-    UserIntent userIntent = getUniverseDetails().userIntent;
+    ObjectNode json = Json.newObject()
+        .put("universeUUID", universeUUID.toString())
+        .put("name", name)
+        .put("creationDate", creationDate.toString())
+        .put("version", version);
+    UniverseDefinitionTaskParams params = getUniverseDetails();
     try {
-      json.set("resources", Json.toJson(UniverseResourceDetails.create(getNodes(),
-          getUniverseDetails())));
+      json.set("resources", Json.toJson(UniverseResourceDetails.create(getNodes(), params)));
     } catch (Exception e) {
       json.set("resources", null);
     }
-    if (userIntent != null) {
-      if (userIntent.regionList != null && !userIntent.regionList.isEmpty()) {
-        List<Region> regions = Region.find.where().idIn(userIntent.regionList).findList();
-        if (!regions.isEmpty()) {
-          json.set("regions", Json.toJson(regions));
-          // TODO: change this when we want to deploy across clouds.
-          json.set("provider", Json.toJson(regions.get(0).provider));
-        }
+    ObjectNode universeDetailsJson = (ObjectNode) Json.toJson(params);
+    ArrayNode clustersArrayJson = Json.newArray();
+    for (Cluster cluster : params.clusters) {
+      JsonNode clusterJson = cluster.toJson();
+      if (clusterJson != null) {
+        clustersArrayJson.add(clusterJson);
       }
-      json.set("masterGFlags", Json.toJson(userIntent.masterGFlags));
-      json.set("tserverGFlags", Json.toJson(userIntent.tserverGFlags));
     }
+    universeDetailsJson.set("clusters", clustersArrayJson);
+    json.set("universeDetails", universeDetailsJson);
 
     return json;
   }
@@ -136,7 +134,8 @@ public class Universe extends Model {
     universe.customerId = customerId;
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = new UniverseDefinitionTaskParams();
-    universe.universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+    universe.universeDetails.nodeDetailsSet = new HashSet<>();
+    universe.universeDetails.upsertPrimaryCluster();
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
     LOG.debug("Created universe {} with details [{}] with name {}.",
       universe.universeUUID, universe.universeDetailsJson, name);

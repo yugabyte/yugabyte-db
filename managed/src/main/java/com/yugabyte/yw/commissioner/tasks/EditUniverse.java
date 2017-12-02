@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,8 +51,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // changes the universe name before submitting.
       updateNodeNames();
 
-      LOG.info("Configure numNodes={}, numMasters={}", taskParams().userIntent.numNodes,
-          taskParams().userIntent.replicationFactor);
+      UserIntent userIntent = taskParams().retrievePrimaryCluster().userIntent;
+      LOG.info("Configure numNodes={}, numMasters={}", userIntent.numNodes,
+          userIntent.replicationFactor);
 
       Collection<NodeDetails> nodesToBeRemoved =
           PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
@@ -139,7 +141,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
       
       createPlacementInfoTask(tserversToBeRemoved)
-      .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
       if (!nodesToBeRemoved.isEmpty()) {
         // Wait for %age completion of the tablet move from master.
@@ -234,7 +236,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Create the task params.
     ChangeMasterConfig.Params params = new ChangeMasterConfig.Params();
     // Set the cloud name.
-    params.cloud = taskParams().userIntent.providerType;
+    params.cloud = taskParams().retrievePrimaryCluster().userIntent.providerType;
     // Set the azUUID
     params.azUuid = node.azUuid;
     // Add the node name.

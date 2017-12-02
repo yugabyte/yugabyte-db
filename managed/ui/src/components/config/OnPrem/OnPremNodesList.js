@@ -23,7 +23,7 @@ class OnPremNodesList extends Component {
     this.hideDeleteNodeModal = this.hideDeleteNodeModal.bind(this);
     this.submitAddNodesForm = this.submitAddNodesForm.bind(this);
     this.deleteInstance = this.deleteInstance.bind(this);
-    this.state = {nodeToBeDeleted: {}}
+    this.state = {nodeToBeDeleted: {}};
   }
 
   addNodeToList() {

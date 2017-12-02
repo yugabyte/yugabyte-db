@@ -5,11 +5,12 @@ import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
 import { YBLoading } from '../../common/indicators';
-import { isValidObject } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
+import { isNonEmptyObject } from "../../../utils/ObjectUtils";
+import { getPrimaryCluster } from "../../../utils/UniverseUtils";
 const moment = require('moment');
 
 class CreateUniverseButtonComponent extends Component {
@@ -33,13 +34,18 @@ class CreateUniverseButtonComponent extends Component {
 
 class UniverseDisplayItem extends Component {
   render() {
-    const {universe, refreshUniverseData} = this.props;
-    if (!isValidObject(universe)) {
+    const {universe, providers, refreshUniverseData} = this.props;
+    if (!isNonEmptyObject(universe)) {
       return <span/>;
     }
-    const replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>;
-    const universeProvider = <span>{`${universe.provider.name}`}</span>;
-    const numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>;
+    const primaryCluster = getPrimaryCluster(universe.universeDetails.clusters);
+    if (!isNonEmptyObject(primaryCluster) || !isNonEmptyObject(primaryCluster.userIntent)) {
+      return <span/>;
+    }
+    const provider = providers.data.find((p) => p.uuid === primaryCluster.userIntent.provider);
+    const replicationFactor = <span>{`${primaryCluster.userIntent.replicationFactor}`}</span>;
+    const universeProvider = <span>{`${provider.name}`}</span>;
+    const numNodes = <span>{primaryCluster.userIntent.numNodes}</span>;
     let costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>;
@@ -54,16 +60,11 @@ class UniverseDisplayItem extends Component {
             </div>
             <div className="display-name">
               {universe.name}
-              {/* <div className="base">{universe.name}</div>
-              <div className="overlay">{universe.name}</div> */}
             </div>
             <div className="provider-name">
               {universeProvider}
             </div>
             <div className="description-item-list">
-              {/* <DescriptionItem title="Provider">
-                <span>{universeProvider}</span>
-              </DescriptionItem> */}
               <DescriptionItem title="Nodes">
                 <span>{numNodes}</span>
               </DescriptionItem>
@@ -94,7 +95,10 @@ export default class UniverseDisplayPanel extends Component {
         universeDisplayList = universeList.data.sort((a, b) => {
           return Date.parse(a.creationDate) < Date.parse(b.creationDate);
         }).map(function (universeItem, idx) {
-          return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem} refreshUniverseData={self.props.fetchUniverseMetadata}/>;
+          return (<UniverseDisplayItem key={universeItem.name + idx}
+                                       universe={universeItem}
+                                       providers={providers}
+                                       refreshUniverseData={self.props.fetchUniverseMetadata} />);
         });
       }
       const createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;

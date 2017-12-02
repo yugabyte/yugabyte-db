@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -36,10 +37,11 @@ public class TableManager extends DevopsBase {
   public ShellProcessHandler.ShellResponse tableCommand(BulkImportParams taskParams) {
 
     Universe universe = Universe.get(taskParams.universeUUID);
-    Region region = Region.get(universe.getUniverseDetails().userIntent.regionList.get(0));
+    Cluster primaryCluster = universe.getUniverseDetails().retrievePrimaryCluster();
+    Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
 
     // Grab needed info
-    UniverseDefinitionTaskParams.UserIntent userIntent = universe.getUniverseDetails().userIntent;
+    UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     String ybServerPackage = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);

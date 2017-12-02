@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
@@ -17,9 +17,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class AnsibleDestroyServer extends NodeTaskBase {
 
+  public static class Params extends NodeTaskParams {
+    public Boolean isForceDelete;
+  }
+
   @Override
-  protected DestroyUniverse.Params taskParams() {
-    return (DestroyUniverse.Params)taskParams;
+  protected AnsibleDestroyServer.Params taskParams() {
+    return (AnsibleDestroyServer.Params)taskParams;
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);

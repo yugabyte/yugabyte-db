@@ -3,10 +3,12 @@
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { RollingUpgradeForm }  from '../../../common/forms';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
-import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrade,
-         fetchUniverseTasks, fetchUniverseTasksResponse, fetchUniverseMetadata, fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../actions/universe';
 import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../../actions/tasks';
+import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrade,
+  fetchUniverseTasks, fetchUniverseTasksResponse, fetchUniverseMetadata, fetchUniverseInfo,
+  fetchUniverseInfoResponse } from '../../../../actions/universe';
+import { isDefinedNotNull, isNonEmptyObject } from "../../../../utils/ObjectUtils";
+import { getPrimaryCluster } from "../../../../utils/UniverseUtils";
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -59,18 +61,21 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   const initalGFlagValues = {};
-  if (isNonEmptyObject(currentUniverse) && currentUniverse.data.universeDetails.userIntent) {
-    const masterGFlags = currentUniverse.data.universeDetails.userIntent.masterGFlags;
-    const tserverGFlags = currentUniverse.data.universeDetails.userIntent.tserverGFlags;
-    if(isNonEmptyObject(masterGFlags)) {
-      initalGFlagValues.masterGFlags = Object.keys(masterGFlags).map(function(gFlagKey){
-        return {name: gFlagKey, value: masterGFlags[gFlagKey]};
-      });
-    }
-    if(isNonEmptyObject(tserverGFlags)) {
-      initalGFlagValues.tserverGFlags = Object.keys(tserverGFlags).map(function(gFlagKey){
-        return {name: gFlagKey, value: tserverGFlags[gFlagKey]};
-      });
+  if (isNonEmptyObject(currentUniverse) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
+    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    if (isDefinedNotNull(primaryCluster)) {
+      const masterGFlags = primaryCluster.userIntent.masterGFlags;
+      const tserverGFlags = primaryCluster.userIntent.tserverGFlags;
+      if (isNonEmptyObject(masterGFlags)) {
+        initalGFlagValues.masterGFlags = Object.keys(masterGFlags).map(function (gFlagKey) {
+          return {name: gFlagKey, value: masterGFlags[gFlagKey]};
+        });
+      }
+      if (isNonEmptyObject(tserverGFlags)) {
+        initalGFlagValues.tserverGFlags = Object.keys(tserverGFlags).map(function (gFlagKey) {
+          return {name: gFlagKey, value: tserverGFlags[gFlagKey]};
+        });
+      }
     }
   }
   initalGFlagValues.timeDelay = 180;

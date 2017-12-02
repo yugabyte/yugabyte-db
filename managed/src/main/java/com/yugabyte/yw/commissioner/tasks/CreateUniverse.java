@@ -41,7 +41,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         throw new IllegalStateException("Should not have any masters before create task run.");
       }
       PlacementInfoUtil.selectMasters(taskParams().nodeDetailsSet,
-                                      taskParams().userIntent.replicationFactor);
+                                      taskParams().retrievePrimaryCluster().userIntent.replicationFactor);
 
       // Update the user intent.
       writeUserIntentToUniverse();

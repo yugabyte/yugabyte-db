@@ -7,12 +7,13 @@ import { Link } from 'react-router';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
-import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { getPromiseState } from 'utils/PromiseUtils';
 import './TableDetail.scss';
 import { ItemStatus } from '../../common/indicators';
 import { TableSchema, BulkImportContainer, DropTableContainer } from '../../tables';
 import { CustomerMetricsPanel } from '../../metrics';
+import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
+import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 
 export default class TableDetail extends Component {
   static propTypes = {
@@ -39,23 +40,25 @@ export default class TableDetail extends Component {
       tables: { currentTableDetail }
     } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
-      tableInfoContent = (
-        <div>
-          <Row className={"table-detail-row"}>
-            <Col lg={4}>
-              <TableInfoPanel tableInfo={currentTableDetail}/>
-            </Col>
-            <Col lg={8}>
-            </Col>
-          </Row>
-          <Row>
-            <Col lg={12}>
-              <RegionMap regions={currentUniverse.data.regions} type={"Table"} />
-              <YBMapLegend title="Placement Policy" regions={currentUniverse.data.regions}/>
-            </Col>
-          </Row>
-        </div>
-      );
+      const primaryCluster = getPrimaryCluster(currentUniverse.data.clusters);
+      if (isNonEmptyObject(primaryCluster)) {
+        tableInfoContent = (
+          <div>
+            <Row className={"table-detail-row"}>
+              <Col lg={4}>
+                <TableInfoPanel tableInfo={currentTableDetail} />
+              </Col>
+              <Col lg={8} />
+            </Row>
+            <Row>
+              <Col lg={12}>
+                <RegionMap regions={primaryCluster.regions} type={"Table"} />
+                <YBMapLegend title="Placement Policy" regions={primaryCluster.regions} />
+              </Col>
+            </Row>
+          </div>
+        );
+      }
     }
     let tableSchemaContent = <span/>;
     if (isValidObject(currentTableDetail)) {
