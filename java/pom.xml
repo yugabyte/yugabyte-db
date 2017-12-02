@@ -68,7 +68,7 @@
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
-    <cassandra-driver-core.version>3.2.0-yb-9-SNAPSHOT</cassandra-driver-core.version>
+    <cassandra-driver-core.version>3.2.0-yb-9</cassandra-driver-core.version>
     <lz4.version>1.3.0</lz4.version>
     <snappy.version>1.1.4</snappy.version>
     <commons-cli.version>1.2</commons-cli.version>
