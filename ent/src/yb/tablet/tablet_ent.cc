@@ -2,11 +2,13 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/tablet-internal.h"
+#include "yb/util/stopwatch.h"
 
 ////////////////////////////////////////////////////////////
 // Tablet
@@ -18,6 +20,7 @@ namespace enterprise {
 
 using strings::Substitute;
 using yb::util::ScopedPendingOperation;
+using yb::util::PendingOperationCounter;
 
 Status Tablet::PrepareForSnapshotOp(SnapshotOperationState* tx_state) {
   // Create snapshot must run when no reads/writes are in progress.
@@ -27,6 +30,9 @@ Status Tablet::PrepareForSnapshotOp(SnapshotOperationState* tx_state) {
 }
 
 Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   // Prevent any concurrent flushes.
   std::lock_guard<Semaphore> lock(rowsets_flush_sem_);
 
@@ -72,7 +78,28 @@ Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
 }
 
 Status Tablet::RestoreCheckpoint(const std::string& dir) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  // Prevent parallel shutdown through incrementing pending operation counter.
+  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+
+  // TODO: Implement new ScopedOperationPause class that would re-enable operations in its
+  //       destructor and return that from DisableAndWaitForOps().
+  BOOST_SCOPE_EXIT(&pending_op_counter_) {
+    // Enable rocksdb object before exit. It does not affect Shutdown flag.
+    pending_op_counter_.Enable();
+  } BOOST_SCOPE_EXIT_END;
+
+  // Mark rocksdb object as disabled to prevent any new read/write operations.
+  // Wait for all pending read/write operations.
+  LOG_SLOW_EXECUTION(WARNING, 1000,
+                     Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
+    // Waiting for 1 pending operation because counter was increased by this call.
+    RETURN_NOT_OK(pending_op_counter_.DisableAndWaitForOps(MonoDelta::FromSeconds(60), 1));
+  }
+
+  // Check if tablet is in shutdown mode.
+  if (IsShutdownRequested()) {
+    return STATUS(IllegalState, "Tablet was shutdown");
+  }
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
