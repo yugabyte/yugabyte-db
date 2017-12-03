@@ -88,7 +88,6 @@
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
-#include "yb/tablet/tablet-internal.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/alter_schema_operation.h"
@@ -407,7 +406,7 @@ void Tablet::Shutdown() {
 
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
-    CHECK_OK(pending_op_counter_.WaitForAllOpsToFinish(MonoDelta::FromSeconds(60)));
+    CHECK_OK(pending_op_counter_.DisableAndWaitForOps(MonoDelta::FromSeconds(60)));
   }
 
   if (transaction_coordinator_) {
@@ -495,7 +494,8 @@ void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
 
 Status Tablet::CreateCheckpoint(const std::string& dir,
                                 google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
@@ -604,7 +604,9 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     WriteRequestPB* redis_write_request,
     LockBatch* keys_locked,
     vector<RedisResponsePB>* responses) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   docdb::DocOperations doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   WriteRequestPB batch_request;
@@ -629,7 +631,9 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
 Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
 
   docdb::RedisReadOperation doc_op(redis_read_request, rocksdb_.get(), read_time);
@@ -643,7 +647,9 @@ Status Tablet::HandleQLReadRequest(
     const QLReadRequestPB& ql_read_request,
     const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
     gscoped_ptr<faststring>* rows_data) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
   if (metadata()->schema_version() != ql_read_request.schema_version()) {
@@ -690,7 +696,8 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(
     LockBatch *keys_locked,
     WriteResponsePB* write_response,
     WriteOperationState* operation_state) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
 
   docdb::DocOperations doc_ops;
   WriteRequestPB batch_request;
@@ -782,7 +789,8 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
 
 Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request,
                                            LockBatch *keys_locked) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
 
   TRACE("PREPARE: Decoding operations");
 
@@ -825,7 +833,9 @@ DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
                                               KeyValueWriteBatchPB* write_batch,
                                               LockBatch* keys_locked) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   docdb::DocOperations doc_ops;
   for (DecodedRowOperation row_op : row_ops) {
     // row_data contains the row key for all Kudu operation types (insert/update/delete).
@@ -1091,13 +1101,19 @@ void Tablet::UpdateMonotonicCounter(int64_t value) {
 // Tablet
 ////////////////////////////////////////////////////////////
 
-bool Tablet::HasSSTables() const {
+Result<bool> Tablet::HasSSTables() const {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   std::vector<rocksdb::LiveFileMetaData> live_files_metadata;
   rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
   return !live_files_metadata.empty();
 }
 
-yb::OpId Tablet::MaxPersistentOpId() const {
+Result<yb::OpId> Tablet::MaxPersistentOpId() const {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   return rocksdb_->GetFlushedOpId();
 }
 
@@ -1139,7 +1155,8 @@ Status Tablet::QLCaptureConsistentIterators(
     const ScanSpec *spec,
     const boost::optional<TransactionId>& transaction_id,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
 
   TransactionOperationContextOpt txn_op_ctx =
       CreateTransactionOperationContext(transaction_id);
@@ -1347,8 +1364,12 @@ void Tablet::LostLeadership() {
 }
 
 uint64_t Tablet::GetTotalSSTFileSizes() const {
+  ScopedPendingOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
-  if (!rocksdb_) {
+
+  // In order to get actual stats we would have to wait.
+  // This would give us correct stats but would make this request slower.
+  if (!pending_op_counter_.IsReady() || !rocksdb_) {
     return 0;
   }
   return rocksdb_->GetTotalSSTFileSize();

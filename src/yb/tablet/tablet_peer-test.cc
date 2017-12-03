@@ -271,6 +271,12 @@ class TabletPeerTest : public YBTabletTest,
       << ")";
   }
 
+  int32_t EarliestNeededIndex() const {
+    Result<yb::OpId> max_persistent_op_id = tablet_peer_->tablet()->MaxPersistentOpId();
+    EXPECT_OK(max_persistent_op_id);
+    return static_cast<int32_t>(max_persistent_op_id->index);
+  }
+
   // We disable automatic log GC. Don't leak those changes.
   google::FlagSaver flag_saver_;
 
@@ -340,7 +346,7 @@ TEST_P(TabletPeerTest, TestLogAnchorsAndGC) {
   // The first two segments should be deleted.
   // The last is anchored due to the commit in the last segment being the last
   // OpId in the log.
-  int32_t earliest_needed = static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
+  int32_t earliest_needed = EarliestNeededIndex();
   auto total_segments = log->GetLogReader()->num_segments();
   ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
@@ -369,7 +375,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // Flush RocksDB so the next mutation goes into a DMS.
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
 
-  int32_t earliest_needed = static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
+  int32_t earliest_needed = EarliestNeededIndex();
   auto total_segments = log->GetLogReader()->num_segments();
   int64_t min_log_index = -1;
   ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
@@ -408,14 +414,14 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
-  earliest_needed = tablet_peer_->tablet()->MaxPersistentOpId().index;
+  earliest_needed = EarliestNeededIndex();
   ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
-  earliest_needed = static_cast<int32_t>(tablet_peer_->tablet()->MaxPersistentOpId().index);
+  earliest_needed = EarliestNeededIndex();
   total_segments = log->GetLogReader()->num_segments();
   // We should only hang onto one segment due to no anchors.
   // The last log OpId is the commit in the last segment, so it only anchors

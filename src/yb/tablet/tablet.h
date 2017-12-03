@@ -368,10 +368,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   TableType table_type() const override { return table_type_; }
 
   // Returns true if a RocksDB-backed tablet has any SSTables.
-  bool HasSSTables() const;
+  Result<bool> HasSSTables() const;
 
   // Returns the maximum persistent op id from all SSTables in RocksDB.
-  yb::OpId MaxPersistentOpId() const;
+  Result<yb::OpId> MaxPersistentOpId() const;
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }

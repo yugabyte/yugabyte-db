@@ -25,13 +25,14 @@ namespace yb {
 namespace util {
 
 // The implementation is based on OperationTracker::WaitForAllToFinish.
-Status PendingOperationCounter::WaitForAllOpsToFinish(const MonoDelta& timeout) const {
+Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout,
+                                                   uint64_t num_remaining_ops) const {
   const int complain_ms = 1000;
   MonoTime start_time = MonoTime::Now();
   int64_t num_pending_ops = 0;
   int num_complaints = 0;
   int wait_time_usec = 250;
-  while ((num_pending_ops = Get()) > 0) {
+  while ((num_pending_ops = GetOpCounter()) > num_remaining_ops) {
     const MonoDelta diff = MonoTime::Now().GetDeltaSince(start_time);
     if (diff.MoreThan(timeout)) {
       return STATUS(TimedOut, Substitute(
@@ -48,7 +49,8 @@ Status PendingOperationCounter::WaitForAllOpsToFinish(const MonoDelta& timeout) 
     wait_time_usec = std::min(wait_time_usec * 5 / 4, 1000000);
     SleepFor(MonoDelta::FromMicroseconds(wait_time_usec));
   }
-  CHECK_EQ(num_pending_ops, 0) << "Number of pending operations must be non-negative.";
+  CHECK_EQ(num_pending_ops, num_remaining_ops) << "Number of pending operations must be " <<
+      num_remaining_ops;
   return Status::OK();
 }
 

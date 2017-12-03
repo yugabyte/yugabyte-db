@@ -314,7 +314,11 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
   }
-  *has_blocks = tablet->HasSSTables();
+  Result<bool> has_ss_tables = tablet->HasSSTables();
+  // Error can happen in case of tablet Shutdown or in RocksDB object
+  // replacement operation like RestoreSnapshot or Truncate.
+  RETURN_NOT_OK(has_ss_tables);
+  *has_blocks = has_ss_tables.get();
   tablet_ = std::move(tablet);
   return Status::OK();
 }
@@ -678,9 +682,11 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // the log jumps back and the term gets increased due to leader changes and logical log
   // "truncation".
   auto persistent_op_id = MinimumOpId();
-  auto flushed_op_id = tablet_->MaxPersistentOpId();
-  persistent_op_id.set_term(flushed_op_id.term);
-  persistent_op_id.set_index(flushed_op_id.index);
+  Result<yb::OpId> flushed_op_id = tablet_->MaxPersistentOpId();
+  RETURN_NOT_OK(flushed_op_id);
+
+  persistent_op_id.set_term(flushed_op_id.get_ptr()->term);
+  persistent_op_id.set_index(flushed_op_id.get_ptr()->index);
   ReplayState state(persistent_op_id);
 
   LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
