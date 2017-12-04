@@ -27,6 +27,8 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 
 - The above approach obviates the need for any unpredictable background anti-entropy operations as well as need to establish quorum at read time. As shown in the [YCSB benchmarks against Apache Cassandra](https://forum.yugabyte.com/t/ycsb-benchmark-results-for-yugabyte-and-apache-cassandra-again-with-p99-latencies/99), YugaByte DB delivers predictable p99 latencies as well as 3x read throughput that is also timeline-consistent (given no quorum is needed at read time).
 
+YugaByte DB's architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users.
+
 ## Zero data loss writes
 
 Writes (and background data rebalancing in general) are guaranteed to be zero data loss. This guarantee comes through the use of Raft distributed consensus algorithm for each tablet's replication. Each tablet's Raft consensus group is comprised of a tablet leader and set of tablet-peers (aka tablet followers). Leader owns the interaction with clients for write requests and acknowledges the write as committed only after it synchronously replicates to other node. Loss of the leader makes the remaining members of the group auto-elect a new leader among themselves in a matter of couple seconds. 

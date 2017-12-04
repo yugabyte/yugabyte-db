@@ -103,7 +103,7 @@ googleAnalytics = "UA-104956980-1"
 	weight = 150
 
 [[menu.main]]
-	name = "Explore Core Features"
+	name = "Explore"
 	identifier = "explore"
 	url = "explore/"
 	weight = 200
@@ -298,6 +298,13 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/concepts/yql/"
 	weight = 970
 
+
+[[menu.main]]
+	name   = "Transactions"
+	parent = "concepts"
+	url = "architecture/concepts/transactions/"
+	weight = 971
+
 [[menu.main]]
 	name   = "Acknowledgements"
 	parent = "concepts"
@@ -385,7 +392,7 @@ googleAnalytics = "UA-104956980-1"
 	weight = 1110
 
 [[menu.main]]
-	name   = "Client API Reference"
+	name   = "API Reference"
 	identifier = "API"
 	url = "api/"
 	weight = 1200

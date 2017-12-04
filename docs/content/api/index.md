@@ -1,7 +1,9 @@
 ---
-title: Client API Reference
+title: API Reference
 weight: 1200
 ---
+
+YugaByte DB is currently in a wire-compatible with Apache Cassandra and Redis APIs. PostgreSQL API is in the works.
 
 <div>
   <a class="section-link icon-offset" href="cql/">
