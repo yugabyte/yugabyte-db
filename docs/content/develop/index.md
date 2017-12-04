@@ -1,38 +1,48 @@
 ---
-title: Develop Apps
-weight: 540
+title: Develop Apps on YugaByte DB
+weight: 600
 ---
 
-The YugaByte DB package ships with multiple Apache Cassandra Query Language (CQL) and Redis sample apps that you can use as a starting point for developing your own application. The CQL apps available are `CassandraHelloWorld`, `CassandraKeyValue`, `CassandraStockTicker`, `CassandraTimeseries`, `CassandraUserId`, `CassandraSparkWordCount`. The Redis apps available are `RedisKeyValue` and `RedisPipelinedKeyValue`.
-
-You can get help on all these apps by simply running the command below.
-
-```sh
-$ java -jar ./java/yb-sample-apps.jar --help
-```
-
-The source code for these apps is also available in the same directory as the compiled jar. Run the command below to expand the source jar files into `com/yugabyte/sample/apps` path of the current directory.
-
-```sh
-$ jar xf ./java/yb-sample-apps-sources.jar
-```
+This section will help you get started with building apps on top of YugaByte DB.
 
 <div>
-  <a class="section-link icon-offset" href="cql/">
+  <a class="section-link icon-offset" href="/develop/client-drivers/">
     <div class="icon">
       <img src="/images/section_icons/develop/cql.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Develop CQL apps
+      Client Drivers
+      <div class="caption">Develop applications using the appropriate client drivers in the language of your choice.</div>
     </div>
   </a>
 
-  <a class="section-link icon-offset" href="redis/">
+<!--  <a class="section-link icon-offset" href="common-patterns/">
     <div class="icon">
-      <img src="/images/section_icons/develop/redis.png" aria-hidden="true" />
+      <i class="fa fa-map-o" aria-hidden="true"></i>
     </div>
     <div class="text">
-      Develop Redis apps
+      Common Patterns
+      <div class="caption">Examples of reading and writing data for various common access patterns that arise while building apps.</div>
     </div>
   </a>
-</div>
+
+  <a class="section-link icon-offset" href="realworld-apps/">
+    <div class="icon">
+      <i class="fa fa-vcard-o" aria-hidden="true"></i>
+    </div>
+    <div class="text">
+      Realworld Apps
+      <div class="caption">A walk-through of real world, end to end applications build on top of YugaByte-DB.</div>
+    </div>
+  </a>
+
+  <a class="section-link icon-offset" href="port-existing-apps/">
+    <div class="icon">
+      <i class="fa fa-sign-in" aria-hidden="true"></i>
+    </div>
+    <div class="text">
+      Port Existing Apps
+      <div class="caption">How you can port your existing applications to run on top of YugaByte-DB.</div>
+    </div>
+  </a>
+</div> -->

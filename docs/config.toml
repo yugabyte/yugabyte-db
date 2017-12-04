@@ -151,16 +151,165 @@ googleAnalytics = "UA-104956980-1"
 	weight = 540
 
 [[menu.main]]
-	name = "CQL Apps"
+	name = "Client Drivers"
 	parent = "develop"
-	url = "develop/cql/"
+	identifier = "develop-client-drivers"
+	url = "develop/client-drivers/"
 	weight = 550
 
+#[[menu.main]]
+#	name = "C++"
+#	parent = "develop-client-drivers"
+#	identifier = "develop-client-drivers-cpp"
+#	url = "develop/client-drivers/cpp"
+#	weight = 551
+
 [[menu.main]]
-	name = "Redis Apps"
-	parent = "develop"
-	url = "develop/redis/"
-	weight = 560
+	name = "Java"
+	parent = "develop-client-drivers"
+	identifier = "develop-client-drivers-java"
+	url = "develop/client-drivers/java"
+	weight = 552
+
+[[menu.main]]
+	name = "NodeJS"
+	parent = "develop-client-drivers"
+	identifier = "develop-client-drivers-nodejs"
+	url = "develop/client-drivers/nodejs"
+	weight = 553
+
+[[menu.main]]
+	name = "Python"
+	parent = "develop-client-drivers"
+	identifier = "develop-client-drivers-python"
+	url = "develop/client-drivers/python"
+	weight = 554
+
+#[[menu.main]]
+#	name = "Scala"
+#	parent = "develop-client-drivers"
+#	identifier = "develop-client-drivers-scala"
+#	url = "develop/client-drivers/scala"
+#	weight = 555
+
+#[[menu.main]]
+#	name = "Spark"
+#	parent = "develop-client-drivers"
+#	identifier = "develop-client-drivers-spark"
+#	url = "develop/client-drivers/spark"
+#	weight = 556
+
+#[[menu.main]]
+#	name = "Common Patterns"
+#	parent = "develop"
+#	identifier = "develop-common-patterns"
+#	url = "develop/common-patterns/"
+#	weight = 560
+
+#[[menu.main]]
+#	name = "Creating Tables"
+#	parent = "develop-common-patterns"
+#	identifier = "develop-common-patterns-creating-tables"
+#	url = "develop/common-patterns/creating-tables"
+#	weight = 561
+
+#[[menu.main]]
+#	name = "Writing Data"
+#	parent = "develop-common-patterns"
+#	identifier = "develop-common-patterns-writing-data"
+#	url = "develop/common-patterns/writing-data"
+#	weight = 562
+
+#[[menu.main]]
+#	name = "Querying Data"
+#	parent = "develop-common-patterns"
+#	identifier = "develop-common-patterns-querying-data"
+#	url = "develop/common-patterns/querying-data"
+#	weight = 563
+
+#[[menu.main]]
+#	name = "Batch Operations"
+#	parent = "develop-common-patterns"
+#	identifier = "develop-common-patterns-batch-operations"
+#	url = "develop/common-patterns/batch-operations"
+#	weight = 564
+
+#[[menu.main]]
+#	name = "Working with Spark"
+#	parent = "develop-common-patterns"
+#	identifier = "develop-common-patterns-working-with-spark"
+#	url = "develop/common-patterns/working-with-spark"
+#	weight = 565
+
+#[[menu.main]]
+#	name = "Realworld Examples"
+#	parent = "develop"
+#	identifier = "develop-realworld-apps"
+#	url = "develop/realworld-apps/realworld-apps"
+#	weight = 570
+
+#[[menu.main]]
+#	name = "User Identity - Redis and CQL"
+#	parent = "develop-realworld-apps"
+#	identifier = "develop-realworld-apps-user-identity-redis-and-cql"
+#	url = "develop/realworld-apps/user-identity-redis-and-cql"
+#	weight = 571
+
+#[[menu.main]]
+#	name = "Finance App - Spark"
+#	parent = "develop-realworld-apps"
+#	identifier = "develop-realworld-apps-finance-portfolio-spark"
+#	url = "develop/realworld-apps/finance-portfolio-spark"
+#	weight = 572
+
+#[[menu.main]]
+#	name = "IoT - Spark and Kafka"
+#	parent = "develop-realworld-apps"
+#	identifier = "develop-realworld-apps-iot-spark-kafka"
+#	url = "develop/realworld-apps/iot-spark-kafka"
+#	weight = 573
+
+#[[menu.main]]
+#	name = "Timeseries - KairosDB"
+#	parent = "develop-realworld-apps"
+#	identifier = "develop-realworld-apps-timeseries-kairosdb"
+#	url = "develop/realworld-apps/timeseries-kairosdb"
+#	weight = 574
+
+#[[menu.main]]
+#	name = "S3 Object Store - Pithos"
+#	parent = "develop-realworld-apps"
+#	identifier = "develop-realworld-apps-s3-object-store-pithos"
+#	url = "develop/realworld-apps/s3-object-store-pithos"
+#	weight = 575
+
+#[[menu.main]]
+#	name = "Personalization - KillrVideo"
+#	parent = "develop-realworld-apps"
+#	identifier = "develop-realworld-apps-personalization-killrvideo"
+#	url = "develop/realworld-apps/personalization-killrvideo"
+#	weight = 576
+
+#[[menu.main]]
+#	name = "Port Existing Apps"
+#	parent = "develop"
+#	identifier = "develop-port-existing-apps"
+#	url = "develop/port-existing-apps/"
+#	weight = 580
+
+#[[menu.main]]
+#	name = "CQL"
+#	parent = "develop-port-existing-apps"
+#	identifier = "develop-port-existing-apps-cql"
+#	url = "develop/port-existing-apps-cql/"
+#	weight = 581
+
+#[[menu.main]]
+#	name = "Redis"
+#	parent = "develop-port-existing-apps"
+#	identifier = "develop-port-existing-apps-redis"
+#	url = "develop/port-existing-apps-redis/"
+#	weight = 582
 
 [[menu.main]]
 	name   = "Deploy"

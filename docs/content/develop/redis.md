@@ -1,6 +1,6 @@
 ---
 title: Redis Apps
-weight: 560
+//weight: 560
 ---
 
 ## RedisKeyValue
