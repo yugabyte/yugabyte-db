@@ -200,7 +200,6 @@ class UniverseDetail extends Component {
 }
 
 class UniverseTaskList extends Component {
-
   render() {
     const {universe: {universeTasks, currentUniverse}} = this.props;
     let universeTaskUUIDs = [];
@@ -222,7 +221,10 @@ class UniverseTaskList extends Component {
       universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>;
     }
     let currentTaskProgress = <span/>;
-    if (isNonEmptyArray) {
+    if (getPromiseState(universeTasks).isLoading()) {
+      currentTaskProgress = <YBLoading/>;
+    }
+    else if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTaskUUIDs)) {
       currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>;
     }
     return (
