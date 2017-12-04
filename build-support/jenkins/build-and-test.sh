@@ -161,6 +161,7 @@ BUILD_TYPE=${BUILD_TYPE:-debug}
 build_type=$BUILD_TYPE
 normalize_build_type
 readonly build_type
+
 BUILD_TYPE=$build_type
 readonly BUILD_TYPE
 
@@ -416,7 +417,8 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   )
 fi
 
-set_asan_tsan_options
+# -------------------------------------------------------------------------------------------------
+# Java build
 
 if [[ $YB_BUILD_JAVA == "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
@@ -462,8 +464,17 @@ if [[ $YB_BUILD_JAVA == "1" ]]; then
 fi
 
 # -------------------------------------------------------------------------------------------------
+# Now that that all C++ and Java code has been built, test creating a package.
+if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" && $build_type != "tsan" ]]; then
+  log "Creating a distribution package"
+  time "$YB_SRC_ROOT/yb_release" --build "$build_type" --build_root "$BUILD_ROOT" --force
+fi
+
+# -------------------------------------------------------------------------------------------------
 # Run tests, either on Spark or locally.
 # If YB_COMPILE_ONLY is set to 1, we skip running all tests (Java and C++).
+
+set_asan_tsan_runtime_options
 
 if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then
@@ -534,11 +545,6 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
 fi
 
 # Finished running tests.
-
-if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]]; then
-  log "Testing creating a distribution package"
-  "$YB_SRC_ROOT/yb_release" --force --skip_build
-fi
 
 set -e
 

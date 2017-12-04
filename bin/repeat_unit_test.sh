@@ -167,7 +167,7 @@ fi
 
 set_cmake_build_type_and_compiler_type
 set_build_root
-set_asan_tsan_options
+set_asan_tsan_runtime_options
 
 declare -i -r num_pos_args=${#positional_args[@]}
 if [[ $num_pos_args -lt 1 || $num_pos_args -gt 2 ]]; then

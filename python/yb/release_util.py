@@ -14,7 +14,7 @@ import sys
 import re
 
 from subprocess import call, check_output
-from common_util import log_message, YB_THIRDPARTY_DIR
+from common_util import YB_THIRDPARTY_DIR
 from xml.dom import minidom
 from yb.command_util import run_program
 
@@ -59,8 +59,7 @@ class ReleaseUtil(object):
         pom_file = os.path.join(self.repo, 'java', 'pom.xml')
         java_project_version = minidom.parse(pom_file).getElementsByTagName(
             'version')[0].firstChild.nodeValue
-        log_message(logging.INFO,
-                    "Java project version from pom.xml: {}".format(java_project_version))
+        logging.info("Java project version from pom.xml: {}".format(java_project_version))
 
         for key, value_list in self.release_manifest.iteritems():
             for i in xrange(len(value_list)):
@@ -70,9 +69,8 @@ class ReleaseUtil(object):
                 if thirdparty_prefix_match:
                     new_value = os.path.join(YB_THIRDPARTY_DIR, thirdparty_prefix_match.group(1))
                 if new_value != value_list[i]:
-                    log_message(logging.INFO,
-                                "Substituting '{}' -> '{}' in manifest".format(
-                                    value_list[i], new_value))
+                    logging.info("Substituting '{}' -> '{}' in manifest".format(
+                        value_list[i], new_value))
                     value_list[i] = new_value
 
     def create_distribution(self, distribution_dir):
@@ -94,25 +92,20 @@ class ReleaseUtil(object):
                     if os.path.islink(file_path):
                         link_path = os.path.join(current_dest_dir, os.path.basename(file_path))
                         link_target = os.readlink(file_path)
-                        log_message(logging.DEBUG,
-                                    "Creating symlink {} -> {}".format(link_path, link_target))
+                        logging.debug("Creating symlink {} -> {}".format(link_path, link_target))
                         os.symlink(link_target, link_path)
                     elif os.path.isdir(file_path):
                         current_dest_dir = os.path.join(current_dest_dir,
                                                         os.path.basename(file_path))
-                        log_message(logging.DEBUG,
-                                    "Copying directory {} to {}".format(file_path,
-                                                                        current_dest_dir))
+                        logging.debug("Copying directory {} to {}".format(file_path,
+                                                                          current_dest_dir))
                         shutil.copytree(file_path, current_dest_dir)
                     else:
                         current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
-                        log_message(
-                            logging.DEBUG,
-                            "Copying file {} to directory {}".format(file_path,
-                                                                     current_dest_dir))
+                        logging.debug("Copying file {} to directory {}".format(file_path,
+                                                                               current_dest_dir))
                         shutil.copy(file_path, current_dest_dir)
-        log_message(logging.INFO,
-                    "Created the distribution at '{}'".format(distribution_dir))
+        logging.info("Created the distribution at '{}'".format(distribution_dir))
 
     def update_manifest(self, distribution_dir):
         for release_subdir in ['bin']:
@@ -122,9 +115,8 @@ class ReleaseUtil(object):
             self.release_manifest.setdefault(os.path.relpath(root, distribution_dir), []).extend(
                 [os.path.join(root, f) for f in files])
 
-        log_message(logging.DEBUG,
-                    "Effective release manifest:\n" +
-                    json.dumps(self.release_manifest, indent=2, sort_keys=True))
+        logging.debug("Effective release manifest:\n" +
+                      json.dumps(self.release_manifest, indent=2, sort_keys=True))
 
     def get_release_file(self):
         """
@@ -137,19 +129,6 @@ class ReleaseUtil(object):
         Returns:
             (string): Release file path.
         """
-        is_dirty = False
-        if check_output(["git", "diff", "origin/master"]).strip():
-            log_message(logging.ERROR, "Local changes exists this shouldn't be official release.")
-            is_dirty = True
-        elif check_output(["git", "log", "origin/master..HEAD", "--oneline"]):
-            log_message(logging.ERROR, "Local commits exists this shouldn't be official release.")
-            is_dirty = True
-
-        if is_dirty and not self.force:
-            prompt_input = raw_input("Continue [Y/n]: ").strip().lower()
-            if prompt_input not in ['y', 'yes', '']:
-                sys.exit(1)
-
         cur_commit = check_output(["git", "rev-parse", "HEAD"]).strip()
         release_name = "{}-{}-{}".format(self.base_version, cur_commit, self.build_type)
 
@@ -176,12 +155,26 @@ class ReleaseUtil(object):
 
         try:
             release_file = self.get_release_file()
-            log_message(logging.INFO,
-                        "Creating a release archive '{}' from directory {}".format(
-                            release_file, tmp_distribution_dir))
+            logging.info("Creating a release archive '{}' from directory {}".format(
+                release_file, tmp_distribution_dir))
             run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
                         cwd=tmp_parent_dir)
             return release_file
         finally:
             shutil.move(tmp_distribution_dir, self.distribution_path)
             os.rmdir(tmp_parent_dir)
+
+
+def check_for_local_changes():
+    is_dirty = False
+    if check_output(["git", "diff", "origin/master"]).strip():
+        logging.error("Local changes exists. This shouldn't be an official release.")
+        is_dirty = True
+    elif check_output(["git", "log", "origin/master..HEAD", "--oneline"]):
+        logging.error("Local commits exists. This shouldn't be an official release.")
+        is_dirty = True
+
+    if is_dirty:
+        prompt_input = raw_input("Continue [Y/n]: ").strip().lower()
+        if prompt_input not in ['y', 'yes', '']:
+            sys.exit(1)

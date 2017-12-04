@@ -312,14 +312,15 @@ class LibraryPackager:
              for category in ['system', 'yb', 'yb-thirdparty', 'linuxbrew']]
         )
         for seed_executable_glob in self.seed_executable_patterns:
-            re_match = re.match(r'^build/latest/(.*)$', seed_executable_glob)
-            if re_match:
-                updated_glob = os.path.join(self.context.build_dir, re_match.group(1))
-                logging.info(
-                    "Automatically updating seed glob to be relative to build dir: {} -> {}".format(
-                        seed_executable_glob, updated_glob))
+            updated_glob = seed_executable_glob.replace('$BUILD_ROOT', self.context.build_dir)
+            if updated_glob != seed_executable_glob:
+                logging.info("Substituting: {} -> {}".format(seed_executable_glob, updated_glob))
                 seed_executable_glob = updated_glob
-            for executable in glob.glob(seed_executable_glob):
+            glob_results = glob.glob(seed_executable_glob)
+            if not glob_results:
+                raise RuntimeError("No files found matching the pattern '{}'".format(
+                    seed_executable_glob))
+            for executable in glob_results:
                 deps = self.find_elf_dependencies(executable)
                 all_deps += deps
                 if deps:
@@ -349,7 +350,7 @@ class LibraryPackager:
         for dep_name, deps in sorted_grouped_by(all_deps, lambda dep: dep.name):
             targets = sorted(set([dep.target for dep in deps]))
             if len(targets) > 1:
-                raise RuntimeException(
+                raise RuntimeError(
                     "Multiple dependencies with the same name {} but different targets: {}".format(
                         dep_name, targets
                     ))

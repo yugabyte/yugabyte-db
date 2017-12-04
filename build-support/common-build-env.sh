@@ -330,7 +330,6 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
-
   if [[ ${1:-} == "--no-readonly" ]]; then
     local -r make_build_root_readonly=false
     shift
@@ -344,6 +343,7 @@ set_build_root() {
 
   validate_compiler_type "$YB_COMPILER_TYPE"
   determine_linking_type
+
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-$YB_LINK
 
   detect_edition
@@ -357,6 +357,11 @@ set_build_root() {
 
   if "$make_build_root_readonly"; then
     readonly BUILD_ROOT
+  fi
+
+  if [[ -n ${predefined_build_root:-} && $predefined_build_root != $BUILD_ROOT ]]; then
+    fatal "An inconsistency between predefined BUILD_ROOT ('$predefined_build_root') and" \
+          "computed BUILD_ROOT ('$BUILD_ROOT')."
   fi
 
   export BUILD_ROOT
@@ -585,7 +590,11 @@ set_cmake_build_type_and_compiler_type() {
     cmake_opts=()
   fi
 
-  expect_vars_to_be_set build_type
+  if [[ -z ${build_type:-} ]]; then
+    log "Setting build type to 'debug' by default"
+    build_type=debug
+  fi
+
   normalize_build_type
   # We're relying on build_type to set more variables, so make sure it does not change later.
   readonly build_type
@@ -611,13 +620,14 @@ set_cmake_build_type_and_compiler_type() {
   readonly cmake_build_type
 
   if is_mac; then
-    if [[ -z "${YB_COMPILER_TYPE:-}" ]]; then
+    if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
       YB_COMPILER_TYPE=clang
-    elif [[ "$YB_COMPILER_TYPE" != "clang" ]]; then
+    elif [[ $YB_COMPILER_TYPE != "clang" ]]; then
       fatal "YB_COMPILER_TYPE can only be 'clang' on Mac OS X," \
             "found YB_COMPILER_TYPE=$YB_COMPILER_TYPE."
     fi
-  elif [[ -z "${YB_COMPILER_TYPE:-}" ]]; then
+  elif [[ -z ${YB_COMPILER_TYPE:-} ]]; then
+    # The default on Linux.
     YB_COMPILER_TYPE=gcc
   fi
 
@@ -1170,8 +1180,9 @@ configure_remote_build() {
       log "YB_REMOTE_BUILD already defined: '$YB_REMOTE_BUILD', not enabling it automatically," \
           "even though we would in this case."
     fi
-  else
-    # Make it easier to diagnose why we're not using the distributed build.
+  elif is_jenkins; then
+    # Make it easier to diagnose why we're not using the distributed build. Only enable this on
+    # Jenkins to avoid confusing output during development.
     log "Not using remote / distributed build:" \
         "YB_NO_REMOTE_BUILD=${YB_NO_REMOTE_BUILD:-undefined}. See additional diagnostics below."
     is_running_on_gcp && log "Running on GCP." || log "This is not GCP."
@@ -1196,9 +1207,16 @@ detect_edition() {
   fi
   yb_edition_detected=true
 
+  # If we haven't detected edition based on BUILD_ROOT, let's do that based on existence of the
+  # enterprise source directory.
   if [[ -z ${YB_EDITION:-} ]]; then
-    [[ -d $YB_ENTERPRISE_ROOT ]] && YB_EDITION=enterprise || YB_EDITION=community
-    log "Detected YB_EDITION: $YB_EDITION"
+    if [[ -d $YB_ENTERPRISE_ROOT ]]; then
+      YB_EDITION=enterprise
+      log "Detected YB_EDITION: $YB_EDITION based on existence of '$YB_ENTERPRISE_ROOT'"
+    else
+      YB_EDITION=community
+      log "Detected YB_EDITION: $YB_EDITION"
+    fi
   fi
 
   if [[ $YB_EDITION == "enterprise" && ! -d $YB_ENTERPRISE_ROOT ]]; then
@@ -1320,6 +1338,59 @@ find_shared_thirdparty_dir() {
       "exists, we could not find a prebuilt shared third-party directory there that exists " \
       "and does not have a 'do not use' flag file inside. Falling back to building our own " \
       "third-party dependencies."
+}
+
+handle_predefined_build_root() {
+  if [[ -z ${predefined_build_root:-} ]]; then
+    return
+  fi
+
+  if [[ -d $predefined_build_root ]]; then
+    predefined_build_root=$( cd "$predefined_build_root" && pwd )
+  fi
+
+  local basename=${predefined_build_root##*/}
+
+  if [[ $predefined_build_root != $YB_BUILD_PARENT_DIR/* ]]; then
+    fatal "Predefined build root '$predefined_build_root' does not start with" \
+          "\"$YB_BUILD_PARENT_DIR/\" ('$YB_BUILD_PARENT_DIR/')"
+  fi
+
+  if [[ -z ${build_type:-} ]]; then
+    build_type=${basename%%-*}
+    log "Setting build type to '$build_type' based on predefined build root ('$basename')"
+    validate_build_type "$build_type"
+  fi
+
+  if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
+    if [[ $basename == *-clang-* ]]; then
+      YB_COMPILER_TYPE=clang
+    elif [[ $basename == *-gcc-* ]]; then
+      YB_COMPILER_TYPE=gcc
+    fi
+
+    if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
+      log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
+          "root ('$basename')"
+    fi
+  fi
+
+  if [[ $basename == *-ninja && -z ${YB_USE_NINJA:-} ]]; then
+    log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
+    YB_USE_NINJA=1
+  fi
+
+  if [[ -z ${YB_EDITION:-} ]]; then
+    # If BUILD_ROOT is already set, we want to take that into account.
+    if [[ $basename =~ -enterprise(-|$) ]]; then
+      YB_EDITION=enterprise
+    elif [[ $basename =~ -community(-|$) ]]; then
+      YB_EDITION=community
+    fi
+    if [[ -n ${YB_EDITION:-} ]]; then
+      log "Detected YB_EDITION: '$YB_EDITION' based on predefined build root ('$basename')"
+    fi
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

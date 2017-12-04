@@ -916,7 +916,7 @@ run_test_and_process_results() {
   delete_successful_output_if_needed
 }
 
-set_asan_tsan_options() {
+set_asan_tsan_runtime_options() {
   expect_vars_to_be_set BUILD_ROOT
 
   local -r build_root_basename=${BUILD_ROOT##*/}

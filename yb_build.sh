@@ -38,8 +38,6 @@ Options:
     Remove the build directory before building.
   --clean-thirdparty
     Remove previously built third-party dependencies and rebuild them. Does not imply --clean.
-  --rocksdb-only
-    Only build RocksDB code (all targets).
   --no-ccache
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
   --clang
@@ -78,8 +76,7 @@ Options:
     before the build.
   --rebuild-file <target_name>
     Combines --target and --rebuild-file. Currently only works if target name matches the object
-    file name to be deleted (e.g. this won't work for RocksDB tests, whose target names start with
-    rocksdb_).
+    file name to be deleted.
   --generate-build-debug-scripts, --gen-build-debug-scripts, --gbds
     Specify this to generate one-off shell scripts that could be used to re-run and understand
     failed compilation commands.
@@ -116,6 +113,9 @@ Options:
   --ninja
     Use the Ninja backend instead of Make for CMake. This provides faster build speed in case
     most part of the code is already built.
+  --build-root
+    The build root directory, e.g. build/debug-gcc-dynamic-enterprise. This is used in scripting
+    and is checked against other parameters.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -173,15 +173,12 @@ print_summary() {
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 
-build_type="debug"
-build_type_specified=false
+build_type=""
 verbose=false
 force_run_cmake=false
 force_no_run_cmake=false
 clean_before_build=false
 clean_thirdparty=false
-rocksdb_only=false
-rocksdb_targets=""
 no_ccache=false
 make_opts=()
 force=false
@@ -209,11 +206,11 @@ cmake_only=false
 use_shared_thirdparty=false
 
 export YB_EXTRA_GTEST_FLAGS=""
+unset BUILD_ROOT
 
 while [ $# -gt 0 ]; do
   if is_valid_build_type "$1"; then
     build_type="$1"
-    build_type_specified=true
     shift
     continue
   fi
@@ -249,9 +246,6 @@ while [ $# -gt 0 ]; do
     ;;
     -f|--force|-y)
       force=true
-    ;;
-    --rocksdb-only)
-      rocksdb_only=true
     ;;
     --no-ccache)
       no_ccache=true
@@ -400,6 +394,9 @@ while [ $# -gt 0 ]; do
       for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
         make_targets+=( "$packaged_target" )
       done
+      if [[ ${#make_targets[@]} -eq 0 ]]; then
+        fatal "Failed to identify the set of targets to build for the release package"
+      fi
     ;;
     --skip-build|--sb)
       build_cxx=false
@@ -423,12 +420,18 @@ while [ $# -gt 0 ]; do
     --ninja)
       export YB_USE_NINJA=1
     ;;
+    --build-root)
+      predefined_build_root=$2
+      shift
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
   esac
   shift
 done
+
+handle_predefined_build_root
 
 unset cmake_opts
 set_cmake_build_type_and_compiler_type
@@ -657,7 +660,7 @@ if [[ -n $cxx_test_name ]]; then
 
   if [[ $num_test_repetitions -eq 1 ]]; then
     (
-      set_asan_tsan_options
+      set_asan_tsan_runtime_options
       cd "$BUILD_ROOT"
 
       # The following makes our test framework repeat the test log in stdout in addition writing the
@@ -704,7 +707,7 @@ fi
 # Check if the Java build is needed, and skip Java unit test runs if requested.
 if "$build_java"; then
   # We'll need this for running Java tests.
-  set_asan_tsan_options
+  set_asan_tsan_runtime_options
 
   cd "$YB_SRC_ROOT"/java
   build_opts=( install )

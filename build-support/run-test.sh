@@ -65,7 +65,7 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   fi
   set_common_test_paths
   set_mvn_parameters
-  set_asan_tsan_options
+  set_asan_tsan_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
   surefire_rel_tmp_dir=surefire$(date +%Y-%m-%d_%H_%M_%S)_${RANDOM}_$$
   (
@@ -140,7 +140,7 @@ TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 TEST_DIR_BASENAME="$( basename "$TEST_DIR" )"
 LOG_PATH_BASENAME_PREFIX=$TEST_NAME
 
-set_asan_tsan_options
+set_asan_tsan_runtime_options
 
 tests=()
 rel_test_binary="$TEST_DIR_BASENAME/$TEST_NAME"
