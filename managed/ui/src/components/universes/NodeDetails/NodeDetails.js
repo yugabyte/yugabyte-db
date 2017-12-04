@@ -11,6 +11,7 @@ import NodeConnectModal from './NodeConnectModal';
 import { isNodeRemovable } from 'utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoadingIcon } from '../../common/indicators';
+import {YBButton} from '../../common/forms/fields';
 
 export default class NodeDetails extends Component {
   constructor(props) {
@@ -131,9 +132,9 @@ export default class NodeDetails extends Component {
       }
     };
 
-    const getNodeAction = function(cell, row) {
-      if (isNodeRemovable(cell)) {
-        return <div className="node-action-text" onClick={self.deleteNode.bind(self, row)}>Delete</div>;
+    const getNodeAction = function(cell, row, type) {
+      if (isNodeRemovable(row.nodeStatus)) {
+        return <YBButton btnText="Delete" onClick={self.deleteNode.bind(self, row)}/>;
       }
     };
 
