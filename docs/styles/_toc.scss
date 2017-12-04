@@ -1,3 +1,7 @@
+// Copyright (c) YugaByte, Inc.
+
+@import "./_colors.scss";
+
 h1 {
   padding-bottom: 15px !important;
   border-bottom: none !important;
@@ -6,7 +10,7 @@ h1 {
 #TableOfContents {
   margin-bottom: 40px;
   padding: 10px;
-  background: #f7f7f7;
+  background: $YB_LIGHT_GRAY;
   border-radius: 12px;
   line-height: 1.8;
 }
@@ -15,7 +19,7 @@ h1 {
   margin-left: 10px;
   font-family: Montserrat, sans-serif;
   font-weight: 500;
-  color: #202951;
+  color: $YB_DARK_BLUE;
 }
 #TableOfContents > ul {
   margin: 0 0 10px;

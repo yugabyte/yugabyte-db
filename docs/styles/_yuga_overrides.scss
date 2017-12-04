@@ -1,5 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "./_colors.scss";
+
 @media (max-width: 1200px) {
   .container {
     width: 100%;
@@ -7,7 +9,7 @@
 }
 
 body, th, td {
-  color: #202951;
+  color: $YB_DARK_BLUE;
 }
 
 a {
@@ -62,7 +64,7 @@ a {
   margin: 29px 23px 15px;
   font-size: 24px;
   font-weight: 400;
-  color: #202951;
+  color: $YB_DARK_BLUE;
 }
 .drawer h3 .headerlink {
   display: none;
@@ -133,14 +135,14 @@ a {
     font-weight: 400;
   }
   li a:hover {
-    color: #f75821 !important;
+    color: $YB_ORANGE !important;
   }
   li a.current {
-    color: #f75821 !important;
+    color: $YB_ORANGE !important;
     font-weight: 700;
   }
   li li {
-    border-left: 1px solid #f75821;
+    border-left: 1px solid $YB_ORANGE;
   }
 }
 
@@ -149,7 +151,7 @@ a {
   padding-left: 8px;
 }
 #scrollspy a {
-  border-left: 1px solid #f75821;
+  border-left: 1px solid $YB_ORANGE;
 }
 
 .drawer .scrollable .wrapper hr {
@@ -157,7 +159,7 @@ a {
 }
 
 .palette-primary-orange .article a {
-  color: #f75821;
+  color: $YB_ORANGE;
 }
 .palette-primary-orange .article a:hover {
   border-bottom-style: solid;
@@ -171,7 +173,7 @@ a {
 .palette-primary-orange .article h3 {
   padding-top: 0 !important;
   font-family: Montserrat, "Open Sans", sans-serif !important;
-  color: #202951 !important;
+  color: $YB_DARK_BLUE !important;
 }
 .palette-primary-orange .article h1 {
   margin: 16px 0 10px;
@@ -193,7 +195,7 @@ a {
   padding-top: 100px !important;
   font-size: 20px;
   font-weight: 500;
-  color: #202951;
+  color: $YB_DARK_BLUE;
 }
 
 .drawer h3 a {
@@ -204,7 +206,7 @@ a {
   color: #cecdcc !important;
 }
 .palette-primary-orange .article a.headerlink:hover {
-  color: #f75821 !important;
+  color: $YB_ORANGE !important;
 }
 
 .palette-primary-orange .article pre {
@@ -219,7 +221,7 @@ a {
 
 .palette-primary-orange .article pre code {
   padding: 12px 20px;
-  background: #f7f7f7;
+  background: $YB_LIGHT_GRAY;
   white-space: pre !important;
   word-wrap: normal;
   word-break: keep-all;
@@ -231,21 +233,35 @@ a {
 .palette-primary-orange .article .admonition {
   margin: 20px -24px 0 0;
   padding: 10px 20px 20px 20px;
+  border-left: 3px solid $YB_DARK_BLUE;
   color: #111;
-  background: #dfebf8;
+  background: #e8eff8;
+}
+.palette-primary-orange .article .warning {
+  border-left-color: $YB_ORANGE;
+  background: #feeab4;
+
+  .admonition-title {
+    color: #ec1202;
+  }
 }
 .palette-primary-orange .article .admonition-title {
-  margin: -10px -20px -5px -20px;
-  padding: 8px 10px;
-  color: #fff;
-  background: #202951 !important;
+  margin: -4px -20px -15px -14px;
+  padding: 0 10px;
+  font-family: Montserrat, sans-serif;
+  font-weight: 500;
+
+  &::before {
+    position: relative;
+    top: -4px;
+  }
 }
 .palette-primary-orange .article .admonition a {
   font-weight: 700;
 }
 
 .palette-primary-orange .article table th {
-  background: #202951 !important;
+  background: $YB_DARK_BLUE !important;
 }
 
 .palette-primary-orange {
@@ -258,12 +274,12 @@ a {
 
 .direction {
   position: static !important;
-  color: #f75821 !important;
+  color: $YB_ORANGE !important;
 }
 .pagination a .button,
 .pagination a .title {
   position: static !important;
-  color: #f75821 !important;
+  color: $YB_ORANGE !important;
 }
 .pagination {
   width: 100%;
@@ -365,7 +381,7 @@ a {
   display: inline !important;
   font-size: 16px;
   font-weight: 400;
-  color: #202951;
+  color: $YB_DARK_BLUE;
 }
 .mobile-only {
   display: none;
@@ -377,12 +393,12 @@ a {
   margin-top: 15px;
   min-height: 85px;
   padding: 0 12px;
-  border: 1px solid #f7f7f7 !important;
-  background: #f7f7f7;
+  border: 1px solid $YB_LIGHT_GRAY !important;
+  background: $YB_LIGHT_GRAY;
   font-family: Montserrat, "Open Sans", sans-serif;
   font-size: 18px;
   line-height: 1.6;
-  color: #202951;
+  color: $YB_DARK_BLUE;
   text-decoration: none !important;
   border-radius: 12px;
   transition: all 0.3s;
@@ -392,8 +408,8 @@ a {
   }
 
   &:hover {
-    color: #f75821;
-    border: 1px solid #f75821 !important;
+    color: $YB_ORANGE;
+    border: 1px solid $YB_ORANGE !important;
     background: #fff;
   }
 
@@ -406,7 +422,7 @@ a {
   .caption {
     font-family: "Open Sans", sans-serif;
     font-size: 14px;
-    color: #202951;
+    color: $YB_DARK_BLUE;
   }
   .icon {
     position: absolute;
@@ -420,7 +436,7 @@ a {
       position: relative;
       top: 2px;
       font-size: 36px;
-      color: #f75821;
+      color: $YB_ORANGE;
 
       &.fa {
         top: -3px;
