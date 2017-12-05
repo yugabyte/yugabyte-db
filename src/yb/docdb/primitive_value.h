@@ -52,6 +52,7 @@ class PrimitiveValue {
  public:
   static const PrimitiveValue kInvalidPrimitiveValue;
   static const PrimitiveValue kTombstone;
+  static const PrimitiveValue kObject;
 
   PrimitiveValue() : type_(ValueType::kNull) {
   }
@@ -275,10 +276,6 @@ class PrimitiveValue {
 
   bool IsString() const {
     return ValueType::kString == type_ || ValueType::kStringDescending == type_;
-  }
-
-  bool IsValidType() const {
-    return type_ != ValueType::kInvalidValueType;
   }
 
   bool IsDouble() const {

@@ -91,7 +91,7 @@ Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveVal
 }
 
 Status InMemDocDbState::DeleteSubDoc(const DocPath &doc_path) {
-  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone));
+  return SetPrimitive(doc_path, PrimitiveValue::kTombstone);
 }
 
 void InMemDocDbState::SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc) {

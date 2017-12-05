@@ -34,15 +34,20 @@ CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
     vector<PrimitiveValue> *components);
 
 // A wrapper around a RocksDB instance and provides utility functions on top of it, such as
-// compacting the history until a certain point. This is also a convenient base class for GTest test
-// classes, because it exposes member functions such as rocksdb() and write_oiptions().
+// compacting the history until a certain point. This is used in the builk load tool. This is also
+// convenient base class for GTest test classes, because it exposes member functions such as
+// rocksdb() and write_options().
 class DocDBRocksDBUtil {
 
  public:
-  DocDBRocksDBUtil();
-  explicit DocDBRocksDBUtil(const rocksdb::OpId& op_id);
-  virtual ~DocDBRocksDBUtil();
+  DocDBRocksDBUtil() {}
+  explicit DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
+      : init_marker_behavior_(init_marker_behavior) {
+  }
+
+  virtual ~DocDBRocksDBUtil() {}
   virtual CHECKED_STATUS InitRocksDBDir() = 0;
+
   // Initializes RocksDB options, should be called after constructor, because it uses virtual
   // function BlockCacheSize.
   virtual CHECKED_STATUS InitRocksDBOptions() = 0;
@@ -59,7 +64,6 @@ class DocDBRocksDBUtil {
 
   const rocksdb::Options& options() const { return rocksdb_options_; }
 
-  void SetRocksDBDir(const std::string& rocksdb_dir);
   CHECKED_STATUS OpenRocksDB();
   CHECKED_STATUS ReopenRocksDB();
   CHECKED_STATUS DestroyRocksDB();
@@ -94,35 +98,30 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const Value& value,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
+      HybridTime hybrid_time);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
+      HybridTime hybrid_time);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS ExtendList(
       const DocPath& doc_path,
       const SubDocument& value,
       const ListExtendOrder extend_order,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+      HybridTime hybrid_time);
 
   CHECKED_STATUS ReplaceInList(
       const DocPath &doc_path,
@@ -133,13 +132,11 @@ class DocDBRocksDBUtil {
       const rocksdb::QueryId query_id,
       MonoDelta table_ttl = Value::kMaxTtl,
       MonoDelta ttl = Value::kMaxTtl,
-      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+      UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
-      HybridTime hybrid_time,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED);
+      HybridTime hybrid_time);
 
   void DocDBDebugDumpToConsole();
 
@@ -170,17 +167,29 @@ class DocDBRocksDBUtil {
     return monotonic_counter_;
   }
 
+  DocWriteBatch MakeDocWriteBatch();
+  DocWriteBatch MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior);
+
+  void SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior);
+
  protected:
   std::unique_ptr<rocksdb::DB> rocksdb_;
   rocksdb::Options rocksdb_options_;
   string rocksdb_dir_;
+
+  // This is used for auto-assigning op ids to RocksDB write batches to emulate what a tablet would
+  // do in production.
   rocksdb::OpId op_id_;
+
   std::shared_ptr<rocksdb::Cache> block_cache_;
-  std::shared_ptr<FixedHybridTimeRetentionPolicy> retention_policy_;
+  std::shared_ptr<FixedHybridTimeRetentionPolicy> retention_policy_ {
+      std::make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin, MonoDelta::kMax) };
+
   rocksdb::WriteOptions write_options_;
   Schema schema_;
   boost::optional<TransactionId> current_txn_id_;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
+  InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;
 
  private:
   std::atomic<int64_t> monotonic_counter_{0};

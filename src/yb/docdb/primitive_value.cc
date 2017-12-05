@@ -80,6 +80,7 @@ string RealToString(T val) {
 const PrimitiveValue PrimitiveValue::kInvalidPrimitiveValue =
     PrimitiveValue(ValueType::kInvalidValueType);
 const PrimitiveValue PrimitiveValue::kTombstone = PrimitiveValue(ValueType::kTombstone);
+const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueType::kObject);
 
 string PrimitiveValue::ToString() const {
   switch (type_) {
@@ -1248,7 +1249,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     }
 
     case QLValuePB::VALUE_NOT_SET:
-      return PrimitiveValue(ValueType::kTombstone);
+      return PrimitiveValue::kTombstone;
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;

@@ -27,7 +27,7 @@
 namespace yb {
 namespace docdb {
 
-class DocDBTestBase : public YBTest, public DocDBRocksDBFixtureTest {
+class DocDBTestBase : public YBTest, public DocDBRocksDBFixture {
  public:
   DocDBTestBase();
   ~DocDBTestBase() override;

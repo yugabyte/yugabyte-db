@@ -55,25 +55,8 @@ CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBRocksDBUtil::DocDBRocksDBUtil()
-    : DocDBRocksDBUtil(OpId(1, 42)) {
-}
-
-DocDBRocksDBUtil::DocDBRocksDBUtil(const rocksdb::OpId& op_id)
-    : op_id_(op_id),
-      retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin,
-                                                                    MonoDelta::kMax)) {
-}
-
-DocDBRocksDBUtil::~DocDBRocksDBUtil() {
-}
-
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {
   return DCHECK_NOTNULL(rocksdb_.get());
-}
-
-void DocDBRocksDBUtil::SetRocksDBDir(const std::string& rocksdb_dir) {
-  rocksdb_dir_ = rocksdb_dir;
 }
 
 Status DocDBRocksDBUtil::OpenRocksDB() {
@@ -228,30 +211,26 @@ string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
     const Value& value,
-    const HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
-  DocWriteBatch local_doc_write_batch(rocksdb_.get(), &monotonic_counter_);
-  RETURN_NOT_OK(local_doc_write_batch.SetPrimitive(doc_path, value, use_init_marker));
-  return WriteToRocksDB(local_doc_write_batch, hybrid_time);
+    const HybridTime hybrid_time) {
+  auto dwb = MakeDocWriteBatch();
+  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, value));
+  return WriteToRocksDB(dwb, hybrid_time);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
     const PrimitiveValue& primitive_value,
-    const HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
-  return SetPrimitive(doc_path, Value(primitive_value), hybrid_time, use_init_marker);
+    const HybridTime hybrid_time) {
+  return SetPrimitive(doc_path, Value(primitive_value), hybrid_time);
 }
 
 Status DocDBRocksDBUtil::InsertSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     const HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker,
     MonoDelta ttl) {
-  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
-  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, use_init_marker, rocksdb::kDefaultQueryId,
-                                      ttl));
+  auto dwb = MakeDocWriteBatch();
+  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -259,11 +238,9 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     const HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker,
     MonoDelta ttl) {
-  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
-  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, use_init_marker, rocksdb::kDefaultQueryId,
-                                      ttl));
+  auto dwb = MakeDocWriteBatch();
+  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -271,10 +248,9 @@ Status DocDBRocksDBUtil::ExtendList(
     const DocPath& doc_path,
     const SubDocument& value,
     const ListExtendOrder extend_order,
-    HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
-  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, extend_order, use_init_marker));
+    HybridTime hybrid_time) {
+  auto dwb = MakeDocWriteBatch();
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, extend_order));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -287,20 +263,18 @@ Status DocDBRocksDBUtil::ReplaceInList(
     const rocksdb::QueryId query_id,
     MonoDelta table_ttl,
     MonoDelta ttl,
-    UserTimeMicros user_timestamp,
-    InitMarkerBehavior use_init_marker) {
-  DocWriteBatch dwb(rocksdb_.get(), &monotonic_counter_);
+    UserTimeMicros user_timestamp) {
+  auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceInList(
-      doc_path, indexes, values, current_time, query_id, table_ttl, ttl, use_init_marker));
+      doc_path, indexes, values, current_time, query_id, table_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
 Status DocDBRocksDBUtil::DeleteSubDoc(
     const DocPath& doc_path,
-    HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
-  DocWriteBatch dwb(rocksdb(), &monotonic_counter_);
-  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, use_init_marker));
+    HybridTime hybrid_time) {
+  auto dwb = MakeDocWriteBatch();
+  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -318,6 +292,21 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb_options_.statistics,
                             tablet_options);
   return ReopenRocksDB();
+}
+
+DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
+  return DocWriteBatch(rocksdb_.get(), init_marker_behavior_, &monotonic_counter_);
+}
+
+DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
+  return DocWriteBatch(rocksdb_.get(), init_marker_behavior, &monotonic_counter_);
+}
+
+void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior) {
+  if (init_marker_behavior_ != init_marker_behavior) {
+    LOG(INFO) << "Setting init marker behavior to " << init_marker_behavior;
+    init_marker_behavior_ = init_marker_behavior;
+  }
 }
 
 // ------------------------------------------------------------------------------------------------

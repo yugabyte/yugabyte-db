@@ -52,7 +52,7 @@ void KuduWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel 
 }
 
 Status KuduWriteOperation::Apply(const DocOperationApplyData& data) {
-  return data.doc_write_batch->SetPrimitive(doc_path_, value_, InitMarkerBehavior::OPTIONAL);
+  return data.doc_write_batch->SetPrimitive(doc_path_, value_);
 }
 
 void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
@@ -413,10 +413,10 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         if (*data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, redis_query_id(), ttl));
+              doc_path, kv_entries, redis_query_id(), ttl));
         } else {
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-              doc_path, kv_entries, InitMarkerBehavior::REQUIRED, redis_query_id(), ttl));
+              doc_path, kv_entries, redis_query_id(), ttl));
         }
         break;
       }
@@ -449,7 +449,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
       }
     }
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-        doc_path, Value(PrimitiveValue(kv.value(0)), ttl), InitMarkerBehavior::REQUIRED,
+        doc_path, Value(PrimitiveValue(kv.value(0)), ttl),
         redis_query_id()));
   }
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -475,7 +475,7 @@ Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
 
   return data.doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(kv.value(0))), InitMarkerBehavior::REQUIRED, redis_query_id());
+      Value(PrimitiveValue(kv.value(0))), redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
@@ -501,7 +501,7 @@ Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
 
   return data.doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), Value(PrimitiveValue(value->value)),
-      InitMarkerBehavior::REQUIRED, redis_query_id());
+      redis_query_id());
 }
 
 // TODO (akashnil): Actually check if the value existed, return 0 if not. handle multidel in future.
@@ -551,7 +551,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
   }
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-      doc_path, values, InitMarkerBehavior::REQUIRED, redis_query_id()));
+      doc_path, values, redis_query_id()));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   if (EmulateRedisResponse(kv.type())) {
     // If the flag is true, we respond with the number of keys actually being deleted. We don't
@@ -586,7 +586,7 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
 
   return data.doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(value->value)), InitMarkerBehavior::REQUIRED, redis_query_id());
+      Value(PrimitiveValue(value->value)), redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data, int64_t incr) {
@@ -624,7 +624,7 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data, int64_t
   return data.doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
       Value(PrimitiveValue(std::to_string(new_value))),
-      InitMarkerBehavior::REQUIRED, redis_query_id());
+      redis_query_id());
 }
 
 Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {
@@ -678,11 +678,9 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
   Status s;
 
   if (*data_type == REDIS_TYPE_NONE) {
-    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        doc_path, set_entries, InitMarkerBehavior::REQUIRED, redis_query_id()));
+    RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(doc_path, set_entries, redis_query_id()));
   } else {
-    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-        doc_path, set_entries, InitMarkerBehavior::REQUIRED, redis_query_id()));
+    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(doc_path, set_entries, redis_query_id()));
   }
 
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -1279,7 +1277,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
           RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-              sub_path, value, InitMarkerBehavior::OPTIONAL, request_.query_id()));
+              sub_path, value, request_.query_id()));
         }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
@@ -1307,30 +1305,30 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
               switch (write_action) {
                 case WriteAction::REPLACE:
                   RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                      sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, request_.query_id(),
+                      sub_path, sub_doc, request_.query_id(),
                       ttl, user_timestamp));
                   break;
                 case WriteAction::EXTEND:
                   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-                      sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, request_.query_id(), ttl));
+                      sub_path, sub_doc, request_.query_id(), ttl));
                   break;
                 case WriteAction::APPEND:
                   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-                      sub_path, sub_doc, ListExtendOrder::APPEND, InitMarkerBehavior::OPTIONAL,
+                      sub_path, sub_doc, ListExtendOrder::APPEND,
                       request_.query_id(), ttl));
                   break;
                 case WriteAction::PREPEND:
                   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(data.doc_write_batch->ExtendList(
-                      sub_path, sub_doc, ListExtendOrder::PREPEND, InitMarkerBehavior::OPTIONAL,
+                      sub_path, sub_doc, ListExtendOrder::PREPEND,
                       request_.query_id(), ttl));
                   break;
                 case WriteAction::REMOVE_KEYS:
                   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
                   RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-                      sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, request_.query_id(), ttl));
+                      sub_path, sub_doc, request_.query_id(), ttl));
                   break;
                 case WriteAction::REMOVE_VALUES:
                   LOG(ERROR) << "Unsupported operation";
@@ -1357,7 +1355,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
                   sub_path.AddSubKey(pv);
                   RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-                      sub_path, sub_doc, InitMarkerBehavior::OPTIONAL, request_.query_id(), ttl,
+                      sub_path, sub_doc, request_.query_id(), ttl,
                       user_timestamp));
                   break;
                 }
@@ -1369,7 +1367,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                   int index = column_value.subscript_args(0).value().int32_value();
                   Status s = data.doc_write_batch->ReplaceInList(
                       sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
-                      table_ttl, ttl, InitMarkerBehavior::OPTIONAL);
+                      table_ttl, ttl);
 
                   // Don't crash tserver if this is index-out-of-bounds error
                   if (s.IsQLError()) {
@@ -1410,7 +1408,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                 column.is_static() ?
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
-            RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
+            RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
                                                              request_.query_id(), user_timestamp));
           }
         } else if (IsRangeOperation(request_, schema_)) {
@@ -1478,7 +1476,7 @@ Status QLWriteOperation::DeleteRow(DocWriteBatch* doc_write_batch,
     for (int i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
       const DocPath sub_path(row_path.encoded_doc_key(),
                              PrimitiveValue(schema_.column_id(i)));
-      RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::OPTIONAL,
+      RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path,
                                                   request_.query_id(),
                                                   request_.user_timestamp_usec()));
     }
@@ -1488,12 +1486,10 @@ Status QLWriteOperation::DeleteRow(DocWriteBatch* doc_write_batch,
         row_path.encoded_doc_key(),
         PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
     RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(liveness_column,
-                                                InitMarkerBehavior::OPTIONAL,
                                                 request_.query_id(),
                                                 request_.user_timestamp_usec()));
   } else {
-    RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(
-        row_path, InitMarkerBehavior::OPTIONAL));
+    RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(row_path));
   }
 
   return Status::OK();

@@ -465,7 +465,12 @@ fi
 
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
-if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" && $build_type != "tsan" ]]; then
+#
+# Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
+# (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
+if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
+      $build_type != "tsan" &&
+      $build_type != "asan" ]]; then
   log "Creating a distribution package"
   time "$YB_SRC_ROOT/yb_release" --build "$build_type" --build_root "$BUILD_ROOT" --force
 fi

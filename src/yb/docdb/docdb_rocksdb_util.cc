@@ -144,7 +144,7 @@ Status SeekToValidKvAtTs(
         server::HybridClock::AddPhysicalTimeToHybridTime(found_key->hybrid_time(), ttl);
     if (hybrid_time.CompareTo(expiry) > 0) {
       if (found_value != nullptr) {
-        *found_value = Value(PrimitiveValue(ValueType::kTombstone));
+        *found_value = Value(PrimitiveValue::kTombstone);
       }
       // Pretend that the tombstone that we are generating instead of the expired value was written
       // at the expiration time of that value. As of 04/13/2017 we are not relying on this to

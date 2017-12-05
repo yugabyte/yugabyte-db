@@ -31,6 +31,7 @@
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/intent.h"
@@ -108,16 +109,20 @@ void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& 
                               LockBatch *keys_locked,
                               bool *need_read_snapshot);
 
-// This function reads from rocksdb and constructs the write batch.
+// This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
+// state of data from RocksDB when necessary.
 //
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-CHECKED_STATUS ApplyDocWriteOperation(
+// TODO: rename this to something other than "apply" to avoid confusing it with the "apply"
+// operation that happens after Raft replication.
+CHECKED_STATUS ExecuteDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ReadHybridTime& read_time,
     rocksdb::DB *rocksdb,
     KeyValueWriteBatchPB* write_batch,
+    InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter);
 
 void PrepareNonTransactionWriteBatch(

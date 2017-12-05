@@ -142,12 +142,13 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
   }
 }
 
-Status ApplyDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                               const ReadHybridTime& read_time,
                               rocksdb::DB *rocksdb,
                               KeyValueWriteBatchPB* write_batch,
+                              InitMarkerBehavior init_marker_behavior,
                               std::atomic<int64_t>* monotonic_counter) {
-  DocWriteBatch doc_write_batch(rocksdb, monotonic_counter);
+  DocWriteBatch doc_write_batch(rocksdb, init_marker_behavior, monotonic_counter);
   DocOperationApplyData data = {&doc_write_batch, read_time};
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     RETURN_NOT_OK(doc_op->Apply(data));
@@ -387,7 +388,7 @@ CHECKED_STATUS BuildSubDocument(
           // to init markers for collections since even if the init marker for the collection has
           // expired, individual elements in the collection might still be valid.
           if (!IsCollectionType(doc_value.value_type())) {
-            doc_value = Value(PrimitiveValue(ValueType::kTombstone));
+            doc_value = Value(PrimitiveValue::kTombstone);
             // Use a write id that could never be used by a real operation within a single-shard
             // txn, so that we don't split that operation into multiple parts.
             write_time = DocHybridTime(expiry, kMaxWriteId);

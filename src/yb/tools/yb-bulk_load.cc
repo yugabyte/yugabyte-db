@@ -54,6 +54,8 @@ using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBTable;
 using yb::client::YBTableName;
+using yb::docdb::DocWriteBatch;
+using yb::docdb::InitMarkerBehavior;
 using yb::operator"" _GB;
 
 DEFINE_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
@@ -160,19 +162,19 @@ BulkLoadTask::BulkLoadTask(vector<pair<TabletId, string>> rows,
 }
 
 void BulkLoadTask::Run() {
-  auto doc_write_batch = std::make_unique<docdb::DocWriteBatch>(db_fixture_->rocksdb());
+  DocWriteBatch doc_write_batch(db_fixture_->rocksdb(), InitMarkerBehavior::kOptional);
 
   for (const auto &entry : rows_) {
     const string &row = entry.second;
 
     // Populate the row.
-    CHECK_OK(InsertRow(row, table_->InternalSchema(), db_fixture_, doc_write_batch.get(),
+    CHECK_OK(InsertRow(row, table_->InternalSchema(), db_fixture_, &doc_write_batch,
                        partition_generator_));
   }
 
   // Flush the batch.
   CHECK_OK(db_fixture_->WriteToRocksDB(
-      *doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+      doc_write_batch, HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
       /* decode_dockey */ false, /* increment_write_id */ false));
 
   if (FLAGS_flush_batch_for_tests) {
@@ -193,15 +195,18 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
       auto value = util::CheckedStold(column);
       RETURN_NOT_OK(value);
       ql_valuepb->set_float_value(*value);
-    } break;
+      break;
+    }
     case DataType::DOUBLE: {
       auto value = util::CheckedStold(column);
       RETURN_NOT_OK(value);
       ql_valuepb->set_double_value(*value);
-    } break;
-    case DataType::STRING:
+      break;
+    }
+    case DataType::STRING: {
       ql_valuepb->set_string_value(column);
       break;
+    }
     case DataType::TIMESTAMP: {
       auto ts = TimestampFromString(column);
       RETURN_NOT_OK(ts);

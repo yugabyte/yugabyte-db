@@ -69,6 +69,8 @@ class RandomizedDocDBTest : public DocDBTestBase,
   }
 
   void Init(const UseHash use_hash) {
+    // This test was created when this was the only supported init marker behavior.
+    SetInitMarkerBehavior(InitMarkerBehavior::kRequired);
     if (load_gen_.get() != nullptr) {
       ClearLogicalSnapshots();
       ASSERT_OK(DestroyRocksDB());

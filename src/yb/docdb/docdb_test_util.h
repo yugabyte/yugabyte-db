@@ -96,13 +96,13 @@ class LogicalRocksDBDebugSnapshot {
   string docdb_debug_dump_str;
 };
 
-class DocDBRocksDBFixtureTest : public DocDBRocksDBUtil {
+class DocDBRocksDBFixture : public DocDBRocksDBUtil {
  public:
   void AssertDocDbDebugDumpStrEq(const string &expected);
   void CompactHistoryBefore(HybridTime history_cutoff);
   CHECKED_STATUS InitRocksDBDir() override;
   CHECKED_STATUS InitRocksDBOptions() override;
-  std::string tablet_id() override;
+  TabletId tablet_id() override;
   CHECKED_STATUS FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
 };
 
@@ -113,7 +113,7 @@ class DocDBLoadGenerator {
  public:
   static constexpr uint64_t kDefaultRandomSeed = 23874297385L;
 
-  DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
+  DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
                      int num_doc_keys,
                      int num_unique_subkeys,
                      UseHash use_hash,
@@ -182,7 +182,7 @@ class DocDBLoadGenerator {
  private:
   rocksdb::DB* rocksdb() { return fixture_->rocksdb(); }
 
-  DocDBRocksDBFixtureTest* fixture_;
+  DocDBRocksDBFixture* fixture_;
   RandomNumberGenerator random_;  // Using default seed.
   std::vector<DocKey> doc_keys_;
 

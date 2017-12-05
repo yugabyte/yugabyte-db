@@ -351,7 +351,7 @@ SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
         PrimitiveValue pv_key = PrimitiveValue::FromQLValuePB(elem, sorting_type);
         if (write_action == WriteAction::REMOVE_KEYS) {
           // representing sets elems as keys pointing to tombstones to remove those entries
-          set_doc.SetChildPrimitive(pv_key, PrimitiveValue(ValueType::kTombstone));
+          set_doc.SetChildPrimitive(pv_key, PrimitiveValue::kTombstone);
         }  else {
           // representing sets elems as keys pointing to empty (null) values
           set_doc.SetChildPrimitive(pv_key, PrimitiveValue());

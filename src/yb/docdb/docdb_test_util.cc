@@ -286,7 +286,7 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixtureTest* fixture,
+DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
                                        const int num_doc_keys,
                                        const int num_unique_subkeys,
                                        const UseHash use_hash,
@@ -318,7 +318,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   ++iteration_;
 
   DOCDB_DEBUG_LOG("Starting iteration i=$0", current_iteration);
-  DocWriteBatch dwb(fixture_->rocksdb(), &fixture_->monotonic_counter());
+  auto dwb = fixture_->MakeDocWriteBatch();
   const auto& doc_key = RandomElementOf(doc_keys_, &random_);
   const KeyBytes encoded_doc_key(doc_key.Encode());
 
@@ -554,11 +554,11 @@ TransactionOperationContextOpt DocDBLoadGenerator::GetReadOperationTransactionCo
 
 // ------------------------------------------------------------------------------------------------
 
-void DocDBRocksDBFixtureTest::AssertDocDbDebugDumpStrEq(const string &expected) {
+void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected), DocDBDebugDumpToStr());
 }
 
-void DocDBRocksDBFixtureTest::CompactHistoryBefore(HybridTime history_cutoff) {
+void DocDBRocksDBFixture::CompactHistoryBefore(HybridTime history_cutoff) {
   LOG(INFO) << "Compacting history before hybrid_time " << history_cutoff.ToDebugString();
   SetHistoryCutoffHybridTime(history_cutoff);
   ASSERT_OK(FlushRocksDB());
@@ -566,7 +566,7 @@ void DocDBRocksDBFixtureTest::CompactHistoryBefore(HybridTime history_cutoff) {
   SetHistoryCutoffHybridTime(HybridTime::kMin);
 }
 
-Status DocDBRocksDBFixtureTest::FormatDocWriteBatch(const DocWriteBatch &dwb, string* dwb_str) {
+Status DocDBRocksDBFixture::FormatDocWriteBatch(const DocWriteBatch &dwb, string* dwb_str) {
   WriteBatchFormatter formatter;
   rocksdb::WriteBatch rocksdb_write_batch;
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(dwb, &rocksdb_write_batch));
@@ -580,7 +580,7 @@ Status FullyCompactDB(rocksdb::DB* rocksdb) {
   return rocksdb->CompactRange(compact_range_options, nullptr, nullptr);
 }
 
-Status DocDBRocksDBFixtureTest::InitRocksDBDir() {
+Status DocDBRocksDBFixture::InitRocksDBDir() {
   string test_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
   rocksdb_dir_ = JoinPathSegments(test_dir, StringPrintf("mytestdb-%d", rand()));
@@ -590,11 +590,11 @@ Status DocDBRocksDBFixtureTest::InitRocksDBDir() {
   return Status::OK();
 }
 
-string DocDBRocksDBFixtureTest::tablet_id() {
+string DocDBRocksDBFixture::tablet_id() {
   return "mytablet";
 }
 
-Status DocDBRocksDBFixtureTest::InitRocksDBOptions() {
+Status DocDBRocksDBFixture::InitRocksDBOptions() {
   return InitCommonRocksDBOptions();
 }
 

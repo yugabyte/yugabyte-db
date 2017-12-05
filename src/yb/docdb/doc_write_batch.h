@@ -35,11 +35,11 @@ class InternalDocIterator;
 YB_DEFINE_ENUM(InitMarkerBehavior,
                // This is used in Redis. We need to keep track of document types such as strings,
                // hashes, sets, because there is no schema and due to Redis's error checking.
-               (REQUIRED)
+               (kRequired)
 
                // This is used in CQL. Existence of "a.b.c" implies existence of "a" and "a.b",
                // unless there are delete markers / TTL expiration involved.
-               (OPTIONAL));
+               (kOptional));
 
 // Used for extending a list.
 YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND))
@@ -52,23 +52,21 @@ YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND))
 class DocWriteBatch {
  public:
   explicit DocWriteBatch(rocksdb::DB* rocksdb,
+                         InitMarkerBehavior init_marker_behavior,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path, const Value& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId);
 
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path,
       const PrimitiveValue& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp) {
-    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp), use_init_marker,
-                        query_id);
+    return SetPrimitive(doc_path, Value(value, Value::kMaxTtl, user_timestamp), query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -78,7 +76,6 @@ class DocWriteBatch {
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -86,7 +83,6 @@ class DocWriteBatch {
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -95,7 +91,6 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       ListExtendOrder extend_order = ListExtendOrder::APPEND,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = Value::kMaxTtl,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
@@ -108,12 +103,10 @@ class DocWriteBatch {
       const HybridTime& current_time,
       const rocksdb::QueryId query_id,
       MonoDelta table_ttl = Value::kMaxTtl,
-      MonoDelta write_ttl = Value::kMaxTtl,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::OPTIONAL);
+      MonoDelta write_ttl = Value::kMaxTtl);
 
   CHECKED_STATUS DeleteSubDoc(
       const DocPath& doc_path,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::REQUIRED,
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp);
 
@@ -152,16 +145,25 @@ class DocWriteBatch {
       const Value& value,
       InternalDocIterator *doc_iter,
       bool is_deletion,
-      int num_subkeys,
-      InitMarkerBehavior use_init_marker);
+      int num_subkeys);
 
   // Handle the user provided timestamp during writes.
   Result<bool> SetPrimitiveInternalHandleUserTimestamp(const Value &value,
                                                        InternalDocIterator* doc_iter);
 
+  bool required_init_markers() {
+    return init_marker_behavior_ == InitMarkerBehavior::kRequired;
+  }
+
+  bool optional_init_markers() {
+    return init_marker_behavior_ == InitMarkerBehavior::kOptional;
+  }
+
   DocWriteBatchCache cache_;
 
   rocksdb::DB* rocksdb_;
+
+  const InitMarkerBehavior init_marker_behavior_;
   std::atomic<int64_t>* monotonic_counter_;
   std::vector<std::pair<std::string, std::string>> put_batch_;
 

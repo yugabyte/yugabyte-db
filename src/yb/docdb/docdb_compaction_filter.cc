@@ -196,7 +196,7 @@ bool DocDBCompactionFilter::Filter(int level,
     // expired, individual elements in the collection might still be valid.
     if (!IsCollectionType(value_type)) {
       *value_changed = true;
-      *new_value = Value(PrimitiveValue(ValueType::kTombstone)).Encode();
+      *new_value = Value(PrimitiveValue::kTombstone).Encode();
     }
   }
 

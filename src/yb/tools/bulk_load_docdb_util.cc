@@ -14,9 +14,9 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tools/bulk_load_docdb_util.h"
-#include "yb/util/env.h"
 #include "yb/util/path_util.h"
 
 DECLARE_int32(num_memtables);
@@ -29,7 +29,9 @@ BulkLoadDocDBUtil::BulkLoadDocDBUtil(const std::string& tablet_id,
                                      const size_t memtable_size,
                                      int num_memtables,
                                      int max_background_flushes)
-    : DocDBRocksDBUtil(OpId()),
+    : // Using optional init markers here because bulk load is only supported for CQL as of
+      // 12/03/2017.
+      DocDBRocksDBUtil(docdb::InitMarkerBehavior::kOptional),
       tablet_id_(tablet_id),
       base_dir_(base_dir),
       memtable_size_(memtable_size),

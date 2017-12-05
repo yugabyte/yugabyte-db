@@ -25,6 +25,8 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/seq/fold_left.hpp>
 
+#include <boost/core/demangle.hpp>
+
 #include "yb/util/debug-util.h"
 #include "yb/util/math_util.h"
 
@@ -147,12 +149,27 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
           "Type of enum value passed to FATAL_INVALID_ENUM_VALUE must be " \
           BOOST_PP_STRINGIZE(enum_type)); \
       ::yb::util::FatalInvalidEnumValueInternal<enum_type>( \
-          BOOST_PP_STRINGIZE(enum_type), _value_copy); \
+          BOOST_PP_STRINGIZE(enum_type), _value_copy, BOOST_PP_STRINGIZE(value_macro_arg)); \
     } while (0)
 
+template<typename T>
+std::string GetTypeName() {
+  char const* type_name = typeid(T).name();
+  boost::core::scoped_demangled_name type_name_demangled(type_name);
+
+  // From https://stackoverflow.com/questions/1488186/stringifying-template-arguments:
+  return type_name_demangled.get() ? type_name_demangled.get() : type_name;
+}
+
 template<typename Enum>
-[[noreturn]] void FatalInvalidEnumValueInternal(const std::string& enum_name, Enum value) {
-  LOG(FATAL) << "Invalid value of " << enum_name << ": " << to_underlying(value);
+[[noreturn]] void FatalInvalidEnumValueInternal(
+    const char* enum_name,
+    Enum value,
+    const char* expression_str) {
+  LOG(FATAL) << "Invalid value of enum " << enum_name << " ("
+             << "full enum type: " << GetTypeName<Enum>() << ", "
+             << "expression: " << expression_str << "): "
+             << std::to_string(to_underlying(value)) << ".";
   abort();  // Never reached.
 }
 

@@ -25,8 +25,11 @@ using yb::server::HybridClock;
 namespace yb {
 namespace docdb {
 
-DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb, std::atomic<int64_t>* monotonic_counter)
+DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb,
+                             InitMarkerBehavior init_marker_behavior,
+                             std::atomic<int64_t>* monotonic_counter)
     : rocksdb_(rocksdb),
+      init_marker_behavior_(init_marker_behavior),
       monotonic_counter_(monotonic_counter),
       num_rocksdb_seeks_(0) {
 }
@@ -64,8 +67,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     const Value& value,
     InternalDocIterator *doc_iter,
     const bool is_deletion,
-    const int num_subkeys,
-    InitMarkerBehavior use_init_marker) {
+    const int num_subkeys) {
 
   // The write_id is always incremented by one for each new element of the write batch.
   if (put_batch_.size() > numeric_limits<IntraTxnWriteId>::max()) {
@@ -75,7 +77,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
         numeric_limits<IntraTxnWriteId>::max());
   }
 
-  if (value.has_user_timestamp() && use_init_marker != InitMarkerBehavior::OPTIONAL) {
+  if (value.has_user_timestamp() && !optional_init_markers()) {
     return STATUS(IllegalState,
                   "User Timestamp is only supported for Optional Init Markers");
   }
@@ -91,9 +93,8 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
     // We don't need to check if intermediate documents already exist if init markers are optional,
     // or if we already know they exist (either from previous reads or our own writes in the same
     // single-shard operation.)
-    if (use_init_marker == InitMarkerBehavior::OPTIONAL || doc_iter->subdoc_exists()) {
-      if (use_init_marker == InitMarkerBehavior::REQUIRED &&
-          !IsObjectType(doc_iter->subdoc_type())) {
+    if (optional_init_markers() || doc_iter->subdoc_exists()) {
+      if (required_init_markers() && !IsObjectType(doc_iter->subdoc_type())) {
         // REDIS
         // ~~~~~
         // We raise this error only if init markers are mandatory.
@@ -101,7 +102,7 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
                              "Cannot set values inside a subdocument of type $0",
                              doc_iter->subdoc_type());
       }
-      if (use_init_marker == InitMarkerBehavior::OPTIONAL) {
+      if (optional_init_markers()) {
         // CASSANDRA
         // ~~~~~~~~~
         // In the case where init markers are optional, we don't need to check existence of
@@ -189,7 +190,6 @@ CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(
 
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
                                    const Value& value,
-                                   InitMarkerBehavior use_init_marker,
                                    rocksdb::QueryId query_id) {
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
@@ -202,7 +202,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 
   if (num_subkeys > 0 || is_deletion) {
     doc_iter.SetDocumentKey(encoded_doc_key);
-    if (use_init_marker == InitMarkerBehavior::REQUIRED) {
+    if (required_init_markers()) {
       // Navigate to the root of the document. We don't yet know whether the document exists or when
       // it was last updated.
       RETURN_NOT_OK(doc_iter.SeekToKeyPrefix());
@@ -223,14 +223,12 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
     doc_iter.SetDocumentKey(encoded_doc_key);
   }
 
-  return SetPrimitiveInternal(doc_path, value, &doc_iter, is_deletion, num_subkeys,
-                              use_init_marker);
+  return SetPrimitiveInternal(doc_path, value, &doc_iter, is_deletion, num_subkeys);
 }
 
 Status DocWriteBatch::ExtendSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
-    InitMarkerBehavior use_init_marker,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
@@ -239,12 +237,11 @@ Status DocWriteBatch::ExtendSubDocument(
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(ent.first);
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, use_init_marker, query_id,
-                                      ttl, user_timestamp));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, query_id, ttl, user_timestamp));
     }
   } else if (value.value_type() == ValueType::kArray) {
-      RETURN_NOT_OK(ExtendList(doc_path, value, ListExtendOrder::APPEND, use_init_marker, query_id,
-                               ttl, user_timestamp));
+      RETURN_NOT_OK(ExtendList(
+          doc_path, value, ListExtendOrder::APPEND, query_id, ttl, user_timestamp));
   } else {
     if (!value.IsTombstoneOrPrimitive()) {
       return STATUS_FORMAT(
@@ -252,8 +249,7 @@ Status DocWriteBatch::ExtendSubDocument(
           "Found unexpected value type $0. Expecting a PrimitiveType or a Tombstone",
           value.value_type());
     }
-    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl, user_timestamp), use_init_marker,
-                               query_id));
+    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl, user_timestamp), query_id));
   }
   return Status::OK();
 }
@@ -261,33 +257,27 @@ Status DocWriteBatch::ExtendSubDocument(
 Status DocWriteBatch::InsertSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
-    InitMarkerBehavior use_init_marker,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
   if (!value.IsTombstoneOrPrimitive()) {
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, Value(PrimitiveValue(value.value_type()), ttl, user_timestamp), use_init_marker,
-        query_id));
+        doc_path, Value(PrimitiveValue(value.value_type()), ttl, user_timestamp), query_id));
   }
-  return ExtendSubDocument(doc_path, value, use_init_marker, query_id,
-                           ttl, user_timestamp);
+  return ExtendSubDocument(doc_path, value, query_id, ttl, user_timestamp);
 }
 
 Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
-    InitMarkerBehavior use_init_marker,
     rocksdb::QueryId query_id,
     UserTimeMicros user_timestamp) {
-  return SetPrimitive(doc_path, PrimitiveValue::kTombstone, use_init_marker, query_id,
-                      user_timestamp);
+  return SetPrimitive(doc_path, PrimitiveValue::kTombstone, query_id, user_timestamp);
 }
 
 Status DocWriteBatch::ExtendList(
     const DocPath& doc_path,
     const SubDocument& value,
     ListExtendOrder extend_order,
-    InitMarkerBehavior use_init_marker,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
@@ -311,16 +301,14 @@ Status DocWriteBatch::ExtendList(
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], use_init_marker,
-                                      query_id, ttl, user_timestamp));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i], query_id, ttl, user_timestamp));
     }
   } else { // PREPEND - adding in reverse order with negated index
     for (size_t i = list.size(); i > 0; i--) {
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(PrimitiveValue::ArrayIndex(-index));
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1], use_init_marker,
-                                      query_id, ttl, user_timestamp));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, list[i - 1], query_id, ttl, user_timestamp));
     }
   }
   return Status::OK();
@@ -333,8 +321,7 @@ Status DocWriteBatch::ReplaceInList(
     const HybridTime& current_time,
     const rocksdb::QueryId query_id,
     MonoDelta table_ttl,
-    MonoDelta write_ttl,
-    InitMarkerBehavior use_init_marker) {
+    MonoDelta write_ttl) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
   KeyBytes key_bytes = sub_doc_key.Encode( /*include_hybrid_time =*/ false);
@@ -380,8 +367,7 @@ Status DocWriteBatch::ReplaceInList(
     if (current_index == indexes[replace_index]) {
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
-      RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index], use_init_marker,
-                                      query_id, write_ttl));
+      RETURN_NOT_OK(InsertSubDocument(child_doc_path, values[replace_index], query_id, write_ttl));
       replace_index++;
       if (replace_index == indexes.size()) {
         return Status::OK();

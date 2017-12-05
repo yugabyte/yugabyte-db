@@ -153,6 +153,7 @@ using yb::docdb::KuduWriteOperation;
 using yb::docdb::IntentKind;
 using yb::docdb::IntentTypePair;
 using yb::docdb::KeyToIntentTypeMap;
+using yb::docdb::InitMarkerBehavior;
 
 namespace yb {
 namespace tablet {
@@ -851,7 +852,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
       case RowOperationsPB_Type_DELETE: {
         doc_ops.emplace_back(
             new KuduWriteOperation(DocPath(encoded_doc_key),
-            PrimitiveValue(ValueType::kTombstone)));
+            PrimitiveValue::kTombstone));
         break;
       }
       case RowOperationsPB_Type_UPDATE: {
@@ -863,7 +864,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           RETURN_NOT_OK(decoder.DecodeNext(&update));
           doc_ops.emplace_back(new KuduWriteOperation(
               DocPathForColumn(encoded_doc_key, update.col_id),
-              update.null ? PrimitiveValue(ValueType::kTombstone)
+              update.null ? PrimitiveValue::kTombstone
                           : PrimitiveValue::FromKuduValue(
                                 schema()->column_by_id(update.col_id).type_info()->type(),
                                 update.raw_value)));
@@ -880,7 +881,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
             // Skip this column as it is null and we are already overwriting the entire row at
             // the top. Another option would be to explicitly delete it like so:
             //
-            //   column_value = PrimitiveValue(ValueType::kTombstone);
+            //   column_value = PrimitiveValue::kTombstone;
             //
             // This would make sense in case we just wanted to update a few columns in a
             // Cassandra-style INSERT ("upsert").
@@ -1207,10 +1208,13 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
     }
   }
 
-  // We expect all read operations for this transaction to be done in ApplyDocWriteOperation.
+  // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
-  RETURN_NOT_OK(docdb::ApplyDocWriteOperation(
-      doc_ops, real_read_time, rocksdb_.get(), write_batch, &monotonic_counter_));
+  RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
+      doc_ops, real_read_time, rocksdb_.get(), write_batch,
+      table_type_ == TableType::REDIS_TABLE_TYPE ? InitMarkerBehavior::kRequired
+                                                 : InitMarkerBehavior::kOptional,
+      &monotonic_counter_));
 
   if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     auto result = docdb::ResolveTransactionConflicts(*write_batch,
