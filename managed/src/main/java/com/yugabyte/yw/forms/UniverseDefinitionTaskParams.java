@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -131,16 +132,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.provider = provider;
       newUserIntent.providerType = providerType;
       newUserIntent.replicationFactor = replicationFactor;
-      newUserIntent.isMultiAZ = isMultiAZ;
-      newUserIntent.regionList = regionList;
+      newUserIntent.isMultiAZ = new Boolean(isMultiAZ);
+      newUserIntent.regionList = new ArrayList<>(regionList);
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.spotPrice = spotPrice;
-      newUserIntent.masterGFlags = masterGFlags;
-      newUserIntent.tserverGFlags = tserverGFlags;
+      newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
+      newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       return newUserIntent;
     }
 
