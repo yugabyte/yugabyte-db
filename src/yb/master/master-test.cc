@@ -1448,9 +1448,6 @@ TEST_F(MasterTest, TestGetTableSchema) {
     ASSERT_EQ(INT32, resp.schema().columns(0).type().main());
     ASSERT_TRUE(resp.schema().columns(0).is_key());
     ASSERT_FALSE(resp.schema().columns(0).is_nullable());
-    ASSERT_EQ(AUTO_ENCODING, resp.schema().columns(0).encoding());
-    ASSERT_EQ(DEFAULT_COMPRESSION, resp.schema().columns(0).compression());
-    ASSERT_EQ(0, resp.schema().columns(0).cfile_block_size());
     ASSERT_EQ(1, resp.schema().columns(0).sorting_type());
     // PartitionSchemaPB partition_schema.
     ASSERT_TRUE(resp.has_partition_schema());

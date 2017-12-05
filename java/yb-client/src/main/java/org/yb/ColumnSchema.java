@@ -31,8 +31,6 @@
 //
 package org.yb;
 
-import org.yb.Common.CompressionType;
-import org.yb.Common.EncodingType;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 
@@ -54,60 +52,7 @@ public class ColumnSchema {
   private final boolean hashKey;
   private final boolean nullable;
   private final Object defaultValue;
-  private final int desiredBlockSize;
-  private final Encoding encoding;
-  private final CompressionAlgorithm compressionAlgorithm;
   private final SortOrder sortOrder;
-
-  /**
-   * Specifies the encoding of data for a column on disk.
-   * Not all encodings are available for all data types.
-   * Refer to the YB documentation for more information on each encoding.
-   */
-  public enum Encoding {
-    UNKNOWN(EncodingType.UNKNOWN_ENCODING),
-    AUTO_ENCODING(EncodingType.AUTO_ENCODING),
-    PLAIN_ENCODING(EncodingType.PLAIN_ENCODING),
-    PREFIX_ENCODING(EncodingType.PREFIX_ENCODING),
-    GROUP_VARINT(EncodingType.GROUP_VARINT),
-    RLE(EncodingType.RLE),
-    DICT_ENCODING(EncodingType.DICT_ENCODING),
-    BIT_SHUFFLE(EncodingType.BIT_SHUFFLE);
-
-    final EncodingType internalPbType;
-
-    Encoding(EncodingType internalPbType) {
-      this.internalPbType = internalPbType;
-    }
-
-    @InterfaceAudience.Private
-    public EncodingType getInternalPbType() {
-      return internalPbType;
-    }
-  };
-
-  /**
-   * Specifies the compression algorithm of data for a column on disk.
-   */
-  public enum CompressionAlgorithm {
-    UNKNOWN(CompressionType.UNKNOWN_COMPRESSION),
-    DEFAULT_COMPRESSION(CompressionType.DEFAULT_COMPRESSION),
-    NO_COMPRESSION(CompressionType.NO_COMPRESSION),
-    SNAPPY(CompressionType.SNAPPY),
-    LZ4(CompressionType.LZ4),
-    ZLIB(CompressionType.ZLIB);
-
-    final CompressionType internalPbType;
-
-    CompressionAlgorithm(CompressionType internalPbType) {
-      this.internalPbType = internalPbType;
-    }
-
-    @InterfaceAudience.Private
-    public CompressionType getInternalPbType() {
-      return internalPbType;
-    }
-  };
 
   public enum SortOrder {
     NONE(0),
@@ -135,9 +80,7 @@ public class ColumnSchema {
   };
 
   private ColumnSchema(Integer id, String name, QLType yqlType, boolean key, boolean hashKey,
-                       boolean nullable, Object defaultValue, int desiredBlockSize,
-                       Encoding encoding, CompressionAlgorithm compressionAlgorithm,
-                       SortOrder sortOrder) {
+                       boolean nullable, Object defaultValue, SortOrder sortOrder) {
     this.id = id;
     this.name = name;
     this.type = yqlType.toType();
@@ -146,9 +89,6 @@ public class ColumnSchema {
     this.hashKey = hashKey;
     this.nullable = nullable;
     this.defaultValue = defaultValue;
-    this.desiredBlockSize = desiredBlockSize;
-    this.encoding = encoding;
-    this.compressionAlgorithm = compressionAlgorithm;
     this.sortOrder = sortOrder;
   }
 
@@ -222,31 +162,6 @@ public class ColumnSchema {
     return defaultValue;
   }
 
-  /**
-   * Gets the desired block size for this column.
-   * If no block size has been explicitly specified for this column,
-   * returns 0 to indicate that the server-side default will be used.
-   *
-   * @return the block size, in bytes, or 0 if none has been configured.
-   */
-  public int getDesiredBlockSize() {
-    return desiredBlockSize;
-  }
-
-  /**
-   * Return the encoding of this column, or null if it is not known.
-   */
-  public Encoding getEncoding() {
-    return encoding;
-  }
-
-  /**
-   * Return the compression algorithm of this column, or null if it is not known.
-   */
-  public CompressionAlgorithm getCompressionAlgorithm() {
-    return compressionAlgorithm;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -286,9 +201,6 @@ public class ColumnSchema {
     private boolean hashKey = false;
     private boolean nullable = false;
     private Object defaultValue = null;
-    private int blockSize = 0;
-    private Encoding encoding = null;
-    private CompressionAlgorithm compressionAlgorithm = null;
     private SortOrder sortOrder = SortOrder.NONE;
 
     /**
@@ -378,55 +290,12 @@ public class ColumnSchema {
     }
 
     /**
-     * Set the desired block size for this column.
-     *
-     * This is the number of bytes of user data packed per block on disk, and
-     * represents the unit of IO when reading this column. Larger values
-     * may improve scan performance, particularly on spinning media. Smaller
-     * values may improve random access performance, particularly for workloads
-     * that have high cache hit rates or operate on fast storage such as SSD.
-     *
-     * Note that the block size specified here corresponds to uncompressed data.
-     * The actual size of the unit read from disk may be smaller if
-     * compression is enabled.
-     *
-     * It's recommended that this not be set any lower than 4096 (4KB) or higher
-     * than 1048576 (1MB).
-     * @param blockSize the desired block size, in bytes
-     * @return this instance
-     * <!-- TODO(KUDU-1107): move the above info to docs -->
-     */
-    public ColumnSchemaBuilder desiredBlockSize(int blockSize) {
-      this.blockSize = blockSize;
-      return this;
-    }
-
-    /**
-     * Set the block encoding for this column. See the documentation for the list
-     * of valid options.
-     */
-    public ColumnSchemaBuilder encoding(Encoding encoding) {
-      this.encoding = encoding;
-      return this;
-    }
-
-    /**
-     * Set the compression algorithm for this column. See the documentation for the list
-     * of valid options.
-     */
-    public ColumnSchemaBuilder compressionAlgorithm(CompressionAlgorithm compressionAlgorithm) {
-      this.compressionAlgorithm = compressionAlgorithm;
-      return this;
-    }
-
-    /**
      * Builds a {@link ColumnSchema} using the passed parameters.
      * @return a new {@link ColumnSchema}
      */
     public ColumnSchema build() {
       return new ColumnSchema(id, name, yqlType,
-                              key, hashKey, nullable, defaultValue,
-                              blockSize, encoding, compressionAlgorithm, sortOrder);
+                              key, hashKey, nullable, defaultValue, sortOrder);
     }
   }
 }

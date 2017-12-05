@@ -39,7 +39,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/cfile/block_cache.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/service_if.h"
@@ -160,8 +159,6 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
 
 Status TabletServer::Init() {
   CHECK(!initted_);
-
-  cfile::BlockCache::GetSingleton()->StartInstrumentation(metric_entity());
 
   // Validate that the passed master address actually resolves.
   // We don't validate that we can connect at this point -- it should

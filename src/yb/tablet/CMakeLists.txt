@@ -82,7 +82,6 @@ cotire(tablet)
 target_link_libraries(tablet
   tablet_proto
   yb_common
-  cfile
   gutil
   server_common
   yb_fs

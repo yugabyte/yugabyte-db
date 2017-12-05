@@ -326,7 +326,7 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
     scan->clear_stop_primary_key();
   }
   RETURN_NOT_OK(SchemaToColumnPBs(*projection_, scan->mutable_projected_columns(),
-                                  SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES | SCHEMA_PB_WITHOUT_IDS));
+                                  SCHEMA_PB_WITHOUT_IDS));
 
   for (int attempt = 1;; attempt++) {
     Synchronizer sync;

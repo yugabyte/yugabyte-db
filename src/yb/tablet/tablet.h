@@ -522,8 +522,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //   they see a consistent view when racing against flush/compact.
   //
   // Exclusive mode:
-  // - Flushes/compactions take this lock in order to lock out concurrent updates when
-  //   swapping in a new memrowset.
+  // - Flushes/compactions take this lock in order to lock out concurrent updates.
   //
   // NOTE: callers should avoid taking this lock for a long time, even in shared mode.
   // This is because the lock has some concept of fairness -- if, while a long reader

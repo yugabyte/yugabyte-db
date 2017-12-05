@@ -300,8 +300,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
         enc.Add(ToInternalWriteType(kudu_op->type()), kudu_op->row());
         if (!req_.has_schema()) {
           // Only in the Kudu case, we still need the schema as part of every WriteRequest.
-          CHECK_OK(SchemaToPB(schema, req_.mutable_schema(),
-              SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES | SCHEMA_PB_WITHOUT_IDS));
+          CHECK_OK(SchemaToPB(schema, req_.mutable_schema(), SCHEMA_PB_WITHOUT_IDS));
         }
         break;
       }

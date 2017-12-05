@@ -100,14 +100,7 @@ public class ProtobufHelper {
         .setType(QLTypeToPb(column.getQLType()))
         .setIsKey(column.isKey())
         .setIsHashKey(column.isHashKey())
-        .setIsNullable(column.isNullable())
-        .setCfileBlockSize(column.getDesiredBlockSize());
-    if (column.getEncoding() != null) {
-      schemaBuilder.setEncoding(column.getEncoding().getInternalPbType());
-    }
-    if (column.getCompressionAlgorithm() != null) {
-      schemaBuilder.setCompression(column.getCompressionAlgorithm().getInternalPbType());
-    }
+        .setIsNullable(column.isNullable());
     if (column.getSortOrder() != ColumnSchema.SortOrder.NONE) {
       schemaBuilder.setSortingType(column.getSortOrder().getValue());
     }
@@ -133,9 +126,6 @@ public class ProtobufHelper {
       Type type = Type.getTypeForDataType(columnPb.getType().getMain());
       Object defaultValue = columnPb.hasReadDefaultValue() ? byteStringToObject(type,
           columnPb.getReadDefaultValue()) : null;
-      ColumnSchema.Encoding encoding = ColumnSchema.Encoding.valueOf(columnPb.getEncoding().name());
-      ColumnSchema.CompressionAlgorithm compressionAlgorithm =
-          ColumnSchema.CompressionAlgorithm.valueOf(columnPb.getCompression().name());
       ColumnSchema.SortOrder sortOrder =
           ColumnSchema.SortOrder.findFromValue(columnPb.getSortingType());
       ColumnSchema column = new ColumnSchema.ColumnSchemaBuilder(columnPb.getName(), type)
@@ -144,8 +134,6 @@ public class ProtobufHelper {
           .hashKey(columnPb.getIsHashKey())
           .nullable(columnPb.getIsNullable())
           .defaultValue(defaultValue)
-          .encoding(encoding)
-          .compressionAlgorithm(compressionAlgorithm)
           .build();
       columns.add(column);
     }

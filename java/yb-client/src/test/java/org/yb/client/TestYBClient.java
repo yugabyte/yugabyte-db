@@ -367,13 +367,6 @@ public class TestYBClient extends BaseYBClientTest {
     // Check that we can open a table and see that it has the new schema.
     YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     assertEquals(newSchema.getColumnCount(), table.getSchema().getColumnCount());
-
-    // Check that the block size parameter we specified in the schema is respected.
-    assertEquals(4096, newSchema.getColumn("column3_s").getDesiredBlockSize());
-    assertEquals(ColumnSchema.Encoding.DICT_ENCODING,
-                 newSchema.getColumn("column3_s").getEncoding());
-    assertEquals(ColumnSchema.CompressionAlgorithm.LZ4,
-                 newSchema.getColumn("column3_s").getCompressionAlgorithm());
   }
 
   /**

@@ -102,8 +102,6 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
         // For now, we just give an error if the caller tries to do
         // any operation other than rename.
         if (s.spec->data_->has_type ||
-            s.spec->data_->has_encoding ||
-            s.spec->data_->has_compression ||
             s.spec->data_->has_nullable ||
             s.spec->data_->primary_key ||
             s.spec->data_->has_default ||

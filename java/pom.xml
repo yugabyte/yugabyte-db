@@ -319,7 +319,7 @@
           <name>User API</name>
           <description>The YB Application Programmer's API</description>
           <excludePackageNames>
-            com.google:org.yb.cfile:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver:org.yb.server
+            com.google:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver:org.yb.server
           </excludePackageNames>
           <includeDependencySources>false</includeDependencySources>
 

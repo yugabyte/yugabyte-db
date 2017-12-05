@@ -35,10 +35,8 @@
 #include "yb/util/metrics.h"
 
 // The default value is optimized for the case where:
-// 1. the cfile blocks are colocated with the WALs.
-// 2. The underlying hardware is a spinning disk.
-// 3. The underlying filesystem is either XFS or EXT4.
-// 4. cfile_do_on_finish is 'close' (see cfile/cfile_writer.cc).
+// 1. The underlying hardware is a spinning disk.
+// 2. The underlying filesystem is either XFS or EXT4.
 //
 // When all conditions hold, this value ensures low latency for WAL writes.
 DEFINE_bool(block_coalesce_close, false,

@@ -40,7 +40,6 @@
 #include <boost/bind.hpp>
 #include <glog/logging.h>
 
-#include "yb/cfile/block_cache.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
@@ -147,8 +146,6 @@ string Master::ToString() const {
 
 Status Master::Init() {
   CHECK_EQ(kStopped, state_);
-
-  cfile::BlockCache::GetSingleton()->StartInstrumentation(metric_entity());
 
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 

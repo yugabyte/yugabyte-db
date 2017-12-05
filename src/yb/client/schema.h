@@ -88,34 +88,6 @@ class YBSchema;
 class YBSchemaBuilder;
 class YBOperation;
 
-class YBColumnStorageAttributes {
- public:
-  // NOTE: this constructor is deprecated for external use, and will
-  // be made private in a future release.
-  YBColumnStorageAttributes(EncodingType encoding = AUTO_ENCODING,
-                              CompressionType compression = DEFAULT_COMPRESSION,
-                              int32_t block_size = 0)
-      : encoding_(encoding),
-      compression_(compression),
-      block_size_(block_size) {
-  }
-
-  const EncodingType encoding() const {
-    return encoding_;
-  }
-
-  const CompressionType compression() const {
-    return compression_;
-  }
-
-  std::string ToString() const;
-
- private:
-  EncodingType encoding_;
-  CompressionType compression_;
-  int32_t block_size_;
-};
-
 class YBColumnSchema {
  public:
   static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
@@ -190,8 +162,7 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
-                 const void* default_value = NULL,
-                 YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
+                 const void* default_value = nullptr);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -243,30 +214,6 @@ class YBColumnSpec {
   //
   // The YBColumnSpec takes ownership over 'value'.
   YBColumnSpec* Default(YBValue* value);
-
-  // Set the preferred compression for this column.
-  YBColumnSpec* Compression(CompressionType compression);
-
-  // Set the preferred encoding for this column.
-  // Note that not all encodings are supported for all column types.
-  YBColumnSpec* Encoding(EncodingType encoding);
-
-  // Set the target block size for this column.
-  //
-  // This is the number of bytes of user data packed per block on disk, and
-  // represents the unit of IO when reading this column. Larger values
-  // may improve scan performance, particularly on spinning media. Smaller
-  // values may improve random access performance, particularly for workloads
-  // that have high cache hit rates or operate on fast storage such as SSD.
-  //
-  // Note that the block size specified here corresponds to uncompressed data.
-  // The actual size of the unit read from disk may be smaller if
-  // compression is enabled.
-  //
-  // It's recommended that this not be set any lower than 4096 (4KB) or higher
-  // than 1048576 (1MB).
-  // TODO(KUDU-1107): move above info to docs
-  YBColumnSpec* BlockSize(int32_t block_size);
 
   // Operations only relevant for Create Table
   // ------------------------------------------------------------

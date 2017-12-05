@@ -49,13 +49,6 @@ using std::set;
 using std::unordered_map;
 using std::unordered_set;
 
-string ColumnStorageAttributes::ToString() const {
-  return strings::Substitute("encoding=$0, compression=$1, cfile_block_size=$2",
-                             EncodingType_Name(encoding),
-                             CompressionType_Name(compression),
-                             cfile_block_size);
-}
-
 // TODO: include attributes_.ToString() -- need to fix unit tests
 // first
 string ColumnSchema::ToString() const {
@@ -309,8 +302,6 @@ Status Schema::GetMappedReadProjection(const Schema& projection,
   // - User columns non present in the tablet are considered errors
   // - The user projection is not supposed to have the defaults or the nullable
   //   information on each field. The current tablet schema is supposed to.
-  // - Each CFileSet may have a different schema and each CFileSet::Iterator
-  //   must use projection from the CFileSet schema to the mapped user schema.
   RETURN_NOT_OK(VerifyProjectionCompatibility(projection));
 
   // Get the Projection Mapping

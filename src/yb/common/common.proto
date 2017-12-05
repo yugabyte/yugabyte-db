@@ -35,7 +35,7 @@
 // as well as sent on the wire. If a particular protobuf is only
 // used as part of the client-server wire protocol, it should go
 // in common/wire_protocol.proto instead. If it is only used within
-// the server(s), it should go in cfile/cfile.proto, server/metadata.proto,
+// the server(s), it should go in server/metadata.proto,
 // etc, as appropriate.
 package yb;
 
@@ -76,26 +76,6 @@ enum DataType {
   UINT16 = 101;
   UINT32 = 102;
   UINT64 = 103;
-}
-
-enum EncodingType {
-  UNKNOWN_ENCODING = 999;
-  AUTO_ENCODING = 0;
-  PLAIN_ENCODING = 1;
-  PREFIX_ENCODING = 2;
-  GROUP_VARINT = 3;
-  RLE = 4;
-  DICT_ENCODING = 5;
-  BIT_SHUFFLE = 6;
-}
-
-enum CompressionType {
-  UNKNOWN_COMPRESSION = 999;
-  DEFAULT_COMPRESSION = 0;
-  NO_COMPRESSION = 1;
-  SNAPPY = 2;
-  LZ4 = 3;
-  ZLIB = 4;
 }
 
 // This must exactly match YBTableType in client.h.
@@ -156,12 +136,6 @@ message ColumnSchemaPB {
   optional uint32 sorting_type = 9 [default = 0];
   optional bytes read_default_value = 10;
   optional bytes write_default_value = 11;
-
-  // The following attributes refer to the on-disk storage of the column.
-  // They won't always be set, depending on context.
-  optional EncodingType encoding = 12 [default=AUTO_ENCODING];
-  optional CompressionType compression = 13 [default=DEFAULT_COMPRESSION];
-  optional int32 cfile_block_size = 14 [default=0];
 }
 
 message TablePropertiesPB {

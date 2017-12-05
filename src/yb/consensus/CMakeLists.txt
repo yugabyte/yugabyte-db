@@ -62,7 +62,6 @@ YRPC_GENERATE(
 list(APPEND CONSENSUS_YRPC_SRCS opid_util.cc)
 set(CONSENSUS_YRPC_LIBS
   backup_proto
-  cfile_proto
   consensus_metadata_proto
   yrpc
   yb_common_proto
@@ -140,7 +139,6 @@ set(YB_TEST_LINK_LIBS
   log
   consensus
   tserver
-  cfile
   tablet
   yb_util
   ${YB_MIN_TEST_LIBS}

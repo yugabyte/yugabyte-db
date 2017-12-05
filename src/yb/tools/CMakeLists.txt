@@ -39,7 +39,6 @@ set(LINK_LIBS
   yb_fs
   yb_util
   gutil
-  cfile
   tablet
   ${YB_BASE_LIBS}
 )
@@ -61,6 +60,24 @@ target_link_libraries(yb-admin
 add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
   ${LINK_LIBS})
+
+add_library(fs_tool fs_tool.cc)
+target_link_libraries(fs_tool
+  gutil
+  yb_common
+  server_common
+  consensus
+  tablet)
+
+add_executable(yb-fs_list fs_list-tool.cc)
+target_link_libraries(yb-fs_list
+  ${LINK_LIBS}
+  fs_tool)
+
+add_executable(yb-fs_dump fs_dump-tool.cc)
+target_link_libraries(yb-fs_dump
+  ${LINK_LIBS}
+  fs_tool)
 
 add_library(ysck
     ysck.cc

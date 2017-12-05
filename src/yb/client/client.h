@@ -708,7 +708,6 @@ typedef std::shared_ptr<YBTable> YBTablePtr;
 // Sample usage:
 //   YBTableAlterer* alterer = client->NewTableAlterer("table-name");
 //   alterer->AddColumn("foo")->Type(INT32)->NotNull();
-//   alterer->AlterColumn("bar")->Compression(YBColumnStorageAttributes::LZ4);
 //   Status s = alterer->Alter();
 //   delete alterer;
 class YBTableAlterer {

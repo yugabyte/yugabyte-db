@@ -309,7 +309,6 @@ start_tserver() {
        --log_dir "$tserver_base_dir/logs" \
        --v "$verbose_level" \
        --tserver_master_addrs "$master_addresses" \
-       --block_cache_capacity_mb 128 \
        --memory_limit_hard_bytes $(( 1024 * 1024 * 1024)) \
        --webserver_interface 127.0.0.$tserver_index \
        --webserver_port $(( $tserver_http_port_base + $tserver_index )) \

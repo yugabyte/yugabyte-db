@@ -143,7 +143,6 @@ set(UTIL_SRCS
   fault_injection.cc
   flags.cc
   flag_tags.cc
-  group_varint.cc
   pstack_watcher.cc
   hdr_histogram.cc
   hexdump.cc
@@ -322,13 +321,11 @@ ADD_YB_TEST(failure_detector-test)
 ADD_YB_TEST(flag_tags-test)
 ADD_YB_TEST(flags-test)
 ADD_YB_TEST(format-test RUN_SERIAL true)
-ADD_YB_TEST(group_varint-test)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(interval_tree-test)
 ADD_YB_TEST(jsonreader-test)
-ADD_YB_TEST(knapsack_solver-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(map-util-test)
 ADD_YB_TEST(memcmpable_varint-test LABELS no_tsan)

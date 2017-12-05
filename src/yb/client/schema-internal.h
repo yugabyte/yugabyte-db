@@ -48,9 +48,6 @@ class YBColumnSpec::Data {
         has_type(false),
         has_order(false),
         sorting_type(ColumnSchema::SortingType::kNotSpecified),
-        has_encoding(false),
-        has_compression(false),
-        has_block_size(false),
         has_nullable(false),
         primary_key(false),
         hash_primary_key(false),
@@ -75,15 +72,6 @@ class YBColumnSpec::Data {
   int32_t order;
 
   ColumnSchema::SortingType sorting_type;
-
-  bool has_encoding;
-  EncodingType encoding;
-
-  bool has_compression;
-  CompressionType compression;
-
-  bool has_block_size;
-  int32_t block_size;
 
   bool has_nullable;
   bool nullable;

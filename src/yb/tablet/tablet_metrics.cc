@@ -102,41 +102,6 @@ METRIC_DEFINE_counter(tablet, scans_started, "Scans Started",
                       yb::MetricUnit::kScanners,
                       "Number of scanners which have been started on this tablet");
 
-METRIC_DEFINE_counter(tablet, bloom_lookups, "Bloom Filter Lookups",
-                      yb::MetricUnit::kProbes,
-                      "Number of times a bloom filter was consulted");
-METRIC_DEFINE_counter(tablet, key_file_lookups, "Key File Lookups",
-                      yb::MetricUnit::kProbes,
-                      "Number of times a key cfile was consulted");
-METRIC_DEFINE_counter(tablet, delta_file_lookups, "Delta File Lookups",
-                      yb::MetricUnit::kProbes,
-                      "Number of times a delta file was consulted");
-METRIC_DEFINE_counter(tablet, bytes_flushed, "Bytes Flushed",
-                      yb::MetricUnit::kBytes,
-                      "Amount of data that has been flushed to disk by this tablet.");
-
-METRIC_DEFINE_histogram(tablet, bloom_lookups_per_op, "Bloom Lookups per Operation",
-                        yb::MetricUnit::kProbes,
-                        "Tracks the number of bloom filter lookups performed by each "
-                        "operation. A single operation may perform several bloom filter "
-                        "lookups if the tablet is not fully compacted. High frequency of "
-                        "high values may indicate that compaction is falling behind.",
-                        20, 2);
-
-METRIC_DEFINE_histogram(tablet, key_file_lookups_per_op, "Key Lookups per Operation",
-                        yb::MetricUnit::kProbes,
-                        "Tracks the number of key file lookups performed by each "
-                        "operation. A single operation may perform several key file "
-                        "lookups if the tablet is not fully compacted and if bloom filters "
-                        "are not effectively culling lookups.", 20, 2);
-
-METRIC_DEFINE_histogram(tablet, delta_file_lookups_per_op, "Delta File Lookups per Operation",
-                        yb::MetricUnit::kProbes,
-                        "Tracks the number of delta file lookups performed by each "
-                        "operation. A single operation may perform several delta file "
-                        "lookups if the tablet is not fully compacted. High frequency of "
-                        "high values may indicate that compaction is falling behind.", 20, 2);
-
 METRIC_DEFINE_histogram(tablet, write_op_duration_client_propagated_consistency,
   "Write Op Duration with Propagated Consistency",
   yb::MetricUnit::kMicroseconds,

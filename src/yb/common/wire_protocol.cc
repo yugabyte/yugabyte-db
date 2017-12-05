@@ -293,11 +293,6 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
-  if (!(flags & SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES)) {
-    pb->set_encoding(col_schema.attributes().encoding);
-    pb->set_compression(col_schema.attributes().compression);
-    pb->set_cfile_block_size(col_schema.attributes().cfile_block_size);
-  }
   if (col_schema.has_read_default()) {
     if (col_schema.type_info()->physical_type() == BINARY) {
       const Slice *read_slice = static_cast<const Slice *>(col_schema.read_default_value());
@@ -341,22 +336,12 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
     }
   }
 
-  ColumnStorageAttributes attributes;
-  if (pb.has_encoding()) {
-    attributes.encoding = pb.encoding();
-  }
-  if (pb.has_compression()) {
-    attributes.compression = pb.compression();
-  }
-  if (pb.has_cfile_block_size()) {
-    attributes.cfile_block_size = pb.cfile_block_size();
-  }
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(),
                       ColumnSchema::SortingType(pb.sorting_type()),
-                      read_default_ptr, write_default_ptr, attributes);
+                      read_default_ptr, write_default_ptr);
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(

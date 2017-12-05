@@ -1922,31 +1922,13 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
   }
 
-  // test that specifying an encoding incompatible with the column's
-  // type throws an error
-  {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new_string_val")->Type(STRING)->Encoding(GROUP_VARINT);
-    Status s = table_alterer->Alter();
-    ASSERT_TRUE(s.IsNotSupported());
-    ASSERT_STR_CONTAINS(s.ToString(), "Unsupported type/encoding pair");
-    ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
-  }
-
-  {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new_string_val")->Type(STRING)->Encoding(PREFIX_ENCODING);
-    ASSERT_OK(table_alterer->Alter());
-    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
-  }
-
   {
     const YBTableName kRenamedTableName(kKeyspaceName, "RenamedTable");
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
-    ASSERT_EQ(3, tablet_peer->tablet()->metadata()->schema_version());
+    ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
     vector<YBTableName> tables;

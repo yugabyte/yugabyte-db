@@ -524,27 +524,6 @@ if ! should_skip_error_checking_by_input_file_pattern '[.]l[.]cc$'; then
   done
 fi
 
-# Do not catch any additional errors in certain Kudu-specific files that will go away anyway.
-# As we remove these Kudu files, we should remove these patterns as well.
-# We are also ignoring some of these errors in a couple of tests that currently have a lot of
-# ignored Status return values (tablet_server-test, tablet-test). We should clean those up pretty
-# soon.
-#
-# Note: forward slash simply means forward slash in the file name regex, it does not indicate regex
-# beginning/end.
-if ! should_skip_error_checking_by_input_file_pattern \
-   "/(diskrowset|\
-cfile_set-test|\
-compaction|\
-deltamemstore|\
-diskrowset|\
-rowset_info\
-)[.]cc\$"
-then
-  treat_warning_pattern_as_error \
-    "warning: ignoring return value of function declared with '?warn_unused_result'?"
-fi
-
 for pattern in \
     "no return statement in function returning non-void" \
     "control may reach end of non-void function" \

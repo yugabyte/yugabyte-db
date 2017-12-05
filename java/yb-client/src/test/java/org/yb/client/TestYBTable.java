@@ -75,9 +75,6 @@ public class TestYBTable extends BaseYBClientTest {
         .setName("column3_s")
         .setType(ProtobufHelper.QLTypeToPb(QLType.STRING))
         .setIsNullable(true)
-        .setCfileBlockSize(4096)
-        .setEncoding(Common.EncodingType.DICT_ENCODING)
-        .setCompression(Common.CompressionType.LZ4)
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(4)
@@ -103,9 +100,6 @@ public class TestYBTable extends BaseYBClientTest {
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column1_i", Type.INT32).build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column2_s", Type.STRING)
         .nullable(true)
-        .desiredBlockSize(4096)
-        .encoding(ColumnSchema.Encoding.DICT_ENCODING)
-        .compressionAlgorithm(ColumnSchema.CompressionAlgorithm.LZ4)
         .build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column3_b", Type.BOOL).build());
     return new Schema(columns);

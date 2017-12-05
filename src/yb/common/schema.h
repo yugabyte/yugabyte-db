@@ -180,31 +180,6 @@ struct DeletedColumn {
 typedef std::unordered_set<ColumnId> ColumnIds;
 typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 
-// Class for storing column attributes such as compression and
-// encoding.  Column attributes describe the physical storage and
-// representation of bytes, as opposed to a purely logical description
-// normally associated with the term Schema.
-//
-// Column attributes are presently specified in the ColumnSchema
-// protobuf message, but this should ideally be separate.
-struct ColumnStorageAttributes {
- public:
-  ColumnStorageAttributes()
-    : encoding(AUTO_ENCODING),
-      compression(DEFAULT_COMPRESSION),
-      cfile_block_size(0) {
-  }
-
-  string ToString() const;
-
-  EncodingType encoding;
-  CompressionType compression;
-
-  // The preferred block size for cfile blocks. If 0, uses the
-  // server-wide default.
-  int32_t cfile_block_size;
-};
-
 // The schema for a given column.
 //
 // Holds the data type as well as information about nullability & column name.
@@ -241,9 +216,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                SortingType sorting_type = SortingType::kNotSpecified,
-               const void* read_default = NULL,
-               const void* write_default = NULL,
-               ColumnStorageAttributes attributes = ColumnStorageAttributes())
+               const void* read_default = nullptr,
+               const void* write_default = nullptr)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -251,8 +225,7 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         sorting_type_(sorting_type),
-        read_default_(read_default ? new Variant(type->main(), read_default) : NULL),
-        attributes_(std::move(attributes)) {
+        read_default_(read_default ? new Variant(type->main(), read_default) : nullptr) {
     if (write_default == read_default) {
       write_default_ = read_default_;
     } else if (write_default != NULL) {
@@ -269,11 +242,10 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                SortingType sorting_type = SortingType::kNotSpecified,
-               const void* read_default = NULL,
-               const void* write_default = NULL,
-               ColumnStorageAttributes attributes = ColumnStorageAttributes())
+               const void* read_default = nullptr,
+               const void* write_default = nullptr)
       : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     sorting_type, read_default, write_default, attributes) { }
+                     sorting_type, read_default, write_default) { }
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -399,14 +371,6 @@ class ColumnSchema {
     return true;
   }
 
-  // Returns extended attributes (such as encoding, compression, etc...)
-  // associated with the column schema. The reason they are kept in a separate
-  // struct is so that in the future, they may be moved out to a more
-  // appropriate location as opposed to parts of ColumnSchema.
-  const ColumnStorageAttributes& attributes() const {
-    return attributes_;
-  }
-
   int Compare(const void *lhs, const void *rhs) const {
     return type_info()->Compare(lhs, rhs);
   }
@@ -459,7 +423,6 @@ class ColumnSchema {
   // use shared_ptr since the ColumnSchema is always copied around.
   std::shared_ptr<Variant> read_default_;
   std::shared_ptr<Variant> write_default_;
-  ColumnStorageAttributes attributes_;
 };
 
 class ContiguousRow;

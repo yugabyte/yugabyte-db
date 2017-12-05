@@ -81,7 +81,6 @@ CHECKED_STATUS HostPortsToPBs(const std::vector<HostPort>& addrs,
 
 enum SchemaPBConversionFlags {
   SCHEMA_PB_WITHOUT_IDS = 1 << 0,
-  SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES = 1 << 1,
 };
 
 // Convert the specified schema to protobuf.

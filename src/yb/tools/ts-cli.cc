@@ -269,8 +269,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
 
   NewScanRequestPB* new_req = req.mutable_new_scan_request();
   RETURN_NOT_OK(SchemaToColumnPBs(
-      schema, new_req->mutable_projected_columns(),
-      SCHEMA_PB_WITHOUT_IDS | SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES));
+      schema, new_req->mutable_projected_columns(), SCHEMA_PB_WITHOUT_IDS));
   new_req->set_tablet_id(tablet_id);
   new_req->set_cache_blocks(false);
   new_req->set_order_mode(ORDERED);

@@ -228,9 +228,6 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column2_i", Type.INT32).build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column3_s", Type.STRING)
         .nullable(true)
-        .desiredBlockSize(4096)
-        .encoding(ColumnSchema.Encoding.DICT_ENCODING)
-        .compressionAlgorithm(ColumnSchema.CompressionAlgorithm.LZ4)
         .build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column4_b", Type.BOOL).build());
     return new Schema(columns);

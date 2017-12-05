@@ -63,7 +63,6 @@
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <glog/logging.h>
-#include "yb/cfile/type_encodings.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/row_operations.h"
@@ -196,7 +195,6 @@ using namespace std::placeholders;
 
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_CompareAndSwap;
-using cfile::TypeEncodingInfo;
 using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
@@ -1864,13 +1862,15 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
   return Status::OK();
 }
 
-static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
-                              const AlterTableRequestPB* req,
-                              Schema* new_schema,
-                              ColumnId* next_col_id) {
+namespace {
+
+CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
+                               const AlterTableRequestPB* req,
+                               Schema* new_schema,
+                               ColumnId* next_col_id) {
   const SchemaPB& current_schema_pb = current_pb.schema();
   Schema cur_schema;
-  RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
+      RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
 
   SchemaBuilder builder(cur_schema);
   if (current_pb.has_next_column_id()) {
@@ -1892,10 +1892,6 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
               "column $0: client should not specify column id", new_col_pb.ShortDebugString()));
         }
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
-        const TypeEncodingInfo *dummy;
-        RETURN_NOT_OK(TypeEncodingInfo::Get(new_col.type_info(),
-                                            new_col.attributes().encoding,
-                                            &dummy));
 
         // can't accept a NOT NULL column without read default
         if (!new_col.is_nullable() && !new_col.has_read_default()) {
@@ -1903,7 +1899,7 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
               Substitute("column `$0`: NOT NULL columns must have a default", new_col.name()));
         }
 
-        RETURN_NOT_OK(builder.AddColumn(new_col, false));
+            RETURN_NOT_OK(builder.AddColumn(new_col, false));
         break;
       }
 
@@ -1916,7 +1912,7 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
           return STATUS(InvalidArgument, "cannot remove a key column");
         }
 
-        RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
+            RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
         break;
       }
 
@@ -1925,29 +1921,31 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
           return STATUS(InvalidArgument, "RENAME_COLUMN missing column info");
         }
 
-        RETURN_NOT_OK(builder.RenameColumn(
-                        step.rename_column().old_name(),
-                        step.rename_column().new_name()));
+            RETURN_NOT_OK(builder.RenameColumn(
+            step.rename_column().old_name(),
+            step.rename_column().new_name()));
         break;
       }
 
-      // TODO: EDIT_COLUMN
+        // TODO: EDIT_COLUMN
 
       default: {
         return STATUS(InvalidArgument,
-          Substitute("Invalid alter step type: $0", step.type()));
+            Substitute("Invalid alter step type: $0", step.type()));
       }
     }
   }
 
   if (req->has_alter_properties()) {
-      RETURN_NOT_OK(builder.AlterProperties(req->alter_properties()));
+        RETURN_NOT_OK(builder.AlterProperties(req->alter_properties()));
   }
 
   *new_schema = builder.Build();
   *next_col_id = builder.next_column_id();
   return Status::OK();
 }
+
+} // namespace
 
 Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                                   AlterTableResponsePB* resp,
