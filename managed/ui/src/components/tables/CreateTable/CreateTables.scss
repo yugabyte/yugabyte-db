@@ -2,9 +2,7 @@
 
 @import "_style/colors.scss";
 
-.create-table-form {
-  max-width: 1000px;
-  margin: 0 auto;
+form[name=CreateTableForm] {
 
   .add-key-column {
     cursor: pointer;
@@ -23,8 +21,13 @@
   }
 
   .create-table-name-container {
-    margin-bottom: 10px;
-    padding: 10px 10px;
+    margin-top: 5px;
+    
+    @media (min-width: 1199px) {
+      .form-right-aligned-labels .form-item-label {
+        min-width: fit-content;
+      }
+    }
   }
 
   .table-selector-container {
@@ -34,9 +37,26 @@
 
   }
 
+  .create-table-block-title {
+    margin-bottom: 20px;
+  }
+
   .table-selector-container.active {
     height: 100%;
     background-color: #BFE9FE;
     border: 2px solid #BFE9FE;
+  }
+
+  .radio-label {
+    .table-type-logo {
+      margin-bottom: 0;
+      height: 25px;
+    }
+  }
+
+  .form-action-button-container {
+    position: relative;
+    margin: 0 -25px;
+    top: 25px;
   }
 }

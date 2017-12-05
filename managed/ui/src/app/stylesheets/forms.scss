@@ -7,9 +7,10 @@
 }
 
 .form-field-grid {
-  .row {
-    margin: 0 !important;
+  margin-bottom: 10px;
 
+  .row {
+    margin: 0 -2px !important;
     > * {
       padding: 0 2px !important;
     }
@@ -23,6 +24,7 @@
     color: #fff;
     padding-bottom: 4px;
     text-align: center;
+
     .logo {
       height: 50px;
       margin: 0 auto 50px auto;
@@ -59,7 +61,8 @@
 
   .form-item-label {
     display: table-cell;
-    text-align: right;
+    text-align: left;
+    min-width: 120px;
     white-space: nowrap;
     padding: 11px 10px 0 0;
     vertical-align: top;
@@ -98,6 +101,10 @@
   .Select-placeholder {
     line-height: 40px;
   }
+}
+
+.help-block {
+  margin-bottom: 0;
 }
 
 

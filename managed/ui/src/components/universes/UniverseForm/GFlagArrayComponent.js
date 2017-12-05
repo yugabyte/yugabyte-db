@@ -6,6 +6,7 @@ import { Field } from 'redux-form';
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import { YBAddRowButton, YBRemoveRowButton } from '../../common/forms/fields';
+import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 
 export default class GFlagArrayComponent extends Component {
 
@@ -56,24 +57,28 @@ export default class GFlagArrayComponent extends Component {
         {
           fields.map(function(field, idx){
             return (
-              <Row key={`${flagType}${idx}`} className="gflag-row">
-                <Col md={5}>
-                  <div  className="yb-field-group">
-                    <Field name={`${field}name`} component={YBTextInput} isReadOnly={isReadOnly}/>
-                  </div>
-                </Col>
-                <Col md={5}>
-                  <div className="yb-field-group">
-                    <Field name={`${field}value`} component={YBTextInput} isReadOnly={isReadOnly}/>
-                  </div>
-                </Col>
-                <Col md={2}>
+              <FlexContainer key={`${flagType}${idx}`} >
+                <FlexGrow power={1}>
+                  <Row className="gflag-row">
+                    <Col xs={6}>
+                      <div  className="yb-field-group">
+                        <Field name={`${field}name`} component={YBTextInput} isReadOnly={isReadOnly}/>
+                      </div>
+                    </Col>
+                    <Col xs={6}>
+                      <div className="yb-field-group">
+                        <Field name={`${field}value`} component={YBTextInput} isReadOnly={isReadOnly}/>
+                      </div>
+                    </Col>
+                  </Row>
+                </FlexGrow>
+                <FlexShrink power={0} key={idx} className="form-right-control" style={isReadOnly ? {}: {marginRight:-10}}>
                   {
                     isReadOnly ? <span/> :
                     <YBRemoveRowButton onClick={() => self.removeRow(idx)}/>
                   }
-                </Col>
-              </Row>
+                </FlexShrink>
+              </FlexContainer>
             );
           })
         }
