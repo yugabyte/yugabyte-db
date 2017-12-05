@@ -20,7 +20,7 @@ class Footer extends React.PureComponent {
             <span> Version: {version}</span>
           }
         </div>
-        <div className="flex-grow">
+        <div className="flex-grow copyright">
           Copyright &copy; {moment().get('year')} YugaByte. All Rights Reserved. 
         </div>
       </footer>

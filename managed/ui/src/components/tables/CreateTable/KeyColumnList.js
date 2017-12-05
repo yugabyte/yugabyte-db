@@ -38,7 +38,7 @@ export default class KeyColumnList extends Component {
         <option key={"descending"} value={"DESC"}>DESC</option>
       ];
       return (
-        <Col md={2}>
+        <Col xs={2}>
           <Field name={`${item}.sortOrder`} component={YBSelectWithLabel}
                  options={sortOrderOptions} />
         </Col>
@@ -97,16 +97,16 @@ export default class KeyColumnList extends Component {
         {fields.map((item, index) => (
           <span key={item+index}>
             <Row>
-              <Col md={5}>
+              <Col xs={5}>
                 <Field name={`${item}.name`} component={YBInputField} placeHolder={"Column Name"}
                        checkState={true} />
               </Col>
-              <Col md={4}>
+              <Col xs={4}>
                 <Field name={`${item}.selected`} options={typeOptions} component={YBSelectWithLabel}
                        placeHolder={"Type"} onInputChanged={(value) => this.columnTypeChanged(value, index)} />
               </Col>
               {this.columnListSort(item)}
-              <Col md={1}>
+              <Col xs={1}>
                 {this.removeRowItem(index)}
               </Col>
             </Row>
@@ -115,7 +115,7 @@ export default class KeyColumnList extends Component {
           </span>
         ))}
         <Row>
-          <Col md={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
+          <Col xs={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
             <YBAddRowButton btnText="Add Column" />
           </Col>
         </Row>

@@ -89,7 +89,7 @@
   .universe-detail {
     margin-top: 56px;
     @media (max-width: 767px) {
-      margin-top: 75px;
+      margin-top: 110px;
     }
     .content-title {
       position: static;
@@ -174,6 +174,11 @@
     padding: 0;
     padding-top: 9px;
     width: auto;
+    @media (max-width: 767px) {
+      right: auto;
+      left: 115px;
+      top: 65px;
+    }
     .universe-detail-btn-group .btn {
       height: 40px;
       padding-top: 9px;
@@ -193,9 +198,6 @@
   top: 8px;
   left: 120px;
   margin-bottom: 0;
-  @media (max-width: 991px) {
-    left: 115px;
-  }
   span {
     opacity: .3;
   }

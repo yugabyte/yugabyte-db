@@ -5,6 +5,7 @@ import { isNonEmptyObject } from 'utils/ObjectUtils';
 import { YBResourceCount, YBCost } from 'components/common/descriptors';
 import PropTypes from 'prop-types';
 import './UniverseResources.scss';
+import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 
 export default class UniverseResources extends Component {
   render() {
@@ -31,16 +32,22 @@ export default class UniverseResources extends Component {
     }
     
     return (
-      <div className={(empty ? "universe-resources empty" : "universe-resources ")}>
-        {universeNodes}
-        <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
-        <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
-        <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
-        <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
-        <YBResourceCount size={costPerDay} kind="/day" />
-        <YBResourceCount size={costPerMonth} kind="/month" />
-        {this.props.children}
-      </div>
+      <FlexContainer>
+        <FlexGrow>
+          <div className={(empty ? "universe-resources empty" : "universe-resources ")}>
+            {universeNodes}
+            <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
+            <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
+            <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
+            <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
+            <YBResourceCount size={costPerDay} kind="/day" />
+            <YBResourceCount size={costPerMonth} kind="/month" />
+          </div>
+        </FlexGrow>
+        <FlexShrink style={{ padding: 10, paddingBottom: 0 , paddingRight: 7 }}>
+          {this.props.children}
+        </FlexShrink>
+      </FlexContainer>
     );
   }
 }

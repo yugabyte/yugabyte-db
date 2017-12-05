@@ -6,6 +6,7 @@ import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual, isEmptyObject 
 import {Row, Col} from 'react-bootstrap';
 import _ from 'lodash';
 import {isNonEmptyObject} from "../../../utils/ObjectUtils";
+import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
@@ -234,22 +235,26 @@ export default class AZSelectorTable extends Component {
     let azList = [];
     if (isNonEmptyArray(azGroups) && isNonEmptyArray(azListForSelectedRegions)) {
       azList = azGroups.map((azGroupItem, idx) => (
-        <Row key={idx} >
-          <Col sm={6}>
-            <Field name={`select${idx}`} component={YBControlledSelect}
-                 options={azListOptions} selectVal={azGroupItem.value}
-                 onInputChanged={self.handleAZChange.bind(self, idx)}/>
-          </Col>
-          <Col sm={4}>
-            <Field name={`nodes${idx}`} component={YBControlledNumericInput}
-            val={azGroupItem.count}
-            onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
-          </Col>
-          <Col sm={2} key={idx}>
+        <FlexContainer key={idx}>
+          <FlexGrow power={1}>
+            <Row>
+              <Col xs={8}>
+                <Field name={`select${idx}`} component={YBControlledSelect}
+                    options={azListOptions} selectVal={azGroupItem.value}
+                    onInputChanged={self.handleAZChange.bind(self, idx)}/>
+              </Col>
+              <Col xs={4}>
+                <Field name={`nodes${idx}`} component={YBControlledNumericInput}
+                val={azGroupItem.count}
+                onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
+              </Col>
+            </Row>
+          </FlexGrow>
+          <FlexShrink power={0} key={idx} className="form-right-control">
             <Field name={"test"} component={YBCheckBox} checkState={azGroupItem.isAffinitized} 
-                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
-          </Col>
-        </Row>
+                  onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
+          </FlexShrink>
+        </FlexContainer>
     ));
       return (
         <div className={"az-table-container form-field-grid"}>
@@ -257,6 +262,21 @@ export default class AZSelectorTable extends Component {
             <span className="az-selector-reset" onClick={this.resetAZSelectionConfig}>Reset Config</span>
             <h4>Availability Zones</h4>
           </div>
+          <FlexContainer>
+            <FlexGrow power={1}>
+              <Row>
+                <Col xs={8}>
+                  <label>Name</label>
+                </Col>
+                <Col xs={4}>
+                <label>Nodes</label>
+                </Col>
+              </Row>
+            </FlexGrow>
+            <FlexShrink power={0} className="form-right-control">
+              <label>Preferred</label>
+            </FlexShrink>
+          </FlexContainer>
           {azList}
         </div>
       );

@@ -10,6 +10,7 @@ import cassandraLogo from '../images/cassandra.png';
 import './CreateTables.scss';
 import { YBConfirmModal } from '../../modals';
 import CassandraColumnSpecification from './CassandraColumnSpecification';
+import { YBPanelItem } from '../../panels';
 
 class CreateTable extends Component {
   constructor(props) {
@@ -74,59 +75,65 @@ class CreateTable extends Component {
     const tableNameRegex = /^[a-zA-Z0-9_]*$/;
     const tableNameTest = (value, previousValue) => tableNameRegex.test(value) ? value : previousValue;
     return (
-      <div className="bottom-bar-padding">
-        <h3>Create Table</h3>
-        <form name="CreateTableForm" className="create-table-form" onSubmit={onFormSubmit}>
-          <Row className="create-table-name-container">
-            <Col md={3}>
-              <div className="form-right-aligned-labels">
-                <Field name="keyspace" component={YBInputField} className={`table-name-cell`}
-                       label="Keyspace" placeHolder={"Keyspace"} normalize={tableNameTest} />
-              </div>
-            </Col>
-            <Col md={3}>
-              <div className="form-right-aligned-labels">
-                <Field name="tableName" component={YBInputField} className={`table-name-cell`}
-                       label="Name" placeHolder={"Table Name"} normalize={tableNameTest} />
-              </div>
-            </Col>
-            <Col md={3}>
-              <div className="form-right-aligned-labels">
-                <div className="form-group">
-                  <label className="form-item-label">
-                    Type
-                  </label>
-                  <div className="yb-field-group">
-                    <YBRadioButton name="type" key="cassandra" label={cassandraLabel}
-                                   fieldValue="cassandra" checkState={true} />
+      <YBPanelItem
+        header={
+          <h2 class="content-title">Create Table</h2>
+        }
+        body={
+          <div>
+            <form name="CreateTableForm" onSubmit={onFormSubmit}>
+              <Row className="create-table-name-container">
+                <Col md={6} lg={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field name="keyspace" component={YBInputField} className={`table-name-cell`}
+                           label="Keyspace" placeHolder={"Keyspace"} normalize={tableNameTest} />
                   </div>
-                </div>
+                </Col>
+                <Col md={6} lg={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field name="tableName" component={YBInputField} className={`table-name-cell`}
+                           label="Name" placeHolder={"Table Name"} normalize={tableNameTest} />
+                  </div>
+                </Col>
+                <Col md={6} lg={3}>
+                  <div className="form-right-aligned-labels">
+                    <div className="form-group">
+                      <label className="form-item-label">
+                        Type
+                      </label>
+                      <div className="yb-field-group">
+                        <YBRadioButton name="type" key="cassandra" label={cassandraLabel}
+                                       fieldValue="cassandra" checkState={true} />
+                      </div>
+                    </div>
+                  </div>
+                </Col>
+                <Col md={6} lg={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field name="ttlInSeconds" component={YBInputField}
+                           className={`table-name-cell`} label="TTL (sec)"
+                           placeHolder={"optional"} normalize={normalizeToPositiveInt}/>
+                  </div>
+                </Col>
+              </Row>
+              <CassandraColumnSpecification {...this.props} />
+              <div className="form-action-button-container clearfix">
+                <YBButton btnText="Create" btnClass={`pull-right btn btn-orange`}
+                          btnType="submit"/>
+                <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`}
+                          onClick={this.cancelCreateTableForm}/>
               </div>
-            </Col>
-            <Col md={3}>
-              <div className="form-right-aligned-labels">
-                <Field name="ttlInSeconds" component={YBInputField}
-                       className={`table-name-cell`} label="TTL (sec)"
-                       placeHolder={"optional"} normalize={normalizeToPositiveInt}/>
-              </div>
-            </Col>
-          </Row>
-          <CassandraColumnSpecification {...this.props} />
-          <div className="form-action-button-container">
-            <YBButton btnText="Create" btnClass={`pull-right btn btn-orange`}
-                      btnType="submit"/>
-            <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`}
-                      onClick={this.cancelCreateTableForm}/>
+            </form>
+            <YBConfirmModal visibleModal={this.props.universe.visibleModal} title="Create Table"
+                             name="cancelCreate" onConfirm={this.confirmCancelCreateModal}
+                             hideConfirmModal={this.hideCancelCreateModal} currentModal="cancelCreate"
+                             confirmLabel={"Yes"} cancelLabel={"No"}>
+              <div>You haven't finished creating a table yet. All your changes will be lost.</div>
+              <div>Are you sure you want to exit?</div>
+            </YBConfirmModal>
           </div>
-        </form>
-        <YBConfirmModal visibleModal={this.props.universe.visibleModal} title="Create Table"
-                         name="cancelCreate" onConfirm={this.confirmCancelCreateModal}
-                         hideConfirmModal={this.hideCancelCreateModal} currentModal="cancelCreate"
-                         confirmLabel={"Yes"} cancelLabel={"No"}>
-          <div>You haven't finished creating a table yet. All your changes will be lost.</div>
-          <div>Are you sure you want to exit?</div>
-        </YBConfirmModal>
-      </div>
+        }
+      />
     );
   }
 }

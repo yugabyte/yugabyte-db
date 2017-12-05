@@ -11,7 +11,7 @@ export default class CassandraColumnSpecification extends Component {
       <div>
         <hr />
         <Row>
-          <Col md={3}>
+          <Col md={3} className="create-table-block-title">
             <h5 className="no-bottom-margin">Partition Key Columns</h5>
             (In Order)
           </Col>
@@ -22,7 +22,7 @@ export default class CassandraColumnSpecification extends Component {
         </Row>
         <hr />
         <Row>
-          <Col md={3}>
+          <Col md={3} className="create-table-block-title">
             <h5 className="no-bottom-margin">Clustering Columns</h5>
             (In Order)
           </Col>
@@ -33,7 +33,7 @@ export default class CassandraColumnSpecification extends Component {
         </Row>
         <hr />
         <Row>
-          <Col md={3}>
+          <Col md={3} className="create-table-block-title">
             <h5 className="no-bottom-margin">Other Columns</h5>
           </Col>
           <Col md={9}>
