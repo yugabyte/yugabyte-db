@@ -212,7 +212,7 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
   TSDescriptorVector ts_descs;
-  GetAllLiveDescriptors(&ts_descs);
+  GetAllReportedDescriptors(&ts_descs);
   for (const auto ts_desc : ts_descs) {
     state_->UpdateTabletServer(ts_desc);
   }
@@ -742,8 +742,8 @@ void ClusterLoadBalancer::MoveLeader(
 
 // CatalogManager indirection methods that are set as virtual to be bypassed in testing.
 //
-void ClusterLoadBalancer::GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const {
-  catalog_manager_->master_->ts_manager()->GetAllLiveDescriptors(ts_descs);
+void ClusterLoadBalancer::GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const {
+  catalog_manager_->master_->ts_manager()->GetAllReportedDescriptors(ts_descs);
 }
 
 const TabletInfoMap& ClusterLoadBalancer::GetTabletMap() const {

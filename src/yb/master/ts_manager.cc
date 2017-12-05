@@ -110,13 +110,13 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
             if (current_instance_pb.instance_seqno() >= instance.instance_seqno()) {
               // Skip adding the node since we already have a node with the same rpc address and
               // a higher sequence number.
-              LOG(WARNING) << "Skipping registration for node " << instance.ShortDebugString()
-                  << " since a node with a higher sequence number with the same rpc address already"
-                  " exists: " << current_instance_pb.ShortDebugString();
+              LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
+                  << " since an entry with same host/port but a higher sequence number exists "
+                  << current_instance_pb.ShortDebugString();
               return Status::OK();
             } else {
-              LOG(WARNING) << "Removing node: " << current_instance_pb.ShortDebugString() << " "
-                  "since we received registration for a node with a higher sequence number: "
+              LOG(WARNING) << "Removing entry: " << current_instance_pb.ShortDebugString()
+                  << " since we received registration for a tserver with a higher sequence number: "
                   << instance.ShortDebugString();
               // Mark the old node to be removed, since we have a newer sequence number.
               map_entry.second->SetRemoved();
@@ -156,8 +156,7 @@ void TSManager::GetDescriptors(std::function<bool(const TSDescSharedPtr&)> condi
 
 
 void TSManager::GetAllDescriptors(TSDescriptorVector* descs) const {
-  GetDescriptors([](const TSDescSharedPtr& ts) -> bool { return !ts->IsRemoved(); },
-                 descs);
+  GetDescriptors([](const TSDescSharedPtr& ts) -> bool { return !ts->IsRemoved(); }, descs);
 }
 
 bool TSManager::IsTSLive(const TSDescSharedPtr& ts) {
@@ -166,8 +165,12 @@ bool TSManager::IsTSLive(const TSDescSharedPtr& ts) {
 }
 
 void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs) const {
-  GetDescriptors([](const TSDescSharedPtr& ts) -> bool { return IsTSLive(ts); },
-                 descs);
+  GetDescriptors([](const TSDescSharedPtr& ts) -> bool { return IsTSLive(ts); }, descs);
+}
+
+void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
+  GetDescriptors([](const TSDescSharedPtr& ts)
+                   -> bool { return IsTSLive(ts) && ts->has_tablet_report(); }, descs);
 }
 
 const TSDescSharedPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) const {

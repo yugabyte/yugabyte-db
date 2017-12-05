@@ -18,7 +18,9 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     options_.kAllowLimitOverReplicatedTablets = false;
   }
   // Overrides for base class functionality to bypass calling CatalogManager.
-  void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const override { *ts_descs = ts_descs_; }
+  void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const override {
+    *ts_descs = ts_descs_;
+  }
 
   const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
 

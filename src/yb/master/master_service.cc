@@ -88,14 +88,13 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
   if (!l.leader_status().ok()) {
-    // For the time being, ignore heartbeats sent to non-leader distributed
-    // masters.
+    // For the time being, ignore heartbeats sent to non-leader distributed masters.
     //
     // TODO KUDU-493 Allow all master processes to receive heartbeat
     // information: by having the TabletServers send heartbeats to all
-    // masters, or by storing heartbeat information in a replicated
-    // SysTable.
-    LOG(WARNING) << "Received a heartbeat, but this Master instance is not a leader or a "
+    // masters, or by storing heartbeat information in a replicated SysTable.
+    LOG(WARNING) << "Received a heartbeat from " << req->common().ts_instance().permanent_uuid()
+                 << ", but this Master instance is not a leader or a "
                  << "single Master: " << l.leader_status().ToString();
     resp->set_leader_master(false);
     rpc.RespondSuccess();

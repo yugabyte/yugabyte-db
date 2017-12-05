@@ -91,13 +91,17 @@ class TSManager {
                             const TSRegistrationPB& registration,
                             TSDescSharedPtr* desc);
 
-  // Return all of the currently registered TS descriptors into the provided
-  // list.
+  // Return all of the currently registered TS descriptors into the provided list.
   void GetAllDescriptors(TSDescriptorVector* descs) const;
 
   // Return all of the currently registered TS descriptors that have sent a
   // heartbeat recently, indicating that they're alive and well.
   void GetAllLiveDescriptors(TSDescriptorVector* descs) const;
+
+  // Return all of the currently registered TS descriptors that have sent a
+  // heartbeat, indicating that they're alive and well, recently and have given
+  // full report of their tablets as well.
+  void GetAllReportedDescriptors(TSDescriptorVector* descs) const;
 
   // Get the TS count.
   int GetCount() const;

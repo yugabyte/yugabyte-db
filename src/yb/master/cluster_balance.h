@@ -129,10 +129,10 @@ class ClusterLoadBalancer {
   // Indirection methods to CatalogManager that we override in the subclasses (or testing).
   //
 
-  // Get the list of live TSDescriptors.
-  virtual void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const;
+  // Get the list of all live TSDescriptors which reported their tablets.
+  virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
 
-  // Get access to the tablet map across the cluster.
+    // Get access to the tablet map across the cluster.
   virtual const TabletInfoMap& GetTabletMap() const;
 
   // Get access to the table map.

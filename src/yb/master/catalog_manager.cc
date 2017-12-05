@@ -2506,7 +2506,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // across multiple tablets in the same report.
       VLOG(1) << "Tablet " << tablet->ToString() << " is now online";
       tablet_lock->mutable_data()->set_state(SysTabletsEntryPB::RUNNING,
-                                            "Tablet reported with an active leader");
+                                             "Tablet reported with an active leader");
     }
 
     // The Master only accepts committed consensus configurations since it needs the committed index
@@ -2548,7 +2548,8 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // Note that we leave out replicas who live in tablet servers who have not heartbeated to
       // master yet.
       LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
-                << " New consensus state: " << cstate.ShortDebugString();
+                << " New consensus state: " << cstate.ShortDebugString()
+                << "from " << ts_desc->permanent_uuid();
 
       // If we need to change the report, copy the whole thing on the stack
       // rather than const-casting.
@@ -2570,13 +2571,19 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       RETURN_NOT_OK(ResetTabletReplicasFromReportedConfig(*final_report, tablet,
                                                           tablet_lock.get(), table_lock.get()));
 
+      // Sanity check replicas for this tablet.
+      TabletInfo::ReplicaMap replica_map;
+      tablet->GetReplicaLocations(&replica_map);
+      if (cstate.config().peers().size() != replica_map.size()) {
+        LOG(WARNING) << "Received config count " << cstate.config().peers().size() << " is "
+                     << "different than in-memory replica count " << replica_map.size();
+      }
     } else {
       // Report opid_index is equal to the previous opid_index. If some
       // replica is reporting the same consensus configuration we already know about and hasn't
       // been added as replica, add it.
-      DVLOG(2) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report"
-              << " with data we have already received. Ensuring replica is being tracked."
-              << " Replica consensus state: " << cstate.ShortDebugString();
+      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report."
+                << " Replica consensus state: " << cstate.ShortDebugString();
       AddReplicaToTabletIfNotFound(ts_desc, report, tablet);
     }
   }
@@ -4082,7 +4089,16 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id,
     }
   }
 
-  return BuildLocationsForTablet(tablet_info, locs_pb);
+  Status s = BuildLocationsForTablet(tablet_info, locs_pb);
+
+  int num_replicas = 0;
+  if (GetReplicationFactor(&num_replicas).ok() && num_replicas > 0 &&
+      locs_pb->replicas().size() != num_replicas) {
+    YB_LOG_EVERY_N(WARNING, 100) << "Expected replicas " << num_replicas << " but found "
+        << locs_pb->replicas().size();
+  }
+
+  return s;
 }
 
 Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
