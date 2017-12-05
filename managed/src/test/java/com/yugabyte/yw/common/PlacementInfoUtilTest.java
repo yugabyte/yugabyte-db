@@ -21,12 +21,18 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Running;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
+import static org.mockito.Matchers.isNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -766,4 +772,29 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertFalse(azUUIDSet.contains(az3.uuid));
   }
 
+  @Test
+  public void testUniverseDefinitionClone() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UniverseDefinitionTaskParams oldTaskParams = universe.getUniverseDetails();
+
+      UserIntent oldIntent = oldTaskParams.userIntent;
+      oldIntent.preferredRegion = UUID.randomUUID();
+      UserIntent newIntent = oldTaskParams.userIntent.clone();
+      oldIntent.tserverGFlags.put("emulate_redis_responses", "false");
+      oldIntent.masterGFlags.put("emulate_redis_responses", "false");
+      newIntent.preferredRegion = UUID.randomUUID();
+
+      // Verify that the old userIntent tserverGFlags is non empty and the new tserverGFlags is empty
+      assertThat(oldIntent.tserverGFlags.toString(), allOf(notNullValue(), equalTo("{emulate_redis_responses=false}")));
+      assertTrue(newIntent.tserverGFlags.isEmpty());
+
+      // Verify that old userIntent masterGFlags is non empty and new masterGFlags is empty.
+      assertThat(oldIntent.masterGFlags.toString(), allOf(notNullValue(), equalTo("{emulate_redis_responses=false}")));
+      assertTrue(newIntent.masterGFlags.isEmpty());
+
+      // Verify that preferred region UUID was not mutated in the clone operation
+      assertNotEquals(oldIntent.preferredRegion.toString(), newIntent.preferredRegion.toString());
+    }
+  }
 }
