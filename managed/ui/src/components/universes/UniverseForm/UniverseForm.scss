@@ -65,18 +65,6 @@
   }
 }
 
-.no-margin-row {
-  margin-left: 0;
-  margin-right: 0;
-  padding-bottom: 20px;
-  padding-top: 20px;
-}
-
-.top-border-row {
-  border-top: solid #eee 1px;
-
-}
-
 .volume-type {
   background-color: #eee;
   margin-left: 14px;
@@ -101,14 +89,19 @@
 
       &.volume-info-iops {
         width: 80px;
+        margin-right: 20px;
+        padding-bottom: 6px;
       }
 
       &.volume-info-count {
         width: 60px;
+        padding-bottom: 6px;
       }
 
       &.volume-info-size {
         width: 100px;
+        margin-right: 20px;
+        padding-bottom: 6px;
       }
     }
 
@@ -116,6 +109,20 @@
       display: inline-block;
       margin: 0 5px 0 10px;
       padding: 0;
+    }
+  }
+}
+
+@media (min-width: 1200px) {
+  .form-item-label-shrink {
+    min-width: 0 !important;
+  }
+}
+
+@media (min-width: 767px) {
+  .replication-factor-field {
+    .btn-group {
+      min-width: 157px;
     }
   }
 }
@@ -128,26 +135,91 @@
 .universe-form-container {
   position: relative;
   background-color: white;
-  padding: 10px 10px 100px;
+  padding: 15px 25px 0;
   border-radius: 4px;
-  border: 1px solid #eee;
+  border: 1px solid $YB_GRAY_HOVER;
+
   h4 {
     margin-bottom: 20px;
+  }
+
+  .form-section {
+    border-bottom: solid $YB_GRAY_HOVER 1px;
+    padding-bottom: 20px;
+    padding-top: 20px;
+
+    &.no-border {
+      border-bottom: none;
+    }
+  }
+
+  .form-action-button-container {
+    position: static;
+    margin: 0 -25px;
+
+    .flex-cnt {
+      @media (max-width: 991px) {
+        flex-direction: column;
+      }
+      .flex-shrink {
+        padding: 15px 15px 3px;
+        text-align: right;
+
+        @media (max-width: 767px) {
+          text-align: center;
+        }
+      }
+    }
+  }
+
+  .form-group-shrinked {
+    label {
+      min-width: 0;
+      margin-left: 0 !important;
+    }
+  }
+}
+
+.az-table-container {
+  .row {
+    padding-bottom: 6px;
+  }
+
+  h4 {
+    margin-bottom: 15px;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 0;
+
+    .yb-input-checkbox {
+      width: 16px;
+      float: right;
+    }
+  }
+  .form-right-control {
+    width: 65px;
+    position: relative;
+
+    label {
+      max-width: fit-content;
+      width: fit-content;
+      margin: 0 auto;
+    }
   }
 }
 
 .universe-form-submit-btn {
-  margin: 0 6px;
-  min-width: 120px !important;
+  margin-bottom: 10px !important;
 }
 
 .az-selector-reset {
   float: right;
-  padding-right: 4px;
   color: $YB_FAIL_COLOR;
   cursor: pointer;
 }
-.universe-az-selector-container {
+.universe-az-selector-container .az-table-container {
   @media (max-width: 991px) {
     padding-top: 30px;
   }
