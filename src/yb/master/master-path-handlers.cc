@@ -243,7 +243,8 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     ordered_tables[long_table_name] = Substitute(
-        "<tr><td>$0</td><td><a href=\"/table?id=$3\">$1</a></td><td>$2</td><td>$3 $4</td></tr>\n",
+        "<tr><td>$0</td><td><a href=\"/table?keyspace_name=$0&table_name=$1\">$1</a>"
+            "</td><td>$2</td><td>$3 $4</td></tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
         state,
@@ -277,17 +278,36 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
                                          stringstream *output) {
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  // Parse argument.
-  string table_id;
-  if (!FindCopy(req.parsed_args, "id", &table_id)) {
-    // TODO: webserver should give a way to return a non-200 response code
-    *output << "Missing 'id' argument";
+  // True if table_id, false if (keyspace, table).
+  bool has_id = false;
+  if (ContainsKey(req.parsed_args, "id")) {
+    has_id = true;
+  } else if (ContainsKey(req.parsed_args, "keyspace_name") &&
+             ContainsKey(req.parsed_args, "table_name")) {
+    has_id = false;
+  } else {
+    *output << " Missing 'id' argument or 'keyspace_name, table_name' argument pair.";
+    *output << " Arguments must either contain the table id or the "
+               " (keyspace_name, table_name) pair.";
     return;
   }
 
-  scoped_refptr<TableInfo> table = master_->catalog_manager()->GetTableInfo(table_id);
+  scoped_refptr<TableInfo> table;
+
+  if (has_id) {
+    string table_id;
+    FindCopy(req.parsed_args, "id", &table_id);
+    table = master_->catalog_manager()->GetTableInfo(table_id);
+  } else {
+    string keyspace, table_name;
+    FindCopy(req.parsed_args, "table_name", &table_name);
+    FindCopy(req.parsed_args, "keyspace_name", &keyspace);
+    table = master_->catalog_manager()
+        ->GetTableInfoFromNamespaceNameAndTableName(keyspace, table_name);
+  }
+
   if (table == nullptr) {
-    *output << "Table not found";
+    *output << "Table not found!";
     return;
   }
 
@@ -301,7 +321,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     table_name = l->data().name();
     *output << "<h1>Table: " << EscapeForHtmlToString(TableLongName(keyspace_name, table_name))
-            << " (" << EscapeForHtmlToString(table_id) << ")</h1>\n";
+            << " ("<< table->id() <<") </h1>\n";
 
     *output << "<table class='table table-striped'>\n";
     *output << "  <tr><td>Version:</td><td>" << l->data().pb.version() << "</td></tr>\n";

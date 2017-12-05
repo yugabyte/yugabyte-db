@@ -844,6 +844,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id);
   scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id);
 
+  // Get Table info given namespace id and table name.
+  scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
+      const NamespaceName& namespace_name, const TableName& table_name);
+
+
   // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
   // to retrieve all Tables irrespective of their state or just the tables with the state
   // 'RUNNING'. Typically, if you want to retrieve all the live tables in the system, you should

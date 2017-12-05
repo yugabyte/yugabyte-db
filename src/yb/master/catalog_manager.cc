@@ -2229,6 +2229,16 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   boost::shared_lock<LockType> l(lock_);
   return FindPtrOrNull(table_ids_map_, table_id);
 }
+scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
+    const NamespaceName& namespace_name, const TableName& table_name) {
+
+  boost::shared_lock<LockType> l(lock_);
+  const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_names_map_, namespace_name);
+  if (ns == nullptr) {
+    return nullptr;
+  }
+  return FindPtrOrNull(table_names_map_, {ns->id(), table_name});
+}
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
   return FindPtrOrNull(table_ids_map_, table_id);
