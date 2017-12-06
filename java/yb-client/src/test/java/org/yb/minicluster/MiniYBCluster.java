@@ -573,7 +573,7 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   private void destroyDaemon(MiniYBDaemon daemon) throws Exception {
-    LOG.warn("Destroying " + daemon.toString());
+    LOG.warn("Destroying " + daemon + ", IsAlive: " + daemon.getProcess().isAlive());
     daemon.getProcess().destroy();
     processCoreFile(daemon);
   }
