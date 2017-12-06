@@ -8,6 +8,26 @@ import { YBLoadingIcon } from '../../common/indicators';
 
 export default class UniverseStatus extends Component {
 
+  constructor(props) {
+    super(props);
+    this.hasPendingTasksForUniverse = this.hasPendingTasksForUniverse.bind(this);
+  }
+
+  hasPendingTasksForUniverse(customerTaskList) {
+    const {currentUniverse: { universeUUID}} = this.props;
+    return isNonEmptyArray(customerTaskList) ? customerTaskList.some(function(taskItem) {
+      return (taskItem.targetUUID === universeUUID && (taskItem.status === "Running" ||
+      taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
+    }) : false;
+  }
+
+  componentWillReceiveProps(nextProps) {
+    const { tasks: {customerTaskList}, refreshUniverseData} = nextProps;
+    if (!this.hasPendingTasksForUniverse(customerTaskList) && this.hasPendingTasksForUniverse(this.props.tasks.customerTaskList)) {
+      refreshUniverseData();
+    }
+  }
+
   render() {
     const {currentUniverse: {universeDetails, universeUUID}, showLabelText, tasks: {customerTaskList}} = this.props;
     const updateInProgress = universeDetails.updateInProgress;

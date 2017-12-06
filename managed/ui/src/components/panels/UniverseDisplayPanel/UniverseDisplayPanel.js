@@ -33,7 +33,7 @@ class CreateUniverseButtonComponent extends Component {
 
 class UniverseDisplayItem extends Component {
   render() {
-    const {universe} = this.props;
+    const {universe, refreshUniverseData} = this.props;
     if (!isValidObject(universe)) {
       return <span/>;
     }
@@ -50,7 +50,7 @@ class UniverseDisplayItem extends Component {
         <Link to={"/universes/" + universe.universeUUID}>
           <div className="universe-display-item-container">
             <div className="status-icon">
-              <UniverseStatusContainer currentUniverse={universe} />
+              <UniverseStatusContainer currentUniverse={universe} refreshUniverseData={refreshUniverseData} />
             </div>
             <div className="display-name">
               {universe.name}
@@ -94,7 +94,7 @@ export default class UniverseDisplayPanel extends Component {
         universeDisplayList = universeList.data.sort((a, b) => {
           return Date.parse(a.creationDate) < Date.parse(b.creationDate);
         }).map(function (universeItem, idx) {
-          return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>;
+          return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem} refreshUniverseData={self.props.fetchUniverseMetadata}/>;
         });
       }
       const createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;

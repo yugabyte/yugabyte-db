@@ -15,6 +15,7 @@ import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
 import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
   fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse }
   from 'actions/customers';
+import {fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure} from '../../actions/tasks';
 import {setUniverseMetrics} from '../../actions/universe';
 import { queryMetrics } from '../../actions/graph';
 
@@ -102,6 +103,16 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseList: () => {
       dispatch(resetUniverseList());
+    },
+
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchCustomerTasksFailure(response.payload));
+        }
+      });
     }
   };
 };
@@ -111,6 +122,7 @@ const mapStateToProps = (state) => {
     cloud: state.cloud,
     customer: state.customer,
     universe: state.universe,
+    tasks: state.tasks,
     fetchMetadata: state.cloud.fetchMetadata,
     fetchUniverseMetadata: state.universe.fetchUniverseMetadata
   };
