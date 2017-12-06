@@ -3,7 +3,7 @@
 import { connect } from 'react-redux';
 
 import { UniverseDisplayPanel } from '../../../components/panels';
-import {openDialog, closeDialog} from '../../../actions/universe';
+import {openDialog, closeDialog, fetchUniverseMetadata} from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -12,7 +12,10 @@ const mapDispatchToProps = (dispatch) => {
     },
     closeUniverseModal: () => {
       dispatch(closeDialog());
-    }
+    },
+    fetchUniverseMetadata: () => {
+      dispatch(fetchUniverseMetadata());
+    },
   };
 };
 

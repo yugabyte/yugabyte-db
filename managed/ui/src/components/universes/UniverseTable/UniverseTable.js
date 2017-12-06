@@ -74,7 +74,7 @@ class YBUniverseItem extends Component {
                 </Col>
               </Row>
               <div className="list-universe-status-container">
-                <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
+                <UniverseStatusContainer currentUniverse={universe} showLabelText={true} refreshUniverseData={this.props.fetchUniverseMetadata}/>
               </div>
             </div>
           </Link>
