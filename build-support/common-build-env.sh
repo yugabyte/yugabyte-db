@@ -1393,6 +1393,16 @@ handle_predefined_build_root() {
   fi
 }
 
+# Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.
+# We call this from a few different places just in case.
+remove_latest_symlink() {
+  local latest_build_link=$YB_BUILD_PARENT_DIR/latest
+  if [[ -h $latest_build_link ]]; then
+    log "Removing the latest symlink at '$latest_build_link'"
+    ( set -x; unlink "$latest_build_link" )
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

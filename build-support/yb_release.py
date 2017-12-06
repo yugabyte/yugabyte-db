@@ -46,7 +46,7 @@ def main():
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
     parser.add_argument('--edition', help='Which edition the code is built as.',
-                        default=RELEASE_EDITION_ENTERPRISE,
+                        default=None,
                         choices=RELEASE_EDITION_ALLOWED_VALUES)
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
     parser.add_argument('--build_target',
@@ -54,6 +54,8 @@ def main():
                              'be used for debugging this script without having to build the '
                              'tarball. If specified, this directory must either not exist or be '
                              'empty.')
+    parser.add_argument('--keep_tmp_dir', action='store_true',
+                        help='Keep the temporary directory (for debugging).')
     add_common_arguments(parser)
     args = parser.parse_args()
 
@@ -64,12 +66,25 @@ def main():
                      "(a custom directory to put YB distribution files into) is not specified.")
         args.build_archive = True
 
-    build_edition = "enterprise" if args.edition == RELEASE_EDITION_ENTERPRISE else "community"
     build_root = args.build_root
+    if build_root and not args.edition:
+        build_root_basename = os.path.basename(build_root)
+        if '-community-' in build_root_basename or build_root_basename.endswith('community'):
+            logging.info("Setting edition to Community based on build root")
+            args.edition = RELEASE_EDITION_COMMUNITY
+
+    if not args.edition:
+        # Here we are not detecting edition based on the existence of the enterprise source
+        # directory.
+        args.edition = RELEASE_EDITION_ENTERPRISE
+
+    build_edition = "enterprise" if args.edition == RELEASE_EDITION_ENTERPRISE else "community"
+
     build_type = args.build_type
 
     tmp_dir = tempfile.mkdtemp(suffix=os.path.basename(__file__))
-    atexit.register(lambda: shutil.rmtree(tmp_dir))
+    if not args.keep_tmp_dir:
+        atexit.register(lambda: shutil.rmtree(tmp_dir))
 
     yb_distribution_dir = os.path.join(tmp_dir, 'yb_distribution')
 
@@ -150,8 +165,7 @@ def main():
             build_dir=build_root,
             seed_executable_patterns=release_util.get_binary_path(),
             dest_dir=yb_distribution_dir,
-            verbose_mode=args.verbose,
-            include_licenses=args.include_licenses)
+            verbose_mode=args.verbose)
     library_packager.package_binaries()
 
     release_util.update_manifest(yb_distribution_dir)

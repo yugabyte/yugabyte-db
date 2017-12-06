@@ -669,13 +669,15 @@ def main():
                 numSlices=total_num_tests)
 
         spark_succeeded = False
+        import py4j
         try:
             results = test_names_rdd.map(parallel_run_test).collect()
             spark_succeeded = True
         except py4j.protocol.Py4JJavaError:
             traceback.print_exc()
-            # This is EX_UNAVAILABLE from the standard sysexits.h header, which contains an attempt
-            # to categorize exit codes. In this case the Spark cluster is probably unavailable.
+            # We use the value 69 because it is the value of the EX_UNAVAILABLE constant from the
+            # standard sysexits.h header, which contains an attempt to categorize exit codes. In
+            # this case the Spark cluster is probably unavailable.
             global_exit_code = 69
 
         if not spark_succeeded:

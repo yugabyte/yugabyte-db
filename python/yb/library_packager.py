@@ -75,6 +75,7 @@ SYSTEM_LIBRARY_PATHS = ['/usr/lib', '/usr/lib64', '/lib', '/lib64',
 HOME_DIR = os.path.expanduser('~')
 LINUXBREW_HOME = get_linuxbrew_dir()
 LINUXBREW_CELLAR_GLIBC_DIR = os.path.join(LINUXBREW_HOME, 'Cellar', 'glibc')
+ADDITIONAL_LIB_NAME_GLOBS = ['libnss_*', 'libresolv*']
 LINUXBREW_LDD_PATH = os.path.join(LINUXBREW_HOME, 'bin', 'ldd')
 
 YB_SCRIPT_BIN_DIR = os.path.join(YB_SRC_ROOT, 'bin')
@@ -84,6 +85,7 @@ PATCHELF_NOT_AN_ELF_EXECUTABLE = 'not an ELF executable'
 PATCHELF_PATH = os.path.join(LINUXBREW_HOME, 'bin', 'patchelf')
 
 LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
+LIBRARY_CATEGORIES = ['system', 'yb', 'yb-thirdparty', 'linuxbrew']
 
 
 # This is an alternative to global variables, bundling a few commonly used things.
@@ -91,22 +93,21 @@ DistributionContext = collections.namedtuple(
         'DistributionContext',
         ['build_dir',
          'dest_dir',
-         'os_package_manager',
-         'verbose_mode',
-         'include_licenses'])
+         'verbose_mode'])
 
 
 class Dependency:
     """
     Describes a dependency of an executable or a shared library on another shared library.
-    @param name: the name of the library as requested by the dependee
+    @param name: the name of the library as requested by the original executable/shared library
     @param target: target file pointed to by the dependency
     """
-    def __init__(self, name, target, context):
+    def __init__(self, name, target, origin, context):
         self.name = name
         self.target = target
         self.category = None
         self.context = context
+        self.origin = origin
 
     def __hash__(self):
         return hash(self.name) ^ hash(self.target)
@@ -116,7 +117,8 @@ class Dependency:
                self.target == other.target
 
     def __str__(self):
-        return "Dependency({}, {})".format(repr(self.name), repr(self.target))
+        return "Dependency(name='{}', target='{}', origin='{}')".format(
+                self.name, self.target, self.origin)
 
     def __repr__(self):
         return str(self)
@@ -127,10 +129,10 @@ class Dependency:
     def get_category(self):
         """
         Categorizes binaries into a few buckets:
-        - Product -- YugaByte product itself
-        - YugaByte third-party -- built with YugaByte
-        - Linuxbrew -- built using Linuxbrew
-        - System -- grabbed from CentOS
+        - yb -- YugaByte product itself
+        - yb-thirdparty -- built with YugaByte
+        - linuxbrew -- built using Linuxbrew
+        - system -- grabbed from a system-wide library directory
         """
         if self.category:
             return self.category
@@ -152,6 +154,10 @@ class Dependency:
                     break
 
         if self.category:
+            if self.category not in LIBRARY_CATEGORIES:
+                raise RuntimeError(
+                    ("Internal error: library category computed as '{}', must be one of: {}. " +
+                     "Dependency: {}").format(self.category, LIBRARY_CATEGORIES, self))
             return self.category
 
         raise RuntimeError(
@@ -172,18 +178,6 @@ def add_common_arguments(parser):
     Add command-line arguments common between library_packager_old.py invoked as a script, and
     the yb_release.py script.
     """
-    parser.add_argument('--no-system-libs',
-                        dest='no_system_libs',
-                        action='store_true',
-                        help='Omit system libraries from the distribution. This means the '
-                             'distribution will depend on a number of OS packages being '
-                             'already installed.')
-    parser.add_argument('--licenses',
-                        action='store_true',
-                        dest='include_licenses',
-                        help='Also include licenses in the distribution. This may slow down '
-                             'package building significantly, as we have to download and extract '
-                             'source packages to find licenses.')
     parser.add_argument('--verbose',
                         help='Enable verbose output.',
                         action='store_true')
@@ -220,8 +214,7 @@ class LibraryPackager:
                  build_dir,
                  seed_executable_patterns,
                  dest_dir,
-                 verbose_mode=False,
-                 include_licenses=False):
+                 verbose_mode=False):
         build_dir = realpath(build_dir)
         if not os.path.exists(build_dir):
             raise IOError("Build directory '{}' does not exist".format(build_dir))
@@ -230,15 +223,19 @@ class LibraryPackager:
         logging.debug(
             "Traversing the dependency graph of executables/libraries, starting "
             "with seed executable patterns: {}".format(", ".join(seed_executable_patterns)))
-        self.nodes_by_digest = {}
-        self.nodes_by_path = {}
         self.context = DistributionContext(
             dest_dir=dest_dir,
             build_dir=build_dir,
-            os_package_manager=Yum() if include_licenses else None,
-            verbose_mode=verbose_mode,
-            include_licenses=include_licenses
-            )
+            verbose_mode=verbose_mode)
+        self.installed_dyn_linked_binaries = []
+
+    def install_dyn_linked_binary(self, src_path, dest_dir):
+        if not os.path.isdir(dest_dir):
+            raise RuntimeError("Not a directory: '{}'".format(dest_dir))
+        shutil.copy(src_path, dest_dir)
+        installed_binary_path = os.path.join(dest_dir, os.path.basename(src_path))
+        self.installed_dyn_linked_binaries.append(installed_binary_path)
+        return installed_binary_path
 
     def find_elf_dependencies(self, elf_file_path):
         """
@@ -272,7 +269,8 @@ class LibraryPackager:
                 lib_name = resolved_dep_match.group(1)
                 lib_resolved_path = realpath(resolved_dep_match.group(2))
 
-                dependencies.add(Dependency(lib_name, lib_resolved_path, self.context))
+                dependencies.add(Dependency(lib_name, lib_resolved_path, elf_file_path,
+                                            self.context))
 
             tokens = ldd_output_line.split()
             if len(tokens) >= 4 and tokens[1:4] == ['=>', 'not', 'found']:
@@ -305,12 +303,12 @@ class LibraryPackager:
         unwrapped_bin_dir = os.path.join(dest_lib_dir, 'unwrapped')
         mkdir_p(unwrapped_bin_dir)
 
-        unwrapped_executables = []
+        # We still need to use LD_LIBRARY_PATH because otherwise libc fails to find libresolv at
+        # runtime.
+        ld_library_path = ':'.join(
+                ["${BASH_SOURCE%/*}/../lib/" + category for category in LIBRARY_CATEGORIES])
 
-        ld_library_path = ":".join(
-            ["${BASH_SOURCE%/*}/../lib/" + category
-             for category in ['system', 'yb', 'yb-thirdparty', 'linuxbrew']]
-        )
+        elf_names_to_set_interpreter = []
         for seed_executable_glob in self.seed_executable_patterns:
             updated_glob = seed_executable_glob.replace('$BUILD_ROOT', self.context.build_dir)
             if updated_glob != seed_executable_glob:
@@ -324,11 +322,9 @@ class LibraryPackager:
                 deps = self.find_elf_dependencies(executable)
                 all_deps += deps
                 if deps:
-                    executables.append(executable)
-                    shutil.copy(executable, unwrapped_bin_dir)
+                    installed_binary_path = self.install_dyn_linked_binary(executable,
+                                                                           unwrapped_bin_dir)
                     executable_basename = os.path.basename(executable)
-                    unwrapped_executables.append(
-                            os.path.join(unwrapped_bin_dir, executable_basename))
                     wrapper_script_path = os.path.join(dest_bin_dir, executable_basename)
                     with open(wrapper_script_path, 'w') as wrapper_script_file:
                         wrapper_script_file.write(
@@ -336,10 +332,13 @@ class LibraryPackager:
                             "LD_LIBRARY_PATH=" + ld_library_path + " exec "
                             "${BASH_SOURCE%/*}/../lib/unwrapped/" + executable_basename + ' "$@"')
                     os.chmod(wrapper_script_path, 0755)
+                    elf_names_to_set_interpreter.append(executable_basename)
                 else:
                     # This is probably a script.
                     shutil.copy(executable, dest_bin_dir)
 
+        # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we won't
+        # need to do any post-processing on these two later.
         shutil.copy(PATCHELF_PATH, dest_bin_dir)
 
         ld_path = os.path.join(LINUXBREW_HOME, 'lib', 'ld.so')
@@ -352,10 +351,11 @@ class LibraryPackager:
             if len(targets) > 1:
                 raise RuntimeError(
                     "Multiple dependencies with the same name {} but different targets: {}".format(
-                        dep_name, targets
+                        dep_name, deps
                     ))
 
         categories = sorted(set([dep.get_category() for dep in all_deps]))
+
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
             logging.info("Found {} dependencies in category '{}':".format(
@@ -370,7 +370,7 @@ class LibraryPackager:
             mkdir_p(category_dest_dir)
 
             for dep in deps_in_category:
-                shutil.copy(dep.target, category_dest_dir)
+                self.install_dyn_linked_binary(dep.target, category_dest_dir)
                 target_basename = os.path.basename(dep.target)
                 if os.path.basename(dep.target) != dep.name:
                     symlink(os.path.basename(dep.target),
@@ -378,22 +378,40 @@ class LibraryPackager:
 
         linuxbrew_lib_dest_dir = os.path.join(dest_lib_dir, 'linuxbrew')
 
-        # Add libnss_* libraries explicitly because they are loaded by glibc at runtime and will not
-        # be discovered automatically using ldd.
-        for libnss_path in glob.glob(os.path.join(LINUXBREW_CELLAR_GLIBC_DIR, '*', 'lib',
-                                                  'libnss_*')):
-            lib_basename = os.path.basename(libnss_path)
-            if os.path.isfile(libnss_path):
-                shutil.copy(libnss_path, linuxbrew_lib_dest_dir)
-            elif os.path.islink(libnss_path):
-                link_target_basename = os.path.basename(os.readlink(libnss_path))
-                symlink(link_target_basename, os.path.join(linuxbrew_lib_dest_dir, lib_basename))
-            else:
-                raise RuntimeError("Expected '{}' to be a file or a symlink".format(libnss_path))
+        # Add libresolv and libnss_* libraries explicitly because they are loaded by glibc at
+        # runtime and will not be discovered automatically using ldd.
+        for additional_lib_name_glob in ADDITIONAL_LIB_NAME_GLOBS:
+            for lib_path in glob.glob(os.path.join(LINUXBREW_CELLAR_GLIBC_DIR, '*', 'lib',
+                                                   additional_lib_name_glob)):
+                lib_basename = os.path.basename(lib_path)
+                if lib_basename.endswith('.a'):
+                    continue
+                if os.path.isfile(lib_path):
+                    self.install_dyn_linked_binary(lib_path, linuxbrew_lib_dest_dir)
+                elif os.path.islink(lib_path):
+                    link_target_basename = os.path.basename(os.readlink(lib_path))
+                    symlink(link_target_basename,
+                            os.path.join(linuxbrew_lib_dest_dir, lib_basename))
+                else:
+                    raise RuntimeError(
+                        "Expected '{}' to be a file or a symlink".format(lib_path))
 
-        # Remove rpath as we're using LD_LIBRARY_PATH in wrapper scripts.
-        for unwrapped_executable_path in unwrapped_executables:
-            run_patchelf('--remove-rpath', unwrapped_executable_path)
+        for installed_binary in self.installed_dyn_linked_binaries:
+            # Sometimes files that we copy from other locations are not even writable by user!
+            subprocess.check_call(['chmod', 'u+w', installed_binary])
+            # Remove rpath so that it does not interfere with the LD_LIBRARY_PATH mechanism,
+            # and because some libraries might also have system library directories on their rpath.
+            run_patchelf('--remove-rpath', installed_binary)
+
+        post_install_path = os.path.join(dest_bin_dir, 'post_install.sh')
+        with open(post_install_path) as post_install_script_input:
+            post_install_script = post_install_script_input.read()
+        binary_names_to_patch = ' '.join([
+            '"{}"'.format(name) for name in elf_names_to_set_interpreter])
+        new_post_install_script = post_install_script.replace('${elf_names_to_set_interpreter}',
+                                                              binary_names_to_patch)
+        with open(post_install_path, 'w') as post_install_script_output:
+            post_install_script_output.write(new_post_install_script)
 
 
 if __name__ == '__main__':
@@ -438,6 +456,5 @@ if __name__ == '__main__':
     packager = LibraryPackager(build_dir=args.build_dir,
                                seed_executable_patterns=release_manifest['bin'],
                                dest_dir=args.dest_dir,
-                               verbose_mode=args.verbose,
-                               include_licenses=args.include_licenses)
+                               verbose_mode=args.verbose)
     packager.package_binaries()

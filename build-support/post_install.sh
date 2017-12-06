@@ -20,7 +20,6 @@
 #
 set -euo pipefail
 
-ELF_FILE_PATTERN='(^|[[:space:]])ELF([[:space:]]|$)'
 bin_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
 distribution_dir=$( cd "$bin_dir/.." && pwd )
 patchelf_path=$bin_dir/patchelf
@@ -37,9 +36,8 @@ if [[ ! -x $ld_path ]]; then
   exit 1
 fi
 
-cd "$bin_dir"
-for f in ../lib/unwrapped/*; do
-  if [[ -x $f && $(file -b $f) =~ $ELF_FILE_PATTERN && $f != patchelf ]]; then
-    ( set -x; "$patchelf_path" --set-interpreter "$ld_path" "$f" )
-  fi
+cd "$bin_dir"/../lib/unwrapped
+# ${elf_names_to_set_interpreter} is substituted during packaging.
+for f in ${elf_names_to_set_interpreter}; do
+  ( set -x; "$patchelf_path" --set-interpreter "$ld_path" "$f" )
 done

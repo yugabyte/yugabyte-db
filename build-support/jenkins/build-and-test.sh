@@ -118,11 +118,7 @@ build_cpp_code() {
     log "Skipped building C++ code, only running tests"
   fi
 
-  LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
-  if [[ -h $LATEST_BUILD_LINK ]]; then
-    # This helps prevent Jenkins from showing every test twice in test results.
-    ( set -x; unlink "$LATEST_BUILD_LINK" )
-  fi
+  remove_latest_symlink
 
   # Restore the old source root. See the comment at the top.
   set_yb_src_root "$old_yb_src_root"
@@ -170,6 +166,9 @@ set_cmake_build_type_and_compiler_type
 set_build_root --no-readonly
 
 set_common_test_paths
+
+export YB_DISABLE_LATEST_SYMLINK=1
+remove_latest_symlink
 
 log "Running Python doctest tests for Python files in the $YB_SRC_ROOT/python directory"
 export PYTHONPATH="$YB_SRC_ROOT/python"
@@ -230,12 +229,16 @@ if ! "$build_root_deleted"; then
 fi
 
 if is_jenkins; then
-  log "Deleting yb-test-logs from all subdirectories of $YB_BUILD_PARENT_DIR so that Jenkins " \
-      "does not get confused with old JUnit-style XML files."
-  ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
+  if "$build_root_deleted"; then
+    log "Deleting yb-test-logs from all subdirectories of $YB_BUILD_PARENT_DIR so that Jenkins " \
+        "does not get confused with old JUnit-style XML files."
+    ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
 
-  log "Deleting old release archives from '$YB_BUILD_PARENT_DIR'"
-  ( set -x; rm -rf "$YB_BUILD_PARENT_DIR/yugabyte-"*"-$build_type-"*".tar.gz" )
+    log "Deleting old release archives from '$YB_BUILD_PARENT_DIR'"
+    ( set -x; rm -rf "$YB_BUILD_PARENT_DIR/yugabyte-"*"-$build_type-"*".tar.gz" )
+  else
+    log "No need to delete yb-test-logs or old release archives, build root already deleted."
+  fi
 fi
 
 if [[ ! -d $BUILD_ROOT ]]; then
@@ -472,7 +475,15 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
       $build_type != "asan" ]]; then
   log "Creating a distribution package"
-  time "$YB_SRC_ROOT/yb_release" --build "$build_type" --build_root "$BUILD_ROOT" --force
+
+  # We are skipping the Java build here to avoid excessive output, but not skipping the C++ build,
+  # because it is invoked with a specific set of targets, which is different from how we build it in
+  # a non-packaging context (e.g. for testing).
+  time "$YB_SRC_ROOT/yb_release" \
+    --build "$build_type" \
+    --build_root "$BUILD_ROOT" \
+    --build_args="--skip-java" \
+    --force
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -527,7 +538,7 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         time ctest -j$NUM_PARALLEL_TESTS ${EXTRA_TEST_FLAGS:-} \
             --output-log "$CTEST_FULL_OUTPUT_PATH" \
             --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
-        if [ $? -ne 0 ]; then
+        if [[ $? -ne 0 ]]; then
           EXIT_STATUS=1
           FAILURES+=$'C++ tests failed\n'
         fi
@@ -550,8 +561,7 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
 fi
 
 # Finished running tests.
-
-set -e
+remove_latest_symlink
 
 if [[ -n $FAILURES ]]; then
   heading "Failure summary"

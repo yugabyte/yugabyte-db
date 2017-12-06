@@ -61,8 +61,9 @@ def run_program(args, error_ok=False, max_error_lines=100, cwd=None):
     program_stdout, program_stderr = program_subprocess.communicate()
     error_msg = None
     if program_subprocess.returncode != 0:
-        error_msg = "Non-zero exit code {} from: {}, stdout: '{}', stderr: '{}'".format(
-                program_subprocess.returncode, args,
+        from pipes import quote
+        error_msg = "Non-zero exit code {} from: {} ; stdout: '{}' stderr: '{}'".format(
+                program_subprocess.returncode, ' '.join([quote(arg) for arg in args]),
                 trim_output(program_stdout.strip(), max_error_lines),
                 trim_output(program_stderr.strip(), max_error_lines))
         if not error_ok:
