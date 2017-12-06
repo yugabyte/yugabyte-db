@@ -2,11 +2,14 @@
 
 import React, { Component } from 'react';
 import {withRouter} from 'react-router';
+import {isNonEmptyArray} from 'utils/ObjectUtils';
 const PropTypes = require('prop-types');
 
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
+    this.hasPendingCustomerTasks = this.hasPendingCustomerTasks.bind(this);
+    this.scheduleFetch = this.scheduleFetch.bind(this);
     this.state = {prevPath: ""};
   }
 
@@ -23,13 +26,20 @@ class AuthenticatedComponent extends Component {
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
     this.props.getYugaWareVersion();
+    this.props.fetchCustomerTasks();
   }
 
   componentWillUnmount() {
     this.props.resetUniverseList();
   }
 
+  hasPendingCustomerTasks(taskList) {
+    return isNonEmptyArray(taskList) ? taskList.some((task) => ((task.status === "Running" ||
+    task.status === "Initializing") && (Number(task.percentComplete) !== 100))) : false;
+  }
+
   componentWillReceiveProps(nextProps) {
+    const {tasks} = nextProps;
     if (this.props.fetchMetadata !== nextProps.fetchMetadata && nextProps.fetchMetadata) {
       this.props.getProviderListItems();
       this.props.fetchUniverseList();
@@ -41,6 +51,24 @@ class AuthenticatedComponent extends Component {
     if (this.props.location !== nextProps.location) {
       this.setState({prevPath: this.props.location.pathname});
     }
+    // If there is a pending customer task, we start schedule fetch
+    if (this.hasPendingCustomerTasks(tasks.customerTaskList)) {
+      if (typeof (this.timeout) === "undefined") {
+        this.scheduleFetch();
+      }
+    } else {
+      // If there is no pending task, we clear the timer
+      if (typeof (this.timeout) !== "undefined") {
+        clearTimeout(this.timeout);
+      }
+    }
+  }
+
+  scheduleFetch() {
+    const self = this;
+    this.timeout = setInterval(function(){
+      self.props.fetchCustomerTasks();
+    }, 60000);
   }
 
   render() {

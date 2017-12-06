@@ -27,6 +27,7 @@ class UniverseDetail extends Component {
   constructor(props) {
     super(props);
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
+    this.getUniverseInfo = this.getUniverseInfo.bind(this);
     this.state = {
       dimensions: {},
     };
@@ -61,6 +62,11 @@ class UniverseDetail extends Component {
     const query = {edit: true};
     Object.assign(location.query, query);
     browserHistory.push(location);
+  }
+
+  getUniverseInfo() {
+    const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
+    this.props.getUniverseInfo(universeUUID);
   }
 
   render() {
@@ -148,7 +154,7 @@ class UniverseDetail extends Component {
               <h2>
                 { currentUniverse.data.name }
               </h2>
-              <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} />
+              <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} refreshUniverseData={this.getUniverseInfo}/>
             </div>
 
 
