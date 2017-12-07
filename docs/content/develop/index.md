@@ -31,8 +31,8 @@ This section will help you get started with building apps on top of YugaByte DB.
       <i class="fa fa-vcard-o" aria-hidden="true"></i>
     </div>
     <div class="text">
-      Realworld Apps
-      <div class="caption">A walk-through of real world, end to end applications build on top of YugaByte-DB.</div>
+      Real World Examples
+      <div class="caption">A walk-through of real world, end-to-end applications build on top of YugaByte DB.</div>
     </div>
   </a>
 
@@ -44,5 +44,5 @@ This section will help you get started with building apps on top of YugaByte DB.
       Port Existing Apps
       <div class="caption">How you can port your existing applications to run on top of YugaByte-DB.</div>
     </div>
-  </a>
-</div> -->
+  </a>-->
+</div> 

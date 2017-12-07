@@ -242,7 +242,7 @@ googleAnalytics = "UA-104956980-1"
 #	weight = 565
 
 [[menu.main]]
-	name = "Realworld Examples"
+	name = "Real World Examples"
 	parent = "develop"
 	identifier = "develop-realworld-apps"
 	url = "develop/realworld-apps/"
