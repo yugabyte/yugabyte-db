@@ -328,7 +328,20 @@ Status PartitionSchema::CreatePartitions(int32_t num_tablets,
                                          vector<Partition> *partitions,
                                          int32_t max_partition_key) const {
   DCHECK_GT(max_partition_key, 0);
-  DCHECK_LE(max_partition_key, std::numeric_limits<uint16_t>::max());
+  DCHECK_LE(max_partition_key, kMaxPartitionKey);
+
+  if (max_partition_key <= 0 || max_partition_key > kMaxPartitionKey) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "max_partition_key $0 should be in ($1, $2].",
+                             0, kMaxPartitionKey);
+  }
+
+  LOG(INFO) << "Creating partitions with num_tablets: " << num_tablets;
+
+  if (!num_tablets) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "num_tablets should be greater than 0. Client "
+                             "would need to wait for master leader get heartbeats from tserver.");
+  }
+
   // Allocate the partitions.
   partitions->resize(num_tablets);
   const uint16_t partition_interval = max_partition_key / num_tablets;

@@ -2393,6 +2393,30 @@ TEST_F(ClientTest, TestCreateDuplicateTable) {
               .Create().IsAlreadyPresent());
 }
 
+TEST_F(ClientTest, CreateTableWithoutTservers) {
+  DoTearDown();
+
+  YBMiniClusterTestBase::SetUp();
+
+  MiniClusterOptions options;
+  options.num_tablet_servers = 0;
+  // Start minicluster with only master (to simulate tserver not yet heartbeating).
+  cluster_.reset(new MiniCluster(env_.get(), options));
+  ASSERT_OK(cluster_->Start());
+
+  // Connect to the cluster.
+  ASSERT_OK(YBClientBuilder()
+      .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
+      .Build(&client_));
+
+  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
+      .schema(&schema_)
+      .Create();
+  ASSERT_TRUE(s.IsInvalidArgument());
+  ASSERT_STR_CONTAINS(s.ToString(), "num_tablets should be greater than 0.");
+}
+
 TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   FLAGS_max_create_tablets_per_ts = 1;
 

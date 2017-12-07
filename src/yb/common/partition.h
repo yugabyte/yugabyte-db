@@ -153,11 +153,12 @@ class PartitionSchema {
  public:
 
   static constexpr int32_t kPartitionKeySize = 2;
+  static constexpr int32_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
 
   // Deserializes a protobuf message into a partition schema.
   static CHECKED_STATUS FromPB(const PartitionSchemaPB& pb,
-                       const Schema& schema,
-                       PartitionSchema* partition_schema) WARN_UNUSED_RESULT;
+                               const Schema& schema,
+                               PartitionSchema* partition_schema) WARN_UNUSED_RESULT;
 
   // Serializes a partition schema into a protobuf message.
   void ToPB(PartitionSchemaPB* pb) const;
@@ -186,7 +187,7 @@ class PartitionSchema {
   CHECKED_STATUS CreatePartitions(
       int32_t num_tablets,
       std::vector<Partition>* partitions,
-      int32_t max_partition_key = std::numeric_limits<uint16_t>::max()) const WARN_UNUSED_RESULT;
+      int32_t max_partition_key = kMaxPartitionKey) const WARN_UNUSED_RESULT;
 
   YBHashSchema hash_schema() const {
     return hash_schema_;
@@ -205,18 +206,18 @@ class PartitionSchema {
   // buckets for each hash bucket component, multiplied by
   // (split_rows.size() + 1).
   CHECKED_STATUS CreatePartitions(const std::vector<YBPartialRow>& split_rows,
-                          const Schema& schema,
-                          std::vector<Partition>* partitions) const WARN_UNUSED_RESULT;
+                                  const Schema& schema,
+                                  std::vector<Partition>* partitions) const WARN_UNUSED_RESULT;
 
   // Tests if the partition contains the row.
   CHECKED_STATUS PartitionContainsRow(const Partition& partition,
-                              const YBPartialRow& row,
-                              bool* contains) const WARN_UNUSED_RESULT;
+                                      const YBPartialRow& row,
+                                      bool* contains) const WARN_UNUSED_RESULT;
 
   // Tests if the partition contains the row.
   CHECKED_STATUS PartitionContainsRow(const Partition& partition,
-                              const ConstContiguousRow& row,
-                              bool* contains) const WARN_UNUSED_RESULT;
+                                      const ConstContiguousRow& row,
+                                      bool* contains) const WARN_UNUSED_RESULT;
 
   // Returns a text description of the partition suitable for debug printing.
   std::string PartitionDebugString(const Partition& partition, const Schema& schema) const;

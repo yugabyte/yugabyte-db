@@ -187,6 +187,8 @@ DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, fal
 DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
 
+DECLARE_int32(yb_num_shards_per_tserver);
+
 namespace yb {
 namespace master {
 
@@ -1350,21 +1352,27 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::KUDU_HASH_SCHEMA);
   }
 
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  int num_live_tservers = ts_descs.size();
+  int num_tablets = req.num_tablets();
+  if (!num_tablets) {
+    // Try to use default: client could have gotten the value before any tserver had heartbeated
+    // to (a new) master leader.
+    num_tablets = num_live_tservers * FLAGS_yb_num_shards_per_tserver;
+  }
+
   s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
   switch (partition_schema.hash_schema()) {
     case YBHashSchema::kMultiColumnHash: {
-      // Use the given number of tablets to create partitions and ignore the other schema options in
-      // the request.
-      int32_t num_tablets = req.num_tablets();
-      LOG(INFO) << "num_tablets: " << num_tablets;
+      // Use the given number of tablets to create partitions and ignore the other schema options
+      // in the request.
       RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
       break;
     }
     case YBHashSchema::kRedisHash: {
-      int32_t num_tablets = req.num_tablets();
-      LOG(INFO) << "Creating partitions for redis with num_tablets: " << num_tablets;
-      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets,
-                                                      &partitions, kRedisClusterSlots));
+      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
+                                                      kRedisClusterSlots));
       break;
     }
     case YBHashSchema::kKuduHashSchema: {
@@ -1399,8 +1407,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // If they didn't specify a num_replicas, set it based on the universe, or else default.
+  int num_replicas = 0;
   if (!req.has_replication_info()) {
-    int num_replicas = 0;
     {
       auto l = cluster_config_->LockForRead();
       num_replicas = l->data().pb.replication_info().live_replicas().num_replicas();
@@ -1408,31 +1416,25 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     num_replicas = num_replicas > 0 ? num_replicas : FLAGS_replication_factor;
     req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(num_replicas);
+  } else {
+    num_replicas = req.replication_info().live_replicas().num_replicas();
   }
 
   // Verify that the total number of tablets is reasonable, relative to the number
   // of live tablet servers.
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  int num_live_tservers = ts_descs.size();
   int max_tablets = FLAGS_max_create_tablets_per_ts * num_live_tservers;
-  if (req.replication_info().live_replicas().num_replicas() > 1 && max_tablets > 0 &&
-      partitions.size() > max_tablets) {
+  if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
     s = STATUS(InvalidArgument, Substitute("The requested number of tablets is over the "
                                            "permitted maximum ($0)", max_tablets));
     return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
   }
 
-  // Verify that the number of replicas isn't larger than the number of live tablet
-  // servers.
-  if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
-      req.replication_info().live_replicas().num_replicas() > num_live_tservers) {
-    s = STATUS(
-        InvalidArgument,
-        Substitute(
-            "Not enough live tablet servers to create a table with the requested replication "
-            "factor $0. $1 tablet servers are alive.",
-            req.replication_info().live_replicas().num_replicas(), num_live_tservers));
+  // Verify that the number of replicas isn't larger than the number of live tablet servers.
+  if (FLAGS_catalog_manager_check_ts_count_for_create_table && num_replicas > num_live_tservers) {
+    s = STATUS(InvalidArgument,
+               Substitute("Not enough live tablet servers to create a table with the requested "
+                          "replication factor $0. $1 tablet servers are alive.",
+                          num_replicas, num_live_tservers));
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
   }
 
@@ -1465,12 +1467,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // TODO: update this when we get async replica support, as we're checking live_replica on
     // request here, against placement_info, which we've set to live_replicas() above.
-    if (minimum_sum > req.replication_info().live_replicas().num_replicas()) {
-      s = STATUS(
-          InvalidArgument, Substitute(
-                               "Sum of required minimum replicas per placement ($0) is greater "
-                               "than num_replicas ($1)",
-                               minimum_sum, req.replication_info().live_replicas().num_replicas()));
+    if (minimum_sum > num_replicas) {
+      s = STATUS(InvalidArgument,
+                 Substitute("Sum of required minimum replicas per placement ($0) is greater "
+                            "than num_replicas ($1)", minimum_sum, num_replicas));
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
   }
@@ -1490,7 +1490,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
-                      &tablets, resp, &table));
+                                      &tablets, resp, &table));
   }
   TRACE("Inserted new table and tablet info into CatalogManager maps");
 
@@ -1899,7 +1899,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
                                ColumnId* next_col_id) {
   const SchemaPB& current_schema_pb = current_pb.schema();
   Schema cur_schema;
-      RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
+  RETURN_NOT_OK(SchemaFromPB(current_schema_pb, &cur_schema));
 
   SchemaBuilder builder(cur_schema);
   if (current_pb.has_next_column_id()) {
@@ -1928,7 +1928,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
               Substitute("column `$0`: NOT NULL columns must have a default", new_col.name()));
         }
 
-            RETURN_NOT_OK(builder.AddColumn(new_col, false));
+        RETURN_NOT_OK(builder.AddColumn(new_col, false));
         break;
       }
 
@@ -1950,9 +1950,9 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
           return STATUS(InvalidArgument, "RENAME_COLUMN missing column info");
         }
 
-            RETURN_NOT_OK(builder.RenameColumn(
-            step.rename_column().old_name(),
-            step.rename_column().new_name()));
+        RETURN_NOT_OK(builder.RenameColumn(
+        step.rename_column().old_name(),
+        step.rename_column().new_name()));
         break;
       }
 
@@ -1966,7 +1966,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
   }
 
   if (req->has_alter_properties()) {
-        RETURN_NOT_OK(builder.AlterProperties(req->alter_properties()));
+    RETURN_NOT_OK(builder.AlterProperties(req->alter_properties()));
   }
 
   *new_schema = builder.Build();

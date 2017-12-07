@@ -43,6 +43,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 
@@ -77,6 +78,8 @@ DEFINE_string(tserver_master_addrs, "127.0.0.1:7100",
               "determine the new set of masters");
 TAG_FLAG(tserver_master_addrs, stable);
 
+DEFINE_int32(yb_num_shards_per_tserver, yb::NonTsanVsTsan(8, 2),
+             "The default number of shards per table per tablet server when a table is created.");
 
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
