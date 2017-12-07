@@ -70,15 +70,14 @@ export default class TableDetail extends Component {
                                tableName={tableName}
                                nodePrefixes={nodePrefixes} />);
     }
-
     const tabElements = [
-      <Tab eventKey={"overview"} title="Overview" key="overview-tab">
+      <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
         {tableInfoContent}
       </Tab>,
-      <Tab eventKey={"schema"} title="Schema" key="tables-tab">
+      <Tab eventKey={"schema"} title="Schema" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
         {tableSchemaContent}
       </Tab>,
-      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
+      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab" mountOnEnter={true} unmountOnExit={true}>
         {tableMetricsContent}
       </Tab>
     ];

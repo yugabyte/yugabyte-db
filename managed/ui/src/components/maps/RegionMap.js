@@ -38,7 +38,6 @@ export default class RegionMap extends Component {
     const { regions, type, showLabels, showRegionLabels, universe } = this.props;
     let regionMarkers = [];
     let bounds = [[61.96, 105.78], [-21.96, -95.78]];
-
     const regionData = type !== "Universe" ? regions : universe.regions;
     const regionLatLngs = regionData.map(function (region, idx) {
       let markerType = type;
@@ -46,21 +45,26 @@ export default class RegionMap extends Component {
         markerType = region.providerCode;
       }
       const numChildren = region.zones.length;
-      const extraMapMarkerProps = (type === "Region") ? {numChildren: numChildren} : {};
-      if (type !== "Universe") {
+      if (type === "Region") {
         regionMarkers.push(
           <MapMarker key={idx} latitude={region.latitude}
                      longitude={region.longitude} type={markerType}
-                     {...extraMapMarkerProps} />
+                     numChildren={numChildren}/>
         );
       }
       return [region.latitude, region.longitude];
     });
     if (type === "All") {
-      regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>;
+      regionMarkers = <MarkerClusterLayer newMarkerData={regions}/>;
     }
     if (type === "Universe" && this.state.loadMarkers) {
       regionMarkers = <UniverseRegionMarkerLayer universe={universe}/>;
+    }
+    if (type === "Table" && this.state.loadMarkers) {
+      regionMarkers = regionData.map(function (region, idx) {
+        return (<MapMarker key={idx} latitude={region.latitude}
+                                    longitude={region.longitude} type={type}/>);
+      });
     }
     if (isNonEmptyArray(regionLatLngs) && type !== "All") {
       bounds = regionLatLngs;
