@@ -339,11 +339,10 @@ void RedisSingleThreadedWriter::ConfigureSession() {
 bool RedisSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
   bool success = false;
-  auto* multi_writer = multi_threaded_writer_;
   auto writer_index = writer_index_;
   int64_t idx = key_index % clients_.size();
   clients_[idx]->set(
-      key_str, value_str, [&success, multi_writer, key_index, writer_index](RedisReply& reply) {
+      key_str, value_str, [&success, key_index, writer_index](RedisReply& reply) {
         if ("OK" == reply.as_string()) {
           VLOG(2) << "Writer " << writer_index << " Successfully inserted key #" << key_index
                   << " into redis ";

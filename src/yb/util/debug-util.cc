@@ -523,7 +523,7 @@ string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format)
     //
     // This also ensures that we point at the correct line number when using addr2line
     // on logged stacks.
-    void* const adjusted_pc = reinterpret_cast<char *>(pc) - 1;
+    void* const adjusted_pc = reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
 
 #ifdef __linux__
     SymbolizationContext context;

@@ -342,7 +342,7 @@ TEST_F(QLDmlTest, FlushedOpId) {
   std::vector<std::thread> threads;
   std::atomic<int32_t> idx(0);
   for (size_t t = 0; t != kTotalThreads; ++t) {
-    threads.emplace_back([this, &idx, kTotalRows] {
+    threads.emplace_back([this, &idx] {
       shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
       session->SetTimeout(kTimeout);
       for(;;) {

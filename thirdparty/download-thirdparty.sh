@@ -62,6 +62,67 @@ verify_archive_checksum() {
   verify_sha256sum <( echo "$expected_checksum  $file_name" )
 }
 
+ensure_file_downloaded() {
+  expect_num_args 2 "$@"
+  local download_url=$1
+  local filename=$2
+
+  set +u
+  local expected_checksum=${expected_checksums_by_name[$filename]}
+  set -u
+  if [[ -z ${expected_checksum:-} ]]; then
+    fatal "No expected checksum provided in $EXPECTED_CHECKSUM_FILE for $filename"
+  fi
+
+  mkdir -p "$TP_DOWNLOAD_DIR"
+  pushd "$TP_DOWNLOAD_DIR"
+  if [[ -f $filename ]] && verify_archive_checksum "$filename" "$expected_checksum"; then
+    log "No need to re-download $filename: checksum already correct"
+  else
+    if [[ -f $filename ]]; then
+      log "File $PWD/$filename already exists but has wrong checksum, removing"
+      ( set -x; rm -f "$filename" )
+    fi
+    log "Fetching $filename"
+    if [[ $download_url == s3:* ]]; then
+      s3cmd get "$download_url" "$filename"
+      # Alternatively we can use AWS CLI:
+      # aws s3 cp "$download_url" "$FILENAME"
+    else
+      curl "$download_url" --location --output "$filename"
+    fi
+    if [[ ! -f $filename ]]; then
+      fatal "Downloaded '$download_url' but remote header name did not match '$filename'.."
+    fi
+    if ! verify_archive_checksum "$filename" "$expected_checksum"; then
+      fatal "File '$PWD/$filename' has wrong checksum after downloading from '$download_url'."
+    fi
+  fi
+  popd
+}
+
+extract_archive() {
+  expect_num_args 2 "$@"
+  local filename=$1
+  local dir=$2
+
+  mkdir -p "$dir"
+  pushd "$dir"
+  if [ "$DOWNLOAD_ONLY" == "0" ]; then
+    log "Extracting $filename in $dir"
+    if echo "$filename" | egrep -q '\.zip$'; then
+      # -o -- force overwriting existing files
+      unzip -q -o "$TP_DOWNLOAD_DIR/$filename"
+    elif echo "$filename" | egrep -q '(\.tar\.gz|\.tgz|\.tar\.xz)$'; then
+      tar xf "$TP_DOWNLOAD_DIR/$filename"
+    else
+      fatal "Error: unknown file format: $filename"
+    fi
+    echo
+  fi
+  popd
+}
+
 fetch_and_expand() {
   expect_num_args 1 "$@"
   local dependency_name=$1
@@ -74,54 +135,36 @@ fetch_and_expand() {
   fi
   local download_url=${TP_NAME_TO_URL[$dependency_name]:-${CLOUDFRONT_URL_PREFIX}/${FILENAME}}
 
-  set +u
-  local expected_checksum=${expected_checksums_by_name[$FILENAME]}
-  set -u
-  if [[ -z ${expected_checksum:-} ]]; then
-    fatal "No expected checksum provided in $EXPECTED_CHECKSUM_FILE for $FILENAME"
-  fi
-
-  mkdir -p "$TP_DOWNLOAD_DIR"
-  pushd "$TP_DOWNLOAD_DIR"
-  if [[ -f $FILENAME ]] && verify_archive_checksum "$FILENAME" "$expected_checksum"; then
-    log "No need to re-download $FILENAME: checksum already correct"
+  # If download_url is "mkdir" then we just create empty directory with specified name.
+  if [[ $download_url != "mkdir" ]]; then
+    ensure_file_downloaded "$download_url" "$FILENAME"
+    extract_archive "$FILENAME" "$TP_SOURCE_DIR"
   else
-    if [[ -f $FILENAME ]]; then
-      log "File $PWD/$FILENAME already exists but has wrong checksum, removing"
-      ( set -x; rm -f "$FILENAME" )
-    fi
-    log "Fetching $FILENAME"
-    if [[ $download_url == s3:* ]]; then
-      s3cmd get "$download_url" "$FILENAME"
-      # Alternatively we can use AWS CLI:
-      # aws s3 cp "$download_url" "$FILENAME"
-    else
-      curl "$download_url" --location --output "$FILENAME"
-    fi
-    if [[ ! -f $FILENAME ]] ;then
-      fatal "Downloaded '$download_url' but remote header name did not match '$FILENAME'.."
-    fi
-    if ! verify_archive_checksum "$FILENAME" "$expected_checksum"; then
-      fatal "File '$PWD/$FILENAME' has wrong checksum after downloading from '$download_url'."
-    fi
+    log "Creating directory: $TP_SOURCE_DIR/$FILENAME"
+    mkdir -p "$TP_SOURCE_DIR/$FILENAME"
   fi
-  popd
 
-  mkdir -p "$TP_SOURCE_DIR"
-  pushd "$TP_SOURCE_DIR"
-  if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    log "Extracting $FILENAME in $TP_SOURCE_DIR"
-    if echo "$FILENAME" | egrep -q '\.zip$'; then
-      # -o -- force overwriting existing files
-      unzip -q -o "$TP_DOWNLOAD_DIR/$FILENAME"
-    elif echo "$FILENAME" | egrep -q '(\.tar\.gz|\.tgz)$'; then
-      tar xf "$TP_DOWNLOAD_DIR/$FILENAME"
-    else
-      fatal "Error: unknown file format: $FILENAME"
-    fi
-    echo
+  set +u
+  local extra_num=${TP_NAME_TO_EXTRA_NUM[$dependency_name]}
+  log "Number of extra downloads for third-party dependency '$dependency_name': ${extra_num}"
+  set -u
+  if [[ $extra_num -gt 0 ]]; then
+    log_empty_line
+    for ((i=1; i<=$extra_num; i++)); do
+      local key="${dependency_name}_${i}"
+      local extra_url=${TP_NAME_TO_EXTRA_URL[$key]}
+      local extra_archive_name=${TP_NAME_TO_EXTRA_ARCHIVE_NAME[$key]}
+      local extra_dir=${TP_NAME_TO_EXTRA_DIR[$key]}
+      local extra_post_exec=${TP_NAME_TO_EXTRA_POST_EXEC[$key]}
+      log "Fetching extra urls: ${extra_archive_name}"
+      ensure_file_downloaded "${extra_url}" "${extra_archive_name}"
+      extract_archive "${extra_archive_name}" "${TP_SOURCE_DIR}/${extra_dir}"
+      pushd "${TP_SOURCE_DIR}/${extra_dir}"
+      eval $extra_post_exec
+      popd
+    done
+    log_empty_line
   fi
-  popd
 }
 
 run_autoreconf() {
@@ -209,6 +252,10 @@ fi
 
 if [ ! -d "$GFLAGS_DIR" ]; then
   fetch_and_expand gflags
+fi
+
+if [ ! -d "$LLVM_DIR" ]; then
+  fetch_and_expand llvm
 fi
 
 # Check that the gperftools patch has been applied.
@@ -302,33 +349,8 @@ if [ ! -d "$LIBUNWIND_DIR" ]; then
   fetch_and_expand libunwind
 fi
 
-LLVM_PATCHLEVEL=1
-delete_if_wrong_patchlevel "$LLVM_SOURCE" "$LLVM_PATCHLEVEL"
-if [ ! -d "$LLVM_SOURCE" ]; then
-  fetch_and_expand llvm
-
-  if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    pushd "$LLVM_SOURCE"
-    patch -p1 < $TP_DIR/patches/llvm-fix-amazon-linux.patch
-    touch patchlevel-$LLVM_PATCHLEVEL
-    popd
-  fi
-  echo
-fi
-
-GCC_PATCHLEVEL=2
-delete_if_wrong_patchlevel $GCC_DIR $GCC_PATCHLEVEL
-if [[ "$OSTYPE" =~ ^linux ]] && [[ ! -d "$GCC_DIR" ]]; then
-  fetch_and_expand libstdcxx
-  if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    pushd $GCC_DIR/libstdc++-v3
-    patch -p0 < $TP_DIR/patches/libstdcxx-fix-string-dtor.patch
-    patch -p0 < $TP_DIR/patches/libstdcxx-fix-tr1-shared-ptr.patch
-    cd ..
-    touch patchlevel-$GCC_PATCHLEVEL
-    popd
-  fi
-  echo
+if [[ "$OSTYPE" =~ ^linux ]] && [[ ! -d "$LIBCXX_DIR" ]]; then
+  fetch_and_expand libcxx
 fi
 
 LZ4_PATCHLEVEL=1

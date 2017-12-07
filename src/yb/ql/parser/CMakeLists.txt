@@ -67,7 +67,7 @@ add_library(ql_parser
             ${SCANNER_LEX_L_CC})
 
 FIND_PATH(FLEX_INCLUDE_DIR FlexLexer.h)
-target_include_directories(ql_parser BEFORE PUBLIC ${FLEX_INCLUDE_DIR})
+target_include_directories(ql_parser PUBLIC ${FLEX_INCLUDE_DIR})
 target_link_libraries(ql_parser
                       ${FLEX_LIBRARIES}
                       ${BISON_LIBRARIES}

@@ -1,9 +1,11 @@
 # Copyright (c) YugaByte, Inc.
 
-GMOCK_VERSION=1.7.0
-GMOCK_DIR=$TP_SOURCE_DIR/gmock-$GMOCK_VERSION
+GMOCK_VERSION=1.8.0
+GMOCK_DIR=$TP_SOURCE_DIR/googletest-release-$GMOCK_VERSION
+GMOCK_URL="https://github.com/google/googletest/archive/release-${GMOCK_VERSION}.tar.gz"
 TP_NAME_TO_SRC_DIR["gmock"]=$GMOCK_DIR
-TP_NAME_TO_ARCHIVE_NAME["gmock"]="gmock-${GMOCK_VERSION}.zip"
+TP_NAME_TO_URL["gmock"]=$GMOCK_URL
+TP_NAME_TO_ARCHIVE_NAME["gmock"]="gmock-${GMOCK_VERSION}.tar.gz"
 
 build_gmock() {
   create_build_dir_and_prepare "$GMOCK_DIR"
@@ -37,11 +39,11 @@ build_gmock() {
       (
         set_build_env_vars
         if [[ $shared == "OFF" ]]; then
-          cp -a libgmock.a "$PREFIX/lib/"
+          cp -a googlemock/libgmock.a "$PREFIX/lib/"
         else
-          cp -a "libgmock.$DYLIB_SUFFIX" "$PREFIX/lib/"
-          rsync -av "$GMOCK_DIR/include/" "$PREFIX/include/"
-          rsync -av "$GMOCK_DIR/gtest/include/" "$PREFIX/include/"
+          cp -a "googlemock/libgmock.$DYLIB_SUFFIX" "$PREFIX/lib/"
+          rsync -av "$GMOCK_DIR/googlemock/include/" "$PREFIX/include/"
+          rsync -av "$GMOCK_DIR/googletest/include/" "$PREFIX/include/"
         fi
       )
     )

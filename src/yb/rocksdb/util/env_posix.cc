@@ -789,6 +789,10 @@ Env* Env::Default() {
   // the destructor of static PosixEnv will go first, then the
   // the singletons of ThreadLocalPtr.
   ThreadLocalPtr::InitSingletons();
+  // Make sure that SyncPoint inited before PosixEnv, to be deleted after it.
+#ifndef NDEBUG
+  SyncPoint::GetInstance();
+#endif
   static PosixEnv default_env;
   return &default_env;
 }

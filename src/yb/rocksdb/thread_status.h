@@ -39,11 +39,14 @@
 #include "yb/util/math_util.h"
 
 #ifndef ROCKSDB_USING_THREAD_STATUS
-#define ROCKSDB_USING_THREAD_STATUS \
-    !defined(ROCKSDB_LITE) && \
+#if !defined(ROCKSDB_LITE) && \
     !defined(NROCKSDB_THREAD_STATUS) && \
     !defined(OS_MACOSX) && \
     !defined(IOS_CROSS_COMPILE)
+#define ROCKSDB_USING_THREAD_STATUS 1
+#else
+#define ROCKSDB_USING_THREAD_STATUS 0
+#endif
 #endif
 
 namespace rocksdb {

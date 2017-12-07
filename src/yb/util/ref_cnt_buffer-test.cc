@@ -182,7 +182,6 @@ TEST_F(RefCntBufferTest, TestThreads) {
     queue.TalkTo(&queues);
   }
 
-  // We use boost::thread in this test because it supports interruption.
   std::vector<std::thread> threads;
   for (auto& queue : queues) {
     threads.emplace_back(std::bind(&TestQueue::Run, &queue));

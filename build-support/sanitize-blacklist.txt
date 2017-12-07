@@ -26,11 +26,5 @@ fun:*kudu18safe_math_internal*
 # See http://llvm.org/bugs/show_bug.cgi?id=18156
 fun:*_Ios_Fmtflags*
 
-# Workaround for a problem with gmock where a runtime error is caused by a call on a null pointer,
-# on a mocked object.
-# Seen error:
-# thirdparty/gmock-1.7.0/include/gmock/gmock-spec-builders.h:1529:12: runtime error: member call on null pointer of type 'testing::internal::ActionResultHolder<void>'
-fun:*testing*internal*InvokeWith*
-
 # False positive, because of shift in hash.
 src:*/rocksdb/util/hash.cc

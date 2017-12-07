@@ -57,25 +57,25 @@ set_install_prefix_type() {
   local dependency_name=${2:-}
   case "$install_prefix_type" in
     common)
-      if [[ $dependency_name == "libstdcxx" ]]; then
-        fatal "libstdcxx is not supposed to be installed into the common prefix"
+      if [[ $dependency_name == "libcxx" ]]; then
+        fatal "libcxx is not supposed to be installed into the common prefix"
       fi
       PREFIX=$PREFIX_COMMON
       set_compiler gcc
     ;;
     uninstrumented)
-      if [[ $dependency_name == "libstdcxx" ]]; then
-        # Build uninstrumented libstdcxx. It gets installed into its own sub-directory of both
+      if [[ $dependency_name == "libcxx" ]]; then
+        # Build uninstrumented libcxx. It gets installed into its own sub-directory of both
         # uninstrumented and TSAN prefix directories.
-        PREFIX=$PREFIX_LIBSTDCXX
+        PREFIX=$PREFIX_LIBCXX
       else
         PREFIX=$PREFIX_DEPS
       fi
       set_compiler gcc
     ;;
     tsan)
-      if [[ $dependency_name == "libstdcxx" ]]; then
-        PREFIX=$PREFIX_LIBSTDCXX_TSAN
+      if [[ $dependency_name == "libcxx" ]]; then
+        PREFIX=$PREFIX_LIBCXX_TSAN
       else
         PREFIX=$PREFIX_DEPS_TSAN
       fi
@@ -256,20 +256,22 @@ set_tsan_build_flags() {
   local dependency_name=${2:-}
   if [[ $instrumented_or_not == "instrumented" ]]; then
     add_c_cxx_flags "-fsanitize=thread -DTHREAD_SANITIZER"
-    local CXX_STDLIB_PREFIX=$PREFIX_LIBSTDCXX_TSAN
+    local CXX_STDLIB_PREFIX=$PREFIX_LIBCXX_TSAN
+    LIBCXX_CMAKE_FLAGS="-DLLVM_USE_SANITIZER=Thread"
   elif [[ $instrumented_or_not == "uninstrumented" ]]; then
-    local CXX_STDLIB_PREFIX=$PREFIX_LIBSTDCXX
+    local CXX_STDLIB_PREFIX=$PREFIX_LIBCXX
+    LIBCXX_CMAKE_FLAGS=""
   else
     fatal "Expected to be invoked with 'instrumented' or 'uninstrumented' parameter, got:" \
           "$instrumented_or_not"
   fi
 
-  if [[ $dependency_name != "libstdcxx" ]]; then
-    # Obviously we can't use the custom libstdc++ when building that libstdc++.
-    local gcc_include_dir=$CXX_STDLIB_PREFIX/include/c++/$GCC_VERSION
+  if [[ $dependency_name != "libcxx" ]]; then
+    # Obviously we can't use the custom libc++ when building that libc++.
+    local std_include_dir=$CXX_STDLIB_PREFIX/include/c++/v1
     prepend_cxx_flags "-nostdinc++"
-    prepend_cxx_flags "-isystem $gcc_include_dir/backward"
-    prepend_cxx_flags "-isystem $gcc_include_dir"
+    prepend_cxx_flags "-isystem $std_include_dir"
+    prepend_cxx_flags "-stdlib=libc++"
     prepend_lib_dir_and_rpath "$CXX_STDLIB_PREFIX/lib"
   fi
   add_linuxbrew_flags
@@ -317,7 +319,7 @@ F_GLOG=""
 F_GMOCK=""
 F_GPERFTOOLS=""
 F_LIBEV=""
-F_LIBSTDCXX=""
+F_LIBCXX=""
 F_LIBUNWIND=""
 F_LLVM=""
 F_LZ=""
@@ -393,8 +395,8 @@ while [[ $# -gt 0 ]]; do
                     F_GPERFTOOLS=1 ;;
     "libev")        building_what+=( libev )
                     F_LIBEV=1 ;;
-    "libstdcxx")    building_what+=( libstdcxx )
-                    F_LIBSTDCXX=1 ;;
+    "libcxx")       building_what+=( libcxx )
+                    F_LIBCXX=1 ;;
     "libunwind")    building_what+=( libunwind )
                     F_LIBUNWIND=1 ;;
     "llvm")         building_what+=( llvm )
@@ -471,8 +473,8 @@ for PREFIX_DIR in \
     "$PREFIX_COMMON" \
     "$PREFIX_DEPS" \
     "$PREFIX_DEPS_TSAN" \
-    "$PREFIX_LIBSTDCXX" \
-    "$PREFIX_LIBSTDCXX_TSAN"; do
+    "$PREFIX_LIBCXX" \
+    "$PREFIX_LIBCXX_TSAN"; do
   mkdir -p $PREFIX_DIR/lib
   mkdir -p $PREFIX_DIR/include
 
@@ -546,7 +548,7 @@ export PATH=$PREFIX/bin:$PATH
 if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   if is_linux; then
     if [[ -n "$F_ALL" || -n "$F_LLVM" ]] && [ -z ${YB_NO_BUILD_LLVM:-} ]; then
-      do_build_if_necessary llvm normal
+      do_build_if_necessary llvm
     fi
   fi
 
@@ -684,21 +686,21 @@ if [[ -n $F_TSAN  ]]; then
   #   * -Wl,-rpath,... - Add instrumented libstdc++ location to the rpath so that
   #                      it can be found at runtime.
 
-  if [ -n "$F_ALL" -o -n "$F_LIBSTDCXX" ]; then
+  if [ -n "$F_ALL" -o -n "$F_LIBCXX" ]; then
     save_env
 
     # Build non-TSAN-instrumented libstdc++ -------------------------------------------------------
-    # We're passing "libstdcxx" here in order to use a separate prefix for libstdc++.
-    set_install_prefix_type uninstrumented libstdcxx
+    # We're passing "libcxx" here in order to use a separate prefix for libstdc++.
+    set_install_prefix_type uninstrumented libcxx
     reset_build_environment
-    set_tsan_build_flags uninstrumented libstdcxx
-    do_build_if_necessary libstdcxx
+    set_tsan_build_flags uninstrumented libcxx
+    do_build_if_necessary libcxx
 
     # Build TSAN-instrumented libstdxx ------------------------------------------------------------
-    set_install_prefix_type tsan libstdcxx
+    set_install_prefix_type tsan libcxx
     reset_build_environment
-    set_tsan_build_flags instrumented libstdcxx
-    do_build_if_necessary libstdcxx
+    set_tsan_build_flags instrumented libcxx
+    do_build_if_necessary libcxx
 
     restore_env
   fi
@@ -736,6 +738,7 @@ if [[ -n $F_TSAN  ]]; then
   # installed/tsan directory, because they are being built with a custom C++ standard library.
   # TODO: build more of these with TSAN instrumentation.
 
+  save_env
   set_tsan_build_flags uninstrumented
 
   if [ -n "$F_ALL" -o -n "$F_GFLAGS" ]; then
@@ -765,6 +768,7 @@ if [[ -n $F_TSAN  ]]; then
   if [ -n "$F_ALL" -o -n "$F_CRYPT_BLOWFISH" ]; then
     do_build_if_necessary crypt_blowfish
   fi
+  restore_env
 
   heading "Finished building dependencies with TSAN"
 fi

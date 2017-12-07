@@ -30,11 +30,11 @@
 // under the License.
 //
 
-#include <string>
-#include <vector>
 #include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
-#include <boost/thread/thread.hpp>
 #include "yb/gutil/atomicops.h"
 #include "yb/util/rwc_lock.h"
 #include "yb/util/test_util.h"
@@ -129,16 +129,16 @@ TEST_F(RWCLockTest, TestCorrectBehavior) {
   SharedState state;
   Release_Store(&state.stop, 0);
 
-  vector<boost::thread*> threads;
+  std::vector<std::thread> threads;
 
   const int kNumWriters = 5;
   const int kNumReaders = 5;
 
   for (int i = 0; i < kNumWriters; i++) {
-    threads.push_back(new boost::thread(WriterThread, &state));
+    threads.emplace_back(std::bind(WriterThread, &state));
   }
   for (int i = 0; i < kNumReaders; i++) {
-    threads.push_back(new boost::thread(ReaderThread, &state));
+    threads.emplace_back(std::bind(ReaderThread, &state));
   }
 
   if (AllowSlowTests()) {
@@ -149,9 +149,8 @@ TEST_F(RWCLockTest, TestCorrectBehavior) {
 
   Release_Store(&state.stop, 1);
 
-  for (boost::thread* t : threads) {
-    t->join();
-    delete t;
+  for (auto& t : threads) {
+    t.join();
   }
 
 }

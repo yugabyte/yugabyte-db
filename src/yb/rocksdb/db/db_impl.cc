@@ -4635,14 +4635,16 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       CHECK_EQ(WriteBatchInternal::Count(merged_batch), total_count);
 
       Slice log_entry = WriteBatchInternal::Contents(merged_batch);
-      log::Writer* log_writer = nullptr;
+      log::Writer* log_writer;
+      LogFileNumberSize* last_alive_log_file;
       {
         InstrumentedMutexLock l(&mutex_);
         log_writer = logs_.back().writer;
+        last_alive_log_file = &alive_log_files_.back();
       }
       status = log_writer->AddRecord(log_entry);
       total_log_size_.fetch_add(static_cast<int64_t>(log_entry.size()));
-      alive_log_files_.back().AddSize(log_entry.size());
+      last_alive_log_file->AddSize(log_entry.size());
       log_empty_ = false;
       log_size = log_entry.size();
       RecordTick(stats_, WAL_FILE_BYTES, log_size);

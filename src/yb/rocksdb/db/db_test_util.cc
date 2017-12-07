@@ -987,8 +987,8 @@ UpdateStatus DBTestBase::updateInPlaceNoAction(char* prevValue,
 
 // Utility method to test InplaceUpdate
 void DBTestBase::validateNumberOfEntries(int numValues, int cf) {
-  ScopedArenaIterator iter;
   Arena arena;
+  ScopedArenaIterator iter;
   if (cf != 0) {
     iter.set(dbfull()->NewInternalIterator(&arena, handles_[cf]));
   } else {

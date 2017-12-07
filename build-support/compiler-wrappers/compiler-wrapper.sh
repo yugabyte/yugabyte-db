@@ -173,8 +173,6 @@ stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 # -------------------------------------------------------------------------------------------------
 # Remote build
 
-cmd_line_str="$*"
-
 output_file=""
 nonexistent_file_args=()
 local_build_only=false

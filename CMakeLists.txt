@@ -174,48 +174,23 @@ endfunction()
 
 # Functions for adding compiler/linker flags ------------------------------------------------------
 
-# Adding flags that apply to both compiler and linker.
-set(COMMON_COMPILER_LINKER_FLAGS "")
-set(CAN_ADD_COMMON_COMPILER_LINKER_FLAGS FALSE)
-
-function(ADD_COMMON_COMPILER_LINKER_FLAGS FLAGS_TO_ADD)
-  if (NOT CAN_ADD_COMMON_LINKER_FLAGS)
-    message(FATAL_ERROR "Trying to add common compiler/linker flags after it has been disallowed.")
-  endif()
-  message("Adding common compiler/linker flags: ${FLAGS_TO_ADD}")
-  set(COMMON_COMPILER_LINKER_FLAGS
-      "${COMMON_COMPILER_LINKER_FLAGS} ${FLAGS_TO_ADD}"
-      PARENT_SCOPE)
-endfunction()
-
 # Linker flags applied to both executables and shared libraries. We append this both to
 # CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
 # These flags apply to both YB and RocksDB parts of the codebase.
-set(COMMON_LINKER_FLAGS "")
-set(CAN_ADD_COMMON_LINKER_FLAGS TRUE)
-function(ADD_COMMON_LINKER_FLAGS FLAGS)
-  if(NOT CAN_ADD_COMMON_LINKER_FLAGS)
-    message(FATAL_ERROR "Trying to add to COMMON_LINKER_FLAGS after it has been disallowed.")
-  endif()
-  message("Adding to linker flags used by both YB and RocksDB parts of the code: ${FLAGS}")
-  set(COMMON_LINKER_FLAGS "${COMMON_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+function(ADD_LINKER_FLAGS FLAGS)
+  message("Adding to linker flags: ${FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 
 function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
-  if (NOT CAN_ADD_COMMON_LINKER_FLAGS)
-    message(FATAL_ERROR
-            "Trying to add an rpath entry to COMMON_LINKER_FLAGS after it has been disallowed.")
-  endif()
   if (RPATH_ENTRY STREQUAL "")
     message(FATAL_ERROR "Trying to add an empty rpath entry.")
   endif()
-  set(NEW_RPATH_ENTRY_LINKER_FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
   message("Adding a global rpath entry: ${RPATH_ENTRY}")
-  # Note (mbautin): I don't think we can run ADD_COMMON_LINKER_FLAGS here, because it would need to
-  # modify the COMMON_LINKER_FLAGS variable at "parent parent scope", and I'm not sure if that even
-  # exists in CMake.
-  set(COMMON_LINKER_FLAGS "${COMMON_LINKER_FLAGS} ${NEW_RPATH_ENTRY_LINKER_FLAGS}"
-      PARENT_SCOPE)
+  set(FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 
 # CXX_YB_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do
@@ -233,36 +208,17 @@ endfunction()
 #     aliasing rules are indeed followed due to fundamental limitations in escape analysis, which
 #     can result in subtle bad code generation.  This has a small perf hit but worth it to avoid
 #     hard to debug crashes.
-set(CXX_YB_COMMON_FLAGS "")
-set(CAN_ADD_CXX_YB_COMMON_FLAGS TRUE)
-function(ADD_CXX_YB_COMMON_FLAGS FLAGS)
-  if(NOT CAN_ADD_CXX_YB_COMMON_FLAGS)
-    message(FATAL_ERROR
-            "Trying to add flags to CXX_YB_COMMON_FLAGS after it has been disallowed.")
-  endif()
-  message("Adding a C++ flags for the YB (not RocksDB) part of the codebase only: ${FLAGS}")
-  set(CXX_YB_COMMON_FLAGS "${CXX_YB_COMMON_FLAGS} ${FLAGS}" PARENT_SCOPE)
+
+function(ADD_CXX_FLAGS FLAGS)
+  message("Adding C++ flags: ${FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 
-ADD_CXX_YB_COMMON_FLAGS("-Werror")
-ADD_CXX_YB_COMMON_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
-ADD_CXX_YB_COMMON_FLAGS("-Winvalid-pch")
-ADD_CXX_YB_COMMON_FLAGS("-pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
-ADD_CXX_YB_COMMON_FLAGS("-DROCKSDB_PLATFORM_POSIX")
-
-# CXX_GLOBAL_COMMON_FLAGS are flags that are common to C++ code in both the YB and RocksDB parts of
-# the codebase.
-set(CXX_GLOBAL_COMMON_FLAGS "")
-set(CAN_ADD_CXX_GLOBAL_COMMON_FLAGS TRUE)
-function(ADD_CXX_GLOBAL_COMMON_FLAGS FLAGS)
-  if(NOT CAN_ADD_CXX_GLOBAL_COMMON_FLAGS)
-    message(FATAL_ERROR
-      "Trying to add flags to CXX_GLOBAL_COMMON_FLAGS after it has been disallowed.")
-  endif()
-  message("Adding C++ flags for both YB and RocksDB parts of the codebase: ${FLAGS}")
-  set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} ${FLAGS}"
-      PARENT_SCOPE)
-endfunction()
+ADD_CXX_FLAGS("-Werror")
+ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
+ADD_CXX_FLAGS("-Winvalid-pch")
+ADD_CXX_FLAGS("-pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
+ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX")
 
 # This duplicates part of the logic from common-build-env.sh so that we can run from CLion where
 # cmake is invoked directly.
@@ -323,6 +279,7 @@ set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
 if("${YB_THIRDPARTY_DIR}" STREQUAL "")
   set(YB_THIRDPARTY_DIR "${YB_SRC_ROOT}/thirdparty")
 endif()
+message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
@@ -451,15 +408,15 @@ message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
 # We can only use IS_CLANG after calling VALIDATE_COMPILER_TYPE.
 VALIDATE_COMPILER_TYPE()
-if (NOT IS_CLANG)
-  # To enable 16-byte atomics support in GCC we should specify appropriate architecture.
-  ADD_CXX_YB_COMMON_FLAGS("-march=ivybridge")
+if (NOT APPLE)
+  # To enable 16-byte atomics support we should specify appropriate architecture.
+  ADD_CXX_FLAGS("-march=ivybridge")
 endif()
 
 # Include compiler type and version in the compiler command line so that binaries built by different
 # versions of the compiler will have different keys in ccache.
-ADD_CXX_GLOBAL_COMMON_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
-ADD_CXX_GLOBAL_COMMON_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
+ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
+ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
 
 ############################################################
 # Compiler flags
@@ -472,50 +429,39 @@ if(NOT APPLE)
   # (-mno-abm and -mno-movbe) that are not recognized by some clang versions we are using, so they
   # are being added in the gcc-specific section below.  We have also found that these flags don't
   # work on Mac OS X, so we're not using them there.
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-mno-avx -mno-bmi -mno-bmi2 -mno-fma")
+  ADD_CXX_FLAGS("-mno-avx -mno-bmi -mno-bmi2 -mno-fma")
 endif()
 
 # We want access to the PRI* print format macros.
-ADD_CXX_GLOBAL_COMMON_FLAGS("-D__STDC_FORMAT_MACROS")
+ADD_CXX_FLAGS("-D__STDC_FORMAT_MACROS")
 
 # Do not warn about uses of deprecated declarations. RocksDB has a few instances of those.
-ADD_CXX_GLOBAL_COMMON_FLAGS("-Wno-deprecated-declarations")
+ADD_CXX_FLAGS("-Wno-deprecated-declarations")
 
-ADD_CXX_GLOBAL_COMMON_FLAGS("-DGFLAGS=gflags")
+ADD_CXX_FLAGS("-DGFLAGS=gflags")
 
 # Don't allow virtual classes with non-virtual destructors.
-ADD_CXX_GLOBAL_COMMON_FLAGS("-Wnon-virtual-dtor")
+ADD_CXX_FLAGS("-Wnon-virtual-dtor")
 
 # Flags common to gcc and clang.
-ADD_CXX_YB_COMMON_FLAGS("-Werror=enum-compare")
-ADD_CXX_YB_COMMON_FLAGS("-Werror=reorder")
-ADD_CXX_YB_COMMON_FLAGS("-Werror=switch")
-ADD_CXX_YB_COMMON_FLAGS("-Werror=return-type")
-ADD_CXX_YB_COMMON_FLAGS("-Werror=non-virtual-dtor")
+ADD_CXX_FLAGS("-Werror=enum-compare")
+ADD_CXX_FLAGS("-Werror=reorder")
+ADD_CXX_FLAGS("-Werror=switch")
+ADD_CXX_FLAGS("-Werror=return-type")
+ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
 
 if(IS_CLANG)
-  ADD_CXX_YB_COMMON_FLAGS("-Werror=string-plus-int")
-  ADD_CXX_YB_COMMON_FLAGS("-Werror=return-stack-address")
-  ADD_CXX_YB_COMMON_FLAGS("-Werror=implicit-fallthrough")
-endif()
-
-if(IS_CLANG AND NOT APPLE)
-  if ("${COMPILER_VERSION}" VERSION_GREATER "3.8")
-    # This is a new warning in Clang 3.9 (or at least it is not there in Clang 3.7). We need to fix
-    # RocksDB code, and we are disabling this until then.
-    # This warning also does not appear on Mac OS X's version of Clang, at least on darwin15.5.0.
-    # http://lists.llvm.org/pipermail/cfe-commits/Week-of-Mon-20160118/147239.html
-    ADD_CXX_GLOBAL_COMMON_FLAGS("-Wno-expansion-to-defined")
-  endif()
+  ADD_CXX_FLAGS("-Werror=string-plus-int")
+  ADD_CXX_FLAGS("-Werror=return-stack-address")
+  ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
 endif()
 
 DETECT_LINUXBREW()
 if(USING_LINUXBREW AND IS_CLANG)
   # We only need these when building using clang. If we use Linuxbrew's gcc, it should set the
   # equivalent of these options automatically.
-  ADD_COMMON_LINKER_FLAGS("-Wl,--dynamic-linker=${LINUXBREW_LIB_DIR}/ld.so")
-  ADD_COMMON_COMPILER_LINKER_FLAGS("--gcc-toolchain=${LINUXBREW_DIR}")
-  ADD_COMMON_COMPILER_LINKER_FLAGS("-Wno-gnu-designator")
+  ADD_LINKER_FLAGS("-Wl,--dynamic-linker=${LINUXBREW_LIB_DIR}/ld.so")
+  ADD_LINKER_FLAGS("--gcc-toolchain=${LINUXBREW_DIR}")
 endif()
 
 if(USING_LINUXBREW)
@@ -526,7 +472,7 @@ endif()
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-DOS_MACOSX")
+  ADD_CXX_FLAGS("-DOS_MACOSX")
 endif()
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
@@ -590,7 +536,7 @@ endif()
 message("Configured for ${CMAKE_BUILD_TYPE} build "
         "(set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
-  set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_DEBUG}")
   if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
     if ("$ENV{YB_NO_LD_GOLD}")
       message("YB_NO_LD_GOLD is defined, not using ld.gold")
@@ -605,15 +551,15 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
     endif()
   endif()
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
-  set(CMAKE_CXX_FLAGS ${CXX_FLAGS_FASTDEBUG})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_FASTDEBUG}")
   # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
   # the rest of YB code in the "fastdebug" mode (used for ASAN/TSAN).
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-  set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_RELEASE}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
-  set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_GEN})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_PROFILE_GEN}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
-  set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_BUILD})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_FLAGS_PROFILE_BUILD}")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -626,14 +572,14 @@ if (IS_CLANG)
   #   http://petereisentraut.blogspot.com/2011/09/ccache-and-clang-part-2.html
 
   # Clang generates ambiguous member template warnings when calling the ev++ api.
-  ADD_CXX_YB_COMMON_FLAGS("-Wno-ambiguous-member-template")
+  ADD_CXX_FLAGS("-Wno-ambiguous-member-template")
 
   # Emit warnings (that we then treat as errors in compiler-wrapper.sh) on unannotated fallthrough
   # in switch statements. This applies to both YB and RocksDB parts of the code.
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-Wimplicit-fallthrough")
+  ADD_CXX_FLAGS("-Wimplicit-fallthrough")
 
   # Silence the "unused argument" warning.
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-Qunused-arguments")
+  ADD_CXX_FLAGS("-Qunused-arguments")
 
   # Only hardcode -fcolor-diagnostics if stderr is opened on a terminal. Otherwise
   # the color codes show up as noisy artifacts.
@@ -643,7 +589,7 @@ if (IS_CLANG)
   execute_process(COMMAND test -t 2 RESULT_VARIABLE YB_IS_TTY)
   if ((${YB_IS_TTY} EQUAL 0) AND (NOT ("$ENV{TERM}" STREQUAL "dumb")))
     message("Running in a controlling terminal")
-    ADD_CXX_YB_COMMON_FLAGS("-fcolor-diagnostics")
+    ADD_CXX_FLAGS("-fcolor-diagnostics")
   else()
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
@@ -658,7 +604,7 @@ elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
   endif()
 
   # These flags are not understood by some versions of clang we are using.
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-mno-abm -mno-movbe")
+  ADD_CXX_FLAGS("-mno-abm -mno-movbe")
 else()
   message(SEND_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
@@ -702,6 +648,7 @@ if (${YB_USE_TSAN})
   # Disables using the precompiled template specializations for std::string, shared_ptr, etc
   # so that the annotations in the header actually take effect.
   add_definitions("-D_GLIBCXX_EXTERN_TEMPLATE=0")
+  ADD_CXX_FLAGS("-stdlib=libc++")
 
   # Compile and link against the thirdparty TSAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
@@ -712,22 +659,18 @@ if (${YB_USE_TSAN})
             "failures.")
   else()
     # TSAN build under RedHat/CentOS Linux.
-    message("Using TSAN-instrumented libstdc++")
-    set(TSAN_GCC_DIR "${YB_PREFIX_DEPS_TSAN}/gcc")
-    set(TSAN_GCC_INCLUDE_DIR "${TSAN_GCC_DIR}/include/c++/4.9.3")
-    ADD_GLOBAL_RPATH_ENTRY("${TSAN_GCC_DIR}/lib")
+    message("Using TSAN-instrumented libc++")
+    set(TSAN_LIBCXX_DIR "${YB_PREFIX_DEPS_TSAN}/libcxx")
+    set(TSAN_LIBCXX_INCLUDE_DIR "${TSAN_LIBCXX_DIR}/include/c++/v1")
+    ADD_GLOBAL_RPATH_ENTRY("${TSAN_LIBCXX_DIR}/lib")
 
-    ADD_CXX_GLOBAL_COMMON_FLAGS("-nostdinc++")
-    ADD_COMMON_COMPILER_LINKER_FLAGS("-L${TSAN_GCC_DIR}/lib")
+    ADD_CXX_FLAGS("-nostdinc++")
+    ADD_LINKER_FLAGS("-L${TSAN_LIBCXX_DIR}/lib")
 
     # This needs to appear before adding third-party dependencies that have their headers in the
     # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
     # the Linuxbrew include directory too.
-    include_directories(SYSTEM "${TSAN_GCC_INCLUDE_DIR}")
-    include_directories(SYSTEM "${TSAN_GCC_INCLUDE_DIR}/backward")
-
-    ADD_COMMON_COMPILER_LINKER_FLAGS("-isystem ${TSAN_GCC_INCLUDE_DIR}")
-    ADD_COMMON_COMPILER_LINKER_FLAGS("-isystem ${TSAN_GCC_INCLUDE_DIR}/backward")
+    include_directories(SYSTEM "${TSAN_LIBCXX_INCLUDE_DIR}")
   endif()
 
   # Strictly speaking, TSAN doesn't require dynamic linking. But it does
@@ -742,18 +685,30 @@ if (${YB_USE_TSAN})
   endif()
 elseif(USING_LINUXBREW AND IS_CLANG)
   # Tell clang to use Linuxbrew's libstdc++ instead of the system one.
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-nostdinc++")
+  ADD_CXX_FLAGS("-nostdinc++")
+  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
 
-  # TODO: autodetect standard library version installed through Linuxbrew automatically.
-  set(LINUXBREW_CXX_INCLUDE_DIR "${LINUXBREW_DIR}/Cellar/gcc/5.3.0/include/c++/5.3.0")
-  ADD_COMMON_COMPILER_LINKER_FLAGS("-isystem ${LINUXBREW_CXX_INCLUDE_DIR}")
-  ADD_COMMON_COMPILER_LINKER_FLAGS("-isystem ${LINUXBREW_CXX_INCLUDE_DIR}/backward")
-  ADD_COMMON_COMPILER_LINKER_FLAGS("-isystem ${LINUXBREW_CXX_INCLUDE_DIR}/x86_64-unknown-linux-gnu")
+  execute_process(COMMAND "${LINUXBREW_DIR}/bin/brew" list --versions gcc
+                  COMMAND tr -d '\n'
+                  COMMAND tail -c 5
+                  OUTPUT_VARIABLE LINUXBREW_GCC_VERSION
+                  ERROR_VARIABLE LINUXBREW_GCC_VERSION_ERROR)
+
+  message("Brew GCC version: ${LINUXBREW_GCC_VERSION}")
+  set(LINUXBREW_CXX_INCLUDE_DIR
+      "${LINUXBREW_DIR}/Cellar/gcc/${LINUXBREW_GCC_VERSION}/include/c++/${LINUXBREW_GCC_VERSION}")
+  if(NOT IS_DIRECTORY ${LINUXBREW_CXX_INCLUDE_DIR})
+    message(FATAL_ERROR "Missing libstdc++ directory: ${LINUXBREW_CXX_INCLUDE_DIR}, "
+                        "fetching gcc version error: ${LINUXBREW_GCC_VERSION_ERROR}")
+  endif()
+  include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR})
+  include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR}/backward)
+  include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR}/x86_64-unknown-linux-gnu)
 endif()
 
 if (USING_LINUXBREW AND IS_CLANG)
-  ADD_CXX_GLOBAL_COMMON_FLAGS("-isystem ${LINUXBREW_DIR}/include")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
+  include_directories(SYSTEM ${LINUXBREW_DIR}/include)
+  ADD_LINKER_FLAGS("-latomic")
 endif()
 
 # Sanity check -- to be removed.
@@ -776,20 +731,6 @@ if(MYVAR)
 else()
   message(FATAL_ERROR "MYVAR should be TRUE")
 endif()
-
-ADD_CXX_GLOBAL_COMMON_FLAGS("${COMMON_COMPILER_LINKER_FLAGS}")
-
-# Add "global" flags (those shared between YB and RocksDB parts of the code) to YB's flags.
-# After this point, modifying CXX_GLOBAL_COMMON_FLAGS and CXX_YB_COMMON_FLAGS will have no effect!
-# TODO: record the value of these variables and check that it has not changed at the end of the
-# file.
-ADD_CXX_YB_COMMON_FLAGS("${CXX_GLOBAL_COMMON_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_YB_COMMON_FLAGS}")
-
-# Make sure functions for adding CXX_GLOBAL_COMMON_FLAGS and CXX_YB_COMMON_FLAGS fail with a fatal
-# error frmo this point on.
-set(CAN_ADD_CXX_GLOBAL_COMMON_FLAGS FALSE)
-set(CAN_ADD_CXX_YB_COMMON_FLAGS FALSE)
 
 if (NOT "$ENV{YB_LINK}" STREQUAL "" AND NOT "$ENV{YB_LINK}" STREQUAL "${YB_LINK}")
   if (YB_LINK)
@@ -876,7 +817,7 @@ if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
       message(SEND_ERROR "Must use clang 3.4 or newer to run a sanitizer build."
         " Try using clang from thirdparty/")
     endif()
-    add_definitions("-fsanitize-blacklist=${BUILD_SUPPORT_DIR}/sanitize-blacklist.txt")
+    ADD_CXX_FLAGS("-fsanitize-blacklist=${BUILD_SUPPORT_DIR}/sanitize-blacklist.txt")
   else()
     message(WARNING "GCC does not support specifying a sanitizer blacklist. Known sanitizer "
                     "check failures will not be suppressed.")
@@ -1548,19 +1489,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (USING_LINUXBREW)
   # Add the Linuxbrew library directory last.
-  ADD_COMMON_COMPILER_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
+  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
   ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
-  ADD_COMMON_COMPILER_LINKER_FLAGS("-L/usr/lib64")
+  ADD_LINKER_FLAGS("-L/usr/lib64")
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
 endif()
 
-ADD_COMMON_LINKER_FLAGS("${COMMON_COMPILER_LINKER_FLAGS}")
-set(CAN_ADD_COMMON_COMPILER_LINKER_FLAGS FALSE)
-set(CAN_ADD_COMMON_LINKER_FLAGS FALSE)
-
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${COMMON_LINKER_FLAGS}")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${COMMON_LINKER_FLAGS}")
-message("Linker flags common to YB and RocksDB code: ${COMMON_LINKER_FLAGS}")
+message("Linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
 
 add_subdirectory(src/yb/rocksdb)
 add_subdirectory(src/yb/gutil)

@@ -14,8 +14,8 @@ build_libbacktrace() {
   (
     set build_env_vars
     set -x
-    CFLAGS="$EXTRA_CFLAGS" \
-      CXXFLAGS="$EXTRA_CXXFLAGS" \
+    CFLAGS="$EXTRA_CFLAGS $EXTRA_LDFLAGS" \
+      CXXFLAGS="$EXTRA_CXXFLAGS $EXTRA_LDFLAGS" \
       run_configure --with-pic --prefix=$PREFIX
     run_make install
   )

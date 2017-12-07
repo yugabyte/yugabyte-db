@@ -41,10 +41,10 @@ PREFIX_COMMON=$YB_THIRDPARTY_DIR/installed/common
 PREFIX_DEPS=$YB_THIRDPARTY_DIR/installed/uninstrumented
 PREFIX_DEPS_TSAN=$YB_THIRDPARTY_DIR/installed/tsan
 
-# libstdcxx needs its own prefix so that it is not inadvertently included in the library search path
+# libcxx needs its own prefix so that it is not inadvertently included in the library search path
 # during non-TSAN builds.
-PREFIX_LIBSTDCXX=$PREFIX_DEPS/gcc
-PREFIX_LIBSTDCXX_TSAN=$PREFIX_DEPS_TSAN/gcc
+PREFIX_LIBCXX=$PREFIX_DEPS/libcxx
+PREFIX_LIBCXX_TSAN=$PREFIX_DEPS_TSAN/libcxx
 
 BUILD_STAMP_DIR=$YB_THIRDPARTY_DIR/build-status
 
@@ -59,6 +59,23 @@ declare -A TP_NAME_TO_ARCHIVE_NAME
 
 # Third-party dependency name to download URL.
 declare -A TP_NAME_TO_URL
+
+# Extra dependencies of third party library
+# Number of extra dependencies.
+declare -A TP_NAME_TO_EXTRA_NUM
+
+# The following variables describes extra dependencies.
+# The key should have form: <component>_<index>, where index starts from 1.
+
+# URL of extra dependency, similar to TP_NAME_TO_URL.
+declare -A TP_NAME_TO_EXTRA_URL
+# Archive name of extra dependency, similar to TP_NAME_TO_ARCHIVE_NAME.
+declare -A TP_NAME_TO_EXTRA_ARCHIVE_NAME
+# Relative directory of extra dependency, similar to TP_NAME_TO_SRC_DIR.
+declare -A TP_NAME_TO_EXTRA_DIR
+# Command that should be executed after dependency is extracted.
+# For instance could be used to rename/move extracted for to appropriate place.
+declare -A TP_NAME_TO_EXTRA_POST_EXEC
 
 # These flags influence how third-party dependencies are being built. We show the values of these
 # flags before each third-party dependency build and also export them.

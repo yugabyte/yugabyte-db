@@ -897,7 +897,7 @@ find_compiler_by_type() {
           # clang is present in this location in pre-built third-party archives built before
           # the transition to Linuxbrew (https://phabricator.dev.yugabyte.com/D982). This can be
           # removed when the transition is complete.
-          "$YB_THIRDPARTY_DIR/installed/bin/clang"
+          "$YB_THIRDPARTY_DIR/installed/common/bin/clang"
         )
         for clang_path in "${clang_paths_to_try[@]}"; do
           if [[ -f $clang_path ]]; then
@@ -1289,6 +1289,12 @@ activate_virtualenv() {
 # In our internal environment we build third-party dependencies in separate directories on NFS
 # so that we can use them across many builds.
 find_shared_thirdparty_dir() {
+  # This means we most likely preset the YB_THIRDPARTY_DIR var from outside.
+  if [[ -v YB_THIRDPARTY_DIR && ${YB_DEFAULT_THIRDPARTY_DIR:-} != "YES" ]]; then
+    found_shared_thirdparty_dir=true
+    export NO_REBUILD_THIRDPARTY=1
+    return
+  fi
   found_shared_thirdparty_dir=false
   if ! is_src_root_on_nfs; then
     return
@@ -1420,6 +1426,7 @@ fi
 
 if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
   YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
+  YB_DEFAULT_THIRDPARTY_DIR="Yes"
 fi
 
 readonly YB_DEFAULT_CMAKE_OPTS=(

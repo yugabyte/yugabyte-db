@@ -15,52 +15,52 @@
 # 7. Unpack the libc++abi tarball as projects/libcxxabi
 # 8. Create new tarball from the resulting source tree
 #
-LLVM_VERSION=3.9.0
+LLVM_VERSION=5.0.0
 # This is the naming pattern YugaByte is now using for all source directories instead of _DIR.
 # TODO: migrate to this pattern for all other third-party dependencies.
 # Note: we have the ".src" suffix at the end because that's what comes out of the tarball.
-LLVM_SOURCE=$TP_SOURCE_DIR/llvm-$LLVM_VERSION.src
-TP_NAME_TO_SRC_DIR["llvm"]=$LLVM_SOURCE
-TP_NAME_TO_ARCHIVE_NAME["llvm"]="llvm-${LLVM_VERSION}.src.tar.gz"
+LLVM_DIR=$TP_SOURCE_DIR/llvm-$LLVM_VERSION.src
+LLVM_URL_PREFIX="http://releases.llvm.org/${LLVM_VERSION}"
+LLVM_URL="$LLVM_URL_PREFIX/llvm-${LLVM_VERSION}.src.tar.xz"
+LLVM_CLANG_URL="$LLVM_URL_PREFIX/cfe-${LLVM_VERSION}.src.tar.xz"
+LLVM_COMPILER_RT_URL="$LLVM_URL_PREFIX/compiler-rt-${LLVM_VERSION}.src.tar.xz"
+LLVM_LIBUNWIND_URL="$LLVM_URL_PREFIX/libunwind-${LLVM_VERSION}.src.tar.xz"
+LLVM_LIBCXXABI_URL="$LLVM_URL_PREFIX/libcxxabi-${LLVM_VERSION}.src.tar.xz"
+LLVM_LIBCXX_URL="$LLVM_URL_PREFIX/libcxx-${LLVM_VERSION}.src.tar.xz"
+LLVM_LLD_URL="$LLVM_URL_PREFIX/lld-${LLVM_VERSION}.src.tar.xz"
+
+LLVM_TOOLS_DIR="llvm-$LLVM_VERSION.src/tools"
+LLVM_PROJECTS_DIR="llvm-$LLVM_VERSION.src/projects"
+
+TP_NAME_TO_SRC_DIR["llvm"]=$LLVM_DIR
+TP_NAME_TO_ARCHIVE_NAME["llvm"]="llvm-${LLVM_VERSION}.tar.xz"
+TP_NAME_TO_URL["llvm"]="$LLVM_URL"
+
+TP_NAME_TO_EXTRA_NUM["llvm"]=2
+
+TP_NAME_TO_EXTRA_URL["llvm_1"]=${LLVM_CLANG_URL}
+TP_NAME_TO_EXTRA_ARCHIVE_NAME["llvm_1"]="cfe-${LLVM_VERSION}.tar.xz"
+TP_NAME_TO_EXTRA_DIR["llvm_1"]=${LLVM_TOOLS_DIR}
+TP_NAME_TO_EXTRA_POST_EXEC["llvm_1"]="mv cfe-${LLVM_VERSION}.src cfe"
+
+TP_NAME_TO_EXTRA_URL["llvm_2"]=${LLVM_COMPILER_RT_URL}
+TP_NAME_TO_EXTRA_ARCHIVE_NAME["llvm_2"]="compiler-rt-${LLVM_VERSION}.tar.xz"
+TP_NAME_TO_EXTRA_DIR["llvm_2"]=${LLVM_PROJECTS_DIR}
+TP_NAME_TO_EXTRA_POST_EXEC["llvm_2"]="mv compiler-rt-${LLVM_VERSION}.src compiler-rt"
 
 build_llvm() {
-  create_build_dir_and_prepare "$LLVM_SOURCE"
+  create_build_dir_and_prepare "$LLVM_DIR"
   if [[ -n ${YB_NO_BUILD_LLVM:-} ]]; then
     log "Skipping LLVM build because YB_NO_BUILD_LLVM is defined"
     return
   fi
-  local TOOLS_ARGS=
-  local LLVM_BUILD_TYPE=$1
 
-  # Always disabled; these subprojects are built standalone.
-  TOOLS_ARGS="$TOOLS_ARGS -DLLVM_TOOL_LIBCXX_BUILD=OFF"
-  TOOLS_ARGS="$TOOLS_ARGS -DLLVM_TOOL_LIBCXXABI_BUILD=OFF"
-
-  case $LLVM_BUILD_TYPE in
-    "normal")
-      # Default build: core LLVM libraries, clang, compiler-rt, and all tools.
-      ;;
-    "tsan")
-      # Build just the core LLVM libraries, dependent on libc++.
-      # YugaByte probably builds this because they use LLVM-based codegen. Until we start doing the
-      # same, we can probably skip this mode.
-      TOOLS_ARGS="$TOOLS_ARGS -DLLVM_ENABLE_LIBCXX=ON"
-      TOOLS_ARGS="$TOOLS_ARGS -DLLVM_INCLUDE_TOOLS=OFF"
-      TOOLS_ARGS="$TOOLS_ARGS -DLLVM_TOOL_COMPILER_RT_BUILD=OFF"
-
-      # Configure for TSAN.
-      TOOLS_ARGS="$TOOLS_ARGS -DLLVM_USE_SANITIZER=Thread"
-      ;;
-    *)
-      fatal "Unknown LLVM build type: $LLVM_BUILD_TYPE"
-      ;;
-  esac
-
-  local LLVM_BUILD_DIR=$( get_build_directory "llvm-$LLVM_VERSION-$LLVM_BUILD_TYPE" )
+  local LLVM_BUILD_DIR=$( get_build_directory "llvm-$LLVM_VERSION" )
   if [[ -z $LLVM_BUILD_DIR ]]; then
     fatal "Failed to set build directory for LLVM"
   fi
-  log "Building LLVM in '$LLVM_BUILD_DIR' with build type '$LLVM_BUILD_TYPE'"
+  log "Building LLVM in '$LLVM_BUILD_DIR'"
+
   mkdir -p "$LLVM_BUILD_DIR"
   pushd "$LLVM_BUILD_DIR"
 
@@ -92,19 +92,16 @@ build_llvm() {
       -DLLVM_ENABLE_RTTI=ON \
       -DCMAKE_CXX_FLAGS="$EXTRA_CXXFLAGS $EXTRA_LDFLAGS" \
       -DPYTHON_EXECUTABLE=$PYTHON_EXECUTABLE \
-      $TOOLS_ARGS \
-      "$LLVM_SOURCE"
+      "$LLVM_DIR"
     run_make install
   )
 
-  if [[ $LLVM_BUILD_TYPE == normal ]]; then
-    # Create a link from Clang to thirdparty/clang-toolchain. This path is used
-    # for all Clang invocations. The link can't point to the Clang installed in
-    # the prefix directory, since this confuses CMake into believing the
-    # thirdparty prefix directory is the system-wide prefix, and it omits the
-    # thirdparty prefix directory from the rpath of built binaries.
-    local relative_llvm_path=${LLVM_BUILD_DIR#$TP_DIR/}
-    ln -sfn "$relative_llvm_path" "$TP_DIR/clang-toolchain"
-  fi
+  # Create a link from Clang to thirdparty/clang-toolchain. This path is used
+  # for all Clang invocations. The link can't point to the Clang installed in
+  # the prefix directory, since this confuses CMake into believing the
+  # thirdparty prefix directory is the system-wide prefix, and it omits the
+  # thirdparty prefix directory from the rpath of built binaries.
+  local relative_llvm_path=${LLVM_BUILD_DIR#$TP_DIR/}
+  ln -sfn "$relative_llvm_path" "$TP_DIR/clang-toolchain"
   popd
 }

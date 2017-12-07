@@ -1488,13 +1488,13 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
         break;
       case kOldestLargestSeqFirst:
         std::sort(temp.begin(), temp.end(),
-                  [this](const Fsize& f1, const Fsize& f2) -> bool {
+                  [](const Fsize& f1, const Fsize& f2) -> bool {
                     return f1.file->largest.seqno < f2.file->largest.seqno;
                   });
         break;
       case kOldestSmallestSeqFirst:
         std::sort(temp.begin(), temp.end(),
-                  [this](const Fsize& f1, const Fsize& f2) -> bool {
+                  [](const Fsize& f1, const Fsize& f2) -> bool {
                     return f1.file->smallest.seqno < f2.file->smallest.seqno;
                   });
         break;

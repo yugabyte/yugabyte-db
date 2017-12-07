@@ -32,8 +32,11 @@
 #include "yb/rocksdb/port/port.h"
 
 #ifndef ROCKSDB_SUPPORT_THREAD_LOCAL  // NOLINT
-#define ROCKSDB_SUPPORT_THREAD_LOCAL \
-  !defined(OS_WIN) && !defined(OS_MACOSX) && !defined(IOS_CROSS_COMPILE)
+#if !defined(OS_WIN) && !defined(OS_MACOSX) && !defined(IOS_CROSS_COMPILE)
+#define ROCKSDB_SUPPORT_THREAD_LOCAL 1
+#else
+#define ROCKSDB_SUPPORT_THREAD_LOCAL 0
+#endif
 #endif  // NOLINT
 
 namespace rocksdb {

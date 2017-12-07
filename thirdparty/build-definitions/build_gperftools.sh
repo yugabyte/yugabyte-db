@@ -13,6 +13,6 @@ build_gperftools() {
     set -x
     run_configure --enable-frame-pointers --enable-heap-checker --with-pic "--prefix=$PREFIX"
     make clean
-    run_make install
+    make install -j 1
   )
 }
