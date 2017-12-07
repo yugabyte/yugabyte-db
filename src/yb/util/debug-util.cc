@@ -233,26 +233,43 @@ const char* NormalizeSourceFilePath(const char* file_path) {
   return file_path;
 }
 
+struct SymbolizationContext {
+  StackTraceLineFormat stack_trace_line_format = StackTraceLineFormat::DEFAULT;
+  string* buf = nullptr;
+};
+
 void BacktraceErrorCallback(void* data, const char* msg, int errnum) {
-  string* const buf = reinterpret_cast<string*>(data);
-  buf->append(StringPrintf("Backtrace error: %s (errnum=%d)\n", msg, errnum));
+  bool reported = false;
+  string* buf_ptr = nullptr;
+  if (data) {
+    auto* context = static_cast<SymbolizationContext*>(data);
+    if (context->buf) {
+      buf_ptr = context->buf;
+      buf_ptr->append(StringPrintf("Backtrace error: %s (errnum=%d)\n", msg, errnum));
+      reported = true;
+    }
+  }
+
+  if (!reported) {
+    // A backup mechanism for error reporting.
+    fprintf(stderr, "%s called with data=%p, msg=%s, errnum=%d, buf_ptr=%p\n", __func__,
+            data, msg, errnum, buf_ptr);
+  }
 }
 
 class GlobalBacktraceState {
  public:
   GlobalBacktraceState() {
     bt_state_ = backtrace_create_state(
-        nullptr, /* threaded = */ 1, BacktraceErrorCallback, nullptr);
+        /* filename */ nullptr,
+        /* threaded = */ 1,
+        BacktraceErrorCallback,
+        /* data */ nullptr);
   }
 
   backtrace_state* GetState() { return bt_state_; }
  private:
   struct backtrace_state* bt_state_;
-};
-
-struct SymbolizationContext {
-  StackTraceLineFormat stack_trace_line_format = StackTraceLineFormat::DEFAULT;
-  string* buf = nullptr;
 };
 
 int BacktraceFullCallback(void *const data, const uintptr_t pc,

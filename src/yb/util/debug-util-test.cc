@@ -168,15 +168,12 @@ TEST_F(DebugUtilTest, TestDumpAllThreads) {
   }
 }
 
-#ifdef __linux__
 // This will probably be really slow on Mac OS X, so only enabling on Linux.
 TEST_F(DebugUtilTest, TestGetStackTraceInALoop) {
   for (int i = 1; i <= 10000; ++i) {
     GetStackTrace();
   }
 }
-#endif
-
 #endif
 
 } // namespace yb

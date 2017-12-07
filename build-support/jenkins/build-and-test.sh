@@ -136,6 +136,7 @@ cleanup() {
 # =================================================================================================
 
 cd "$YB_SRC_ROOT"
+log "Running with Bash version $BASH_VERSION"
 
 if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
   fatal "Test of the common build environment failed, cannot proceed."
@@ -269,15 +270,21 @@ fi
 
 configure_remote_build
 
-find_shared_thirdparty_dir
-if ! "$found_shared_thirdparty_dir"; then
-  if [[ ${NO_REBUILD_THIRDPARTY:-} == "1" ]]; then
-    log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
-  else
-    log "Starting third-party dependency build"
-    time thirdparty/build-thirdparty.sh
-    log "Third-party dependency build finished (see timing information above)"
+if "$using_default_thirdparty_dir"; then
+  find_shared_thirdparty_dir
+  if ! "$found_shared_thirdparty_dir"; then
+    if [[ ${NO_REBUILD_THIRDPARTY:-} == "1" ]]; then
+      log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
+    else
+      log "Starting third-party dependency build"
+      time thirdparty/build-thirdparty.sh
+      log "Third-party dependency build finished (see timing information above)"
+    fi
   fi
+else
+  export NO_REBUILD_THIRDPARTY=1
+  log "YB_THIRDPARTY_DIR is explicitly specified as '$YB_THIRDPARTY_DIR', not looking for a" \
+      "shared third-party directory."
 fi
 
 # We built or found third-party dependencies above. Do not attempt to download or build them in

@@ -16,6 +16,7 @@ Helps find the Linuxbrew installation.
 """
 
 import os
+import sys
 from yb.command_util import run_program
 
 
@@ -25,6 +26,9 @@ YB_SRC_ROOT = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '.
 
 
 def get_linuxbrew_dir():
+    if not sys.platform.startswith('linux'):
+        return None
+
     global linuxbrew_dir
     if not linuxbrew_dir:
         find_script_result = run_program(os.path.join(

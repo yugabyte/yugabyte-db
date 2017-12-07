@@ -1289,12 +1289,6 @@ activate_virtualenv() {
 # In our internal environment we build third-party dependencies in separate directories on NFS
 # so that we can use them across many builds.
 find_shared_thirdparty_dir() {
-  # This means we most likely preset the YB_THIRDPARTY_DIR var from outside.
-  if [[ -v YB_THIRDPARTY_DIR && ${YB_DEFAULT_THIRDPARTY_DIR:-} != "YES" ]]; then
-    found_shared_thirdparty_dir=true
-    export NO_REBUILD_THIRDPARTY=1
-    return
-  fi
   found_shared_thirdparty_dir=false
   if ! is_src_root_on_nfs; then
     return
@@ -1424,9 +1418,10 @@ if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
         "$YB_BUILD_SUPPORT_DIR does not exist."
 fi
 
+using_default_thirdparty_dir=false
 if [[ -z ${YB_THIRDPARTY_DIR:-} ]]; then
   YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
-  YB_DEFAULT_THIRDPARTY_DIR="Yes"
+  using_default_thirdparty_dir=true
 fi
 
 readonly YB_DEFAULT_CMAKE_OPTS=(
