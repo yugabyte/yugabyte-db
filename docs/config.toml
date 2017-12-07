@@ -241,12 +241,12 @@ googleAnalytics = "UA-104956980-1"
 #	url = "develop/common-patterns/working-with-spark/"
 #	weight = 565
 
-#[[menu.main]]
-#	name = "Realworld Examples"
-#	parent = "develop"
-#	identifier = "develop-realworld-apps"
-#	url = "develop/realworld-apps/realworld-apps/"
-#	weight = 570
+[[menu.main]]
+	name = "Realworld Examples"
+	parent = "develop"
+	identifier = "develop-realworld-apps"
+	url = "develop/realworld-apps/"
+	weight = 570
 
 #[[menu.main]]
 #	name = "User Identity - Redis and CQL"
@@ -256,18 +256,18 @@ googleAnalytics = "UA-104956980-1"
 #	weight = 571
 
 #[[menu.main]]
-#	name = "Finance App - Spark"
+#	name = "Finance - Spark"
 #	parent = "develop-realworld-apps"
 #	identifier = "develop-realworld-apps-finance-portfolio-spark"
 #	url = "develop/realworld-apps/finance-portfolio-spark/"
 #	weight = 572
 
-#[[menu.main]]
-#	name = "IoT - Spark and Kafka"
-#	parent = "develop-realworld-apps"
-#	identifier = "develop-realworld-apps-iot-spark-kafka"
-#	url = "develop/realworld-apps/iot-spark-kafka/"
-#	weight = 573
+[[menu.main]]
+	name = "IoT - Spark & Kafka"
+	parent = "develop-realworld-apps"
+	identifier = "develop-realworld-apps-iot-spark-kafka"
+	url = "develop/realworld-apps/iot-spark-kafka/"
+	weight = 573
 
 #[[menu.main]]
 #	name = "Timeseries - KairosDB"

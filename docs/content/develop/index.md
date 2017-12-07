@@ -24,7 +24,7 @@ This section will help you get started with building apps on top of YugaByte DB.
       Common Patterns
       <div class="caption">Examples of reading and writing data for various common access patterns that arise while building apps.</div>
     </div>
-  </a>
+  </a> -->
 
   <a class="section-link icon-offset" href="realworld-apps/">
     <div class="icon">
@@ -36,7 +36,7 @@ This section will help you get started with building apps on top of YugaByte DB.
     </div>
   </a>
 
-  <a class="section-link icon-offset" href="port-existing-apps/">
+<!--  <a class="section-link icon-offset" href="port-existing-apps/">
     <div class="icon">
       <i class="fa fa-sign-in" aria-hidden="true"></i>
     </div>
