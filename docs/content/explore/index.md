@@ -7,7 +7,9 @@ You can use your [local cluster](/quick-start/) to explore all the core features
 
 <div>
   <a class="section-link icon-offset" href="/explore/linear-scalability">
-    <div class="icon"><i class="fa fa-line-chart" aria-hidden="true"></i></div>
+    <div class="icon">
+      <img src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+    </div>
     <div class="text">Linear Scalability</div>
   </a>
 
@@ -22,7 +24,9 @@ You can use your [local cluster](/quick-start/) to explore all the core features
 
 <!--
   <a class="section-link icon-offset" href="/explore/auto-sharding">
-    <div class="icon"><i class="fa fa-object-group" aria-hidden="true"></i></div>
+    <div class="icon">
+      <img src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
+    </div>
     <div class="text">Auto Sharding</div>
   </a>
 -->
@@ -37,13 +41,17 @@ You can use your [local cluster](/quick-start/) to explore all the core features
   </a>
 
   <a class="section-link icon-offset" href="/explore/tunable-reads">
-    <div class="icon"><i class="fa fa-wrench" aria-hidden="true"></i></div>
+    <div class="icon">
+      <img src="/images/section_icons/explore/tunable_reads.png" aria-hidden="true" />
+    </div>
     <div class="text">Tunable Reads</div>
   </a>
 
 <!--
   <a class="section-link icon-offset" href="/explore/zero-downtime-reconfig">
-    <div class="icon"><i class="fa fa-clock-o" aria-hidden="true"></i></div>
+    <div class="icon">
+      <img src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
+    </div>
     Zero Downtime Reconfig
   </a>
 -->

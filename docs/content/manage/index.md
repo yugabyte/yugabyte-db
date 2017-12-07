@@ -7,32 +7,32 @@ weight: 700
 
   <a class="section-link icon-offset" href="/manage/troubleshoot/">
     <div class="icon">
-        <i class="fa fa-binoculars" aria-hidden="true"></i>
+      <img src="/images/section_icons/manage/troubleshoot.png" aria-hidden="true" />
     </div>
     <div class="text">
-        Troubleshoot
-        <div class="caption">Troubleshoot installation and configuration issues.</div>
+      Troubleshoot
+      <div class="caption">Troubleshoot installation and configuration issues.</div>
     </div>
   </a>
 
 
   <a class="section-link icon-offset" href="/manage/diagnostics-reporting/">
     <div class="icon">
-        <i class="fa fa-stethoscope" aria-hidden="true"></i>
+      <img src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
     </div>
     <div class="text">
-        Diagnostics Reporting
-        <div class="caption">Create, expand, shrink and reconfigure YugaByte DB universes without any downtime.</div>
+      Diagnostics Reporting
+      <div class="caption">Create, expand, shrink and reconfigure YugaByte DB universes without any downtime.</div>
     </div>
   </a>
 
   <a class="section-link icon-offset" href="enterprise-edition/">
-      <div class="icon">
-          <img src="/images/section_icons/deploy/enterprise.png" aria-hidden="true" />
-      </div>
-      <div class="text">
-           Enterprise Edition
-           <div class="caption">Manage YugaByte DB without any downtime using YugaByte EE's built-in orchestration and monitoring.</div>
-      </div>
+    <div class="icon">
+      <img src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+       Enterprise Edition
+       <div class="caption">Manage YugaByte DB without any downtime using YugaByte EE's built-in orchestration and monitoring.</div>
+    </div>
   </a>
 </div>
