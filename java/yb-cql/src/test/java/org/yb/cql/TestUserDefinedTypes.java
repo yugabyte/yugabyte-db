@@ -13,7 +13,6 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.*;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.*;
@@ -49,9 +48,9 @@ public class TestUserDefinedTypes extends BaseCQLTest {
         "f5 varchar", "f6 timestamp", "f7 inet", "f8 uuid", "f9 timeuuid", "f10 blob",
         "f11 float", "f12 double", "f13 boolean");
 
-    //------------------------------------------------------------------------------------------
+    //----------------------------------------------------------------------------------------------
     // Testing Invalid Stmts.
-    //------------------------------------------------------------------------------------------
+    //----------------------------------------------------------------------------------------------
 
     // Type requires at least one field.
     runInvalidStmt("CREATE TYPE test ();");
@@ -70,18 +69,43 @@ public class TestUserDefinedTypes extends BaseCQLTest {
     // Field types cannot refer to other user defined types
     runInvalidStmt("CREATE TYPE test (a int, b test_all_types);");
     runInvalidStmt("CREATE TYPE test (a int, b frozen<test_all_types>);");
+  }
 
-    // Create table with non-existent types should fail.
-    runInvalidStmt("CREATE TABLE test_create_udt(h non_existent_udt primary key)");
-    runInvalidStmt("CREATE TABLE test_create_udt(h non_existent_udt, primary key(h))");
+  @Test
+  public void testCreateTableWithUDT() throws Exception {
+    session.execute("CREATE KEYSPACE udt_ks1");
+    session.execute("CREATE KEYSPACE udt_ks2");
+    createType("udt_ks1.udt_test", "a int", "b text");
 
     // User-Defined Types can only be used in the keyspace where they are defined.
-    session.execute("CREATE KEYSPACE udt_test_keyspace");
-    runInvalidStmt("CREATE TABLE udt_test_keyspace.test(h int primary key, v test_all_types)");
-    session.execute("USE udt_test_keyspace");
-    runInvalidStmt("CREATE TABLE test(h int primary key, v test_all_types)");
-    runInvalidStmt("CREATE TABLE test(h int primary key, v " + DEFAULT_TEST_KEYSPACE +
-        ".test_all_types)");
+    session.execute("CREATE TABLE udt_ks1.test1(h int primary key, v udt_ks1.udt_test)");
+    session.execute("CREATE TABLE udt_ks1.test2(h int primary key, v frozen<udt_ks1.udt_test>)");
+    session.execute("USE udt_ks1");
+    session.execute("CREATE TABLE test3(h int primary key, v udt_ks1.udt_test)");
+    session.execute("CREATE TABLE test4(h int primary key, v frozen<udt_ks1.udt_test>)");
+
+    // If omitted, UDT keyspace defaults to table keyspace.
+    session.execute("USE udt_ks2");
+    session.execute("CREATE TABLE udt_ks1.test5(h int primary key, v udt_test)");
+    session.execute("CREATE TABLE udt_ks1.test6(h int primary key, v frozen<udt_test>)");
+
+    session.execute("USE udt_ks1");
+    runInvalidStmt("CREATE TABLE udt_ks2.test(h int primary key, v udt_test)");
+    runInvalidStmt("CREATE TABLE udt_ks2.test(h int primary key, v frozen<udt_test>)");
+
+    // Otherwise, UDT keyspace will default to current keyspace (like tables).
+    session.execute("USE udt_ks1");
+    session.execute("CREATE TABLE test7(h int primary key, v udt_test)");
+    session.execute("CREATE TABLE test8(h int primary key, v frozen<udt_test>)");
+
+    session.execute("USE udt_ks2");
+    runInvalidStmt("CREATE TABLE test(h int primary key, v udt_test)");
+    runInvalidStmt("CREATE TABLE test(h int primary key, v frozen<udt_test>)");
+
+    // Create table with non-existent types should fail.
+    runInvalidStmt("CREATE TABLE test(h int primary key, v non_existent_udt)");
+    runInvalidStmt("CREATE TABLE test(h non_existent_udt primary key)");
+    runInvalidStmt("CREATE TABLE test(h non_existent_udt, primary key(h))");
   }
 
   @Test

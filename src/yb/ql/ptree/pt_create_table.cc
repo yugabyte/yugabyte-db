@@ -193,15 +193,6 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
   // tuples, and user-defined datatypes need to be analyzed because they have members.
   RETURN_NOT_OK(datatype->Analyze(sem_context));
 
-  if (datatype->ql_type()->IsUserDefined()) {
-    PTCreateTable *stmt = sem_context->current_create_table_stmt();
-    if (datatype->ql_type()->udtype_keyspace_name() != stmt->yb_table_name().namespace_name()) {
-      return sem_context->Error(datatype,
-          "User Defined Types can only be used in the same keyspace where they are defined",
-          ErrorCode::INVALID_COLUMN_DEFINITION);
-    }
-  }
-
   return Status::OK();
 }
 

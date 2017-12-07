@@ -176,14 +176,34 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
                                                       "table" : "type").c_str(),
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }
+      if (ptnames_.size() == 2) {
+        auto* create_table_stmt = sem_context->current_create_table_stmt();
+        if (object_type == OBJECT_TYPE &&
+            create_table_stmt != nullptr &&
+            create_table_stmt->yb_table_name().namespace_name() != ptnames_.front()->name()) {
+          return sem_context->Error(this,
+              "User Defined Types can only be used in the same keyspace where they are defined",
+              ErrorCode::INVALID_COLUMN_DEFINITION);
+        }
+      }
+
       if (ptnames_.size() == 1) {
-        const string current_keyspace = sem_context->CurrentKeyspace();
-        if (current_keyspace.empty()) {
+        string keyspace_name = sem_context->CurrentKeyspace();
+
+        // For user-defined types we prioritize using the table keyspace if available.
+        auto* create_table_stmt = sem_context->current_create_table_stmt();
+        if (object_type == OBJECT_TYPE &&
+            create_table_stmt != nullptr &&
+            create_table_stmt->yb_table_name().has_namespace()) {
+          keyspace_name = create_table_stmt->yb_table_name().namespace_name();
+        }
+
+        if (keyspace_name.empty()) {
           return sem_context->Error(this, ErrorCode::NO_NAMESPACE_USED);
         }
         MemoryContext* memctx = sem_context->PSemMem();
         Prepend(PTName::MakeShared(memctx, loc_,
-                                   MCMakeShared<MCString>(memctx, current_keyspace.c_str())));
+                                   MCMakeShared<MCString>(memctx, keyspace_name.c_str())));
       }
       if (ptnames_.front()->name() == common::kRedisKeyspaceName) {
         return sem_context->Error(this,
@@ -191,6 +211,7 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
                                                       common::kRedisKeyspaceName).c_str(),
                                   ErrorCode::INVALID_ARGUMENTS);
       }
+
       return Status::OK();
 
     case OBJECT_AGGREGATE: FALLTHROUGH_INTENDED;
