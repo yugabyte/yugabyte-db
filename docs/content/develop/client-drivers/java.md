@@ -1,18 +1,18 @@
 ---
-title: Developing Java Applications
+title: Develop Java Apps
 weight: 552
 ---
 
 <ul class="nav nav-tabs">
   <li class="active">
     <a data-toggle="tab" href="#cql">
-      <i class="fa fa-database" aria-hidden="true"></i>
+      <i class="icon-cassandra" aria-hidden="true"></i>
       CQL
     </a>
   </li>
   <li >
     <a data-toggle="tab" href="#redis">
-      <i class="fa fa-bolt" aria-hidden="true"></i>
+      <i class="icon-redis" aria-hidden="true"></i>
       Redis
     </a>
   </li>

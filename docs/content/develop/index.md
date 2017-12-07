@@ -1,6 +1,6 @@
 ---
 title: Develop Apps on YugaByte DB
-weight: 600
+weight: 540
 ---
 
 This section will help you get started with building apps on top of YugaByte DB.
@@ -8,11 +8,11 @@ This section will help you get started with building apps on top of YugaByte DB.
 <div>
   <a class="section-link icon-offset" href="/develop/client-drivers/">
     <div class="icon">
-      <img src="/images/section_icons/develop/cql.png" aria-hidden="true" />
+      <i class="fa fa-code" aria-hidden="true"></i>
     </div>
     <div class="text">
       Client Drivers
-      <div class="caption">Develop applications using the appropriate client drivers in the language of your choice.</div>
+      <div class="caption">Develop apps using the appropriate client drivers in the language of your choice.</div>
     </div>
   </a>
 

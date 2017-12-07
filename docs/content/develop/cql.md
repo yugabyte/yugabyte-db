@@ -1,6 +1,5 @@
 ---
 title: CQL Apps
-//weight: 550
 ---
 
 ## CassandraHelloWorld
