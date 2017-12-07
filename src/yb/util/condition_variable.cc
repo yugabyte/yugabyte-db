@@ -89,7 +89,7 @@ void ConditionVariable::Wait() const {
 }
 
 bool ConditionVariable::WaitUntil(const MonoTime& wait_timeout_deadline) const {
-  return TimedWait(wait_timeout_deadline - MonoTime::FineNow());
+  return TimedWait(wait_timeout_deadline - MonoTime::Now());
 }
 
 bool ConditionVariable::TimedWait(const MonoDelta& max_time) const {

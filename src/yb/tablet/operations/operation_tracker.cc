@@ -221,7 +221,7 @@ Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
   const int complain_ms = 1000;
   int wait_time = 250;
   int num_complaints = 0;
-  MonoTime start_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime start_time = MonoTime::Now();
   while (1) {
     auto operations = GetPendingOperations();
 
@@ -229,7 +229,7 @@ Status OperationTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
       break;
     }
 
-    MonoDelta diff = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time);
+    MonoDelta diff = MonoTime::Now().GetDeltaSince(start_time);
     if (diff.MoreThan(timeout)) {
       return STATUS(TimedOut, Substitute("Timed out waiting for all operations to finish. "
                                          "$0 operations pending. Waited for $1",

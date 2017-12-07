@@ -631,7 +631,7 @@ TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
 
   // Wait until the 'tx1' hybrid_time is clean -- this won't happen because the
   // transaction isn't committed yet.
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(10));
   MvccSnapshot snap;
   Status s = mgr.WaitForCleanSnapshotAtHybridTime(tx1, &snap, deadline);

@@ -273,7 +273,7 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
   // initial configuration change, so there is also a window for tablet-1 to
   // have been marked dirty since the last report.
   MonoDelta timeout(MonoDelta::FromSeconds(10));
-  MonoTime start(MonoTime::Now(MonoTime::FINE));
+  MonoTime start(MonoTime::Now());
   report.Clear();
   while (true) {
     bool found_tablet_2 = false;
@@ -287,7 +287,7 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
       }
     }
     if (found_tablet_2) break;
-    MonoDelta elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(start));
+    MonoDelta elapsed(MonoTime::Now().GetDeltaSince(start));
     ASSERT_TRUE(elapsed.LessThan(timeout)) << "Waited too long for tablet-2 to be marked dirty: "
                                            << elapsed.ToString() << ". "
                                            << "Latest report: " << report.ShortDebugString();

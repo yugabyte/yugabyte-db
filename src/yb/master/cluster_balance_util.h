@@ -126,7 +126,7 @@ class ClusterLoadState {
  public:
   ClusterLoadState()
       : leader_balance_threshold_(FLAGS_leader_balance_threshold),
-        current_time_(MonoTime::FineNow()) {}
+        current_time_(MonoTime::Now()) {}
   virtual ~ClusterLoadState() {}
 
   // Comparators used for sorting by load.

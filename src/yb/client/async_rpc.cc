@@ -92,7 +92,7 @@ AsyncRpc::AsyncRpc(
                       mutable_retrier(),
                       trace_.get()),
       ops_(std::move(ops)),
-      start_(MonoTime::Now(MonoTime::FINE)),
+      start_(MonoTime::Now()),
       async_rpc_metrics_(batcher->async_rpc_metrics()) {
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
@@ -102,7 +102,7 @@ AsyncRpc::AsyncRpc(
 AsyncRpc::~AsyncRpc() {
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds()
+              << MonoTime::Now().GetDeltaSince(start_).ToMicroseconds()
               << "us. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
@@ -211,7 +211,7 @@ void AsyncRpc::FillRequest(Request* req) {
 }
 
 void AsyncRpc::SendRpcToTserver() {
-  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_)
     async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   CallRemoteMethod();
@@ -328,7 +328,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 }
 
 WriteRpc::~WriteRpc() {
-  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_) {
     scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?
                                               async_rpc_metrics_->local_write_rpc_time :
@@ -484,7 +484,7 @@ ReadRpc::ReadRpc(
 }
 
 ReadRpc::~ReadRpc() {
-  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_) {
     scoped_refptr<Histogram> read_rpc_time = IsLocalCall() ?
                                              async_rpc_metrics_->local_read_rpc_time :

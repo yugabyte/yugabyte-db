@@ -893,7 +893,7 @@ void Executor::StatementExecuted(const Status& s) {
     for (const auto& exec_context : exec_contexts_) {
       const TreeNode* tnode = exec_context.tnode();
       if (tnode != nullptr) {
-        MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(exec_context.start_time());
+        MonoDelta delta = MonoTime::Now().GetDeltaSince(exec_context.start_time());
 
         ql_metrics_->time_to_execute_ql_query_->Increment(delta.ToMicroseconds());
 

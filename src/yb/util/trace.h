@@ -66,7 +66,7 @@ DECLARE_bool(enable_tracing);
     if (FLAGS_enable_tracing) { \
       yb::Trace* _trace = Trace::CurrentTrace(); \
       if (_trace) { \
-        _trace->SubstituteAndTrace(__FILE__, __LINE__, MonoTime::FineNow(), (format),  \
+        _trace->SubstituteAndTrace(__FILE__, __LINE__, MonoTime::Now(), (format),  \
           ##substitutions); \
       } \
     } \
@@ -77,7 +77,7 @@ DECLARE_bool(enable_tracing);
   do { \
     if (FLAGS_enable_tracing) { \
       (trace)->SubstituteAndTrace( \
-          __FILE__, __LINE__, MonoTime::FineNow(), (format), ##substitutions); \
+          __FILE__, __LINE__, MonoTime::Now(), (format), ##substitutions); \
     } \
   } while (0)
 

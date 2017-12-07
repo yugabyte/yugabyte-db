@@ -201,7 +201,7 @@ MonoTime Batcher::ComputeDeadlineUnlocked() const {
                                     << GetStackTrace();
     timeout = MonoDelta::FromSeconds(60);
   }
-  MonoTime ret = MonoTime::Now(MonoTime::FINE);
+  MonoTime ret = MonoTime::Now();
   ret.AddDelta(timeout);
   return ret;
 }

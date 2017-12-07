@@ -204,7 +204,7 @@ Status RemoteBootstrapSession::Init() {
     return STATUS(IllegalState, "Tablet is not running");
   }
 
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
   RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
                         Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));

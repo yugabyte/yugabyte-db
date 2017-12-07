@@ -107,7 +107,6 @@ class MonoDelta {
   typedef int64_t NanoDeltaType;
   static const NanoDeltaType kUninitialized;
 
-  friend class MonoTime;
   FRIEND_TEST(TestMonoTime, TestDeltaConversions);
   explicit MonoDelta(NanoDeltaType delta);
   NanoDeltaType nano_delta_;
@@ -127,11 +126,6 @@ std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDel
 // clock, the monotime does not change.
 class MonoTime {
  public:
-  enum Granularity {
-    COARSE,
-    FINE
-  };
-
   static const int64_t kNanosecondsPerSecond = 1000000000L;
   static const int64_t kNanosecondsPerMillisecond = 1000000L;
   static const int64_t kNanosecondsPerMicrosecond = 1000L;
@@ -143,14 +137,10 @@ class MonoTime {
   static const MonoTime kMax;
   static const MonoTime kUninitialized;
 
-  typedef uint64_t NanoTimeType;
-
   // The coarse monotonic time is faster to retrieve, but "only"
   // accurate to within a millisecond or two.  The speed difference will
   // depend on your timer hardware.
-  static MonoTime Now(enum Granularity granularity);
-  static MonoTime FineNow() { return Now(FINE); }
-  static MonoTime CoarseNow() { return Now(COARSE); }
+  static MonoTime Now();
 
   // Return MonoTime equal to farthest possible time into the future.
   static MonoTime Max();
@@ -161,8 +151,10 @@ class MonoTime {
   // Return the earliest (minimum) of the two monotimes.
   static const MonoTime& Earliest(const MonoTime& a, const MonoTime& b);
 
-  MonoTime() : nanos_(kUninitializedNanos) {}
-  bool Initialized() const { return nanos_ != kUninitializedNanos; }
+  MonoTime() {}
+  MonoTime(std::chrono::steady_clock::time_point value) : value_(value) {} // NOLINT
+
+  bool Initialized() const { return value_ != std::chrono::steady_clock::time_point(); }
 
   MonoDelta GetDeltaSince(const MonoTime &rhs) const;
   MonoDelta GetDeltaSinceMin() const { return GetDeltaSince(Min()); }
@@ -172,8 +164,11 @@ class MonoTime {
   bool Equals(const MonoTime& other) const;
   bool IsMax() const;
 
-  uint64_t ToUint64() const { return nanos_; }
-  static MonoTime FromUint64(uint64_t value) { return MonoTime(value); }
+  uint64_t ToUint64() const { return value_.time_since_epoch().count(); }
+  static MonoTime FromUint64(uint64_t value) {
+    return MonoTime(std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(
+        value)));
+  }
 
   explicit operator bool() const { return Initialized(); }
   bool operator !() const { return !Initialized(); }
@@ -181,17 +176,14 @@ class MonoTime {
   // Set this time to the given value if it is lower than that or uninitialized.
   void MakeAtLeast(MonoTime rhs);
 
+  std::chrono::steady_clock::time_point ToSteadyTimePoint() const {
+    return value_;
+  }
+
  private:
-  static constexpr NanoTimeType kUninitializedNanos = 0;
-
-  friend class MonoDelta;
-  FRIEND_TEST(TestMonoTime, TestTimeSpec);
-  FRIEND_TEST(TestMonoTime, TestDeltaConversions);
-
-  explicit MonoTime(const struct timespec &ts);
-  explicit MonoTime(int64_t nanos);
   double ToSeconds() const;
-  NanoTimeType nanos_;
+
+  std::chrono::steady_clock::time_point value_;
 };
 
 inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
@@ -202,6 +194,11 @@ inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
 inline MonoTime operator+(MonoTime lhs, const MonoDelta& rhs) {
   lhs += rhs;
   return lhs;
+}
+
+template <class Clock>
+inline auto operator+(const std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) {
+  return lhs + rhs.ToSteadyDuration();
 }
 
 inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
@@ -231,6 +228,43 @@ inline bool operator!=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs 
 // units since it uses a MonoDelta. It also ignores EINTR, so will reliably sleep at least the
 // MonoDelta duration.
 void SleepFor(const MonoDelta& delta);
+
+class CoarseMonoClock {
+ public:
+  typedef std::chrono::nanoseconds duration;
+  typedef duration Duration;
+  typedef std::chrono::time_point<CoarseMonoClock> time_point;
+  typedef time_point TimePoint;
+
+  static time_point now();
+  static TimePoint Now() { return now(); }
+};
+
+template <class Rep, class Period>
+int64_t ToMilliseconds(const std::chrono::duration<Rep, Period>& duration) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+}
+
+template <class Rep, class Period>
+int64_t ToMicroseconds(const std::chrono::duration<Rep, Period>& duration) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+}
+
+template <class Rep, class Period>
+int64_t ToNanoseconds(const std::chrono::duration<Rep, Period>& duration) {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+}
+
+template <class Rep, class Period>
+double ToSeconds(const std::chrono::duration<Rep, Period>& duration) {
+  return duration.count() /
+      static_cast<double>(std::chrono::duration_cast<std::chrono::duration<Rep, Period>>(
+          std::chrono::seconds(1)).count());
+}
+
+inline double ToSeconds(MonoDelta delta) {
+  return delta.ToSeconds();
+}
 
 } // namespace yb
 

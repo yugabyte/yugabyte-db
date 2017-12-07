@@ -41,6 +41,8 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/thread_restrictions.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 #define MAX_MONOTONIC_SECONDS \
@@ -211,30 +213,16 @@ const MonoTime MonoTime::kMin = MonoTime::Min();
 const MonoTime MonoTime::kMax = MonoTime::Max();
 const MonoTime MonoTime::kUninitialized = MonoTime();
 
-MonoTime MonoTime::Now(enum Granularity granularity) {
-#if defined(__APPLE__)
-  return MonoTime(walltime_internal::GetMonoTimeNanos());
-# else
-  struct timespec ts;
-  clockid_t clock;
-
-// Older systems do not support CLOCK_MONOTONIC_COARSE
-#ifdef CLOCK_MONOTONIC_COARSE
-  clock = (granularity == COARSE) ? CLOCK_MONOTONIC_COARSE : CLOCK_MONOTONIC;
-#else
-  clock = CLOCK_MONOTONIC;
-#endif
-  PCHECK(clock_gettime(clock, &ts) == 0);
-  return MonoTime(ts);
-#endif // defined(__APPLE__)
+MonoTime MonoTime::Now() {
+  return MonoTime(std::chrono::steady_clock::now());
 }
 
 MonoTime MonoTime::Max() {
-  return MonoTime(std::numeric_limits<int64_t>::max());
+  return MonoTime(std::chrono::steady_clock::time_point::max());
 }
 
 MonoTime MonoTime::Min() {
-  return MonoTime(1);
+  return MonoTime(std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(1)));
 }
 
 bool MonoTime::IsMax() const {
@@ -244,30 +232,25 @@ bool MonoTime::IsMax() const {
 }
 
 const MonoTime& MonoTime::Earliest(const MonoTime& a, const MonoTime& b) {
-  if (b.nanos_ < a.nanos_) {
-    return b;
-  }
-  return a;
+  return std::min(a, b);
 }
 
 MonoDelta MonoTime::GetDeltaSince(const MonoTime &rhs) const {
   DCHECK(Initialized());
   DCHECK(rhs.Initialized());
-  int64_t delta(nanos_);
-  delta -= rhs.nanos_;
-  return MonoDelta(delta);
+  return MonoDelta(value_ - rhs.value_);
 }
 
 void MonoTime::AddDelta(const MonoDelta &delta) {
   DCHECK(Initialized());
   DCHECK(delta.Initialized());
-  nanos_ += delta.nano_delta_;
+  value_ += delta.ToSteadyDuration();
 }
 
 bool MonoTime::ComesBefore(const MonoTime &rhs) const {
   DCHECK(Initialized());
   DCHECK(rhs.Initialized());
-  return nanos_ < rhs.nanos_;
+  return value_ < rhs.value_;
 }
 
 std::string MonoTime::ToString() const {
@@ -275,32 +258,16 @@ std::string MonoTime::ToString() const {
 }
 
 bool MonoTime::Equals(const MonoTime& other) const {
-  return nanos_ == other.nanos_;
-}
-
-MonoTime::MonoTime(const struct timespec &ts) {
-  // Monotonic time resets when the machine reboots.  The 64-bit limitation
-  // means that we can't represent times larger than 292 years, which should be
-  // adequate.
-  CHECK_LT(ts.tv_sec, MAX_MONOTONIC_SECONDS);
-  nanos_ = ts.tv_sec;
-  nanos_ *= MonoTime::kNanosecondsPerSecond;
-  nanos_ += ts.tv_nsec;
-}
-
-MonoTime::MonoTime(int64_t nanos)
-  : nanos_(nanos) {
+  return value_ == other.value_;
 }
 
 double MonoTime::ToSeconds() const {
-  double d(nanos_);
-  d /= MonoTime::kNanosecondsPerSecond;
-  return d;
+  return yb::ToSeconds(value_.time_since_epoch());
 }
 
 void MonoTime::MakeAtLeast(MonoTime rhs) {
-  if (rhs.Initialized() && (!Initialized() || nanos_ < rhs.nanos_)) {
-    nanos_ = rhs.nanos_;
+  if (rhs.Initialized() && (!Initialized() || value_ < rhs.value_)) {
+    value_ = rhs.value_;
   }
 }
 
@@ -313,6 +280,18 @@ std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDel
 void SleepFor(const MonoDelta& delta) {
   ThreadRestrictions::AssertWaitAllowed();
   base::SleepForNanoseconds(delta.ToNanoseconds());
+}
+
+CoarseMonoClock::time_point CoarseMonoClock::now() {
+#if defined(__APPLE__)
+  int64_t nanos = walltime_internal::GetMonoTimeNanos();
+# else
+  struct timespec ts;
+  PCHECK(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0);
+  CHECK_LT(ts.tv_sec, MAX_MONOTONIC_SECONDS);
+  int64_t nanos = static_cast<int64_t>(ts.tv_sec) * MonoTime::kNanosecondsPerSecond + ts.tv_nsec;
+#endif // defined(__APPLE__)
+  return time_point(duration(nanos));
 }
 
 } // namespace yb

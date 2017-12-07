@@ -27,12 +27,12 @@ namespace util {
 // The implementation is based on OperationTracker::WaitForAllToFinish.
 Status PendingOperationCounter::WaitForAllOpsToFinish(const MonoDelta& timeout) const {
   const int complain_ms = 1000;
-  MonoTime start_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime start_time = MonoTime::Now();
   int64_t num_pending_ops = 0;
   int num_complaints = 0;
   int wait_time_usec = 250;
   while ((num_pending_ops = Get()) > 0) {
-    const MonoDelta diff = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time);
+    const MonoDelta diff = MonoTime::Now().GetDeltaSince(start_time);
     if (diff.MoreThan(timeout)) {
       return STATUS(TimedOut, Substitute(
           "Timed out waiting for all pending operations to complete. "

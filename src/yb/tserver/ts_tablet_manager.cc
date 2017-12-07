@@ -867,7 +867,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     }
   }
 
-  MonoTime start(MonoTime::Now(MonoTime::FINE));
+  MonoTime start(MonoTime::Now());
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
@@ -896,7 +896,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     tablet_peer->RegisterMaintenanceOps(server_->maintenance_manager());
   }
 
-  int elapsed_ms = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToMilliseconds();
+  int elapsed_ms = MonoTime::Now().GetDeltaSince(start).ToMilliseconds();
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {

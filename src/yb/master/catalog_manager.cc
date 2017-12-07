@@ -690,7 +690,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   }
 
   // Wait for all transactions to be committed.
-  const MonoTime deadline = MonoTime::FineNow() + timeout;
+  const MonoTime deadline = MonoTime::Now() + timeout;
   RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
 
   RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
@@ -3501,7 +3501,7 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
                                                 DeferredAssignmentActions* deferred,
                                                 vector<scoped_refptr<TabletInfo>>* new_tablets) {
   MonoDelta time_since_updated =
-      MonoTime::Now(MonoTime::FINE).GetDeltaSince(tablet->last_update_time());
+      MonoTime::Now().GetDeltaSince(tablet->last_update_time());
   int64_t remaining_timeout_ms =
       FLAGS_tablet_creation_timeout_ms - time_since_updated.ToMilliseconds();
 
@@ -3852,7 +3852,7 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
   for (TabletInfo *tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
-    tablet->set_last_update_time(MonoTime::Now(MonoTime::FINE));
+    tablet->set_last_update_time(MonoTime::Now());
     for (const RaftPeerPB& peer : config.peers()) {
       auto task = std::make_shared<AsyncCreateReplica>(master_, worker_pool_.get(),
           peer.permanent_uuid(), tablet);
@@ -4263,7 +4263,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_disk) {
   std::unique_ptr<MasterServiceProxy> peer_proxy;
   Endpoint sockaddr;
-  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  MonoTime timeout = MonoTime::Now();
   DumpMasterStateRequestPB req;
   rpc::RpcController rpc;
 
@@ -4576,7 +4576,7 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table,
                        TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
-      last_update_time_(MonoTime::Now(MonoTime::FINE)),
+      last_update_time_(MonoTime::Now()),
       reported_schema_version_(0) {}
 
 TabletInfo::~TabletInfo() {
@@ -4584,7 +4584,7 @@ TabletInfo::~TabletInfo() {
 
 void TabletInfo::SetReplicaLocations(ReplicaMap replica_locations) {
   std::lock_guard<simple_spinlock> l(lock_);
-  last_update_time_ = MonoTime::Now(MonoTime::FINE);
+  last_update_time_ = MonoTime::Now();
   replica_locations_ = std::move(replica_locations);
 }
 
@@ -4634,7 +4634,7 @@ std::string TabletInfo::ToString() const {
 void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
                                                MonoDelta time_since_stepdown_failure) {
   std::lock_guard<simple_spinlock> l(lock_);
-  leader_stepdown_failure_times_[dest_leader] = MonoTime::FineNow() - time_since_stepdown_failure;
+  leader_stepdown_failure_times_[dest_leader] = MonoTime::Now() - time_since_stepdown_failure;
 }
 
 void TabletInfo::GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,

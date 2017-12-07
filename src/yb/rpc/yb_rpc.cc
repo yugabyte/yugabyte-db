@@ -314,13 +314,13 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
-  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
+  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMicroseconds());
   return true;
 }
 
 void YBInboundCall::LogTrace() const {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
   if (header_.has_timeout_millis() && header_.timeout_millis() > 0) {

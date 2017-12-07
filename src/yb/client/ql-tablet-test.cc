@@ -132,7 +132,7 @@ class QLTabletTest : public QLDmlTestBase {
   }
 
   CHECKED_STATUS WaitSync(int begin, int end, TableHandle* table) {
-    auto deadline = MonoTime::FineNow() + MonoDelta::FromSeconds(30);
+    auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
 
     master::GetTableLocationsRequestPB req;
     master::GetTableLocationsResponsePB resp;

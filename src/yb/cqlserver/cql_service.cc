@@ -121,10 +121,10 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   DVLOG(4) << "Handling " << cql_call->ToString();
 
   // Process the call.
-  MonoTime start = MonoTime::Now(MonoTime::FINE);
+  MonoTime start = MonoTime::Now();
   CQLProcessor *processor = GetProcessor();
   CHECK(processor != nullptr);
-  MonoTime got_processor = MonoTime::Now(MonoTime::FINE);
+  MonoTime got_processor = MonoTime::Now();
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
   processor->ProcessCall(std::move(inbound_call));

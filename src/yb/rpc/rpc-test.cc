@@ -358,7 +358,7 @@ static void AcceptAndReadForever(Socket* listen_sock) {
   Endpoint remote;
   CHECK_OK(listen_sock->Accept(&server_sock, &remote, 0));
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(10));
 
   size_t nread;

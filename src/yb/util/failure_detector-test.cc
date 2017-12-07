@@ -30,9 +30,9 @@
 // under the License.
 //
 
+#include <string>
 
 #include <gtest/gtest.h>
-#include <string>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -94,7 +94,7 @@ TEST_F(FailureDetectorTest, TestDetectsFailure) {
   ASSERT_OK(monitor_->MonitorFailureDetector(kTestTabletName, detector));
   ASSERT_FALSE(detector->IsTracking(kNodeName));
   ASSERT_OK(detector->Track(kNodeName,
-                            MonoTime::Now(MonoTime::FINE),
+                            MonoTime::Now(),
                             Bind(&FailureDetectorTest::FailureFunction, Unretained(this))));
   ASSERT_TRUE(detector->IsTracking(kNodeName));
 
@@ -103,7 +103,7 @@ TEST_F(FailureDetectorTest, TestDetectsFailure) {
 
   for (int i = 0; i < kNumPeriodsToWait * kUpdatesPerPeriod; i++) {
     // Report in (heartbeat) to the detector.
-    ASSERT_OK(detector->MessageFrom(kNodeName, MonoTime::Now(MonoTime::FINE)));
+    ASSERT_OK(detector->MessageFrom(kNodeName, MonoTime::Now()));
 
     // We sleep for a fraction of heartbeat period, to minimize test flakiness.
     SleepFor(MonoDelta::FromMilliseconds(kExpectedHeartbeatPeriodMillis / kUpdatesPerPeriod));

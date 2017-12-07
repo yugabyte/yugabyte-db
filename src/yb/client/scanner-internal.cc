@@ -130,7 +130,7 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
     // upper bound between 2.5s and 5s.
     MonoDelta sleep = MonoDelta::FromMilliseconds(
         (10 + random() % 10) * static_cast<int>(std::pow(2.0, std::min(8, scan_attempts_ - 1))));
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     now.AddDelta(sleep);
     if (deadline.ComesBefore(now)) {
       Status ret = STATUS(TimedOut, "unable to retry before timeout",
@@ -353,7 +353,7 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
     // it's likely that the tablet is undergoing a leader election and will
     // soon have one.
     if (lookup_status.IsServiceUnavailable() &&
-        MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+        MonoTime::Now().ComesBefore(deadline)) {
       int sleep_ms = attempt * 100;
       VLOG(1) << "Tablet " << remote_->tablet_id() << " current unavailable: "
               << lookup_status.ToString() << ". Sleeping for " << sleep_ms << "ms "
@@ -363,7 +363,7 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
     }
     RETURN_NOT_OK(lookup_status);
 
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     if (deadline.ComesBefore(now)) {
       Status ret = STATUS(TimedOut, "Scan timed out, deadline expired");
       return last_error_.ok() ?

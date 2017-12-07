@@ -32,7 +32,6 @@
 #include "yb/tserver/scanner_metrics.h"
 
 #include "yb/util/metrics.h"
-#include "yb/util/monotime.h"
 
 METRIC_DEFINE_counter(server, scanners_expired,
                       "Scanners Expired",
@@ -55,9 +54,8 @@ ScannerMetrics::ScannerMetrics(const scoped_refptr<MetricEntity>& metric_entity)
       scanner_duration(METRIC_scanner_duration.Instantiate(metric_entity)) {
 }
 
-void ScannerMetrics::SubmitScannerDuration(const MonoTime& time_started) {
-  scanner_duration->Increment(
-      MonoTime::Now(MonoTime::COARSE).GetDeltaSince(time_started).ToMicroseconds());
+void ScannerMetrics::SubmitScannerDuration(const CoarseMonoClock::TimePoint& time_started) {
+  scanner_duration->Increment(ToMicroseconds(CoarseMonoClock::Now() - time_started));
 }
 
 } // namespace tserver

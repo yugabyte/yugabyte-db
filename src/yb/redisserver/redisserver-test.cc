@@ -365,7 +365,7 @@ Status TestRedisService::SendCommandAndGetResponse(
   RETURN_NOT_OK(Send(cmd));
 
   // Receive the response.
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
   size_t bytes_read = 0;
   resp_.resize(expected_resp_length);

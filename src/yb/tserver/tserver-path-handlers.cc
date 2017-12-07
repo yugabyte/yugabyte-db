@@ -412,10 +412,9 @@ void TabletServerPathHandlers::HandleScansPage(const Webserver::WebRequest& req,
 
 string TabletServerPathHandlers::ScannerToHtml(const Scanner& scanner) const {
   std::stringstream html;
-  uint64_t time_in_flight_us =
-      MonoTime::Now(MonoTime::COARSE).GetDeltaSince(scanner.start_time()).ToMicroseconds();
-  uint64_t time_since_last_access_us =
-      scanner.TimeSinceLastAccess(MonoTime::Now(MonoTime::COARSE)).ToMicroseconds();
+  auto now = CoarseMonoClock::Now();
+  uint64_t time_in_flight_us = ToMicroseconds(now - scanner.start_time());
+  uint64_t time_since_last_access_us = ToMicroseconds(scanner.TimeSinceLastAccess(now));
 
   html << Substitute("<tr><td>$0</td><td>$1</td><td>$2 us.</td><td>$3 us.</td><td>$4</td>",
                      EscapeForHtmlToString(scanner.tablet_id()),  // $0

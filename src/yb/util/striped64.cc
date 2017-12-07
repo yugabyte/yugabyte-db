@@ -47,7 +47,7 @@ namespace internal {
 //
 
 HashCode::HashCode() {
-  Random r(MonoTime::Now(MonoTime::FINE).GetDeltaSince(MonoTime::Min()).ToNanoseconds());
+  Random r(MonoTime::Now().GetDeltaSince(MonoTime::Min()).ToNanoseconds());
   const uint64_t hash = r.Next64();
   code_ = (hash == 0) ? 1 : hash;  // Avoid zero to allow xorShift rehash
 }

@@ -207,10 +207,10 @@ TEST_F(RemoteYsckTest, TestTabletServersOk) {
 }
 
 TEST_F(RemoteYsckTest, TestTableConsistency) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   Status s;
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     ASSERT_OK(ysck_->FetchTableAndTabletInfo());
     s = ysck_->CheckTablesConsistency();
     if (s.ok()) {
@@ -226,10 +226,10 @@ TEST_F(RemoteYsckTest, TestChecksum) {
   LOG(INFO) << "Generating row writes...";
   ASSERT_OK(GenerateRowWrites(num_writes));
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   Status s;
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     ASSERT_OK(ysck_->FetchTableAndTabletInfo());
     s = ysck_->ChecksumData(vector<string>(),
                             vector<string>(),
@@ -272,7 +272,7 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 
   uint64_t ts = client_->GetLatestObservedHybridTime();
-  MonoTime start(MonoTime::Now(MonoTime::FINE));
+  MonoTime start(MonoTime::Now());
   MonoTime deadline = start;
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   Status s;
@@ -283,13 +283,13 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
     Status s = ysck_->ChecksumData(vector<string>(), vector<string>(),
                                    ChecksumOptions(MonoDelta::FromSeconds(10), 16, true, ts));
     if (s.ok()) break;
-    if (deadline.ComesBefore(MonoTime::Now(MonoTime::FINE))) break;
+    if (deadline.ComesBefore(MonoTime::Now())) break;
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   if (!s.ok()) {
     LOG(WARNING) << Substitute("Timed out after $0 waiting for ysck to become consistent on TS $1. "
                                "Status: $2",
-                               MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToString(),
+                               MonoTime::Now().GetDeltaSince(start).ToString(),
                                ts, s.ToString());
     EXPECT_OK(s); // To avoid ASAN complaints due to thread reading the CountDownLatch.
   }

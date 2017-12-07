@@ -383,7 +383,7 @@ void LeaderElection::HandleVoteGrantedUnlocked(const string& voter_uuid, const V
   DCHECK_EQ(state.response.responder_term(), election_term());
   DCHECK(state.response.vote_granted());
   if (state.response.has_remaining_leader_lease_duration_ms()) {
-    old_leader_lease_expiration_.MakeAtLeast(MonoTime::FineNow() +
+    old_leader_lease_expiration_.MakeAtLeast(MonoTime::Now() +
         MonoDelta::FromMilliseconds(state.response.remaining_leader_lease_duration_ms()));
   }
 

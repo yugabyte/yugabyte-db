@@ -977,7 +977,7 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
     MonoDelta lease_duration,
     MicrosTime ht_lease_expiration) {
   // Update both leader leases, i.e. regular and hybrid time.
-  UpdateOldLeaderLeaseExpirationUnlocked(MonoTime::FineNow() + lease_duration, ht_lease_expiration);
+  UpdateOldLeaderLeaseExpirationUnlocked(MonoTime::Now() + lease_duration, ht_lease_expiration);
 }
 
 void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
@@ -1052,7 +1052,7 @@ bool ReplicaState::MajorityReplicatedLeaderLeaseExpired(MonoTime* now) const {
   }
 
   if (!*now) {
-    *now = MonoTime::FineNow();
+    *now = MonoTime::Now();
   }
 
   return *now >= majority_replicated_lease_expiration_;
@@ -1099,7 +1099,7 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
     if (!now) {
       now = &now_local;
     }
-    *now = MonoTime::FineNow();
+    *now = MonoTime::Now();
 
     if (*now > old_leader_lease_expiration_) {
       // Reset the old leader lease expiration time so that we don't have to check it anymore.

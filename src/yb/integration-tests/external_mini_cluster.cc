@@ -620,7 +620,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
   if (start_opid.term() != 0)
     return Status::OK();
 
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   MonoTime deadline = now;
   deadline.AddDelta(opts_.timeout_);
   auto opid = start_opid;
@@ -634,7 +634,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
     }
     SleepFor(MonoDelta::FromMilliseconds(min(i, 10)));
     RETURN_NOT_OK(GetLastOpIdForLeader(&opid));
-    now = MonoTime::Now(MonoTime::FINE);
+    now = MonoTime::Now();
   }
 
   return STATUS(TimedOut, Substitute("Term did not advance from $0.", start_opid.term()));
@@ -665,11 +665,9 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 }
 
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
-  MonoTime now = MonoTime::Now(MonoTime::COARSE);
-  MonoTime deadline = now;
-  deadline.AddDelta(opts_.timeout_);
+  auto deadline = CoarseMonoClock::Now() + opts_.timeout_.ToSteadyDuration();
 
-  for (int i = 1; now.ComesBefore(deadline); i++) {
+  for (int i = 1; CoarseMonoClock::Now() < deadline; i++) {
     vector<consensus::OpId> ids;
     Status s = GetLastOpIdForEachMasterPeer(opts_.timeout_, consensus::COMMITTED_OPID, &ids);
 
@@ -690,14 +688,12 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
     }
 
     SleepFor(MonoDelta::FromMilliseconds(min(i * 100, 1000)));
-
-    now = MonoTime::Now(MonoTime::COARSE);
   }
 
-  return STATUS(TimedOut,
-      Substitute("Index $0 not available on all replicas after $1. ",
-                 target_index,
-                 opts_.timeout_.ToString()));
+  return STATUS_FORMAT(TimedOut,
+                       "Index $0 not available on all replicas after $1. ",
+                       target_index,
+                       opts_.timeout_);
 }
 
 Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {
@@ -826,11 +822,11 @@ Status ExternalMiniCluster::AddTabletServer() {
 }
 
 Status ExternalMiniCluster::WaitForTabletServerCount(int count, const MonoDelta& timeout) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
 
   while (true) {
-    MonoDelta remaining = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    MonoDelta remaining = deadline.GetDeltaSince(MonoTime::Now());
     if (remaining.ToSeconds() < 0) {
       return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));
     }
@@ -878,9 +874,9 @@ Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
   ListTabletsRequestPB req;
   ListTabletsResponsePB resp;
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(10));
     RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
@@ -912,9 +908,9 @@ Status ExternalMiniCluster::WaitForTSToCrash(int index, const MonoDelta& timeout
 
 Status ExternalMiniCluster::WaitForTSToCrash(const ExternalTabletServer* ts,
                                              const MonoDelta& timeout) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     if (!ts->IsProcessAlive()) {
       return Status::OK();
     }
@@ -947,7 +943,7 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   Synchronizer sync;
   std::vector<Endpoint> addrs;
   HostPort leader_master_hp;
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(5));
 
   *idx = 0;  // default to 0'th index, even in case of errors.

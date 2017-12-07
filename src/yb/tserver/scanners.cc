@@ -169,21 +169,20 @@ void ScannerManager::ListScanners(std::vector<SharedScanner>* scanners) {
 }
 
 void ScannerManager::RemoveExpiredScanners() {
-  MonoDelta scanner_ttl = MonoDelta::FromMilliseconds(FLAGS_scanner_ttl_ms);
+  auto scanner_ttl = std::chrono::milliseconds(FLAGS_scanner_ttl_ms);
 
   for (ScannerMapStripe* stripe : scanner_maps_) {
     std::lock_guard<boost::shared_mutex> l(stripe->lock_);
     for (auto it = stripe->scanners_by_id_.begin(); it != stripe->scanners_by_id_.end();) {
       SharedScanner& scanner = it->second;
-      MonoDelta time_live =
-          scanner->TimeSinceLastAccess(MonoTime::Now(MonoTime::COARSE));
-      if (time_live.MoreThan(scanner_ttl)) {
+      auto time_live = scanner->TimeSinceLastAccess(CoarseMonoClock::Now());
+      if (time_live >= scanner_ttl) {
         // TODO: once we have a metric for the number of scanners expired, make this a
         // VLOG(1).
         LOG(INFO) << "Expiring scanner id: " << it->first << ", of tablet " << scanner->tablet_id()
-                  << ", after " << time_live.ToMicroseconds()
+                  << ", after " << ToMicroseconds(time_live)
                   << " us of inactivity, which is > TTL ("
-                  << scanner_ttl.ToMicroseconds() << " us).";
+                  << ToMicroseconds(scanner_ttl) << " us).";
         it = stripe->scanners_by_id_.erase(it);
         if (metrics_) {
           metrics_->scanners_expired->Increment();
@@ -201,7 +200,7 @@ Scanner::Scanner(string id, const scoped_refptr<TabletPeer>& tablet_peer,
       tablet_peer_(tablet_peer),
       requestor_string_(std::move(requestor_string)),
       call_seq_id_(0),
-      start_time_(MonoTime::Now(MonoTime::COARSE)),
+      start_time_(CoarseMonoClock::Now()),
       metrics_(metrics),
       arena_(1024, 1024 * 1024) {
   UpdateAccessTime();
@@ -214,8 +213,9 @@ Scanner::~Scanner() {
 }
 
 void Scanner::UpdateAccessTime() {
+  auto now = CoarseMonoClock::Now();
   std::lock_guard<simple_spinlock> l(lock_);
-  last_access_time_ = MonoTime::Now(MonoTime::COARSE);
+  last_access_time_ = now;
 }
 
 void Scanner::Init(gscoped_ptr<RowwiseIterator> iter,

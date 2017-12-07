@@ -546,9 +546,9 @@ Status RaftConsensus::DoStartElection(
 }
 
 Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     if (leader_status() == LeaderStatus::LEADER_AND_READY) {
       return Status::OK();
     }
@@ -630,7 +630,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
         Format("tablet $0 from $1 to $2", tablet_id, local_peer_uuid, new_leader_uuid);
     if (new_leader_uuid == protege_leader_uuid_ && election_lost_by_protege_at_) {
       const MonoDelta time_since_election_loss_by_protege =
-          MonoTime::FineNow() - election_lost_by_protege_at_;
+          MonoTime::Now() - election_lost_by_protege_at_;
       if (time_since_election_loss_by_protege.ToMilliseconds() <
               FLAGS_min_leader_stepdown_retry_interval_ms) {
         LOG(INFO) << "Rejecting leader stepdown request for " << leadership_transfer_description
@@ -700,7 +700,7 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
                                      << ", lost election. Has leader: "
                                      << state_->HasLeaderUnlocked();
       withhold_election_start_until_.store(MonoTime::Min().ToUint64(), std::memory_order_relaxed);
-      election_lost_by_protege_at_ = MonoTime::FineNow();
+      election_lost_by_protege_at_ = MonoTime::Now();
 
       start_election = !state_->HasLeaderUnlocked();
     }
@@ -720,7 +720,7 @@ void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uui
       FLAGS_after_stepdown_delay_election_multiplier *
       FLAGS_leader_failure_max_missed_heartbeat_periods *
       FLAGS_raft_heartbeat_interval_ms);
-  auto deadline = MonoTime::FineNow() + timeout;
+  auto deadline = MonoTime::Now() + timeout;
   withhold_election_start_until_.store(deadline.ToUint64(), std::memory_order_release);
   election_lost_by_protege_at_ = MonoTime();
 }
@@ -754,7 +754,7 @@ void RaftConsensus::ReportFailureDetected(const std::string& name, const Status&
     }
 
     if (!now.Initialized()) {
-      now = MonoTime::FineNow();
+      now = MonoTime::Now();
     }
 
     if (now < MonoTime::FromUint64(old_value)) {
@@ -1499,7 +1499,7 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     }
 
     // Also prohibit voting for anyone for the minimum election timeout.
-    withhold_votes_until_ = MonoTime::FineNow() + MinimumElectionTimeout();
+    withhold_votes_until_ = MonoTime::Now() + MinimumElectionTimeout();
 
     // 1 - Early commit pending (and committed) operations
     RETURN_NOT_OK(EarlyCommitUnlocked(*request, deduped_req));
@@ -1806,9 +1806,8 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   //
   // See also https://ramcloud.stanford.edu/~ongaro/thesis.pdf
   // section 4.2.3.
-  MonoTime now = MonoTime::Now(MonoTime::COARSE);
-  if (!request->ignore_live_leader() &&
-      now.ComesBefore(withhold_votes_until_)) {
+  MonoTime now = MonoTime::Now();
+  if (!request->ignore_live_leader() && now < withhold_votes_until_) {
     return RequestVoteRespondLeaderIsAlive(request, response);
   }
 
@@ -2166,7 +2165,7 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg
 
 Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
   MonoTime now;
-  while ((now = MonoTime::FineNow()) < deadline) {
+  while ((now = MonoTime::Now()) < deadline) {
     MonoDelta remaining_old_leader_lease;
     LeaderLeaseStatus leader_lease_status;
     {
@@ -2707,7 +2706,7 @@ Status RaftConsensus::EnsureFailureDetectorEnabledUnlocked() {
     return Status::OK();
   }
   return failure_detector_->Track(kTimerId,
-                                  MonoTime::Now(MonoTime::FINE),
+                                  MonoTime::Now(),
                                   // Unretained to avoid a circular ref.
                                   Bind(&RaftConsensus::ReportFailureDetected, Unretained(this)));
 }
@@ -2741,7 +2740,7 @@ Status RaftConsensus::SnoozeFailureDetectorUnlocked(const MonoDelta& additional_
     return Status::OK();
   }
 
-  MonoTime time = MonoTime::Now(MonoTime::FINE);
+  MonoTime time = MonoTime::Now();
   time.AddDelta(additional_delta);
 
   if (allow_logging == ALLOW_LOGGING) {

@@ -198,7 +198,7 @@ TraceEventSyntheticDelay* TraceEventSyntheticDelayRegistry::GetOrCreateDelay(
 }
 
 MonoTime TraceEventSyntheticDelayRegistry::Now() {
-  return MonoTime::Now(MonoTime::FINE);
+  return MonoTime::Now();
 }
 
 void TraceEventSyntheticDelayRegistry::ResetAllDelays() {

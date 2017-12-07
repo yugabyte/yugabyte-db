@@ -35,33 +35,36 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <condition_variable>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 TEST(TestMonoTime, TestMonotonicity) {
   alarm(360);
-  MonoTime prev(MonoTime::Now(MonoTime::FINE));
+  MonoTime prev(MonoTime::Now());
   MonoTime next;
 
   do {
-    next = MonoTime::Now(MonoTime::FINE);
+    next = MonoTime::Now();
   } while (!prev.ComesBefore(next));
   ASSERT_FALSE(next.ComesBefore(prev));
   alarm(0);
 }
 
 TEST(TestMonoTime, TestComparison) {
-  MonoTime now(MonoTime::Now(MonoTime::COARSE));
-  MonoTime future(now);
-  future.AddDelta(MonoDelta::FromNanoseconds(1L));
+  auto now = CoarseMonoClock::Now();
+  auto future = now + 1ns;
 
-  ASSERT_GT(future.GetDeltaSince(now).ToNanoseconds(), 0);
-  ASSERT_LT(now.GetDeltaSince(future).ToNanoseconds(), 0);
-  ASSERT_EQ(now.GetDeltaSince(now).ToNanoseconds(), 0);
+  ASSERT_GT(ToNanoseconds(future - now), 0);
+  ASSERT_LT(ToNanoseconds(now - future), 0);
+  ASSERT_EQ(ToNanoseconds(now - now), 0);
 
   ASSERT_LT(now, future);
   ASSERT_FALSE(now < now);
@@ -123,15 +126,9 @@ TEST(TestMonoTime, TestTimeVal) {
 }
 
 TEST(TestMonoTime, TestTimeSpec) {
-  MonoTime one_sec_one_nano_expected(1000000001L);
-  struct timespec ts;
-  ts.tv_sec = 1;
-  ts.tv_nsec = 1;
-  MonoTime one_sec_one_nano_actual(ts);
-  ASSERT_EQ(0, one_sec_one_nano_expected.GetDeltaSince(one_sec_one_nano_actual).ToNanoseconds());
+  timespec ts;
 
-  MonoDelta zero_sec_two_nanos(MonoDelta::FromNanoseconds(2L));
-  zero_sec_two_nanos.ToTimeSpec(&ts);
+  MonoDelta::FromNanoseconds(2L).ToTimeSpec(&ts);
   ASSERT_EQ(0, ts.tv_sec);
   ASSERT_EQ(2, ts.tv_nsec);
 
@@ -148,11 +145,11 @@ TEST(TestMonoTime, TestTimeSpec) {
 TEST(TestMonoTime, TestDeltas) {
   alarm(360);
   const MonoDelta max_delta(MonoDelta::FromSeconds(0.1));
-  MonoTime prev(MonoTime::Now(MonoTime::FINE));
+  MonoTime prev(MonoTime::Now());
   MonoTime next;
   MonoDelta cur_delta;
   do {
-    next = MonoTime::Now(MonoTime::FINE);
+    next = MonoTime::Now();
     cur_delta = next.GetDeltaSince(prev);
   } while (cur_delta.LessThan(max_delta));
   alarm(0);
@@ -171,28 +168,23 @@ TEST(TestMonoTime, TestDeltaConversions) {
   ASSERT_EQ(500, nano.nano_delta_);
 }
 
-static void DoTestMonoTimePerf(MonoTime::Granularity granularity) {
-  const MonoDelta max_delta(MonoDelta::FromMilliseconds(500));
+template <class Now>
+static void DoTestMonoTimePerf(const std::string& name, Now now) {
   uint64_t num_calls = 0;
-  MonoTime prev(MonoTime::Now(granularity));
-  MonoTime next;
-  MonoDelta cur_delta;
+  auto start = now();
+  auto stop = start + 500ms;
   do {
-    next = MonoTime::Now(granularity);
-    cur_delta = next.GetDeltaSince(prev);
     num_calls++;
-  } while (cur_delta.LessThan(max_delta));
-  LOG(INFO) << "DoTestMonoTimePerf(granularity="
-        << ((granularity == MonoTime::FINE) ? "FINE" : "COARSE")
-        << "): " << num_calls << " in "
-        << max_delta.ToString() << " seconds.";
+  } while (now() < stop);
+  LOG(INFO) << "DoTestMonoTimePerf(" << name << "): " << num_calls << " in "
+        << ToSeconds(now() - start) << " seconds.";
 }
 
 TEST(TestMonoTime, TestSleepFor) {
-  MonoTime start = MonoTime::Now(MonoTime::FINE);
+  MonoTime start = MonoTime::Now();
   MonoDelta sleep = MonoDelta::FromMilliseconds(100);
   SleepFor(sleep);
-  MonoTime end = MonoTime::Now(MonoTime::FINE);
+  MonoTime end = MonoTime::Now();
   MonoDelta actualSleep = end.GetDeltaSince(start);
   ASSERT_GE(actualSleep.ToNanoseconds(), sleep.ToNanoseconds());
 }
@@ -205,23 +197,23 @@ TEST(TestMonoTime, TestSleepForOverflow) {
 
   // This quantity (~4s sleep) overflows a 32-bit integer such that
   // the value becomes 0.
-  MonoTime start = MonoTime::Now(MonoTime::FINE);
+  MonoTime start = MonoTime::Now();
   MonoDelta sleep = MonoDelta::FromNanoseconds(1L << 32);
   SleepFor(sleep);
-  MonoTime end = MonoTime::Now(MonoTime::FINE);
+  MonoTime end = MonoTime::Now();
   MonoDelta actualSleep = end.GetDeltaSince(start);
   ASSERT_GE(actualSleep.ToNanoseconds(), sleep.ToNanoseconds());
 }
 
 TEST(TestMonoTimePerf, TestMonoTimePerfCoarse) {
   alarm(360);
-  DoTestMonoTimePerf(MonoTime::COARSE);
+  DoTestMonoTimePerf("CoarseMonoClock", [] { return CoarseMonoClock::Now(); });
   alarm(0);
 }
 
 TEST(TestMonoTimePerf, TestMonoTimePerfFine) {
   alarm(360);
-  DoTestMonoTimePerf(MonoTime::FINE);
+  DoTestMonoTimePerf("MonoTime", [] { return MonoTime::Now(); });
   alarm(0);
 }
 
@@ -232,6 +224,25 @@ TEST(TestMonoTime, TestOverFlow) {
               ::testing::KilledBySignal(SIGABRT), "Check failed.*");
   EXPECT_EXIT(MonoDelta::FromMicroseconds(std::numeric_limits<int64_t>::max()),
               ::testing::KilledBySignal(SIGABRT), "Check failed.*");
+}
+
+TEST(TestMonoTime, TestCondition) {
+  std::mutex mutex;
+  std::condition_variable cond;
+  std::unique_lock<std::mutex> lock(mutex);
+  auto kWaitTime = 500ms;
+  auto kAllowedError = 50ms;
+  for (;;) {
+    auto start = CoarseMonoClock::Now();
+    if (cond.wait_until(lock, CoarseMonoClock::Now() + kWaitTime) != std::cv_status::timeout) {
+      continue;
+    }
+    auto end = CoarseMonoClock::Now();
+    LOG(INFO) << "Passed: " << ToSeconds(end - start) << " seconds.";
+    ASSERT_GE(end - start, kWaitTime - kAllowedError);
+    ASSERT_LE(end - start, kWaitTime + kAllowedError);
+    break;
+  }
 }
 
 } // namespace yb

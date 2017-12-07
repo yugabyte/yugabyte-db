@@ -136,7 +136,7 @@ Status RetryFunc(
     const std::function<Status(const MonoTime&, bool*)>& func) {
   DCHECK(deadline.Initialized());
 
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   if (deadline.ComesBefore(now)) {
     return STATUS(TimedOut, timeout_msg);
   }
@@ -150,7 +150,7 @@ Status RetryFunc(
     if (!retry) {
       return s;
     }
-    now = MonoTime::Now(MonoTime::FINE);
+    now = MonoTime::Now();
     MonoDelta func_time = now.GetDeltaSince(func_stime);
 
     VLOG(1) << retry_msg << " status=" << s.ToString();
@@ -170,7 +170,7 @@ Status RetryFunc(
     VLOG(1) << "Waiting for " << HumanReadableElapsedTime::ToShortString(wait_secs)
             << " before retrying...";
     SleepFor(MonoDelta::FromSeconds(wait_secs));
-    now = MonoTime::Now(MonoTime::FINE);
+    now = MonoTime::Now();
 
   }
 
@@ -189,7 +189,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     RpcController rpc;
 
     // Have we already exceeded our deadline?
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     if (deadline.ComesBefore(now)) {
       return STATUS(TimedOut, Substitute("$0 timed out after deadline expired",
                                          func_name));
@@ -221,7 +221,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     }
 
     if (s.IsTimedOut()) {
-      if (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+      if (MonoTime::Now().ComesBefore(deadline)) {
         LOG(WARNING) << "Unable to send the request (" << req.ShortDebugString()
                      << ") to leader Master (" << leader_master_hostport().ToString()
                      << "): " << s.ToString();
@@ -820,7 +820,7 @@ GetTableSchemaRpc::~GetTableSchemaRpc() {
 }
 
 void GetTableSchemaRpc::SendRpc() {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   if (retrier().deadline().ComesBefore(now)) {
     SendRpcCb(STATUS(TimedOut, "GetTableSchema timed out after deadline expired"));
     return;
@@ -893,7 +893,7 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
   }
 
   if (new_status.IsTimedOut()) {
-    if (MonoTime::Now(MonoTime::FINE).ComesBefore(retrier().deadline())) {
+    if (MonoTime::Now().ComesBefore(retrier().deadline())) {
       if (client_->IsMultiMaster()) {
         LOG(WARNING) << "Leader Master ("
             << client_->data_->leader_master_hostport().ToString()
@@ -1031,7 +1031,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   // Finding a new master involves a fan-out RPC to each master. A single
   // RPC timeout's worth of time should be sufficient, though we'll use
   // the provided deadline if it's sooner.
-  MonoTime leader_master_deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime leader_master_deadline = MonoTime::Now();
   leader_master_deadline.AddDelta(client->default_rpc_timeout());
   MonoTime actual_deadline = MonoTime::Earliest(deadline, leader_master_deadline);
 

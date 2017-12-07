@@ -220,7 +220,7 @@ void RandomizedFailureMonitor::RunThread() {
       fds_copy = fds_;
     }
 
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     for (const FDMap::value_type& entry : fds_copy) {
       entry.second->CheckForFailures(now);
     }

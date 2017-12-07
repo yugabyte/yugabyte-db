@@ -250,13 +250,13 @@ class Scanner {
   }
 
   // Return the delta from the last time this scan was updated to 'now'.
-  MonoDelta TimeSinceLastAccess(const MonoTime& now) const {
+  CoarseMonoClock::Duration TimeSinceLastAccess(CoarseMonoClock::TimePoint now) const {
     std::lock_guard<simple_spinlock> l(lock_);
-    return now.GetDeltaSince(last_access_time_);
+    return now - last_access_time_;
   }
 
   // Returns the time this scan was started.
-  const MonoTime& start_time() const { return start_time_; }
+  const CoarseMonoClock::TimePoint& start_time() const { return start_time_; }
 
   // Associate a projection schema with the Scanner. The scanner takes
   // ownership of 'client_projection_schema'.
@@ -300,7 +300,7 @@ class Scanner {
   const std::string requestor_string_;
 
   // The last time that the scanner was accessed.
-  MonoTime last_access_time_;
+  CoarseMonoClock::TimePoint last_access_time_;
 
   // The current call sequence ID.
   uint32_t call_seq_id_;
@@ -309,7 +309,7 @@ class Scanner {
   mutable simple_spinlock lock_;
 
   // The time the scanner was started.
-  const MonoTime start_time_;
+  CoarseMonoClock::TimePoint start_time_;
 
   // (Optional) scanner metrics struct, for recording scanner's duration.
   ScannerMetrics* metrics_;
@@ -342,4 +342,4 @@ class Scanner {
 } // namespace tserver
 } // namespace yb
 
-#endif
+#endif // YB_TSERVER_SCANNERS_H

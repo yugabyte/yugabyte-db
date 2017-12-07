@@ -462,7 +462,7 @@ void LookupRpc::SendRpc() {
   }
 
   // See YBClient::Data::SyncLeaderMasterRpc().
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   if (retrier().deadline().ComesBefore(now)) {
     SendRpcCb(STATUS(TimedOut, "timed out after deadline expired"));
     return;
@@ -521,7 +521,7 @@ void LookupRpc::DoSendRpcCb(const Status& status,
   }
 
   if (new_status.IsTimedOut()) {
-    if (MonoTime::Now(MonoTime::FINE).ComesBefore(retrier().deadline())) {
+    if (MonoTime::Now().ComesBefore(retrier().deadline())) {
       if (client()->IsMultiMaster()) {
         LOG(WARNING) << "Leader Master timed out, re-trying...";
         ResetMasterLeaderAndRetry();

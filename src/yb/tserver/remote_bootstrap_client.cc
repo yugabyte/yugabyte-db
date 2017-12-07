@@ -392,7 +392,7 @@ Status RemoteBootstrapClient::VerifyRemoteBootstrapSucceeded(
     return STATUS(InvalidArgument, "Invalid consensus object");
   }
 
-  auto start = MonoTime::Now(MonoTime::FINE);
+  auto start = MonoTime::Now();
   auto timeout = MonoDelta::FromSeconds(FLAGS_committed_config_change_role_timeout_sec);
   int backoff_ms = 1;
   const int kMaxBackoffMs = 256;
@@ -413,7 +413,7 @@ Status RemoteBootstrapClient::VerifyRemoteBootstrapSucceeded(
         break;
       }
     }
-  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).LessThan(timeout));
+  } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
 
   return STATUS(TimedOut,
                 Substitute("Timed out waiting member type of peer $0 to change in the committed "

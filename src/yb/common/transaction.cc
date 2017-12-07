@@ -90,7 +90,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 
 // TODO(dtxn) correct deadline should be calculated and propagated.
 MonoTime TransactionRpcDeadline() {
-  return MonoTime::FineNow() + MonoDelta::FromSeconds(NonTsanVsTsan(15, 5));
+  return MonoTime::Now() + MonoDelta::FromSeconds(NonTsanVsTsan(15, 5));
 }
 
 bool TransactionOperationContext::transactional() const {

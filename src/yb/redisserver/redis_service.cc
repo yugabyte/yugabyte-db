@@ -340,7 +340,7 @@ class Block : public std::enable_shared_from_this<Block> {
       : context_(context),
         ops_(allocator),
         metrics_internal_(std::move(metrics_internal)),
-        start_(MonoTime::FineNow()) {}
+        start_(MonoTime::Now()) {}
 
   void AddOperation(Operation* operation) {
     ops_.push_back(operation);
@@ -382,7 +382,7 @@ class Block : public std::enable_shared_from_this<Block> {
   friend class BlockCallback;
 
   void Done(const Status& status) {
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     metrics_internal_.handler_latency->Increment(now.GetDeltaSince(start_).ToMicroseconds());
     VLOG(3) << "Received status from call " << status.ToString(true);
 
@@ -549,7 +549,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
       return;
     }
 
-    MonoTime deadline = MonoTime::FineNow() +
+    MonoTime deadline = MonoTime::Now() +
                         MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis);
     lookups_left_.store(operations_.size(), std::memory_order_release);
     for (auto& operation : operations_) {

@@ -328,7 +328,7 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer) const 
 }
 
 void MetricEntity::RetireOldMetrics() {
-  MonoTime now(MonoTime::Now(MonoTime::FINE));
+  MonoTime now = MonoTime::Now();
 
   std::lock_guard<simple_spinlock> l(lock_);
   for (auto it = metric_map_.begin(); it != metric_map_.end();) {
@@ -819,13 +819,13 @@ double Histogram::MeanValueForTests() const {
 ScopedLatencyMetric::ScopedLatencyMetric(Histogram* latency_hist)
   : latency_hist_(latency_hist) {
   if (latency_hist_) {
-    time_started_ = MonoTime::Now(MonoTime::FINE);
+    time_started_ = MonoTime::Now();
   }
 }
 
 ScopedLatencyMetric::~ScopedLatencyMetric() {
   if (latency_hist_ != nullptr) {
-    MonoTime time_now = MonoTime::Now(MonoTime::FINE);
+    MonoTime time_now = MonoTime::Now();
     latency_hist_->Increment(time_now.GetDeltaSince(time_started_).ToMicroseconds());
   }
 }

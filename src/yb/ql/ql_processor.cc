@@ -121,9 +121,9 @@ QLProcessor::~QLProcessor() {
 Status QLProcessor::Parse(const string& ql_stmt, ParseTree::UniPtr* parse_tree,
                            const bool reparsed, shared_ptr<MemTracker> mem_tracker) {
   // Parse the statement and get the generated parse tree.
-  const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
+  const MonoTime begin_time = MonoTime::Now();
   RETURN_NOT_OK(parser_.Parse(ql_stmt, reparsed, mem_tracker));
-  const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  const MonoTime end_time = MonoTime::Now();
   if (ql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
     ql_metrics_->time_to_parse_ql_query_->Increment(elapsed_time.ToMicroseconds());
@@ -135,9 +135,9 @@ Status QLProcessor::Parse(const string& ql_stmt, ParseTree::UniPtr* parse_tree,
 
 Status QLProcessor::Analyze(const string& ql_stmt, ParseTree::UniPtr* parse_tree) {
   // Semantic analysis - traverse, error-check, and decorate the parse tree nodes with datatypes.
-  const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
+  const MonoTime begin_time = MonoTime::Now();
   const Status s = analyzer_.Analyze(ql_stmt, std::move(*parse_tree));
-  const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  const MonoTime end_time = MonoTime::Now();
   if (ql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
     ql_metrics_->time_to_analyze_ql_query_->Increment(elapsed_time.ToMicroseconds());

@@ -311,7 +311,7 @@ class RaftConsensusQuorumTest : public YBTest {
                                         int peer_idx,
                                         int leader_idx) {
     MonoDelta timeout(MonoDelta::FromSeconds(10));
-    MonoTime start(MonoTime::Now(MonoTime::FINE));
+    MonoTime start(MonoTime::Now());
 
     scoped_refptr<RaftConsensus> peer;
     CHECK_OK(peers_->GetPeerByIdx(peer_idx, &peer));
@@ -329,7 +329,7 @@ class RaftConsensusQuorumTest : public YBTest {
           return;
         }
       }
-      MonoDelta elapsed = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
+      MonoDelta elapsed = MonoTime::Now().GetDeltaSince(start);
       if (elapsed.MoreThan(timeout)) {
         break;
       }

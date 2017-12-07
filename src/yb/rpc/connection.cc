@@ -78,7 +78,7 @@ Connection::Connection(Reactor* reactor,
       remote_(remote),
       direction_(direction),
       connected_(connected),
-      last_activity_time_(MonoTime::Now(MonoTime::FINE)),
+      last_activity_time_(CoarseMonoClock::Now()),
       read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
       context_(std::move(context)) {
   auto status = socket_.GetSocketAddress(&local_);
@@ -188,8 +188,7 @@ void Connection::Shutdown(const Status& status) {
   }
 
   if (!read_buffer_.empty()) {
-    double secs_since_active = reactor_->cur_time()
-        .GetDeltaSince(last_activity_time_).ToSeconds();
+    double secs_since_active = ToSeconds(reactor_->cur_time() - last_activity_time_);
     LOG(WARNING) << "Shutting down connection " << ToString() << " with pending inbound data ("
                  << read_buffer_ << ", last active "
                  << HumanReadableElapsedTime::ToShortString(secs_since_active)
@@ -241,7 +240,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     return;
   }
 
-  auto now = MonoTime::FineNow();
+  auto now = MonoTime::Now();
   while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
     auto call = expiration_queue_.top().second.lock();
     expiration_queue_.pop();
@@ -483,7 +482,7 @@ void Connection::CallSent(OutboundCallPtr call) {
   // Set up the timeout timer.
   const MonoDelta& timeout = call->controller()->timeout();
   if (timeout.Initialized()) {
-    auto expires_at = MonoTime::FineNow() + timeout;
+    auto expires_at = MonoTime::Now() + timeout;
     auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
     expiration_queue_.emplace(expires_at, call);
     if (reschedule) {

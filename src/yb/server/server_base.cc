@@ -256,9 +256,9 @@ void RpcServerBase::MetricsLoggingThread() {
   const MonoDelta kWaitBetweenFailures = MonoDelta::FromSeconds(60);
 
 
-  MonoTime next_log = MonoTime::Now(MonoTime::FINE);
+  MonoTime next_log = MonoTime::Now();
   while (!stop_metrics_logging_latch_.WaitUntil(next_log)) {
-    next_log = MonoTime::Now(MonoTime::FINE);
+    next_log = MonoTime::Now();
     next_log.AddDelta(MonoDelta::FromMilliseconds(options_.metrics_log_interval_ms));
 
     std::stringstream buf;

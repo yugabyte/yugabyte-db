@@ -93,7 +93,7 @@ class PeerMessageQueue {
         : uuid(std::move(uuid)),
           last_received(MinimumOpId()),
           last_known_committed_idx(MinimumOpId().index()),
-          last_successful_communication_time(MonoTime::Now(MonoTime::FINE)) {}
+          last_successful_communication_time(MonoTime::Now()) {}
 
     // Check that the terms seen from a given peer only increase monotonically.
     void CheckMonotonicTerms(int64_t term) {

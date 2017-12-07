@@ -75,7 +75,7 @@ using strings::Substitute;
 
 WriteOperation::WriteOperation(std::unique_ptr<WriteOperationState> state, DriverType type)
   : Operation(std::move(state), type, Operation::WRITE_TXN),
-    start_time_(MonoTime::FineNow()) {
+    start_time_(MonoTime::Now()) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -162,7 +162,7 @@ void WriteOperation::Finish(OperationResult result) {
         metrics->commit_wait_duration->Increment(state()->metrics().commit_wait_duration_usec);
       }
       uint64_t op_duration_usec =
-          MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time_).ToMicroseconds();
+          MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds();
       switch (state()->external_consistency_mode()) {
         case CLIENT_PROPAGATED:
           metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
@@ -178,7 +178,7 @@ void WriteOperation::Finish(OperationResult result) {
 }
 
 string WriteOperation::ToString() const {
-  MonoTime now(MonoTime::Now(MonoTime::FINE));
+  MonoTime now(MonoTime::Now());
   MonoDelta d = now.GetDeltaSince(start_time_);
   WallTime abs_time = WallTime_Now() - d.ToSeconds();
   string abs_time_formatted;

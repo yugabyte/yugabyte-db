@@ -246,7 +246,7 @@ class Reactor {
 
   Messenger *messenger() const { return messenger_.get(); }
 
-  MonoTime cur_time() const { return cur_time_; }
+  CoarseMonoClock::TimePoint cur_time() const { return cur_time_; }
 
   // Drop all connections with remote address. Used in tests with broken connectivity.
   void DropWithRemoteAddress(const IpAddress& address);
@@ -263,10 +263,6 @@ class Reactor {
   // Begin the process of connection negotiation.
   // Must be called from the reactor thread.
   CHECKED_STATUS StartConnection(const ConnectionPtr& conn);
-
-  // Transition back from negotiating to processing requests.
-  // Must be called from the reactor thread.
-  void CompleteConnectionNegotiation(const ConnectionPtr& conn, const Status& status);
 
   // Queue a new call to be sent. If the reactor is already shut down, marks
   // the call as failed.
@@ -389,10 +385,10 @@ class Reactor {
   std::vector<std::shared_ptr<ReactorTask>> async_handler_tasks_;
 
   // The current monotonic time.  Updated every coarse_timer_granularity_.
-  MonoTime cur_time_;
+  CoarseMonoClock::TimePoint cur_time_;
 
   // last time we did TCP timeouts.
-  MonoTime last_unused_tcp_scan_;
+  CoarseMonoClock::TimePoint last_unused_tcp_scan_;
 
   // Map of sockaddrs to Connection objects for outbound (client) connections.
   ConnectionMap client_conns_;
@@ -404,10 +400,10 @@ class Reactor {
   ConnectionList waiting_conns_;
 
   // If a connection has been idle for this much time, it is torn down.
-  const MonoDelta connection_keepalive_time_;
+  CoarseMonoClock::Duration connection_keepalive_time_;
 
   // Scan for idle connections on this granularity.
-  const MonoDelta coarse_timer_granularity_;
+  CoarseMonoClock::Duration coarse_timer_granularity_;
 
   simple_spinlock outbound_queue_lock_;
   bool outbound_queue_stopped_ = false;

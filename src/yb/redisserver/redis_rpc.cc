@@ -175,7 +175,7 @@ MonoTime RedisInboundCall::GetClientDeadline() const {
 }
 
 void RedisInboundCall::LogTrace() const {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
@@ -193,7 +193,7 @@ bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
-  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
+  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMicroseconds());
 
   if (!parsed_.load(std::memory_order_acquire)) {
@@ -288,7 +288,7 @@ void RedisInboundCall::RespondSuccess(size_t idx,
                                       const rpc::RpcMethodMetrics& metrics,
                                       RedisResponsePB* resp) {
   Respond(idx, true, resp);
-  metrics.handler_latency->Increment((MonoTime::FineNow() - timing_.time_handled).ToMicroseconds());
+  metrics.handler_latency->Increment((MonoTime::Now() - timing_.time_handled).ToMicroseconds());
 }
 
 void RedisInboundCall::RespondFailure(size_t idx, const Status& status) {

@@ -70,6 +70,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
 using std::string;
 using std::shared_ptr;
 using strings::Substitute;
@@ -89,14 +90,14 @@ class ServerBuilder;
 
 MessengerBuilder::MessengerBuilder(std::string name)
     : name_(std::move(name)),
-      connection_keepalive_time_(
-          MonoDelta::FromMilliseconds(FLAGS_rpc_default_keepalive_time_ms)),
+      connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
       num_reactors_(4),
-      coarse_timer_granularity_(MonoDelta::FromMilliseconds(100)),
+      coarse_timer_granularity_(100ms),
       connection_context_factory_(&std::make_unique<YBConnectionContext>) {
 }
 
-MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(const MonoDelta &keepalive) {
+MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(
+    CoarseMonoClock::Duration keepalive) {
   connection_keepalive_time_ = keepalive;
   return *this;
 }
@@ -106,7 +107,8 @@ MessengerBuilder& MessengerBuilder::set_num_reactors(int num_reactors) {
   return *this;
 }
 
-MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(const MonoDelta &granularity) {
+MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(
+    CoarseMonoClock::Duration granularity) {
   coarse_timer_granularity_ = granularity;
   return *this;
 }

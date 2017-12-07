@@ -110,15 +110,15 @@ Reactor::Reactor(const shared_ptr<Messenger>& messenger,
   : messenger_(messenger),
     name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
     loop_(kDefaultLibEvFlags),
-    cur_time_(MonoTime::Now(MonoTime::COARSE)),
+    cur_time_(CoarseMonoClock::Now()),
     last_unused_tcp_scan_(cur_time_),
     connection_keepalive_time_(bld.connection_keepalive_time()),
     coarse_timer_granularity_(bld.coarse_timer_granularity()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
-  LOG(INFO) << "Create reactor with keep alive_time: " << connection_keepalive_time_.ToString()
-            << ", coarse timer granularity: " << coarse_timer_granularity_.ToString();
+  LOG(INFO) << "Create reactor with keep alive_time: " << ToSeconds(connection_keepalive_time_)
+            << ", coarse timer granularity: " << ToSeconds(coarse_timer_granularity_);
 
   process_outbound_queue_task_ =
       MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this));
@@ -137,8 +137,8 @@ Status Reactor::Init() {
   // backpressure.
   timer_.set(loop_);
   timer_.set<Reactor, &Reactor::TimerHandler>(this);
-  timer_.start(coarse_timer_granularity_.ToSeconds(),
-               coarse_timer_granularity_.ToSeconds());
+  timer_.start(ToSeconds(coarse_timer_granularity_),
+               ToSeconds(coarse_timer_granularity_));
 
   // Create Reactor thread.
   const std::string group_name = messenger_->name() + "_reactor";
@@ -318,7 +318,7 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
                  << call->conn_id().ToString();
     deadline = MonoTime::Max();
   } else {
-    deadline = MonoTime::Now(MonoTime::FINE);
+    deadline = MonoTime::Now();
     deadline.AddDelta(timeout);
   }
 
@@ -355,8 +355,8 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
     return;
   }
 
-  MonoTime now(MonoTime::Now(MonoTime::COARSE));
-  VLOG(4) << name() << ": timer tick at " << now.ToString();
+  auto now = CoarseMonoClock::Now();
+  VLOG(4) << name() << ": timer tick at " << ToSeconds(now.time_since_epoch());
   cur_time_ = now;
 
   ScanIdleConnections();
@@ -380,16 +380,16 @@ void Reactor::ScanIdleConnections() {
       continue;
     }
 
-    MonoTime last_activity_time = conn->last_activity_time();
-    MonoDelta connection_delta(cur_time_.GetDeltaSince(last_activity_time));
-    if (connection_delta.MoreThan(connection_keepalive_time_)) {
-      conn->Shutdown(STATUS(NetworkError,
-                       StringPrintf("connection timed out after %s",
-                                    connection_delta.ToString().c_str())));
+    auto last_activity_time = conn->last_activity_time();
+    auto connection_delta = cur_time_ - last_activity_time;
+    if (connection_delta > connection_keepalive_time_) {
+      conn->Shutdown(STATUS_FORMAT(
+          NetworkError, "Connection timed out after $0", ToSeconds(connection_delta)));
       VLOG(1) << "Timing out connection " << conn->ToString() << " - it has been idle for "
-              << connection_delta.ToSeconds() << "s (delta: " << connection_delta.ToString()
-              << ", current time: " << cur_time_.ToString()
-              << ", last activity time: " << last_activity_time.ToString() << ")";
+              << ToSeconds(connection_delta) << "s (delta: " << ToSeconds(connection_delta)
+              << ", current time: " << ToSeconds(cur_time_.time_since_epoch())
+              << ", last activity time: " << ToSeconds(last_activity_time.time_since_epoch())
+              << ")";
       server_conns_.erase(c++);
       ++timed_out;
     } else {

@@ -416,7 +416,7 @@ TEST_F(RemoteBootstrapServiceTest, TestSessionTimeout) {
   string session_id;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id));
 
-  MonoTime start_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime start_time = MonoTime::Now();
   CheckRemoteBootstrapSessionActiveResponsePB resp;
 
   do {
@@ -426,7 +426,7 @@ TEST_F(RemoteBootstrapServiceTest, TestSessionTimeout) {
       break;
     }
     SleepFor(MonoDelta::FromMilliseconds(1)); // 1 ms
-  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time).ToSeconds() < 10);
+  } while (MonoTime::Now().GetDeltaSince(start_time).ToSeconds() < 10);
 
   ASSERT_FALSE(resp.session_is_active()) << "Remote bootstrap session did not time out!";
 }

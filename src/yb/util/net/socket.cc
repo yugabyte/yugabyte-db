@@ -467,7 +467,7 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
   while (tot_written < buflen) {
     int32_t inc_num_written = 0;
     int32_t num_to_write = buflen - tot_written;
-    MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now());
     if (PREDICT_FALSE(timeout.ToNanoseconds() <= 0)) {
       return STATUS(TimedOut, "BlockingWrite timed out");
     }
@@ -544,7 +544,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
     // Read at most the max value of int32_t bytes at a time.
     const int32_t num_to_read = std::min(amt - tot_read,
                                          static_cast<size_t>(std::numeric_limits<int32_t>::max()));
-    const MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    const MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now());
     if (!full_timeout.Initialized()) {
       full_timeout = timeout;
     }

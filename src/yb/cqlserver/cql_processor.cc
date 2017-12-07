@@ -133,7 +133,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   unique_ptr<CQLResponse> response;
 
   // Parse the CQL request. If the parser failed, it sets the error message in response.
-  parse_begin_ = MonoTime::Now(MonoTime::FINE);
+  parse_begin_ = MonoTime::Now();
   const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
   const auto compression_scheme = context.compression_scheme();
   if (!CQLRequest::ParseRequest(call_->serialized_request(), compression_scheme,
@@ -144,7 +144,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
     return;
   }
 
-  execute_begin_ = MonoTime::Now(MonoTime::FINE);
+  execute_begin_ = MonoTime::Now();
   cql_metrics_->time_to_parse_cql_wrapper_->Increment(
       execute_begin_.GetDeltaSince(parse_begin_).ToMicroseconds());
 
@@ -163,14 +163,14 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
 void CQLProcessor::SendResponse(const CQLResponse& response) {
   // Serialize the response to return to the CQL client. In case of error, an error response
   // should still be present.
-  MonoTime response_begin = MonoTime::Now(MonoTime::FINE);
+  MonoTime response_begin = MonoTime::Now();
   const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
   const auto compression_scheme = context.compression_scheme();
   faststring msg;
   response.Serialize(compression_scheme, &msg);
   call_->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
 
-  MonoTime response_done = MonoTime::Now(MonoTime::FINE);
+  MonoTime response_done = MonoTime::Now();
   cql_metrics_->time_to_process_request_->Increment(
       response_done.GetDeltaSince(parse_begin_).ToMicroseconds());
   if (request_ != nullptr) {

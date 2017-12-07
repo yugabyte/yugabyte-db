@@ -142,9 +142,9 @@ std::once_flag init_get_current_micros_fast_flag;
 int64_t initial_micros_offset;
 
 void InitGetCurrentMicrosFast() {
-  auto before = MonoTime::FineNow();
+  auto before = MonoTime::Now();
   initial_micros_offset = GetCurrentTimeMicros();
-  auto after = MonoTime::FineNow();
+  auto after = MonoTime::Now();
   auto mid = after.GetDeltaSinceMin().ToMicroseconds();
   mid += before.GetDeltaSinceMin().ToMicroseconds();
   mid /= 2;
@@ -363,7 +363,7 @@ PlainTrace::PlainTrace() {
 }
 
 void PlainTrace::Trace(const char *file_path, int line_number, const char *message) {
-  auto timestamp = MonoTime::Now(MonoTime::FINE);
+  auto timestamp = MonoTime::Now();
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (size_ < kMaxEntries) {

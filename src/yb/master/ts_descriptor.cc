@@ -60,10 +60,10 @@ Status TSDescriptor::RegisterNew(const NodeInstancePB& instance,
 TSDescriptor::TSDescriptor(std::string perm_id)
     : permanent_uuid_(std::move(perm_id)),
       latest_seqno_(-1),
-      last_heartbeat_(MonoTime::Now(MonoTime::FINE)),
+      last_heartbeat_(MonoTime::Now()),
       has_tablet_report_(false),
       recent_replica_creations_(0),
-      last_replica_creations_decay_(MonoTime::Now(MonoTime::FINE)),
+      last_replica_creations_decay_(MonoTime::Now()),
       num_live_replicas_(0) {
 }
 
@@ -112,11 +112,11 @@ std::string TSDescriptor::placement_id() const {
 
 void TSDescriptor::UpdateHeartbeatTime() {
   std::lock_guard<simple_spinlock> l(lock_);
-  last_heartbeat_ = MonoTime::Now(MonoTime::FINE);
+  last_heartbeat_ = MonoTime::Now();
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
-  MonoTime now(MonoTime::Now(MonoTime::FINE));
+  MonoTime now(MonoTime::Now());
   std::lock_guard<simple_spinlock> l(lock_);
   return now.GetDeltaSince(last_heartbeat_);
 }
@@ -142,7 +142,7 @@ void TSDescriptor::DecayRecentReplicaCreationsUnlocked() {
   if (recent_replica_creations_ == 0) return;
 
   const double kHalflifeSecs = 60;
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   double secs_since_last_decay = now.GetDeltaSince(last_replica_creations_decay_).ToSeconds();
   recent_replica_creations_ *= pow(0.5, secs_since_last_decay / kHalflifeSecs);
 

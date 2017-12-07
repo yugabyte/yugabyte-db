@@ -232,7 +232,7 @@ void RemoteBootstrapITest::CrashTestVerify() {
                                                  TABLET_DATA_READY));
   auto dead_leader = crash_test_leader_ts_;
   LOG(INFO) << "Dead leader: " << dead_leader->ToString();
-  MonoTime start_time = MonoTime::Now(MonoTime::FINE);
+  MonoTime start_time = MonoTime::Now();
   Status status;
   do {
     ASSERT_OK(FindTabletLeader(ts_map_, crash_test_tablet_id_, crash_test_timeout_,
@@ -243,11 +243,11 @@ void RemoteBootstrapITest::CrashTestVerify() {
     if (status.ok()) {
       break;
     }
-  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time).ToSeconds() < 20);
+  } while (MonoTime::Now().GetDeltaSince(start_time).ToSeconds() < 20);
 
   CHECK_OK(status);
 
-  start_time = MonoTime::Now(MonoTime::FINE);
+  start_time = MonoTime::Now();
   do {
     ASSERT_OK(FindTabletLeader(ts_map_, crash_test_tablet_id_, crash_test_timeout_,
                                &crash_test_leader_ts_));
@@ -265,7 +265,7 @@ void RemoteBootstrapITest::CrashTestVerify() {
     }
 
     SleepFor(MonoDelta::FromMilliseconds(500));
-  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time).ToSeconds() < 20);
+  } while (MonoTime::Now().GetDeltaSince(start_time).ToSeconds() < 20);
 
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(4, crash_test_leader_ts_, crash_test_tablet_id_,
                                                 crash_test_timeout_));
@@ -367,9 +367,9 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   ASSERT_OK(cluster_->tablet_server(zombie_leader_index)->Resume());
 
   // Loop for a few seconds to ensure that the tablet doesn't transition to READY.
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(5));
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     ASSERT_OK(itest::ListTablets(ts, timeout, &tablets));
     ASSERT_EQ(1, tablets.size());
     ASSERT_EQ(TABLET_DATA_TOMBSTONED, tablets[0].tablet_status().tablet_data_state());
@@ -393,9 +393,9 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
                                             timeout));
 
   // Wait another few seconds to be sure the remote bootstrap is rejected.
-  deadline = MonoTime::Now(MonoTime::FINE);
+  deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(5));
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     ASSERT_OK(itest::ListTablets(ts, timeout, &tablets));
     ASSERT_EQ(1, tablets.size());
     ASSERT_EQ(TABLET_DATA_TOMBSTONED, tablets[0].tablet_status().tablet_data_state());

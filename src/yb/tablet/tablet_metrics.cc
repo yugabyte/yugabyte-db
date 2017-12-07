@@ -201,10 +201,10 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
 #undef GINIT
 
 ScopedTabletMetricsTracker::ScopedTabletMetricsTracker(scoped_refptr<Histogram> latency)
-    : latency_(latency), start_time_(MonoTime::FineNow()) {}
+    : latency_(latency), start_time_(MonoTime::Now()) {}
 
 ScopedTabletMetricsTracker::~ScopedTabletMetricsTracker() {
-  latency_->Increment(MonoTime::FineNow().GetDeltaSince(start_time_).ToMicroseconds());
+  latency_->Increment(MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds());
 }
 } // namespace tablet
 } // namespace yb

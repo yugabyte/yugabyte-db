@@ -76,7 +76,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
       apply_pool_(apply_pool),
       order_verifier_(order_verifier),
       trace_(new Trace()),
-      start_time_(MonoTime::Now(MonoTime::FINE)),
+      start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
       table_type_(table_type) {
@@ -439,7 +439,7 @@ void OperationDriver::ApplyTask() {
 }
 
 Status OperationDriver::CommitWait() {
-  MonoTime before = MonoTime::Now(MonoTime::FINE);
+  MonoTime before = MonoTime::Now();
   DCHECK(mutable_state()->external_consistency_mode() == COMMIT_WAIT);
   // TODO: we could plumb the RPC deadline in here, and not bother commit-waiting
   // if the deadline is already expired.
@@ -447,7 +447,7 @@ Status OperationDriver::CommitWait() {
       mutable_state()->tablet_peer()->clock().WaitUntilAfter(mutable_state()->hybrid_time(),
                                                              MonoTime::Max()));
   mutable_state()->mutable_metrics()->commit_wait_duration_usec =
-      MonoTime::Now(MonoTime::FINE).GetDeltaSince(before).ToMicroseconds();
+      MonoTime::Now().GetDeltaSince(before).ToMicroseconds();
   return Status::OK();
 }
 

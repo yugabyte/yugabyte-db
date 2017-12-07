@@ -239,7 +239,7 @@ class CalculatorService: public CalculatorServiceIf {
   }
 
   void Ping(const PingRequestPB* req, PingResponsePB* resp, RpcContext context) override {
-    auto now = MonoTime::Now(MonoTime::FINE);
+    auto now = MonoTime::Now();
     resp->set_time(now.ToUint64());
     context.RespondSuccess();
   }

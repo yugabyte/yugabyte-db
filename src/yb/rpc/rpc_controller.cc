@@ -110,7 +110,7 @@ void RpcController::set_timeout(const MonoDelta& timeout) {
 }
 
 void RpcController::set_deadline(const MonoTime& deadline) {
-  set_timeout(deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE)));
+  set_timeout(deadline.GetDeltaSince(MonoTime::Now()));
 }
 
 MonoDelta RpcController::timeout() const {

@@ -122,20 +122,20 @@ Trace* InboundCall::trace() {
 void InboundCall::RecordCallReceived() {
   TRACE_EVENT_ASYNC_BEGIN0("rpc", "InboundCall", this);
   DCHECK(!timing_.time_received.Initialized());  // Protect against multiple calls.
-  timing_.time_received = MonoTime::Now(MonoTime::FINE);
+  timing_.time_received = MonoTime::Now();
 }
 
 void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
   DCHECK(incoming_queue_time != nullptr);
   DCHECK(!timing_.time_handled.Initialized());  // Protect against multiple calls.
-  timing_.time_handled = MonoTime::Now(MonoTime::FINE);
+  timing_.time_handled = MonoTime::Now();
   incoming_queue_time->Increment(
       timing_.time_handled.GetDeltaSince(timing_.time_received).ToMicroseconds());
 }
 
 void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_time) {
   DCHECK(!timing_.time_completed.Initialized());  // Protect against multiple calls.
-  timing_.time_completed = MonoTime::FineNow();
+  timing_.time_completed = MonoTime::Now();
   if (handler_run_time) {
     handler_run_time->Increment((timing_.time_completed - timing_.time_handled).ToMicroseconds());
   }
@@ -147,7 +147,7 @@ bool InboundCall::ClientTimedOut() const {
     return false;
   }
 
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   return deadline.ComesBefore(now);
 }
 

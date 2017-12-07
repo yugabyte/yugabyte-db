@@ -34,6 +34,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/monotime.h"
+
 namespace yb {
 
 class MetricEntity;
@@ -50,7 +52,7 @@ struct ScannerMetrics {
 
   // Adds the the number of microseconds that have passed since
   // 'time_started' to 'scanner_duration' histogram.
-  void SubmitScannerDuration(const MonoTime& time_started);
+  void SubmitScannerDuration(const CoarseMonoClock::TimePoint& time_started);
 
   // Keeps track of the total number of scanners that have been
   // expired since the start of service.

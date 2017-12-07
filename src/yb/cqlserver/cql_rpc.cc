@@ -282,7 +282,7 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 
 
 void CQLInboundCall::LogTrace() const {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
@@ -302,7 +302,7 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
   resp->set_micros_elapsed(
-      MonoTime::FineNow().GetDeltaSince(timing_.time_received).ToMicroseconds());
+      MonoTime::Now().GetDeltaSince(timing_.time_received).ToMicroseconds());
   GetCallDetails(resp);
 
   return true;

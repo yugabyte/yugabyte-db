@@ -134,10 +134,10 @@ void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_
       *need_read_snapshot = true;
     }
   }
-  const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::FineNow() : MonoTime();
+  const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
   *keys_locked = LockBatch(lock_manager, std::move(key_to_lock_type));
   if (write_lock_latency != nullptr) {
-    const MonoDelta elapsed_time = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time);
+    const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     write_lock_latency->Increment(elapsed_time.ToMicroseconds());
   }
 }

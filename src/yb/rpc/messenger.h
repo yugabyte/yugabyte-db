@@ -84,14 +84,14 @@ class MessengerBuilder {
   explicit MessengerBuilder(std::string name);
 
   // Set the length of time we will keep a TCP connection will alive with no traffic.
-  MessengerBuilder &set_connection_keepalive_time(const MonoDelta &keepalive);
+  MessengerBuilder &set_connection_keepalive_time(CoarseMonoClock::Duration keepalive);
 
   // Set the number of reactor threads that will be used for sending and
   // receiving.
   MessengerBuilder &set_num_reactors(int num_reactors);
 
   // Set the granularity with which connections are checked for keepalive.
-  MessengerBuilder &set_coarse_timer_granularity(const MonoDelta &granularity);
+  MessengerBuilder &set_coarse_timer_granularity(CoarseMonoClock::Duration granularity);
 
   // Set metric entity for use by RPC systems.
   MessengerBuilder &set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
@@ -104,14 +104,19 @@ class MessengerBuilder {
 
   Result<std::shared_ptr<Messenger>> Build();
 
-  MonoDelta connection_keepalive_time() const { return connection_keepalive_time_; }
-  MonoDelta coarse_timer_granularity() const { return coarse_timer_granularity_; }
+  CoarseMonoClock::Duration connection_keepalive_time() const {
+    return connection_keepalive_time_;
+  }
+
+  CoarseMonoClock::Duration coarse_timer_granularity() const {
+    return coarse_timer_granularity_;
+  }
 
  private:
   const std::string name_;
-  MonoDelta connection_keepalive_time_;
+  CoarseMonoClock::Duration connection_keepalive_time_;
   int num_reactors_;
-  MonoDelta coarse_timer_granularity_;
+  CoarseMonoClock::Duration coarse_timer_granularity_;
   scoped_refptr<MetricEntity> metric_entity_;
   ConnectionContextFactory connection_context_factory_;
 };

@@ -165,7 +165,7 @@ void MasterChangeConfigTest::VerifyNonLeaderMastersPeerCount() {
 Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
     ExternalMaster* master,
     int timeout_sec) {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   MonoTime deadline = now;
   deadline.AddDelta(MonoDelta::FromSeconds(timeout_sec));
   Status s;
@@ -182,7 +182,7 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
       return Status::OK();
     }
     SleepFor(MonoDelta::FromMilliseconds(min(i, 10)));
-    now = MonoTime::Now(MonoTime::FINE);
+    now = MonoTime::Now();
   }
 
   return STATUS(TimedOut, Substitute("Timed out as master leader $0 term not ready.",

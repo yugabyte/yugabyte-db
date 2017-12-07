@@ -179,12 +179,12 @@ void TestWorkload::Setup(YBTableType table_type) {
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.
-  MonoTime deadline(MonoTime::Now(MonoTime::FINE));
+  MonoTime deadline(MonoTime::Now());
   deadline.AddDelta(MonoDelta::FromSeconds(10));
   Status s;
   while (true) {
     s = client_->TableExists(table_name_, &table_exists);
-    if (s.ok() || deadline.ComesBefore(MonoTime::Now(MonoTime::FINE))) break;
+    if (s.ok() || deadline.ComesBefore(MonoTime::Now())) break;
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   CHECK_OK(s);

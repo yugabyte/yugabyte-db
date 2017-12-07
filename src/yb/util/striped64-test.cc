@@ -30,9 +30,10 @@
 // under the License.
 //
 
+#include <memory>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/monotime.h"
@@ -68,8 +69,8 @@ class MultiThreadTest {
   typedef std::vector<scoped_refptr<Thread> > thread_vec_t;
 
   MultiThreadTest(int64_t num_operations, int64_t num_threads)
-   :  num_operations_(num_operations),
-      num_threads_(num_threads) {
+      : num_operations_(num_operations),
+        num_threads_(num_threads) {
   }
 
   void IncrementerThread(const int64_t num) {
@@ -134,13 +135,13 @@ class BasicAdder {
 };
 
 void RunMultiTest(int64_t num_operations, int64_t num_threads) {
-  MonoTime start = MonoTime::Now(MonoTime::FINE);
+  MonoTime start = MonoTime::Now();
   MultiThreadTest<BasicAdder> basicTest(num_operations, num_threads);
   basicTest.Run();
-  MonoTime end1 = MonoTime::Now(MonoTime::FINE);
+  MonoTime end1 = MonoTime::Now();
   MultiThreadTest<LongAdder> test(num_operations, num_threads);
   test.Run();
-  MonoTime end2 = MonoTime::Now(MonoTime::FINE);
+  MonoTime end2 = MonoTime::Now();
   MonoDelta basic = end1.GetDeltaSince(start);
   MonoDelta striped = end2.GetDeltaSince(end1);
   LOG(INFO) << "Basic counter took   " << basic.ToMilliseconds() << "ms.";

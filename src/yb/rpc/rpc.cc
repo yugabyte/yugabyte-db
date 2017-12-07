@@ -118,7 +118,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   if (new_status.ok()) {
     // Has this RPC timed out?
     if (deadline_.Initialized()) {
-      MonoTime now = MonoTime::Now(MonoTime::FINE);
+      MonoTime now = MonoTime::Now();
       if (deadline_.ComesBefore(now)) {
         string err_str = Substitute(
           "$0 passed its deadline $1 (now: $2)", rpc->ToString(),

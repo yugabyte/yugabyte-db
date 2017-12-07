@@ -109,7 +109,7 @@ Status TestCQLService::SendRequestAndGetResponse(
   EXPECT_EQ(cmd.length(), bytes_written);
 
   // Receive the response.
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
   size_t bytes_read = 0;
   RETURN_NOT_OK(client_sock_.BlockingRecv(resp_, expected_resp_length, &bytes_read, deadline));

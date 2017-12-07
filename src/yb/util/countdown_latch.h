@@ -93,7 +93,7 @@ class CountDownLatch {
   // Returns true if the count became zero, false otherwise.
   bool WaitUntil(const MonoTime& when) const {
     ThreadRestrictions::AssertWaitAllowed();
-    MonoDelta relative = when.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    MonoDelta relative = when.GetDeltaSince(MonoTime::Now());
     return WaitFor(relative);
   }
 
@@ -128,11 +128,12 @@ class CountDownLatch {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(CountDownLatch);
   mutable Mutex lock_;
   ConditionVariable cond_;
 
   uint64_t count_;
+
+  DISALLOW_COPY_AND_ASSIGN(CountDownLatch);
 };
 
 // Utility class which calls latch->CountDown() in its destructor.
@@ -144,10 +145,11 @@ class CountDownOnScopeExit {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(CountDownOnScopeExit);
-
   CountDownLatch *latch_;
+
+  DISALLOW_COPY_AND_ASSIGN(CountDownOnScopeExit);
 };
 
 } // namespace yb
-#endif
+
+#endif // YB_UTIL_COUNTDOWN_LATCH_H

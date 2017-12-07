@@ -31,10 +31,11 @@
 //
 
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/opid_util.h"
 
 #include <mutex>
 #include <string>
+
+#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -102,7 +103,7 @@ size_t LogAnchorRegistry::GetAnchorCountForTests() const {
 std::string LogAnchorRegistry::DumpAnchorInfo() const {
   string buf;
   std::lock_guard<simple_spinlock> l(lock_);
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   for (const AnchorMultiMap::value_type& entry : anchors_) {
     const LogAnchor* anchor = entry.second;
     DCHECK(anchor->is_registered);
@@ -124,7 +125,7 @@ void LogAnchorRegistry::RegisterUnlocked(int64_t log_index,
   anchor->log_index = log_index;
   anchor->owner.assign(owner);
   anchor->is_registered = true;
-  anchor->when_registered = MonoTime::Now(MonoTime::FINE);
+  anchor->when_registered = MonoTime::Now();
   AnchorMultiMap::value_type value(log_index, anchor);
   anchors_.insert(value);
 }

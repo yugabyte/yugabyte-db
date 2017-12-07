@@ -181,7 +181,7 @@ Status TestFunc(const MonoTime& deadline, bool* retry, int* counter) {
 } // anonymous namespace
 
 TEST(ClientUnitTest, TestRetryFunc) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(100));
   int counter = 0;
   Status s =

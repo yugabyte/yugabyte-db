@@ -155,9 +155,9 @@ class TabletServerTestBase : public YBTest {
 
     // Wait to ensure there are no pending transitions for the tablet.
     const MonoDelta timeout(MonoDelta::FromSeconds(10));
-    const MonoTime start(MonoTime::Now(MonoTime::FINE));
+    const MonoTime start(MonoTime::Now());
     while (mini_server_->server()->tablet_manager()->IsTabletInTransition(tablet_id)) {
-      MonoTime now(MonoTime::Now(MonoTime::FINE));
+      MonoTime now(MonoTime::Now());
       MonoDelta elapsed(now.GetDeltaSince(start));
       if (elapsed.MoreThan(timeout)) {
         return STATUS(TimedOut, strings::Substitute(

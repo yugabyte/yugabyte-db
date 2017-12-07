@@ -231,7 +231,7 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
     should_run_(false),
     heartbeat_asap_(false),
     tserver_metrics_interval_sec_(5),
-    prev_tserver_metrics_submission_(MonoTime::FineNow()),
+    prev_tserver_metrics_submission_(MonoTime::Now()),
     prev_reads_(0),
     prev_writes_(0) {
   CHECK_NOTNULL(master_addresses_.get());
@@ -293,7 +293,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
 
 Status Heartbeater::Thread::ConnectToMaster() {
   std::vector<Endpoint> addrs;
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
@@ -384,7 +384,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
 
   if (prev_tserver_metrics_submission_ +
-      MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::FineNow()) {
+      MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::Now()) {
 
     // Get the total memory used.
     rusage ru;
@@ -417,7 +417,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     uint64_t num_writes = (writes_hist != nullptr) ? writes_hist->TotalCount() : 0;
 
     // Calculate the read and write ops per second.
-    MonoDelta diff = MonoTime::FineNow() - prev_tserver_metrics_submission_;
+    MonoDelta diff = MonoTime::Now() - prev_tserver_metrics_submission_;
     double_t div = diff.ToSeconds();
 
     double rops_per_sec = (div > 0 && num_reads > 0) ?
@@ -430,7 +430,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     prev_writes_ = num_writes;
     req.mutable_metrics()->set_read_ops_per_sec(rops_per_sec);
     req.mutable_metrics()->set_write_ops_per_sec(wops_per_sec);
-    prev_tserver_metrics_submission_ = MonoTime::FineNow();
+    prev_tserver_metrics_submission_ = MonoTime::Now();
 
     VLOG(4) << "Read Ops per second: " << rops_per_sec;
     VLOG(4) << "Write Ops per second: " << wops_per_sec;
@@ -516,7 +516,7 @@ void Heartbeater::Thread::RunThread() {
   last_hb_response_.set_needs_full_tablet_report(true);
 
   while (true) {
-    MonoTime next_heartbeat = MonoTime::Now(MonoTime::FINE);
+    MonoTime next_heartbeat = MonoTime::Now();
     next_heartbeat.AddDelta(MonoDelta::FromMilliseconds(GetMillisUntilNextHeartbeat()));
 
     // Wait for either the heartbeat interval to elapse, or for an "ASAP" heartbeat,
@@ -524,7 +524,7 @@ void Heartbeater::Thread::RunThread() {
     {
       MutexLock l(mutex_);
       while (true) {
-        MonoDelta remaining = next_heartbeat.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+        MonoDelta remaining = next_heartbeat.GetDeltaSince(MonoTime::Now());
         if (remaining.ToMilliseconds() <= 0 ||
             heartbeat_asap_ ||
             !should_run_) {

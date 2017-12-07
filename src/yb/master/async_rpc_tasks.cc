@@ -90,7 +90,7 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
     callback_pool_(callback_pool),
     replica_picker_(replica_picker.Pass()),
     table_(table),
-    start_ts_(MonoTime::Now(MonoTime::FINE)),
+    start_ts_(MonoTime::Now()),
     attempt_(0),
     reactor_task_id_(-1),
     state_(kStateWaiting) {
@@ -115,7 +115,7 @@ Status RetryingTSRpcTask::Run() {
   }
 
   // Calculate and set the timeout deadline.
-  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  MonoTime timeout = MonoTime::Now();
   timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
   const MonoTime& deadline = MonoTime::Earliest(timeout, deadline_);
   rpc_.set_deadline(deadline);
@@ -203,7 +203,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
     return false;
   }
 
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   // We assume it might take 10ms to process the request in the best case,
   // fail if we have less than that amount of time remaining.
   int64_t millis_remaining = deadline_.GetDeltaSince(now).ToMilliseconds() - 10;
@@ -274,7 +274,7 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   if (s != kStateAborted && s != kStateComplete && s != kStateFailed) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << MonitoredTask::state(s);
   }
-  end_ts_ = MonoTime::Now(MonoTime::FINE);
+  end_ts_ = MonoTime::Now();
   if (table_ != nullptr) {
     table_->RemoveTask(shared_from_this());
   }

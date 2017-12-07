@@ -144,7 +144,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   const string& tablet_id = req->tablet_id();
   // For now, we use the requestor_uuid with the tablet id as the session id,
   // but there is no guarantee this will not change in the future.
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime now = MonoTime::Now();
   const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
 
   scoped_refptr<TabletPeer> tablet_peer;
@@ -363,7 +363,7 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
 }
 
 void RemoteBootstrapServiceImpl::ResetSessionExpirationUnlocked(const std::string& session_id) {
-  MonoTime expiration(MonoTime::Now(MonoTime::FINE));
+  MonoTime expiration(MonoTime::Now());
   expiration.AddDelta(MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_idle_timeout_ms));
   InsertOrUpdate(&session_expirations_, session_id, expiration);
 }
@@ -392,7 +392,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
     MAYBE_FAULT(FLAGS_fault_crash_leader_before_changing_role);
 
     MonoTime deadline =
-        MonoTime::FineNow() +
+        MonoTime::Now() +
         MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_change_role_timeout_ms);
     for (;;) {
       Status status = session->ChangeRole();
@@ -403,7 +403,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
       }
       LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
                    << ", error : " << status;
-      if (!status.IsLeaderHasNoLease() || MonoTime::FineNow() >= deadline) {
+      if (!status.IsLeaderHasNoLease() || MonoTime::Now() >= deadline) {
         ResetSessionExpirationUnlocked(session_id);
         return Status::OK();
       }
@@ -427,7 +427,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
 void RemoteBootstrapServiceImpl::EndExpiredSessions() {
   do {
     boost::lock_guard<simple_spinlock> l(sessions_lock_);
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
 
     vector<string> expired_session_ids;
     for (const MonoTimeMap::value_type& entry : session_expirations_) {

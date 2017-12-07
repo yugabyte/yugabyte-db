@@ -310,7 +310,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
 
   // Let's allow for plenty of time for discovering the master the first
   // time around.
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(c->default_admin_operation_timeout());
   RETURN_NOT_OK_PREPEND(
       c->data_->SetMasterServerProxy(c.get(), deadline, data_->skip_master_leader_resolution_),
@@ -344,13 +344,13 @@ YBTableCreator* YBClient::NewTableCreator() {
 
 Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this, table_name, deadline, wait);
 }
@@ -361,7 +361,7 @@ YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
 
 Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
                                         bool *alter_in_progress) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->IsAlterTableInProgress(this, table_name, deadline, alter_in_progress);
 }
@@ -369,7 +369,7 @@ Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   string table_id_ignored;
   return data_->GetTableSchema(this,
@@ -381,7 +381,7 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
 
   CreateNamespaceRequestPB req;
@@ -406,7 +406,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name) {
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
 
   DeleteNamespaceRequestPB req;
@@ -424,7 +424,7 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name) {
 }
 
 Status YBClient::ListNamespaces(std::vector<std::string>* namespaces) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
 
   ListNamespacesRequestPB req;
@@ -471,7 +471,7 @@ CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
 
   // Sending request
   GetUDTypeInfoResponsePB resp;
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status st = data_->SyncLeaderMasterRpc<GetUDTypeInfoRequestPB, GetUDTypeInfoResponsePB>(
       deadline, this, req, &resp, nullptr, "GetUDTypeInfo", &MasterServiceProxy::GetUDTypeInfo);
@@ -512,7 +512,7 @@ CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
   }
 
   CreateUDTypeResponsePB resp;
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status st = data_->SyncLeaderMasterRpc<CreateUDTypeRequestPB, CreateUDTypeResponsePB>(
       deadline, this, req, &resp, nullptr, "CreateUDType", &MasterServiceProxy::CreateUDType);
@@ -531,7 +531,7 @@ CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
   req.mutable_type()->set_type_name(type_name);
 
   DeleteUDTypeResponsePB resp;
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status st = data_->SyncLeaderMasterRpc<DeleteUDTypeRequestPB, DeleteUDTypeResponsePB>(
       deadline, this, req, &resp, nullptr, "DeleteUDType", &MasterServiceProxy::DeleteUDType);
@@ -546,7 +546,7 @@ Status YBClient::TabletServerCount(int *tserver_count) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
       data_->SyncLeaderMasterRpc<ListTabletServersRequestPB, ListTabletServersResponsePB>(
@@ -571,7 +571,7 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
       data_->SyncLeaderMasterRpc<ListTabletServersRequestPB, ListTabletServersResponsePB>(
@@ -614,7 +614,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     req.set_max_returned_locations(max_tablets);
   }
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
       data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
@@ -639,7 +639,7 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
   GetTabletLocationsResponsePB resp;
   req.add_tablet_ids(tablet_id);
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
       data_->SyncLeaderMasterRpc<GetTabletLocationsRequestPB, GetTabletLocationsResponsePB>(
@@ -753,7 +753,7 @@ Status YBClient::ListMasters(
 }
 
 Status YBClient::RefreshMasterLeaderSocket(Endpoint* leader_socket) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
 
@@ -789,7 +789,7 @@ Status YBClient::GetMasterUUID(const string& host,
 }
 
 Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->SetReplicationInfo(this, replication_info, deadline);
 }
@@ -802,7 +802,7 @@ Status YBClient::ListTables(vector<YBTableName>* tables,
   if (!filter.empty()) {
     req.set_name_filter(filter);
   }
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
       data_->SyncLeaderMasterRpc<ListTablesRequestPB, ListTablesResponsePB>(
@@ -899,7 +899,7 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
   YBSchema schema;
   string table_id;
   PartitionSchema partition_schema;
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   RETURN_NOT_OK(data_->GetTableSchema(this,
                                       table_name,
@@ -1136,7 +1136,7 @@ Status YBTableCreator::Create() {
   }
   req.mutable_partition_schema()->CopyFrom(data_->partition_schema_);
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   if (data_->timeout_.Initialized()) {
     deadline.AddDelta(data_->timeout_);
   } else {
@@ -1468,7 +1468,7 @@ Status YBTableAlterer::Alter() {
   MonoDelta timeout = data_->timeout_.Initialized() ?
     data_->timeout_ :
     data_->client_->default_admin_operation_timeout();
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
   RETURN_NOT_OK(data_->client_->data_->AlterTable(data_->client_, req, deadline));
   if (data_->wait_) {
@@ -1494,7 +1494,7 @@ YBNoOp::~YBNoOp() {
 Status YBNoOp::Execute(const YBPartialRow& key) {
   string encoded_key;
   RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(5000));
 
   NoOpRequestPB noop_req;
@@ -1526,7 +1526,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     // it's likely that the tablet is undergoing a leader election and will
     // soon have one.
     if (lookup_status.IsServiceUnavailable() &&
-        MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+        MonoTime::Now().ComesBefore(deadline)) {
       const int sleep_ms = attempt * 100;
       VLOG(1) << "Tablet " << remote_->tablet_id() << " current unavailable: "
               << lookup_status.ToString() << ". Sleeping for " << sleep_ms << "ms "
@@ -1536,7 +1536,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     }
     RETURN_NOT_OK(lookup_status);
 
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     if (deadline.ComesBefore(now)) {
       return STATUS(TimedOut, "Op timed out, deadline expired");
     }
@@ -1813,7 +1813,7 @@ Status YBScanner::Open() {
 
   VLOG(1) << "Beginning scan " << ToString();
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(data_->timeout_);
   set<string> blacklist;
 
@@ -1933,7 +1933,7 @@ Status YBScanner::NextBatch(YBScanBatch* result) {
     // timeout (the "default RPC timeout" for each individual RPC call --
     // so that if the server is hung we have time to fail over and try a
     // different server.
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
 
     MonoTime batch_deadline = now;
     batch_deadline.AddDelta(data_->timeout_);
@@ -1988,7 +1988,7 @@ Status YBScanner::NextBatch(YBScanBatch* result) {
     // server closed it for us.
     VLOG(1) << "Scanning next tablet " << ToString();
     data_->last_primary_key_.clear();
-    MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+    MonoTime deadline = MonoTime::Now();
     deadline.AddDelta(data_->timeout_);
     set<string> blacklist;
     RETURN_NOT_OK(data_->OpenTablet(data_->remote_->partition().partition_key_end(),

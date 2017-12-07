@@ -1591,17 +1591,17 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   uint64_t max_rows = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_insert_rows : 100;
 
-  MonoTime start = MonoTime::Now(MonoTime::FINE);
+  MonoTime start = MonoTime::Now();
 
   for (int i = warmup; i < warmup + max_rows; i++) {
-    MonoTime before = MonoTime::Now(MonoTime::FINE);
+    MonoTime before = MonoTime::Now();
     InsertTestRowsRemote(0, i, 1);
-    MonoTime after = MonoTime::Now(MonoTime::FINE);
+    MonoTime after = MonoTime::Now();
     MonoDelta delta = after.GetDeltaSince(before);
     histogram->Increment(delta.ToMicroseconds());
   }
 
-  MonoTime end = MonoTime::Now(MonoTime::FINE);
+  MonoTime end = MonoTime::Now();
   double throughput = ((max_rows - warmup) * 1.0) / end.GetDeltaSince(start).ToSeconds();
 
   // Generate the JSON.

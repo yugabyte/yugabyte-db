@@ -201,7 +201,7 @@ Status Wait(std::function<Result<bool>()> condition,
             const std::string& description,
             MonoDelta initial_delay,
             double delay_multiplier) {
-  auto start = MonoTime::FineNow();
+  auto start = MonoTime::Now();
   MonoDelta delay = initial_delay;
   for (;;) {
     auto current = condition();
@@ -211,7 +211,7 @@ Status Wait(std::function<Result<bool>()> condition,
     if (current.get()) {
       break;
     }
-    auto now = MonoTime::FineNow();
+    auto now = MonoTime::Now();
     auto left = deadline - now;
     if (left <= MonoDelta::kZero) {
       return STATUS_FORMAT(TimedOut,
@@ -232,7 +232,7 @@ Status WaitFor(std::function<Result<bool>()> condition,
                MonoDelta initial_delay,
                double delay_multiplier) {
   return Wait(
-      condition, MonoTime::FineNow() + timeout, description, initial_delay, delay_multiplier);
+      condition, MonoTime::Now() + timeout, description, initial_delay, delay_multiplier);
 }
 
 string GetToolPath(const string& tool_name) {

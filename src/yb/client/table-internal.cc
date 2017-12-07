@@ -94,7 +94,7 @@ Status YBTable::Data::Open() {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
 
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(client_->default_admin_operation_timeout());
 
   req.mutable_table()->set_table_id(id_);
@@ -106,7 +106,7 @@ Status YBTable::Data::Open() {
     RpcController rpc;
 
     // Have we already exceeded our deadline?
-    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    MonoTime now = MonoTime::Now();
     if (deadline.ComesBefore(now)) {
       const char* msg = "OpenTable timed out after deadline expired";
       LOG(ERROR) << msg;
@@ -137,7 +137,7 @@ Status YBTable::Data::Open() {
       }
 
       if (s.IsTimedOut()
-          && MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+          && MonoTime::Now().ComesBefore(deadline)) {
         // If the RPC timed out and the operation deadline expired, we'll loop
         // again and time out for good above.
         LOG(WARNING) << "Timed out talking to the leader master ("

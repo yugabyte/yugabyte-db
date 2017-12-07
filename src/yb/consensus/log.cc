@@ -221,7 +221,7 @@ void Log::AppendThread::RunThread() {
       } else if (!log_->sync_disabled_) {
         if (!log_->periodic_sync_needed_.load()) {
           log_->periodic_sync_needed_.store(true);
-          log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::FineNow();
+          log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::Now();
         }
         log_->periodic_sync_unsynced_bytes_ += entry_batch->total_size_bytes();
       }
@@ -647,7 +647,7 @@ Status Log::Sync() {
     bool timed_or_data_limit_sync = false;
     if (!durable_wal_write_ && periodic_sync_needed_.load()) {
       if (interval_durable_wal_write_) {
-        if (MonoTime::FineNow() > periodic_sync_earliest_unsync_entry_time_
+        if (MonoTime::Now() > periodic_sync_earliest_unsync_entry_time_
             + interval_durable_wal_write_) {
           timed_or_data_limit_sync = true;
         }

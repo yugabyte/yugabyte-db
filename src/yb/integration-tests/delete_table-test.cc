@@ -232,14 +232,14 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
                                               const string& tablet_id,
                                               TabletDataState delete_type,
                                               const MonoDelta& timeout) {
-  MonoTime start(MonoTime::Now(MonoTime::FINE));
+  MonoTime start(MonoTime::Now());
   MonoTime deadline = start;
   deadline.AddDelta(timeout);
   Status s;
   while (true) {
     s = itest::DeleteTablet(ts, tablet_id, delete_type, boost::none, timeout);
     if (s.ok()) return;
-    if (deadline.ComesBefore(MonoTime::Now(MonoTime::FINE))) {
+    if (deadline.ComesBefore(MonoTime::Now())) {
       break;
     }
     SleepFor(MonoDelta::FromMilliseconds(10));

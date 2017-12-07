@@ -125,7 +125,7 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
 // Test that the incoming event is in the past, i.e. less than now - max_error
 TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase1) {
   MonoTime no_deadline;
-  MonoTime before = MonoTime::Now(MonoTime::FINE);
+  MonoTime before = MonoTime::Now();
 
   HybridTime past_ht;
   uint64_t max_error;
@@ -140,7 +140,7 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase1) {
 
   ASSERT_OK(s);
 
-  MonoTime after = MonoTime::Now(MonoTime::FINE);
+  MonoTime after = MonoTime::Now();
   MonoDelta delta = after.GetDeltaSince(before);
   // The delta should be close to 0, but it takes some time for the hybrid
   // logical clock to decide that it doesn't need to wait.
@@ -150,7 +150,7 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase1) {
 // The normal case for transactions. Obtain a hybrid_time and then wait until
 // we're sure that tx_latest < now_earliest.
 TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase2) {
-  MonoTime before = MonoTime::Now(MonoTime::FINE);
+  MonoTime before = MonoTime::Now();
 
   // we do no time adjustment, this event should fall right within the possible
   // error interval
@@ -191,7 +191,7 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase2) {
     ASSERT_OK(clock_->WaitUntilAfter(wait_until, deadline));
   }
 
-  MonoTime after = MonoTime::Now(MonoTime::FINE);
+  MonoTime after = MonoTime::Now();
   MonoDelta delta = after.GetDeltaSince(before);
 
   // In the common case current_max_error >= past_max_error and we should have waited

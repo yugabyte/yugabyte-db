@@ -168,7 +168,7 @@ OutboundCall::OutboundCall(
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
     : conn_id_(conn_id),
-      start_(MonoTime::FineNow()),
+      start_(MonoTime::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
       call_id_(NextCallId()),
@@ -198,7 +198,7 @@ OutboundCall::~OutboundCall() {
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds()
+              << MonoTime::Now().GetDeltaSince(start_).ToMicroseconds()
               << "us. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
@@ -343,7 +343,7 @@ void OutboundCall::CallCallback() {
 }
 
 void OutboundCall::SetResponse(CallResponse&& resp) {
-  auto now = MonoTime::FineNow();
+  auto now = MonoTime::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
   // Track time taken to be responded.
 
@@ -379,7 +379,7 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
 }
 
 void OutboundCall::SetQueued() {
-  auto end_time = MonoTime::FineNow();
+  auto end_time = MonoTime::Now();
   // Track time taken to be queued.
   if (outbound_call_metrics_) {
     outbound_call_metrics_->queue_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
@@ -389,7 +389,7 @@ void OutboundCall::SetQueued() {
 }
 
 void OutboundCall::SetSent() {
-  auto end_time = MonoTime::FineNow();
+  auto end_time = MonoTime::Now();
   buffer_ = RefCntBuffer();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
@@ -403,7 +403,7 @@ void OutboundCall::SetFinished() {
   // Track time taken to be responded.
   if (outbound_call_metrics_) {
     outbound_call_metrics_->time_to_response->Increment(
-        MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
+        MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
   }
   set_state(FINISHED_SUCCESS);
   CallCallback();
@@ -474,7 +474,7 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
   InitHeader(resp->mutable_header());
-  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
+  resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }

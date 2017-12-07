@@ -556,7 +556,7 @@ class PingTestHelper {
   void Launch(size_t id) {
     PingRequestPB req;
     auto& call = calls_[id];
-    call.start_time = MonoTime::Now(MonoTime::FINE);
+    call.start_time = MonoTime::Now();
     req.set_id(id);
     call.handle_time = MonoTime::Max();
     call.reply_time = MonoTime::Max();
@@ -576,7 +576,7 @@ class PingTestHelper {
   void Done(size_t idx) {
     auto& call = calls_[idx];
     call.handle_time = MonoTime::FromUint64(call.response.time());
-    call.reply_time = MonoTime::Now(MonoTime::FINE);
+    call.reply_time = MonoTime::Now();
     call.controller.Reset();
     LaunchNext();
     if (++done_calls_ == calls_.size()) {
@@ -628,7 +628,7 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
   const size_t concurrent = FLAGS_test_rpc_concurrency;
   const size_t total_calls = kWarmupCalls + FLAGS_test_rpc_count;
 
-  auto start = MonoTime::Now(MonoTime::FINE);
+  auto start = MonoTime::Now();
   PingTestHelper helper(&p, total_calls);
   {
     for (uint64_t id = 0; id != concurrent; ++id) {
@@ -637,7 +637,7 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
     LOG(INFO) << "Warmup done, Calls left: " << total_calls - kWarmupCalls;
     helper.Wait();
   }
-  auto finish = MonoTime::Now(MonoTime::FINE);
+  auto finish = MonoTime::Now();
 
 #ifndef NDEBUG
   const int kTimeMultiplier = 5;

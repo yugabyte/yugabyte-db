@@ -27,7 +27,7 @@ ExecContext::ExecContext(const char *ql_stmt,
     : ProcessContextBase(ql_stmt, stmt_len),
       parse_tree_(parse_tree),
       params_(params),
-      start_time_(MonoTime::Now(MonoTime::FINE)),
+      start_time_(MonoTime::Now()),
       ql_env_(ql_env),
       partitions_count_(0),
       current_partition_index_(0) {

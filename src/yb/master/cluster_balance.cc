@@ -568,7 +568,7 @@ bool ClusterLoadBalancer::GetLeaderToMove(
   // We stop the whole algorithm if the left index reaches last_pos, or if we reset the right index
   // and are already breaking the invariance rule, as that means that any further differences in
   // the interval between left and right cannot have load > kMinLeaderLoadVarianceToBalance.
-  const auto current_time = MonoTime::FineNow();
+  const auto current_time = MonoTime::Now();
   int last_pos = state_->sorted_leader_load_.size() - 1;
   for (int left = 0; left <= last_pos; ++left) {
     for (int right = last_pos; right >= 0; --right) {

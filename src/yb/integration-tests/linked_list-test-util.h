@@ -365,13 +365,13 @@ class PeriodicWebUIChecker {
     for (int count = 0; is_running_.Load(); count++) {
       const std::string &url = urls_[count % urls_.size()];
       LOG(INFO) << "Curling URL " << url;
-      const MonoTime start = MonoTime::Now(MonoTime::FINE);
+      const MonoTime start = MonoTime::Now();
       Status status = curl.FetchURL(url, &dst);
       if (status.ok()) {
         CHECK_GT(dst.length(), 0);
       }
       // Sleep until the next period
-      const MonoTime end = MonoTime::Now(MonoTime::FINE);
+      const MonoTime end = MonoTime::Now();
       const MonoDelta elapsed = end.GetDeltaSince(start);
       const int64_t sleep_ns = period_.ToNanoseconds() - elapsed.ToNanoseconds();
       if (sleep_ns > 0) {
@@ -475,9 +475,8 @@ Status LinkedListTester::LoadLinkedList(
   scoped_refptr<server::Clock> ht_clock(new server::HybridClock());
   RETURN_NOT_OK(ht_clock->Init());
 
-  MonoTime start = MonoTime::Now(MonoTime::COARSE);
-  MonoTime deadline = start;
-  deadline.AddDelta(run_for);
+  auto start = CoarseMonoClock::Now();
+  auto deadline = start + run_for.ToSteadyDuration();
 
   std::shared_ptr<client::YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(15000);
@@ -491,11 +490,10 @@ Status LinkedListTester::LoadLinkedList(
     chains.push_back(new LinkedListChainGenerator(i));
   }
 
-  MonoDelta sample_interval = MonoDelta::FromMicroseconds(run_for.ToMicroseconds() / num_samples);
-  MonoTime next_sample = start;
-  next_sample.AddDelta(sample_interval);
+  auto sample_interval = run_for.ToSteadyDuration() / num_samples;
+  auto next_sample = start + sample_interval;
   LOG(INFO) << "Running for: " << run_for.ToString();
-  LOG(INFO) << "Sampling every " << sample_interval.ToMicroseconds() << " us";
+  LOG(INFO) << "Sampling every " << ToMicroseconds(sample_interval) << " us";
 
   *written_count = 0;
   int iter = 0;
@@ -505,16 +503,16 @@ Status LinkedListTester::LoadLinkedList(
       DumpInsertHistogram(false);
     }
 
-    MonoTime now = MonoTime::Now(MonoTime::COARSE);
-    if (next_sample.ComesBefore(now)) {
+    auto now = CoarseMonoClock::Now();
+    if (next_sample < now) {
       HybridTime now = ht_clock->Now();
       sampled_hybrid_times_and_counts_.push_back(
           pair<uint64_t, int64_t>(now.ToUint64(), *written_count));
-      next_sample.AddDelta(sample_interval);
+      next_sample += sample_interval;
       LOG(INFO) << "Sample at HT hybrid_time: " << now.ToString()
                 << " Inserted count: " << *written_count;
     }
-    if (deadline.ComesBefore(now)) {
+    if (deadline < now) {
       LOG(INFO) << "Finished inserting list. Added " << (*written_count) << " in chain";
       LOG(INFO) << "Last entries inserted had keys:";
       for (int i = 0; i < num_chains_; i++) {
@@ -527,9 +525,9 @@ Status LinkedListTester::LoadLinkedList(
                             "Unable to generate next insert into linked list chain");
     }
 
-    MonoTime flush_start(MonoTime::Now(MonoTime::FINE));
+    MonoTime flush_start(MonoTime::Now());
     FlushSessionOrDie(session);
-    MonoDelta elapsed = MonoTime::Now(MonoTime::FINE).GetDeltaSince(flush_start);
+    MonoDelta elapsed = MonoTime::Now().GetDeltaSince(flush_start);
     latency_histogram_.Increment(elapsed.ToMicroseconds());
 
     (*written_count) += chains.size();

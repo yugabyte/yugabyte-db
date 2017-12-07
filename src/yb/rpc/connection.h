@@ -170,7 +170,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // one epoll loop at a time.
   void EpollRegister(ev::loop_ref& loop);  // NOLINT
 
-  MonoTime last_activity_time() const {
+  CoarseMonoClock::TimePoint last_activity_time() const {
     return last_activity_time_;
   }
 
@@ -270,7 +270,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   Connected connected_;
 
   // The last time we read or wrote from the socket.
-  MonoTime last_activity_time_;
+  CoarseMonoClock::TimePoint last_activity_time_;
 
   // Notifies us when our socket is readable or writable.
   ev::io io_;

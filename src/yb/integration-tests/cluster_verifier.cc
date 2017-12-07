@@ -75,12 +75,12 @@ void ClusterVerifier::SetScanConcurrency(int concurrency) {
 }
 
 void ClusterVerifier::CheckCluster() {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(checksum_options_.timeout);
 
   Status s;
   double sleep_time = 0.1;
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+  while (MonoTime::Now().ComesBefore(deadline)) {
     s = DoYsck();
     if (s.ok()) {
       break;
@@ -155,12 +155,12 @@ void ClusterVerifier::CheckRowCountWithRetries(const YBTableName& table_name,
                                                ComparisonMode mode,
                                                int expected_row_count,
                                                const MonoDelta& timeout) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
   Status s;
   while (true) {
     s = DoCheckRowCount(table_name, mode, expected_row_count);
-    if (s.ok() || deadline.ComesBefore(MonoTime::Now(MonoTime::FINE))) break;
+    if (s.ok() || deadline.ComesBefore(MonoTime::Now())) break;
     LOG(WARNING) << "CheckRowCount() has not succeeded yet: " << s.ToString()
                  << "... will retry";
     SleepFor(MonoDelta::FromMilliseconds(100));
