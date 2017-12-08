@@ -53,3 +53,10 @@ def init_env(verbose):
 
 def get_build_type_from_build_root(build_root):
     return os.path.basename(build_root).split('-')[0]
+
+
+def safe_path_join(*args):
+    """Like os.path.join, but allows the first argument to be None."""
+    if args[0] is None:
+        return None
+    return os.path.join(*args)

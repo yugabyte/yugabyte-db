@@ -28,36 +28,20 @@ Run doctest tests as follows:
 
 import argparse
 import collections
-import filecmp
 import glob
-import hashlib
-import inspect
-import itertools
 import json
 import logging
 import os
-import platform
-import pprint
-import random
 import re
 import shutil
-import stat
-import string
 import subprocess
 import sys
-import urlparse
-
-from collections import deque, defaultdict
-from os.path import basename as path_basename
-from os.path import dirname as path_dirname
-from os.path import realpath
-from distutils.dir_util import mkpath
-from six.moves import urllib
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from yb.command_util import run_program, mkdir_p  # nopep8
 from yb.linuxbrew import get_linuxbrew_dir  # nopep8
-from yb.common_util import YB_THIRDPARTY_DIR, YB_SRC_ROOT, sorted_grouped_by  # nopep8
+from yb.common_util import YB_THIRDPARTY_DIR, YB_SRC_ROOT, sorted_grouped_by, \
+                           safe_path_join  # nopep8
 
 
 # A resolved shared library dependency shown by ldd.
@@ -74,15 +58,15 @@ SYSTEM_LIBRARY_PATHS = ['/usr/lib', '/usr/lib64', '/lib', '/lib64',
 
 HOME_DIR = os.path.expanduser('~')
 LINUXBREW_HOME = get_linuxbrew_dir()
-LINUXBREW_CELLAR_GLIBC_DIR = os.path.join(LINUXBREW_HOME, 'Cellar', 'glibc')
+LINUXBREW_CELLAR_GLIBC_DIR = safe_path_join(LINUXBREW_HOME, 'Cellar', 'glibc')
 ADDITIONAL_LIB_NAME_GLOBS = ['libnss_*', 'libresolv*']
-LINUXBREW_LDD_PATH = os.path.join(LINUXBREW_HOME, 'bin', 'ldd')
+LINUXBREW_LDD_PATH = safe_path_join(LINUXBREW_HOME, 'bin', 'ldd')
 
 YB_SCRIPT_BIN_DIR = os.path.join(YB_SRC_ROOT, 'bin')
 YB_BUILD_SUPPORT_DIR = os.path.join(YB_SRC_ROOT, 'build-support')
 
 PATCHELF_NOT_AN_ELF_EXECUTABLE = 'not an ELF executable'
-PATCHELF_PATH = os.path.join(LINUXBREW_HOME, 'bin', 'patchelf')
+PATCHELF_PATH = safe_path_join(LINUXBREW_HOME, 'bin', 'patchelf')
 
 LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
 LIBRARY_CATEGORIES = ['system', 'yb', 'yb-thirdparty', 'linuxbrew']
@@ -215,7 +199,7 @@ class LibraryPackager:
                  seed_executable_patterns,
                  dest_dir,
                  verbose_mode=False):
-        build_dir = realpath(build_dir)
+        build_dir = os.path.realpath(build_dir)
         if not os.path.exists(build_dir):
             raise IOError("Build directory '{}' does not exist".format(build_dir))
         self.seed_executable_patterns = seed_executable_patterns
@@ -245,7 +229,7 @@ class LibraryPackager:
         @param elf_file_path: ELF file (executable/library) path
         """
 
-        elf_file_path = realpath(elf_file_path)
+        elf_file_path = os.path.realpath(elf_file_path)
         if SYSTEM_LIBRARY_PATH_RE.match(elf_file_path):
             ldd_path = '/usr/bin/ldd'
         else:
@@ -267,7 +251,7 @@ class LibraryPackager:
             resolved_dep_match = RESOLVED_DEP_RE.match(ldd_output_line)
             if resolved_dep_match:
                 lib_name = resolved_dep_match.group(1)
-                lib_resolved_path = realpath(resolved_dep_match.group(2))
+                lib_resolved_path = os.path.realpath(resolved_dep_match.group(2))
 
                 dependencies.add(Dependency(lib_name, lib_resolved_path, elf_file_path,
                                             self.context))
@@ -439,7 +423,7 @@ if __name__ == '__main__':
         log_level = logging.DEBUG
     logging.basicConfig(
         level=log_level,
-        format="[" + path_basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
+        format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
 
     release_manifest_path = os.path.join(YB_SRC_ROOT, 'yb_release_manifest.json')
     release_manifest = json.load(open(release_manifest_path))

@@ -1260,6 +1260,33 @@ check_python_script_syntax() {
   popd
 }
 
+run_python_doctest() {
+  python_root=$YB_SRC_ROOT/python
+  local PYTHONPATH
+  export PYTHONPATH=$python_root
+
+  local IFS=$'\n'
+  local file_list=$( git ls-files '*.py' )
+  #local IFS=$'\n'
+  #local python_files=( $( find "$YB_SRC_ROOT/python" -name "*.py" -type f ) )
+
+  local python_file
+  for python_file in $file_list; do
+    local basename=${python_file##*/}
+    if [[ $basename == .ycm_extra_conf.py ||
+          $basename == split_long_command_line.py ]]; then
+      continue
+    fi
+    ( set -x; python -m doctest "$python_file" )
+  done
+}
+
+run_python_tests() {
+  activate_virtualenv
+  run_python_doctest
+  check_python_script_syntax
+}
+
 activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
@@ -1290,11 +1317,11 @@ activate_virtualenv() {
 # so that we can use them across many builds.
 find_shared_thirdparty_dir() {
   found_shared_thirdparty_dir=false
-  if ! is_src_root_on_nfs; then
-    return
-  fi
   local parent_dir_for_shared_thirdparty=$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY
   if [[ ! -d $parent_dir_for_shared_thirdparty ]]; then
+    log "Parent directory for shared third-party directories" \
+        "('$NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY') does not exist, cannot use pre-built" \
+        "third-party directory from there."
     return
   fi
 

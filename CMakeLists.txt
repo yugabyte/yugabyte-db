@@ -310,7 +310,9 @@ CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 # ...
 if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/[^/]+$" AND
     # We disable the "latest" symlink on Jenkins, because there it could lead to duplicate test
-    # results.
+    # results. Jenkins JUnit plugin would pick up JUnit-compatible test result XML files from both
+    # the real build directory, e.g. build/release-gcc-dynamic-enterprise, and from the
+    # build/latest directory pointing to the same directory.
     NOT $ENV{YB_DISABLE_LATEST_SYMLINK})
   if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/latest")
     message(FATAL_ERROR "Should not run cmake inside the build/latest symlink. "
@@ -609,22 +611,9 @@ else()
   message(SEND_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
 
-# Figure out the right directory layout under "thirdparty".
-if(EXISTS "${YB_THIRDPARTY_DIR}/installed/common")
-  message("Using new directory layout with thirdparty/installed/{common,uninstrumented,tsan}")
-  # Using new-style directory layout under thirdparty/installed.
-  set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
-  set(YB_PREFIX_DEPS "${YB_THIRDPARTY_DIR}/installed/uninstrumented")
-  set(YB_PREFIX_DEPS_TSAN "${YB_THIRDPARTY_DIR}/installed/tsan")
-else()
-  message("Using old directory layout with "
-          "thirdparty/{installed,installed-deps,installed-deps-tsan}")
-  # We must be using a prebuilt third-party package with the old-style directory hierarchy.  We need
-  # to get rid of this once we fully migrate to the new directory layout.
-  set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed")
-  set(YB_PREFIX_DEPS "${YB_THIRDPARTY_DIR}/installed-deps")
-  set(YB_PREFIX_DEPS_TSAN "${YB_THIRDPARTY_DIR}/installed-deps-tsan")
-endif()
+set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
+set(YB_PREFIX_DEPS "${YB_THIRDPARTY_DIR}/installed/uninstrumented")
+set(YB_PREFIX_DEPS_TSAN "${YB_THIRDPARTY_DIR}/installed/tsan")
 
 # This helps find the right third-party build directory.
 set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")

@@ -3417,7 +3417,8 @@ endfunction()
 
 function (cotire)
   # As of 08/10/2017, We're only enabling cotire if YB_USE_COTIRE is set.
-  if (${YB_USE_COTIRE} OR $ENV{YB_USE_COTIRE})
+  if ("${YB_USE_COTIRE}" STREQUAL "1" OR
+      "$ENV{YB_USE_COTIRE}" STREQUAL "1")
     set(_options "")
     set(_oneValueArgs "")
     set(_multiValueArgs LANGUAGES CONFIGURATIONS)

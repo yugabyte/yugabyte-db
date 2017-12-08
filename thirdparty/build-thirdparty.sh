@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -301,8 +302,6 @@ fi
 
 TP_DIR=$(cd "$( dirname "$BASH_SOURCE" )" && pwd)
 
-source "$TP_DIR/thirdparty-packaging-common.sh"
-
 set_compiler gcc
 
 F_ALL=1
@@ -347,11 +346,6 @@ building_what=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --no-prebuilt)
-      export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
-      log "--no-prebuilt is specified, will not download prebuilt third-party dependencies."
-    ;;
-
     --tsan-only)
       YB_THIRDPARTY_TSAN_ONLY_BUILD=1
     ;;
@@ -452,12 +446,6 @@ mkdir -p "$TP_DIR/installed/uninstrumented/include"
 
 # TODO: remove this directory after fully migrating to the new thirdparty layout.
 mkdir -p "$TP_DIR/installed-deps/include"
-
-log "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-undefined}"
-if download_prebuilt_thirdparty_deps; then
-  echo "Using prebuilt third-party code, skipping the build"
-  exit 0
-fi
 
 # -------------------------------------------------------------------------------------------------
 # Now we will actually build third-party dependencies.

@@ -137,7 +137,6 @@ cleanup() {
 
 cd "$YB_SRC_ROOT"
 log "Running with Bash version $BASH_VERSION"
-
 if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
   fatal "Test of the common build environment failed, cannot proceed."
 fi
@@ -171,17 +170,7 @@ set_common_test_paths
 export YB_DISABLE_LATEST_SYMLINK=1
 remove_latest_symlink
 
-log "Running Python doctest tests for Python files in the $YB_SRC_ROOT/python directory"
-export PYTHONPATH="$YB_SRC_ROOT/python"
-IFS=$'\n'
-python_files=( $( find "$YB_SRC_ROOT/python" -name "*.py" -type f ) )
-unset IFS
-
-for python_file in "${python_files[@]}"; do
-  ( set -x; python -m doctest "$python_file" )
-done
-
-check_python_script_syntax
+run_python_tests
 
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
@@ -263,11 +252,6 @@ if is_jenkins; then
   trap cleanup EXIT
 fi
 
-export TOOLCHAIN_DIR=/opt/toolchain
-if [[ -d $TOOLCHAIN_DIR ]]; then
-  PATH=$TOOLCHAIN_DIR/apache-maven-3.0/bin:$PATH
-fi
-
 configure_remote_build
 
 if "$using_default_thirdparty_dir"; then
@@ -282,14 +266,10 @@ if "$using_default_thirdparty_dir"; then
     fi
   fi
 else
-  export NO_REBUILD_THIRDPARTY=1
   log "YB_THIRDPARTY_DIR is explicitly specified as '$YB_THIRDPARTY_DIR', not looking for a" \
       "shared third-party directory."
 fi
 
-# We built or found third-party dependencies above. Do not attempt to download or build them in
-# further steps.
-export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
 export NO_REBUILD_THIRDPARTY=1
 
 THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
@@ -478,19 +458,27 @@ fi
 #
 # Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
 # (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
+#
+# Also temporarily skip this on macOS.
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
-      $build_type != "asan" ]]; then
+      $build_type != "asan" ]] && !is_mac; then
   log "Creating a distribution package"
 
   # We are skipping the Java build here to avoid excessive output, but not skipping the C++ build,
   # because it is invoked with a specific set of targets, which is different from how we build it in
   # a non-packaging context (e.g. for testing).
+  #
+  # We are passing --build_args="--skip-java" using the "=" syntax, because otherwise "--skip-java"
+  # would be interpreted as an argument to yb_release.py, causing an error.
   time "$YB_SRC_ROOT/yb_release" \
     --build "$build_type" \
     --build_root "$BUILD_ROOT" \
     --build_args="--skip-java" \
     --force
+else
+  log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
+      "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}"
 fi
 
 # -------------------------------------------------------------------------------------------------

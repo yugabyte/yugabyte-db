@@ -58,8 +58,6 @@ Options:
     Do not use tcmalloc.
   --no-rebuild-thirdparty, --nbtp, --nb3p, --nrtp, --nr3p
     Skip building third-party libraries, even if the thirdparty directory has changed in git.
-  --no-prebuilt-thirdparty
-    Don't download prebuilt third-party libraries, build them locally instead.
   --use-shared-thirdparty, --ustp, --stp, --us3p, --s3p
     Try to find and use a shared third-party directory (in YugaByte's build environment these
     third-party directories are under $NFS_PARENT_DIR_FOR_SHARED_THIRDPARTY)
@@ -116,6 +114,10 @@ Options:
   --build-root
     The build root directory, e.g. build/debug-gcc-dynamic-enterprise. This is used in scripting
     and is checked against other parameters.
+  --python-tests
+    Run various Python tests (doctest, unit test)
+  --cotire
+    Enable precompiled headers using cotire.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -204,6 +206,7 @@ mvn_opts=""
 java_only=false
 cmake_only=false
 use_shared_thirdparty=false
+run_python_tests=false
 
 export YB_EXTRA_GTEST_FLAGS=""
 unset BUILD_ROOT
@@ -296,12 +299,6 @@ while [ $# -gt 0 ]; do
     ;;
     --no-rebuild-thirdparty|--nrtp|--nr3p|--nbtp|--nb3p)
       export NO_REBUILD_THIRDPARTY=1
-    ;;
-    --no-prebuilt-thirdparty)
-      export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
-    ;;
-    --prebuilt-thirdparty|--with-prebuilt-thirdparty)
-      export YB_PREFER_PREBUILT_THIRDPARTY=1
     ;;
     --use-shared-thirdparty|--ustp|--stp|--us3p|--s3p)
       use_shared_thirdparty=true
@@ -424,6 +421,13 @@ while [ $# -gt 0 ]; do
       predefined_build_root=$2
       shift
     ;;
+    --python-tests)
+      run_python_tests=true
+    ;;
+    --cotire)
+      export YB_USE_COTIRE=1
+      force_run_cmake=true
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -467,12 +471,6 @@ if [[ ${YB_REMOTE_BUILD:-} == "1" && ${YB_NO_REMOTE_BUILD:-} == "1" ]]; then
         "at the same time."
 fi
 
-if [[ ${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-} == "1" && \
-      ${YB_PREFER_PREBUILT_THIRDPARTY:-} == "1" ]]; then
-  fatal "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY (--no-prebuilt-thirdparty) and" \
-    "YB_PREFER_PREBUILT_THIRDPARTY (--prebuilt-thirdparty) are incompatible."
-fi
-
 if "$java_only" && ! "$build_java"; then
   fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
         "--cxx-test or --skip-java-build."
@@ -482,6 +480,15 @@ if [[ -n ${YB_THIRDPARTY_DIR:-} && $YB_THIRDPARTY_DIR != "$YB_SRC_ROOT/thirdpart
   log "YB_THIRDPARTY_DIR ('$YB_THIRDPARTY_DIR') is not what we expect based on the source root " \
       "('$YB_SRC_ROOT/thirdparty'), not attempting to rebuild third-party dependencies."
   export NO_REBUILD_THIRDPARTY=1
+fi
+
+if "$run_python_tests"; then
+  if "$java_only"; then
+    fatal "The options --java-only and --python-tests are incompatible"
+  fi
+  log "--python-tests specified, only running Python tests"
+  run_python_tests
+  exit
 fi
 
 if "$use_shared_thirdparty"; then
