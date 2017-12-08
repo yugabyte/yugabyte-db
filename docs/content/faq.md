@@ -107,17 +107,14 @@ In general, we are be able to fill the gaps quickly if we are missing some featu
 
 ## Comparisons
 
-### How does YugaByte DB compare to the standard Apache Cassandra?
+### How does YugaByte DB compare to other SQL and NoSQL databases?
 
-See [YugaByte vs. Apache Cassandra](/architecture/comparisons/#yugabyte-vs-apache-cassandra)
+See [YugaByte DB in Comparison](/comparisons/)
 
-### How does YugaByte DB compare to the standard Redis?
-
-See [YugaByte vs. Redis](/architecture/comparisons/#yugabyte-vs-redis)
-
-### How does YugaByte DB compare against other NoSQL databases such as Apache HBase and MongoDB?
-
-See [YugaByte vs. Apache HBase](/architecture/comparisons/#yugabyte-vs-apache-hbase)
+- [Apache Cassandra](/comparisons/cassandra/)
+- [MongoDB](/comparisons/mongodb/)
+- [Redis](/comparisons/redis/)
+- [Apache HBase](/comparisons/hbase/)
 
 ### Why not use a Redis cluser alongside a sharded SQL cluster?
 

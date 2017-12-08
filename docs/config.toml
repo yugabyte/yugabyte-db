@@ -447,7 +447,6 @@ googleAnalytics = "UA-104956980-1"
 	url = "architecture/concepts/yql/"
 	weight = 970
 
-
 [[menu.main]]
 	name   = "Transactions"
 	parent = "concepts"
@@ -511,33 +510,32 @@ googleAnalytics = "UA-104956980-1"
 
 [[menu.main]]
 	name   = "Comparisons"
-	parent = "architecture"
 	identifier = "comparisons"
-	url = "architecture/comparisons/"
+	url = "comparisons/"
 	weight = 1070
 
 [[menu.main]]
 	name   = "Apache Cassandra"
 	parent = "comparisons"
-	url = "architecture/comparisons/cassandra/"
+	url = "comparisons/cassandra/"
 	weight = 1080
 
 [[menu.main]]
 	name   = "MongoDB"
 	parent = "comparisons"
-	url = "architecture/comparisons/mongodb/"
+	url = "comparisons/mongodb/"
 	weight = 1090
 
 [[menu.main]]
 	name   = "Redis"
 	parent = "comparisons"
-	url = "architecture/comparisons/redis/"
+	url = "comparisons/redis/"
 	weight = 1100
 
 [[menu.main]]
 	name   = "Apache HBase"
 	parent = "comparisons"
-	url = "architecture/comparisons/hbase/"
+	url = "comparisons/hbase/"
 	weight = 1110
 
 [[menu.main]]

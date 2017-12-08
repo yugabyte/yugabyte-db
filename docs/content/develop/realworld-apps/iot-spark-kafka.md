@@ -5,7 +5,7 @@ weight: 573
 
 ## Overview
 
-This is an end-to-end functional application. It is a blueprint for an IoT application built on top of YugaByte DB using CQL, Kafka as the message broker, Spark for realtime analytics and Sprint Boot as the application framework. The stack used for this application is very similar to the SMACK stack (Spark, Mesos, Akka, YugaByte Cassandra, Kafka), which is a popular stack for developing IoT applications.
+This is an end-to-end functional application. It is a blueprint for an IoT application built on top of YugaByte DB using CQL, Kafka as the message broker, Spark for realtime analytics and Spring Boot as the application framework. The stack used for this application is very similar to the SMACK stack (Spark, Mesos, Akka, YugaByte Cassandra, Kafka), which is a popular stack for developing IoT applications.
 
 
 ## Scenario
@@ -27,7 +27,7 @@ This application has the following subcomponents:
 - Data Store - YugaByte
 - Data Producer - Test program writing into Kafka
 - Data Processor - Spark reading from Kafka
-- Data Dashboard - Sprint Boot app using web sockets, jQuery and bootstrap
+- Data Dashboard - Spring Boot app using web sockets, jQuery and bootstrap
 
 We will look at each of these components in detail. Below is an architecture diagram showing how these components fit together.
 
