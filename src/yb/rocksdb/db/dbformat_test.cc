@@ -41,6 +41,13 @@ static std::string Shorten(const std::string& s, const std::string& l) {
   return result;
 }
 
+auto ShortenUserKeys(const char* s, const char* l) {
+  return Shorten(IKey(s, 100, kTypeValue), IKey(l, 200, kTypeValue));
+}
+
+#define TEST_SHORTEN_USER_KEYS(expected, start, limit) \
+  ASSERT_EQ(IKey((expected), kMaxSequenceNumber, kValueTypeForSeek), ShortenUserKeys(start, limit))
+
 static std::string ShortSuccessor(const std::string& s) {
   std::string result = s;
   InternalKeyComparator(BytewiseComparator()).FindShortSuccessor(&result);
@@ -100,21 +107,24 @@ TEST_F(FormatTest, InternalKeyShortSeparator) {
   ASSERT_EQ(IKey("foo", 100, kTypeValue),
             Shorten(IKey("foo", 100, kTypeValue),
                     IKey("bar", 99, kTypeValue)));
+  ASSERT_EQ(IKey("ABC\xffZ123", 100, kTypeValue), ShortenUserKeys("ABC\xffZ123", "ABC\x01"));
 
   // When user keys are different, but correctly ordered
-  ASSERT_EQ(IKey("g", kMaxSequenceNumber, kValueTypeForSeek),
-            Shorten(IKey("foo", 100, kTypeValue),
-                    IKey("hello", 200, kTypeValue)));
+  TEST_SHORTEN_USER_KEYS("g", "foo", "hello");
+  TEST_SHORTEN_USER_KEYS("ABC2", "ABC1AAAAA", "ABC2ABB");
+  TEST_SHORTEN_USER_KEYS("ABC1B", "ABC1AAA", "ABC2");
+  TEST_SHORTEN_USER_KEYS("ABC1\xffH", "ABC1\xffG123", "ABC2");
+  TEST_SHORTEN_USER_KEYS("AAA2", "AAA1AAA", "AAA2AA");
+  TEST_SHORTEN_USER_KEYS("AAA2", "AAA1AAA", "AAA4");
+  TEST_SHORTEN_USER_KEYS("AAA1B", "AAA1AAA", "AAA2");
+  TEST_SHORTEN_USER_KEYS("AAA2", "AAA1AAA", "AAA2A");
+  ASSERT_EQ(IKey("AAA1", 100, kTypeValue), ShortenUserKeys("AAA1", "AAA2"));
 
   // When start user key is prefix of limit user key
-  ASSERT_EQ(IKey("foo", 100, kTypeValue),
-            Shorten(IKey("foo", 100, kTypeValue),
-                    IKey("foobar", 200, kTypeValue)));
+  ASSERT_EQ(IKey("foo", 100, kTypeValue), ShortenUserKeys("foo", "foobar"));
 
   // When limit user key is prefix of start user key
-  ASSERT_EQ(IKey("foobar", 100, kTypeValue),
-            Shorten(IKey("foobar", 100, kTypeValue),
-                    IKey("foo", 200, kTypeValue)));
+  ASSERT_EQ(IKey("foobar", 100, kTypeValue), ShortenUserKeys("foobar", "foo"));
 }
 
 TEST_F(FormatTest, InternalKeyShortestSuccessor) {

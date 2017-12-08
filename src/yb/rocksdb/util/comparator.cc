@@ -21,10 +21,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include "yb/rocksdb/comparator.h"
+
+#include <stdint.h>
 #include <algorithm>
 #include <memory>
-#include <stdint.h>
-#include "yb/rocksdb/comparator.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/logging.h"
@@ -50,26 +51,45 @@ class BytewiseComparatorImpl : public Comparator {
     return a == b;
   }
 
-  virtual void FindShortestSeparator(std::string* start,
-                                     const Slice& limit) const override {
+  virtual void FindShortestSeparator(std::string* start, const Slice& limit) const override {
+    const uint8_t* start_bytes = pointer_cast<const uint8_t*>(start->data());
+    const uint8_t* limit_bytes = limit.data();
     // Find length of common prefix
     size_t min_length = std::min(start->size(), limit.size());
     size_t diff_index = 0;
     while ((diff_index < min_length) &&
-           ((*start)[diff_index] == limit[diff_index])) {
+           (start_bytes[diff_index] == limit_bytes[diff_index])) {
       diff_index++;
     }
 
     if (diff_index >= min_length) {
       // Do not shorten if one string is a prefix of the other
     } else {
-      uint8_t diff_byte = static_cast<uint8_t>((*start)[diff_index]);
-      if (diff_byte < static_cast<uint8_t>(0xff) &&
-          diff_byte + 1 < static_cast<uint8_t>(limit[diff_index])) {
-        (*start)[diff_index]++;
-        start->resize(diff_index + 1);
-        assert(Compare(*start, limit) < 0);
+      uint8_t start_byte = start_bytes[diff_index];
+      uint8_t limit_byte = limit_bytes[diff_index];
+      if (start_byte > limit_byte) {
+        // Cannot shorten since limit is smaller than start.
+        return;
       }
+      DCHECK_LT(start_byte, limit_byte);
+
+      if (diff_index == limit.size() - 1 && start_byte + 1 == limit_byte) {
+        //     v
+        // A A 1 A A A
+        // A A 2
+        //
+        // Incrementing the current byte will make start bigger than limit, we
+        // will skip this byte, and find the first non 0xFF byte in start and
+        // increment it.
+        ++diff_index;
+        while (diff_index < start->size() && start_bytes[diff_index] == 0xffU) { ++diff_index; }
+        if (diff_index == start->size()) {
+          return;
+        }
+      }
+      (*start)[diff_index]++;
+      start->resize(diff_index + 1);
+      DCHECK_LT(Compare(*start, limit), 0);
     }
   }
 
@@ -101,7 +121,7 @@ class ReverseBytewiseComparatorImpl : public BytewiseComparatorImpl {
   }
 };
 
-}// namespace
+}  // namespace
 
 const Comparator* BytewiseComparator() {
   static BytewiseComparatorImpl bytewise;
