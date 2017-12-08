@@ -99,6 +99,7 @@ set(ROCKSDB_SRCS
     table/full_filter_block.cc
     table/get_context.cc
     table/index_builder.cc
+    table/index_reader.cc
     table/iterator.cc
     table/merger.cc
     table/meta_blocks.cc

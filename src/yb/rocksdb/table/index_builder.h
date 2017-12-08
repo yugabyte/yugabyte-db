@@ -75,7 +75,7 @@ class IndexBuilder {
   // may therefore perform any operation required for block finalization.
   //
   // REQUIRES: Finish() has not yet been called.
-  virtual Status Finish(IndexBlocks* index_blocks) = 0;
+  virtual CHECKED_STATUS Finish(IndexBlocks* index_blocks) = 0;
 
   // Get the estimated size for index block.
   virtual size_t EstimatedSize() const = 0;
@@ -105,7 +105,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
       const Slice* first_key_in_next_block,
       const BlockHandle& block_handle) override;
 
-  Status Finish(IndexBlocks* index_blocks) override;
+  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return index_block_builder_.CurrentSizeEstimate();
@@ -155,7 +155,7 @@ class HashIndexBuilder : public IndexBuilder {
 
   void OnKeyAdded(const Slice& key) override;
 
-  Status Finish(IndexBlocks* index_blocks) override;
+  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return primary_index_builder_.EstimatedSize() + prefix_block_.size() +

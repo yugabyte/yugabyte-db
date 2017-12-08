@@ -102,7 +102,7 @@ void HashIndexBuilder::OnKeyAdded(const Slice& key) {
 
 Status HashIndexBuilder::Finish(IndexBlocks* index_blocks) {
   FlushPendingPrefix();
-  primary_index_builder_.Finish(index_blocks);
+  RETURN_NOT_OK(primary_index_builder_.Finish(index_blocks));
   index_blocks->meta_blocks.insert({kHashIndexPrefixesBlock, prefix_block_});
   index_blocks->meta_blocks.insert({kHashIndexPrefixesMetadataBlock, prefix_meta_block_});
   return Status::OK();

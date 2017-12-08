@@ -59,6 +59,7 @@ struct EnvOptions;
 struct ReadOptions;
 class GetContext;
 class InternalIterator;
+class IndexReader;
 
 using std::unique_ptr;
 
@@ -102,10 +103,6 @@ class BlockBasedTable : public TableReader {
   // No copying allowed
   explicit BlockBasedTable(const TableReader&) = delete;
   void operator=(const TableReader&) = delete;
-
-  static const char kFilterBlockPrefix[];
-  static const char kFullFilterBlockPrefix[];
-  static const char kFixedSizeFilterBlockPrefix[];
 
   // Attempt to open the table that is stored in bytes [0..base_file_size) of "base_file" (may be
   // only metadata and data will be read from separate file passed via SetDataFileReader), and read
@@ -179,12 +176,16 @@ class BlockBasedTable : public TableReader {
   // convert SST file to a human readable form
   Status DumpTable(WritableFile* out_file) override;
 
+  // input_iter: if it is not null, update this one and return it as Iterator
+  InternalIterator* NewDataBlockIterator(
+      const ReadOptions& ro, const Slice& index_value, BlockIter* input_iter = nullptr);
+
+  const ImmutableCFOptions& ioptions();
+
   ~BlockBasedTable();
 
   bool TEST_filter_block_preloaded() const;
   bool TEST_index_reader_loaded() const;
-  // Implementation of IndexReader will be exposed to internal cc file only.
-  class IndexReader;
 
  private:
   template <class TValue>
@@ -196,10 +197,6 @@ class BlockBasedTable : public TableReader {
   Rep* rep_;
 
   class BlockEntryIteratorState;
-  // input_iter: if it is not null, update this one and return it as Iterator
-  static InternalIterator* NewDataBlockIterator(
-      Rep* rep, const ReadOptions& ro, const Slice& index_value,
-      BlockIter* input_iter = nullptr);
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
   Status GetFixedSizeFilterBlockHandle(const Slice& filter_key,
@@ -294,22 +291,6 @@ class BlockBasedTable : public TableReader {
   explicit BlockBasedTable(Rep* rep)
       : rep_(rep) {
   }
-
-  // The longest prefix of the cache key used to identify blocks.
-  // For Posix files the unique ID is three varints.
-  static constexpr const size_t kMaxCacheKeyPrefixSize = kMaxVarint64Length*3+1;
-
-  struct CacheKeyBuffer {
-    char data[kMaxCacheKeyPrefixSize];
-    size_t size;
-  };
-
-  // Generate a cache key prefix from the file. Used for both data and metadata files.
-  static void GenerateCachePrefix(Cache* cc, File* file,
-      CacheKeyBuffer* prefix);
-
-  static Slice GetCacheKey(const CacheKeyBuffer& cache_key_prefix, const BlockHandle& handle,
-      char* cache_key);
 
   // Helper functions for DumpTable()
   Status DumpIndexBlock(WritableFile* out_file);
