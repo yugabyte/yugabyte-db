@@ -9,9 +9,9 @@ b) You must have `python` installed on your localhost.
 Download the YugaByte CE package as shown below.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.0.0-darwin.tar.gz
-$ tar xvfz yugabyte-ce-0.9.0.0-darwin.tar.gz
-$ cd yugabyte-0.9.0.0/
+$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.0.1-darwin.tar.gz
+$ tar xvfz yugabyte-ce-0.9.0.1-darwin.tar.gz
+$ cd yugabyte-0.9.0.1/
 ```
 
 ## Configure
