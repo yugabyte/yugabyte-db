@@ -44,8 +44,6 @@ import sys
 import time
 from time import strftime, localtime
 
-from yb_util import check_output
-
 def output_up_to_date(path, id_hash):
   """
   Return True if the old file seems to be up to date, based on the
@@ -84,7 +82,7 @@ def main():
 
   output_path = args[0]
 
-  hostname = check_output(["hostname", "-f"]).strip()
+  hostname = subprocess.check_output(["hostname", "-f"]).strip()
   build_time = "%s %s" % (strftime("%d %b %Y %H:%M:%S", localtime()), time.tzname[0])
   username = os.getenv("USER")
 
@@ -95,7 +93,7 @@ def main():
   else:
     try:
       # No command line git hash, find it in the local git repository.
-      git_hash = check_output(["git", "rev-parse", "HEAD"]).strip()
+      git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip()
       clean_repo = subprocess.call("git diff --quiet && git diff --cached --quiet", shell=True) == 0
       clean_repo = str(clean_repo).lower()
     except Exception, e:
