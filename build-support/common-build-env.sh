@@ -1115,6 +1115,14 @@ is_jenkins() {
   return 1  # Probably running locally.
 }
 
+# Check if we're in a Jenkins master build (as opposed to a Phabricator build).
+is_jenkins_master_build() {
+  if [[ -n ${JOB_NAME:-} && $JOB_NAME = *-master-* ]]; then
+    return 0
+  fi
+  return 1
+}
+
 # Check if we're using an NFS partition in YugaByte's build environment.
 is_src_root_on_nfs() {
   if [[ $YB_SRC_ROOT =~ ^/n/ ]]; then
@@ -1379,8 +1387,14 @@ handle_predefined_build_root() {
   local basename=${predefined_build_root##*/}
 
   if [[ $predefined_build_root != $YB_BUILD_PARENT_DIR/* ]]; then
-    fatal "Predefined build root '$predefined_build_root' does not start with" \
-          "\"$YB_BUILD_PARENT_DIR/\" ('$YB_BUILD_PARENT_DIR/')"
+    # Sometimes $predefined_build_root contains symlinks on its path.
+    predefined_build_root=$(
+      python -c "import os, sys; print os.path.realpath(sys.argv[1])" "$predefined_build_root"
+    )
+    if [[ $predefined_build_root != $YB_BUILD_PARENT_DIR/* ]]; then
+      fatal "Predefined build root '$predefined_build_root' does not start with" \
+            "\"$YB_BUILD_PARENT_DIR/\" ('$YB_BUILD_PARENT_DIR/')"
+    fi
   fi
 
   if [[ -z ${build_type:-} ]]; then

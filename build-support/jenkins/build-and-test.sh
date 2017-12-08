@@ -43,9 +43,10 @@
 #   Default: 1
 #     Build and test C++ code if this is set to 1.
 #
-#   SKIP_CPP_MAKE
+#   YB_SKIP_BUILD
 #   Default: 0
-#     Skip building C++ code, only run tests if this is set to 1 (useful for debugging).
+#     Skip building C++ and Java code, only run tests if this is set to 1 (useful for debugging).
+#     This option is actually handled by yb_build.sh.
 #
 #   YB_BUILD_JAVA
 #   Default: 1
@@ -88,35 +89,31 @@ build_cpp_code() {
   set_yb_src_root "$1"
 
   heading "Building C++ code in $YB_SRC_ROOT."
-  if [[ $SKIP_CPP_MAKE == "0" ]]; then
-    remote_opt=""
-    if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
-      # This helps with our background script resizing the build cluster, because it looks at all
-      # running build processes with the "--remote" option as of 08/2017.
-      remote_opt="--remote"
-    fi
-
-    # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
-    # flag so that the worker list refresh script can capture it from ps output and bump the number
-    # of workers to some minimum value.
-    #
-    # We're explicitly disabling third-party rebuilding here as we've already built third-party
-    # dependencies (or downloaded them, or picked an existing third-party directory) above.
-    time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
-      --no-rebuild-thirdparty \
-      --skip-java \
-      "$BUILD_TYPE" 2>&1 | \
-      filter_boring_cpp_build_output
-    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-      log "C++ build failed!"
-      # TODO: perhaps we shouldn't even try to run C++ tests in this case?
-      EXIT_STATUS=1
-    fi
-
-    log "Finished building C++ code (see timing information above)"
-  else
-    log "Skipped building C++ code, only running tests"
+  remote_opt=""
+  if [[ ${YB_REMOTE_BUILD:-} == "1" ]]; then
+    # This helps with our background script resizing the build cluster, because it looks at all
+    # running build processes with the "--remote" option as of 08/2017.
+    remote_opt="--remote"
   fi
+
+  # Delegate the actual C++ build to the yb_build.sh script. Also explicitly specify the --remote
+  # flag so that the worker list refresh script can capture it from ps output and bump the number
+  # of workers to some minimum value.
+  #
+  # We're explicitly disabling third-party rebuilding here as we've already built third-party
+  # dependencies (or downloaded them, or picked an existing third-party directory) above.
+  time run_build_cmd "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+    --no-rebuild-thirdparty \
+    --skip-java \
+    "$BUILD_TYPE" 2>&1 | \
+    filter_boring_cpp_build_output
+  if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    log "C++ build failed!"
+    # TODO: perhaps we shouldn't even try to run C++ tests in this case?
+    EXIT_STATUS=1
+  fi
+
+  log "Finished building C++ code (see timing information above)"
 
   remove_latest_symlink
 
@@ -136,6 +133,7 @@ cleanup() {
 # =================================================================================================
 
 cd "$YB_SRC_ROOT"
+
 log "Running with Bash version $BASH_VERSION"
 if ! "$YB_BUILD_SUPPORT_DIR/common-build-env-test.sh"; then
   fatal "Test of the common build environment failed, cannot proceed."
@@ -186,7 +184,7 @@ else
   # Don't delete the build root by default.
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-1}
 fi
-SKIP_CPP_MAKE=${SKIP_CPP_MAKE:-0}
+YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
 YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
 
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
@@ -224,10 +222,10 @@ if is_jenkins; then
         "does not get confused with old JUnit-style XML files."
     ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
 
-    log "Deleting old release archives from '$YB_BUILD_PARENT_DIR'"
+    log "Deleting old packages from '$YB_BUILD_PARENT_DIR'"
     ( set -x; rm -rf "$YB_BUILD_PARENT_DIR/yugabyte-"*"-$build_type-"*".tar.gz" )
   else
-    log "No need to delete yb-test-logs or old release archives, build root already deleted."
+    log "No need to delete yb-test-logs or old packages, build root already deleted."
   fi
 fi
 
@@ -459,11 +457,14 @@ fi
 # Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
 # (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
 #
-# Also temporarily skip this on macOS.
+# Also temporarily skip creating packages on macOS until we integrate the packaging script there.
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
       $build_type != "asan" ]] && ! is_mac; then
   log "Creating a distribution package"
+
+  package_path_file="$BUILD_ROOT/package_path.txt"
+  rm -f "$package_path_file"
 
   # We are skipping the Java build here to avoid excessive output, but not skipping the C++ build,
   # because it is invoked with a specific set of targets, which is different from how we build it in
@@ -475,10 +476,29 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     --build "$build_type" \
     --build_root "$BUILD_ROOT" \
     --build_args="--skip-java" \
+    --save_release_path_to_file "$package_path_file" \
     --force
+
+  YB_PACKAGE_PATH=$( cat "$package_path_file" )
+  if [[ -z $YB_PACKAGE_PATH ]]; then
+    fatal "File '$package_path_file' is empty"
+  fi
+  if [[ ! -f $YB_PACKAGE_PATH ]]; then
+    fatal "Package path stored in '$package_path_file' does not exist: $YB_PACKAGE_PATH"
+  fi
+
+  # Upload the package, if we have the enterprise-only code in this tree (even if the current build
+  # is a community edition build).
+  if [[ -d $YB_SRC_ROOT/ent ]]; then
+    . "$YB_SRC_ROOT/ent/build-support/upload_package.sh"
+    if ! "$package_uploaded" && ! "$package_upload_skipped"; then
+      FAILURES+=$'Package upload failed\n'
+      EXIT_STATUS=1
+    fi
+  fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
-      "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}"
+      "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."
 fi
 
 # -------------------------------------------------------------------------------------------------

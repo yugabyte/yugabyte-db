@@ -33,7 +33,7 @@ namespace client {
 
 typedef std::function<void(const Result<std::string>&)> PickStatusTabletCallback;
 
-// TransactionManager manages multiple transactions.
+// TransactionManager manages multiple transactions. It lives at the YQL engine layer.
 class TransactionManager {
  public:
   TransactionManager(const YBClientPtr& client, const scoped_refptr<ClockBase>& clock);

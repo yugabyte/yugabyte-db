@@ -23,8 +23,8 @@ namespace rpc {
 
 class ThreadPool;
 
-// Tasks pool that could be used in conjunction with ThreadPool.
-// To preallocate buffer for fixed number of tasks.
+// Tasks pool that could be used in conjunction with ThreadPool, to preallocate a buffer for a fixed
+// number of tasks and avoid allocating memory for each task separately.
 template <class Task>
 class TasksPool {
  public:

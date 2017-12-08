@@ -183,7 +183,7 @@ class YBTransaction::Impl final {
       RequestStatusTablet();
       auto transaction = transaction_->shared_from_this();
       waiters_.push_back([this, transaction](const Status& status) {
-        // Ok to crash here, because we are in test
+        // OK to crash here, because we are in test
         CHECK_OK(status);
         metadata_promise_.set_value(metadata_);
       });

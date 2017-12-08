@@ -38,8 +38,8 @@ namespace client {
 typedef std::function<void(const Status&)> Waiter;
 typedef std::function<void(const Status&)> CommitCallback;
 
-// When Batch plans to execute some operations in context of transaction, it asks
-// transaction to make some preparations. This struct contans result of those preparations.
+// When Batch plans to execute some operations in context of a transaction, it asks
+// that transaction to make some preparations. This struct contains results of those preparations.
 struct TransactionPrepareData {
   // Transaction metadata that should be sent to tserver with those operations.
   TransactionMetadata metadata;
@@ -51,9 +51,9 @@ struct TransactionPrepareData {
   ReadHybridTime read_time;
 };
 
-// YBTransaction is a representation of single transaction.
+// YBTransaction is a representation of a single transaction.
 // After YBTransaction is created, it could be used during construction of YBSession,
-// to mark that this session will send commands related to this transaction.
+// to indicate that this session will send commands related to this transaction.
 class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
  public:
   YBTransaction(TransactionManager* manager, IsolationLevel isolation);
@@ -61,7 +61,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
-  // waiter, that will be invoked when we obtain such information.
+  // the waiter, which will be invoked when we obtain such information.
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                Waiter waiter,
                TransactionPrepareData* prepare_data);

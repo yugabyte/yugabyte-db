@@ -41,7 +41,7 @@ def main():
     parser.add_argument('--build_args', default='',
                         help='Additional arguments to pass to the build script')
     parser.add_argument('--build_archive', action='store_true',
-                        help='Whether or not we should build a release archive. This defaults to '
+                        help='Whether or not we should build a package. This defaults to '
                              'false if --build_target is specified, true otherwise.')
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
@@ -56,15 +56,23 @@ def main():
                              'empty.')
     parser.add_argument('--keep_tmp_dir', action='store_true',
                         help='Keep the temporary directory (for debugging).')
+    parser.add_argument('--save_release_path_to_file',
+                        help='Save the newly built release path to a file with this name. '
+                             'This allows to post-process / upload the newly generated release '
+                             'in an enclosing script.')
     add_common_arguments(parser)
     args = parser.parse_args()
 
     init_env(args.verbose)
 
     if not args.build_target and not args.build_archive:
-        logging.info("Implying --build_archive (build release archive) because --build_target "
+        logging.info("Implying --build_archive (build package) because --build_target "
                      "(a custom directory to put YB distribution files into) is not specified.")
         args.build_archive = True
+
+    if not args.build_archive and args.save_release_path_to_file:
+        raise RuntimeError('--save_release_path_to_file does not make sense without '
+                           '--build_archive')
 
     build_root = args.build_root
     if build_root and not args.edition:
@@ -177,12 +185,19 @@ def main():
     release_util.create_distribution(build_target)
 
     if args.build_archive:
-        release_file = release_util.generate_release()
+        release_file = os.path.realpath(release_util.generate_release())
         if args.destination:
             if not os.path.exists(args.destination):
                 raise RuntimeError("Destination {} not a directory.".format(args.destination))
             shutil.copy(release_file, args.destination)
-        logging.info("Generated a release archive at '{}'".format(release_file))
+        logging.info("Generated a package at '{}'".format(release_file))
+
+        if args.save_release_path_to_file:
+            with open(args.save_release_path_to_file, 'w') as release_path_file:
+                release_path_file.write(release_file)
+
+            logging.info("Saved package path to '{}'".format(
+                args.save_release_path_to_file))
 
 
 if __name__ == '__main__':

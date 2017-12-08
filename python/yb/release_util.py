@@ -24,7 +24,7 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
 class ReleaseUtil(object):
-    """Packages a YugaByte release archive with the appropriate file naming schema."""
+    """Packages a YugaByte package with the appropriate file naming schema."""
     def __init__(self, repository, build_type, edition, distribution_path, force):
         self.repo = repository
         self.build_type = build_type
@@ -155,7 +155,7 @@ class ReleaseUtil(object):
 
         try:
             release_file = self.get_release_file()
-            logging.info("Creating a release archive '{}' from directory {}".format(
+            logging.info("Creating a package '{}' from directory {}".format(
                 release_file, tmp_distribution_dir))
             run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
                         cwd=tmp_parent_dir)

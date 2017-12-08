@@ -172,6 +172,11 @@ print_summary() {
   ) >&2
 }
 
+set_flags_to_skip_build() {
+  build_cxx=false
+  build_java=false
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 
@@ -396,8 +401,7 @@ while [ $# -gt 0 ]; do
       fi
     ;;
     --skip-build|--sb)
-      build_cxx=false
-      build_java=false
+      set_flags_to_skip_build
     ;;
     --community|--comm)
       export YB_EDITION=community
@@ -489,6 +493,11 @@ if "$run_python_tests"; then
   log "--python-tests specified, only running Python tests"
   run_python_tests
   exit
+fi
+
+if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
+  log "YB_SKIP_BUILD is set, skipping all types of compilation"
+  set_flags_to_skip_build
 fi
 
 if "$use_shared_thirdparty"; then
