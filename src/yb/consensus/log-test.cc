@@ -30,6 +30,9 @@
 // under the License.
 //
 
+#include <sys/uio.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <vector>
 
@@ -50,6 +53,10 @@ DEFINE_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
 
 DECLARE_int32(log_min_segments_to_retain);
+DECLARE_bool(never_fsync);
+DECLARE_bool(writable_file_use_fsync);
+DECLARE_int32(o_direct_block_alignment_bytes);
+DECLARE_int32(o_direct_block_size_bytes);
 
 namespace yb {
 namespace log {
@@ -230,6 +237,50 @@ TEST_F(LogTest, TestFsyncInterval) {
   SleepFor(MonoDelta::FromMilliseconds(2));
   ASSERT_OK(AppendNoOp(&opid));
   ASSERT_OK(log_->Close());
+}
+
+// Tests interval for durable wal write physically
+TEST_F(LogTest, TestFsyncIntervalPhysical) {
+  int interval = 1;
+  options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(interval);
+  FLAGS_never_fsync = false;
+  FLAGS_durable_wal_write = false;
+  options_.preallocate_segments = false;
+  BuildLog();
+
+  OpId opid;
+  opid.set_term(0);
+  opid.set_index(1);
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 1);
+  int64_t orig_size = segments[0]->file_size();
+  string fileName = segments.back()->readable_file()->filename();
+
+  ASSERT_OK(AppendNoOp(&opid));
+  SleepFor(MonoDelta::FromMilliseconds(interval + 1));
+  ASSERT_OK(AppendNoOp(&opid));
+
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 1);
+  int64_t new_size = segments[0]->file_size();
+  ASSERT_GT(new_size, orig_size);
+
+#if defined(__linux__)
+  int fd = open(fileName.c_str(), O_RDONLY | O_DIRECT);
+  ASSERT_GE(fd, 0);
+#elif defined(__APPLE__)
+  int fd = open(fileName.c_str(), O_RDONLY);
+  ASSERT_GE(fd, 0);
+  ASSERT_NE(fcntl(fd, F_NOCACHE, 1), -1);
+#endif
+  void* temp_buf = nullptr;
+  ASSERT_EQ(posix_memalign(&temp_buf, FLAGS_o_direct_block_alignment_bytes,
+                           FLAGS_o_direct_block_size_bytes), 0);
+  ASSERT_GT(pread(fd, temp_buf, FLAGS_o_direct_block_size_bytes, 0), orig_size);
+  ASSERT_OK(log_->Close());
+  free(temp_buf);
 }
 
 // Tests data size for durable wal write
