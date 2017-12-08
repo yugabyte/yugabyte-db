@@ -462,7 +462,7 @@ fi
 # Also temporarily skip this on macOS.
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
-      $build_type != "asan" ]] && !is_mac; then
+      $build_type != "asan" ]] && ! is_mac; then
   log "Creating a distribution package"
 
   # We are skipping the Java build here to avoid excessive output, but not skipping the C++ build,
