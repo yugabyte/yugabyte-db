@@ -161,14 +161,9 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Apply YBClient read/write operation.
-  CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> op) {
+  CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op) {
     op_ = op;
-    return ql_env_->ApplyWrite(op);
-  }
-
-  CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> op) {
-    op_ = op;
-    return ql_env_->ApplyRead(op);
+    return ql_env_->Apply(op);
   }
 
   // Variants of ProcessContextBase::Error() that report location of statement tnode as the error

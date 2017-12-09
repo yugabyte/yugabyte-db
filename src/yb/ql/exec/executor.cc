@@ -534,7 +534,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->ApplyRead(select_op);
+  return exec_context_->Apply(select_op);
 }
 
 Status Executor::FetchMoreRowsIfNeeded() {
@@ -619,7 +619,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
   paging_state->set_total_num_rows_read(total_row_count);
 
   // Apply the request.
-  return exec_context_->ApplyRead(op);
+  return exec_context_->Apply(op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -657,7 +657,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->ApplyWrite(insert_op);
+  return exec_context_->Apply(insert_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -698,7 +698,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->ApplyWrite(delete_op);
+  return exec_context_->Apply(delete_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -744,7 +744,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->ApplyWrite(update_op);
+  return exec_context_->Apply(update_op);
 }
 
 //--------------------------------------------------------------------------------------------------

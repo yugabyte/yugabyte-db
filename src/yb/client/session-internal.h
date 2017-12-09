@@ -52,7 +52,6 @@ class ErrorCollector;
 class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
  public:
   explicit YBSessionData(std::shared_ptr<YBClient> client,
-                         bool read_only,
                          const YBTransactionPtr& transaction);
   ~YBSessionData();
 
@@ -60,8 +59,6 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   void operator=(const YBSessionData&) = delete;
 
   void Init();
-
-  bool is_read_only() { return read_only_; }
 
   CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op);
 
@@ -86,9 +83,6 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
-
-  // In case of read_only YBSessions, writes are not allowed. Otherwise, reads are not allowed.
-  bool read_only_;
 
   YBTransactionPtr transaction_;
 

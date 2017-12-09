@@ -920,8 +920,8 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
   return Status::OK();
 }
 
-shared_ptr<YBSession> YBClient::NewSession(bool read_only) {
-  return std::make_shared<YBSession>(shared_from_this(), read_only);
+shared_ptr<YBSession> YBClient::NewSession() {
+  return std::make_shared<YBSession>(shared_from_this());
 }
 
 bool YBClient::IsMultiMaster() const {
@@ -1290,9 +1290,8 @@ YBError::~YBError() {}
 ////////////////////////////////////////////////////////////
 
 YBSession::YBSession(const shared_ptr<YBClient>& client,
-                     bool read_only,
                      const YBTransactionPtr& transaction)
-    : data_(std::make_shared<YBSessionData>(client, read_only, transaction)) {
+    : data_(std::make_shared<YBSessionData>(client, transaction)) {
   data_->Init();
 }
 
@@ -1376,7 +1375,6 @@ Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
 }
 
 void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb) {
-  CHECK(data_->read_only_);
   CHECK(yb_op->read_only());
   CHECK_OK(Apply(yb_op));
   FlushAsync(cb);
@@ -1403,10 +1401,6 @@ CollectedErrors YBSession::GetPendingErrors() {
 
 YBClient* YBSession::client() const {
   return data_->client_.get();
-}
-
-bool YBSession::is_read_only() const {
-  return data_->read_only_;
 }
 
 ////////////////////////////////////////////////////////////

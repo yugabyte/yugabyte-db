@@ -117,7 +117,7 @@ void AsyncRpc::SendRpc() {
 
 std::string AsyncRpc::ToString() const {
   return Substitute("$0(tablet: $1, num_ops: $2, num_attempts: $3)",
-                    batcher_->read_only_ ? "Read" : "Write",
+                    ops_.front()->yb_op->read_only() ? "Read" : "Write",
                     tablet().tablet_id(), ops_.size(), num_attempts());
 }
 
@@ -248,12 +248,12 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     const PartitionSchema& partition_schema = table()->partition_schema();
 
     bool partition_contains_row = false;
+    std::string partition_key;
     switch (op->yb_op->type()) {
       case YBOperation::QL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::QL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::REDIS_WRITE: {
-        string partition_key;
         CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
         partition_contains_row = partition.ConstainsKey(partition_key);
         break;
@@ -271,7 +271,8 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 
     CHECK(partition_contains_row)
         << "Row " << op->yb_op->ToString()
-        << "not in partition " << partition_schema.PartitionDebugString(partition, schema);
+        << "not in partition " << partition_schema.PartitionDebugString(partition, schema)
+        << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
 
 #endif
     switch (op->yb_op->type()) {
@@ -335,11 +336,6 @@ WriteRpc::~WriteRpc() {
                                               async_rpc_metrics_->remote_write_rpc_time;
     write_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
-}
-
-std::string WriteRpc::ToString() const {
-  return Substitute("Write(tablet: $0, num_ops: $1, num_attempts: $2)",
-                    tablet().tablet_id(), ops_.size(), num_attempts());
 }
 
 void WriteRpc::CallRemoteMethod() {
@@ -491,11 +487,6 @@ ReadRpc::~ReadRpc() {
                                              async_rpc_metrics_->remote_read_rpc_time;
     read_rpc_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
-}
-
-std::string ReadRpc::ToString() const {
-  return Substitute("Read(tablet: $0, num_ops: $1, num_attempts: $2)",
-                    tablet().tablet_id(), ops_.size(), num_attempts());
 }
 
 void ReadRpc::CallRemoteMethod() {

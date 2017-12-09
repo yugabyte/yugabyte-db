@@ -61,8 +61,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   virtual ~AsyncRpc();
 
-  virtual void SendRpc() override;
-  virtual string ToString() const override;
+  void SendRpc() override;
+  string ToString() const override;
 
   const YBTable* table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
@@ -117,7 +117,6 @@ class WriteRpc : public AsyncRpc {
   virtual ~WriteRpc();
 
   const tserver::WriteResponsePB& resp() const { return resp_; }
-  std::string ToString() const override;
 
  private:
   void CallRemoteMethod() override;
@@ -149,7 +148,6 @@ class ReadRpc : public AsyncRpc {
   virtual ~ReadRpc();
 
   const tserver::ReadResponsePB& resp() const { return resp_; }
-  std::string ToString() const override;
 
  private:
   void CallRemoteMethod() override;

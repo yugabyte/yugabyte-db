@@ -15,10 +15,12 @@
 // QLEnv represents the environment where SQL statements are being processed.
 //--------------------------------------------------------------------------------------------------
 
-#include <yb/util/trace.h>
 #include "yb/ql/util/ql_env.h"
+
 #include "yb/client/callbacks.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/rpc/messenger.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace ql {
@@ -55,16 +57,12 @@ QLEnv::QLEnv(
     shared_ptr<YBMetaDataCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
     : client_(client),
       metadata_cache_(cache),
-      write_session_(client_->NewSession(false /* read_only */)),
-      read_session_(client->NewSession(true /* read_only */)),
+      session_(client->NewSession()),
       messenger_(messenger),
       flush_done_cb_(this, &QLEnv::FlushAsyncDone),
       cql_rpcserver_env_(cql_rpcserver_env) {
-  write_session_->SetTimeoutMillis(kSessionTimeoutMs);
-  CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
-
-  read_session_->SetTimeoutMillis(kSessionTimeoutMs);
-  CHECK_OK(read_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
+  session_->SetTimeoutMillis(kSessionTimeoutMs);
+  CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
 QLEnv::~QLEnv() {}
@@ -87,32 +85,22 @@ void QLEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
   current_call_ = std::move(cql_call);
 }
 
-CHECKED_STATUS QLEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> op) {
-  CHECK(batch_session_ != read_session_) << "Mix read/write batch operations not supported";
-  // Apply the write.
-  TRACE("Apply Write");
-  RETURN_NOT_OK(write_session_->Apply(op));
-  batch_session_ = write_session_;
-  return Status::OK();
-}
+CHECKED_STATUS QLEnv::Apply(std::shared_ptr<client::YBqlOp> op) {
+  has_session_operations_ = true;
 
-CHECKED_STATUS QLEnv::ApplyRead(std::shared_ptr<YBqlReadOp> op) {
-  CHECK(batch_session_ != write_session_) << "Mix read/write batch operations not supported";
-  // Apply the read.
-  TRACE("Apply Read");
-  RETURN_NOT_OK(read_session_->Apply(op));
-  batch_session_ = read_session_;
-  return Status::OK();
+  // Apply the write.
+  TRACE("Apply");
+  return session_->Apply(std::move(op));
 }
 
 bool QLEnv::FlushAsync(Callback<void(const Status &)>* cb) {
-  if (batch_session_ == nullptr) {
+  if (!has_session_operations_) {
     return false;
   }
   DCHECK(requested_callback_ == nullptr);
   requested_callback_ = cb;
   TRACE("Flush Async");
-  batch_session_->FlushAsync(&flush_done_cb_);
+  session_->FlushAsync(&flush_done_cb_);
   return true;
 }
 
@@ -122,23 +110,23 @@ Status QLEnv::GetOpError(const client::YBqlOp* op) const {
 }
 
 void QLEnv::AbortOps() {
-  write_session_->Abort();
+  session_->Abort();
 }
 
 void QLEnv::FlushAsyncDone(const Status &s) {
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
   // returns IOError. When it happens, retrieves the errors and discard the IOError.
-  DCHECK(batch_session_ != nullptr);
+  DCHECK(has_session_operations_);
   if (PREDICT_FALSE(!s.ok())) {
     if (s.IsIOError()) {
-      for (const auto& error : batch_session_->GetPendingErrors()) {
+      for (const auto& error : session_->GetPendingErrors()) {
         op_errors_[static_cast<const client::YBqlOp*>(&error->failed_op())] = error->status();
       }
     } else {
       flush_status_ = s;
     }
   }
-  batch_session_ = nullptr;
+  has_session_operations_ = false;
 
   TRACE("Flush Async Done");
   if (current_call_ == nullptr) {
@@ -203,7 +191,7 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 }
 
 void QLEnv::Reset() {
-  batch_session_ = nullptr;
+  has_session_operations_ = false;
   requested_callback_ = nullptr;
   flush_status_ = Status::OK();
   op_errors_.clear();

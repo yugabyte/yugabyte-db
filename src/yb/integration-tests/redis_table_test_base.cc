@@ -94,14 +94,14 @@ void RedisTableTestBase::GetKeyValue(
 }
 
 void RedisTableTestBase::RedisSimpleSetCommands() {
-  session_ = NewSession(/* read_only = */ false);
+  session_ = NewSession();
   PutKeyValue("key123", "value123");
   PutKeyValue("key200", "value200");
   PutKeyValue("key300", "value300");
 }
 
 void RedisTableTestBase::RedisSimpleGetCommands() {
-  session_ = NewSession(/* read_only = */ true);
+  session_ = NewSession();
   GetKeyValue("key123", "value123");
   GetKeyValue("key200", "value200");
   GetKeyValue("key300", "value300");
@@ -109,7 +109,7 @@ void RedisTableTestBase::RedisSimpleGetCommands() {
 }
 
 void RedisTableTestBase::RedisTtlSetCommands() {
-  session_ = NewSession(/* read_only = */ false);
+  session_ = NewSession();
   PutKeyValueWithTtlNoFlush("key456", "value456", 10000);
   PutKeyValueWithTtlNoFlush("key567", "value567", 500);
   PutKeyValue("key678", "value678");
@@ -117,7 +117,7 @@ void RedisTableTestBase::RedisTtlSetCommands() {
 }
 
 void RedisTableTestBase::RedisTtlGetCommands() {
-  session_ = NewSession(/* read_only = */ true);
+  session_ = NewSession();
   GetKeyValue("key456", "value456", false);
   GetKeyValue("key567", "value567", true);
   GetKeyValue("key678", "value678", false);

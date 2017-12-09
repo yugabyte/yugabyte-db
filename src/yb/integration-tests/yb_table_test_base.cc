@@ -181,8 +181,8 @@ void YBTableTestBase::DeleteTable() {
   }
 }
 
-shared_ptr<YBSession> YBTableTestBase::NewSession(bool read_only) {
-  shared_ptr<YBSession> session = client_->NewSession(read_only);
+shared_ptr<YBSession> YBTableTestBase::NewSession() {
+  shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(session_timeout_ms());
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   return session;

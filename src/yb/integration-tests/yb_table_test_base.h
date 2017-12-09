@@ -124,7 +124,7 @@ class YBTableTestBase : public YBTest {
   // Creates a ClientYB client without assigning it to the class field.
   std::shared_ptr<yb::client::YBClient> CreateYBClient();
 
-  std::shared_ptr<yb::client::YBSession> NewSession(bool read_only_ = false);
+  std::shared_ptr<yb::client::YBSession> NewSession();
 
   yb::client::YBSchema schema_;
   std::shared_ptr<yb::client::YBSession> session_;

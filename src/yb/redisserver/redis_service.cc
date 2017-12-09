@@ -75,20 +75,17 @@ DEFINE_REDIS_histogram_EX(set_internal,
                           "yb.redisserver.RedisServerService.Set RPC Time",
                           "in yb.client.Set");
 
-#define DEFINE_REDIS_SESSION_GAUGE(type, state) \
+#define DEFINE_REDIS_SESSION_GAUGE(state) \
   METRIC_DEFINE_gauge_uint64( \
       server, \
-      BOOST_PP_CAT(BOOST_PP_CAT(BOOST_PP_CAT(state, _), type), _sessions), \
-      "Number of " BOOST_PP_STRINGIZE(state) " " BOOST_PP_STRINGIZE(type) " sessions", \
+      BOOST_PP_CAT(redis_, BOOST_PP_CAT(state, _sessions)), \
+      "Number of " BOOST_PP_STRINGIZE(state) " sessions", \
       yb::MetricUnit::kUnits, \
-      "Number of " BOOST_PP_STRINGIZE(type) " sessions " BOOST_PP_STRINGIZE(type) \
-      " by Redis service.") \
+      "Number of sessions " BOOST_PP_STRINGIZE(state) " by Redis service.") \
       /**/
 
-DEFINE_REDIS_SESSION_GAUGE( read, allocated);
-DEFINE_REDIS_SESSION_GAUGE( read, available);
-DEFINE_REDIS_SESSION_GAUGE(write, allocated);
-DEFINE_REDIS_SESSION_GAUGE(write, available);
+DEFINE_REDIS_SESSION_GAUGE(allocated);
+DEFINE_REDIS_SESSION_GAUGE(available);
 
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 constexpr int32_t kDefaultRedisServiceTimeoutMs = 600000;
@@ -288,13 +285,11 @@ class Operation {
 class SessionPool {
  public:
   void Init(const std::shared_ptr<client::YBClient>& client,
-            const scoped_refptr<MetricEntity>& metric_entity,
-            bool read) {
+            const scoped_refptr<MetricEntity>& metric_entity) {
     client_ = client;
-    read_ = read;
-    auto* proto = read ? &METRIC_allocated_read_sessions : &METRIC_allocated_write_sessions;
+    auto* proto = &METRIC_redis_allocated_sessions;
     allocated_sessions_metric_ = proto->Instantiate(metric_entity, 0);
-    proto = read ? &METRIC_available_read_sessions : &METRIC_available_write_sessions;
+    proto = &METRIC_redis_available_sessions;
     available_sessions_metric_ = proto->Instantiate(metric_entity, 0);
   }
 
@@ -302,7 +297,7 @@ class SessionPool {
     client::YBSession* result = nullptr;
     if (!queue_.pop(result)) {
       std::lock_guard<std::mutex> lock(mutex_);
-      auto session = client_->NewSession(read_);
+      auto session = client_->NewSession();
       session->SetTimeoutMillis(FLAGS_redis_service_yb_client_timeout_millis);
       CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
       sessions_.push_back(session);
@@ -319,7 +314,6 @@ class SessionPool {
   }
  private:
   std::shared_ptr<client::YBClient> client_;
-  bool read_;
   std::mutex mutex_;
   std::vector<std::shared_ptr<client::YBSession>> sessions_;
   boost::lockfree::queue<client::YBSession*> queue_{30};
@@ -346,9 +340,9 @@ class Block : public std::enable_shared_from_this<Block> {
     ops_.push_back(operation);
   }
 
-  void Launch(SessionPool* session_pools) {
-    session_pools_ = session_pools;
-    session_ = session_pools[ops_.front()->read()].Take();
+  void Launch(SessionPool* session_pool) {
+    session_pool_ = session_pool;
+    session_ = session_pool->Take();
     bool has_ok = false;
     for (auto* op : ops_) {
       has_ok = op->Apply(session_.get()) || has_ok;
@@ -402,10 +396,10 @@ class Block : public std::enable_shared_from_this<Block> {
   }
 
   void Processed() {
-    session_pools_[ops_.front()->read()].Release(session_);
+    session_pool_->Release(session_);
     session_.reset();
     if (next_) {
-      next_->Launch(session_pools_);
+      next_->Launch(session_pool_);
     }
     context_.reset();
   }
@@ -414,7 +408,7 @@ class Block : public std::enable_shared_from_this<Block> {
   Ops ops_;
   rpc::RpcMethodMetrics metrics_internal_;
   MonoTime start_;
-  SessionPool* session_pools_;
+  SessionPool* session_pool_;
   std::shared_ptr<client::YBSession> session_;
   std::shared_ptr<Block> next_;
 };
@@ -437,15 +431,15 @@ class TabletOperations {
     return read ? read_data_ : write_data_;
   }
 
-  void Done(SessionPool* session_pools) {
+  void Done(SessionPool* session_pool) {
     if (flush_head_) {
-      flush_head_->Launch(session_pools);
+      flush_head_->Launch(session_pool);
     } else {
       if (read_data_.block) {
-        read_data_.block->Launch(session_pools);
+        read_data_.block->Launch(session_pool);
       }
       if (write_data_.block) {
-        write_data_.block->Launch(session_pools);
+        write_data_.block->Launch(session_pool);
       }
     }
   }
@@ -526,11 +520,11 @@ class TabletOperations {
 class BatchContext : public RefCountedThreadSafe<BatchContext> {
  public:
   BatchContext(const std::shared_ptr<client::YBClient>& client,
-               SessionPool* session_pools,
+               SessionPool* session_pool,
                const std::shared_ptr<RedisInboundCall>& call,
                rpc::RpcMethodMetrics* metrics_internal)
       : client_(client),
-        session_pools_(session_pools),
+        session_pool_(session_pool),
         call_(call),
         metrics_internal_(metrics_internal),
         operations_(&arena_),
@@ -597,12 +591,12 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
     }
 
     for (auto& tablet : tablets_) {
-      tablet.second.Done(session_pools_);
+      tablet.second.Done(session_pool_);
     }
   }
 
   std::shared_ptr<client::YBClient> client_;
-  SessionPool* session_pools_;
+  SessionPool* session_pool_;
   std::shared_ptr<RedisInboundCall> call_;
   rpc::RpcMethodMetrics* metrics_internal_;
 
@@ -697,7 +691,7 @@ class RedisServiceImpl::Impl {
   std::mutex yb_mutex_;  // Mutex that protects the creation of client_ and table_.
   std::atomic<bool> yb_client_initialized_;
   std::shared_ptr<client::YBClient> client_;
-  std::array<SessionPool, 2> session_pools_;
+  SessionPool session_pool_;
   std::shared_ptr<client::YBTable> table_;
 
   RedisServer* server_;
@@ -840,8 +834,7 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     const YBTableName table_name(common::kRedisKeyspaceName, common::kRedisTableName);
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
 
-    session_pools_[0].Init(client_, server_->metric_entity(), false);
-    session_pools_[1].Init(client_, server_->metric_entity(), true);
+    session_pool_.Init(client_, server_->metric_entity());
 
     yb_client_initialized_.store(true, std::memory_order_release);
   }
@@ -878,7 +871,7 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // Each read commands are processed individually.
   // Sequential write commands use single session and the same batcher.
   auto context = make_scoped_refptr(new BatchContext(client_,
-                                                     session_pools_.data(),
+                                                     &session_pool_,
                                                      call,
                                                      metrics_internal_.data()));
   const auto& batch = call->client_batch();

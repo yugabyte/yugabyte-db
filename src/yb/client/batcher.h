@@ -228,9 +228,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Protected by lock_
   bool had_errors_;
 
-  // Is this batcher for read_only_ sessions?
-  bool read_only_;
-
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
   // will be called exactly once (and the state changed to kFlushed).

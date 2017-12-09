@@ -358,15 +358,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  std::shared_ptr<YBSession> NewSession(bool read_only = false);
-
-  std::shared_ptr<YBSession> NewReadSession() {
-    return NewSession(true /* read_only */);
-  }
-
-  std::shared_ptr<YBSession> NewWriteSession() {
-    return NewSession(false /* read_only */);
-  }
+  std::shared_ptr<YBSession> NewSession();
 
   // Return the socket address of the master leader for this client
   CHECKED_STATUS SetMasterLeaderSocket(Endpoint* leader_socket);
@@ -856,7 +848,6 @@ class YBSessionData;
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
   explicit YBSession(const std::shared_ptr<YBClient>& client,
-                     bool read_only,
                      const YBTransactionPtr& transaction = nullptr);
 
   ~YBSession();
@@ -1066,8 +1057,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   CollectedErrors GetPendingErrors();
 
   YBClient* client() const;
-
-  bool is_read_only() const;
 
  private:
   friend class YBClient;

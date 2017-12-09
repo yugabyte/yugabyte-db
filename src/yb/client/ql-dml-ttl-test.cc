@@ -45,6 +45,7 @@ class QLDmlTTLTest : public QLDmlTestBase {
 };
 
 TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
+  const shared_ptr<YBSession> session(client_->NewSession());
   {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
@@ -53,7 +54,6 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.SetInt32ColumnValue(req->add_column_values(), "c1", 1);
     table_.SetStringColumnValue(req->add_column_values(), "c2", "yuga-hello");
     req->set_ttl(2 * 1000);
-    const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -67,7 +67,6 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.SetInt32ColumnValue(req->add_column_values(), "c3", 2);
     table_.SetStringColumnValue(req->add_column_values(), "c4", "yuga-hi");
     req->set_ttl(4 * 1000);
-    const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -80,7 +79,6 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.AddColumns(kAllColumns, req);
 
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
     // Expect all 4 columns (c1, c2, c3, c4) to be valid right now.
@@ -105,7 +103,6 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.AddColumns(kAllColumns, req);
 
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
     // Expect columns (c1, c2) to be null and (c3, c4) to be valid right now.
@@ -130,7 +127,6 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.SetInt32Expression(req->add_hashed_column_values(), 1);
     table_.AddColumns(kAllColumns, req);
 
-    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
     CHECK_OK(session->Apply(op));
 
     // Expect all 4 columns (c1, c2, c3, c4) to be null.

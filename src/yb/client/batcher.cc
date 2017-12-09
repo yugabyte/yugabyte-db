@@ -101,7 +101,6 @@ Batcher::Batcher(YBClient* client,
     consistency_mode_(consistency_mode),
     error_collector_(error_collector),
     had_errors_(false),
-    read_only_(session_data->is_read_only()),
     flush_callback_(NULL),
     next_op_sequence_number_(0),
     max_buffer_size_(7 * 1024 * 1024),
@@ -374,6 +373,21 @@ void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
   }
 }
 
+YB_DEFINE_ENUM(OpGroup, (kWrite)(kLeaderRead)(kConsistentPrefixRead));
+
+OpGroup GetOpGroup(const InFlightOpPtr& op) {
+  if (!op->yb_op->read_only()) {
+    return OpGroup::kWrite;
+  }
+  if (op->yb_op->type() == YBOperation::Type::QL_READ &&
+      std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
+          YBConsistencyLevel::CONSISTENT_PREFIX) {
+    return OpGroup::kConsistentPrefixRead;
+  }
+
+  return OpGroup::kLeaderRead;
+}
+
 void Batcher::FlushBuffersIfReady() {
   InFlightOps ops;
 
@@ -421,6 +435,11 @@ void Batcher::FlushBuffersIfReady() {
             ops.end(),
             [](const InFlightOpPtr& lhs, const InFlightOpPtr& rhs) {
     if (lhs->tablet.get() == rhs->tablet.get()) {
+      auto lgroup = GetOpGroup(lhs);
+      auto rgroup = GetOpGroup(rhs);
+      if (lgroup != rgroup) {
+        return lgroup < rgroup;
+      }
       return lhs->sequence_number_ < rhs->sequence_number_;
     }
     return lhs->tablet.get() < rhs->tablet.get();
@@ -428,10 +447,13 @@ void Batcher::FlushBuffersIfReady() {
 
   // Now flush the ops for each tablet.
   auto start = ops.begin();
+  auto start_group = GetOpGroup(*start);
   for (auto it = start; it != ops.end(); ++it) {
-    if (it->get()->tablet.get() != start->get()->tablet.get()) {
+    auto it_group = GetOpGroup(*it);
+    if ((**it).tablet.get() != (**start).tablet.get() || start_group != it_group) {
       FlushBuffer(start->get()->tablet.get(), start, it);
       start = it;
+      start_group = it_group;
     }
   }
 
@@ -463,38 +485,29 @@ void Batcher::FlushBuffer(RemoteTablet* tablet,
   //
   // The RPC object takes ownership of the in flight ops.
   // The underlying YB OP is not directly owned, only a reference is kept.
-  if (read_only_) {
-    // Split the read operations according to consistency levels since based on consistency
-    // levels the read algorithm would differ.
-    InFlightOps leader_only_reads;
-    InFlightOps consistent_prefix_reads;
-    for (auto it = begin; it != end; ++it) {
-      auto& op = *it;
-      if (op->yb_op->type() == YBOperation::Type::QL_READ &&
-          std::static_pointer_cast<YBqlReadOp>(op->yb_op)->yb_consistency_level() ==
-              YBConsistencyLevel::CONSISTENT_PREFIX) {
-        consistent_prefix_reads.push_back(op);
-      } else {
-        leader_only_reads.push_back(op);
-      }
-    }
 
-    if (!leader_only_reads.empty()) {
-      auto rpc = std::make_shared<ReadRpc>(this, tablet, leader_only_reads);
-      rpc->SendRpc();
-    }
-
-    if (!consistent_prefix_reads.empty()) {
-      auto consistent_prefix_rpc = std::make_shared<ReadRpc>(
-          this, tablet, consistent_prefix_reads, YBConsistencyLevel::CONSISTENT_PREFIX);
-      consistent_prefix_rpc->SendRpc();
-    }
-  } else {
-    auto rpc = std::make_shared<WriteRpc>(this, tablet, InFlightOps(begin, end));
-    rpc->SendRpc();
+  // Split the read operations according to consistency levels since based on consistency
+  // levels the read algorithm would differ.
+  InFlightOps ops(begin, end);
+  std::shared_ptr<AsyncRpc> rpc;
+  auto op_group = GetOpGroup(*begin);
+  switch (op_group) {
+    case OpGroup::kWrite:
+      rpc = std::make_shared<WriteRpc>(this, tablet, std::move(ops));
+      break;
+    case OpGroup::kLeaderRead:
+      rpc = std::make_shared<ReadRpc>(this, tablet, std::move(ops));
+      break;
+    case OpGroup::kConsistentPrefixRead:
+      rpc = std::make_shared<ReadRpc>(
+          this, tablet, std::move(ops), YBConsistencyLevel::CONSISTENT_PREFIX);
+      break;
   }
+  if (!rpc) {
+    FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
+  }
+  rpc->SendRpc();
 }
-
 
 using tserver::ReadResponsePB;
 

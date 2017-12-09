@@ -50,10 +50,8 @@ using internal::ErrorCollector;
 using std::shared_ptr;
 
 YBSessionData::YBSessionData(shared_ptr<YBClient> client,
-                             bool read_only,
                              const YBTransactionPtr& transaction)
     : client_(std::move(client)),
-      read_only_(read_only),
       transaction_(transaction),
       error_collector_(new ErrorCollector()) {
   const auto metric_entity = client_->messenger()->metric_entity();
@@ -117,8 +115,6 @@ void YBSessionData::FlushAsync(YBStatusCallback* callback) {
 }
 
 Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
-  CHECK_EQ(yb_op->read_only(), read_only_);
-
   // Check if the Kudu operations have the hashed keys.
   // For QL/Redis operations this should be checked during analysis before getting here.
   if (yb_op->type() == YBOperation::INSERT ||

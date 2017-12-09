@@ -342,10 +342,9 @@ class YBqlWriteOp : public YBqlOp {
 
   QLWriteRequestPB* mutable_request() { return ql_write_request_.get(); }
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
-  virtual bool read_only() override { return false; };
-
+  bool read_only() override { return false; };
 
   virtual void SetHashCode(uint16_t hash_code) override;
 

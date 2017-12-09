@@ -24,10 +24,12 @@
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/ql/ql_session.h"
-#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/cqlserver/cql_rpc.h"
 #include "yb/cqlserver/cql_rpcserver_env.h"
+
+#include "yb/util/enums.h"
 
 namespace yb {
 namespace ql {
@@ -58,8 +60,7 @@ class QLEnv {
 
   // Apply a read/write operation. The operation is batched and needs to be flushed with FlushAsync.
   // Mix of read/write operations in a batch is not supported currently.
-  virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> op);
-  virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> op);
+  virtual CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op);
 
   // Flush batched operations. Returns false when there is no batched operation.
   virtual bool FlushAsync(Callback<void(const Status &)>* cb);
@@ -139,14 +140,10 @@ class QLEnv {
   // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
-  // YBSession to apply write operations.
-  std::shared_ptr<client::YBSession> write_session_;
+  // YBSession to apply operations.
+  std::shared_ptr<client::YBSession> session_;
 
-  // YBSession to apply read operations.
-  std::shared_ptr<client::YBSession> read_session_;
-
-  // The YB read/write session with batch operations. Null when there is no batch operations.
-  std::shared_ptr<client::YBSession> batch_session_;
+  bool has_session_operations_ = false;
 
   // Messenger used to requeue the CQL call upon callback.
   std::weak_ptr<rpc::Messenger> messenger_;

@@ -113,7 +113,7 @@ class QLTabletTest : public QLDmlTestBase {
 
   void FillTable(int begin, int end, TableHandle* table) {
     {
-      auto session = client_->NewSession(false /* read_only */);
+      auto session = client_->NewSession();
       for (int i = begin; i != end; ++i) {
         SetValue(session, i, ValueForKey(i), table);
       }
@@ -123,7 +123,7 @@ class QLTabletTest : public QLDmlTestBase {
   }
 
   void VerifyTable(int begin, int end, TableHandle* table) {
-    auto session = client_->NewSession(true /* read_only */);
+    auto session = client_->NewSession();
     for (int i = begin; i != end; ++i) {
       auto value = GetValue(session, i, table);
       ASSERT_TRUE(value.is_initialized()) << "i: " << i << ", table: " << table->name().ToString();
@@ -436,7 +436,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   StepDownAllTablets(cluster_.get());
 
   LOG(INFO) << "Write value";
-  auto session = client_->NewWriteSession();
+  auto session = client_->NewSession();
   session->SetTimeout(15s);
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();

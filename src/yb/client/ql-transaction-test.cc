@@ -134,9 +134,8 @@ class QLTransactionTest : public QLDmlTestBase {
     transaction_manager_.emplace(client_, clock);
   }
 
-  shared_ptr<YBSession> CreateSession(const bool read_only,
-                                      const YBTransactionPtr& transaction = nullptr) {
-    auto session = std::make_shared<YBSession>(client_, read_only, transaction);
+  shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
+    auto session = std::make_shared<YBSession>(client_, transaction);
     session->SetTimeout(NonTsanVsTsan(5s, 20s));
     return session;
   }
@@ -218,7 +217,7 @@ class QLTransactionTest : public QLDmlTestBase {
     CountDownLatch latch(1);
     {
       auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-      auto session = CreateSession(false /* read_only */, tc);
+      auto session = CreateSession(tc);
       WriteRows(session, 0, op_type);
       tc->Commit([&latch](const Status& status) {
           ASSERT_OK(status);
@@ -231,7 +230,7 @@ class QLTransactionTest : public QLDmlTestBase {
 
   void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT) {
     VLOG(4) << "Verifying data..." << std::endl;
-    auto session = CreateSession(true /* read_only */);
+    auto session = CreateSession();
     for (size_t i = 0; i != num_transactions; ++i) {
       for (size_t r = 0; r != kNumRows; ++r) {
         VERIFY_ROW(
@@ -278,7 +277,7 @@ TEST_F(QLTransactionTest, DISABLED_ReadRestart) {
   server::TestClockDeltaChanger delta_changer(-100ms, clock_);
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
                                             IsolationLevel::SNAPSHOT_ISOLATION);
-  auto session = CreateSession(true /* read_only */, tc);
+  auto session = CreateSession(tc);
   for (size_t r = 0; r != kNumRows; ++r) {
     auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
     ASSERT_TRUE(!row.ok() && row.status().IsTryAgain()) << "Bad row: " << row;
@@ -312,7 +311,7 @@ TEST_F(QLTransactionTest, Cleanup) {
 TEST_F(QLTransactionTest, Heartbeat) {
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
                                             IsolationLevel::SNAPSHOT_ISOLATION);
-  auto session = CreateSession(false /* read_only */, tc);
+  auto session = CreateSession(tc);
   WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
   CountDownLatch latch(1);
@@ -328,7 +327,7 @@ TEST_F(QLTransactionTest, Expire) {
   google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
   auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-  auto session = CreateSession(false /* read_only */, tc);
+  auto session = CreateSession(tc);
   WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
   CountDownLatch latch(1);
@@ -350,7 +349,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   constexpr size_t kTransactions = 20;
   for (size_t i = 0; i != kTransactions; ++i) {
     auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-    auto session = CreateSession(false /* read_only */, tc);
+    auto session = CreateSession(tc);
     WriteRows(session, i);
     transactions.push_back(std::move(tc));
     std::this_thread::sleep_for(100ms);
@@ -397,7 +396,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   for (size_t i = 0; i != kTotalTransactions; ++i) {
     transactions.push_back(std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
                                                            SNAPSHOT_ISOLATION));
-    auto session = CreateSession(false /* read_only */, transactions.back());
+    auto session = CreateSession(transactions.back());
     sessions.push_back(session);
     ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
     for (size_t r = 0; r != kNumRows; ++r) {
@@ -429,7 +428,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
 
   ASSERT_GE(successes.load(std::memory_order_acquire), 1);
 
-  auto session = CreateSession(true /* read_only */);
+  auto session = CreateSession();
   std::vector<int32_t> values;
   for (size_t r = 0; r != kNumRows; ++r) {
     auto row = SelectRow(session, r);
@@ -447,9 +446,8 @@ TEST_F(QLTransactionTest, SimpleWriteConflict) {
   auto transaction = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
                                                      SNAPSHOT_ISOLATION);
 
-  WriteRows(CreateSession(false /* read_only */, transaction));
-
-  WriteRows(CreateSession(false /* read_only */));
+  WriteRows(CreateSession(transaction));
+  WriteRows(CreateSession());
 
   ASSERT_NOK(transaction->CommitFuture().get());
 }
@@ -473,7 +471,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
   // Write { 1 -> 1, 2 -> 2 }.
   {
-    auto session = CreateSession(false /* read_only */);
+    auto session = CreateSession();
     ASSERT_OK(WriteRow(session, 1, 1));
     ASSERT_OK(WriteRow(session, 2, 2));
   }
@@ -481,20 +479,15 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
   {
     // Start T1.
     auto txn = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    auto session = CreateSession(txn);
 
     // T1: Update { 1 -> 11, 2 -> 12 }.
-    {
-      auto session = CreateSession(false /* read_only */, txn);
-      ASSERT_OK(UpdateRow(session, 1, 11));
-      ASSERT_OK(UpdateRow(session, 2, 12));
-    }
+    ASSERT_OK(UpdateRow(session, 1, 11));
+    ASSERT_OK(UpdateRow(session, 2, 12));
 
     // T1: Should read { 1 -> 11, 2 -> 12 }.
-    {
-      auto session = CreateSession(true /* read_only */, txn);
-      VERIFY_ROW(session, 1, 11);
-      VERIFY_ROW(session, 2, 12);
-    }
+    VERIFY_ROW(session, 1, 11);
+    VERIFY_ROW(session, 2, 12);
 
     txn->Abort();
   }
@@ -504,7 +497,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
   // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
   {
-    auto session = CreateSession(true /* read_only */);
+    auto session = CreateSession();
     VERIFY_ROW(session, 1, 1);
     VERIFY_ROW(session, 2, 2);
   }
@@ -518,44 +511,37 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
 
   // Write { 1 -> 1, 2 -> 2 }.
   {
-    auto session = CreateSession(false /* read_only */);
+    auto session = CreateSession();
     ASSERT_OK(WriteRow(session, 1, 1));
     ASSERT_OK(WriteRow(session, 2, 2));
   }
 
   // Start T1.
   auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto session1 = CreateSession(txn1);
 
   // T1: Update { 1 -> 11, 2 -> 12 }.
-  {
-    auto session = CreateSession(false /* read_only */, txn1);
-    ASSERT_OK(UpdateRow(session, 1, 11));
-    ASSERT_OK(UpdateRow(session, 2, 12));
-  }
+  ASSERT_OK(UpdateRow(session1, 1, 11));
+  ASSERT_OK(UpdateRow(session1, 2, 12));
 
   // Start T2.
   auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto session2 = CreateSession(txn2);
 
   // T2: Should read { 1 -> 1, 2 -> 2 }.
-  {
-    auto session = CreateSession(true /* read_only */, txn2);
-    VERIFY_ROW(session, 1, 1);
-    VERIFY_ROW(session, 2, 2);
-  }
+  VERIFY_ROW(session2, 1, 1);
+  VERIFY_ROW(session2, 2, 2);
 
   // T1: Commit
   CommitAndResetSync(&txn1);
 
   // T2: Should still read { 1 -> 1, 2 -> 2 }, because it should read at the time of it's start.
-  {
-    auto session = CreateSession(true /* read_only */, txn2);
-    VERIFY_ROW(session, 1, 1);
-    VERIFY_ROW(session, 2, 2);
-  }
+  VERIFY_ROW(session2, 1, 1);
+  VERIFY_ROW(session2, 2, 2);
 
   // Simple read should get { 1 -> 11, 2 -> 12 }, since T1 has been already committed.
   {
-    auto session = CreateSession(true /* read_only */);
+    auto session = CreateSession();
     VERIFY_ROW(session, 1, 11);
     VERIFY_ROW(session, 2, 12);
   }
@@ -571,7 +557,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
 
   // Write { 1 -> 1, 2 -> 2 }.
   {
-    auto session = CreateSession(false /* read_only */);
+    auto session = CreateSession();
     ASSERT_OK(WriteRow(session, 1, 1));
     ASSERT_OK(WriteRow(session, 2, 2));
   }
@@ -581,7 +567,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
 
   // T1: Update { 1 -> 11, 2 -> 12 }.
   {
-    auto session = CreateSession(false /* read_only */, txn1);
+    auto session = CreateSession(txn1);
     ASSERT_OK(UpdateRow(session, 1, 11));
     ASSERT_OK(UpdateRow(session, 2, 12));
   }
@@ -598,7 +584,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
 
   // T2: Should read { 1 -> 1, 2 -> 2 } even in case T1 is committed between reading k1 and k2.
   {
-    auto session = CreateSession(true /* read_only */, txn2);
+    auto session = CreateSession(txn2);
     VERIFY_ROW(session, 1, 1);
     commit_latch.Wait();
     VERIFY_ROW(session, 2, 2);
@@ -606,7 +592,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
 
   // Simple read should get { 1 -> 11, 2 -> 12 }, since T1 has been already committed.
   {
-    auto session = CreateSession(true /* read_only */);
+    auto session = CreateSession();
     VERIFY_ROW(session, 1, 11);
     VERIFY_ROW(session, 2, 12);
   }
@@ -681,7 +667,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
       auto txn =
           std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
       {
-        auto session = CreateSession(false /* read_only */, txn);
+        auto session = CreateSession(txn);
         // Insert using different keys to avoid conflicts.
         ASSERT_OK(WriteRow(session, states.size(), states.size()));
       }
