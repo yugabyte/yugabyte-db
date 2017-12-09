@@ -52,7 +52,7 @@ TEST(JsonReaderTest, Corrupt) {
   Status s = r.Init();
   ASSERT_TRUE(s.IsCorruption());
   ASSERT_STR_CONTAINS(
-      s.ToString(), "JSON text is corrupt: Text only contains white space(s)");
+      s.ToString(), "JSON text is corrupt: The document is empty.");
 }
 
 TEST(JsonReaderTest, Empty) {

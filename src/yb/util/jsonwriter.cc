@@ -54,8 +54,12 @@ namespace yb {
 // Since Squeasel exposes a stringstream as its interface, this is needed to avoid overcopying.
 class UTF8StringStreamBuffer {
  public:
+  typedef typename rapidjson::UTF8<>::Ch Ch;
   explicit UTF8StringStreamBuffer(std::stringstream* out);
-  void Put(rapidjson::UTF8<>::Ch c);
+  void Put(Ch c);
+
+  void PutUnsafe(Ch c) { Put(c); }
+  void Flush() {}
  private:
   std::stringstream* out_;
 };

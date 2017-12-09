@@ -12,12 +12,12 @@
 
 #include "yb/master/call_home.h"
 
+#include <sstream>
+#include <thread>
+
 #include <rapidjson/reader.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
-
-#include <sstream>
-#include <thread>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional.hpp>
@@ -381,7 +381,7 @@ std::string CallHome::BuildJson() {
   rapidjson::Reader reader;
   rapidjson::StringStream ss(str.c_str());
   if (!reader.Parse<rapidjson::kParseDefaultFlags>(ss, writer)) {
-    LOG(ERROR) << "Unable to parse json. Error: " << reader.GetParseError()
+    LOG(ERROR) << "Unable to parse json. Error: " << reader.GetParseErrorCode()
         << " at offset " << reader.GetErrorOffset() << " in string " <<
         str.substr(reader.GetErrorOffset(), 10);
     return str;

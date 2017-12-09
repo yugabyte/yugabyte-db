@@ -259,9 +259,11 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
   ASSERT_OK(registry->WriteAsJson(&writer, { "*" }, MetricJsonOptions()));
-  // Open tablet, should still work
+  // Open tablet, should still work. Need a new writer though, as we should not overwrite an already
+  // existing root.
   ASSERT_OK(this->harness()->Open());
-  ASSERT_OK(registry->WriteAsJson(&writer, { "*" }, MetricJsonOptions()));
+  JsonWriter new_writer(&out, JsonWriter::PRETTY);
+  ASSERT_OK(registry->WriteAsJson(&new_writer, { "*" }, MetricJsonOptions()));
 }
 
 } // namespace tablet

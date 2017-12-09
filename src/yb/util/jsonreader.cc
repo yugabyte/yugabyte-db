@@ -32,6 +32,8 @@
 
 #include "yb/util/jsonreader.h"
 
+#include <rapidjson/error/en.h>
+
 #include "yb/gutil/strings/substitute.h"
 
 using rapidjson::Value;
@@ -49,7 +51,8 @@ JsonReader::~JsonReader() {
 Status JsonReader::Init() {
   document_.Parse<0>(text_.c_str());
   if (document_.HasParseError()) {
-    return STATUS(Corruption, "JSON text is corrupt", document_.GetParseError());
+    return STATUS(Corruption, "JSON text is corrupt",
+        rapidjson::GetParseError_En(document_.GetParseError()));
   }
   return Status::OK();
 }

@@ -310,13 +310,6 @@ fi
 
 if [ ! -d "$RAPIDJSON_DIR" ]; then
   fetch_and_expand rapidjson
-  if [[ ! -d $TP_SOURCE_DIR/rapidjson ]]; then
-    fatal "Directory $TP_SOURCE_DIR/rapidjson was not extracted correctly from the rapidjson" \
-          "archive. Contents of the source directory: $( ls -l "$TP_SOURCE_DIR" )."
-  fi
-  if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    mv "$TP_SOURCE_DIR/rapidjson" "$RAPIDJSON_DIR"
-  fi
 fi
 
 if [ ! -d "$SQUEASEL_DIR" ]; then
