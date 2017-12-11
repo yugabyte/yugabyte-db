@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import uuid
 import yaml
 
 from yb.library_packager import LibraryPackager, add_common_arguments
@@ -90,7 +91,12 @@ def main():
 
     build_type = args.build_type
 
-    tmp_dir = tempfile.mkdtemp(suffix=os.path.basename(__file__))
+    tmp_dir = os.path.join(YB_SRC_ROOT, "build", "yb_release_tmp_{}".format(str(uuid.uuid4())))
+    try:
+        os.mkdir(tmp_dir)
+    except OSError as e:
+        logging.error("Could not create directory at '{}'".format(tmp_dir))
+        raise e
     if not args.keep_tmp_dir:
         atexit.register(lambda: shutil.rmtree(tmp_dir))
 
