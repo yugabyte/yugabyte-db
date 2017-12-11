@@ -7,3 +7,5 @@ node_modules
 
 static/css/site.css
 static/js/site.js
+
+.session.vim

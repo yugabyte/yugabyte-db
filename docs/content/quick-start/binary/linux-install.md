@@ -1,8 +1,6 @@
 ## Prerequisites
 
-a) <i class="icon-centos"></i> Centos 7 or higher
-
-b) You must have `python` installed on your localhost.
+<i class="icon-centos"></i> CentOS 7 or <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
 ## Download
 
@@ -10,15 +8,13 @@ Download the YugaByte CE package as shown below.
 
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.0.1-centos.tar.gz
-$ tar xvfz yugabyte-ce-0.9.0.1-centos.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.0.1-linux.tar.gz
+$ tar xvfz yugabyte-ce-0.9.0.1-linux.tar.gz
 $ cd yugabyte-0.9.0.1/
 ```
 
 ## Configure
 
-Run the **configure** script to ensure all dependencies get auto-installed. This script will also install a couple of libraries (`cyrus-sasl`, `cyrus-sasl-plain` and `file`) and will request for a sudo password in case you are not running the script as root.
-
 ```sh
-$ ./bin/configure
+$ ./bin/post_install.sh
 ```

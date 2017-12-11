@@ -1,8 +1,6 @@
 ## Prerequisites
 
-a) <i class="fa fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
-
-b) You must have `python` installed on your localhost.
+<i class="fa fa-apple" aria-hidden="true"></i> macOS 10.12 (Sierra) or higher
 
 ## Download
 
@@ -23,7 +21,7 @@ $ sudo ifconfig lo0 alias 127.0.0.2
 $ sudo ifconfig lo0 alias 127.0.0.3
 ```
 
-Add some more IP addresses to cover the add node scenarios of the [Explore Core Features](/explore/) section.
+Add some more loopback IP addresses to cover the add node scenarios of the [Explore Core Features](/explore/) section.
 
 ```sh
 $ sudo ifconfig lo0 alias 127.0.0.4

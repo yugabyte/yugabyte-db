@@ -4,7 +4,7 @@ a) You must have the Docker runtime installed on your localhost. Follow the link
 
 <i class="fa fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac) 
 
-<i class="icon-centos"></i> [Docker for Centos](https://store.docker.com/editions/community/docker-ce-server-centos) 
+<i class="icon-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos) 
 
 <i class="icon-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu) 
 

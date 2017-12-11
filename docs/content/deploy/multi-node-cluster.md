@@ -7,19 +7,16 @@ Multi-node clusters of YugaByte Community Edition can be manually deployed on an
 
 ## Prerequisites
 
-Dedicated hosts or cloud VMs running Centos 7+ with local or remote attached storage are required to run the YugaByte DB. If your instance does not have public Internet access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repo):
+Dedicated hosts or cloud VMs running CentOS 7 with local or remote attached storage are required to run the YugaByte DB. If your instance does not have public Internet access, make sure the following packages have been installed (all can be retrieved from the yum repo **epel**, make sure to use the latest epel release repo):
 
 - epel-release
 - ntp
-- cyrus-sasl-plain
-- cyrus-sasl-devel
-- file
 
 Here's the command to install these packages.
 
 ```sh
 # install prerequisite packages
-$ sudo yum install -y epel-release ntp cyrus-sasl-plain cyrus-sasl-devel file
+$ sudo yum install -y epel-release ntp
 ```
 
 ## Step 1. Download and install
@@ -40,11 +37,11 @@ $ cd yugabyte-<version>/
 
 ### Configure the installation
 
-- Run the **configure** script to ensure all dependencies get auto-installed. If not already installed, this script will also install a couple of libraries (`cyrus-sasl`, `cyrus-sasl-plain` and `file`) and will request for a sudo password in case you are not running the script as root.
+- Run the **post_install.sh** script to make some final updates to the installed software.
 
 
 ```sh
-$ ./bin/configure
+$ ./bin/post_install.sh
 ```
 
 - YugaByte DB can be configured to use multiple disks that have been previously mounted to the instance. For the purpose of this document, we will create 2 separate directories on the same disk and then use those directories as YugaByte's data directories.
