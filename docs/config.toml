@@ -234,61 +234,68 @@ googleAnalytics = "UA-104956980-1"
 #	url = "develop/common-patterns/batch-operations/"
 #	weight = 564
 
-#[[menu.main]]
-#	name = "Working with Spark"
-#	parent = "develop-common-patterns"
-#	identifier = "develop-common-patterns-working-with-spark"
-#	url = "develop/common-patterns/working-with-spark/"
-#	weight = 565
+[[menu.main]]
+	name = "Ecosystem Integrations"
+	parent = "develop"
+	identifier = "develop-ecosystem-integrations"
+	url = "develop/ecosystem-integrations/"
+	weight = 570
+
+[[menu.main]]
+	name = "Apache Spark"
+	parent = "develop-ecosystem-integrations"
+	identifier = "develop-ecosystem-integrations-apache-spark"
+	url = "develop/ecosystem-integrations/apache-spark/"
+	weight = 571
 
 [[menu.main]]
 	name = "Real World Examples"
 	parent = "develop"
 	identifier = "develop-realworld-apps"
 	url = "develop/realworld-apps/"
-	weight = 570
+	weight = 580
 
 #[[menu.main]]
 #	name = "User Identity - Redis and CQL"
 #	parent = "develop-realworld-apps"
 #	identifier = "develop-realworld-apps-user-identity-redis-and-cql"
 #	url = "develop/realworld-apps/user-identity-redis-and-cql/"
-#	weight = 571
+#	weight = 581
 
 #[[menu.main]]
 #	name = "Finance - Spark"
 #	parent = "develop-realworld-apps"
 #	identifier = "develop-realworld-apps-finance-portfolio-spark"
 #	url = "develop/realworld-apps/finance-portfolio-spark/"
-#	weight = 572
+#	weight = 582
 
 [[menu.main]]
 	name = "IoT - Spark & Kafka"
 	parent = "develop-realworld-apps"
 	identifier = "develop-realworld-apps-iot-spark-kafka"
 	url = "develop/realworld-apps/iot-spark-kafka/"
-	weight = 573
+	weight = 583
 
 #[[menu.main]]
 #	name = "Timeseries - KairosDB"
 #	parent = "develop-realworld-apps"
 #	identifier = "develop-realworld-apps-timeseries-kairosdb"
 #	url = "develop/realworld-apps/timeseries-kairosdb/"
-#	weight = 574
+#	weight = 584
 
 #[[menu.main]]
 #	name = "S3 Object Store - Pithos"
 #	parent = "develop-realworld-apps"
 #	identifier = "develop-realworld-apps-s3-object-store-pithos"
 #	url = "develop/realworld-apps/s3-object-store-pithos/"
-#	weight = 575
+#	weight = 585
 
 #[[menu.main]]
 #	name = "Personalization - KillrVideo"
 #	parent = "develop-realworld-apps"
 #	identifier = "develop-realworld-apps-personalization-killrvideo"
 #	url = "develop/realworld-apps/personalization-killrvideo/"
-#	weight = 576
+#	weight = 586
 
 #[[menu.main]]
 #	name = "Port Existing Apps"
