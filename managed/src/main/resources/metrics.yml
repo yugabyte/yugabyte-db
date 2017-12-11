@@ -400,7 +400,7 @@ tserver_consensus_rpcs_per_sec:
     service_method: "UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   layout:
-    title: "Consensus Rpc Ops / Sec (Sum across nodes)"
+    title: "Consensus Rpc Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
@@ -418,7 +418,7 @@ tserver_change_config:
     service_method: "ChangeConfig|RunLeaderElection|LeaderStepDown|LeaderElectionLost"
   group_by: "service_method"
   layout:
-    title: "Change Config Ops / Sec (Sum across nodes)"
+    title: "Total Consensus Change Config"
     xaxis:
       type: "date"
 
@@ -450,7 +450,7 @@ tserver_consensus_rpcs_latency:
     service_method: "UpdateConsensus|RequestConsensusVote"
   group_by: "service_method"
   layout:
-    title: "Consensus Rpc latencies"
+    title: "Consensus Rpc Latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -695,7 +695,7 @@ lsm_rocksdb_latencies_get:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Get latencies"
+    title: "LSM-DB Get Latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -710,7 +710,7 @@ lsm_rocksdb_latencies_write:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Write latencies"
+    title: "LSM-DB Write Latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -723,7 +723,7 @@ lsm_rocksdb_latencies_seek:
   function: "rate|sum without (table_id, table_name)|avg"
   range: "1m"
   layout:
-    title: "LSM-DB Seek latencies"
+    title: "LSM-DB Seek Latencies"
     xaxis:
       type: "date"
     yaxis:
@@ -738,7 +738,7 @@ lsm_rocksdb_latencies_mutex:
   filters:
     export_type: "tserver_export"
   layout:
-    title: "LSM-DB Mutex Wait latencies"
+    title: "LSM-DB Mutex Wait Latencies"
     xaxis:
       type: "date"
     yaxis:
