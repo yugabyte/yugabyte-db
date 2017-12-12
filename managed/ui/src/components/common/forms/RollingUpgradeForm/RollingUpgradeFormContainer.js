@@ -4,7 +4,9 @@ import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { RollingUpgradeForm }  from '../../../common/forms';
 import { isNonEmptyObject } from 'utils/ObjectUtils';
-import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrade } from '../../../../actions/universe';
+import { rollingUpgrade, rollingUpgradeResponse, closeDialog, resetRollingUpgrade,
+         fetchUniverseTasks, fetchUniverseTasksResponse, fetchUniverseMetadata, fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../actions/universe';
+import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../../actions/tasks';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -15,17 +17,42 @@ const mapDispatchToProps = (dispatch) => {
      * @param reset function that sets the value of the form to pristine state
      */
     submitRollingUpgradeForm: (values, universeUUID, reset) => {
+      dispatch(closeDialog());
       dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
         dispatch(rollingUpgradeResponse(response.payload));
-        dispatch(closeDialog());
         // Reset the Rolling upgrade form fields to pristine state,
         // component may be called multiple times within the context of Universe Detail.
         reset();
       });
     },
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchCustomerTasksFailure(response.payload));
+        }
+      });
+    },
+    fetchUniverseTasks: (uuid) => {
+      dispatch(fetchUniverseTasks(uuid)).then((response) => {
+          dispatch(fetchUniverseTasksResponse(response.payload));
+        });
+    },
     resetRollingUpgrade: () => {
       dispatch(resetRollingUpgrade());
+    },
+
+    fetchUniverseMetadata: () => {
+      dispatch(fetchUniverseMetadata());
+    },
+
+    fetchCurrentUniverse: (universeUUID) => {
+      dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
     }
+
   };
 };
 
