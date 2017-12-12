@@ -129,14 +129,6 @@ message TabletSuperBlockPB {
   repeated DeletedColumnPB deleted_cols = 19;
 }
 
-message DeletedColumnPB {
-  // Required. Column Id.
-  optional int32 column_id = 1;
-
-  // Required. Hybrid Time when column was deleted on this tablet.
-  optional fixed64 deleted_hybrid_time = 2;
-}
-
 message RocksDBFilePB {
   // Required. File name (no path).
   optional string name = 1;

@@ -374,3 +374,11 @@ enum YBConsistencyLevel {
   // replica and AB on another.
   CONSISTENT_PREFIX = 2;
 }
+
+message DeletedColumnPB {
+  // Required. Column Id.
+  optional int32 column_id = 1;
+
+  // Required. Hybrid Time when column was deleted on this tablet.
+  optional fixed64 deleted_hybrid_time = 2;
+}

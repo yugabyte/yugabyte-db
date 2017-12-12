@@ -161,6 +161,7 @@ readonly BUILD_TYPE
 
 set_cmake_build_type_and_compiler_type
 
+export YB_USE_NINJA=1
 set_build_root --no-readonly
 
 set_common_test_paths
@@ -173,8 +174,12 @@ run_python_tests
 # TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
-YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
-export YB_RUN_AFFECTED_TESTS_ONLY
+
+export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
+export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
+if [[ $YB_SKIP_BUILD == "1" ]]; then
+  export NO_REBUILD_THIRDPARTY=1
+fi
 
 if is_jenkins; then
   # Delete the build root by default on Jenkins.
@@ -408,7 +413,7 @@ fi
 # -------------------------------------------------------------------------------------------------
 # Java build
 
-if [[ $YB_BUILD_JAVA == "1" ]]; then
+if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
   set_mvn_parameters
 

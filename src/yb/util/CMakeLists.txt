@@ -436,9 +436,4 @@ if(NOT "${NO_TESTS}")
     proto_container_test_proto)
 endif()
 
-#######################################
-# Builtin function.
-#######################################
-add_subdirectory(bfql)
-
 YB_INCLUDE_EXTENSIONS()

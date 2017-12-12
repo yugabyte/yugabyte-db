@@ -39,8 +39,8 @@ set(YB_BFQL_LIBS
     yb_util)
 
 ADD_YB_LIBRARY(yb_bfql
-                       SRCS ${YB_BFQL_SRCS}
-                       DEPS ${YB_BFQL_LIBS})
+               SRCS ${YB_BFQL_SRCS}
+               DEPS ${YB_BFQL_LIBS})
 
 # Make sure code-generator is built before yb_bfql library.
 add_dependencies(yb_bfql bfql_codegen)

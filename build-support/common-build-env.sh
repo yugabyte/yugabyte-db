@@ -655,8 +655,13 @@ set_cmake_build_type_and_compiler_type() {
   if using_ninja; then
     cmake_opts+=( -G Ninja )
     make_program=ninja
-    if ! which ninja &>/dev/null && using_linuxbrew; then
-      make_program=$YB_LINUXBREW_DIR/bin/ninja
+    if ! which ninja &>/dev/null; then
+      if using_linuxbrew; then
+        make_program=$YB_LINUXBREW_DIR/bin/ninja
+      elif is_mac; then
+        log "Did not find the 'ninja' executable, auto-installing ninja using Homebrew"
+        brew install ninja
+      fi
     fi
     make_file=build.ninja
   else
