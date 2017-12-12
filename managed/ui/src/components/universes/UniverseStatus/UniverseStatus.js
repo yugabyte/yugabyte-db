@@ -2,8 +2,8 @@
 
 import React, { Component } from 'react';
 import './UniverseStatus.scss';
-import { ProgressBar } from 'react-bootstrap';
-import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import {ProgressBar} from 'react-bootstrap';
+import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { YBLoadingIcon } from '../../common/indicators';
 
 export default class UniverseStatus extends Component {
@@ -43,10 +43,10 @@ export default class UniverseStatus extends Component {
     }
     let statusDisplay = (
       <div className="status-pending-display-container"><YBLoadingIcon size="small" />
-        <span className="status-pending-name">{statusText} {universeDetails.updateSucceeded? '123':''}</span>
+        <span className="status-pending-name">{statusText}</span>
       </div>
     );
-    if (updateSucceeded) {
+    if (!isDefinedNotNull(universePendingTask) && updateSucceeded) {
       statusClassName = 'good';
       if (showLabelText) {
         statusText = 'Ready';
