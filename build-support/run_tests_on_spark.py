@@ -44,6 +44,7 @@ import re
 import socket
 import sys
 import time
+import traceback
 from collections import defaultdict
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
