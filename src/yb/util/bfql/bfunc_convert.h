@@ -39,6 +39,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/status.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace bfql {
@@ -654,7 +655,18 @@ Status ConvertDateToTimestamp(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertTimeuuidToTimestamp(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    Uuid time_uuid = source->timeuuid_value();
+    int64_t unix_timestamp;
+    RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+    target->set_timestamp_value(Timestamp(DateTime::AdjustPrecision
+                                              (unix_timestamp,
+                                               DateTime::kYQLUnixTimestampPrecision,
+                                               DateTime::kInternalPrecision)));
+  }
+  return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
@@ -664,12 +676,28 @@ Status ConvertDateToUnixTimestamp(PTypePtr source, RTypePtr target) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertTimestampToUnixTimestamp(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    int64_t unix_timestamp = DateTime::AdjustPrecision(source->timestamp_value().ToInt64(),
+                                                       DateTime::kInternalPrecision,
+                                                       DateTime::kYQLUnixTimestampPrecision);
+    target->set_int64_value(unix_timestamp);
+  }
+  return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) {
-  return STATUS(RuntimeError, "Not yet implemented");
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    Uuid time_uuid = source->timeuuid_value();
+    int64_t unix_timestamp;
+    RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+    target->set_int64_value(unix_timestamp);
+  }
+  return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>

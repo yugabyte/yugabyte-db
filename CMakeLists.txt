@@ -1302,6 +1302,15 @@ if (NOT APPLE)
   list(APPEND YB_BASE_LIBS unwind)
 endif()
 
+## libuuid
+if (NOT APPLE)
+  find_package(LibUuid REQUIRED)
+  include_directories(SYSTEM ${LIBUUID_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(libuuid
+    STATIC_LIB "${LIBUUID_STATIC_LIB}"
+    SHARED_LIB "${LIBUUID_SHARED_LIB}")
+endif()
+
 ## GFlags
 find_package(GFlags REQUIRED)
 include_directories(SYSTEM ${GFLAGS_INCLUDE_DIR})

@@ -161,16 +161,13 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertTimestampToTime", "totime", TIME, {TIMESTAMP}, TSOpcode::kNoOp, false },
 
   { "ConvertDateToTimestamp", "totimestamp", TIMESTAMP, {DATE}, TSOpcode::kNoOp, false },
-  { "ConvertTimeuuidToTimestamp", "totimestamp", TIMESTAMP, {TIMEUUID}, TSOpcode::kNoOp, false },
-  { "ConvertTimeuuidToTimestamp", "dateof", TIMESTAMP, {TIMEUUID}, TSOpcode::kNoOp, false },
+  { "ConvertTimeuuidToTimestamp", "totimestamp", TIMESTAMP, {TIMEUUID}, TSOpcode::kNoOp},
+  { "ConvertTimeuuidToTimestamp", "dateof", TIMESTAMP, {TIMEUUID}, TSOpcode::kNoOp},
 
-  { "ConvertDateToUnixTimestamp", "tounixtimestamp", INT64, {DATE}, TSOpcode::kNoOp, false },
-  { "ConvertTimestampToUnixTimestamp", "tounixtimestamp", INT64, {TIMESTAMP}, TSOpcode::kNoOp,
-    false },
-  { "ConvertTimeuuidToUnixTimestamp", "tounixtimestamp", INT64, {TIMEUUID}, TSOpcode::kNoOp,
-    false },
-  { "ConvertTimeuuidToUnixTimestamp", "unixtimestampof", INT64, {TIMEUUID}, TSOpcode::kNoOp,
-    false },
+  { "ConvertDateToUnixTimestamp", "tounixtimestamp", INT64, {DATE}, TSOpcode::kNoOp, false},
+  { "ConvertTimestampToUnixTimestamp", "tounixtimestamp", INT64, {TIMESTAMP}, TSOpcode::kNoOp},
+  { "ConvertTimeuuidToUnixTimestamp", "tounixtimestamp", INT64, {TIMEUUID}, TSOpcode::kNoOp},
+  { "ConvertTimeuuidToUnixTimestamp", "unixtimestampof", INT64, {TIMEUUID}, TSOpcode::kNoOp},
 
   // Converting date-time literals.
   { "ConvertToMaxTimeuuid", "maxtimeuuid", TIMEUUID, {TIMESTAMP}, TSOpcode::kNoOp, false },

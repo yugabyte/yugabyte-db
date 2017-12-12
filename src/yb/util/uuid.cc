@@ -24,6 +24,12 @@ Uuid::Uuid(const Uuid& other) {
   boost_uuid_ = other.boost_uuid_;
 }
 
+Uuid::Uuid(const uuid_t copy) {
+  for(int it = 0; it < 16; it ++) {
+    boost_uuid_.data[it] = copy[it];
+  }
+}
+
 boost::uuids::uuid Uuid::Generate() {
   boost::uuids::basic_random_generator<std::mt19937_64> generator(&ThreadLocalRandom());
   return generator();
@@ -144,6 +150,35 @@ CHECKED_STATUS Uuid::DecodeFromComparableSlice(const Slice& slice, size_t size_h
 CHECKED_STATUS Uuid::DecodeFromComparable(const std::string& bytes) {
   Slice slice (bytes.data(), bytes.size());
   return DecodeFromComparableSlice(slice);
+}
+
+CHECKED_STATUS Uuid::HashMACAddress() const {
+  RETURN_NOT_OK(IsTimeUuid());
+  boost::uuids::detail::sha1 sha1;
+  unsigned int hash[kShaDigestSize];
+  sha1.process_bytes(boost_uuid_.begin() + kTimeUUIDMacOffset, kTimeUUIDTotalMacBytes);
+  uint8_t tmp[kTimeUUIDTotalMacBytes];
+  sha1.get_digest(hash);
+  for (int i = 0; i < kTimeUUIDTotalMacBytes; i ++) {
+    tmp[i] = (hash[i % kShaDigestSize] & 255);
+    hash[i % kShaDigestSize] = hash[i % kShaDigestSize] >> 8;
+  }
+  memcpy((void *) (boost_uuid_.begin() + kTimeUUIDMacOffset), tmp, kTimeUUIDTotalMacBytes);
+  return Status::OK();
+}
+
+CHECKED_STATUS Uuid::toUnixTimestamp(int64_t* timestamp_ms) {
+  RETURN_NOT_OK(IsTimeUuid());
+  uint8_t output[kUuidMsbSize];
+  toTimestampBytes(output);
+  output[0] = (output[0] & 0x0f);
+  *timestamp_ms = 0;
+  for (int i = 0; i < kUuidMsbSize; i++) {
+    *timestamp_ms = (*timestamp_ms << 8) | (output[i] & 0xff);
+  }
+  // Convert from nano seconds since Gregorian calendar start to millis since unix epoch.
+  *timestamp_ms = (*timestamp_ms / kMillisPerHundredNanos) + kGregorianOffsetMillis;
+  return Status::OK();
 }
 
 } // namespace yb

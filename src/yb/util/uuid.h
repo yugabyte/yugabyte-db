@@ -14,29 +14,44 @@
 #ifndef YB_UTIL_UUID_H
 #define YB_UTIL_UUID_H
 
+#include <uuid/uuid.h>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/uuid/sha1.hpp>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
 #include "yb/util/hexdump.h"
 #include "yb/util/slice.h"
+
 namespace yb {
 
 constexpr size_t kUuidSize = 16;
-
+constexpr int kShaDigestSize = 5;
 // Generic class that UUID type and uses the boost implementation underneath.
 // Implements a custom comparator that follows the cassandra implementation.
 class Uuid {
  public:
   static constexpr size_t kUuidMsbSize = 8;
   static constexpr size_t kUuidLsbSize = kUuidSize - kUuidMsbSize;
+  static constexpr size_t kTimeUUIDMacOffset = 10;
+  static constexpr size_t kTimeUUIDTotalMacBytes = 6;
+
+  // The timestamp is a 60-bit value.  For UUID version 1, this is
+  // represented by Coordinated Universal Time (UTC) as a count of 100-
+  // nanosecond intervals since 00:00:00.00, 15 October 1582 (the date of
+  // Gregorian reform to the Christian calendar).
+  static constexpr int64_t kGregorianOffsetMillis = -12219292800000;
+
+  static constexpr int64_t kMillisPerHundredNanos = 10000;
 
   Uuid();
 
   explicit Uuid(boost::uuids::uuid boost_uuid) : boost_uuid_(boost_uuid) {}
+
+  explicit Uuid(const uuid_t copy);
 
   Uuid(const Uuid& other);
 
@@ -75,6 +90,15 @@ class Uuid {
   CHECKED_STATUS FromSlice(const Slice& slice, size_t size_hint = 0);
 
   CHECKED_STATUS DecodeFromComparableSlice(const Slice& slice, size_t size_hint = 0);
+
+  // For time UUIDs only.
+  // This function takes a time UUID and generates a SHA hash for the MAC address bits.
+  // This is done because it is not secure to generate UUIDs directly from the MAC address.
+  CHECKED_STATUS HashMACAddress() const;
+
+  // This function takes a 64 bit integer that represents the timestamp, that is basically the
+  // number of milliseconds since epoch.
+  CHECKED_STATUS toUnixTimestamp(int64_t *timestamp_ms);
 
   CHECKED_STATUS IsTimeUuid() const {
     if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {

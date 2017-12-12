@@ -25,6 +25,8 @@
 #ifndef YB_UTIL_BFQL_BFUNC_STANDARD_H_
 #define YB_UTIL_BFQL_BFUNC_STANDARD_H_
 
+#include <uuid/uuid.h>
+
 #include <iostream>
 #include <string>
 
@@ -34,6 +36,7 @@
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
 #include "yb/util/yb_partition.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace bfql {
@@ -253,7 +256,13 @@ Status SubListList(PTypePtr x, PTypePtr y, RTypePtr result) {
 // Now().
 template<typename PTypePtr, typename RTypePtr>
 Status NowTimeUuid(RTypePtr result) {
-  return STATUS(QLError, "Not yet implemented");
+  uuid_t linux_time_uuid;
+  uuid_generate_time(linux_time_uuid);
+  Uuid time_uuid(linux_time_uuid);
+  CHECK_OK(time_uuid.IsTimeUuid());
+  CHECK_OK(time_uuid.HashMACAddress());
+  result->set_timeuuid_value(time_uuid);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
