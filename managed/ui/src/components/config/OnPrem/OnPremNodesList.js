@@ -13,31 +13,46 @@ import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { YBBreadcrumb } from '../../common/descriptors';
 import { isDefinedNotNull, isNonEmptyString } from "../../../utils/ObjectUtils";
 import { YBCodeBlock } from "../../common/descriptors/index";
+import {YBConfirmModal} from '../../modals';
 
 class OnPremNodesList extends Component {
   constructor(props) {
     super(props);
     this.addNodeToList = this.addNodeToList.bind(this);
-    this.hideModal = this.hideModal.bind(this);
+    this.hideAddNodeModal = this.hideAddNodeModal.bind(this);
+    this.hideDeleteNodeModal = this.hideDeleteNodeModal.bind(this);
     this.submitAddNodesForm = this.submitAddNodesForm.bind(this);
     this.deleteInstance = this.deleteInstance.bind(this);
+    this.state = {nodeToBeDeleted: {}}
   }
 
   addNodeToList() {
     this.props.showAddNodesDialog();
   }
 
-  hideModal() {
+  hideAddNodeModal() {
     this.props.reset();
-    this.props.hideAddNodesDialog();
+    this.props.hideDialog();
   }
 
-  deleteInstance(row) {
+  showConfirmDeleteModal(row) {
+    this.setState({nodeToBeDeleted: row});
+    this.props.showConfirmDeleteModal();
+  }
+
+  hideDeleteNodeModal() {
+    this.setState({nodeToBeDeleted: {}});
+    this.props.hideDialog();
+  }
+
+  deleteInstance() {
     const {cloud: { providers }} = this.props;
     const onPremProvider = providers.data.find((provider) => provider.code === "onprem");
+    const row = this.state.nodeToBeDeleted;
     if (!row.inUse) {
       this.props.deleteInstance(onPremProvider.uuid, row.ip);
     }
+    this.hideDeleteNodeModal();
   }
 
   submitAddNodesForm(vals) {
@@ -93,7 +108,7 @@ class OnPremNodesList extends Component {
       if (isNonEmptyArray(instanceTypeList)) {
         self.props.createOnPremNodes(instanceTypeList, onPremProvider.uuid);
       } else {
-        this.hideModal();
+        this.hideAddNodeModal();
       }
     }
     this.props.reset();
@@ -127,7 +142,7 @@ class OnPremNodesList extends Component {
         if (row.inUse) {
           return <i className={`fa fa-trash remove-cell-container`}/>;
         } else {
-          return <i className={`fa fa-trash remove-cell-container remove-cell-active`} onClick={self.deleteInstance.bind(self, row)}/>;
+          return <i className={`fa fa-trash remove-cell-container remove-cell-active`} onClick={self.showConfirmDeleteModal.bind(self, row)}/>;
         }
       }
     };
@@ -197,13 +212,19 @@ class OnPremNodesList extends Component {
           </Col>
         </Row>
         <YBModal title={"Add Instances"} formName={"AddNodeForm"} visible={this.props.visibleModal === "AddNodesForm"}
-                 onHide={this.hideModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}
+                 onHide={this.hideAddNodeModal} onFormSubmit={handleSubmit(this.submitAddNodesForm)}
                  showCancelButton={true} submitLabel="Add">
           <div className="on-prem-form-text">
             Enter IP addresses for the instances of each availability zone and instance type.
           </div>
           {regionFormTemplate}
         </YBModal>
+
+        <YBConfirmModal name={"confirmDeleteNodeInstance"} title={"Delete Node"} hideConfirmModal={this.hideDeleteNodeModal}
+                        currentModal={"confirmDeleteNodeInstance"} visibleModal={this.props.visibleModal}
+                        onConfirm={this.deleteInstance} confirmLabel={"Delete"} cancelLabel={"Cancel"}>
+          Are you sure you want to delete node {isNonEmptyObject(this.state.nodeToBeDeleted) ? this.state.nodeToBeDeleted.nodeName : ""}
+        </YBConfirmModal>
       </div>
     );
   }
