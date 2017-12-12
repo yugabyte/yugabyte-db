@@ -3,10 +3,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
@@ -27,6 +30,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;
   protected AWSInitializer mockAWSInitializer;
+  protected YBClientService mockYBClient;
+  protected NodeManager mockNodeManager;
 
   Customer defaultCustomer;
   Provider defaultProvider;
@@ -43,6 +48,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
     mockNetworkManager = mock(NetworkManager.class);
     mockConfigHelper = mock(ConfigHelper.class);
     mockAWSInitializer = mock(AWSInitializer.class);
+    mockYBClient = mock(YBClientService.class);
+    mockNodeManager = mock(NodeManager.class);
 
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
@@ -50,6 +57,8 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .overrides(bind(ConfigHelper.class).toInstance(mockConfigHelper))
         .overrides(bind(AWSInitializer.class).toInstance(mockAWSInitializer))
+        .overrides(bind(YBClientService.class).toInstance(mockYBClient))
+        .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
         .build();
   }
 

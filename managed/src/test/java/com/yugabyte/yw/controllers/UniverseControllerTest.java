@@ -20,6 +20,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.anyList;
@@ -38,10 +39,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -55,6 +58,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -665,6 +669,61 @@ public class UniverseControllerTest extends WithApplication {
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertBadRequest(result, "gflags param is required for taskType: GFlags");
+  }
+
+  @Test
+  public void testUniverseNonRollingGFlagsUpgrade() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags")
+        .put("rollingUpgrade", false);
+
+    bodyJson.set("masterGFlags", Json.parse("[{ \"name\": \"master-flag\", \"value\": \"123\"}]"));
+    bodyJson.set("tserverGFlags", Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]"));
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    ArgumentCaptor<UniverseTaskParams> taskParams = ArgumentCaptor.forClass(UniverseTaskParams.class);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), taskParams.capture());
+    RollingRestartParams taskParam = (RollingRestartParams) taskParams.getValue();
+    assertFalse(taskParam.rollingUpgrade);
+    assertEquals(taskParam.masterGFlags, ImmutableMap.of("master-flag", "123"));
+    assertEquals(taskParam.tserverGFlags, ImmutableMap.of("tserver-flag", "456"));
+  }
+
+  @Test
+  public void testUniverseNonRollingSoftwareUpgrade() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject()
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "Software")
+        .put("rollingUpgrade", false)
+        .put("ybSoftwareVersion", "new-version");
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    ArgumentCaptor<UniverseTaskParams> taskParams = ArgumentCaptor.forClass(UniverseTaskParams.class);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.UpgradeUniverse), taskParams.capture());
+    RollingRestartParams taskParam = (RollingRestartParams) taskParams.getValue();
+    assertFalse(taskParam.rollingUpgrade);
+    assertEquals("new-version", taskParam.ybSoftwareVersion);
   }
 
   @Test

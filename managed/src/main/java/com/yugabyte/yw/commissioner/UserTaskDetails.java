@@ -22,6 +22,9 @@ public class UserTaskDetails {
     // newly deployed machines, etc.
     Provisioning,
 
+    // Running software upgrade on YugaByte clusters.
+    UpgradingSoftware,
+
     // Download YB software locally but not install it.
     DownloadingSoftware,
 
@@ -81,6 +84,10 @@ public class UserTaskDetails {
         title = "Provisioning";
         description = "Deploying machines of the required config into the desired cloud and" +
             " fetching information about them.";
+        break;
+      case UpgradingSoftware:
+        title = "Upgrading software";
+        description = "Upgrading YugaByte software on existing clusters.";
         break;
       case InstallingSoftware:
         title = "Installing software";
