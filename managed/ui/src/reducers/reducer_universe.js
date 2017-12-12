@@ -12,7 +12,7 @@ import { FETCH_UNIVERSE_INFO, RESET_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_RESPONSE,
   GET_UNIVERSE_PER_NODE_STATUS_RESPONSE, GET_MASTER_LEADER, GET_MASTER_LEADER_RESPONSE, RESET_MASTER_LEADER
 } from '../actions/universe';
 import _ from 'lodash';
-import { getInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
+import { getInitialState, setInitialState, setLoadingState, setPromiseResponse, setSuccessState } from 'utils/PromiseUtils.js';
 import { isNonEmptyArray, isNonEmptyObject } from 'utils/ObjectUtils.js';
 
 const INITIAL_STATE = {
@@ -31,7 +31,8 @@ const INITIAL_STATE = {
   fetchUniverseMetadata: false,
   universeTasks: getInitialState([]),
   universePerNodeStatus: getInitialState({}),
-  universeMasterLeader: getInitialState({})
+  universeMasterLeader: getInitialState({}),
+  rollingUpgrade: getInitialState({})
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -103,14 +104,11 @@ export default function(state = INITIAL_STATE, action) {
 
     // Universe Rolling Upgrade Operations
     case ROLLING_UPGRADE:
-      return { ...state, error: null};
+      return setLoadingState(state, "rollingUpgrade", {});
     case ROLLING_UPGRADE_RESPONSE:
-      if (action.payload.status === 200) {
-        return { ...state, error: null, formSubmitSuccess: true};
-      }
-      return {...state, error: action.payload.data.error, formSubmitSuccess: false};
+      return setPromiseResponse(state, "rollingUpgrade", action);
     case RESET_ROLLING_UPGRADE:
-      return { ...state, error: null};
+      return { ...state, error: null, "rollingUpgrade": setInitialState({})};
 
     // Universe I/O Metrics Operations
     case SET_UNIVERSE_METRICS:

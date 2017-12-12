@@ -421,7 +421,6 @@ public class UniverseController extends AuthenticatedController {
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
       taskParams.universeUUID = universe.universeUUID;
-      taskParams.expectedUniverseVersion = universe.version;
       LOG.info("Found universe {} : name={} at version={}.",
         universe.universeUUID, universe.name, universe.version);
 

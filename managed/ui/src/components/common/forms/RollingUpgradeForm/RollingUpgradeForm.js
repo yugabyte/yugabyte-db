@@ -5,6 +5,7 @@ import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
 import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle } from '../fields';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
+import {getPromiseState} from 'utils/PromiseUtils';
 import './RollingUpgradeForm.scss';
 
 class FlagInput extends Component {
@@ -61,8 +62,18 @@ export default class RollingUpgradeForm extends Component {
     this.setRollingUpgradeProperties = this.setRollingUpgradeProperties.bind(this);
   }
 
+  componentWillReceiveProps(nextProps) {
+    const {universe: {rollingUpgrade, currentUniverse: {data: {universeUUID}}}} = nextProps;
+    if (getPromiseState(rollingUpgrade).isSuccess() && getPromiseState(this.props.universe.rollingUpgrade).isLoading()) {
+      this.props.fetchCurrentUniverse(universeUUID);
+      this.props.fetchUniverseMetadata();
+      this.props.fetchCustomerTasks();
+      this.props.fetchUniverseTasks(universeUUID);
+    }
+  }
+
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent, nodePrefix}, universeUUID}}}, reset} = this.props;
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent, nodePrefix}, universeUUID, version}}}, reset} = this.props;
     const payload = {};
     if (visibleModal === "softwareUpgradesModal") {
       payload.taskType = "Software";
@@ -75,6 +86,7 @@ export default class RollingUpgradeForm extends Component {
     payload.rollingUpgrade = values.rollingUpgrade;
     payload.universeUUID = universeUUID;
     payload.userIntent = userIntent;
+    payload.expectedUniverseVersion = version;
     payload.nodePrefix = nodePrefix;
     let masterGFlagList = [];
     let tserverGFlagList = [];
