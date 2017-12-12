@@ -191,43 +191,40 @@ void TabletServer::AutoInitServiceFlags() {
   if (FLAGS_tablet_server_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
-    LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads...";
     const int32 num_threads = std::min(512, num_cores * 32);
     FLAGS_tablet_server_svc_num_threads = std::max(64, num_threads);
+    LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
+              << FLAGS_tablet_server_svc_num_threads;
   }
-  LOG(INFO) << "FLAGS_tablet_server_svc_num_threads=" << FLAGS_tablet_server_svc_num_threads;
 
   if (FLAGS_ts_consensus_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
-    LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads...";
     const int32 num_threads = std::min(512, num_cores * 32);
     FLAGS_ts_consensus_svc_num_threads = std::max(64, num_threads);
+    LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads to "
+              << FLAGS_ts_consensus_svc_num_threads;
   }
-  LOG(INFO) << "FLAGS_ts_consensus_svc_num_threads=" << FLAGS_ts_consensus_svc_num_threads;
 
   if (FLAGS_tablet_server_svc_queue_length == -1) {
-    LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_queue_length...";
     if (num_cores <= 4) {
-      // Assume desktop/lighter weight use case.
-      FLAGS_tablet_server_svc_queue_length = 50;
+      FLAGS_tablet_server_svc_queue_length = kLighterSvcQueueLength;
     } else {
-      FLAGS_tablet_server_svc_queue_length = 5000;
+      FLAGS_tablet_server_svc_queue_length = kDefaultSvcQueueLength;
     }
+    LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_queue_length to "
+              << FLAGS_tablet_server_svc_queue_length;
   }
-  LOG(INFO) << "FLAGS_tablet_server_svc_queue_length=" << FLAGS_tablet_server_svc_queue_length;
 
   if (FLAGS_ts_consensus_svc_queue_length == -1) {
-    LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_queue_length...";
     if (num_cores <= 4) {
-      // Assume desktop/lighter weight use case.
-      FLAGS_ts_consensus_svc_queue_length = 50;
+      FLAGS_ts_consensus_svc_queue_length = kLighterSvcQueueLength;
     } else {
-      FLAGS_ts_consensus_svc_queue_length = 512;
+      FLAGS_ts_consensus_svc_queue_length = kDefaultSvcQueueLength;
     }
+    LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_queue_length to "
+              << FLAGS_ts_consensus_svc_queue_length;
   }
-  LOG(INFO) << "FLAGS_ts_consensus_svc_queue_length=" << FLAGS_ts_consensus_svc_queue_length;
-
 }
 
 Status TabletServer::RegisterServices() {
