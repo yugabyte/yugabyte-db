@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Field, FieldArray } from 'redux-form';
 import { Row, Col, Tabs, Tab } from 'react-bootstrap';
-import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel } from '../fields';
+import { YBModal, YBInputField, YBAddRowButton, YBSelectWithLabel, YBToggle } from '../fields';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import './RollingUpgradeForm.scss';
 
@@ -62,7 +62,7 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent}, universeUUID}}}, reset} = this.props;
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent, nodePrefix}, universeUUID}}}, reset} = this.props;
     const payload = {};
     if (visibleModal === "softwareUpgradesModal") {
       payload.taskType = "Software";
@@ -72,8 +72,10 @@ export default class RollingUpgradeForm extends Component {
       return;
     }
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
+    payload.rollingUpgrade = values.rollingUpgrade;
     payload.universeUUID = universeUUID;
     payload.userIntent = userIntent;
+    payload.nodePrefix = nodePrefix;
     let masterGFlagList = [];
     let tserverGFlagList = [];
     if (isNonEmptyArray(values.masterGFlags)) {
@@ -123,16 +125,19 @@ export default class RollingUpgradeForm extends Component {
           <Col lg={12} className="form-section-title">
             Software Package Version
           </Col>
-          <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
-            options={softwareVersionOptions} label="Server Version"
-            onInputChanged={this.softwareVersionChanged}/>
+          <div className="form-right-aligned-labels">
+            <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade" />
+            <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
+              options={softwareVersionOptions} label="Server Version"
+              onInputChanged={this.softwareVersionChanged}/>
+          </div>
         </span>
       );
     } else {
       title = "GFlags";
       formBody = (
         <div>
-          <Tabs defaultActiveKey={2} className="gflag-display-container" id="gflag-container" >
+          <Tabs defaultActiveKey={1} className="gflag-display-container" id="gflag-container" >
             <Tab eventKey={1} title="Master" className="gflag-class-1" bsClass="gflag-class-2">
               <FieldArray name="masterGFlags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
             </Tab>
@@ -141,7 +146,9 @@ export default class RollingUpgradeForm extends Component {
             </Tab>
           </Tabs>
           <div className="form-right-aligned-labels top-10 time-delay-container">
-            <Field name="timeDelay" component={YBInputField} label="Rolling Update Delay Between Servers (secs)"/>
+            <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade"/>
+            <Field name="timeDelay" component={YBInputField}
+                label="Rolling Upgrade Delay Between Servers (secs)" />
           </div>
         </div>
       );

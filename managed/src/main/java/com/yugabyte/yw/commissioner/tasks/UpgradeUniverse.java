@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -15,11 +16,11 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.models.Universe;
-import play.libs.Json;
 
 import java.util.List;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
+
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 
 public class UpgradeUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
@@ -64,60 +65,61 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (taskParams().ybSoftwareVersion.equals(universe.getUniverseDetails().userIntent.ybSoftwareVersion)) {
           throw new IllegalArgumentException("Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
-
-        LOG.info("Upgrading software version to {} in universe {}",
-                 taskParams().ybSoftwareVersion, universe.name);
-      } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-        LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
-          taskParams().masterGFlags, masterNodes.size(), universe.name);
-        LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
-          taskParams().tserverGFlags,  tServerNodes.size(), universe.name);
       }
 
-      SubTaskGroupType subTaskGroupType;
+      // TODO: we need to fix this, right now if the gflags is empty on both master and tserver
+      // we don't update the nodes properly but we do wipe the data from the backend (postgres).
+      // JIRA ENG-2519 would track this.
+      boolean didUpgradeUniverse = false;
       switch (taskParams().taskType) {
         case Software:
-          subTaskGroupType = SubTaskGroupType.DownloadingSoftware;
+          LOG.info("Upgrading software version to {} in universe {}",
+              taskParams().ybSoftwareVersion, universe.name);
           // Disable the load balancer.
           createLoadBalancerStateChangeTask(false /*enable*/)
-            .setSubTaskGroupType(subTaskGroupType);
+            .setSubTaskGroupType(getTaskSubGroupType());
           createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
           // Enable the load balancer.
           createLoadBalancerStateChangeTask(true /*enable*/)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          didUpgradeUniverse = true;
           break;
         case GFlags:
-          subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
           if (!taskParams().masterGFlags.isEmpty()) {
+            LOG.info("Updating Master gflags: {} for {} nodes in universe {}",
+                taskParams().masterGFlags, masterNodes.size(), universe.name);
             createAllUpgradeTasks(masterNodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
+            didUpgradeUniverse = true;
           }
           if (!taskParams().tserverGFlags.isEmpty()) {
+            LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
+                taskParams().tserverGFlags,  tServerNodes.size(), universe.name);
             // Disable the load balancer.
             createLoadBalancerStateChangeTask(false /*enable*/)
-              .setSubTaskGroupType(subTaskGroupType);
+              .setSubTaskGroupType(getTaskSubGroupType());
             createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
             // Enable the load balancer.
             createLoadBalancerStateChangeTask(true /*enable*/)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            didUpgradeUniverse = true;
           }
       }
 
-      // Update the software version on success.
-      if (taskParams().taskType == UpgradeTaskType.Software) {
-        createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+      if (didUpgradeUniverse) {
+        if (taskParams().taskType == UpgradeTaskType.GFlags) {
+          // Update the list of parameter key/values in the universe with the new ones.
+          updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+              .setSubTaskGroupType(getTaskSubGroupType());
+        } else if (taskParams().taskType == UpgradeTaskType.Software) {
+          // Update the software version on success.
+          createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
+        }
+
+        // Marks the update of this universe as a success only if all the tasks before it succeeded.
+        createMarkUniverseUpdateSuccessTasks()
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-
-      // Update the list of parameter key/values in the universe with the new ones.
-      if (taskParams().taskType == UpgradeTaskType.GFlags) {
-        updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
-            .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-      }
-
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
@@ -129,66 +131,96 @@ public class UpgradeUniverse extends UniverseTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  private void createAllUpgradeTasks(List<NodeDetails> servers,
+  private void createAllUpgradeTasks(List<NodeDetails> nodes,
                                      ServerType processType) {
-    createUpgradeTasks(servers, processType);
-    createWaitForServersTasks(servers, processType)
+
+    if (taskParams().rollingUpgrade) {
+      for (NodeDetails node : nodes) {
+        createNodeUpgradeTask(node, processType);
+      }
+    } else {
+      createNodeUpgradeTasks(nodes, processType);
+    }
+
+    createWaitForServersTasks(nodes, processType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
-  // The first node state change should be done per node to show the rolling upgrades in action.
-  private void createUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
-    for (NodeDetails node : nodes) {
-      SubTaskGroupType subTaskGroupType;
-      switch (taskParams().taskType) {
-        case Software:
-          subTaskGroupType = SubTaskGroupType.DownloadingSoftware;
-          createSetNodeStateTask(node, NodeDetails.NodeState.UpgradeSoftware)
-              .setSubTaskGroupType(subTaskGroupType);
-          createSoftwareUpgradeTask(node, processType); // Implicitly calls setSubTaskGroupType
-          break;
-        case GFlags:
-          subTaskGroupType = SubTaskGroupType.UpdatingGFlags;
-          createSetNodeStateTask(node, NodeDetails.NodeState.UpdateGFlags)
-              .setSubTaskGroupType(subTaskGroupType);
-          createGFlagsUpgradeTask(node, processType);
-          break;
-        default:
-          subTaskGroupType = SubTaskGroupType.Invalid;
-          break;
-      }
-      createSetNodeStateTask(node, NodeDetails.NodeState.Running)
-          .setSubTaskGroupType(subTaskGroupType);
+  private void createNodeUpgradeTask(NodeDetails node, ServerType processType) {
+    NodeDetails.NodeState nodeState = taskParams().taskType == UpgradeTaskType.Software ? UpgradeSoftware : UpdateGFlags;
+    createSetNodeStateTask(node, nodeState).setSubTaskGroupType(getTaskSubGroupType());
+    createServerControlTask(node, processType, "stop", 0).setSubTaskGroupType(getTaskSubGroupType());
+    if (taskParams().taskType == UpgradeTaskType.Software) {
+      SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Download Software) for: " + node.nodeName, executor);
+      subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
+      subTaskGroupQueue.add(subTaskGroup);
+      subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Install Software) for: " + node.nodeName, executor);
+      subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      subTaskGroupQueue.add(subTaskGroup);
+    } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
+      String subTaskGroupName = "AnsibleConfigureServers (GFlags Update) for :" + node.nodeName;
+      SubTaskGroup subTaskGroup = new SubTaskGroup(subTaskGroupName, executor);
+      subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+      subTaskGroupQueue.add(subTaskGroup);
     }
+
+    createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType))
+        .setSubTaskGroupType(getTaskSubGroupType());
+    createSetNodeStateTask(node, NodeDetails.NodeState.Running)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
-  private void createSoftwareUpgradeTask(NodeDetails node, ServerType processType) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Download Software) for: " + node.nodeName, executor);
-    subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-    subTaskGroupQueue.add(subTaskGroup);
+  private void createNodeUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
+    NodeDetails.NodeState nodeState = taskParams().taskType == UpgradeTaskType.Software ? UpgradeSoftware : UpdateGFlags;
+    createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(getTaskSubGroupType());
+    String subGroupDescription = null;
+    if (taskParams().taskType == UpgradeTaskType.Software) {
+      subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+          SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
+      SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+      for (NodeDetails node : nodes) {
+        downloadTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
+      }
+      downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
+      subTaskGroupQueue.add(downloadTaskGroup);
+      createServerControlTasks(nodes, processType, "stop", 0).setSubTaskGroupType(getTaskSubGroupType());
 
-    createServerControlTask(node, processType, "stop", 0, SubTaskGroupType.DownloadingSoftware);
+      subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+          SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
+      SubTaskGroup installTaskGroup =  new SubTaskGroup(subGroupDescription, executor);
+      for (NodeDetails node : nodes) {
+        installTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
+      }
+      installTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      subTaskGroupQueue.add(installTaskGroup);
+    } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
+      createServerControlTasks(nodes, processType, "stop", 0).setSubTaskGroupType(getTaskSubGroupType());
+      subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+          SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
+      SubTaskGroup gFlagsTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+      for (NodeDetails node : nodes) {
+        gFlagsTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
+      }
+      gFlagsTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+      subTaskGroupQueue.add(gFlagsTaskGroup);
+    }
 
-    subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Install Software) for: " + node.nodeName, executor);
-    subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
-    subTaskGroupQueue.add(subTaskGroup);
-
-    createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType),
-                            SubTaskGroupType.InstallingSoftware);
+    createServerControlTasks(nodes, processType, "start", 0).setSubTaskGroupType(getTaskSubGroupType());
+    createSetNodeStateTasks(nodes, NodeDetails.NodeState.Running).setSubTaskGroupType(getTaskSubGroupType());
   }
 
-  private void createGFlagsUpgradeTask(NodeDetails node, ServerType processType) {
-    createServerControlTask(node, processType, "stop", 0, SubTaskGroupType.UpdatingGFlags);
-
-    String subTaskGroupName = "AnsibleConfigureServers (GFlags Update) for :" + node.nodeName;
-    SubTaskGroup subTaskGroup = new SubTaskGroup(subTaskGroupName, executor);
-    subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(subTaskGroup);
-    createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType),
-                            SubTaskGroupType.UpdatingGFlags);
+  private SubTaskGroupType getTaskSubGroupType() {
+    switch (taskParams().taskType) {
+      case Software:
+        return SubTaskGroupType.UpgradingSoftware;
+      case GFlags:
+        return SubTaskGroupType.UpdatingGFlags;
+      default:
+        return SubTaskGroupType.Invalid;
+    }
   }
 
   private int getSleepTimeForProcess(ServerType processType) {

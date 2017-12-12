@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 import com.yugabyte.yw.commissioner.SubTaskGroup;
@@ -248,14 +249,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param processType, Master/TServer process type
    * @param command, actual command (start, stop, create)
    * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
-   * @param subTaskGroupType, user subtask type to use for the SubTaskGroup
+   * @return SubTaskGroup
    */
-  public void createServerControlTask(NodeDetails node,
-                                      UniverseDefinitionTaskBase.ServerType processType,
-                                      String command,
-                                      int sleepAfterCmdMillis,
-                                      UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+  public SubTaskGroup createServerControlTask(NodeDetails node,
+                                              UniverseDefinitionTaskBase.ServerType processType,
+                                              String command,
+                                              int sleepAfterCmdMillis) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    subTaskGroup.addTask(getServerControlTask(node, processType, command, sleepAfterCmdMillis));
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+
+  /**
+   * Create tasks to execute Cluster CTL command against specific process in parallel
+   *
+   * @param nodes set of nodes to issue control command in parallel.
+   * @param processType, Master/TServer process type
+   * @param command, actual command (start, stop, create)
+   * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
+   * @return SubTaskGroup
+   */
+  public SubTaskGroup createServerControlTasks(List<NodeDetails> nodes,
+                                               UniverseDefinitionTaskBase.ServerType processType,
+                                               String command,
+                                               int sleepAfterCmdMillis) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addTask(getServerControlTask(node, processType, command, sleepAfterCmdMillis));
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  private AnsibleClusterServerCtl getServerControlTask(NodeDetails node,
+                                                       UniverseDefinitionTaskBase.ServerType processType,
+                                                       String command,
+                                                       int sleepAfterCmdMillis) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     // Set the cloud name.
     params.cloud = CloudType.valueOf(node.cloudInfo.cloud);
@@ -274,11 +305,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
     task.initialize(params);
-    // Add it to the task list.
-    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
-    subTaskGroup.addTask(task);
-
-    subTaskGroupQueue.add(subTaskGroup);
+    return task;
   }
 
   /**

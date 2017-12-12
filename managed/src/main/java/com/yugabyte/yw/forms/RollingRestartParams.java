@@ -1,11 +1,9 @@
 package com.yugabyte.yw.forms;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
@@ -28,4 +26,6 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
 
   public Integer sleepAfterMasterRestartMillis = 180000;
   public Integer sleepAfterTServerRestartMillis = 180000;
+
+  public Boolean rollingUpgrade = true;
 }

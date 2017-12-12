@@ -251,7 +251,7 @@ export default class AZSelectorTable extends Component {
             </Row>
           </FlexGrow>
           <FlexShrink power={0} key={idx} className="form-right-control">
-            <Field name={"test"} component={YBCheckBox} checkState={azGroupItem.isAffinitized} 
+            <Field name={"test"} component={YBCheckBox} checkState={azGroupItem.isAffinitized}
                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
           </FlexShrink>
         </FlexContainer>
@@ -269,7 +269,7 @@ export default class AZSelectorTable extends Component {
                   <label>Name</label>
                 </Col>
                 <Col xs={4}>
-                <label>Nodes</label>
+                  <label>Nodes</label>
                 </Col>
               </Row>
             </FlexGrow>
