@@ -16,6 +16,7 @@ import argparse
 import atexit
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -23,6 +24,7 @@ import uuid
 import yaml
 
 from yb.library_packager import LibraryPackager, add_common_arguments
+from yb.mac_library_packager import MacLibraryPackager, add_common_arguments
 from yb.release_util import ReleaseUtil, check_for_local_changes
 from yb.common_util import init_env, get_build_type_from_build_root
 
@@ -175,11 +177,21 @@ def main():
     release_util = ReleaseUtil(YB_SRC_ROOT, build_type, args.edition, build_target, args.force)
     release_util.rewrite_manifest()
 
-    library_packager = LibraryPackager(
+    system = platform.system().lower()
+    if system == "linux":
+        library_packager = LibraryPackager(
             build_dir=build_root,
             seed_executable_patterns=release_util.get_binary_path(),
             dest_dir=yb_distribution_dir,
             verbose_mode=args.verbose)
+    elif system == "darwin":
+        library_packager = MacLibraryPackager(
+                build_dir=build_root,
+                seed_executable_patterns=release_util.get_binary_path(),
+                dest_dir=yb_distribution_dir,
+                verbose_mode=args.verbose)
+    else:
+        raise RuntimeError("System {} not supported".format(system))
     library_packager.package_binaries()
 
     release_util.update_manifest(yb_distribution_dir)

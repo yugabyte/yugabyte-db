@@ -44,7 +44,7 @@ def run_program(args, error_ok=False, max_error_lines=100, cwd=None):
     """
     Run the given program identified by its argument list, and return a ProgramResult object.
 
-    @param error_ok True to raise an exception on errors.
+    @param error_ok False to raise an exception on errors.
     """
     if not isinstance(args, list):
         args = [args]
