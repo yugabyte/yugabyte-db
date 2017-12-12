@@ -115,6 +115,10 @@ set(COMMON_LIBS
   yb_bfql
   gutil)
 
+if (NOT APPLE)
+  list(APPEND COMMON_LIBS libuuid)
+endif()
+
 ADD_YB_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
