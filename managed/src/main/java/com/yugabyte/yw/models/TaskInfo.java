@@ -184,6 +184,13 @@ public class TaskInfo extends Model {
     return find.byId(taskUUID);
   }
 
+  public List<TaskInfo> getSubTasks() {
+    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
+        .eq("parent_uuid", getTaskUUID())
+        .orderBy("position asc");
+    return subTaskQuery.findList();
+  }
+
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
@@ -203,10 +210,7 @@ public class TaskInfo extends Model {
    */
   public UserTaskDetails getUserTaskDetails() {
     UserTaskDetails taskDetails = new UserTaskDetails();
-    Query<TaskInfo> subTaskQuery = TaskInfo.find.where()
-        .eq("parent_uuid", getTaskUUID())
-        .orderBy("position asc");
-    List<TaskInfo> result = subTaskQuery.findList();
+    List<TaskInfo> result = getSubTasks();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
     boolean customerTaskFailure = taskState.equals(State.Failure);
     for (TaskInfo taskInfo : result) {

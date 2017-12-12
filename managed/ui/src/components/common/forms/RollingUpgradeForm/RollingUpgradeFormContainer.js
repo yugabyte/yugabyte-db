@@ -47,6 +47,7 @@ function mapStateToProps(state, ownProps) {
     }
   }
   initalGFlagValues.timeDelay = 180;
+  initalGFlagValues.rollingUpgrade = false;
   return {
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
