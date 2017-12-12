@@ -74,7 +74,16 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           });
         }
       });
-    }
+    },
+
+    showConfirmDeleteModal: () => {
+      dispatch(openDialog("confirmDeleteNodeInstance"));
+    },
+
+    hideDialog: () => {
+      dispatch(closeDialog());
+    },
+
   };
 };
 

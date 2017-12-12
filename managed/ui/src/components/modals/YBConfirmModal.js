@@ -32,14 +32,16 @@ export default class YBConfirmModal extends Component {
   }
 
   render() {
-    const { name, title, confirmLabel, cancelLabel } = this.props;
-
+    const { name, title, confirmLabel, cancelLabel, hideConfirmModal } = this.props;
     return (
       <div className={name} key={name}>
         <YBModal title={title}
-                 visible={this.props.visibleModal === this.props.currentModal} onHide={this.props.hideConfirmModal}
-                 showCancelButton={true} cancelLabel={cancelLabel}
-                 submitLabel={confirmLabel} onFormSubmit={this.submitConfirmModal}>
+                 visible={this.props.visibleModal === this.props.currentModal}
+                 onHide={hideConfirmModal}
+                 showCancelButton={true}
+                 cancelLabel={cancelLabel}
+                 submitLabel={confirmLabel}
+                 onFormSubmit={this.submitConfirmModal}>
           {this.props.children}
         </YBModal>
       </div>
