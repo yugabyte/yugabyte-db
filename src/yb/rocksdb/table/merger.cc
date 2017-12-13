@@ -117,6 +117,35 @@ class MergingIterator : public InternalIterator {
   }
 
   void Seek(const Slice& target) override {
+    if (direction_ == kForward && Valid()) {
+      int key_vs_target = comparator_->Compare(current_->key(), target);
+      if (key_vs_target == 0) {
+        // We're already at the right key.
+        return;
+      }
+      if (key_vs_target < 0) {
+        // This is a "seek forward" operation, and the current key is less than the target. Keep
+        // doing a seek on the top iterator and re-adding it to the min heap, until the top iterator
+        // gives is a key >= target.
+        while (key_vs_target < 0) {
+          // For the heap modifications below to be correct, current_ must be the current top of the
+          // heap.
+          DCHECK_EQ(current_, CurrentForward());
+          current_->Seek(target);
+          UpdateHeapAfterCurrentAdvancement();
+          if (current_ == nullptr)
+            return;  // Reached the end.
+          key_vs_target = comparator_->Compare(current_->key(), target);
+        }
+
+        // The current key is >= target, this is what we're looking for.
+        return;
+      }
+
+      // The current key is already greater than the target, so this is not a forward seek.
+      // Fall back to a full rebuild of the heap.
+    }
+
     ClearHeaps();
     for (auto& child : children_) {
       {
@@ -165,22 +194,12 @@ class MergingIterator : public InternalIterator {
       assert(current_ == CurrentForward());
     }
 
-    // For the heap modifications below to be correct, current_ must be the
-    // current top of the heap.
+    // For the heap modifications below to be correct, current_ must be the current top of the heap.
     assert(current_ == CurrentForward());
 
-    // as the current points to the current record. move the iterator forward.
+    // As current_ points to the current record, move the iterator forward.
     current_->Next();
-    if (current_->Valid()) {
-      // current is still valid after the Next() call above.  Call
-      // replace_top() to restore the heap property.  When the same child
-      // iterator yields a sequence of keys, this is cheap.
-      minHeap_.replace_top(current_);
-    } else {
-      // current stopped being valid, remove it from the heap.
-      minHeap_.pop();
-    }
-    current_ = CurrentForward();
+    UpdateHeapAfterCurrentAdvancement();
   }
 
   void Prev() override {
@@ -336,6 +355,21 @@ class MergingIterator : public InternalIterator {
     assert(maxHeap_);
     return !maxHeap_->empty() ? maxHeap_->top() : nullptr;
   }
+
+  // This should be called after calling Next() or a forward seek on the top element.
+  void UpdateHeapAfterCurrentAdvancement() {
+    if (current_->Valid()) {
+      // current_ is still valid after the previous Next() / forward Seek() call.  Call
+      // replace_top() to restore the heap property.  When the same child iterator yields a sequence
+      // of keys, this is cheap.
+      minHeap_.replace_top(current_);
+    } else {
+      // current_ stopped being valid, remove it from the heap.
+      minHeap_.pop();
+    }
+    current_ = CurrentForward();
+  }
+
 };
 
 void MergingIterator::ClearHeaps() {
