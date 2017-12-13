@@ -89,10 +89,16 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
 
   if (spec != nullptr && spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
+    // Need this seek, because SeekOutOfSubDoc seeks forward.
+    RETURN_NOT_OK(db_iter_->Seek(row_key_));
+    if (!spec->lower_bound_inclusive()) {
+      RETURN_NOT_OK(db_iter_->SeekOutOfSubDoc(SubDocKey(row_key_)));
+    }
   } else {
     row_key_ = DocKey();
+    RETURN_NOT_OK(db_iter_->Seek(row_key_));
   }
-  RETURN_NOT_OK(db_iter_->Seek(row_key_));
+
   row_ready_ = false;
 
   if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
@@ -306,19 +312,19 @@ CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
                                "Unsupported column data type $0", data_type);
   }
         return Status::OK();
-  }
+}
 
 // Set primary key column values (hashed or range columns) in a Kudu row. The destination row's
 // schema must match that of the projection.
-  CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
-      const size_t begin_index,
-      const size_t column_count,
-      const char* column_type,
-      const vector<PrimitiveValue>& values,
-      RowBlockRow* dst_row) {
-    if (values.size() != column_count) {
-      return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
-      values.size(), column_type, column_count);
+CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
+    const size_t begin_index,
+    const size_t column_count,
+    const char* column_type,
+    const vector<PrimitiveValue>& values,
+    RowBlockRow* dst_row) {
+  if (values.size() != column_count) {
+    return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
+                             values.size(), column_type, column_count);
   }
   if (begin_index + column_count > projection.num_columns()) {
     return STATUS_SUBSTITUTE(

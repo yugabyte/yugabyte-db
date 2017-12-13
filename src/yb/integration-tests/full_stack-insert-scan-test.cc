@@ -43,6 +43,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/row_result.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -96,7 +97,6 @@ namespace tablet {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::KuduInsert;
 using client::YBRowResult;
 using client::YBScanner;
 using client::YBSchema;
@@ -119,22 +119,8 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     kNumRows(kNumInsertClients*kNumInsertsPerClient),
     kFlushEveryN(DefaultFlag(FLAGS_rows_per_batch, 125, 5000)),
     random_(SeedRandom()),
-    sessions_(kNumInsertClients),
-    tables_(kNumInsertClients) {
-
-    // schema has kNumIntCols contiguous columns of Int32 and Int64, in order.
-    YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT64)->NotNull()->PrimaryKey();
-    b.AddColumn("string_val")->Type(STRING)->NotNull();
-    b.AddColumn("int32_val1")->Type(INT32)->NotNull();
-    b.AddColumn("int32_val2")->Type(INT32)->NotNull();
-    b.AddColumn("int32_val3")->Type(INT32)->NotNull();
-    b.AddColumn("int32_val4")->Type(INT32)->NotNull();
-    b.AddColumn("int64_val1")->Type(INT64)->NotNull();
-    b.AddColumn("int64_val2")->Type(INT64)->NotNull();
-    b.AddColumn("int64_val3")->Type(INT64)->NotNull();
-    b.AddColumn("int64_val4")->Type(INT64)->NotNull();
-    CHECK_OK(b.Build(&schema_));
+    sessions_(kNumInsertClients) {
+    tables_.reserve(kNumInsertClients);
   }
 
   const int kNumInsertClients;
@@ -145,21 +131,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
   }
 
-  void CreateTable() {
-    ASSERT_GE(kNumInsertClients, 0);
-    ASSERT_GE(kNumInsertsPerClient, 0);
-    ASSERT_NO_FATALS(InitCluster());
-
-    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    ASSERT_OK(table_creator->table_name(kTableName)
-             .table_type(YBTableType::YQL_TABLE_TYPE)
-             .schema(&schema_)
-             .num_replicas(1)
-             .Create());
-    ASSERT_OK(client_->OpenTable(kTableName, &reader_table_));
-  }
+  void CreateTable();
 
   void DoTearDown() override {
     if (cluster_) {
@@ -179,10 +151,6 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     return fast;
   }
 
-  // Generate random row according to schema_.
-  static void RandomRow(Random* rng, YBPartialRow* row,
-                        char* buf, int64_t key, int id);
-
   void InitCluster() {
     // Start mini-cluster with 1 tserver, config client options
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
@@ -196,7 +164,11 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
   // Adds newly generated client's session and table pointers to arrays at id
   void CreateNewClient(int id) {
-    ASSERT_OK(client_->OpenTable(kTableName, &tables_[id]));
+    while (tables_.size() <= id) {
+      auto table = std::make_unique<client::TableHandle>();
+      ASSERT_OK(table->Open(kTableName, client_.get()));
+      tables_.push_back(std::move(table));
+    }
     std::shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(kSessionTimeoutMs);
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
@@ -211,31 +183,19 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   void ScanProjection(const vector<string>& cols, const string& msg);
 
   vector<string> AllColumnNames() const;
-  vector<string> StringColumnNames() const;
-  vector<string> Int32ColumnNames() const;
-  vector<string> Int64ColumnNames() const;
 
   static const YBTableName kTableName;
   static const int kSessionTimeoutMs = 60000;
-  static const int kRandomStrMinLength = 16;
-  static const int kRandomStrMaxLength = 31;
-  static const int kNumIntCols = 4;
-  enum {
-    kKeyCol,
-    kStrCol,
-    kInt32ColBase,
-    kInt64ColBase = kInt32ColBase + kNumIntCols
-  };
   const int kFlushEveryN;
 
   Random random_;
 
   YBSchema schema_;
   std::shared_ptr<YBClient> client_;
-  std::shared_ptr<YBTable> reader_table_;
+  client::TableHandle reader_table_;
   // Concurrent client insertion test variables
   vector<std::shared_ptr<YBSession> > sessions_;
-  vector<std::shared_ptr<YBTable> > tables_;
+  std::vector<std::unique_ptr<client::TableHandle>> tables_;
 };
 
 namespace {
@@ -328,6 +288,75 @@ void FullStackInsertScanTest::DoConcurrentClientInserts() {
   }
 }
 
+namespace {
+
+constexpr int kNumIntCols = 4;
+constexpr int kRandomStrMinLength = 16;
+constexpr int kRandomStrMaxLength = 31;
+
+const std::vector<string>& StringColumnNames() {
+  static std::vector<string> result = { "string_val" };
+  return result;
+}
+
+const std::vector<string>& Int32ColumnNames() {
+  static std::vector<string> result = {
+      "int32_val1",
+      "int32_val2",
+      "int32_val3",
+      "int32_val4" };
+  return result;
+}
+
+const std::vector<string>& Int64ColumnNames() {
+  static std::vector<string> result = {
+      "int64_val1",
+      "int64_val2",
+      "int64_val3",
+      "int64_val4" };
+  return result;
+}
+
+// Fills in the fields for a row as defined by the Schema below
+// name: (key,      string_val, int32_val$, int64_val$)
+// type: (int64_t,  string,     int32_t x4, int64_t x4)
+// The first int32 gets the id and the first int64 gets the thread
+// id. The key is assigned to "key," and the other fields are random.
+void RandomRow(Random* rng, QLWriteRequestPB* req, char* buf, int64_t key, int id,
+               client::TableHandle* table) {
+  table->AddInt64HashValue(req, key);
+  int len = kRandomStrMinLength + rng->Uniform(kRandomStrMaxLength - kRandomStrMinLength + 1);
+  RandomString(buf, len, rng);
+  buf[len] = '\0';
+  table->AddStringColumnValue(req, StringColumnNames()[0], buf);
+  for (int i = 0; i < kNumIntCols; ++i) {
+    table->AddInt32ColumnValue(req, Int32ColumnNames()[i], rng->Next32());
+    table->AddInt64ColumnValue(req, Int64ColumnNames()[i], rng->Next64());
+  }
+}
+
+} // namespace
+
+void FullStackInsertScanTest::CreateTable() {
+  ASSERT_GE(kNumInsertClients, 0);
+  ASSERT_GE(kNumInsertsPerClient, 0);
+  ASSERT_NO_FATALS(InitCluster());
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+
+  YBSchemaBuilder b;
+  b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
+  b.AddColumn("string_val")->Type(STRING)->NotNull();
+  for (auto& col : Int32ColumnNames()) {
+    b.AddColumn(col)->Type(INT32)->NotNull();
+  }
+  for (auto& col : Int64ColumnNames()) {
+    b.AddColumn(col)->Type(INT64)->NotNull();
+  }
+  ASSERT_OK(reader_table_.Create(kTableName, CalcNumTablets(1), client_.get(), &b, 1));
+  schema_ = reader_table_.schema();
+}
+
 void FullStackInsertScanTest::DoTestScans() {
   LOG(INFO) << "Doing test scans on table of " << kNumRows << " rows.";
 
@@ -371,7 +400,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   start_latch->Wait();
   // Retrieve id's session and table
   std::shared_ptr<YBSession> session = sessions_[id];
-  std::shared_ptr<YBTable> table = tables_[id];
+  client::TableHandle* table = tables_[id].get();
   // Identify start and end of keyrange id is responsible for
   int64_t start = kNumInsertsPerClient * id;
   int64_t end = start + kNumInsertsPerClient;
@@ -386,9 +415,9 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
   for (int64_t key = start; key < end; ++key) {
-    shared_ptr<KuduInsert> insert(table->NewInsert());
-    RandomRow(&rng, insert->mutable_row(), randstr, key, id);
-    CHECK_OK(session->Apply(insert));
+    auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    RandomRow(&rng, op->mutable_request(), randstr, key, id, table);
+    ASSERT_OK(session->Apply(op));
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.
@@ -412,7 +441,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
 void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
                                              const string& msg) {
-  YBScanner scanner(reader_table_.get());
+  YBScanner scanner(reader_table_.table().get());
   ASSERT_OK(scanner.SetProjectedColumns(cols));
   uint64_t nrows = 0;
   LOG_TIMING(INFO, msg) {
@@ -426,51 +455,12 @@ void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
   ASSERT_EQ(nrows, kNumRows);
 }
 
-// Fills in the fields for a row as defined by the Schema below
-// name: (key,      string_val, int32_val$, int64_val$)
-// type: (int64_t,  string,     int32_t x4, int64_t x4)
-// The first int32 gets the id and the first int64 gets the thread
-// id. The key is assigned to "key," and the other fields are random.
-void FullStackInsertScanTest::RandomRow(Random* rng, YBPartialRow* row, char* buf,
-                                        int64_t key, int id) {
-  CHECK_OK(row->SetInt64(kKeyCol, key));
-  int len = kRandomStrMinLength +
-    rng->Uniform(kRandomStrMaxLength - kRandomStrMinLength + 1);
-  RandomString(buf, len, rng);
-  buf[len] = '\0';
-  CHECK_OK(row->SetStringCopy(kStrCol, buf));
-  CHECK_OK(row->SetInt32(kInt32ColBase, id));
-  CHECK_OK(row->SetInt64(kInt64ColBase, Thread::current_thread()->tid()));
-  for (int i = 1; i < kNumIntCols; ++i) {
-    CHECK_OK(row->SetInt32(kInt32ColBase + i, rng->Next32()));
-    CHECK_OK(row->SetInt64(kInt64ColBase + i, rng->Next64()));
-  }
-}
-
 vector<string> FullStackInsertScanTest::AllColumnNames() const {
   vector<string> ret;
   for (int i = 0; i < schema_.num_columns(); i++) {
     ret.push_back(schema_.Column(i).name());
   }
   return ret;
-}
-
-vector<string> FullStackInsertScanTest::StringColumnNames() const {
-  return { "string_val" };
-}
-
-vector<string> FullStackInsertScanTest::Int32ColumnNames() const {
-  return { "int32_val1",
-           "int32_val2",
-           "int32_val3",
-           "int32_val4" };
-}
-
-vector<string> FullStackInsertScanTest::Int64ColumnNames() const {
-  return { "int64_val1",
-           "int64_val2",
-           "int64_val3",
-           "int64_val4" };
 }
 
 }  // namespace tablet

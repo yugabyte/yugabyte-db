@@ -92,13 +92,13 @@ TEST(TestSchema, TestSchema) {
             empty_schema.memory_footprint_excluding_this());
 
   EXPECT_EQ("Schema [\n"
-            "\tkey[string NOT NULL],\n"
-            "\tuint32val[uint32 NULLABLE],\n"
-            "\tint32val[int32 NOT NULL]\n"
+            "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
+            "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
+            "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
             "]",
             schema.ToString());
-  EXPECT_EQ("key[string NOT NULL]", schema.column(0).ToString());
-  EXPECT_EQ("uint32 NULLABLE", schema.column(1).TypeToString());
+  EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
+  EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
 }
 
 TEST(TestSchema, TestSwap) {
@@ -384,18 +384,18 @@ TEST(TestSchema, TestCreateProjection) {
   // By names, without IDs
   ASSERT_OK(schema.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
   EXPECT_EQ("Schema [\n"
-            "\tcol1[string NOT NULL],\n"
-            "\tcol2[string NOT NULL],\n"
-            "\tcol4[string NOT NULL]\n"
+            "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
+            "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
+            "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
             "]",
             partial_schema.ToString());
 
   // By names, with IDS
   ASSERT_OK(schema_with_ids.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
   EXPECT_EQ(Substitute("Schema [\n"
-                       "\t$0:col1[string NOT NULL],\n"
-                       "\t$1:col2[string NOT NULL],\n"
-                       "\t$2:col4[string NOT NULL]\n"
+                       "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
+                       "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
+                       "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
                        "]",
                        schema_with_ids.column_id(0),
                        schema_with_ids.column_id(1),
@@ -413,9 +413,9 @@ TEST(TestSchema, TestCreateProjection) {
                                                                  schema_with_ids.column_id(3) },
                                                                &partial_schema));
   EXPECT_EQ(Substitute("Schema [\n"
-                       "\t$0:col1[string NOT NULL],\n"
-                       "\t$1:col2[string NOT NULL],\n"
-                       "\t$2:col4[string NOT NULL]\n"
+                       "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
+                       "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
+                       "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
                        "]",
                        schema_with_ids.column_id(0),
                        schema_with_ids.column_id(1),

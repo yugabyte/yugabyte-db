@@ -41,7 +41,13 @@ CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
     const Schema &schema, size_t column_idx, const size_t column_count,
     vector<PrimitiveValue> *components) {
   for (const auto& column_value : column_values) {
-    DCHECK(schema.is_key_column(column_idx));
+    if (!schema.is_key_column(column_idx)) {
+      auto status = STATUS_FORMAT(
+          Corruption, "Column at $0 is not key column in $1", column_idx, schema.ToString());
+      LOG(DFATAL) << status;
+      return status;
+    }
+
     if (!column_value.has_value() || QLValue::IsNull(column_value.value())) {
       return STATUS(InvalidArgument, "Invalid primary key value");
     }

@@ -48,7 +48,6 @@ namespace yb {
 namespace tools {
 
 using client::YBColumnSchema;
-using client::KuduInsert;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
@@ -67,7 +66,7 @@ class RemoteYsckTest : public YBTest {
   RemoteYsckTest()
     : random_(SeedRandom()) {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
     b.AddColumn("int_val")->Type(INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
@@ -96,7 +95,7 @@ class RemoteYsckTest : public YBTest {
     ASSERT_OK(table_creator->table_name(kTableName)
                      .schema(&schema_)
                      .num_replicas(3)
-                     .split_rows(GenerateSplitRows())
+                     .num_tablets(3)
                      .Create());
     // Make sure we can open the table.
     ASSERT_OK(client_->OpenTable(kTableName, &client_table_));
@@ -121,28 +120,31 @@ class RemoteYsckTest : public YBTest {
                              const AtomicBool& continue_writing,
                              Promise<Status>* promise) {
     shared_ptr<YBTable> table;
-    Status status;
-    status = client_->OpenTable(kTableName, &table);
+    Status status = client_->OpenTable(kTableName, &table);
     if (!status.ok()) {
       promise->Set(status);
+      return;
     }
     shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeoutMillis(10000);
     status = session->SetFlushMode(YBSession::MANUAL_FLUSH);
     if (!status.ok()) {
       promise->Set(status);
+      return;
     }
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
-      shared_ptr<KuduInsert> insert(table->NewInsert());
-      GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
+      std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
+      GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
       status = session->Apply(insert);
       if (!status.ok()) {
         promise->Set(status);
+        return;
       }
       status = session->Flush();
       if (!status.ok()) {
         promise->Set(status);
+        return;
       }
       started_writing->CountDown(1);
     }
@@ -151,17 +153,6 @@ class RemoteYsckTest : public YBTest {
 
  protected:
   // Generate a set of split rows for tablets used in this test.
-  vector<const YBPartialRow*> GenerateSplitRows() {
-    vector<const YBPartialRow*> split_rows;
-    vector<int> split_nums = { 33, 66 };
-    for (int i : split_nums) {
-      YBPartialRow* row = schema_.NewRow();
-      CHECK_OK(row->SetInt32(0, i));
-      split_rows.push_back(row);
-    }
-    return split_rows;
-  }
-
   Status GenerateRowWrites(uint64_t num_rows) {
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
@@ -170,8 +161,8 @@ class RemoteYsckTest : public YBTest {
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
-      shared_ptr<KuduInsert> insert(table->NewInsert());
-      GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
+      std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
+      GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
       RETURN_NOT_OK(session->Apply(insert));
 
       if (i > 0 && i % 1000 == 0) {

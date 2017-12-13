@@ -67,6 +67,13 @@ void ScanTableToStrings(YBTable* table, vector<string>* row_strings) {
   ScanToStrings(&scanner, row_strings);
 }
 
+std::vector<std::string> ScanTableToStrings(YBTable* table) {
+  YBScanner scanner(table);
+  EXPECT_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
+  EXPECT_OK(scanner.SetTimeoutMillis(60000));
+  return ScanToStrings(&scanner);
+}
+
 int64_t CountTableRows(YBTable* table) {
   vector<string> rows;
   client::ScanTableToStrings(table, &rows);
@@ -82,6 +89,19 @@ void ScanToStrings(YBScanner* scanner, vector<string>* row_strings) {
       row_strings->push_back(row.ToString());
     }
   }
+}
+
+std::vector<std::string> ScanToStrings(YBScanner* scanner) {
+  EXPECT_OK(scanner->Open());
+  YBScanBatch batch;
+  std::vector<std::string> result;
+  while (scanner->HasMoreRows()) {
+    EXPECT_OK(scanner->NextBatch(&batch));
+    for (const auto& row : batch) {
+      result.push_back(row.ToString());
+    }
+  }
+  return result;
 }
 
 YBSchema YBSchemaFromSchema(const Schema& schema) {

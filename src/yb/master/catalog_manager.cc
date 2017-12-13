@@ -1912,7 +1912,7 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
           return STATUS(InvalidArgument, "cannot remove a key column");
         }
 
-            RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
+        RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
         break;
       }
 

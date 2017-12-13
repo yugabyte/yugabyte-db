@@ -32,7 +32,6 @@
 #include "yb/tools/data_gen_util.h"
 
 #include "yb/client/schema.h"
-#include "yb/common/partial_row.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/util/random.h"
 #include "yb/util/status.h"
@@ -43,41 +42,42 @@ namespace tools {
 void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
-                        YBPartialRow* row) {
+                        QLValuePB* out) {
   DataType type = schema.Column(col_idx).type()->main();
   char buf[kFastToBufferSize];
   switch (type) {
     case INT8:
-      CHECK_OK(row->SetInt8(col_idx, value));
-      break;
+      out->set_int8_value(value);
+      return;
     case INT16:
-      CHECK_OK(row->SetInt16(col_idx, value));
-      break;
+      out->set_int16_value(value);
+      return;
     case INT32:
-      CHECK_OK(row->SetInt32(col_idx, value));
-      break;
+      out->set_int32_value(value);
+      return;
     case INT64:
-      CHECK_OK(row->SetInt64(col_idx, value));
-      break;
+      out->set_int64_value(value);
+      return;
     case FLOAT:
-      CHECK_OK(row->SetFloat(col_idx, value / 123.0));
-      break;
+      out->set_float_value(value / 123.0);
+      return;
     case DOUBLE:
-      CHECK_OK(row->SetDouble(col_idx, value / 123.0));
-      break;
+      out->set_double_value(value / 123.0);
+      return;
     case STRING:
-      CHECK_OK(row->SetStringCopy(col_idx, FastHex64ToBuffer(value, buf)));
-      break;
+      out->set_string_value(FastHex64ToBuffer(value, buf));
+      return;
     case BOOL:
-      CHECK_OK(row->SetBool(col_idx, value));
-      break;
+      out->set_bool_value(value);
+      return;
     default:
       LOG(FATAL) << "Unexpected data type: " << type;
   }
+  FATAL_INVALID_ENUM_VALUE(DataType, type);
 }
 
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
-                        Random* random, YBPartialRow* row) {
+                        Random* random, QLWriteRequestPB* req) {
   for (int col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     // We randomly generate the inserted data, except for the first column,
     // which is always based on a monotonic "record id".
@@ -87,7 +87,15 @@ void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
     } else {
       value = random->Next64();
     }
-    WriteValueToColumn(schema, col_idx, value, row);
+    QLValuePB* out;
+    if (col_idx < schema.num_hash_key_columns()) {
+      out = req->add_hashed_column_values()->mutable_value();
+    } else {
+      auto column_value = req->add_column_values();
+      column_value->set_column_id(schema.ColumnId(col_idx));
+      out = column_value->mutable_expr()->mutable_value();
+    }
+    WriteValueToColumn(schema, col_idx, value, out);
   }
 }
 

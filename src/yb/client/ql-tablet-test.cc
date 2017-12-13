@@ -21,6 +21,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
 
 #include "yb/consensus/consensus.pb.h"
 
@@ -72,8 +73,8 @@ class QLTabletTest : public QLDmlTestBase {
   void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, TableHandle* table) {
     const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table->SetInt32Expression(req->add_hashed_column_values(), key);
-    table->SetInt32ColumnValue(req->add_column_values(), kValue, value);
+    table->AddInt32HashValue(req, key);
+    table->AddInt32ColumnValue(req, kValue, value);
     ASSERT_OK(session->Apply(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   }
@@ -92,7 +93,7 @@ class QLTabletTest : public QLDmlTestBase {
   std::shared_ptr<YBqlReadOp> CreateReadOp(int32_t key, TableHandle* table) {
     auto op = table->NewReadOp();
     auto req = op->mutable_request();
-    table->SetInt32Expression(req->add_hashed_column_values(), key);
+    table->AddInt32HashValue(req, key);
     auto value_column_id = table->ColumnId(kValue);
     req->add_selected_exprs()->set_column_id(value_column_id);
     req->mutable_column_refs()->add_ids(value_column_id);
@@ -108,7 +109,7 @@ class QLTabletTest : public QLDmlTestBase {
     builder.AddColumn(kKey)->Type(INT32)->HashPrimaryKey()->NotNull();
     builder.AddColumn(kValue)->Type(INT32);
 
-    table->Create(table_name, client_.get(), &builder);
+    ASSERT_OK(table->Create(table_name, CalcNumTablets(3), client_.get(), &builder));
   }
 
   void FillTable(int begin, int end, TableHandle* table) {
@@ -440,8 +441,8 @@ TEST_F(QLTabletTest, LeaderLease) {
   session->SetTimeout(15s);
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
-  table.SetInt32Expression(req->add_hashed_column_values(), 1);
-  table.SetInt32ColumnValue(req->add_column_values(), kValue, 1);
+  table.AddInt32HashValue(req, 1);
+  table.AddInt32ColumnValue(req, kValue, 1);
   auto status = session->Apply(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }

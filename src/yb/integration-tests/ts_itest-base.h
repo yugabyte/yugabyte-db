@@ -40,6 +40,8 @@
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/table_handle.h"
+
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -83,7 +85,6 @@ static const int kMaxRetries = 20;
 // A base for tablet server integration tests.
 class TabletServerIntegrationTestBase : public TabletServerTestBase {
  public:
-
   TabletServerIntegrationTestBase() : random_(SeedRandom()) {}
 
   void SetUp() override {
@@ -429,33 +430,26 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   // Create a table with a single tablet, with 'num_replicas'.
-  void CreateTable(TableType type = DEFAULT_TABLE_TYPE) {
+  void CreateTable() {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-    // The tests here make extensive use of server schemas, but we need
-    // a client schema to create the table.
-    client::YBSchema client_schema(YBSchemaFromSchema(schema_));
-    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-    ASSERT_OK(table_creator->table_name(kTableName)
-             .schema(&client_schema)
-             .num_replicas(FLAGS_num_replicas)
-             // NOTE: this is quite high as a timeout, but the default (5 sec) does not
-             // seem to be high enough in some cases (see KUDU-550). We should remove
-             // this once that ticket is addressed.
-             .timeout(MonoDelta::FromSeconds(20))
-             .table_type(static_cast<YBTableType>(type))
-             .Create());
-    ASSERT_OK(client_->OpenTable(kTableName, &table_));
+
+    client::YBSchemaBuilder builder;
+    builder.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn("int_val")->Type(INT32);
+    builder.AddColumn("string_val")->Type(STRING);
+
+    auto num_replicas = FLAGS_num_replicas;
+    ASSERT_OK(table_.Create(kTableName, 1, client_.get(), &builder, num_replicas));
   }
 
   // Starts an external cluster with a single tablet and a number of replicas equal
   // to 'FLAGS_num_replicas'. The caller can pass 'ts_flags' to specify non-default
   // flags to pass to the tablet servers.
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
-                     const std::vector<std::string>& master_flags = std::vector<std::string>(),
-                     TableType type = DEFAULT_TABLE_TYPE) {
+                     const std::vector<std::string>& master_flags = std::vector<std::string>()) {
     CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
     ASSERT_NO_FATALS(CreateClient(&client_));
-    ASSERT_NO_FATALS(CreateTable(type));
+    ASSERT_NO_FATALS(CreateTable());
     WaitForTSAndReplicas();
     CHECK_GT(tablet_replicas_.size(), 0);
     tablet_id_ = (*tablet_replicas_.begin()).first;
@@ -469,7 +463,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   YBTableType table_type() {
-    return table_->table_type();
+    return YBTableType::YQL_TABLE_TYPE;
   }
 
  protected:
@@ -482,7 +476,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   TabletReplicaMap tablet_replicas_;
 
   std::shared_ptr<client::YBClient> client_;
-  std::shared_ptr<client::YBTable> table_;
+  client::TableHandle table_;
   std::string tablet_id_;
 
   ThreadSafeRandom random_;

@@ -52,20 +52,46 @@ void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
 
 // Flush the given session. If any errors occur, log them and crash
 // the process.
-inline void FlushSessionOrDie(const std::shared_ptr<YBSession>& session) {
+inline void FlushSessionOrDie(const std::shared_ptr<YBSession>& session,
+                              const std::vector<std::shared_ptr<YBqlOp>>& ops = {}) {
   Status s = session->Flush();
   if (PREDICT_FALSE(!s.ok())) {
     LogSessionErrorsAndDie(session, s);
+  }
+  for (auto& op : ops) {
+    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
+        << "Status: " << QLResponsePB::QLStatus_Name(op->response().status());
   }
 }
 
 // Scans in LEADER_ONLY mode, returning stringified rows in the given vector.
 void ScanTableToStrings(YBTable* table, std::vector<std::string>* row_strings);
 
+// Scans in LEADER_ONLY mode, returning stringified rows.
+std::vector<std::string> ScanTableToStrings(YBTable* table);
+
 // Count the number of rows in the table in LEADER_ONLY mode.
 int64_t CountTableRows(YBTable* table);
 
 void ScanToStrings(YBScanner* scanner, std::vector<std::string>* row_strings);
+
+std::vector<std::string> ScanToStrings(YBScanner* scanner);
+
+template <class Range>
+std::vector<std::string> ScanToStrings(const Range& range) {
+  std::vector<std::pair<int32_t, std::string>> rows;
+  for (const auto& row : range) {
+    rows.emplace_back(row.column(0).int32_value(), row.ToString());
+  }
+  std::sort(rows.begin(), rows.end(),
+            [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+  std::vector<std::string> result;
+  result.reserve(rows.size());
+  for (auto& row : rows) {
+    result.emplace_back(std::move(row.second));
+  }
+  return result;
+}
 
 // Convert a yb::Schema to a yb::client::YBSchema.
 YBSchema YBSchemaFromSchema(const Schema& schema);
@@ -73,4 +99,4 @@ YBSchema YBSchemaFromSchema(const Schema& schema);
 }  // namespace client
 }  // namespace yb
 
-#endif /* YB_CLIENT_CLIENT_TEST_UTIL_H */
+#endif // YB_CLIENT_CLIENT_TEST_UTIL_H_

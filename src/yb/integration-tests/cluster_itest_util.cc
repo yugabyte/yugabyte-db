@@ -702,7 +702,6 @@ Status LeaderStepDown(const TServerDetails* replica,
 
 Status WriteSimpleTestRow(const TServerDetails* replica,
                           const std::string& tablet_id,
-                          RowOperationsPB::Type write_type,
                           int32_t key,
                           int32_t int_val,
                           const string& string_val,
@@ -713,9 +712,8 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
   rpc.set_timeout(timeout);
 
   req.set_tablet_id(tablet_id);
-  Schema schema = GetSimpleTestSchema();
-  RETURN_NOT_OK(SchemaToPB(schema, req.mutable_schema()));
-  AddTestRowToPB(write_type, schema, key, int_val, string_val, req.mutable_row_operations());
+
+  AddTestRow(key, int_val, string_val, &req);
 
   RETURN_NOT_OK(replica->tserver_proxy->Write(req, &resp, &rpc));
   if (resp.has_error()) {

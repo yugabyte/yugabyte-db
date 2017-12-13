@@ -59,15 +59,8 @@ shared_ptr<vector<ColumnSchema>> GetColumnSchemasFromOp(const YBqlOp& op, const 
         return tnode->selected_schemas();
       }
 
-      // Tests don't have access to the QL internal statement object, so they have to use rsrow
-      // descriptor from the read request.
-      const QLRSRowDescPB& rsrow_desc = static_cast<const YBqlReadOp&>(op).request().rsrow_desc();
-      shared_ptr<vector<ColumnSchema>> column_schemas = make_shared<vector<ColumnSchema>>();
-      for (const auto& rscol_desc : rsrow_desc.rscol_descs()) {
-        column_schemas->emplace_back(rscol_desc.name(),
-                                     QLType::FromQLTypePB(rscol_desc.ql_type()));
-      }
-      return column_schemas;
+      return std::make_shared<vector<ColumnSchema>>(
+          static_cast<const YBqlReadOp&>(op).MakeColumnSchemasFromRequest());
     }
 
     case YBOperation::Type::QL_WRITE: {

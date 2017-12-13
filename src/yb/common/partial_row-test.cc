@@ -113,7 +113,8 @@ TEST_F(PartialRowTest, UnitTest) {
 
   // Try to set a non-nullable entry to NULL
   s = row.SetNull("key");
-  EXPECT_EQ("Invalid argument: column not nullable: key[int32 NOT NULL]", s.ToString(false));
+  EXPECT_EQ("Invalid argument: column not nullable: key[int32 NOT NULL NOT A PARTITION KEY]",
+            s.ToString(false));
 
   // Set the NULL string back to non-NULL
   EXPECT_OK(row.SetStringCopy("string_val", "goodbye world"));

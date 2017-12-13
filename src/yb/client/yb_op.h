@@ -51,6 +51,7 @@ class RedisResponsePB;
 class QLWriteRequestPB;
 class QLReadRequestPB;
 class QLResponsePB;
+class QLRowBlock;
 
 namespace client {
 
@@ -330,6 +331,8 @@ class YBqlOp : public YBOperation {
   std::string rows_data_;
 };
 
+typedef std::shared_ptr<YBqlOp> YBqlOpPtr;
+
 class YBqlWriteOp : public YBqlOp {
  public:
   explicit YBqlWriteOp(const std::shared_ptr<YBTable>& table);
@@ -394,6 +397,9 @@ class YBqlReadOp : public YBqlOp {
     yb_consistency_level_ = yb_consistency_level;
   }
 
+  std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
+  Result<QLRowBlock> MakeRowBlock() const;
+
  protected:
   virtual Type type() const override { return QL_READ; }
 
@@ -404,6 +410,10 @@ class YBqlReadOp : public YBqlOp {
   YBConsistencyLevel yb_consistency_level_;
 };
 
+typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
+
+std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
+  const google::protobuf::RepeatedPtrField<QLRSColDescPB>& rscol_descs);
 
 }  // namespace client
 }  // namespace yb

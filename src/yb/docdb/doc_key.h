@@ -85,10 +85,6 @@ class DocKey {
          const std::vector<PrimitiveValue>& hashed_components,
          const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
 
-  // DocKey with no hash but hashed components and range components preset
-  DocKey(const std::vector<PrimitiveValue>& hashed_components,
-      const std::vector<PrimitiveValue>& range_components);
-
   KeyBytes Encode() const;
   void AppendTo(KeyBytes* out) const;
 

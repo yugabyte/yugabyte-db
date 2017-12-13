@@ -38,10 +38,11 @@
 #include "yb/common/scan_predicate.h"
 #include "yb/common/encoded_key.h"
 #include "yb/rocksdb/cache.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
-using std::vector;
+YB_STRONGLY_TYPED_BOOL(Inclusive);
 
 class ScanSpec {
  public:
@@ -51,10 +52,10 @@ class ScanSpec {
 
   void AddPredicate(const ColumnRangePredicate &pred);
 
-  // Set the lower bound (inclusive) primary key for the scan.
+  // Set the lower bound primary key for the scan.
   // Does not take ownership of 'key', which must remain valid.
   // If called multiple times, the most restrictive key will be used.
-  void SetLowerBoundKey(const EncodedKey* key);
+  void SetLowerBoundKey(const EncodedKey* key, Inclusive inclusive);
 
   // Set the upper bound (exclusive) primary key for the scan.
   // Does not take ownership of 'key', which must remain valid.
@@ -75,7 +76,7 @@ class ScanSpec {
   // Only used in the client.
   void SetExclusiveUpperBoundPartitionKey(const Slice& slice);
 
-  const vector<ColumnRangePredicate> &predicates() const {
+  const std::vector<ColumnRangePredicate> &predicates() const {
     return predicates_;
   }
 
@@ -88,17 +89,22 @@ class ScanSpec {
     return &predicates_;
   }
 
+  Inclusive lower_bound_inclusive() const {
+    return lower_bound_inclusive_;
+  }
+
   const EncodedKey* lower_bound_key() const {
     return lower_bound_key_;
   }
+
   const EncodedKey* exclusive_upper_bound_key() const {
     return exclusive_upper_bound_key_;
   }
 
-  const string& lower_bound_partition_key() const {
+  const std::string& lower_bound_partition_key() const {
     return lower_bound_partition_key_;
   }
-  const string& exclusive_upper_bound_partition_key() const {
+  const std::string& exclusive_upper_bound_partition_key() const {
     return exclusive_upper_bound_partition_key_;
   }
 
@@ -125,8 +131,9 @@ class ScanSpec {
   // Helper for the ToString*() methods. 's' may be NULL.
   std::string ToStringWithOptionalSchema(const Schema* s) const;
 
-  vector<ColumnRangePredicate> predicates_;
+  std::vector<ColumnRangePredicate> predicates_;
   const EncodedKey* lower_bound_key_ = nullptr;
+  Inclusive lower_bound_inclusive_ = Inclusive::kFalse;
   const EncodedKey* exclusive_upper_bound_key_ = nullptr;
   std::string lower_bound_partition_key_;
   std::string exclusive_upper_bound_partition_key_;

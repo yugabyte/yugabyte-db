@@ -1553,6 +1553,7 @@ static Status DecodeEncodedKeyRange(const NewScanRequestPB& scan_pb,
                                     const SharedScanner& scanner,
                                     ScanSpec* spec) {
   gscoped_ptr<EncodedKey> start, stop;
+  Inclusive start_inclusive = Inclusive::kTrue;
   if (scan_pb.has_start_primary_key()) {
     RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(
         tablet_schema, scanner->arena(),
@@ -1575,13 +1576,11 @@ static Status DecodeEncodedKeyRange(const NewScanRequestPB& scan_pb,
     RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(tablet_schema, scanner->arena(),
                                                           scan_pb.last_primary_key(), &start),
                           "Failed to decode last primary key");
-    // Increment the start key, so we don't return the last row again.
-    RETURN_NOT_OK_PREPEND(EncodedKey::IncrementEncodedKey(tablet_schema, &start, scanner->arena()),
-                          "Failed to increment encoded last row key");
+    start_inclusive = Inclusive::kFalse;
   }
 
   if (start) {
-    spec->SetLowerBoundKey(start.get());
+    spec->SetLowerBoundKey(start.get(), start_inclusive);
     scanner->autorelease_pool()->Add(start.release());
   }
   if (stop) {
@@ -1737,7 +1736,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     }
   }
 
-  gscoped_ptr<ScanSpec> spec(new ScanSpec);
+  gscoped_ptr<ScanSpec> spec;
 
   // Missing columns will contain the columns that are not mentioned in the client
   // projection but are actually needed for the scan, such as columns referred to by

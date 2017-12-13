@@ -481,23 +481,16 @@ void Tablet::StartApplying(WriteOperationState* operation_state) {
 void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   last_committed_write_index_.store(operation_state->op_id().index(), std::memory_order_release);
   StartApplying(operation_state);
-  switch (table_type_) {
-    case TableType::YQL_TABLE_TYPE:
-    case TableType::REDIS_TABLE_TYPE: {
-      const KeyValueWriteBatchPB& put_batch =
-          operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
-              // Online case.
-              ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
-              // Bootstrap case.
-              : operation_state->request()->write_batch();
+  const KeyValueWriteBatchPB& put_batch =
+      operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
+          // Online case.
+          ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
+          // Bootstrap case.
+          : operation_state->request()->write_batch();
 
-      ApplyKeyValueRowOperations(put_batch,
-                                 operation_state->op_id(),
-                                 operation_state->hybrid_time());
-      return;
-    }
-  }
-  LOG(FATAL) << "Invalid table type: " << table_type_;
+  ApplyKeyValueRowOperations(put_batch,
+                             operation_state->op_id(),
+                             operation_state->hybrid_time());
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir,

@@ -287,7 +287,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   ASSERT_OK(itest::WaitForServersToAgree(timeout, ts_map_, tablet_id, 1)); // Wait for NO_OP.
 
   // Write a single row.
-  ASSERT_OK(WriteSimpleTestRow(leader_ts, tablet_id, RowOperationsPB::INSERT, 0, 0, "", timeout));
+  ASSERT_OK(WriteSimpleTestRow(leader_ts, tablet_id, 0, 0, "", timeout));
 
   // Delay tablet applies in order to delay COMMIT messages to trigger KUDU-1233.
   // Then insert another row.

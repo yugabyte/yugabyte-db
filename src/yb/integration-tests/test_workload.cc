@@ -34,6 +34,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"
@@ -89,12 +90,12 @@ TestWorkload::~TestWorkload() {
 void TestWorkload::WriteThread() {
   Random r(Env::Default()->gettid());
 
-  shared_ptr<YBTable> table;
+  client::TableHandle table;
   // Loop trying to open up the table. In some tests we set up very
   // low RPC timeouts to test those behaviors, so this might fail and
   // need retrying.
   while (should_run_.Load()) {
-    Status s = client_->OpenTable(table_name_, &table);
+    Status s = table.Open(table_name_, client_.get());
     if (s.ok()) {
       break;
     }
@@ -118,55 +119,102 @@ void TestWorkload::WriteThread() {
   start_latch_.CountDown();
   start_latch_.Wait();
 
+  std::string test_payload("hello world");
+  if (payload_bytes_ != 11) {
+    // We fill with zeros if you change the default.
+    test_payload.assign(payload_bytes_, '0');
+  }
+
+  bool inserting_one_row = false;
   while (should_run_.Load()) {
+    std::vector<client::YBqlOpPtr> ops;
     for (int i = 0; i < write_batch_size_; i++) {
       if (pathological_one_row_enabled_) {
-        shared_ptr<KuduUpdate> update(table->NewUpdate());
-        YBPartialRow* row = update->mutable_row();
-        CHECK_OK(row->SetInt32(0, 0));
-        CHECK_OK(row->SetInt32(1, r.Next()));
-        CHECK_OK(session->Apply(update));
+        if (!pathological_one_row_inserted_) {
+          if (++pathological_one_row_counter_ != 1) {
+            continue;
+          }
+        } else {
+          inserting_one_row = true;
+          if (use_yql_) {
+            auto update = table.NewUpdateOp();
+            auto req = update->mutable_request();
+            table.AddInt32HashValue(req, 0);
+            table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
+            ops.push_back(update);
+            CHECK_OK(session->Apply(update));
+          } else {
+            shared_ptr<KuduUpdate> update(table->NewUpdate());
+            YBPartialRow* row = update->mutable_row();
+            CHECK_OK(row->SetInt32(0, 0));
+            CHECK_OK(row->SetInt32(1, r.Next()));
+            CHECK_OK(session->Apply(update));
+          }
+          break;
+        }
+      }
+      if (use_yql_) {
+        auto insert = table.NewInsertOp();
+        auto req = insert->mutable_request();
+        table.AddInt32HashValue(req, pathological_one_row_enabled_ ? 0 : r.Next());
+        table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
+        table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
+        ops.push_back(insert);
+        CHECK_OK(session->Apply(insert));
       } else {
         shared_ptr<KuduInsert> insert(table->NewInsert());
         YBPartialRow* row = insert->mutable_row();
-        CHECK_OK(row->SetInt32(0, r.Next()));
+        CHECK_OK(row->SetInt32(0, pathological_one_row_enabled_ ? 0 : r.Next()));
         CHECK_OK(row->SetInt32(1, r.Next()));
-        string test_payload("hello world");
-        if (payload_bytes_ != 11) {
-          // We fill with zeros if you change the default.
-          test_payload.assign(payload_bytes_, '0');
-        }
         CHECK_OK(row->SetStringCopy(2, test_payload));
         CHECK_OK(session->Apply(insert));
       }
     }
 
-    int inserted = write_batch_size_;
-
     Status s = session->Flush();
 
-    if (PREDICT_FALSE(!s.ok())) {
-      client::CollectedErrors errors = session->GetPendingErrors();
-      for (const auto& e : errors) {
-        if (timeout_allowed_ && e->status().IsTimedOut()) {
-          continue;
+    int inserted;
+    if (use_yql_) {
+      inserted = 0;
+      for (const auto& op : ops) {
+        if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
+          ++inserted;
+        } else {
+          VLOG(1) << "Op failed: " << op->ToString() << ": " << op->response().ShortDebugString();
         }
-
-        if (not_found_allowed_ && e->status().IsNotFound()) {
-          continue;
-        }
-        // We don't handle write idempotency yet. (i.e making sure that when a leader fails
-        // writes to it that were eventually committed by the new leader but un-ackd to the
-        // client are not retried), so some errors are expected.
-        // It's OK as long as the errors are Status::AlreadyPresent();
-        CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
       }
-      inserted -= errors.size();
+    } else {
+      inserted = inserting_one_row ? 1 : write_batch_size_;
+      if (PREDICT_FALSE(!s.ok())) {
+        client::CollectedErrors errors = session->GetPendingErrors();
+        for (const auto& e : errors) {
+          if (timeout_allowed_ && e->status().IsTimedOut()) {
+            continue;
+          }
+
+          if (not_found_allowed_ && e->status().IsNotFound()) {
+            continue;
+          }
+          // We don't handle write idempotency yet. (i.e making sure that when a leader fails
+          // writes to it that were eventually committed by the new leader but un-ackd to the
+          // client are not retried), so some errors are expected.
+          // It's OK as long as the errors are Status::AlreadyPresent();
+          CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
+        }
+        inserted -= errors.size();
+      }
     }
 
     rows_inserted_.IncrementBy(inserted);
     if (inserted > 0) {
       batches_completed_.Increment();
+    }
+    if (inserting_one_row) {
+      if (inserted > 0) {
+        pathological_one_row_enabled_ = true;
+      } else {
+        pathological_one_row_counter_ = 0;
+      }
     }
   }
 }
@@ -213,22 +261,6 @@ void TestWorkload::Setup(YBTableType table_type) {
   } else {
     LOG(INFO) << "TestWorkload: Skipping table creation because table "
               << table_name_.ToString() << " already exists";
-  }
-
-
-  if (pathological_one_row_enabled_) {
-    shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeoutMillis(20000);
-    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    shared_ptr<YBTable> table;
-    CHECK_OK(client_->OpenTable(table_name_, &table));
-    shared_ptr<KuduInsert> insert(table->NewInsert());
-    YBPartialRow* row = insert->mutable_row();
-    CHECK_OK(row->SetInt32(0, 0));
-    CHECK_OK(row->SetInt32(1, 0));
-    CHECK_OK(row->SetStringCopy(2, "hello world"));
-    CHECK_OK(session->Apply(insert));
-    CHECK_OK(session->Flush());
   }
 }
 

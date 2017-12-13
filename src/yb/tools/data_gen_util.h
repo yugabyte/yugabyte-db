@@ -37,8 +37,11 @@
 #include <stdint.h>
 
 namespace yb {
-class YBPartialRow;
+
+class QLValuePB;
+class QLWriteRequestPB;
 class Random;
+class YBPartialRow;
 
 namespace client {
 class YBSchema;
@@ -54,12 +57,12 @@ namespace tools {
 void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
-                        YBPartialRow* row);
+                        QLValuePB* out);
 
 // Generate row data for an arbitrary schema. Initial column value determined
 // by the value of 'record_id'.
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
-                        Random* random, YBPartialRow* row);
+                        Random* random, QLWriteRequestPB* req);
 
 } // namespace tools
 } // namespace yb

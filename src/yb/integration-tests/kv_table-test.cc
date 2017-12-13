@@ -53,7 +53,6 @@ namespace integration_tests {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::KuduInsert;
 using client::YBRowResult;
 using client::YBScanner;
 using client::YBSchema;

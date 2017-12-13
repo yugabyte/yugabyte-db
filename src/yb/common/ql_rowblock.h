@@ -93,8 +93,10 @@ class QLRowBlock {
   // The rows
   std::vector<QLRow>& rows() { return rows_; }
 
+  const std::vector<QLRow>& rows() const { return rows_; }
+
   // Return the row by index
-  QLRow& row(size_t idx) { return rows_.at(idx); }
+  QLRow& row(size_t idx) { return rows_[idx]; }
 
   // Extend row block by 1 emtpy row and return the new row.
   QLRow& Extend();

@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
 
 #include "yb/tablet/tablet_peer.h"
 
@@ -67,15 +68,19 @@ class QLDmlTest : public QLDmlTestBase {
   void SetUp() override {
     QLDmlTestBase::SetUp();
 
-    YBSchemaBuilder b;
-    b.AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
-    b.AddColumn("c1")->Type(INT32);
-    b.AddColumn("c2")->Type(STRING);
+    if (!FLAGS_mini_cluster_reuse_data) {
+      YBSchemaBuilder b;
+      b.AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
+      b.AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
+      b.AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
+      b.AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
+      b.AddColumn("c1")->Type(INT32);
+      b.AddColumn("c2")->Type(STRING);
 
-    table_.Create(kTableName, client_.get(), &b);
+      ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
+    } else {
+      ASSERT_OK(table_.Open(kTableName, client_.get()));
+    }
   }
 
   // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that
@@ -89,12 +94,12 @@ class QLDmlTest : public QLDmlTestBase {
 
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), h1);
-    table_.SetStringExpression(req->add_hashed_column_values(), h2);
-    table_.SetInt32Expression(req->add_range_column_values(), r1);
-    table_.SetStringExpression(req->add_range_column_values(), r2);
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", c1);
-    table_.SetStringColumnValue(req->add_column_values(), "c2", c2);
+    table_.AddInt32HashValue(req, h1);
+    table_.AddStringHashValue(req, h2);
+    table_.AddInt32RangeValue(req, r1);
+    table_.AddStringRangeValue(req, r2);
+    table_.AddInt32ColumnValue(req, "c1", c1);
+    table_.AddStringColumnValue(req, "c2", c2);
     CHECK_OK(session->Apply(op));
     return op;
   }
@@ -110,8 +115,8 @@ class QLDmlTest : public QLDmlTestBase {
 
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), h1);
-    table_.SetStringExpression(req->add_hashed_column_values(), h2);
+    table_.AddInt32HashValue(req, h1);
+    table_.AddStringHashValue(req, h2);
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(QL_OP_AND);
     table_.AddInt32Condition(condition, "r1", QL_OP_EQUAL, r1);
@@ -176,12 +181,12 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     // update t set c1 = 4, c2 = 'd' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 4);
+    table_.AddStringColumnValue(req, "c2", "d");
     const shared_ptr<YBSession> session(client_->NewSession());
     CHECK_OK(session->Apply(op));
 
@@ -377,8 +382,8 @@ TEST_F(QLDmlTest, FlushedOpId) {
   session->SetTimeout(kTimeout);
   const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
   auto* const req = op->mutable_request();
-  table_.SetInt32Expression(req->add_hashed_column_values(), kHashInt);
-  table_.SetStringExpression(req->add_hashed_column_values(), kHashStr);
+  table_.AddInt32HashValue(req, kHashInt);
+  table_.AddStringHashValue(req, kHashStr);
   auto c2_column_id = table_.ColumnId("c2");
   req->add_selected_exprs()->set_column_id(c2_column_id);
   req->mutable_column_refs()->add_ids(c2_column_id);
@@ -417,8 +422,8 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(QL_OP_AND);
     table_.AddInt32Condition(condition, "r1", QL_OP_EQUAL, 2);
@@ -473,8 +478,8 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
     // select * from t where h1 = 1 and h2 = 'a' and r2 = 'b' or r2 = 'd';
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(QL_OP_OR);
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, "b");
@@ -497,8 +502,8 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and (r2 = 'b' or r2 = 'd');
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
     auto* condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(QL_OP_AND);
     table_.AddInt32Condition(condition, "r1", QL_OP_EQUAL, 2);
@@ -547,8 +552,8 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
     // select * from t where h1 = 1 and h2 = 'a' limit 5;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
     AddAllColumns(req);
 
     req->set_limit(5);
@@ -578,11 +583,11 @@ TEST_F(QLDmlTest, TestUpsert) {
     const shared_ptr<YBqlWriteOp> op(table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT));
     auto* const req = op->mutable_request();
     req->set_hash_code(0);
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 3);
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 3);
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -610,11 +615,11 @@ TEST_F(QLDmlTest, TestUpsert) {
     // update t set c2 = 'c' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetStringColumnValue(req->add_column_values(), "c2", "c");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddStringColumnValue(req, "c2", "c");
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -645,10 +650,10 @@ TEST_F(QLDmlTest, TestDelete) {
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
     table_.SetColumn(req->add_column_values(), "c1");
     CHECK_OK(session->Apply(op));
 
@@ -673,10 +678,10 @@ TEST_F(QLDmlTest, TestDelete) {
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -717,12 +722,12 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 4);
+    table_.AddStringColumnValue(req, "c2", "d");
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_NOT_EXISTS);
     CHECK_OK(session->Apply(op));
@@ -753,12 +758,12 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'd';
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 4);
+    table_.AddStringColumnValue(req, "c2", "d");
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_OR);
     table_.AddCondition(condition, QL_OP_NOT_EXISTS);
@@ -795,12 +800,12 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'c';
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 4);
-    table_.SetStringColumnValue(req->add_column_values(), "c2", "d");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 4);
+    table_.AddStringColumnValue(req, "c2", "d");
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_OR);
     table_.AddCondition(condition, QL_OP_NOT_EXISTS);
@@ -872,11 +877,11 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if not exists;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 6);
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 6);
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_NOT_EXISTS);
     CHECK_OK(session->Apply(op));
@@ -907,11 +912,11 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 6);
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 6);
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_EXISTS);
     CHECK_OK(session->Apply(op));
@@ -962,10 +967,10 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if c1 = 4;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
     table_.SetColumn(req->add_column_values(), "c1");
     table_.SetInt32Condition(req->mutable_if_expr()->mutable_condition(), "c1", QL_OP_EQUAL, 4);
     req->mutable_column_refs()->add_ids(table_.ColumnId("c1"));
@@ -1001,10 +1006,10 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists and c1 = 3;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
     table_.SetColumn(req->add_column_values(), "c1");
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_AND);
@@ -1045,10 +1050,10 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'c' if exists;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "c");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "c");
     auto* const condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_EXISTS);
     CHECK_OK(session->Apply(op));
@@ -1070,12 +1075,12 @@ TEST_F(QLDmlTest, TestError) {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
-    table_.SetInt32Expression(req->add_range_column_values(), 2);
-    table_.SetStringExpression(req->add_range_column_values(), "b");
-    table_.SetInt32ColumnValue(req->add_column_values(), "c1", 3);
-    table_.SetStringColumnValue(req->add_column_values(), "c2", "c");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
+    table_.AddInt32RangeValue(req, 2);
+    table_.AddStringRangeValue(req, "b");
+    table_.AddInt32ColumnValue(req, "c1", 3);
+    table_.AddStringColumnValue(req, "c2", "c");
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -1085,8 +1090,8 @@ TEST_F(QLDmlTest, TestError) {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 <> '2' and r2 <> 'b';
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), 1);
-    table_.SetStringExpression(req->add_hashed_column_values(), "a");
+    table_.AddInt32HashValue(req, 1);
+    table_.AddStringHashValue(req, "a");
     auto* const condition = req->mutable_where_expr()->mutable_condition();
     condition->set_op(QL_OP_AND);
     table_.AddStringCondition(condition, "r1", QL_OP_NOT_EQUAL, "2");

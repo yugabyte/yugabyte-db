@@ -1725,7 +1725,7 @@ Status YBScanner::AddLowerBoundRaw(const Slice& key) {
   gscoped_ptr<EncodedKey> enc_key;
   RETURN_NOT_OK(EncodedKey::DecodeEncodedString(
       internal::GetSchema(data_->table_->schema()), &data_->arena_, key, &enc_key));
-  data_->spec_.SetLowerBoundKey(enc_key.get());
+  data_->spec_.SetLowerBoundKey(enc_key.get(), Inclusive::kTrue);
   data_->pool_.Add(enc_key.release());
   return Status::OK();
 }
@@ -1792,10 +1792,12 @@ struct CloseCallback {
 string YBScanner::ToString() const {
   Slice start_key = data_->spec_.lower_bound_key() ?
     data_->spec_.lower_bound_key()->encoded_key() : Slice("INF");
+  char lower_bound_bracket = data_->spec_.lower_bound_inclusive() ? '[' : '(';
   Slice end_key = data_->spec_.exclusive_upper_bound_key() ?
     data_->spec_.exclusive_upper_bound_key()->encoded_key() : Slice("INF");
-  return strings::Substitute("$0: [$1,$2)", data_->table_->name().ToString(),
-                             start_key.ToDebugString(), end_key.ToDebugString());
+  return strings::Substitute("$0: $3$1,$2)", data_->table_->name().ToString(),
+                             start_key.ToDebugString(), end_key.ToDebugString(),
+                             lower_bound_bracket);
 }
 
 Status YBScanner::Open() {

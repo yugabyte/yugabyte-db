@@ -40,6 +40,8 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_handle.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -95,8 +97,8 @@ static int WriteRandomDataToTable(int argc, char** argv) {
            .Build(&client));
 
   LOG(INFO) << "Opening table...";
-  shared_ptr<YBTable> table;
-  CHECK_OK(client->OpenTable(table_name, &table));
+  client::TableHandle table;
+  CHECK_OK(table.Open(table_name, client.get()));
   YBSchema schema = table->schema();
 
   shared_ptr<YBSession> session = client->NewSession();
@@ -107,11 +109,11 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   LOG(INFO) << "Inserting random rows...";
   for (uint64_t record_id = 0; true; ++record_id) {
-    shared_ptr<KuduInsert> insert(table->NewInsert());
-    YBPartialRow* row = insert->mutable_row();
-    GenerateDataForRow(schema, record_id, &random, row);
+    auto insert = table.NewInsertOp();
+    auto req = insert->mutable_request();
+    GenerateDataForRow(schema, record_id, &random, req);
 
-    LOG(INFO) << "Inserting record: " << row->ToString();
+    LOG(INFO) << "Inserting record: " << req->ShortDebugString();
     CHECK_OK(session->Apply(insert));
     Status s = session->Flush();
     if (PREDICT_FALSE(!s.ok())) {

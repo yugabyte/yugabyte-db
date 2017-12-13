@@ -784,8 +784,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   // We give 5 seconds for the timeout to pretty much guarantee that a flush
   // will occur due to the low flush threshold we set.
   LOG(INFO) << "Writing a row";
-  Status s = WriteSimpleTestRow(leader, tablet_id, RowOperationsPB::INSERT,
-                                1, 1, "hola, world", MonoDelta::FromSeconds(5));
+  Status s = WriteSimpleTestRow(leader, tablet_id, 1, 1, "hola, world", MonoDelta::FromSeconds(5));
   ASSERT_TRUE(s.IsTimedOut());
   ASSERT_STR_CONTAINS(s.ToString(), "timed out");
 

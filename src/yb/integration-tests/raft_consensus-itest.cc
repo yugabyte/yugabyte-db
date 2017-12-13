@@ -43,7 +43,9 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
@@ -77,7 +79,6 @@ METRIC_DECLARE_gauge_int64(raft_term);
 namespace yb {
 namespace tserver {
 
-using client::KuduInsert;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableName;
@@ -135,34 +136,46 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void ScanReplica(TabletServerServiceProxy* replica_proxy,
                    vector<string>* results) {
 
-    ScanRequestPB req;
-    ScanResponsePB resp;
+    ReadRequestPB req;
+    ReadResponsePB resp;
     RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(10));  // Squelch warnings.
 
-    NewScanRequestPB* scan = req.mutable_new_scan_request();
-    scan->set_tablet_id(tablet_id_);
-    ASSERT_OK(SchemaToColumnPBs(schema_, scan->mutable_projected_columns()));
+    req.set_tablet_id(tablet_id_);
+    req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+    auto batch = req.add_ql_batch();
+    batch->set_schema_version(0);
+    int id = kFirstColumnId;
+    auto rsrow = batch->mutable_rsrow_desc();
+    for (const auto& col : schema_.columns()) {
+      batch->add_selected_exprs()->set_column_id(id);
+      batch->mutable_column_refs()->add_ids(id);
+      auto coldesc = rsrow->add_rscol_descs();
+      coldesc->set_name(col.name());
+      col.type()->ToQLTypePB(coldesc->mutable_ql_type());
+      ++id;
+    }
 
     // Send the call
     {
-      req.set_batch_size_bytes(0);
       SCOPED_TRACE(req.DebugString());
-      ASSERT_OK(replica_proxy->Scan(req, &resp, &rpc));
+      ASSERT_OK(replica_proxy->Read(req, &resp, &rpc));
       SCOPED_TRACE(resp.DebugString());
       if (resp.has_error()) {
         ASSERT_OK(StatusFromPB(resp.error().status()));
       }
     }
 
-    if (!resp.has_more_results())
-      return;
-
-    // Drain all the rows from the scanner.
-    ASSERT_NO_FATALS(DrainScannerToStrings(resp.scanner_id(),
-                                    schema_,
-                                    results,
-                                    replica_proxy));
+    Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
+    QLRowBlock result(schema);
+    Slice data;
+    ASSERT_OK(rpc.GetSidecar(0, &data));
+    if (!data.empty()) {
+      ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
+    }
+    for (const auto& row : result.rows()) {
+      results->push_back(row.ToString());
+    }
 
     std::sort(results->begin(), results->end());
   }
@@ -228,24 +241,24 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                                   uint64_t count,
                                   uint64_t num_batches,
                                   const vector<CountDownLatch*>& latches) {
-    shared_ptr<YBTable> table;
-    CHECK_OK(client_->OpenTable(kTableName, &table));
+    client::TableHandle table;
+    ASSERT_OK(table.Open(kTableName, client_.get()));
 
     shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(60000);
-    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
     for (int i = 0; i < num_batches; i++) {
       uint64_t first_row_in_batch = first_row + (i * count / num_batches);
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        shared_ptr<KuduInsert> insert(table->NewInsert());
-        YBPartialRow* row = insert->mutable_row();
-        CHECK_OK(row->SetInt32(0, j));
-        CHECK_OK(row->SetInt32(1, j * 2));
-        CHECK_OK(row->SetStringCopy(2, Slice(StringPrintf("hello %d", j))));
-        CHECK_OK(session->Apply(insert));
+        auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+        auto* const req = op->mutable_request();
+        table.AddInt32HashValue(req, j);
+        table.AddInt32ColumnValue(req, "int_val", j * 2);
+        table.AddStringColumnValue(req, "string_val", StringPrintf("hello %d", j));
+        ASSERT_OK(session->Apply(op));
       }
 
       // We don't handle write idempotency yet. (i.e making sure that when a leader fails
@@ -417,7 +430,6 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   void TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::MemberType member_type);
   void TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type);
 
-  const shared_ptr<YBTable> table_ = nullptr;
   std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
 };
@@ -505,8 +517,10 @@ TEST_F(RaftConsensusITest, TestFailedOperation) {
   // to process transactions after a failure. Additionally, this allows us to wait
   // for all of the replicas to finish processing transactions before shutting down,
   // avoiding a potential stall as we currently can't abort transactions (see KUDU-341).
-  data->Clear();
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, 0, 0, "original0", data);
+
+  req.Clear();
+  req.set_tablet_id(tablet_id_);
+  AddTestRow(0, 0, "original0", &req);
 
   controller.Reset();
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
@@ -598,8 +612,7 @@ TEST_F(RaftConsensusITest, TestInsertOnNonLeader) {
   RpcController rpc;
   req.set_tablet_id(tablet_id_);
   ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, kTestRowKey, kTestRowIntVal,
-                 "hello world via RPC", req.mutable_row_operations());
+  AddTestRow(kTestRowKey, kTestRowIntVal, "hello world via RPC", &req);
 
   // Get the leader.
   vector<TServerDetails*> followers;
@@ -664,9 +677,6 @@ void RaftConsensusITest::Write128KOpsToLeader(int num_writes) {
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
 
   WriteRequestPB req;
-  req.set_tablet_id(tablet_id_);
-  ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
-  RowOperationsPB* data = req.mutable_row_operations();
   WriteResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(10000));
@@ -676,9 +686,9 @@ void RaftConsensusITest::Write128KOpsToLeader(int num_writes) {
   string test_payload(128 * 1024, '0');
   for (int i = 0; i < num_writes; i++) {
     rpc.Reset();
-    data->Clear();
-    AddTestRowToPB(RowOperationsPB::INSERT, schema_, key, key,
-                   test_payload, data);
+    req.Clear();
+    req.set_tablet_id(tablet_id_);
+    AddTestRow(key, key, test_payload, &req);
     key++;
     ASSERT_OK(leader->tserver_proxy->Write(req, &resp, &rpc));
 
@@ -740,6 +750,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   int leader_index = cluster_->tablet_server_index_by_uuid(*leader_uuid);
 
   TestWorkload workload(cluster_.get());
+  workload.use_yql();
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_payload_bytes(128 * 1024);  // Write ops of size 128KB.
@@ -822,8 +833,8 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
                                      << s.ToString();
 
   // Insert the row that we will update throughout the test.
-  ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_, RowOperationsPB::INSERT,
-                               kTestRowKey, kTestRowIntVal, "initial insert", kTimeout));
+  ASSERT_OK(WriteSimpleTestRow(
+      leader_tserver, tablet_id_, kTestRowKey, kTestRowIntVal, "initial insert", kTimeout));
 
   // Kill the master, so we can change the config without interference.
   cluster_->master()->Shutdown();
@@ -1395,8 +1406,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
   RpcController rpc;
   req.set_tablet_id(tablet_id_);
   ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
-  AddTestRowToPB(RowOperationsPB::INSERT, schema_, kTestRowKey, kTestRowIntVal,
-                 "hello world", req.mutable_row_operations());
+  AddTestRow(kTestRowKey, kTestRowIntVal, "hello world", &req);
 
   while (!finish->Load()) {
     resp.Clear();
@@ -1689,8 +1699,8 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
   // Become leader.
   ASSERT_OK(StartElection(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
   ASSERT_OK(WaitUntilLeader(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WriteSimpleTestRow(tservers[0], tablet_id_, RowOperationsPB::INSERT,
-                               kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WriteSimpleTestRow(
+      tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10)));
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 2));
 
   // Step down and test that a 2nd stepdown returns the expected result.
@@ -1700,8 +1710,8 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not be leader anymore: " << s.ToString();
   ASSERT_EQ(TabletServerErrorPB::NOT_THE_LEADER, error.code()) << error.ShortDebugString();
 
-  s = WriteSimpleTestRow(tservers[0], tablet_id_, RowOperationsPB::INSERT,
-                         kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10));
+  s = WriteSimpleTestRow(
+      tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(10));
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not accept writes as follower: "
                                   << s.ToString();
 }
@@ -1739,7 +1749,7 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
     }
 
     // Ensure writes timeout while only a minority is alive.
-    Status s = WriteSimpleTestRow(initial_leader, tablet_id_, RowOperationsPB::UPDATE,
+    Status s = WriteSimpleTestRow(initial_leader, tablet_id_,
                                   kTestRowKey, kTestRowIntVal, "foo",
                                   MonoDelta::FromMilliseconds(100));
     ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
@@ -1770,7 +1780,7 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
   LOG(INFO) << "Successful election with full config of size " << config_size;
 
   // And a write should also succeed.
-  ASSERT_OK(WriteSimpleTestRow(initial_leader, tablet_id_, RowOperationsPB::UPDATE,
+  ASSERT_OK(WriteSimpleTestRow(initial_leader, tablet_id_,
                                kTestRowKey, kTestRowIntVal, Substitute("qsz=$0", config_size),
                                MonoDelta::FromSeconds(10)));
 }
@@ -2085,7 +2095,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
       MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms)));
 
   // Do one last operation on the new leader: an insert.
-  ASSERT_OK(WriteSimpleTestRow(final_leader, tablet_id_, RowOperationsPB::INSERT,
+  ASSERT_OK(WriteSimpleTestRow(final_leader, tablet_id_,
                                kTestRowKey, kTestRowIntVal, "Ob-La-Di, Ob-La-Da",
                                MonoDelta::FromSeconds(10)));
 
@@ -2111,7 +2121,7 @@ void DoWriteTestRows(const TServerDetails* leader_tserver,
   while (!finish->load()) {
     int cur_row_key = ++*row_key;
     Status write_status = WriteSimpleTestRow(
-        leader_tserver, tablet_id, RowOperationsPB::INSERT, cur_row_key, cur_row_key,
+        leader_tserver, tablet_id, cur_row_key, cur_row_key,
         Substitute("key=$0", cur_row_key), write_timeout);
     if (!write_status.IsLeaderHasNoLease() &&
         !write_status.IsLeaderNotReadyToServe()) {

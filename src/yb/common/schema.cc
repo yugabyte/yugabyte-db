@@ -41,6 +41,7 @@
 #include "yb/util/malloc.h"
 #include "yb/util/status.h"
 #include "yb/common/row.h"
+#include "yb/tablet/metadata.pb.h"
 
 namespace yb {
 
@@ -58,7 +59,7 @@ string ColumnSchema::ToString() const {
 }
 
 string ColumnSchema::TypeToString() const {
-  return strings::Substitute("$0 $1",
+  return strings::Substitute("$0 $1 $2",
                              type_info()->name(),
                              is_nullable_ ? "NULLABLE" : "NOT NULL",
                              is_hash_key_ ? "PARTITION KEY" : "NOT A PARTITION KEY");
@@ -271,7 +272,7 @@ Schema Schema::CopyWithoutColumnIds() const {
 }
 
 Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
-  DCHECK(has_column_ids()) "The server schema must have IDs";
+  DCHECK(has_column_ids()) << "The server schema must have IDs";
 
   if (projection.has_column_ids()) {
     return STATUS(InvalidArgument, "User requests should not have Column IDs");
@@ -538,6 +539,18 @@ Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {
 Status SchemaBuilder::AlterProperties(const TablePropertiesPB& pb) {
   table_properties_.AlterFromTablePropertiesPB(pb);
   return Status::OK();
+}
+
+
+Status DeletedColumn::FromPB(const DeletedColumnPB& col, DeletedColumn* ret) {
+  ret->id = col.column_id();
+  ret->ht = HybridTime(col.deleted_hybrid_time());
+  return Status::OK();
+}
+
+void DeletedColumn::CopyToPB(DeletedColumnPB* pb) const {
+  pb->set_column_id(id);
+  pb->set_deleted_hybrid_time(ht.ToUint64());
 }
 
 } // namespace yb

@@ -284,7 +284,6 @@ Status LeaderStepDown(const TServerDetails* replica,
 // write_type.
 Status WriteSimpleTestRow(const TServerDetails* replica,
                           const TabletId& tablet_id,
-                          RowOperationsPB::Type write_type,
                           int32_t key,
                           int32_t int_val,
                           const std::string& string_val,

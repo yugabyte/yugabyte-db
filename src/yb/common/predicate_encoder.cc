@@ -176,7 +176,7 @@ void RangePredicateEncoder::EncodeRangePredicates(ScanSpec *spec, bool erase_pus
   if (lower_len) {
     EncodedKey* lower = EncodedKey::FromContiguousRow(ConstContiguousRow(lower_key)).release();
     pool_.Add(lower);
-    spec->SetLowerBoundKey(lower);
+    spec->SetLowerBoundKey(lower, Inclusive::kTrue);
   }
   if (upper_len) {
     EncodedKey* upper = EncodedKey::FromContiguousRow(ConstContiguousRow(upper_key)).release();

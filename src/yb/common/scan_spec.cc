@@ -47,12 +47,17 @@ void ScanSpec::AddPredicate(const ColumnRangePredicate &pred) {
   predicates_.push_back(pred);
 }
 
-void ScanSpec::SetLowerBoundKey(const EncodedKey* key) {
-  if (lower_bound_key_ == nullptr ||
-      key->encoded_key().compare(lower_bound_key_->encoded_key()) > 0) {
-    lower_bound_key_ = key;
+void ScanSpec::SetLowerBoundKey(const EncodedKey* key, Inclusive inclusive) {
+  if (lower_bound_key_ != nullptr) {
+    int cmp = key->encoded_key().compare(lower_bound_key_->encoded_key());
+    if (cmp < 0 || (cmp == 0 && inclusive)) {
+      return;
+    }
   }
+  lower_bound_key_ = key;
+  lower_bound_inclusive_ = inclusive;
 }
+
 void ScanSpec::SetExclusiveUpperBoundKey(const EncodedKey* key) {
   if (exclusive_upper_bound_key_ == nullptr ||
       key->encoded_key().compare(exclusive_upper_bound_key_->encoded_key()) < 0) {

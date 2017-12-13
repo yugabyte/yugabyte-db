@@ -394,6 +394,10 @@ class YBSchema {
 
   const std::vector<ColumnSchema>& columns() const;
 
+  int FindColumn(const StringPiece& name) const {
+    return schema_->find_column(name);
+  }
+
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);
   friend const Schema& internal::GetSchema(const YBSchema& schema);

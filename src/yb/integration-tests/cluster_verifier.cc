@@ -135,10 +135,10 @@ Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
   CHECK_OK(scanner.SetProjectedColumns(vector<string>()));
   RETURN_NOT_OK_PREPEND(scanner.Open(), "Unable to open scanner");
   int count = 0;
-  vector<client::YBRowResult> rows;
+  client::YBScanBatch batch;
   while (scanner.HasMoreRows()) {
-    RETURN_NOT_OK_PREPEND(scanner.NextBatch(&rows), "Unable to read from scanner");
-    count += rows.size();
+    RETURN_NOT_OK_PREPEND(scanner.NextBatch(&batch), "Unable to read from scanner");
+    count += batch.NumRows();
   }
 
   if (mode == AT_LEAST && count < expected_row_count) {

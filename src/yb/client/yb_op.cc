@@ -337,5 +337,31 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
   return Status::OK();
 }
 
+std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
+  const google::protobuf::RepeatedPtrField<QLRSColDescPB>& rscol_descs) {
+  std::vector<ColumnSchema> column_schemas;
+  column_schemas.reserve(rscol_descs.size());
+  for (const auto& rscol_desc : rscol_descs) {
+    column_schemas.emplace_back(rscol_desc.name(), QLType::FromQLTypePB(rscol_desc.ql_type()));
+  }
+  return column_schemas;
+}
+
+std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
+  // Tests don't have access to the QL internal statement object, so they have to use rsrow
+  // descriptor from the read request.
+  return MakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
+}
+
+Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
+  Schema schema(MakeColumnSchemasFromRequest(), 0);
+  QLRowBlock result(schema);
+  Slice data(rows_data_);
+  if (!data.empty()) {
+    RETURN_NOT_OK(result.Deserialize(request().client(), &data));
+  }
+  return result;
+}
+
 }  // namespace client
 }  // namespace yb

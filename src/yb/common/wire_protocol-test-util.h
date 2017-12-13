@@ -40,6 +40,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/row.h"
 #include "yb/common/row_operations.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/doc_key.h"
 
@@ -94,6 +95,29 @@ inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
   enc.Add(op_type, row);
 }
 
+template <class WriteRequestPB>
+void AddTestRow(int32_t key,
+                int32_t int_val,
+                const string& string_val,
+                WriteRequestPB* req) {
+  req->mutable_row_operations(); // To mark write as non empty.
+  req->set_external_consistency_mode(ExternalConsistencyMode::CLIENT_PROPAGATED);
+  auto wb = req->add_ql_write_batch();
+  wb->set_schema_version(0);
+  wb->set_type(QLWriteRequestPB::QL_STMT_INSERT);
+
+  std::string hash_key;
+  YBPartition::AppendIntToKey<int32_t, uint32_t>(key, &hash_key);
+  wb->set_hash_code(YBPartition::HashColumnCompoundValue(hash_key));
+  wb->add_hashed_column_values()->mutable_value()->set_int32_value(key);
+  auto column_value = wb->add_column_values();
+  column_value->set_column_id(11);
+  column_value->mutable_expr()->mutable_value()->set_int32_value(int_val);
+  column_value = wb->add_column_values();
+  column_value->set_column_id(12);
+  column_value->mutable_expr()->mutable_value()->set_string_value(string_val);
+}
+
 inline void AddKVToPB(int32_t key_val,
                       int32_t int_val,
                       const string& string_val,
@@ -108,7 +132,10 @@ inline void AddKVToPB(int32_t key_val,
         kv->set_value(primitive_value.ToValue());
     };
 
-  const DocKey doc_key({PrimitiveValue::Int32(key_val)});
+  std::string hash_key;
+  YBPartition::AppendIntToKey<int32_t, uint32_t>(key_val, &hash_key);
+  auto hash = YBPartition::HashColumnCompoundValue(hash_key);
+  const DocKey doc_key(hash, {PrimitiveValue::Int32(key_val)}, {});
   add_kv_pair(SubDocKey(doc_key, PrimitiveValue(int_val_col_id)),
               PrimitiveValue::Int32(int_val));
   add_kv_pair(SubDocKey(doc_key, PrimitiveValue(string_val_col_id)),

@@ -37,6 +37,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/row_result.h"
+#include "yb/client/table_handle.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -86,7 +87,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
  protected:
   UpdateScanDeltaCompactionTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT64)->NotNull()->PrimaryKey();
+    b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
     b.AddColumn("string")->Type(STRING)->NotNull();
     b.AddColumn("int64")->Type(INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
@@ -99,12 +100,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   void CreateTable() {
     ASSERT_NO_FATALS(InitCluster());
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    ASSERT_OK(table_creator->table_name(kTableName)
-             .schema(&schema_)
-             .num_replicas(1)
-             .Create());
-    ASSERT_OK(client_->OpenTable(kTableName, &table_));
+    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(1), schema_, client_.get(), 1));
   }
 
   void DoTearDown() override {
@@ -121,11 +117,6 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   void RunThreads();
 
  private:
-  enum {
-    kKeyCol,
-    kStrCol,
-    kInt64Col
-  };
   static const YBTableName kTableName;
 
   void InitCluster() {
@@ -157,7 +148,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
 
   // Sets the passed values on the row.
   // TODO randomize the string column.
-  void MakeRow(int64_t key, int64_t val, YBPartialRow* row) const;
+  void MakeRow(int64_t key, int64_t val, QLWriteRequestPB* req) const;
 
   // If 'key' is a multiple of kSessionBatchSize, it uses 'last_s' to wait for the previous batch
   // to finish and then flushes the current one.
@@ -167,7 +158,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
                                   shared_ptr<YBSession> session);
 
   YBSchema schema_;
-  shared_ptr<YBTable> table_;
+  client::TableHandle table_;
   shared_ptr<YBClient> client_;
 };
 
@@ -195,14 +186,13 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
 void UpdateScanDeltaCompactionTest::InsertBaseData() {
   shared_ptr<YBSession> session = CreateSession();
   Synchronizer last_s;
-  YBStatusMemberCallback<Synchronizer> last_s_cb(&last_s,
-                                                   &Synchronizer::StatusCB);
+  YBStatusMemberCallback<Synchronizer> last_s_cb(&last_s, &Synchronizer::StatusCB);
   last_s_cb.Run(Status::OK());
 
   LOG_TIMING(INFO, "Insert") {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
-      shared_ptr<KuduInsert> insert(table_->NewInsert());
-      MakeRow(key, 0, insert->mutable_row());
+      auto insert = table_.NewInsertOp();
+      MakeRow(key, 0, insert->mutable_request());
       ASSERT_OK(session->Apply(insert));
       ASSERT_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
     }
@@ -263,8 +253,8 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
     last_s_cb.Run(Status::OK());
     LOG_TIMING(INFO, "Update") {
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
-        shared_ptr<KuduUpdate> update(table_->NewUpdate());
-        MakeRow(key, iteration, update->mutable_row());
+        auto update = table_.NewUpdateOp();
+        MakeRow(key, iteration, update->mutable_request());
         CHECK_OK(session->Apply(update));
         CHECK_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
       }
@@ -279,10 +269,10 @@ void UpdateScanDeltaCompactionTest::ScanRows(CountDownLatch* stop_latch) const {
   while (stop_latch->count() > 0) {
     YBScanner scanner(table_.get());
     LOG_TIMING(INFO, "Scan") {
-      CHECK_OK(scanner.Open());
-      vector<YBRowResult> rows;
+      ASSERT_OK(scanner.Open());
+      client::YBScanBatch batch;
       while (scanner.HasMoreRows()) {
-        CHECK_OK(scanner.NextBatch(&rows));
+        ASSERT_OK(scanner.NextBatch(&batch));
       }
     }
   }
@@ -309,10 +299,10 @@ void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) con
 
 void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
                                             int64_t val,
-                                            YBPartialRow* row) const {
-  CHECK_OK(row->SetInt64(kKeyCol, key));
-  CHECK_OK(row->SetStringCopy(kStrCol, "TODO random string"));
-  CHECK_OK(row->SetInt64(kInt64Col, val));
+                                            QLWriteRequestPB* req) const {
+  table_.AddInt64HashValue(req, key);
+  table_.AddStringColumnValue(req, "string", "TODO random string");
+  table_.AddInt64ColumnValue(req, "int64", val);
 }
 
 Status UpdateScanDeltaCompactionTest::WaitForLastBatchAndFlush(int64_t key,

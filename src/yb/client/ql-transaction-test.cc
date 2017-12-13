@@ -18,6 +18,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_manager.h"
@@ -123,7 +124,7 @@ class QLTransactionTest : public QLDmlTestBase {
     table_properties.SetTransactional(true);
     builder.SetTableProperties(table_properties);
 
-    table_.Create(kTableName, client_.get(), &builder);
+    ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
 
     FLAGS_transaction_table_default_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
@@ -152,8 +153,8 @@ class QLTransactionTest : public QLDmlTestBase {
     const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
     const auto op = table_.NewWriteOp(stmt_type);
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), key);
-    table_.SetInt32ColumnValue(req->add_column_values(), "v", value);
+    table_.AddInt32HashValue(req, key);
+    table_.AddInt32ColumnValue(req, "v", value);
     RETURN_NOT_OK(session->Apply(op));
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
@@ -183,7 +184,7 @@ class QLTransactionTest : public QLDmlTestBase {
   Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key) {
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.SetInt32Expression(req->add_hashed_column_values(), key);
+    table_.AddInt32HashValue(req, key);
     table_.AddColumns({"v"}, req);
     auto status = session->Apply(op);
     if (status.IsIOError()) {

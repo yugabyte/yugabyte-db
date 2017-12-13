@@ -47,7 +47,6 @@
 #include "yb/common/key_encoder.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-#include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -69,6 +68,8 @@
   } while (0);
 
 namespace yb {
+
+class DeletedColumnPB;
 
 using std::vector;
 using std::unordered_map;
@@ -165,16 +166,8 @@ struct DeletedColumn {
 
   DeletedColumn(ColumnId id, const HybridTime& ht) : id(id), ht(ht) { }
 
-  static Status FromPB(const DeletedColumnPB& col, DeletedColumn* ret) {
-    ret->id = col.column_id();
-    ret->ht = HybridTime(col.deleted_hybrid_time());
-    return Status::OK();
-  }
-
-  void CopyToPB(DeletedColumnPB* pb) const {
-    pb->set_column_id(id);
-    pb->set_deleted_hybrid_time(ht.ToUint64());
-  }
+  static CHECKED_STATUS FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
+  void CopyToPB(DeletedColumnPB* pb) const;
 };
 
 typedef std::unordered_set<ColumnId> ColumnIds;

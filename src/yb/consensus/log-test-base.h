@@ -154,8 +154,11 @@ class LogTestBase : public YBTest {
   typedef std::tuple<int, int, string> TupleForAppend;
 
   LogTestBase()
-    : schema_(GetSimpleTestSchema()),
-      log_anchor_registry_(new LogAnchorRegistry()) {
+      : schema_({ ColumnSchema("key", INT32, false, true),
+                  ColumnSchema("int_val", INT32),
+                  ColumnSchema("string_val", STRING, true) },
+                1),
+        log_anchor_registry_(new LogAnchorRegistry()) {
   }
 
   virtual void SetUp() override {

@@ -203,7 +203,7 @@ TEST_F(TestRowChangeList, TestInvalid_SetNullForNonNullableColumn) {
   rcl.AddRawColumnUpdate(schema_.column_id(0), true, Slice());
 
   ASSERT_EQ("[invalid update: Corruption: decoded set-to-NULL "
-            "for non-nullable column: col1[string NOT NULL], "
+            "for non-nullable column: col1[string NOT NULL NOT A PARTITION KEY], "
             "before corruption: SET ]",
             RowChangeList(Slice(buf)).ToString(schema_));
 }
@@ -216,7 +216,7 @@ TEST_F(TestRowChangeList, TestInvalid_SetWrongSizeForIntColumn) {
   rcl.AddRawColumnUpdate(schema_.column_id(2), false, Slice("\xff"));
 
   ASSERT_EQ("[invalid update: Corruption: invalid value \\xff "
-            "for column col3[uint32 NOT NULL], "
+            "for column col3[uint32 NOT NULL NOT A PARTITION KEY], "
             "before corruption: SET ]",
             RowChangeList(Slice(buf)).ToString(schema_));
 }
