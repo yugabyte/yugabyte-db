@@ -36,8 +36,8 @@ const mapDispatchToProps = (dispatch) => {
     },
     fetchUniverseTasks: (uuid) => {
       dispatch(fetchUniverseTasks(uuid)).then((response) => {
-          dispatch(fetchUniverseTasksResponse(response.payload));
-        });
+        dispatch(fetchUniverseTasksResponse(response.payload));
+      });
     },
     resetRollingUpgrade: () => {
       dispatch(resetRollingUpgrade());
