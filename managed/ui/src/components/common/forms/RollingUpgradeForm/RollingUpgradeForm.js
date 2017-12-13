@@ -73,7 +73,7 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent, nodePrefix}, universeUUID, version}}}, reset} = this.props;
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {userIntent, nodePrefix}, universeUUID}}}, reset} = this.props;
     const payload = {};
     if (visibleModal === "softwareUpgradesModal") {
       payload.taskType = "Software";
@@ -86,7 +86,6 @@ export default class RollingUpgradeForm extends Component {
     payload.rollingUpgrade = values.rollingUpgrade;
     payload.universeUUID = universeUUID;
     payload.userIntent = userIntent;
-    payload.expectedUniverseVersion = version;
     payload.nodePrefix = nodePrefix;
     let masterGFlagList = [];
     let tserverGFlagList = [];
@@ -140,8 +139,8 @@ export default class RollingUpgradeForm extends Component {
           <div className="form-right-aligned-labels">
             <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade" />
             <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
-              options={softwareVersionOptions} label="Server Version"
-              onInputChanged={this.softwareVersionChanged}/>
+                   options={softwareVersionOptions} label="Server Version"
+                   onInputChanged={this.softwareVersionChanged}/>
           </div>
         </span>
       );
@@ -160,7 +159,7 @@ export default class RollingUpgradeForm extends Component {
           <div className="form-right-aligned-labels top-10 time-delay-container">
             <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade"/>
             <Field name="timeDelay" component={YBInputField}
-                label="Rolling Upgrade Delay Between Servers (secs)" />
+                   label="Rolling Upgrade Delay Between Servers (secs)" />
           </div>
         </div>
       );
