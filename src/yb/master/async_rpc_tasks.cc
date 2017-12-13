@@ -63,6 +63,20 @@ Status PickSpecificUUID::PickReplica(TSDescriptor** ts_desc) {
   return Status::OK();
 }
 
+string ReplicaMapToString(const TabletInfo::ReplicaMap& replicas) {
+  string ret = "";
+  for (const auto& r : replicas) {
+    if (!ret.empty()) {
+      ret += ", ";
+    } else {
+      ret += "(";
+    }
+    ret += r.second.ts_desc->permanent_uuid();
+  }
+  ret += ")";
+  return ret;
+}
+
 // ============================================================================
 //  Class PickLeaderReplica.
 // ============================================================================
@@ -75,8 +89,9 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
       return Status::OK();
     }
   }
-  return STATUS(NotFound, Substitute("No leader found for tablet $0 with $1 replicas.",
-                                     tablet_.get()->ToString(), replica_locations.size()));
+  return STATUS(NotFound, Substitute("No leader found for tablet $0 with $1 replicas : $2.",
+                                     tablet_.get()->ToString(), replica_locations.size(),
+                                     ReplicaMapToString(replica_locations)));
 }
 
 // ============================================================================

@@ -2365,13 +2365,13 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                "num_tablets", report.updated_tablets_size());
 
   if (VLOG_IS_ON(2)) {
-    VLOG(2) << "Received tablet report from " <<
-      RequestorString(rpc) << ": " << report.DebugString();
+    VLOG(2) << "Received tablet report from " << RequestorString(rpc) << "("
+            << ts_desc->permanent_uuid() << "): " << report.DebugString();
   }
+
   if (!ts_desc->has_tablet_report() && report.is_incremental()) {
     string msg = "Received an incremental tablet report when a full one was needed";
-    LOG(WARNING) << "Invalid tablet report from " << RequestorString(rpc) << ": "
-                 << msg;
+    LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid() << ": " << msg;
     // We should respond with success in order to send reply that we need full report.
     return Status::OK();
   }
@@ -2387,7 +2387,18 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
                           Substitute("Error handling $0", reported.ShortDebugString()));
   }
 
-  ts_desc->set_has_tablet_report(true);
+  if (!ts_desc->has_tablet_report()) {
+    LOG(INFO) << ts_desc->permanent_uuid() << " now has full report for "
+              << report.updated_tablets_size() << " tablets.";
+  }
+
+  if (!report.is_incremental()) {
+    if (report.updated_tablets_size() == 0) {
+      LOG(INFO) << ts_desc->permanent_uuid() << " sent full tablet report with 0 tablets.";
+    }
+    // Do not unset full tablet report missing for ts desc for an incremental case.
+    ts_desc->set_has_tablet_report(true);
+  }
 
   if (report.updated_tablets_size() > 0) {
     background_tasks_->WakeIfHasPendingUpdates();
@@ -2621,8 +2632,8 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // Report opid_index is equal to the previous opid_index. If some
       // replica is reporting the same consensus configuration we already know about and hasn't
       // been added as replica, add it.
-      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report."
-                << " Replica consensus state: " << cstate.ShortDebugString();
+      LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report for "
+                << tablet->tablet_id() << ". Consensus state: " << cstate.ShortDebugString();
       AddReplicaToTabletIfNotFound(ts_desc, report, tablet);
     }
   }
@@ -4070,6 +4081,11 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
   // If the locations are cached.
   if (!locs.empty()) {
+    if (locs.size() != cstate.config().peers_size()) {
+      LOG(WARNING) << "Cached tablet replicas " << locs.size() << " does not match consensus "
+                   << cstate.config().peers_size();
+    }
+
     for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
