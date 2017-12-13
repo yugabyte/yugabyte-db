@@ -42,6 +42,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
+#include "yb/util/version_info.h"
 
 using std::string;
 
@@ -97,6 +98,7 @@ Status SetupLogDir(const std::string& server_type) {
 void InitYBOrDie(const std::string& server_type) {
   CHECK_OK(CheckCPUFlags());
   CHECK_OK(SetupLogDir(server_type));
+  VersionInfo::Init();
 }
 
 } // namespace yb

@@ -294,10 +294,6 @@ class LibraryPackager:
 
         elf_names_to_set_interpreter = []
         for seed_executable_glob in self.seed_executable_patterns:
-            updated_glob = seed_executable_glob.replace('$BUILD_ROOT', self.context.build_dir)
-            if updated_glob != seed_executable_glob:
-                logging.info("Substituting: {} -> {}".format(seed_executable_glob, updated_glob))
-                seed_executable_glob = updated_glob
             glob_results = glob.glob(seed_executable_glob)
             if not glob_results:
                 raise RuntimeError("No files found matching the pattern '{}'".format(

@@ -40,6 +40,7 @@
 #include <gflags/gflags.h>
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
+#include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 
@@ -88,45 +89,10 @@ TAG_FLAG(webserver_port, stable);
 
 namespace yb {
 
-// Returns YB_HOME if set, otherwise we won't serve any static files.
+// Returns $YB_HOME/www if set, else ROOT_DIR/www, where ROOT_DIR is computed based on executable
+// path.
 static string GetDefaultDocumentRoot() {
-  char* yb_home = getenv("YB_HOME");
-  if (yb_home) {
-    return strings::Substitute("$0/www", yb_home);
-  }
-
-  // If YB_HOME is not set, we use the path where the binary is located
-  // (e.g., /opt/yugabyte/tserver/bin/yb-tserver) to determine the doc root.
-  // To find "www"'s location, we search whether "www" exists at each directory, starting with
-  // the directory where the current binary (yb-tserver, or yb-master) is located.
-  // During each iteration, we keep going up one directory and do the search again.
-  // If we can't find a directory that contains "www", we return a default value for now.
-  string executable_path;
-  auto status = Env::Default()->GetExecutablePath(&executable_path);
-  if (!status.ok()) {
-    LOG(WARNING) << "Ignoring status error: " << status.ToString();
-    return "";
-  }
-
-  auto path = executable_path;
-  while (path != "/") {
-    path = DirName(path);
-    auto www_dir = JoinPathSegments(path, "www");
-    bool is_dir = false;
-    auto status = Env::Default()->IsDirectory(www_dir, &is_dir);
-    if (!status.ok()) {
-      continue;
-    }
-    if (is_dir) {
-      return www_dir;
-    }
-  }
-
-  LOG(ERROR) << "Unable to find www directory by starting the search at path "
-             << DirName(executable_path) << " and walking up the directory structure";
-
-  // Return a path.
-  return JoinPathSegments(DirName(DirName(executable_path)), "www");
+  return JoinPathSegments(yb::env_util::GetRootDir("www"), "www");
 }
 
 WebserverOptions::WebserverOptions()

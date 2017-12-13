@@ -175,7 +175,7 @@ def main():
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
     release_util = ReleaseUtil(YB_SRC_ROOT, build_type, args.edition, build_target, args.force)
-    release_util.rewrite_manifest()
+    release_util.rewrite_manifest(build_root)
 
     system = platform.system().lower()
     if system == "linux":

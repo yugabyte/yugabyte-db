@@ -50,11 +50,12 @@ class ReleaseUtil(object):
     def get_binary_path(self):
         return self.release_manifest['bin']
 
-    def rewrite_manifest(self):
+    def rewrite_manifest(self, build_root):
         """
         Rewrite the release manifest with the following changes:
         - Replace ${project.version} with the Java version from pom.xml.
         - Replace the leading "thirdparty/" with YB_THIRDPARTY_DIR.
+        - Replace $BUILD_ROOT with the actual build_root.
         """
         pom_file = os.path.join(self.repo, 'java', 'pom.xml')
         java_project_version = minidom.parse(pom_file).getElementsByTagName(
@@ -64,10 +65,14 @@ class ReleaseUtil(object):
         for key, value_list in self.release_manifest.iteritems():
             for i in xrange(len(value_list)):
                 old_value = value_list[i]
+                # Substitution for Java.
                 new_value = old_value.replace('${project.version}', java_project_version)
+                # Substitution for thirdparty.
                 thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
                 if thirdparty_prefix_match:
                     new_value = os.path.join(YB_THIRDPARTY_DIR, thirdparty_prefix_match.group(1))
+                # Substitution for BUILD_ROOT.
+                new_value = new_value.replace("$BUILD_ROOT", build_root)
                 if new_value != value_list[i]:
                     logging.info("Substituting '{}' -> '{}' in manifest".format(
                         value_list[i], new_value))

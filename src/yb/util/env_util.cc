@@ -32,20 +32,63 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 
 #include <glog/logging.h>
-#include <string>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/path_util.h"
 #include "yb/util/status.h"
 
 using strings::Substitute;
 using std::shared_ptr;
+using std::string;
 
 namespace yb {
 namespace env_util {
+
+std::string GetRootDir(const string& search_for_dir) {
+  char* yb_home = getenv("YB_HOME");
+  if (yb_home) {
+    return yb_home;
+  }
+
+  // If YB_HOME is not set, we use the path where the binary is located
+  // (e.g., /opt/yugabyte/tserver/bin/yb-tserver) to determine the doc root.
+  // To find "www"'s location, we search whether "www" exists at each directory, starting with
+  // the directory where the current binary (yb-tserver, or yb-master) is located.
+  // During each iteration, we keep going up one directory and do the search again.
+  // If we can't find a directory that contains "www", we return a default value for now.
+  string executable_path;
+  auto status = Env::Default()->GetExecutablePath(&executable_path);
+  if (!status.ok()) {
+    LOG(WARNING) << "Ignoring status error: " << status.ToString();
+    return "";
+  }
+
+  auto path = executable_path;
+  while (path != "/") {
+    path = DirName(path);
+    auto sub_dir = JoinPathSegments(path, search_for_dir);
+    bool is_dir = false;
+    auto status = Env::Default()->IsDirectory(sub_dir, &is_dir);
+    if (!status.ok()) {
+      continue;
+    }
+    if (is_dir) {
+      return path;
+    }
+  }
+
+  LOG(ERROR) << "Unable to find '" << search_for_dir
+             << "' directory by starting the search at path " << DirName(executable_path)
+             << " and walking up the directory structure";
+
+  // Return a path.
+  return DirName(DirName(executable_path));
+}
 
 Status OpenFileForWrite(Env* env, const string& path,
                         shared_ptr<WritableFile>* file) {

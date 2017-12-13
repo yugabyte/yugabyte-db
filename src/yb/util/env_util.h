@@ -41,6 +41,8 @@
 namespace yb {
 namespace env_util {
 
+std::string GetRootDir(const std::string& search_for_dir);
+
 Status OpenFileForWrite(Env *env, const std::string &path,
                         std::shared_ptr<WritableFile> *file);
 
@@ -109,4 +111,4 @@ class ScopedFileDeleter {
 } // namespace env_util
 } // namespace yb
 
-#endif
+#endif  // YB_UTIL_ENV_UTIL_H

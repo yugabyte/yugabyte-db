@@ -341,9 +341,6 @@ if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/[^
   endfunction()
 endif()
 
-# TODO: can we somehow pass this into the java build?
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" YB_VERSION_NUMBER)
-
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 include(CMakeParseArguments)
 

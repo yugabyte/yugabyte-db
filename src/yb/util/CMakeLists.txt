@@ -92,10 +92,9 @@ ADD_YB_LIBRARY(opid_proto
 
 # Unlike CMAKE_CURRENT_BINARY_DIR, CMAKE_BINARY_DIR is always the root of
 # the build directory.
-set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/src/yb/generated/version_defines.h)
+set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/version_metadata.json)
 
 list(APPEND GEN_VERSION_INFO_COMMAND "${BUILD_SUPPORT_DIR}/gen_version_info.py")
-list(APPEND GEN_VERSION_INFO_COMMAND "--version=${YB_VERSION_NUMBER}")
 list(APPEND GEN_VERSION_INFO_COMMAND "--build-type=${CMAKE_BUILD_TYPE}")
 if(YB_GIT_HASH)
   message(STATUS "Provided git hash: ${YB_GIT_HASH}")

@@ -32,9 +32,12 @@
 #ifndef YB_UTIL_VERSION_INFO_H
 #define YB_UTIL_VERSION_INFO_H
 
+#include <atomic>
+#include <mutex>
 #include <string>
 
 #include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -51,10 +54,21 @@ class VersionInfo {
 
   // Set the version info in 'pb'.
   static void GetVersionInfoPB(VersionInfoPB* pb);
+
+  // Init version data.
+  static void Init();
  private:
   // Get the git hash for this build. If the working directory was dirty when
   // YB was built, also appends "-dirty".
   static std::string GetGitHash();
+
+  static VersionInfoPB* GetVersionData();
+  static Status ReadVersionDataFromFile();
+  static void InitOrDie();
+
+  // Use this for lazy initialization.
+  static std::once_flag init_once_;
+  static std::atomic<VersionInfoPB*> version_data_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(VersionInfo);
 };
