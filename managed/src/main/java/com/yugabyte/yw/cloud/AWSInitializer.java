@@ -35,10 +35,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 public class AWSInitializer extends AbstractInitializer {
   private static final boolean enableVerboseLogging = false;
 
-  // TODO: fetch the EC2 price URL from the AWS EC2 price url:
-  // https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json
-  private static String awsEc2PriceUrl =
-      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json";
+  private static String baseEC2PriceUrl = "https://pricing.us-east-1.amazonaws.com";
 
   private List<Map<String, String>> ec2AvailableInstances = new ArrayList<>();
   private Provider provider;
@@ -56,35 +53,43 @@ public class AWSInitializer extends AbstractInitializer {
     try {
       provider = Provider.get(customerUUID, providerUUID);
 
-      LOG.info("Initializing AWS instance type and pricing info from {}", awsEc2PriceUrl);
+      String regionIndexUrl = baseEC2PriceUrl + "/offers/v1.0/aws/AmazonEC2/current/region_index.json";
+      LOG.info("Initializing AWS instance type and pricing info from {}", regionIndexUrl);
       LOG.info("This operation may take a few minutes...");
+      JsonNode regionIndexResponse = apiHelper.getRequest(regionIndexUrl);
       // Get the price Json object from the aws price url.
-      JsonNode ec2PriceResponseJson = apiHelper.getRequest(awsEc2PriceUrl);
+      for (Region region : provider.regions) {
+        String awsEc2PriceUrl = baseEC2PriceUrl + regionIndexResponse.get("regions")
+                                                                     .get(region.code)
+                                                                     .get("currentVersionUrl")
+                                                                     .asText();
+        JsonNode ec2PriceResponseJson = apiHelper.getRequest(awsEc2PriceUrl);
 
-      // The products sub-document has the list of EC2 products along with the SKU, its format is:
-      //    {
-      //      ...
-      //      "products" : {
-      //        <productDetailsJson, which is a list of product details>
-      //      }
-      //    }
-      JsonNode productDetailsListJson = ec2PriceResponseJson.get("products");
+        // The products sub-document has the list of EC2 products along with the SKU, its format is:
+        //    {
+        //      ...
+        //      "products" : {
+        //        <productDetailsJson, which is a list of product details>
+        //      }
+        //    }
+        JsonNode productDetailsListJson = ec2PriceResponseJson.get("products");
 
-      // The "terms" or price details json object has the following format:
-      //  "terms" : {
-      //    "OnDemand" : {
-      //      <onDemandJson, which is a list of price details objects>
-      //    }
-      //  }
-      JsonNode onDemandJson = ec2PriceResponseJson.get("terms").get("OnDemand");
+        // The "terms" or price details json object has the following format:
+        //  "terms" : {
+        //    "OnDemand" : {
+        //      <onDemandJson, which is a list of price details objects>
+        //    }
+        //  }
+        JsonNode onDemandJson = ec2PriceResponseJson.get("terms").get("OnDemand");
 
-      storeEBSPriceComponents(productDetailsListJson, onDemandJson);
-      storeInstancePriceComponents(productDetailsListJson, onDemandJson);
-      parseProductDetailsList(productDetailsListJson);
+        storeEBSPriceComponents(productDetailsListJson, onDemandJson);
+        storeInstancePriceComponents(productDetailsListJson, onDemandJson);
+        parseProductDetailsList(productDetailsListJson);
 
-      // Create the instance types.
-      storeInstanceTypeInfoToDB();
-      LOG.info("Successfully finished parsing info from {}", awsEc2PriceUrl);
+        // Create the instance types.
+        storeInstanceTypeInfoToDB();
+      }
+      LOG.info("Successfully finished parsing info from {}", regionIndexUrl);
     } catch (Exception e) {
       LOG.error("AWS initialize failed", e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
