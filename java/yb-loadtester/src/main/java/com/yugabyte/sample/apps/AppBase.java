@@ -89,7 +89,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * @return a Cassandra Session object.
    */
   protected Session getCassandraClient() {
-    if (cassandra_cluster == null) {
+    if (cassandra_session == null) {
       createCassandraClient(getNodesAsInet());
     }
     return cassandra_session;
