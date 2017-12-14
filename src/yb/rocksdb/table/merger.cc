@@ -117,8 +117,7 @@ class MergingIterator : public InternalIterator {
   }
 
   void Seek(const Slice& target) override {
-    // TODO: re-enable when a TSAN issue is fixed.
-    if (false && direction_ == kForward && Valid()) {
+    if (direction_ == kForward && current_ && current_->Valid()) {
       int key_vs_target = comparator_->Compare(current_->key(), target);
       if (key_vs_target == 0) {
         // We're already at the right key.
@@ -134,7 +133,7 @@ class MergingIterator : public InternalIterator {
           DCHECK_EQ(current_, CurrentForward());
           current_->Seek(target);
           UpdateHeapAfterCurrentAdvancement();
-          if (current_ == nullptr)
+          if (current_ == nullptr || !current_->Valid())
             return;  // Reached the end.
           key_vs_target = comparator_->Compare(current_->key(), target);
         }

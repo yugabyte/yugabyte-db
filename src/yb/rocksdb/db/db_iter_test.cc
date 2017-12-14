@@ -47,7 +47,11 @@ class TestIterator : public InternalIterator {
         valid_(false),
         sequence_number_(0),
         iter_(0),
-        cmp(comparator) {}
+        cmp(comparator) {
+    // Reserve memory to avoid re-allocations, so key() slice returned by iterator will remain
+    // valid when more key-value pair are added.
+    data_.reserve(256);
+  }
 
   void AddPut(std::string argkey, std::string argvalue) {
     Add(argkey, kTypeValue, argvalue);
