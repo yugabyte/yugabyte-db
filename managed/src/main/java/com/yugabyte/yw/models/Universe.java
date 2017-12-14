@@ -21,6 +21,7 @@ import javax.persistence.UniqueConstraint;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -166,8 +167,16 @@ public class Universe extends Model {
       throw new RuntimeException("Cannot find universe " + universeUUID);
     }
 
-    universe.universeDetails =
-      Json.fromJson(Json.parse(universe.universeDetailsJson), UniverseDefinitionTaskParams.class);
+    JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
+    universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
+
+    // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo": <bar>}}
+    // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
+    if (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0) {
+      UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
+      PlacementInfo placementInfo = Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
+      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+    }
 
     // Return the universe object.
     return universe;
