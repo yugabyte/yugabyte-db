@@ -323,7 +323,7 @@ Status Connection::ReadHandler() {
       if (received.status().error_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
       } else {
-        LOG(WARNING) << ToString() << " recv error: " << received;
+        LOG(INFO) << ToString() << " recv error: " << received;
       }
       return received.status();
     }
