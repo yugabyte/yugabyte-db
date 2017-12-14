@@ -25,6 +25,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops,
                                          const MCList<SubscriptedColumnOp>& subcol_where_ops) {
+
   // Setup the key columns.
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
@@ -37,6 +38,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
       LOG(FATAL) << "Unexpected non primary key column in this context";
     }
     RETURN_NOT_OK(PTExprToPB(op.expr(), col_expr_pb));
+    RETURN_NOT_OK(EvalExpr(col_expr_pb, QLTableRow::empty_row()));
   }
 
   // Setup the rest of the columns.
@@ -67,14 +69,13 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
                                          bool *no_results) {
   // If where clause restrictions guarantee no results can be found this will be set to true below.
   *no_results = false;
-  QLTableRow empty_row;
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
     QLExpressionPB expr_pb;
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
     QLValue result;
-    RETURN_NOT_OK(EvalExpr(expr_pb, empty_row, &result));
+    RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row(), &result));
     DCHECK(result.value().has_int64_value())
         << "Partition key operations are expected to return BIGINT";
     uint16_t hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
@@ -132,17 +133,14 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         if (!is_multi_partition) {
           QLExpressionPB *col_pb = req->add_hashed_column_values();
           col_pb->set_column_id(col_desc->id());
-          Status s = PTExprToPB(op.expr(), col_pb);
-          if (PREDICT_FALSE(!s.ok())) {
-            return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
-          }
+
+          RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
+          RETURN_NOT_OK(EvalExpr(col_pb, QLTableRow::empty_row()));
         } else {
           QLExpressionPB col_pb;
           col_pb.set_column_id(col_desc->id());
-          Status s = PTExprToPB(op.expr(), &col_pb);
-          if (PREDICT_FALSE(!s.ok())) {
-            return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
-          }
+          RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
+          RETURN_NOT_OK(EvalExpr(&col_pb, QLTableRow::empty_row()));
           exec_context().hash_values_options()->push_back({col_pb});
         }
         break;
@@ -156,10 +154,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
 
         // De-duplicating and ordering values from the 'IN' expression.
         QLExpressionPB col_pb;
-        Status s = PTExprToPB(op.expr(), &col_pb);
-        if (PREDICT_FALSE(!s.ok())) {
-          return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
-        }
+        RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
 
         // Fast path for returning no results when 'IN' list is empty.
         if (col_pb.value().list_value().elems_size() == 0) {

@@ -61,6 +61,18 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
 
 //--------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS QLExprExecutor::EvalExpr(QLExpressionPB* ql_expr,
+                                        const QLTableRow& table_row) {
+  if (!ql_expr->has_value()) {
+    QLValue temp;
+    RETURN_NOT_OK(EvalExpr(*ql_expr, table_row, &temp));
+    ql_expr->mutable_value()->Swap(temp.mutable_value());
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 CHECKED_STATUS QLExprExecutor::ReadExprValue(const QLExpressionPB& ql_expr,
                                              const QLTableRow& table_row,
                                              QLValue *result) {

@@ -32,7 +32,7 @@ class WhereExprState;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
-// is just a stack varible that is constructed when a treenode is being processed and destructed
+// is just a stack variable that is constructed when a treenode is being processed and destructed
 // when that process is done.
 //
 // Example:
@@ -47,7 +47,7 @@ class WhereExprState;
 //     // Run express analyzer knowing that its expected type INT (=== targeted column type).
 //     expr->Analyze(sem_context);
 //
-//     // When exiting this scope, sem_state are auto-swiched back to the previous state.
+//     // When exiting this scope, sem_state are auto-switched back to the previous state.
 //   }
 //
 class SemState {
@@ -120,6 +120,13 @@ class SemState {
     allowing_aggregate_ = val;
   }
 
+  bool allowing_column_refs() const {
+    return allowing_column_refs_;
+  }
+  void set_allowing_column_refs(bool val) {
+    allowing_column_refs_ = val;
+  }
+
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
@@ -154,6 +161,10 @@ class SemState {
 
   // State variable for aggregate function.
   bool allowing_aggregate_ = false;
+
+  // State variable for allowing column references.
+  bool allowing_column_refs_ = false;
+
 };
 
 }  // namespace ql

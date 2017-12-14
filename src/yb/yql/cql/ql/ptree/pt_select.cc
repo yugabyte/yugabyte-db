@@ -314,8 +314,11 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // are valid and used appropriately.
   SemState sem_state(sem_context);
   sem_state.set_allowing_aggregate(true);
+  sem_state.set_allowing_column_refs(true);
   RETURN_NOT_OK(selected_exprs_->Analyze(sem_context));
   sem_state.set_allowing_aggregate(false);
+  sem_state.set_allowing_column_refs(false);
+
   if (distinct_) {
     RETURN_NOT_OK(AnalyzeDistinctClause(sem_context));
   }

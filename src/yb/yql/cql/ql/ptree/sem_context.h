@@ -256,6 +256,11 @@ class SemContext : public ProcessContext {
     return sem_state_->allowing_aggregate();
   }
 
+  bool allowing_column_refs() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->allowing_column_refs();
+  }
+
   void set_sem_state(SemState *new_state, SemState **existing_state_holder) {
     *existing_state_holder = sem_state_;
     sem_state_ = new_state;

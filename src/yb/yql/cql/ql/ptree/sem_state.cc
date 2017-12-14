@@ -39,6 +39,7 @@ SemState::SemState(SemContext *sem_context,
     processing_if_clause_ = sem_context_->processing_if_clause();
     processing_set_clause_ = sem_context_->processing_set_clause();
     processing_assignee_ = sem_context_->processing_assignee();
+    allowing_column_refs_ = sem_context_->allowing_column_refs();
   }
 
   // Use this new state for semantic analysis.

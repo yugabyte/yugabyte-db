@@ -408,6 +408,12 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
 
+      if(!value->has_no_column_ref()) {
+        return sem_context->Error(expr,
+            "Expressions are not allowed as argument of IN condition.",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+
       counter.increase_in();
       if (!counter.isValid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
