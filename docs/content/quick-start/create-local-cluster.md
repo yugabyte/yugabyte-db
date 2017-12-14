@@ -3,7 +3,7 @@ title: Create Local Cluster
 weight: 120
 ---
 
-After [installing YugaByte DB](quick-start/install/), follow the instructions below to create a local cluster.
+After [installing YugaByte DB](/quick-start/install/), follow the instructions below to create a local cluster.
 
 <ul class="nav nav-tabs">
   <li class="active">

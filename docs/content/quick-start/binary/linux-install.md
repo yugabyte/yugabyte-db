@@ -1,6 +1,10 @@
 ## Prerequisites
 
-<i class="icon-centos"></i> CentOS 7 or <i class="icon-ubuntu"></i> Ubuntu 16.04+
+One of the following operating systems
+
+<i class="icon-centos"></i> CentOS 7 
+
+<i class="icon-ubuntu"></i> Ubuntu 16.04+
 
 ## Download
 

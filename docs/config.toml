@@ -455,7 +455,7 @@ googleAnalytics = "UA-104956980-1"
 	weight = 970
 
 [[menu.main]]
-	name   = "Transactions"
+	name   = "ACID Transactions"
 	parent = "concepts"
 	url = "architecture/concepts/transactions/"
 	weight = 971
@@ -1034,8 +1034,33 @@ googleAnalytics = "UA-104956980-1"
 
 [[menu.main]]
 	name   = "FAQs"
+	identifier = "faq"
 	url    = "faq/"
 	weight = 2460
+
+[[menu.main]]
+	name   = "Product"
+	parent = "faq"
+	url    = "faq/product/"
+	weight = 2470
+
+[[menu.main]]
+	name   = "Architecture"
+	parent = "faq"
+	url    = "faq/architecture/"
+	weight = 2480
+
+[[menu.main]]
+	name   = "Enterprise Edition"
+	parent = "faq"
+	url    = "faq/enterprise-edition/"
+	weight = 2490
+
+[[menu.main]]
+	name   = "Apache Cassandra API"
+	parent = "faq"
+	url    = "faq/cql/"
+	weight = 2500
 
 [blackfriday]
 	smartypants	= true

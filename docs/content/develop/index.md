@@ -8,7 +8,7 @@ This section will help you get started with building apps on top of YugaByte DB.
 <div>
   <a class="section-link icon-offset" href="/develop/client-drivers/">
     <div class="icon">
-      <i class="fa fa-code" aria-hidden="true"></i>
+      <img src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
     </div>
     <div class="text">
       Client Drivers
@@ -26,9 +26,20 @@ This section will help you get started with building apps on top of YugaByte DB.
     </div>
   </a> -->
 
-  <a class="section-link icon-offset" href="realworld-apps/">
+<a class="section-link icon-offset" href="ecosystem-integrations/">
     <div class="icon">
-      <i class="fa fa-vcard-o" aria-hidden="true"></i>
+      <img src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
+    </div>
+    <div class="text">
+      Ecosystem Integrations
+      <div class="caption">Get started with the various ecosystem integrations including Apache Spark.</div>
+    </div>
+  </a>
+
+
+  <a class="section-link icon-offset" href="realworld-apps/">
+<div class="icon">
+      <img src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
     </div>
     <div class="text">
       Real World Examples
