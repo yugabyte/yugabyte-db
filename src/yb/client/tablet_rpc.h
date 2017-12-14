@@ -74,9 +74,11 @@ class TabletInvoker {
   bool Done(Status* status);
 
   bool IsLocalCall() const;
+
   const RemoteTabletPtr& tablet() const { return tablet_; }
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
   YBClient& client() const { return *client_; }
+  const RemoteTabletServer& current_ts() { return *current_ts_; }
 
  private:
   void SelectTabletServer();

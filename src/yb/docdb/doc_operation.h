@@ -37,6 +37,7 @@ class DocWriteBatch;
 struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
   ReadHybridTime read_time;
+  HybridTime* restart_read_ht;
 };
 
 class DocOperation {
@@ -90,7 +91,7 @@ class RedisWriteOperation : public DocOperation {
 
   void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
 
-  const RedisResponsePB &response();
+  RedisResponsePB &response() { return response_; }
 
  private:
   Result<RedisDataType> GetValueType(const DocOperationApplyData& data, int subkey_index = -1);
@@ -224,11 +225,12 @@ class QLReadOperation {
                          const ReadHybridTime& read_time,
                          const Schema& schema,
                          const Schema& query_schema,
-                         QLResultSet* result_set);
+                         QLResultSet* result_set,
+                         HybridTime* restart_read_ht);
 
   CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
 
-  const QLResponsePB& response() const;
+  QLResponsePB& response() { return response_; }
 
  private:
   const QLReadRequestPB& request_;

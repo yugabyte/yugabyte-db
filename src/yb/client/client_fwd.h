@@ -47,6 +47,9 @@ typedef scoped_refptr<RemoteTablet> RemoteTabletPtr;
 
 class RemoteTabletServer;
 
+class Batcher;
+typedef scoped_refptr<Batcher> BatcherPtr;
+
 } // namespace internal
 
 } // namespace client

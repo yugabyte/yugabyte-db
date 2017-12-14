@@ -112,6 +112,15 @@ struct TransactionOperationContext {
 
 typedef boost::optional<TransactionOperationContext> TransactionOperationContextOpt;
 
+inline std::ostream& operator<<(std::ostream& out, const TransactionOperationContext& context) {
+  if (context.transactional()) {
+    out << context.transaction_id;
+  } else {
+    out << "<non transactional>";
+  }
+  return out;
+}
+
 struct TransactionMetadata {
   TransactionId transaction_id = boost::uuids::nil_uuid();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;

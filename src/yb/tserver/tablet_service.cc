@@ -572,7 +572,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  LOG(INFO) << "UpdateTransaction: " << req->ShortDebugString();
+  VLOG(1) << "UpdateTransaction: " << req->ShortDebugString();
 
   TabletServerErrorPB::Code error_code;
   auto status = CheckPeerIsLeader(*tablet_peer, &error_code);
@@ -808,7 +808,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   if (req->has_write_batch() && req->write_batch().has_transaction()) {
-    LOG(INFO) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
+    VLOG(1) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
   }
 
   if (PREDICT_FALSE(req->has_write_batch() && !req->write_batch().kv_pairs().empty())) {
@@ -946,7 +946,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   Status s;
-  tablet::ScopedReadOperation read_tx(tablet.get(), ReadHybridTime::FromPB(*req));
+  tablet::ScopedReadOperation read_tx(tablet.get(), ReadHybridTime::FromReadTimePB(*req));
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
       for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
@@ -969,24 +969,27 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         hostPortPB->set_host(remote_address.address().to_string());
         hostPortPB->set_port(remote_address.port());
 
-        QLResponsePB ql_response;
-        gscoped_ptr<faststring> rows_data;
+        tablet::QLReadRequestResult result;
         int rows_data_sidecar_idx = 0;
         TRACE("Start HandleQLReadRequest");
         s = tablet->HandleQLReadRequest(
             read_tx.read_time(),
             ql_read_req,
             req->transaction(),
-            &ql_response,
-            &rows_data);
+            &result);
         TRACE("Done HandleQLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
-        if (rows_data.get() != nullptr) {
-          s = context.AddRpcSidecar(RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
+        if (result.restart_read_ht.is_valid()) {
+          auto restart_read_time = resp->mutable_restart_read_time();
+          restart_read_time->set_read_ht(result.restart_read_ht.ToUint64());
+          restart_read_time->set_local_limit_ht(tablet->SafeTimestampToRead().ToUint64());
+          // Global limit is ignored by caller, so we don't set it.
+        } else {
+          s = context.AddRpcSidecar(RefCntBuffer(result.rows_data), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
-          ql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
+          result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+          resp->add_ql_batch()->Swap(&result.response);
         }
-        resp->add_ql_batch()->Swap(&ql_response);
       }
       break;
     }

@@ -91,6 +91,7 @@ class YBOperation {
   virtual std::string ToString() const = 0;
   virtual Type type() const = 0;
   virtual bool read_only() = 0;
+  virtual bool succeeded() = 0;
 
   virtual void SetHashCode(uint16_t hash_code) = 0;
 
@@ -150,9 +151,10 @@ class KuduInsert : public KuduOperation {
  public:
   virtual ~KuduInsert();
 
-  virtual std::string ToString() const override { return "INSERT " + row_.ToString(); }
+  std::string ToString() const override { return "INSERT " + row_.ToString(); }
 
-  virtual bool read_only() override { return false; };
+  bool read_only() override { return false; };
+  bool succeeded() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
   // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
@@ -180,9 +182,10 @@ class KuduUpdate : public KuduOperation {
  public:
   virtual ~KuduUpdate();
 
-  virtual std::string ToString() const override { return "UPDATE " + row_.ToString(); }
+  std::string ToString() const override { return "UPDATE " + row_.ToString(); }
 
-  virtual bool read_only() override { return false; };
+  bool read_only() override { return false; };
+  bool succeeded() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
   // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
@@ -209,9 +212,10 @@ class KuduDelete : public KuduOperation {
  public:
   virtual ~KuduDelete();
 
-  virtual std::string ToString() const override { return "DELETE " + row_.ToString(); }
+  std::string ToString() const override { return "DELETE " + row_.ToString(); }
 
-  virtual bool read_only() override { return false; };
+  bool read_only() override { return false; };
+  bool succeeded() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
   // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
@@ -256,9 +260,10 @@ class YBRedisWriteOp : public YBRedisOp {
 
   RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
-  virtual bool read_only() override { return false; };
+  bool read_only() override { return false; }
+  bool succeeded() override { return false; } // TODO(dtxn) implement
 
   // Set the hash key in the WriteRequestPB.
   void SetHashCode(uint16_t hash_code) override;
@@ -291,16 +296,17 @@ class YBRedisReadOp : public YBRedisOp {
 
   RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
-  virtual bool read_only() override { return true; };
+  bool read_only() override { return true; }
+  bool succeeded() override { return false; } // TODO(dtxn) implement
 
   // Set the hash key in the ReadRequestPB.
   void SetHashCode(uint16_t hash_code) override;
 
-  virtual const std::string& GetKey() const override;
+  const std::string& GetKey() const override;
 
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override { return REDIS_READ; }
@@ -324,6 +330,8 @@ class YBqlOp : public YBOperation {
 
   // Set the hash key in the partial row of this QL operation.
   virtual void SetHashCode(uint16_t hash_code) override = 0;
+
+  bool succeeded() override { return response().status() == QLResponsePB::YQL_STATUS_OK; }
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);

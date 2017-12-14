@@ -33,11 +33,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <errno.h>
+
+#include <vector>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include <errno.h>
-#include <vector>
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
@@ -47,9 +49,9 @@ namespace yb {
 
 TEST(StatusTest, TestPosixCode) {
   Status ok = Status::OK();
-  ASSERT_EQ(0, ok.posix_code());
+  ASSERT_EQ(0, ok.error_code());
   Status file_error = STATUS(IOError, "file error", Slice(), ENOTDIR);
-  ASSERT_EQ(ENOTDIR, file_error.posix_code());
+  ASSERT_EQ(ENOTDIR, file_error.error_code());
 }
 
 TEST(StatusTest, TestToString) {

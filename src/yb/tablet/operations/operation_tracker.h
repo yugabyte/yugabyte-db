@@ -111,10 +111,11 @@ class OperationTracker {
   };
 
   // Protected by 'lock_'.
-  typedef std::unordered_map<scoped_refptr<OperationDriver>,
+  typedef std::unordered_map<
+      scoped_refptr<OperationDriver>,
       State,
-      ScopedRefPtrHashFunctor<OperationDriver>,
-      ScopedRefPtrEqualToFunctor<OperationDriver> > OperationMap;
+      ScopedRefPtrHashFunctor,
+      ScopedRefPtrEqualsFunctor> OperationMap;
   OperationMap pending_operations_;
 
   gscoped_ptr<Metrics> metrics_;

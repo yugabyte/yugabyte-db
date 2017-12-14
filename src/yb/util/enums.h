@@ -173,6 +173,13 @@ template<typename Enum>
   abort();  // Never reached.
 }
 
+struct EnumHash {
+  template <class T>
+  size_t operator()(T t) const {
+    return to_underlying(t);
+  }
+};
+
 }  // namespace util
 }  // namespace yb
 

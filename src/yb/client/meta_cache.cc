@@ -157,7 +157,7 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   cloud_info_pb_ = pb.cloud_info();
 }
 
-string RemoteTabletServer::permanent_uuid() const {
+const std::string& RemoteTabletServer::permanent_uuid() const {
   return uuid_;
 }
 

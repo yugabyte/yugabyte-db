@@ -123,7 +123,8 @@ CHECKED_STATUS ExecuteDocWriteOperation(
     rocksdb::DB *rocksdb,
     KeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
-    std::atomic<int64_t>* monotonic_counter);
+    std::atomic<int64_t>* monotonic_counter,
+    HybridTime* restart_read_ht);
 
 void PrepareNonTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
@@ -219,9 +220,37 @@ class SubDocKeyBound : public SubDocKey {
     return is_exclusive_;
   }
 
+  static const SubDocKeyBound& Empty();
+
  private:
   const bool is_exclusive_;
   const bool is_lower_bound_;
+};
+
+// Pass data to GetSubDocument function.
+struct GetSubDocumentData {
+  GetSubDocumentData(
+      const SubDocKey* subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr)
+      : subdocument_key(subdoc_key), result(result_), doc_found(doc_found_) {}
+
+  const SubDocKey* subdocument_key;
+  SubDocument* result;
+  bool* doc_found;
+
+  MonoDelta table_ttl = Value::kMaxTtl;
+  bool return_type_only = false;
+  const SubDocKeyBound* low_subkey = &SubDocKeyBound::Empty();
+  const SubDocKeyBound* high_subkey = &SubDocKeyBound::Empty();
+
+  GetSubDocumentData Adjusted(
+      const SubDocKey* subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
+    GetSubDocumentData result(subdoc_key, result_, doc_found_);
+    result.table_ttl = table_ttl;
+    result.return_type_only = return_type_only;
+    result.low_subkey = low_subkey;
+    result.high_subkey = high_subkey;
+    return result;
+  }
 };
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
@@ -232,7 +261,7 @@ class SubDocKeyBound : public SubDocKey {
 // specified, see below for details).
 // This function works with or without object init markers present.
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
-// behavior. TODO: We should have write-id's to make sure timestamps are always unique.
+// behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
 // If low and high subkey are specified, only first level keys in the subdocument within that
@@ -240,15 +269,9 @@ class SubDocKeyBound : public SubDocKey {
 // necessarily outside the SubDocument.
 yb::Status GetSubDocument(
     IntentAwareIterator *db_iter,
-    const SubDocKey& subdocument_key,
-    SubDocument *result,
-    bool *doc_found,
-    MonoDelta table_ttl = Value::kMaxTtl,
+    const GetSubDocumentData& data,
     const std::vector<PrimitiveValue>* projection = nullptr,
-    bool return_type_only = false,
-    const bool is_iter_valid = true,
-    const SubDocKeyBound& low_subkey = SubDocKeyBound(),
-    const SubDocKeyBound& high_subkey = SubDocKeyBound());
+    const bool is_iter_valid = true);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
@@ -257,16 +280,10 @@ yb::Status GetSubDocument(
 // we're looking for.
 yb::Status GetSubDocument(
     rocksdb::DB* db,
-    const SubDocKey& subdocument_key,
+    const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
-    SubDocument* result,
-    bool* doc_found,
-    const ReadHybridTime& read_time = ReadHybridTime::Max(),
-    MonoDelta table_ttl = Value::kMaxTtl,
-    bool return_type_only = false,
-    const SubDocKeyBound& low_subkey = SubDocKeyBound(),
-    const SubDocKeyBound& high_subkey = SubDocKeyBound());
+    const ReadHybridTime& read_time = ReadHybridTime::Max());
 
 YB_STRONGLY_TYPED_BOOL(IncludeBinary);
 

@@ -48,6 +48,10 @@ class QLRowwiseIteratorIf : public RowwiseIterator {
   // state in the response object.
   virtual CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
                                                    QLResponsePB* response) const = 0;
+
+  // If restart is required returns restart hybrid time, based on iterated records.
+  // Otherwise returns invalid hybrid time.
+  virtual HybridTime RestartReadHt() = 0;
 };
 
 }  // namespace common

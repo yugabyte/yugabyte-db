@@ -139,7 +139,7 @@ bool Socket::IsTemporarySocketError(const Status& status) {
   if (!status.IsNetworkError()) {
     return false;
   }
-  int err = status.posix_code();
+  auto err = status.error_code();
   return err == EAGAIN || err == EWOULDBLOCK || err == EINTR || err == EINPROGRESS;
 }
 
@@ -328,7 +328,7 @@ Status Socket::Bind(const Endpoint& endpoint, bool explain_addr_in_use) {
                       Slice(),
                       err);
 
-    if (s.IsNetworkError() && s.posix_code() == EADDRINUSE && explain_addr_in_use &&
+    if (s.IsNetworkError() && s.error_code() == EADDRINUSE && explain_addr_in_use &&
         endpoint.port() != 0) {
       TryRunLsof(endpoint);
     }
@@ -479,10 +479,10 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
 
     if (PREDICT_FALSE(!s.ok())) {
       // Continue silently when the syscall is interrupted.
-      if (s.posix_code() == EINTR) {
+      if (s.error_code() == EINTR) {
         continue;
       }
-      if (s.posix_code() == EAGAIN) {
+      if (s.error_code() == EAGAIN) {
         return STATUS(TimedOut, "");
       }
       return s.CloneAndPrepend("BlockingWrite error");
@@ -568,7 +568,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
       // to me (mbautin). http://man7.org/linux/man-pages/man2/recv.2.html says that EAGAIN and
       // EWOULDBLOCK could be used interchangeably, and these could happen on a nonblocking socket
       // that no data is available on. I think we should just retry in that case.
-      if (s.posix_code() == EINTR || s.posix_code() == EAGAIN) {
+      if (s.error_code() == EINTR || s.error_code() == EAGAIN) {
         continue;
       }
       return s.CloneAndPrepend("BlockingRecv error");

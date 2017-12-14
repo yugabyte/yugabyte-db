@@ -20,23 +20,25 @@
 namespace yb {
 
 // Hybrid time range used for read.
-// `read` - hybrid time of read operation.
-// `limit` - hybrid time used to filter entries.
-// `read` should be <= `limit`.
-//
-// `limit` is the maximum time that could have existed on any server at the time the read operation
+// Limit is the maximum time that could have existed on any server at the time the read operation
 // was initiated, and is used to decide whether the read operation need to be restarted at a higher
 // hybrid time than `read`.
 struct ReadHybridTime {
+  // Hybrid time of read operation.
   HybridTime read;
-  HybridTime limit;
+
+  // Read time limit, that is used for local records of requested tablet.
+  HybridTime local_limit;
+
+  // Read time limit, that is used for global entries, for instance transactions.
+  HybridTime global_limit;
 
   static ReadHybridTime Max() {
     return {HybridTime::kMax, HybridTime::kMax};
   }
 
   static ReadHybridTime SingleTime(HybridTime value) {
-    return {value, value};
+    return {value, value, value};
   }
 
   static ReadHybridTime FromMicros(MicrosTime micros) {
@@ -48,21 +50,44 @@ struct ReadHybridTime {
   }
 
   template <class PB>
-  static ReadHybridTime FromPB(const PB& pb) {
-    ReadHybridTime result;
-    if (pb.has_read_ht()) {
-      result.read = HybridTime(pb.read_ht());
+  static ReadHybridTime FromReadTimePB(const PB& pb) {
+    if (!pb.has_read_time()) {
+      return ReadHybridTime();
     }
-    if (pb.has_read_limit_ht()) {
-      result.limit = HybridTime(pb.read_limit_ht());
+    return FromPB(pb.read_time());
+  }
+
+  template <class PB>
+  static ReadHybridTime FromRestartReadTimePB(const PB& pb) {
+    if (!pb.has_restart_read_time()) {
+      return ReadHybridTime();
+    }
+    return FromPB(pb.restart_read_time());
+  }
+
+  template <class PB>
+  static ReadHybridTime FromPB(const PB& read_time) {
+    return {
+      HybridTime(read_time.read_ht()),
+      HybridTime(read_time.local_limit_ht()),
+      HybridTime(read_time.global_limit_ht()),
+    };
+  }
+
+  template <class PB>
+  void AddToPB(PB* pb) const {
+    if (read.is_valid()) {
+      auto* out = pb->mutable_read_time();
+      out->set_read_ht(read.ToUint64());
+      out->set_local_limit_ht(local_limit.ToUint64());
+      out->set_global_limit_ht(global_limit.ToUint64());
     } else {
-      result.limit = result.read;
+      pb->clear_read_time();
     }
-    return result;
   }
 
   std::string ToString() const {
-    return Format("{ read: $0 limit: $1", read, limit);
+    return Format("{ read: $0 local_limit: $1 global_limit: $2 }", read, local_limit, global_limit);
   }
 };
 

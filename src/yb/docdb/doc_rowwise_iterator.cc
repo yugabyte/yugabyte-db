@@ -90,15 +90,14 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   if (spec != nullptr && spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
     // Need this seek, because SeekOutOfSubDoc seeks forward.
-    RETURN_NOT_OK(db_iter_->Seek(row_key_));
+    db_iter_->Seek(row_key_);
     if (!spec->lower_bound_inclusive()) {
-      RETURN_NOT_OK(db_iter_->SeekOutOfSubDoc(SubDocKey(row_key_)));
+      db_iter_->SeekOutOfSubDoc(SubDocKey(row_key_));
     }
   } else {
     row_key_ = DocKey();
-    RETURN_NOT_OK(db_iter_->Seek(row_key_));
+    db_iter_->Seek(row_key_);
   }
-
   row_ready_ = false;
 
   if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
@@ -135,7 +134,7 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
       db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, read_time_,
       doc_spec.CreateFileFilter());
 
-  RETURN_NOT_OK(db_iter_->SeekWithoutHt(row_key_encoded));
+  db_iter_->SeekWithoutHt(row_key_encoded);
   row_ready_ = false;
 
   if (is_forward_scan_) {
@@ -152,13 +151,13 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
 
   if (is_forward_scan_) {
     if (has_bound_key_) {
-       RETURN_NOT_OK(db_iter_->Seek(lower_doc_key));
+       db_iter_->Seek(lower_doc_key);
     }
   } else {
     if (has_bound_key_) {
-      RETURN_NOT_OK(db_iter_->PrevDocKey(upper_doc_key));
+      db_iter_->PrevDocKey(upper_doc_key);
     } else {
-      RETURN_NOT_OK(db_iter_->SeekToLastDocKey());
+      db_iter_->SeekToLastDocKey();
     }
   }
 
@@ -167,7 +166,7 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
 
 Status DocRowwiseIterator::EnsureIteratorPositionCorrect() const {
   if (!is_forward_scan_) {
-    RETURN_NOT_OK(db_iter_->PrevDocKey(row_key_));
+    db_iter_->PrevDocKey(row_key_);
   }
   return Status::OK();
 }
@@ -188,8 +187,15 @@ bool DocRowwiseIterator::HasNext() const {
       done_ = true;
       return false;
     }
-    rocksdb::Slice rocksdb_key(db_iter_->key());
-    status_ = row_key_.DecodeFrom(&rocksdb_key);
+    auto fetched_key = db_iter_->FetchKey();
+    if (!fetched_key.ok()) {
+      status_ = fetched_key.status();
+      return true;
+    }
+    {
+      Slice key_copy = *fetched_key;
+      status_ = row_key_.DecodeFrom(&key_copy);
+    }
     if (!status_.ok()) {
       // Defer error reporting to NextBlock().
       return true;
@@ -200,12 +206,13 @@ bool DocRowwiseIterator::HasNext() const {
       return false;
     }
 
-    KeyBytes old_key(db_iter_->key());
+    KeyBytes old_key(*fetched_key);
     // The iterator is positioned by the previous GetSubDocument call
     // (which places the iterator outside the previous doc_key).
-    status_ = GetSubDocument(
-        db_iter_.get(), SubDocKey(row_key_), &row_, &doc_found, TableTTL(schema_),
-        &projection_subkeys_);
+    SubDocKey sub_doc_key(row_key_);
+    GetSubDocumentData data = { &sub_doc_key, &row_, &doc_found };
+    data.table_ttl = TableTTL(schema_);
+    status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
     if (!status_.ok()) {
       // Defer error reporting to NextBlock().
@@ -217,23 +224,27 @@ bool DocRowwiseIterator::HasNext() const {
       // If doc is not found, decide if some non-projection column exists.
       // Currently we read the whole doc here,
       // may be optimized by exiting on the first column in future.
-      status_ = db_iter_->Seek(row_key_);  // Position it for GetSubDocument.
-      if (!status_.ok()) {
-        // Defer error reporting to NextBlock().
-        return true;
-      }
-      status_ = GetSubDocument(
-          db_iter_.get(), SubDocKey(row_key_), &full_row, &doc_found, TableTTL(schema_));
+      db_iter_->Seek(row_key_);  // Position it for GetSubDocument.
+      data.result = &full_row;
+      status_ = GetSubDocument(db_iter_.get(), data);
       if (!status_.ok()) {
         // Defer error reporting to NextBlock().
         return true;
       }
     }
     // GetSubDocument must ensure that iterator is pushed forward, to avoid loops.
-    if (db_iter_->valid() && old_key.AsSlice().compare(db_iter_->key()) >= 0) {
-      status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-          FormatRocksDBSliceAsStr(old_key.AsSlice()));
-      return true;
+    if (db_iter_->valid()) {
+      auto iter_key = db_iter_->FetchKey();
+      if (!iter_key.ok()) {
+        status_ = iter_key.status();
+        return true;
+      }
+      if (old_key.AsSlice().compare(*iter_key) >= 0) {
+        status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
+            FormatRocksDBSliceAsStr(old_key.AsSlice()));
+        VLOG(1) << status_;
+        return true;
+      }
     }
     status_ = EnsureIteratorPositionCorrect();
     if (!status_.ok()) {
@@ -447,6 +458,14 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 
 void DocRowwiseIterator::SkipRow() {
   row_ready_ = false;
+}
+
+HybridTime DocRowwiseIterator::RestartReadHt() {
+  auto max_seen_ht = db_iter_->max_seen_ht();
+  if (max_seen_ht.is_valid() && max_seen_ht > db_iter_->read_time().read) {
+    return max_seen_ht;
+  }
+  return HybridTime::kInvalidHybridTime;
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {

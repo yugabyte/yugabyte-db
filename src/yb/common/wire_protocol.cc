@@ -119,17 +119,16 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
   if (is_unknown) {
     // For unknown status codes, include the original stringified error
     // code.
-    pb->set_message(status.CodeAsString() + ": " +
-                    status.message().ToString());
+    pb->set_message(status.CodeAsString() + ": " + status.message().ToBuffer());
   } else {
     // Otherwise, just encode the message itself, since the other end
     // will reconstruct the other parts of the ToString() response.
-    pb->set_message(status.message().ToString());
+    pb->set_message(status.message().cdata(), status.message().size());
   }
   if (status.IsQLError()) {
-    pb->set_ql_error_code(status.ql_error_code());
-  } else if (status.posix_code() != -1) {
-    pb->set_posix_code(status.posix_code());
+    pb->set_ql_error_code(status.error_code());
+  } else if (status.error_code() != -1) {
+    pb->set_posix_code(status.error_code());
   }
 }
 

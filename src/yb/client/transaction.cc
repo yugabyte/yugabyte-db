@@ -54,16 +54,34 @@ class YBTransaction::Impl final {
                   TabletId(),
                   RandomUniformInt<uint64_t>(),
                   manager->Now()},
-        read_limit_ht_(metadata_.start_time.AddMicroseconds(FLAGS_transaction_read_skew_usec)),
         log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
         heartbeat_handle_(manager->rpcs().InvalidHandle()),
         commit_handle_(manager->rpcs().InvalidHandle()),
         abort_handle_(manager->rpcs().InvalidHandle()) {
     VLOG_WITH_PREFIX(1) << "Started, metadata: " << metadata_;
+    read_time_.read = metadata_.start_time;
+    read_time_.local_limit = read_time_.read.AddMicroseconds(FLAGS_transaction_read_skew_usec);
+    read_time_.global_limit = read_time_.local_limit;
+    restart_read_time_ = read_time_.read;
   }
 
   ~Impl() {
     manager_->rpcs().Abort({&heartbeat_handle_, &commit_handle_, &abort_handle_});
+  }
+
+  YBTransactionPtr CreateSimilarTransaction() {
+    return std::make_shared<YBTransaction>(manager_, metadata_.isolation);
+  }
+
+  // This transaction is a restarted transaction, so we set it up with data from original one.
+  void SetupRestart(Impl* other) {
+    VLOG_WITH_PREFIX(1) << "Setup from " << other->ToString();
+    std::lock_guard<std::mutex> lock(mutex_);
+    DCHECK(!restarts_.empty());
+    other->local_limits_.swap(restarts_);
+    other->read_time_ = read_time_;
+    other->read_time_.read = restart_read_time_;
+    complete_.store(true, std::memory_order_release);
   }
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
@@ -103,8 +121,9 @@ class YBTransaction::Impl final {
       prepare_data->metadata.transaction_id = metadata_.transaction_id;
     }
     if (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
-      prepare_data->read_time.read = metadata_.start_time;
-      prepare_data->read_time.limit = metadata_.start_time; // TODO(dtxn) read_limit_ht_;
+      VLOG_WITH_PREFIX(1) << "Set read time: " << read_time_;
+      prepare_data->read_time = read_time_;
+      prepare_data->local_limits = &local_limits_;
     }
     return true;
   }
@@ -116,12 +135,14 @@ class YBTransaction::Impl final {
       std::lock_guard<std::mutex> lock(mutex_);
       TabletStates::iterator it = tablets_.end();
       for (const auto& op : ops) {
-        const std::string& tablet_id = op->tablet->tablet_id();
-        // Usually all ops belong to the same tablet. So we can avoid repeating lookup.
-        if (it == tablets_.end() || it->first != tablet_id) {
-          auto it = tablets_.find(tablet_id);
-          CHECK(it != tablets_.end());
-          it->second.has_parameters = true;
+        if (op->yb_op->succeeded()) {
+          const std::string& tablet_id = op->tablet->tablet_id();
+          // Usually all ops belong to the same tablet. So we can avoid repeating lookup.
+          if (it == tablets_.end() || it->first != tablet_id) {
+            auto it = tablets_.find(tablet_id);
+            CHECK(it != tablets_.end());
+            it->second.has_parameters = true;
+          }
         }
       }
     } else if (status.IsTryAgain()) {
@@ -171,6 +192,21 @@ class YBTransaction::Impl final {
       }
     }
     DoAbort(Status::OK(), transaction);
+  }
+
+  void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    restart_read_time_.MakeAtLeast(restart_time.read);
+    // We should inherit per-tablet restart time limits from original transaction, doing it lazily.
+    if (restarts_.empty()) {
+      restarts_ = local_limits_;
+    }
+    auto emplace_result = restarts_.emplace(tablet, restart_time.local_limit);
+    bool inserted = emplace_result.second;
+    if (!inserted) {
+      auto& existing_local_limit = emplace_result.first->second;
+      existing_local_limit = std::min(existing_local_limit, restart_time.local_limit);
+    }
   }
 
   std::shared_future<TransactionMetadata> TEST_GetMetadata() {
@@ -401,7 +437,7 @@ class YBTransaction::Impl final {
   YBTransaction* const transaction_;
 
   TransactionMetadata metadata_;
-  HybridTime read_limit_ht_;
+  ReadHybridTime read_time_;
 
   const std::string log_prefix_;
   bool requested_status_tablet_ = false;
@@ -431,6 +467,14 @@ class YBTransaction::Impl final {
   std::vector<Waiter> waiters_;
   std::promise<TransactionMetadata> metadata_promise_;
   std::shared_future<TransactionMetadata> metadata_future_;
+  HybridTime restart_read_time_;
+  // Local limits for separate tablets, does not change during lifetime of transaction.
+  // Times such that anything happening at that hybrid time or later is definitely after the
+  // original request arrived and therefore does not have to be shown in results.
+  std::unordered_map<TabletId, HybridTime> local_limits_;
+  // Restarts that happen during transaction lifetime. Used to initialize local_limits for
+  // restarted transaction.
+  std::unordered_map<TabletId, HybridTime> restarts_;
 };
 
 YBTransaction::YBTransaction(TransactionManager* manager,
@@ -466,6 +510,16 @@ std::future<Status> YBTransaction::CommitFuture() {
 
 void YBTransaction::Abort() {
   impl_->Abort();
+}
+
+void YBTransaction::RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time) {
+  impl_->RestartRequired(tablet, restart_time);
+}
+
+YBTransactionPtr YBTransaction::CreateRestartedTransaction() {
+  auto result = impl_->CreateSimilarTransaction();
+  impl_->SetupRestart(result->impl_.get());
+  return result;
 }
 
 std::shared_future<TransactionMetadata> YBTransaction::TEST_GetMetadata() const {

@@ -49,8 +49,8 @@ class SystemTablet : public tablet::AbstractTablet {
   CHECKED_STATUS HandleQLReadRequest(
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
-      const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
-      gscoped_ptr<faststring>* rows_data) override;
+      const TransactionMetadataPB& transaction_metadata,
+      tablet::QLReadRequestResult* result) override;
 
   CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                           const size_t row_count,

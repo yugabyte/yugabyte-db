@@ -143,7 +143,7 @@ std::string Status::ToString(bool include_file_and_line) const {
   result.append(": ");
   Slice msg = message();
   result.append(reinterpret_cast<const char*>(msg.data()), msg.size());
-  int64_t error = GetErrorCode();
+  int64_t error = error_code();
   if (error != -1) {
     char buf[64];
     snprintf(buf, sizeof(buf), " (error %" PRId64 ")", error);
@@ -160,23 +160,12 @@ Slice Status::message() const {
   return Slice(state_->message, state_->message_len);
 }
 
-int16_t Status::posix_code() const {
-  int64_t error_code = !IsQLError() ? GetErrorCode() : 0;
-  CHECK_LE(error_code, INT16_MAX) << "invalid posix_code";
-  return static_cast<int16_t>(error_code);
-}
-
-int64_t Status::ql_error_code() const {
-  int64_t error_code = IsQLError() ? GetErrorCode() : 0;
-  return error_code;
-}
-
 Status Status::CloneAndPrepend(const Slice& msg) const {
-  return Status(code(), state_->file_name, state_->line_number, msg, message(), posix_code());
+  return Status(code(), state_->file_name, state_->line_number, msg, message(), error_code());
 }
 
 Status Status::CloneAndAppend(const Slice& msg) const {
-  return Status(code(), state_->file_name, state_->line_number, message(), msg, posix_code());
+  return Status(code(), state_->file_name, state_->line_number, message(), msg, error_code());
 }
 
 size_t Status::memory_footprint_excluding_this() const {

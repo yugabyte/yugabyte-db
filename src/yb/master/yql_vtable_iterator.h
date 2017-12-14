@@ -49,6 +49,8 @@ class YQLVTableIterator : public common::QLRowwiseIteratorIf {
 
   void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
+  HybridTime RestartReadHt() override { return HybridTime::kInvalidHybridTime; }
+
   virtual ~YQLVTableIterator();
  private:
   std::unique_ptr<QLRowBlock> vtable_;

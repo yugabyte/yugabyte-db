@@ -67,19 +67,22 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   CHECKED_STATUS Flush();
 
   // Called by Batcher when a flush has finished.
-  void FlushFinished(internal::Batcher* b);
+  void FlushFinished(internal::BatcherPtr b);
 
   // Abort the unflushed or in-flight operations.
   void Abort();
+
+  // Changed transaction used by this session.
+  void SetTransaction(YBTransactionPtr transaction);
 
   // Returns Status::IllegalState() if 'force' is false and there are still pending
   // operations. If 'force' is true batcher_ is aborted even if there are pending
   // operations.
   CHECKED_STATUS Close(bool force);
 
-  // Swap in a new Batcher instance, returning the old one in '*old_batcher', unless it is
-  // NULL.
-  scoped_refptr<internal::Batcher> NewBatcher();
+  // Swap in a new Batcher instance, returning the old one.
+  internal::BatcherPtr NewBatcher();
+  internal::BatcherPtr NewBatcherUnlocked();
 
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
@@ -104,7 +107,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // the flush is active, the batcher manages its own refcount. The Batcher will always
   // call FlushFinished() before it destructs itself, so we're guaranteed that these
   // pointers stay valid.
-  std::unordered_set<internal::Batcher*> flushed_batchers_;
+  std::unordered_set<
+      internal::BatcherPtr, ScopedRefPtrHashFunctor, ScopedRefPtrEqualsFunctor> flushed_batchers_;
 
   YBSession::FlushMode flush_mode_ = YBSession::AUTO_FLUSH_SYNC;
   YBSession::ExternalConsistencyMode external_consistency_mode_ = YBSession::CLIENT_PROPAGATED;

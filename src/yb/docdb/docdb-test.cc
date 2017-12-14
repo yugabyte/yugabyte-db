@@ -210,9 +210,10 @@ class DocDBTest: public DocDBTestBase {
 
     // TODO(dtxn) - check both transaction and non-transaction path?
     // https://yugabyte.atlassian.net/browse/ENG-2177
+    GetSubDocumentData data = { &subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     EXPECT_OK(GetSubDocument(
-        rocksdb(), subdoc_key, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-        &doc_from_rocksdb, &subdoc_found_in_rocksdb, ReadHybridTime::SingleTime(ht)));
+        rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
+        ReadHybridTime::SingleTime(ht)));
     if (subdoc_string.empty()) {
       EXPECT_FALSE(subdoc_found_in_rocksdb);
       return;
@@ -330,9 +331,9 @@ void DocDBTest::CheckExpectedLatestDBState() {
   SubDocument subdoc;
   bool doc_found = false;
   // TODO(dtxn) - check both transaction and non-transaction path?
+  GetSubDocumentData data = { &subdoc_key, &subdoc, &doc_found };
   ASSERT_OK(GetSubDocument(
-      rocksdb(), subdoc_key, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext, &subdoc,
-      &doc_found));
+      rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext));
   ASSERT_TRUE(doc_found);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
@@ -1397,9 +1398,10 @@ TEST_F(DocDBTest, BloomFilterTest) {
   flush_rocksdb();
 
   auto get_doc = [this, &doc_from_rocksdb, &subdoc_found_in_rocksdb](const DocKey &key) {
+    SubDocKey subdoc_key(key);
+    GetSubDocumentData data = { &subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     ASSERT_OK(GetSubDocument(
-        rocksdb(), SubDocKey(key), rocksdb::kDefaultQueryId, boost::none, &doc_from_rocksdb,
-        &subdoc_found_in_rocksdb));
+        rocksdb(), data, rocksdb::kDefaultQueryId, boost::none /* txn_op_context */));
   };
 
   ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful, 0, &total_table_iterators));
@@ -1520,9 +1522,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   SubDocument subdoc;
   bool doc_found = false;
   // TODO(dtxn) - check both transaction and non-transaction path?
-  GetSubDocument(
-      rocksdb(), SubDocKey(kDocKey1), rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      &subdoc, &doc_found);
+  GetSubDocumentData data = { &subdoc_key, &subdoc, &doc_found };
+  GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext);
   ASSERT_FALSE(doc_found);
 
   CaptureLogicalSnapshot();
@@ -1532,9 +1533,7 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
     // The row should still be absent after a compaction.
     // TODO(dtxn) - check both transaction and non-transaction path?
     CompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
-    GetSubDocument(
-        rocksdb(), SubDocKey(kDocKey1), rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-        &subdoc, &doc_found);
+    GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext);
     ASSERT_FALSE(doc_found);
     AssertDocDbDebugDumpStrEq("");
   }
@@ -1547,9 +1546,9 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
       PrimitiveValue("value2")));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
   // TODO(dtxn) - check both transaction and non-transaction path?
-  GetSubDocument(
-      rocksdb(), SubDocKey(kDocKey2), rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      &subdoc, &doc_found);
+  SubDocKey subdoc_key2(kDocKey2);
+  data.subdocument_key = &subdoc_key2;
+  GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext);
   ASSERT_TRUE(doc_found);
 
   // The row should still exist after a compaction. The deletion marker should be compacted away.
@@ -1558,9 +1557,7 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
     RestoreToLastLogicalRocksDBSnapshot();
     CompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
     // TODO(dtxn) - check both transaction and non-transaction path?
-    GetSubDocument(
-        rocksdb(), SubDocKey(kDocKey2), rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-        &subdoc, &doc_found);
+    GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext);
     ASSERT_TRUE(doc_found);
     AssertDocDbDebugDumpStrEq(R"#(
         SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT(p=2000, w=1)]) -> "value2"
@@ -1819,10 +1816,12 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb:
                              PrimitiveValue("subkey" + std::to_string(base + upper)),
                              /* is_exclusive */ false,
                              /* is_lower_bound */ false);
+  GetSubDocumentData data = { &subdoc_to_search, doc_from_rocksdb, subdoc_found };
+  data.low_subkey = &lower_bound;
+  data.high_subkey = &upper_bound;
   EXPECT_OK(GetSubDocument(
-      rocksdb, subdoc_to_search, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
-      doc_from_rocksdb, subdoc_found, ReadHybridTime::SingleTime(ht), Value::kMaxTtl,
-      false, lower_bound, upper_bound));
+      rocksdb, data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
+      ReadHybridTime::SingleTime(ht)));
 }
 
 void VerifyBounds(SubDocument* doc_from_rocksdb, int lower, int upper, int base) {
@@ -1970,11 +1969,12 @@ TEST_F(DocDBTest, TestCompactionForCollectionsWithTTL) {
       SubDocKey(DocKey([], ["collection"]), ["k5"; HT(p=1100)]) -> "vv5"; ttl: 25.000s
       )#");
 
+  SubDocKey subdoc_key(collection_key);
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
+  GetSubDocumentData data = { &subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
   EXPECT_OK(GetSubDocument(
-      rocksdb(), SubDocKey(collection_key), rocksdb::kDefaultQueryId,
-      kNonTransactionalOperationContext, &doc_from_rocksdb, &subdoc_found_in_rocksdb,
+      rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
       ReadHybridTime::FromMicros(1200)));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
 

@@ -367,7 +367,18 @@ Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
   auto operation = std::make_unique<WriteOperation>(std::move(state), consensus::LEADER);
   RETURN_NOT_OK(CheckRunning());
 
-  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(operation->state()));
+  HybridTime restart_read_ht;
+  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(operation->state(), &restart_read_ht));
+  // If a restart read is required, then we return this fact to caller and don't perform the write
+  // operation.
+  if (restart_read_ht.is_valid()) {
+    auto restart_time = operation->state()->response()->mutable_restart_read_time();
+    restart_time->set_read_ht(restart_read_ht.ToUint64());
+    restart_time->set_local_limit_ht(tablet_->SafeTimestampToRead().ToUint64());
+    // Global limit is ignored by caller, so we don't set it.
+    operation->state()->completion_callback()->OperationCompleted();
+    return Status::OK();
+  }
   scoped_refptr<OperationDriver> driver;
   RETURN_NOT_OK(NewLeaderOperationDriver(std::move(operation), &driver));
   driver->ExecuteAsync();

@@ -831,21 +831,10 @@ Status Executor::ProcessStatementStatus(const ParseTree &parse_tree, const Statu
 Status Executor::ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context) {
   const QLResponsePB &resp = op->response();
   CHECK(resp.has_status()) << "QLResponsePB status missing";
-  switch (resp.status()) {
-    case QLResponsePB::YQL_STATUS_OK:
-      // Read the rows result if present.
-      return op->rows_data().empty() ?
-          Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
-    case QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH:
-      return exec_context->Error(resp.error_message().c_str(), ErrorCode::WRONG_METADATA_VERSION);
-    case QLResponsePB::YQL_STATUS_RUNTIME_ERROR:
-      return exec_context->Error(resp.error_message().c_str(), ErrorCode::SERVER_ERROR);
-    case QLResponsePB::YQL_STATUS_USAGE_ERROR:
-      return exec_context->Error(resp.error_message().c_str(), ErrorCode::EXEC_ERROR);
-    // default: fall-through to below
+  if (resp.status() != QLResponsePB::YQL_STATUS_OK) {
+    return exec_context->Error(resp.error_message().c_str(), QLStatusToErrorCode(resp.status()));
   }
-  LOG(FATAL) << "Unknown status: " << resp.DebugString();
-  return STATUS(QLError, "FATAL");
+  return op->rows_data().empty() ? Status::OK() : AppendResult(std::make_shared<RowsResult>(op));
 }
 
 Status Executor::ProcessAsyncResults() {

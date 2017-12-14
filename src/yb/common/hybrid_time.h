@@ -191,8 +191,11 @@ class HybridTime {
   inline bool is_valid() const { return v != kInvalidHybridTimeValue; }
 
   void MakeAtLeast(const HybridTime& rhs) {
-    v = std::max(v, rhs.v);
+    v = is_valid() ? std::max(v, rhs.v) : rhs.v;
   }
+
+  // Set base time for ToString, to have smaller values in output.
+  static void TEST_SetBaseTimeForToString(MicrosTime micros);
 
  private:
 

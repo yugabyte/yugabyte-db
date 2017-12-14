@@ -94,18 +94,19 @@ namespace internal {
 Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
                  const std::shared_ptr<YBSessionData>& session_data,
-                 yb::client::YBSession::ExternalConsistencyMode consistency_mode)
+                 yb::client::YBSession::ExternalConsistencyMode consistency_mode,
+                 YBTransactionPtr transaction)
   : state_(kGatheringOps),
     client_(client),
     weak_session_data_(session_data),
     consistency_mode_(consistency_mode),
     error_collector_(error_collector),
     had_errors_(false),
-    flush_callback_(NULL),
     next_op_sequence_number_(0),
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0),
-    async_rpc_metrics_(session_data->async_rpc_metrics_) {
+    async_rpc_metrics_(session_data->async_rpc_metrics_),
+    transaction_(std::move(transaction)) {
 }
 
 void Batcher::Abort(const Status& status) {
@@ -465,11 +466,7 @@ const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
 }
 
 YBTransactionPtr Batcher::transaction() const {
-  auto session_data = weak_session_data_.lock();
-  if (session_data) {
-    return session_data->transaction_;
-  }
-  return nullptr;
+  return transaction_;
 }
 
 void Batcher::FlushBuffer(RemoteTablet* tablet,

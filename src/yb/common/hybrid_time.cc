@@ -40,6 +40,12 @@ using strings::SubstituteAndAppend;
 
 namespace yb {
 
+namespace {
+
+MicrosTime base_time_for_to_string_in_tests_ = 0;
+
+}
+
 const HybridTime HybridTime::kMin(kMinHybridTimeValue);
 const HybridTime HybridTime::kMax(kMaxHybridTimeValue);
 const HybridTime HybridTime::kInitialHybridTime(kInitialHybridTimeValue);
@@ -68,8 +74,14 @@ string HybridTime::ToString() const {
     case kInitialHybridTimeValue:
       return "<initial>";
     default:
-      return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), GetLogicalValue());
+      return Format("{ physical: $0 logical: $1 }",
+                    GetPhysicalValueMicros() - base_time_for_to_string_in_tests_,
+                    GetLogicalValue());
   }
+}
+
+void HybridTime::TEST_SetBaseTimeForToString(MicrosTime micros) {
+  base_time_for_to_string_in_tests_ = micros;
 }
 
 string HybridTime::ToDebugString() const {

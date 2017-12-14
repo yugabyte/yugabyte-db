@@ -160,7 +160,8 @@ void AsyncRpc::Failed(const Status& status) {
       case YBOperation::Type::QL_WRITE: {
         QLResponsePB* resp = down_cast<YBqlOp*>(yb_op)->mutable_response();
         resp->Clear();
-        resp->set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+        resp->set_status(status.IsTryAgain() ? QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR
+                                             : QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
         resp->set_error_message(error_message);
         break;
       }
@@ -191,25 +192,6 @@ void SetTransactionMetadata(const TransactionMetadata& metadata, tserver::ReadRe
 
 } // namespace
 
-template <class Request>
-void AsyncRpc::FillRequest(Request* req) {
-  req->set_tablet_id(tablet_invoker_.tablet()->tablet_id());
-  req->set_include_trace(IsTracingEnabled());
-  auto& transaction_data = batcher_->transaction_prepare_data();
-  if (transaction_data.propagated_ht.is_valid()) {
-    req->set_propagated_hybrid_time(transaction_data.propagated_ht.ToUint64());
-  }
-  if (transaction_data.read_time.read.is_valid()) {
-    req->set_read_ht(transaction_data.read_time.read.ToUint64());
-  }
-  if (transaction_data.read_time.limit.is_valid()) {
-    req->set_read_limit_ht(transaction_data.read_time.limit.ToUint64());
-  }
-  if (!transaction_data.metadata.transaction_id.is_nil()) {
-    SetTransactionMetadata(transaction_data.metadata, req);
-  }
-}
-
 void AsyncRpc::SendRpcToTserver() {
   MonoTime end_time = MonoTime::Now();
   if (async_rpc_metrics_)
@@ -217,14 +199,62 @@ void AsyncRpc::SendRpcToTserver() {
   CallRemoteMethod();
 }
 
+template <class Req, class Resp>
+AsyncRpcBase<Req, Resp>::AsyncRpcBase(const scoped_refptr<Batcher>& batcher,
+                                      RemoteTablet* const tablet,
+                                      InFlightOps ops,
+                                      YBConsistencyLevel consistency_level)
+    : AsyncRpc(batcher, tablet, ops, consistency_level) {
+  req_.set_tablet_id(tablet_invoker_.tablet()->tablet_id());
+  req_.set_include_trace(IsTracingEnabled());
+  auto& transaction_data = batcher_->transaction_prepare_data();
+  if (transaction_data.propagated_ht.is_valid()) {
+    req_.set_propagated_hybrid_time(transaction_data.propagated_ht.ToUint64());
+  }
+  auto read_time = transaction_data.read_time;
+  if (read_time.read.is_valid()) {
+    auto it = transaction_data.local_limits->find(tablet_invoker_.tablet()->tablet_id());
+    if (it != transaction_data.local_limits->end()) {
+      read_time.local_limit = it->second;
+    }
+    read_time.AddToPB(&req_);
+  }
+  if (!transaction_data.metadata.transaction_id.is_nil()) {
+    SetTransactionMetadata(transaction_data.metadata, &req_);
+  }
+}
+
+template <class Req, class Resp>
+bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
+  if (!status.ok()) {
+    return false;
+  }
+  if (resp_.has_error()) {
+    LOG(WARNING) << ToString() << " has error:" << resp_.error().DebugString()
+                 << ". Requests not processed.";
+    // If there is an error at the Rpc itself, there should be no individual responses.
+    // All of them need to be marked as failed.
+    Failed(StatusFromPB(resp_.error().status()));
+    return false;
+  }
+  auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
+  if (restart_read_time.read.is_valid()) {
+    auto transaction = batcher_->transaction();
+    if (transaction) {
+      batcher_->transaction()->RestartRequired(req_.tablet_id(), restart_read_time);
+    }
+    Failed(STATUS_FORMAT(TryAgain, "Restart read required at: $0", restart_read_time));
+    return false;
+  }
+  return true;
+}
+
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    RemoteTablet* const tablet,
                    InFlightOps ops)
-    : AsyncRpc(batcher, tablet, ops) {
+    : AsyncRpcBase(batcher, tablet, ops, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated to $0", tablet->tablet_id());
   const Schema& schema = GetSchema(table()->schema());
-
-  FillRequest(&req_);
 
   switch (batcher->external_consistency_mode()) {
     case yb::client::YBSession::CLIENT_PROPAGATED:
@@ -352,23 +382,16 @@ void WriteRpc::CallRemoteMethod() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-void WriteRpc::ProcessResponseFromTserver(Status status) {
+void WriteRpc::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
     TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
   }
   batcher_->ProcessWriteResponse(*this, status);
-  if (!status.ok()) return;
-  if (resp_.has_error()) {
-    LOG(WARNING) << "Write Rpc to tablet server has error:"
-                 << resp_.error().DebugString()
-                 << ". Requests not processed.";
-    // If there is an error at the Rpc itself,
-    // there should be no individual responses. All of them need to be
-    // marked as failed.
-    Failed(StatusFromPB(resp_.error().status()));
+  if (!CommonResponseCheck(status)) {
     return;
   }
+
   size_t redis_idx = 0;
   size_t ql_idx = 0;
   // Retrieve Redis and QL responses and make sure we received all the responses back.
@@ -435,10 +458,9 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
 ReadRpc::ReadRpc(
     const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, InFlightOps ops,
     YBConsistencyLevel yb_consistency_level)
-    : AsyncRpc(batcher, tablet, ops, yb_consistency_level) {
+    : AsyncRpcBase(batcher, tablet, ops, yb_consistency_level) {
   TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
   req_.set_consistency_level(yb_consistency_level);
-  FillRequest(&req_);
 
   int ctr = 0;
   for (auto& op : ops_) {
@@ -500,23 +522,16 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-void ReadRpc::ProcessResponseFromTserver(Status status) {
+void ReadRpc::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
     TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
   }
   batcher_->ProcessReadResponse(*this, status);
-  if (!status.ok()) return;
-  if (resp_.has_error()) {
-    LOG(WARNING) << "Read Rpc to tablet server has error:"
-                 << resp_.error().DebugString()
-                 << ". Requests not processed.";
-    // If there is an error at the Rpc itself,
-    // there should be no individual responses. All of them need to be
-    // marked as failed.
-    Failed(StatusFromPB(resp_.error().status()));
+  if (!CommonResponseCheck(status)) {
     return;
   }
+
   // Retrieve Redis and QL responses and make sure we received all the responses back.
   size_t redis_idx = 0;
   size_t ql_idx = 0;

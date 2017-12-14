@@ -21,6 +21,12 @@
 namespace yb {
 namespace tablet {
 
+struct QLReadRequestResult {
+  QLResponsePB response;
+  faststring rows_data;
+  HybridTime restart_read_ht;
+};
+
 class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
@@ -42,8 +48,7 @@ class AbstractTablet {
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
-      QLResponsePB* response,
-      gscoped_ptr<faststring>* rows_data) = 0;
+      QLReadRequestResult* result) = 0;
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,
@@ -58,8 +63,7 @@ class AbstractTablet {
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContextOpt& txn_op_context,
-      QLResponsePB* response,
-      gscoped_ptr<faststring>* rows_data);
+      QLReadRequestResult* result);
 };
 
 }  // namespace tablet

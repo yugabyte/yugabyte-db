@@ -149,9 +149,10 @@ Result<RedisDataType> GetRedisValueType(
   } else {
     // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
     // support for Redis.
+    GetSubDocumentData data = { &subdoc_key, &doc, &doc_found };
+    data.return_type_only = true;
     RETURN_NOT_OK(GetSubDocument(
-        rocksdb, subdoc_key, redis_query_id, boost::none, &doc, &doc_found,
-        read_time, Value::kMaxTtl, /* return_type_only */ true));
+        rocksdb, data, redis_query_id, boost::none /* txn_op_context */, read_time));
   }
 
   if (!doc_found) {
@@ -206,8 +207,9 @@ Result<RedisValue> GetRedisValue(
 
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
+  GetSubDocumentData data = { &doc_key, &doc, &doc_found };
   RETURN_NOT_OK(GetSubDocument(
-      rocksdb, doc_key, redis_query_id, boost::none, &doc, &doc_found, read_time));
+      rocksdb, data, redis_query_id, boost::none /* txn_op_context */, read_time));
 
   if (!doc_found) {
     return RedisValue{REDIS_TYPE_NONE};
@@ -695,8 +697,6 @@ Status RedisWriteOperation::ApplyRemove(const DocOperationApplyData& data) {
   return STATUS(NotSupported, "Redis operation has not been implemented");
 }
 
-const RedisResponsePB& RedisWriteOperation::response() { return response_; }
-
 Status RedisReadOperation::Execute() {
   switch (request_.request_case()) {
     case RedisReadRequestPB::RequestCase::kGetRequest:
@@ -731,8 +731,9 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   bool doc_found = false;
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
+  GetSubDocumentData data = { &doc_key, &doc, &doc_found };
   RETURN_NOT_OK(GetSubDocument(
-      db_, doc_key, redis_query_id(), boost::none, &doc, &doc_found, read_time_));
+      db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
   if (add_keys || add_values) {
     response_.set_allocated_array_response(new RedisArrayPB());
   }
@@ -793,9 +794,11 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
       SubDocument doc;
       bool doc_found = false;
+      GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+      data.low_subkey = &low_subkey;
+      data.high_subkey = &high_subkey;
       RETURN_NOT_OK(GetSubDocument(
-          db_, doc_key, redis_query_id(), boost::none, &doc, &doc_found, read_time_,
-          Value::kMaxTtl, false, low_subkey, high_subkey));
+          db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
 
       // Validate and populate response.
       response_.set_allocated_array_response(new RedisArrayPB());
@@ -1155,11 +1158,10 @@ void QLWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *l
                          : IsolationLevel::SERIALIZABLE_ISOLATION;
 }
 
-Status QLWriteOperation::ReadColumns(
-                                      const DocOperationApplyData& data,
-                                      Schema *param_static_projection,
-                                      Schema *param_non_static_projection,
-                                      QLTableRow *table_row) {
+Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
+                                     Schema *param_static_projection,
+                                     Schema *param_non_static_projection,
+                                     QLTableRow *table_row) {
 
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
@@ -1191,6 +1193,7 @@ Status QLWriteOperation::ReadColumns(
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(*static_projection, table_row));
     }
+    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
   if (pk_doc_key_ != nullptr) {
     DocQLScanSpec spec(*non_static_projection, *pk_doc_key_, request_.query_id());
@@ -1204,6 +1207,7 @@ Status QLWriteOperation::ReadColumns(
       // columns in the map to indicate the row does not exist.
       table_row->clear();
     }
+    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
 
   return Status::OK();
@@ -1454,6 +1458,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
               RETURN_NOT_OK(DeleteRow(data.doc_write_batch, row_path));
             }
           }
+          data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
         } else {
           // Otherwise, delete the referenced row (all columns).
           RETURN_NOT_OK(DeleteRow(data.doc_write_batch, *pk_doc_path_));
@@ -1499,7 +1504,8 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
                                 const ReadHybridTime& read_time,
                                 const Schema& schema,
                                 const Schema& query_schema,
-                                QLResultSet* resultset) {
+                                QLResultSet* resultset,
+                                HybridTime* restart_read_ht) {
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
   if (request_.has_limit()) {
     if (request_.limit() == 0) {
@@ -1603,6 +1609,7 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   if (FLAGS_trace_docdb_calls) {
     TRACE("Fetched $0 rows.", resultset->rsrow_count());
   }
+  *restart_read_ht = iter->RestartReadHt();
 
   if (resultset->rsrow_count() >= row_count_limit) {
     RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
@@ -1625,8 +1632,6 @@ CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
 
   return Status::OK();
 }
-
-const QLResponsePB& QLReadOperation::response() const { return response_; }
 
 }  // namespace docdb
 }  // namespace yb

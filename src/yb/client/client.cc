@@ -1295,6 +1295,10 @@ YBSession::YBSession(const shared_ptr<YBClient>& client,
   data_->Init();
 }
 
+void YBSession::SetTransaction(YBTransactionPtr transaction) {
+  data_->SetTransaction(std::move(transaction));
+}
+
 YBSession::~YBSession() {
   WARN_NOT_OK(data_->Close(true), "Closed Session with pending operations.");
 }
@@ -1359,7 +1363,7 @@ bool YBSession::HasPendingOperations() const {
   if (data_->batcher_->HasPendingOperations()) {
     return true;
   }
-  for (Batcher* b : data_->flushed_batchers_) {
+  for (const auto& b : data_->flushed_batchers_) {
     if (b->HasPendingOperations()) {
       return true;
     }

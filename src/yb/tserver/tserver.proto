@@ -138,6 +138,15 @@ message TabletServerErrorPB {
   required AppStatusPB status = 2;
 }
 
+// See ReadHybridTime for explation of this message.
+message ReadHybridTimePB {
+  optional fixed64 read_ht = 1;
+
+  optional fixed64 local_limit_ht = 2;
+
+  optional fixed64 global_limit_ht = 3;
+}
+
 // A batched set of insert/mutate requests.
 message WriteRequestPB {
   required bytes tablet_id = 1;
@@ -179,10 +188,7 @@ message WriteRequestPB {
 
   optional bool include_trace = 6 [ default = false ];
 
-  // See ReadHybridTime for explation of next two fields.
-  optional fixed64 read_ht = 12;
-
-  optional fixed64 read_limit_ht = 13;
+  optional ReadHybridTimePB read_time = 12;
 }
 
 message WriteResponsePB {
@@ -215,6 +221,9 @@ message WriteResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 
   optional string trace_buffer = 10;
+
+  // Used to report restart whether this operation requires read restart.
+  optional ReadHybridTimePB restart_read_time = 11;
 }
 
 // A list tablets request
@@ -288,9 +297,7 @@ message ReadRequestPB {
   optional fixed64 propagated_hybrid_time = 8;
 
   // See ReadHybridTime for explation of next two fields.
-  optional fixed64 read_ht = 9;
-
-  optional fixed64 read_limit_ht = 10;
+  optional ReadHybridTimePB read_time = 9;
 }
 
 message ReadResponsePB {
@@ -306,6 +313,9 @@ message ReadResponsePB {
   optional string trace_buffer = 5;
 
   optional fixed64 propagated_hybrid_time = 6;
+
+  // Used to report restart whether this operation requires read restart.
+  optional ReadHybridTimePB restart_read_time = 7;
 }
 
 message NewScanRequestPB {

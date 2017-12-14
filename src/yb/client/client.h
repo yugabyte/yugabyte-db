@@ -883,6 +883,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     MANUAL_FLUSH
   };
 
+  void SetTransaction(YBTransactionPtr transaction);
+
   // Set the flush mode.
   // REQUIRES: there should be no pending writes -- call Flush() first to ensure.
   CHECKED_STATUS SetFlushMode(FlushMode m) WARN_UNUSED_RESULT;

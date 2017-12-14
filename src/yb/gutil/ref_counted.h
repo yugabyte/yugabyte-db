@@ -254,7 +254,7 @@ class scoped_refptr {
   scoped_refptr() : ptr_(NULL) {
   }
 
-  scoped_refptr(T* p) : ptr_(p) {
+  scoped_refptr(T* p) : ptr_(p) { // NOLINT
     if (ptr_)
       ptr_->AddRef();
   }
@@ -364,15 +364,15 @@ scoped_refptr<T> make_scoped_refptr(Args&&... args) {
 
 // equal_to and hash implementations for templated scoped_refptrs suitable for
 // use with STL unordered_* containers.
-template <class T>
-struct ScopedRefPtrEqualToFunctor {
+struct ScopedRefPtrEqualsFunctor {
+  template <class T>
   bool operator()(const scoped_refptr<T>& x, const scoped_refptr<T>& y) const {
     return x.get() == y.get();
   }
 };
 
-template <class T>
 struct ScopedRefPtrHashFunctor {
+  template <class T>
   size_t operator()(const scoped_refptr<T>& p) const {
     return reinterpret_cast<size_t>(p.get());
   }

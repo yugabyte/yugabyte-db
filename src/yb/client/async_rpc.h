@@ -57,7 +57,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   AsyncRpc(const scoped_refptr<Batcher> &batcher,
            RemoteTablet *const tablet,
            InFlightOps ops,
-           YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
+           YBConsistencyLevel yb_consistency_level);
 
   virtual ~AsyncRpc();
 
@@ -69,9 +69,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   const InFlightOps& ops() const { return ops_; }
 
  protected:
-  template <class Req>
-  void FillRequest(Req* req);
-
   void SendRpcCb(const Status& status) override;
 
   void SendRpcToTserver() override;
@@ -80,7 +77,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   // This is the last step where errors and responses are collected from the response and
   // stored in batcher. If there's a callback from the user, it is done in this step.
-  virtual void ProcessResponseFromTserver(Status status) = 0;
+  virtual void ProcessResponseFromTserver(const Status& status) = 0;
 
   // Return latest hybrid time that was present on tserver during processing of this request.
   virtual HybridTime PropagatedHybridTime() = 0;
@@ -108,7 +105,35 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   rpc::RpcCommandPtr retained_self_;
 };
 
-class WriteRpc : public AsyncRpc {
+template <class Req, class Resp>
+class AsyncRpcBase : public AsyncRpc {
+ public:
+  AsyncRpcBase(const scoped_refptr<Batcher>& batcher,
+               RemoteTablet* const tablet,
+               InFlightOps ops,
+               YBConsistencyLevel consistency_level);
+
+  const Resp& resp() const { return resp_; }
+  Resp& resp() { return resp_; }
+
+ protected:
+  // Returns `true` if caller should continue processing response, `false` otherwise.
+  bool CommonResponseCheck(const Status& status);
+
+ protected: // TODO replace with private
+  const tserver::TabletServerErrorPB* response_error() const override {
+    return resp_.has_error() ? &resp_.error() : nullptr;
+  }
+
+  HybridTime PropagatedHybridTime() override {
+    return GetPropagatedHybridTime(resp_);
+  }
+
+  Req req_;
+  Resp resp_;
+};
+
+class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
  public:
   WriteRpc(const scoped_refptr<Batcher>& batcher,
            RemoteTablet* const tablet,
@@ -116,29 +141,12 @@ class WriteRpc : public AsyncRpc {
 
   virtual ~WriteRpc();
 
-  const tserver::WriteResponsePB& resp() const { return resp_; }
-
  private:
   void CallRemoteMethod() override;
-
-  const tserver::TabletServerErrorPB* response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
-  }
-
-  void ProcessResponseFromTserver(Status status) override;
-
-  HybridTime PropagatedHybridTime() override {
-    return GetPropagatedHybridTime(resp_);
-  }
-
-  // Request body.
-  tserver::WriteRequestPB req_;
-
-  // Response body.
-  tserver::WriteResponsePB resp_;
+  void ProcessResponseFromTserver(const Status& status) override;
 };
 
-class ReadRpc : public AsyncRpc {
+class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
  public:
   ReadRpc(const scoped_refptr<Batcher>& batcher,
           RemoteTablet* const tablet,
@@ -147,27 +155,9 @@ class ReadRpc : public AsyncRpc {
 
   virtual ~ReadRpc();
 
-  const tserver::ReadResponsePB& resp() const { return resp_; }
-
  private:
   void CallRemoteMethod() override;
-
-  void ProcessResponseFromTserver(Status status) override;
-
-  const tserver::TabletServerErrorPB* response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
-  }
-
-  HybridTime PropagatedHybridTime() override {
-    return GetPropagatedHybridTime(resp_);
-  }
-
- protected:
-  // Request body.
-  tserver::ReadRequestPB req_;
-
-  // Response body.
-  tserver::ReadResponsePB resp_;
+  void ProcessResponseFromTserver(const Status& status) override;
 };
 
 }  // namespace internal

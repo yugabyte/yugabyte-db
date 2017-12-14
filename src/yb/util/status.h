@@ -210,12 +210,7 @@ class Status {
   // live and unchanged.
   Slice message() const;
 
-  // Get the POSIX code associated with this Status, or -1 if there is none. For non-SQL errors
-  // only.
-  int16_t posix_code() const;
-
-  // Get the error code associated with this Status, or -1 if there is none. For SQL errors only.
-  int64_t ql_error_code() const;
+  int64_t error_code() const { return state_ ? state_->error_code : 0; }
 
   // Return a new Status object with the same state plus an additional leading message.
   Status CloneAndPrepend(const Slice& msg) const;
@@ -280,7 +275,6 @@ class Status {
 
   static_assert(sizeof(Code) == 4, "Code enum size is part of abi");
 
-  int64_t GetErrorCode() const { return state_ ? state_->error_code : 0; }
   StatePtr CopyState() const;
 };
 

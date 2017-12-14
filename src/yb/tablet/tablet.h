@@ -155,6 +155,8 @@ enum class FlushMode {
   kAsync,
 };
 
+struct WriteOperationData;
+
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
   class CompactionFaultHooks;
@@ -253,9 +255,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(
-      tserver::WriteRequestPB* redis_write_request,
-      LockBatch *keys_locked, vector<RedisResponsePB>* responses);
+  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data);
 
   CHECKED_STATUS HandleRedisReadRequest(
       const ReadHybridTime& read_time,
@@ -265,28 +265,22 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS HandleQLReadRequest(
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
-      const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
-      gscoped_ptr<faststring>* rows_data) override;
+      const TransactionMetadataPB& transaction_metadata,
+      QLReadRequestResult* result) override;
 
   CHECKED_STATUS CreatePagingStateForRead(
       const QLReadRequestPB& ql_read_request, const size_t row_count,
       QLResponsePB* response) const override;
 
   // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  CHECKED_STATUS KeyValueBatchFromQLWriteBatch(
-      tserver::WriteRequestPB* write_request,
-      LockBatch *keys_locked, tserver::WriteResponsePB* write_response,
-      WriteOperationState* operation_state);
+  CHECKED_STATUS KeyValueBatchFromQLWriteBatch(const WriteOperationData& data);
 
   // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  CHECKED_STATUS KeyValueBatchFromKuduRowOps(
-      tserver::WriteRequestPB* kudu_write_request,
-      LockBatch *keys_locked);
+  CHECKED_STATUS KeyValueBatchFromKuduRowOps(const WriteOperationData& data);
 
   // Uses primary_key:column_name for key encoding.
   CHECKED_STATUS CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                        yb::docdb::KeyValueWriteBatchPB* write_batch,
-                                        LockBatch* keys_locked);
+                                                const WriteOperationData& data);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.
@@ -378,7 +372,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
-  CHECKED_STATUS AcquireLocksAndPerformDocOperations(WriteOperationState *state);
+  CHECKED_STATUS AcquireLocksAndPerformDocOperations(
+      WriteOperationState *state, HybridTime* restart_read_ht);
 
   static const char* kDMSMemTrackerId;
 
@@ -430,6 +425,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetTotalSSTFileSizes() const;
 
+  HybridTime SafeTimestampToRead() const override;
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -461,9 +458,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS StartDocWriteOperation(
       const docdb::DocOperations &doc_ops,
-      const ReadHybridTime& read_time,
-      LockBatch *keys_locked,
-      docdb::KeyValueWriteBatchPB* write_batch);
+      const WriteOperationData& data);
 
   // Convert the specified read client schema (without IDs) to a server schema (with IDs)
   // This method is used by NewRowIterator().
@@ -478,7 +473,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // tracking the oldest read point.
   void RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
-  HybridTime SafeTimestampToRead() const override;
 
   void PrepareTransactionWriteBatch(
       const docdb::KeyValueWriteBatchPB& put_batch,

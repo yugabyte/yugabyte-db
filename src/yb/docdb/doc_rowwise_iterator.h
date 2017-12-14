@@ -41,7 +41,6 @@ class IntentAwareIterator;
 
 // An adapter between SQL-mapped-to-document-DB and Kudu's RowwiseIterator.
 class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
-
  public:
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
@@ -89,6 +88,8 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
 
   // Skip the current row.
   void SkipRow() override;
+
+  HybridTime RestartReadHt() override;
 
  private:
 

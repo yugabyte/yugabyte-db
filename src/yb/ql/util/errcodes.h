@@ -23,6 +23,8 @@
 
 #include <cstdint>
 
+#include "yb/common/ql_protocol.pb.h"
+
 #include "yb/util/status.h"
 
 namespace yb {
@@ -111,6 +113,7 @@ enum class ErrorCode : int64_t {
   UNPREPARED_STATEMENT = -310,
   TYPE_NOT_FOUND = -311,
   INVALID_TYPE_DEFINITION = -312,
+  RESTART_REQUIRED = -313,
 };
 
 // Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.
@@ -125,6 +128,9 @@ Status ErrorStatus(ErrorCode code, const std::string& mesg = "");
 // Font for error message is RED.
 constexpr const char *kErrorFontStart = "\033[31m";
 constexpr const char *kErrorFontEnd = "\033[0m";
+
+std::string FormatForComparisonFailureMessage(ErrorCode op, ErrorCode other);
+ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
 }  // namespace ql
 }  // namespace yb

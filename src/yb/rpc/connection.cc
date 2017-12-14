@@ -320,7 +320,7 @@ Status Connection::ReadHandler() {
   for (;;) {
     auto received = Receive();
     if (PREDICT_FALSE(!received.ok())) {
-      if (received.status().posix_code() == ESHUTDOWN) {
+      if (received.status().error_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
       } else {
         LOG(WARNING) << ToString() << " recv error: " << received;

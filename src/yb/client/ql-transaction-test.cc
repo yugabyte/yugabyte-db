@@ -23,6 +23,7 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_manager.h"
 
+#include "yb/ql/util/errcodes.h"
 #include "yb/ql/util/statement_result.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -54,6 +55,8 @@ namespace {
 
 constexpr size_t kNumRows = 5;
 const auto kTransactionApplyTime = NonTsanVsTsan(3s, 15s);
+const std::string kKeyColumn = "k";
+const std::string kValueColumn = "v";
 
 YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE));
 
@@ -110,7 +113,7 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
 
 } // namespace
 
-#define VERIFY_ROW(session, key, value) VerifyRow(__LINE__, (session), (key), (value))
+#define VERIFY_ROW(...) VerifyRow(__LINE__, __VA_ARGS__)
 
 class QLTransactionTest : public QLDmlTestBase {
  protected:
@@ -118,8 +121,8 @@ class QLTransactionTest : public QLDmlTestBase {
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder builder;
-    builder.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn("v")->Type(INT32);
+    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(INT32);
     TableProperties table_properties;
     table_properties.SetTransactional(true);
     builder.SetTableProperties(table_properties);
@@ -132,6 +135,7 @@ class QLTransactionTest : public QLDmlTestBase {
     server::ClockPtr clock(
         clock_ = new server::TestClock(server::ClockPtr(new server::HybridClock)));
     ASSERT_OK(clock->Init());
+    HybridTime::TEST_SetBaseTimeForToString(clock->Now().GetPhysicalValueMicros());
     transaction_manager_.emplace(client_, clock);
   }
 
@@ -154,7 +158,7 @@ class QLTransactionTest : public QLDmlTestBase {
     const auto op = table_.NewWriteOp(stmt_type);
     auto* const req = op->mutable_request();
     table_.AddInt32HashValue(req, key);
-    table_.AddInt32ColumnValue(req, "v", value);
+    table_.AddInt32ColumnValue(req, kValueColumn, value);
     RETURN_NOT_OK(session->Apply(op));
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(QLError, "Error writing row: $0", op->response().error_message());
@@ -171,7 +175,8 @@ class QLTransactionTest : public QLDmlTestBase {
       const YBSessionPtr& session, size_t transaction = 0,
       const WriteOpType op_type = WriteOpType::INSERT) {
     for (size_t r = 0; r != kNumRows; ++r) {
-      ASSERT_OK(WriteRow(session,
+      ASSERT_OK(WriteRow(
+          session,
           KeyForTransactionAndIndex(transaction, r),
           ValueForTransactionAndIndex(transaction, r, op_type),
           op_type));
@@ -181,11 +186,12 @@ class QLTransactionTest : public QLDmlTestBase {
   // Select the specified columns of a row using a primary key, equivalent to the select statement
   // below. Return a YB read op that has been applied.
   //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
-  Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key) {
+  Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key,
+                            const std::string& column = kValueColumn) {
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
     table_.AddInt32HashValue(req, key);
-    table_.AddColumns({"v"}, req);
+    table_.AddColumns({column}, req);
     auto status = session->Apply(op);
     if (status.IsIOError()) {
       for (const auto& error : session->GetPendingErrors()) {
@@ -194,10 +200,10 @@ class QLTransactionTest : public QLDmlTestBase {
     }
     RETURN_NOT_OK(status);
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
-      return STATUS_FORMAT(QLError,
-                           "Error selecting row: $0, $1",
-                           QLResponsePB::QLStatus_Name(op->response().status()),
-                           op->response().error_message());
+      return STATUS(QLError,
+                    op->response().error_message(),
+                    Slice(),
+                    static_cast<int64_t>(ql::QLStatusToErrorCode(op->response().status())));
     }
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
@@ -206,9 +212,10 @@ class QLTransactionTest : public QLDmlTestBase {
     return rowblock->row(0).column(0).int32_value();
   }
 
-  void VerifyRow(int line, const YBSessionPtr& session, int32_t key, int32_t value) {
+  void VerifyRow(int line, const YBSessionPtr& session, int32_t key, int32_t value,
+                 const std::string& column = kValueColumn) {
     VLOG(4) << "Calling SelectRow";
-    auto row = SelectRow(session, key);
+    auto row = SelectRow(session, key, column);
     ASSERT_TRUE(row.ok()) << "Bad status: " << row << ", originator: " << __FILE__ << ":" << line;
     VLOG(4) << "SelectRow returned: " << *row;
     ASSERT_EQ(value, *row) << "Originator: " << __FILE__ << ":" << line;
@@ -229,13 +236,15 @@ class QLTransactionTest : public QLDmlTestBase {
     LOG(INFO) << "Committed";
   }
 
-  void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT) {
+  void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT,
+                  const std::string& column = kValueColumn) {
     VLOG(4) << "Verifying data..." << std::endl;
     auto session = CreateSession();
     for (size_t i = 0; i != num_transactions; ++i) {
       for (size_t r = 0; r != kNumRows; ++r) {
         VERIFY_ROW(
-            session, KeyForTransactionAndIndex(i, r), ValueForTransactionAndIndex(i, r, op_type));
+            session, KeyForTransactionAndIndex(i, r), ValueForTransactionAndIndex(i, r, op_type),
+            column);
       }
     }
   }
@@ -266,26 +275,85 @@ TEST_F(QLTransactionTest, Simple) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-TEST_F(QLTransactionTest, DISABLED_ReadRestart) {
+TEST_F(QLTransactionTest, ReadRestart) {
   google::FlagSaver saver;
 
   FLAGS_transaction_read_skew_usec = 250000;
 
   WriteData();
 
-  std::this_thread::sleep_for(5s);
-
   server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
-                                            IsolationLevel::SNAPSHOT_ISOLATION);
-  auto session = CreateSession(tc);
+  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
+                                              IsolationLevel::SNAPSHOT_ISOLATION);
+  auto session = CreateSession(txn1);
   for (size_t r = 0; r != kNumRows; ++r) {
     auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-    ASSERT_TRUE(!row.ok() && row.status().IsTryAgain()) << "Bad row: " << row;
+    ASSERT_NOK(row);
+    ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
+        << "Bad row: " << row;
+  }
+  auto txn2 = txn1->CreateRestartedTransaction();
+  session->SetTransaction(txn2);
+  for (size_t r = 0; r != kNumRows; ++r) {
+    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+    ASSERT_OK(row);
+    ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
   }
   VerifyData();
 
   CHECK_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, WriteRestart) {
+  google::FlagSaver saver;
+
+  FLAGS_transaction_read_skew_usec = 250000;
+
+  const std::string kExtraColumn = "v2";
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  table_alterer->AddColumn(kExtraColumn)->Type(DataType::INT32);
+  ASSERT_OK(table_alterer->Alter());
+
+  ASSERT_OK(table_.Open(kTableName, client_.get())); // Reopen to update schema version.
+
+  WriteData();
+
+  server::TestClockDeltaChanger delta_changer(-100ms, clock_);
+  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
+                                              IsolationLevel::SNAPSHOT_ISOLATION);
+  YBTransactionPtr txn2;
+  auto session = CreateSession(txn1);
+  for (bool retry : {false, true}) {
+    for (size_t r = 0; r != kNumRows; ++r) {
+      const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+      auto* const req = op->mutable_request();
+      auto key = KeyForTransactionAndIndex(0, r);
+      auto old_value = ValueForTransactionAndIndex(0, r, WriteOpType::INSERT);
+      auto value = ValueForTransactionAndIndex(0, r, WriteOpType::UPDATE);
+      table_.AddInt32HashValue(req, key);
+      table_.AddInt32ColumnValue(req, kExtraColumn, value);
+      auto cond = req->mutable_where_expr()->mutable_condition();
+      table_.SetInt32Condition(cond, kValueColumn, QLOperator::QL_OP_EQUAL, old_value);
+      req->mutable_column_refs()->add_ids(table_.ColumnId(kValueColumn));
+      LOG(INFO) << "Updating value";
+      auto status = session->Apply(op);
+      ASSERT_OK(status);
+      if (!retry) {
+        ASSERT_EQ(QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR, op->response().status());
+      } else {
+        ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
+      }
+    }
+    if (!retry) {
+      txn2 = txn1->CreateRestartedTransaction();
+      session->SetTransaction(txn2);
+    }
+  }
+  txn2->CommitFuture().wait();
+  VerifyData();
+  VerifyData(1, WriteOpType::UPDATE, kExtraColumn);
+
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 TEST_F(QLTransactionTest, InsertUpdate) {
@@ -554,6 +622,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
 
 TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   google::FlagSaver flag_saver;
+  FLAGS_transaction_read_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.

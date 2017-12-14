@@ -71,8 +71,6 @@ class ErrorCollector;
 class RemoteTablet;
 class AsyncRpc;
 
-typedef scoped_refptr<Batcher> BatcherPtr;
-
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
 //
@@ -91,7 +89,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
           const std::shared_ptr<YBSessionData>& session,
-          yb::client::YBSession::ExternalConsistencyMode consistency_mode);
+          yb::client::YBSession::ExternalConsistencyMode consistency_mode,
+          YBTransactionPtr transaction);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
@@ -231,7 +230,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
   // will be called exactly once (and the state changed to kFlushed).
-  YBStatusCallback* flush_callback_;
+  YBStatusCallback* flush_callback_ = nullptr;
 
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during SendRpcCb of AsyncRpc.
@@ -264,6 +263,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   AtomicInt<int64_t> buffer_bytes_used_;
 
   std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
+
+  YBTransactionPtr transaction_;
 
   TransactionPrepareData transaction_prepare_data_;
 

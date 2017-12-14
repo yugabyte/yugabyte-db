@@ -63,31 +63,31 @@ class IntentAwareIterator {
   void operator=(const IntentAwareIterator& other) = delete;
 
   // Seek to the smallest key which is greater or equal than doc_key.
-  CHECKED_STATUS Seek(const DocKey& doc_key);
+  void Seek(const DocKey& doc_key);
 
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  CHECKED_STATUS SeekWithoutHt(const Slice& key);
+  void SeekWithoutHt(const Slice& key);
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
-  CHECKED_STATUS SeekForwardWithoutHt(const Slice& key);
+  void SeekForwardWithoutHt(const Slice& key);
 
   // Seek forward to specified subdoc key.
-  CHECKED_STATUS SeekForwardIgnoreHt(const SubDocKey& subdoc_key);
+  void SeekForwardIgnoreHt(const SubDocKey& subdoc_key);
 
   // Seek past specified subdoc key.
-  CHECKED_STATUS SeekPastSubKey(const SubDocKey& subdoc_key);
+  void SeekPastSubKey(const SubDocKey& subdoc_key);
 
   // Seek out of subdoc key.
-  CHECKED_STATUS SeekOutOfSubDoc(const SubDocKey& subdoc_key);
+  void SeekOutOfSubDoc(const SubDocKey& subdoc_key);
 
   // Seek to last doc key.
-  CHECKED_STATUS SeekToLastDocKey();
+  void SeekToLastDocKey();
 
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
   // provided
-  CHECKED_STATUS PrevDocKey(const DocKey& doc_key);
+  void PrevDocKey(const DocKey& doc_key);
 
   // Adds new value to prefix stack. The top value of this stack is used to filter
   // returned entries. After seek we check whether currently pointed value has active prefix.
@@ -98,10 +98,13 @@ class IntentAwareIterator {
   // if new top prefix is a prefix of currently pointed value.
   void PopPrefix();
 
+  // Fetches currently pointed key and also updates max_seen_ht to ht of this key.
+  Result<Slice> FetchKey();
+
   bool valid();
-  Slice key();
   Slice value();
   ReadHybridTime read_time() { return read_time_; }
+  HybridTime max_seen_ht() { return max_seen_ht_; }
 
   // If there is a key equal to key_bytes_without_ht + some timestamp, which is later than
   // max_deleted_ts, we update max_deleted_ts and result_value (unless it is nullptr).
@@ -118,7 +121,7 @@ class IntentAwareIterator {
 
  private:
   // Seek forward on regular sub-iterator.
-  CHECKED_STATUS SeekForwardRegular(const Slice& slice, const Slice& prefix = Slice());
+  void SeekForwardRegular(const Slice& slice, const Slice& prefix = Slice());
 
   // Skips regular entries with hybrid time after read limit.
   void SkipFutureRecords();
@@ -133,12 +136,12 @@ class IntentAwareIterator {
   // intent_iter_ will be positioned to first intent for the smallest key greater than
   // resolved_intent_sub_doc_key_encoded_.
   // If iterator already positioned far enough - does not perform seek.
-  CHECKED_STATUS SeekForwardToSuitableIntent(const KeyBytes &intent_key_prefix);
+  void SeekForwardToSuitableIntent(const KeyBytes &intent_key_prefix);
 
   // Seek intent sub-iterator forward to latest suitable intent for first available key.
   // intent_iter_ will be positioned to first intent for the smallest key greater than
   // resolved_intent_sub_doc_key_encoded_.
-  CHECKED_STATUS SeekForwardToSuitableIntent();
+  void SeekForwardToSuitableIntent();
 
   // Decodes intent at intent_iter_ position and updates resolved_intent_* fields if that intent
   // matches all following conditions:
@@ -155,7 +158,7 @@ class IntentAwareIterator {
   // Note: For performance reasons resolved_intent_sub_doc_key_encoded_ is not updated by this
   // function and should be updated after we have found latest suitable intent for the key by
   // calling UpdateResolvedIntentSubDocKeyEncoded.
-  CHECKED_STATUS ProcessIntent();
+  void ProcessIntent();
 
   void UpdateResolvedIntentSubDocKeyEncoded();
   void DebugDump();
@@ -168,6 +171,8 @@ class IntentAwareIterator {
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
   std::unique_ptr<rocksdb::Iterator> iter_;
   bool iter_valid_ = false;
+  Status status_;
+  HybridTime max_seen_ht_ = HybridTime::kMin;
 
   // Following fields contain information related to resolved suitable intent.
   ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;

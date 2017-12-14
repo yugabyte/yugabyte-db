@@ -344,6 +344,7 @@ message QLResponsePB {
     YQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
     YQL_STATUS_RUNTIME_ERROR = 2;
     YQL_STATUS_USAGE_ERROR = 3;
+    YQL_STATUS_RESTART_REQUIRED_ERROR = 4;
   }
 
   // Status and error message

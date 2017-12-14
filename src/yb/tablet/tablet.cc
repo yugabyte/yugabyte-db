@@ -258,6 +258,21 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
   return Status::OK();
 }
 
+// Struct to pass data to WriteOperation related functions.
+struct WriteOperationData {
+  WriteOperationState* operation_state;
+  LockBatch *keys_locked;
+  HybridTime* restart_read_ht;
+
+  tserver::WriteRequestPB* write_request() const {
+    return operation_state->mutable_request();
+  }
+
+  ReadHybridTime read_time() const {
+    return ReadHybridTime::FromReadTimePB(*write_request());
+  }
+};
+
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
 Tablet::Tablet(
@@ -590,6 +605,9 @@ namespace {
 void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_request) {
   batch_request->Swap(write_request);
   write_request->set_allocated_tablet_id(batch_request->release_tablet_id());
+  if (batch_request->has_read_time()) {
+    write_request->set_allocated_read_time(batch_request->release_read_time());
+  }
   if (batch_request->write_batch().has_transaction()) {
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
@@ -598,29 +616,27 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
 
 } // namespace
 
-Status Tablet::KeyValueBatchFromRedisWriteBatch(
-    WriteRequestPB* redis_write_request,
-    LockBatch* keys_locked,
-    vector<RedisResponsePB>* responses) {
+Status Tablet::KeyValueBatchFromRedisWriteBatch(const WriteOperationData& data) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
-
   docdb::DocOperations doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(redis_write_request, &batch_request);
+  SetupKeyValueBatch(data.write_request(), &batch_request);
   auto* redis_write_batch = batch_request.mutable_redis_write_batch();
 
   doc_ops.reserve(redis_write_batch->size());
   for (size_t i = 0; i < redis_write_batch->size(); i++) {
     doc_ops.emplace_back(new RedisWriteOperation(redis_write_batch->Mutable(i)));
   }
-  auto read_time = ReadHybridTime::FromPB(*redis_write_request);
-  RETURN_NOT_OK(StartDocWriteOperation(
-      doc_ops, read_time, keys_locked, redis_write_request->mutable_write_batch()));
+  RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
+  if (data.restart_read_ht->is_valid()) {
+    return Status::OK();
+  }
+  auto* response = data.operation_state->response();
   for (size_t i = 0; i < doc_ops.size(); i++) {
-    responses->emplace_back(
-        (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
+    auto* redis_write_operation = down_cast<RedisWriteOperation*>(doc_ops[i].get());
+    response->add_redis_response_batch()->Swap(&redis_write_operation->response());
   }
 
   return Status::OK();
@@ -643,15 +659,14 @@ Status Tablet::HandleRedisReadRequest(const ReadHybridTime& read_time,
 Status Tablet::HandleQLReadRequest(
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
-    const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
-    gscoped_ptr<faststring>* rows_data) {
+    const TransactionMetadataPB& transaction_metadata,
+    QLReadRequestResult* result) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
-
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
   if (metadata()->schema_version() != ql_read_request.schema_version()) {
-    response->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     return Status::OK();
   }
 
@@ -659,7 +674,7 @@ Status Tablet::HandleQLReadRequest(
       CreateTransactionOperationContext(transaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandleQLReadRequest(
-      read_time, ql_read_request, *txn_op_ctx, response, rows_data);
+      read_time, ql_read_request, *txn_op_ctx, result);
 }
 
 CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
@@ -689,62 +704,60 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromQLWriteBatch(
-    WriteRequestPB* ql_write_request,
-    LockBatch *keys_locked,
-    WriteResponsePB* write_response,
-    WriteOperationState* operation_state) {
+Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   docdb::DocOperations doc_ops;
   WriteRequestPB batch_request;
-  SetupKeyValueBatch(ql_write_request, &batch_request);
+  SetupKeyValueBatch(data.write_request(), &batch_request);
   auto* ql_write_batch = batch_request.mutable_ql_write_batch();
 
   doc_ops.reserve(ql_write_batch->size());
 
   Result<TransactionOperationContextOpt> txn_op_ctx =
-      CreateTransactionOperationContext(ql_write_request->write_batch().transaction());
+      CreateTransactionOperationContext(data.write_request()->write_batch().transaction());
   RETURN_NOT_OK(txn_op_ctx);
   for (size_t i = 0; i < ql_write_batch->size(); i++) {
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
-    QLResponsePB* resp = write_response->add_ql_response_batch();
+    QLResponsePB* resp = data.operation_state->response()->add_ql_response_batch();
     if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
       doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp, *txn_op_ctx));
     }
   }
-  auto read_time = ReadHybridTime::FromPB(*ql_write_request);
-  RETURN_NOT_OK(StartDocWriteOperation(
-      doc_ops, read_time, keys_locked, ql_write_request->mutable_write_batch()));
+  RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
+  if (data.restart_read_ht->is_valid()) {
+    return Status::OK();
+  }
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
     // If the QL write op returns a rowblock, move the op to the transaction state to return the
     // rows data as a sidecar after the transaction completes.
     if (ql_write_op->rowblock() != nullptr) {
       doc_ops[i].release();
-      operation_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
+      data.operation_state->ql_write_ops()->emplace_back(unique_ptr<QLWriteOperation>(ql_write_op));
     }
   }
 
   return Status::OK();
 }
 
-Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
+Status Tablet::AcquireLocksAndPerformDocOperations(
+    WriteOperationState *state, HybridTime* restart_read_ht) {
   LockBatch locks_held;
   WriteRequestPB* key_value_write_request = state->mutable_request();
 
   bool invalid_table_type = true;
+  WriteOperationData data = {
+    state,
+    &locks_held,
+    restart_read_ht
+  };
   switch (table_type_) {
     case TableType::REDIS_TABLE_TYPE: {
-      vector<RedisResponsePB> responses;
-      RETURN_NOT_OK(KeyValueBatchFromRedisWriteBatch(key_value_write_request,
-          &locks_held, &responses));
-      for (auto &redis_resp : responses) {
-        *(state->response()->add_redis_response_batch()) = std::move(redis_resp);
-      }
+      RETURN_NOT_OK(KeyValueBatchFromRedisWriteBatch(data));
       invalid_table_type = false;
       break;
     }
@@ -754,11 +767,13 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
           << "QL write and Kudu row operations not supported in the same request";
       if (key_value_write_request->ql_write_batch_size() > 0) {
         std::vector<QLResponsePB> responses;
-        RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(
-            key_value_write_request, &locks_held, state->response(), state));
+        RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(data));
+        if (restart_read_ht->is_valid()) {
+          return Status::OK();
+        }
       } else {
         // TODO: Remove this row op based codepath after all tests set yql_write_batch.
-        RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(key_value_write_request, &locks_held));
+        RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(data));
       }
       invalid_table_type = false;
       break;
@@ -785,16 +800,14 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteOperationState *state) {
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request,
-                                           LockBatch *keys_locked) {
+Status Tablet::KeyValueBatchFromKuduRowOps(const WriteOperationData& data) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
   TRACE("PREPARE: Decoding operations");
 
   WriteRequestPB row_operations_request;
-  SetupKeyValueBatch(kudu_write_request, &row_operations_request);
-  auto* write_batch = kudu_write_request->mutable_write_batch();
+  SetupKeyValueBatch(data.write_request(), &row_operations_request);
 
   TRACE("Acquiring schema lock in shared mode");
   shared_lock<rw_semaphore> schema_lock(schema_lock_);
@@ -815,7 +828,7 @@ Status Tablet::KeyValueBatchFromKuduRowOps(WriteRequestPB* kudu_write_request,
 
   RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
 
-  RETURN_NOT_OK(CreateWriteBatchFromKuduRowOps(row_ops, write_batch, keys_locked));
+  RETURN_NOT_OK(CreateWriteBatchFromKuduRowOps(row_ops, data));
 
   return Status::OK();
 }
@@ -829,11 +842,9 @@ DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
 }  // namespace
 
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                              KeyValueWriteBatchPB* write_batch,
-                                              LockBatch* keys_locked) {
+                                              const WriteOperationData& data) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
-
   docdb::DocOperations doc_ops;
   for (DecodedRowOperation row_op : row_ops) {
     // row_data contains the row key for all Kudu operation types (insert/update/delete).
@@ -901,7 +912,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
       }
     }
   }
-  return StartDocWriteOperation(doc_ops, ReadHybridTime(), keys_locked, write_batch);
+  return StartDocWriteOperation(doc_ops, data);
 }
 
 Status Tablet::Flush(FlushMode mode) {
@@ -1190,17 +1201,16 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
 } // namespace
 
 Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
-                                      const ReadHybridTime& read_time,
-                                      LockBatch *keys_locked,
-                                      KeyValueWriteBatchPB* write_batch) {
+                                      const WriteOperationData& data) {
+  auto write_batch = data.write_request()->mutable_write_batch();
   auto isolation_level = GetIsolationLevel(*write_batch, transaction_participant_.get());
   RETURN_NOT_OK(isolation_level);
   bool need_read_snapshot = false;
   docdb::PrepareDocWriteOperation(
-      doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_, keys_locked,
-      &need_read_snapshot);
+      doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_,
+      data.keys_locked, &need_read_snapshot);
 
-  auto read_op = need_read_snapshot ? ScopedReadOperation(this, read_time)
+  auto read_op = need_read_snapshot ? ScopedReadOperation(this, data.read_time())
                                     : ScopedReadOperation();
   auto real_read_time = need_read_snapshot ? read_op.read_time()
                                            : ReadHybridTime::SingleTime(clock_->Now());
@@ -1222,7 +1232,12 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
       doc_ops, real_read_time, rocksdb_.get(), write_batch,
       table_type_ == TableType::REDIS_TABLE_TYPE ? InitMarkerBehavior::kRequired
                                                  : InitMarkerBehavior::kOptional,
-      &monotonic_counter_));
+      &monotonic_counter_,
+      data.restart_read_ht));
+
+  if (data.restart_read_ht->is_valid()) {
+    return Status::OK();
+  }
 
   if (*isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     auto result = docdb::ResolveTransactionConflicts(*write_batch,
@@ -1230,7 +1245,7 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
                                                      rocksdb_.get(),
                                                      transaction_participant_.get());
     if (!result.ok()) {
-      *keys_locked = LockBatch();  // Unlock the keys.
+      *data.keys_locked = LockBatch();  // Unlock the keys.
       return result;
     }
   }
@@ -1412,13 +1427,9 @@ ScopedReadOperation::ScopedReadOperation(
     AbstractTablet* tablet, const ReadHybridTime& read_time)
     : tablet_(tablet), read_time_(read_time) {
   if (!read_time_.read.is_valid()) {
-    read_time_.read = tablet->SafeTimestampToRead();
-  }
-  if (!read_time_.limit.is_valid()) {
-    read_time_.limit = read_time_.read;
+    read_time_ = ReadHybridTime::SingleTime(tablet->SafeTimestampToRead());
   }
 
-  DCHECK_GE(read_time_.limit, read_time_.read);
   tablet_->RegisterReaderTimestamp(read_time_.read);
 }
 

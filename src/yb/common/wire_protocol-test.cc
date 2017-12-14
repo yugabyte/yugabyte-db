@@ -104,7 +104,7 @@ TEST_F(WireProtocolTest, TestBadStatusWithPosixCode) {
 
   Status s2 = StatusFromPB(pb);
   EXPECT_TRUE(s2.IsNotFound());
-  EXPECT_EQ(1234, s2.posix_code());
+  EXPECT_EQ(1234, s2.error_code());
   EXPECT_EQ(s.ToString(/* no file/line */ false), s2.ToString(/* no file/line */ false));
 }
 

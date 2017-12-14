@@ -61,11 +61,10 @@ CHECKED_STATUS SystemTablet::HandleRedisReadRequest(
 
 CHECKED_STATUS SystemTablet::HandleQLReadRequest(
     const ReadHybridTime& read_time, const QLReadRequestPB& ql_read_request,
-    const TransactionMetadataPB& transaction_metadata, QLResponsePB* response,
-    gscoped_ptr<faststring>* rows_data) {
+    const TransactionMetadataPB& transaction_metadata, tablet::QLReadRequestResult* result) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
-      read_time, ql_read_request, boost::none, response, rows_data);
+      read_time, ql_read_request, boost::none, result);
 }
 
 CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

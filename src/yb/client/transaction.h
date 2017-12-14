@@ -18,6 +18,7 @@
 
 #include <future>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "yb/common/common.pb.h"
@@ -49,6 +50,9 @@ struct TransactionPrepareData {
 
   // Read time.
   ReadHybridTime read_time;
+
+  // Local limits for separate tablets, pointed object alive while transaction is alive.
+  const std::unordered_map<TabletId, HybridTime>* local_limits;
 };
 
 // YBTransaction is a representation of a single transaction.
@@ -81,6 +85,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Returns transaction ID.
   const TransactionId& id() const;
+
+  void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time);
+
+  YBTransactionPtr CreateRestartedTransaction();
 
   std::shared_future<TransactionMetadata> TEST_GetMetadata() const;
 

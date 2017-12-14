@@ -391,12 +391,11 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
       // there is only one iteration and the compaction does not happen.
       fixture_->CompactHistoryBefore(hybrid_time);
     }
+    SubDocKey sub_doc_key(doc_key);
     SubDocument doc_from_rocksdb;
     bool doc_found_in_rocksdb = false;
-    ASSERT_OK(
-        GetSubDocument(
-            rocksdb(), SubDocKey(doc_key), rocksdb::kDefaultQueryId, txn_op_context,
-            &doc_from_rocksdb, &doc_found_in_rocksdb));
+    GetSubDocumentData data = { &sub_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb };
+    ASSERT_OK(GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, txn_op_context));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.

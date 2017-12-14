@@ -208,8 +208,11 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(rocksdb());
     QLResultSet resultset;
+    HybridTime read_restart_ht;
     EXPECT_OK(read_op.Execute(
-        ql_storage, ReadHybridTime::SingleTime(read_time), schema, query_schema, &resultset));
+        ql_storage, ReadHybridTime::SingleTime(read_time), schema, query_schema, &resultset,
+        &read_restart_ht));
+    EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
     for (const auto& rsrow : resultset.rsrows()) {

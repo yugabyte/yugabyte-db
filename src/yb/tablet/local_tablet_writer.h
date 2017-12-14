@@ -114,7 +114,8 @@ class LocalTabletWriter {
     }
 
     tx_state_.reset(new WriteOperationState(nullptr, &req_, nullptr));
-    RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get()));
+    HybridTime read_ht;
+    RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get(), &read_ht));
     tablet_->StartOperation(tx_state_.get());
 
     // Create a "fake" OpId and set it in the OperationState for anchoring.

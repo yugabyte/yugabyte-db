@@ -22,8 +22,7 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
     const ReadHybridTime& read_time,
     const QLReadRequestPB& ql_read_request,
     const TransactionOperationContextOpt& txn_op_context,
-    QLResponsePB* response,
-    gscoped_ptr<faststring>* rows_data) {
+    QLReadRequestResult* result) {
 
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
@@ -44,26 +43,27 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
   QLResultSet resultset;
   TRACE("Start Execute");
-  const Status s = doc_op.Execute(QLStorage(), read_time, schema, query_schema, &resultset);
+  const Status s = doc_op.Execute(
+      QLStorage(), read_time, schema, query_schema, &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
-    response->set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
-    response->set_error_message(s.message().ToString());
+    result->response.set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+    result->response.set_error_message(s.message().cdata(), s.message().size());
     return Status::OK();
   }
-  *response = std::move(doc_op.response());
+  result->response.Swap(&doc_op.response());
 
-  RETURN_NOT_OK(CreatePagingStateForRead(ql_read_request, resultset.rsrow_count(), response));
+  RETURN_NOT_OK(CreatePagingStateForRead(
+      ql_read_request, resultset.rsrow_count(), &result->response));
 
   // TODO(neil) The clients' request should indicate what encoding method should be used. When
   // multi-shard is used to process more complicated queries, proxy-server might prefer a different
   // encoding. For now, we'll call CQLSerialize() without checking encoding method.
-  response->set_status(QLResponsePB::YQL_STATUS_OK);
-  rows_data->reset(new faststring());
+  result->response.set_status(QLResponsePB::YQL_STATUS_OK);
   TRACE("Start Serialize");
   RETURN_NOT_OK(resultset.CQLSerialize(ql_read_request.client(),
                                        rsrow_desc,
-                                       rows_data->get()));
+                                       &result->rows_data));
   TRACE("Done Serialize");
   return Status::OK();
 }

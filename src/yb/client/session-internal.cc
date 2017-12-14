@@ -61,6 +61,17 @@ YBSessionData::YBSessionData(shared_ptr<YBClient> client,
 YBSessionData::~YBSessionData() {
 }
 
+void YBSessionData::SetTransaction(YBTransactionPtr transaction) {
+  internal::BatcherPtr old_batcher;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    transaction_ = std::move(transaction);
+    old_batcher = NewBatcherUnlocked();
+  }
+  LOG_IF(DFATAL, old_batcher->HasPendingOperations()) << "SetTransaction with non empty batcher";
+  old_batcher->Abort(STATUS(Aborted, "Transaction changed"));
+}
+
 void YBSessionData::Init() {
   CHECK(!batcher_);
   NewBatcher();
@@ -68,22 +79,25 @@ void YBSessionData::Init() {
 
 scoped_refptr<Batcher> YBSessionData::NewBatcher() {
   std::lock_guard<simple_spinlock> l(lock_);
+  return NewBatcherUnlocked();
+}
 
+scoped_refptr<Batcher> YBSessionData::NewBatcherUnlocked() {
   scoped_refptr<Batcher> batcher(
     new Batcher(client_.get(), error_collector_.get(), shared_from_this(),
-                external_consistency_mode_));
+                external_consistency_mode_, transaction_));
   if (timeout_ms_ != -1) {
     batcher->SetTimeoutMillis(timeout_ms_);
   }
   batcher.swap(batcher_);
 
   if (batcher) {
-    CHECK(flushed_batchers_.insert(batcher.get()).second);
+    CHECK(flushed_batchers_.insert(batcher).second);
   }
   return batcher;
 }
 
-void YBSessionData::FlushFinished(Batcher* batcher) {
+void YBSessionData::FlushFinished(internal::BatcherPtr batcher) {
   std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
