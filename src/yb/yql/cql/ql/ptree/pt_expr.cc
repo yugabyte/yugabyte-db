@@ -148,17 +148,26 @@ CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
 CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
   // Check for limitation in QL (Not all expressions are acceptable).
   switch (op_) {
+    case ExprOperator::kRef:
+      // Only accept column references where they are explicitly allowed.
+      if (sem_context->sem_state() == nullptr ||
+          !sem_context->allowing_column_refs()) {
+        return sem_context->Error(this,
+            "Column references are not allowed in this context",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+      FALLTHROUGH_INTENDED;
     case ExprOperator::kConst: FALLTHROUGH_INTENDED;
     case ExprOperator::kCollection: FALLTHROUGH_INTENDED;
     case ExprOperator::kUMinus: FALLTHROUGH_INTENDED;
     case ExprOperator::kBindVar: FALLTHROUGH_INTENDED;
-    case ExprOperator::kRef: FALLTHROUGH_INTENDED;
     case ExprOperator::kBcall:
       break;
     default:
       return sem_context->Error(this, "Operator not allowed as right hand value",
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
+
   return Status::OK();
 }
 
@@ -452,6 +461,7 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
   // passing down where state
   sem_state->CopyPreviousWhereState();
+  sem_state->set_allowing_column_refs(true);
   // No expectation for operand 1. All types are accepted.
   return Status::OK();
 }
@@ -460,6 +470,7 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
   // The state of operand2 is dependent on operand1.
   PTExpr::SharedPtr operand1 = op1();
   DCHECK(operand1 != nullptr);
+  sem_state->set_allowing_column_refs(false);
 
   switch (ql_op_) {
     case QL_OP_EQUAL: FALLTHROUGH_INTENDED;

@@ -126,23 +126,5 @@ TEST_F(TestQLInsertTable, TestQLInsertTableSimple) {
   // tested here also.
 }
 
-TEST_F(TestQLInsertTable, TestQLInsertTableWithExpression) {
-  // Init the simulated cluster.
-  ASSERT_NO_FATALS(CreateSimulatedCluster());
-
-  // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
-
-  // Create the table 1.
-  EXEC_VALID_STMT(
-      "CREATE TABLE human_resource(id int, name varchar, salary int, primary key(id, name));");
-
-  //------------------------------------------------------------------------------------------------
-  // INSERT: Using builtin functions in normal exec environment.
-  // Error should be raised as builtins are not yet supported.
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(777, token(4), 100);");
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, token(4), 100);");
-}
-
 } // namespace ql
 } // namespace yb

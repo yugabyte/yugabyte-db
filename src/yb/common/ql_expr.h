@@ -45,6 +45,11 @@ class QLTableRow {
   typedef std::shared_ptr<QLTableRow> SharedPtr;
   typedef std::shared_ptr<const QLTableRow> SharedPtrConst;
 
+  static const QLTableRow& empty_row() {
+    static QLTableRow empty_row;
+    return empty_row;
+  }
+
   // Check if row is empty (no column).
   bool IsEmpty() const {
     return col_map_.empty();
@@ -142,6 +147,10 @@ class QLExprExecutor {
   CHECKED_STATUS EvalExpr(const QLExpressionPB& ql_expr,
                           const QLTableRow& table_row,
                           QLValue *result);
+
+  // Evaluate the given QLExpressionPB (if needed) and replace its content with the result.
+  CHECKED_STATUS EvalExpr(QLExpressionPB* ql_expr,
+                          const QLTableRow& table_row);
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   CHECKED_STATUS ReadExprValue(const QLExpressionPB& ql_expr,

@@ -190,6 +190,14 @@ class PTExpr : public TreeNode {
     return ((expr_op() == ExprOperator::kConst) ||
             (expr_op() == ExprOperator::kUMinus && op1()->expr_op() == ExprOperator::kConst));
   }
+
+  // Predicate for values.
+  bool has_no_column_ref() const {
+    return is_constant() ||
+           expr_op() == ExprOperator::kBindVar ||
+           expr_op() == ExprOperator::kCollection;
+  }
+
   virtual bool IsDummyStar() const {
     return false;
   }
