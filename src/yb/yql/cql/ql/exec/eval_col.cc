@@ -39,6 +39,7 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
 
 CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
+
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
       // This column is not assigned a value, ignore it. We don't support default value yet.
@@ -60,7 +61,11 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB
     }
 
     RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
-    // null values not allowed for primary key: checking here catches nulls introduced by bind
+    if (col_desc->is_primary()) {
+      RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row()));
+    }
+
+    // Null values not allowed for primary key: checking here catches nulls introduced by bind.
     if (col_desc->is_primary() && expr_pb->has_value() && IsNull(expr_pb->value())) {
       LOG(INFO) << "Unexpected null value. Current request: " << req->DebugString();
       return exec_context().Error(ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);

@@ -130,6 +130,7 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
                                                                 std::placeholders::_2);
 
   sem_state.set_processing_set_clause(true);
+  sem_state.set_allowing_column_refs(true);
   RETURN_NOT_OK(set_clause_->Analyze(sem_context, analyze));
   sem_state.ResetContextState();
 

@@ -277,8 +277,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   // Find the correct casting op for the result if expected type is not the same as return type.
   if (!sem_context->expr_expected_ql_type()->IsUnknown()) {
     s = BfuncCompile::FindCastOpcode(pt_result->ql_type()->main(),
-        sem_context->expr_expected_ql_type()->main(),
-        &result_cast_op_);
+                                     sem_context->expr_expected_ql_type()->main(),
+                                     &result_cast_op_);
+    if (!s.ok()) {
+      string err_msg = Substitute("Cannot cast builtin call return type '$0' to expected type '$1'",
+                                  pt_result->ql_type()->ToString(),
+                                  sem_context->expr_expected_ql_type()->ToString());
+      return sem_context->Error(this, err_msg.c_str(), ErrorCode::DATATYPE_MISMATCH);
+    }
+
     ql_type_ = sem_context->expr_expected_ql_type();
   } else {
     ql_type_ = pt_result->ql_type();
@@ -334,10 +341,6 @@ CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const
 
 // Collection constants.
 CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
-  if (sem_context->sem_state()->where_state() == nullptr) {
-    return sem_context->Error(this, "Token builtin call currently only allowed in where clause",
-        ErrorCode::FEATURE_NOT_SUPPORTED);
-  }
 
   RETURN_NOT_OK(PTBcall::Analyze(sem_context));
 

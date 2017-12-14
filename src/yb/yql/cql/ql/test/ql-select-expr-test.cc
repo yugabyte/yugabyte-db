@@ -365,5 +365,64 @@ TEST_F(QLTestSelectedExpr, TestQLSelectNumericExpr) {
   CHECK(expr_alias_row.column(1).IsNull());
 }
 
+TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  LOG(INFO) << "Test selecting numeric expressions.";
+
+  // Create the table and insert some value.
+  const char *create_stmt =
+      "CREATE TABLE test_select_token(h1 int, h2 double, h3 text, "
+      "                               r int, v int, primary key ((h1, h2, h3), r));";
+
+  CHECK_VALID_STMT(create_stmt);
+
+  CHECK_VALID_STMT("INSERT INTO test_select_token(h1, h2, h3, r, v) VALUES (1, 2.0, 'a', 1, 1)");
+  CHECK_VALID_STMT("INSERT INTO test_select_token(h1, h2, h3, r, v) VALUES (11, 22.5, 'bc', 1, 1)");
+
+  // Test various selects.
+  std::shared_ptr<QLRowBlock> row_block;
+
+  // Get the token for the first row.
+  CHECK_VALID_STMT("SELECT token(h1, h2, h3) FROM test_select_token "
+      "WHERE h1 = 1 AND h2 = 2.0 AND h3 = 'a';");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  int64_t token1 = row_block->row(0).column(0).int64_value();
+
+  // Check the token value matches the row.
+  CHECK_VALID_STMT(Substitute("SELECT h1, h2, h3 FROM test_select_token "
+      "WHERE token(h1, h2, h3) = $0", token1));
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const QLRow& row1 = row_block->row(0);
+  CHECK_EQ(row1.column(0).int32_value(), 1);
+  CHECK_EQ(row1.column(1).double_value(), 2.0);
+  CHECK_EQ(row1.column(2).string_value(), "a");
+
+  // Get the token for the second row (also test additional selected columns).
+  CHECK_VALID_STMT("SELECT v, token(h1, h2, h3), h3 FROM test_select_token "
+      "WHERE h1 = 11 AND h2 = 22.5 AND h3 = 'bc';");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  // Check the other selected columns return expected result.
+  CHECK_EQ(row_block->row(0).column(0).int32_value(), 1);
+  CHECK_EQ(row_block->row(0).column(2).string_value(), "bc");
+  int64_t token2 = row_block->row(0).column(1).int64_value();
+
+  // Check the token value matches the row.
+  CHECK_VALID_STMT(Substitute("SELECT h1, h2, h3 FROM test_select_token "
+      "WHERE token(h1, h2, h3) = $0", token2));
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const QLRow& row2 = row_block->row(0);
+  CHECK_EQ(row2.column(0).int32_value(), 11);
+  CHECK_EQ(row2.column(1).double_value(), 22.5);
+  CHECK_EQ(row2.column(2).string_value(), "bc");
+}
+
 } // namespace ql
 } // namespace yb
