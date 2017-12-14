@@ -55,7 +55,9 @@ public class TestUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);
 
   // Used by pidOfProcess()
-  private static String UNIX_PROCESS_CLS_NAME =  "java.lang.UNIXProcess";
+  private static String UNIX_PROCESS_CLASS_NAME =  "java.lang.UNIXProcess";
+  private static String JDK9_PROCESS_IMPL_CLASS_NAME = "java.lang.ProcessImpl";
+
   private static Set<String> VALID_SIGNALS =  ImmutableSet.of("STOP", "CONT", "TERM", "KILL");
 
   private static final String BIN_DIR_PROP = "binDir";
@@ -263,9 +265,12 @@ public class TestUtils {
    */
   public static int pidOfProcess(Process proc) throws NoSuchFieldException, IllegalAccessException {
     Class<?> procCls = proc.getClass();
-    if (!procCls.getName().equals(UNIX_PROCESS_CLS_NAME)) {
-      throw new IllegalArgumentException("stopProcess() expects objects of class " +
-          UNIX_PROCESS_CLS_NAME + ", but " + procCls.getName() + " was passed in instead!");
+    final String actualClassName = procCls.getName();
+    if (!actualClassName.equals(UNIX_PROCESS_CLASS_NAME) &&
+        !actualClassName.equals(JDK9_PROCESS_IMPL_CLASS_NAME)) {
+      throw new IllegalArgumentException("pidOfProcess() expects an object of class " +
+          UNIX_PROCESS_CLASS_NAME + " or " + JDK9_PROCESS_IMPL_CLASS_NAME + ", but " +
+          procCls.getName() + " was passed in instead!");
     }
     Field pidField = procCls.getDeclaredField("pid");
     pidField.setAccessible(true);

@@ -30,8 +30,6 @@
 // under the License.
 //
 
-// Portions Copyright (c) YugaByte, Inc.
-
 #include "yb/tablet/tablet.h"
 
 #include <algorithm>
