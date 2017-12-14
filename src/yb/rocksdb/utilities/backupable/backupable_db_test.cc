@@ -348,7 +348,7 @@ class FileManager : public EnvWrapper {
 
     for (uint64_t i = 0; i < bytes_to_corrupt; ++i) {
       std::string tmp;
-      test::RandomString(&rnd_, 1, &tmp);
+      RandomString(&rnd_, 1, &tmp);
       file_contents[rnd_.Next() % file_contents.size()] = tmp[0];
     }
     return WriteToFile(fname, file_contents);

@@ -264,20 +264,20 @@ TEST_F(CuckooReaderTest, WhenKeyExistsWithUint64Comparator) {
     // Give disjoint hash values.
     AddHashLookups(user_keys[i], i, kNumHashFunc);
   }
-  CreateCuckooFileAndCheckReader(test::Uint64Comparator());
+  CreateCuckooFileAndCheckReader(Uint64Comparator());
   // Last level file.
   UpdateKeys(true);
-  CreateCuckooFileAndCheckReader(test::Uint64Comparator());
+  CreateCuckooFileAndCheckReader(Uint64Comparator());
   // Test with collision. Make all hash values collide.
   hash_map.clear();
   for (uint32_t i = 0; i < num_items; i++) {
     AddHashLookups(user_keys[i], 0, kNumHashFunc);
   }
   UpdateKeys(false);
-  CreateCuckooFileAndCheckReader(test::Uint64Comparator());
+  CreateCuckooFileAndCheckReader(Uint64Comparator());
   // Last level file.
   UpdateKeys(true);
-  CreateCuckooFileAndCheckReader(test::Uint64Comparator());
+  CreateCuckooFileAndCheckReader(Uint64Comparator());
 }
 
 TEST_F(CuckooReaderTest, CheckIterator) {
@@ -311,12 +311,12 @@ TEST_F(CuckooReaderTest, CheckIteratorUint64) {
     // Give disjoint hash values, in reverse order.
     AddHashLookups(user_keys[i], num_items-i-1, kNumHashFunc);
   }
-  CreateCuckooFileAndCheckReader(test::Uint64Comparator());
-  CheckIterator(test::Uint64Comparator());
+  CreateCuckooFileAndCheckReader(Uint64Comparator());
+  CheckIterator(Uint64Comparator());
   // Last level file.
   UpdateKeys(true);
-  CreateCuckooFileAndCheckReader(test::Uint64Comparator());
-  CheckIterator(test::Uint64Comparator());
+  CreateCuckooFileAndCheckReader(Uint64Comparator());
+  CheckIterator(Uint64Comparator());
 }
 
 TEST_F(CuckooReaderTest, WhenKeyNotFound) {
@@ -421,7 +421,7 @@ void WriteFile(const std::vector<std::string>& keys,
   unique_ptr<WritableFileWriter> file_writer(
       new WritableFileWriter(std::move(writable_file), env_options));
   CuckooTableBuilder builder(file_writer.get(), hash_ratio, 64, 1000,
-                             test::Uint64Comparator(), 5, false,
+                             Uint64Comparator(), 5, false,
                              FLAGS_identity_as_first_hash, nullptr);
   ASSERT_OK(builder.status());
   for (uint64_t key_idx = 0; key_idx < num; ++key_idx) {
@@ -443,7 +443,7 @@ void WriteFile(const std::vector<std::string>& keys,
 
   const ImmutableCFOptions ioptions(options);
   CuckooTableReader reader(ioptions, std::move(file_reader), file_size,
-                           test::Uint64Comparator(), nullptr);
+                           Uint64Comparator(), nullptr);
   ASSERT_OK(reader.status());
   ReadOptions r_options;
   std::string value;
@@ -474,7 +474,7 @@ void ReadKeys(uint64_t num, uint32_t batch_size) {
 
   const ImmutableCFOptions ioptions(options);
   CuckooTableReader reader(ioptions, std::move(file_reader), file_size,
-                           test::Uint64Comparator(), nullptr);
+                           Uint64Comparator(), nullptr);
   ASSERT_OK(reader.status());
   const UserCollectedProperties user_props =
     reader.GetTableProperties()->user_collected_properties;

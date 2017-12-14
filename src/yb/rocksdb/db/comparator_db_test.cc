@@ -292,6 +292,10 @@ class ComparatorDBTest : public testing::Test {
 
   void SetOwnedComparator(const Comparator* cmp) {
     comparator_guard.reset(cmp);
+    SetComparator(cmp);
+  }
+
+  void SetComparator(const Comparator* cmp) {
     comparator = cmp;
     last_options_.comparator = cmp;
   }
@@ -357,7 +361,7 @@ TEST_F(ComparatorDBTest, SimpleSuffixReverseComparator) {
 }
 
 TEST_F(ComparatorDBTest, Uint64Comparator) {
-  SetOwnedComparator(test::Uint64Comparator());
+  SetComparator(Uint64Comparator());
 
   for (int rnd_seed = 301; rnd_seed < 316; rnd_seed++) {
     Options* opt = GetOptions();

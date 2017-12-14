@@ -1333,12 +1333,6 @@ TEST_F(BlockBasedTableTest, NoopTransformSeek) {
   }
 }
 
-static std::string RandomString(Random* rnd, int len) {
-  std::string r;
-  test::RandomString(rnd, len, &r);
-  return r;
-}
-
 void AddInternalKey(TableConstructor* c, const std::string& prefix,
                     int suffix_len = 800) {
   static Random rnd(1023);
@@ -2067,9 +2061,9 @@ static void DoCompressionTest(CompressionType comp) {
   TableConstructor c(BytewiseComparator());
   std::string tmp;
   c.Add("k01", "hello");
-  c.Add("k02", test::CompressibleString(&rnd, 0.25, 10000, &tmp));
+  c.Add("k02", CompressibleString(&rnd, 0.25, 10000, &tmp));
   c.Add("k03", "hello3");
-  c.Add("k04", test::CompressibleString(&rnd, 0.25, 10000, &tmp));
+  c.Add("k04", CompressibleString(&rnd, 0.25, 10000, &tmp));
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
   Options options;
@@ -2142,7 +2136,7 @@ TEST_F(HarnessTest, Randomized) {
       for (int e = 0; e < num_entries; e++) {
         std::string v;
         Add(test::RandomKey(&rnd, rnd.Skewed(4)),
-            test::RandomString(&rnd, rnd.Skewed(5), &v).ToString());
+            RandomString(&rnd, rnd.Skewed(5), &v).ToString());
       }
       Test(&rnd);
     }
@@ -2158,7 +2152,7 @@ TEST_F(HarnessTest, RandomizedLongDB) {
   for (int e = 0; e < num_entries; e++) {
     std::string v;
     Add(test::RandomKey(&rnd, rnd.Skewed(4)),
-        test::RandomString(&rnd, rnd.Skewed(5), &v).ToString());
+        RandomString(&rnd, rnd.Skewed(5), &v).ToString());
   }
   Test(&rnd);
 

@@ -43,14 +43,6 @@ using std::atomic;
 
 namespace rocksdb {
 
-namespace {
-std::string RandomString(Random* rnd, int len) {
-  std::string r;
-  test::RandomString(rnd, len, &r);
-  return r;
-}
-}  // anonymous namespace
-
 // counts how many operations were performed
 class EnvCounter : public EnvWrapper {
  public:

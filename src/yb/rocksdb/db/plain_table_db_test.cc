@@ -62,7 +62,7 @@ TEST_F(PlainTableKeyDecoderTest, ReadNonMmap) {
   std::string tmp;
   Random rnd(301);
   const uint32_t kLength = 2222;
-  Slice contents = test::RandomString(&rnd, kLength, &tmp);
+  Slice contents = RandomString(&rnd, kLength, &tmp);
   test::StringSource* string_source =
       new test::StringSource(contents, 0, false);
 
@@ -173,7 +173,7 @@ class PlainTableDBTest : public testing::Test,
   }
 
   void DestroyAndReopen(Options* options = nullptr) {
-    //Destroy using last options
+    // Destroy using last options.
     Destroy(&last_options_);
     ASSERT_OK(TryReopen(options));
   }
@@ -1080,12 +1080,6 @@ static std::string Key(int i) {
   return std::string(buf);
 }
 
-static std::string RandomString(Random* rnd, int len) {
-  std::string r;
-  test::RandomString(rnd, len, &r);
-  return r;
-}
-
 TEST_P(PlainTableDBTest, CompactionTrigger) {
   Options options = CurrentOptions();
   options.write_buffer_size = 120 << 10;  // 100KB
@@ -1108,7 +1102,7 @@ TEST_P(PlainTableDBTest, CompactionTrigger) {
     ASSERT_EQ(NumTableFilesAtLevel(0), num + 1);
   }
 
-  //generate one more file in level-0, and should trigger level-0 compaction
+  // Generate one more file in level-0, and should trigger level-0 compaction.
   std::vector<std::string> values;
   for (int i = 0; i < 12; i++) {
     values.push_back(RandomString(&rnd, 10000));

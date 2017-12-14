@@ -32,6 +32,6 @@ int main() {
   return 1;
 }
 #else
-#include <rocksdb/db_bench_tool.h>
+#include <yb/rocksdb/db_bench_tool.h>
 int main(int argc, char** argv) { rocksdb::db_bench_tool(argc, argv); }
 #endif  // GFLAGS

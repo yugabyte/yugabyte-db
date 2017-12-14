@@ -21,9 +21,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
-#include <random>
+#ifndef YB_ROCKSDB_UTIL_RANDOM_H
+#define YB_ROCKSDB_UTIL_RANDOM_H
+
 #include <stdint.h>
+#include <random>
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -120,4 +124,21 @@ class Random64 {
   }
 };
 
+// Store in *dst a random string of length "len" and return a Slice that
+// references the generated data.
+Slice RandomString(Random* rnd, int len, std::string* dst);
+
+inline std::string RandomString(Random* rnd, int len) {
+  std::string r;
+  RandomString(rnd, len, &r);
+  return r;
+}
+
+// Store in *dst a string of length "len" that will compress to
+// "N*compressed_fraction" bytes and return a Slice that references
+// the generated data.
+Slice CompressibleString(Random* rnd, double compressed_fraction, int len, std::string* dst);
+
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_UTIL_RANDOM_H

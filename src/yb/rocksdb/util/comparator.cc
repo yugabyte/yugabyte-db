@@ -133,4 +133,40 @@ const Comparator* ReverseBytewiseComparator() {
   return &rbytewise;
 }
 
+class Uint64ComparatorImpl : public Comparator {
+ public:
+  Uint64ComparatorImpl() { }
+
+  const char* Name() const override {
+    return "rocksdb.Uint64Comparator";
+  }
+
+  int Compare(const Slice& a, const Slice& b) const override {
+    assert(a.size() == sizeof(uint64_t) && b.size() == sizeof(uint64_t));
+    const uint64_t* left = reinterpret_cast<const uint64_t*>(a.data());
+    const uint64_t* right = reinterpret_cast<const uint64_t*>(b.data());
+    if (*left == *right) {
+      return 0;
+    } else if (*left < *right) {
+      return -1;
+    } else {
+      return 1;
+    }
+  }
+
+  virtual void FindShortestSeparator(std::string* start,
+      const Slice& limit) const override {
+    return;
+  }
+
+  void FindShortSuccessor(std::string* key) const override {
+    return;
+  }
+};
+
+const Comparator* Uint64Comparator() {
+  static Uint64ComparatorImpl uint64comparator;
+  return &uint64comparator;
+}
+
 }  // namespace rocksdb

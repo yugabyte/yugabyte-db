@@ -18,8 +18,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_TYPES_H
-#define ROCKSDB_INCLUDE_ROCKSDB_TYPES_H
+#ifndef YB_ROCKSDB_TYPES_H
+#define YB_ROCKSDB_TYPES_H
 
 #include <stdint.h>
 
@@ -31,8 +31,10 @@ namespace rocksdb {
 
 // Represents a sequence number in a WAL file.
 typedef uint64_t SequenceNumber;
+#define PRISN PRIu64
+
 using yb::OpId;
 
 }  //  namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_TYPES_H
+#endif // YB_ROCKSDB_TYPES_H

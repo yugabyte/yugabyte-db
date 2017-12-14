@@ -284,7 +284,7 @@ class CorruptionTest : public testing::Test {
       return Slice(*storage);
     } else {
       Random r(k);
-      return test::RandomString(&r, kValueSize, storage);
+      return RandomString(&r, kValueSize, storage);
     }
   }
 };

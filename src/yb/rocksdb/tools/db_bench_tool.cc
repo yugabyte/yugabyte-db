@@ -36,17 +36,18 @@
 #endif
 #include <fcntl.h>
 #include <inttypes.h>
-#include <cstddef>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <gflags/gflags.h>
 
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+
+#include <gflags/gflags.h>
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -235,8 +236,7 @@ static bool ValidateKeySize(const char* flagname, int32_t value) {
 
 static bool ValidateUint32Range(const char* flagname, uint64_t value) {
   if (value > std::numeric_limits<uint32_t>::max()) {
-    fprintf(stderr, "Invalid value for --%s: %lu, overflow\n", flagname,
-            (unsigned long)value);
+    fprintf(stderr, "Invalid value for --%s: %" PRIu64 ", overflow\n", flagname, value);
     return false;
   }
   return true;
@@ -474,13 +474,14 @@ DEFINE_int32(level0_file_num_compaction_trigger,
              " when compactions start");
 
 static bool ValidateInt32Percent(const char* flagname, int32_t value) {
-  if (value <= 0 || value>=100) {
+  if (value <= 0 || value >= 100) {
     fprintf(stderr, "Invalid value for --%s: %d, 0< pct <100 \n",
             flagname, value);
     return false;
   }
   return true;
 }
+
 DEFINE_int32(readwritepercent, 90, "Ratio of reads to reads/writes (expressed"
              " as percentage) for the ReadRandomWriteRandom workload. The "
              "default value 90 means 90% operations out of all reads and writes"
@@ -744,7 +745,7 @@ DEFINE_int32(max_successive_merges, 0, "Maximum number of successive merge"
              " operations on a key in the memtable");
 
 static bool ValidatePrefixSize(const char* flagname, int32_t value) {
-  if (value < 0 || value>=2000000000) {
+  if (value < 0 || value >= 2000000000) {
     fprintf(stderr, "Invalid value for --%s: %d. 0<= PrefixSize <=2000000000\n",
             flagname, value);
     return false;
@@ -984,7 +985,7 @@ class RandomGenerator {
     while (data_.size() < (unsigned)std::max(1048576, FLAGS_value_size)) {
       // Add a short fragment that is as compressible as specified
       // by FLAGS_compression_ratio.
-      test::CompressibleString(&rnd, FLAGS_compression_ratio, 100, &piece);
+      CompressibleString(&rnd, FLAGS_compression_ratio, 100, &piece);
       data_.append(piece);
     }
     pos_ = 0;
@@ -1005,7 +1006,7 @@ static void AppendWithSpace(std::string* str, Slice msg) {
   if (!str->empty()) {
     str->push_back(' ');
   }
-  str->append(msg.data(), msg.size());
+  str->append(msg.cdata(), msg.size());
 }
 
 struct DBWithColumnFamilies {
@@ -1328,8 +1329,7 @@ class Stats {
       uint64_t now = FLAGS_env->NowMicros();
       uint64_t micros = now - last_op_finish_;
 
-      if (hist_.find(op_type) == hist_.end())
-      {
+      if (hist_.find(op_type) == hist_.end()) {
         HistogramImpl hist_temp;
         hist_.insert({op_type, hist_temp});
       }
@@ -1454,12 +1454,12 @@ class Stats {
     }
     AppendWithSpace(&extra, message_);
     double elapsed = (finish_ - start_) * 1e-6;
-    double throughput = (double)done_/elapsed;
+    double throughput = static_cast<double>(done_)/elapsed;
 
-    fprintf(stdout, "%-12s : %11.3f micros/op %ld ops/sec;%s%s\n",
+    fprintf(stdout, "%-12s : %11.3f micros/op %" PRId64 " ops/sec;%s%s\n",
             name.ToString().c_str(),
             elapsed * 1e6 / done_,
-            (long)throughput,
+            static_cast<int64_t>(throughput),
             (extra.empty() ? "" : " "),
             extra.c_str());
     if (FLAGS_histogram) {
@@ -1502,8 +1502,8 @@ struct SharedState {
   //    (3) running
   //    (4) done
 
-  long num_initialized;
-  long num_done;
+  int num_initialized;
+  int num_done;
   bool start;
 
   SharedState() : cv(&mu), perf_level(FLAGS_perf_level) { }
@@ -1516,7 +1516,7 @@ struct ThreadState {
   Stats stats;
   SharedState* shared;
 
-  /* implicit */ ThreadState(int index)
+  explicit ThreadState(int index)
       : tid(index),
         rand((FLAGS_seed ? FLAGS_seed : 1000) + index) {
   }
@@ -1526,7 +1526,7 @@ class Duration {
  public:
   Duration(uint64_t max_seconds, int64_t max_ops, int64_t ops_per_stage = 0) {
     max_seconds_ = max_seconds;
-    max_ops_= max_ops;
+    max_ops_ = max_ops;
     ops_per_stage_ = (ops_per_stage > 0) ? ops_per_stage : max_ops;
     ops_ = 0;
     start_at_ = FLAGS_env->NowMicros();
@@ -1595,27 +1595,27 @@ class Benchmark {
     bool ok = true;
     switch (FLAGS_compression_type_e) {
       case rocksdb::kSnappyCompression:
-        ok = Snappy_Compress(Options().compression_opts, input.data(),
+        ok = Snappy_Compress(Options().compression_opts, input.cdata(),
                              input.size(), compressed);
         break;
       case rocksdb::kZlibCompression:
-        ok = Zlib_Compress(Options().compression_opts, 2, input.data(),
+        ok = Zlib_Compress(Options().compression_opts, 2, input.cdata(),
                            input.size(), compressed);
         break;
       case rocksdb::kBZip2Compression:
-        ok = BZip2_Compress(Options().compression_opts, 2, input.data(),
+        ok = BZip2_Compress(Options().compression_opts, 2, input.cdata(),
                             input.size(), compressed);
         break;
       case rocksdb::kLZ4Compression:
-        ok = LZ4_Compress(Options().compression_opts, 2, input.data(),
+        ok = LZ4_Compress(Options().compression_opts, 2, input.cdata(),
                           input.size(), compressed);
         break;
       case rocksdb::kLZ4HCCompression:
-        ok = LZ4HC_Compress(Options().compression_opts, 2, input.data(),
+        ok = LZ4HC_Compress(Options().compression_opts, 2, input.cdata(),
                             input.size(), compressed);
         break;
       case rocksdb::kZSTDNotFinalCompression:
-        ok = ZSTD_Compress(Options().compression_opts, input.data(),
+        ok = ZSTD_Compress(Options().compression_opts, input.cdata(),
                            input.size(), compressed);
         break;
       default:
@@ -1862,7 +1862,7 @@ class Benchmark {
   //   |        key 00000         |
   //   ----------------------------
   void GenerateKeyFromInt(uint64_t v, int64_t num_keys, Slice* key) {
-    char* start = const_cast<char*>(key->data());
+    char* start = const_cast<char*>(key->cdata());
     char* pos = start;
     if (keys_per_prefix_ > 0) {
       int64_t num_prefix = num_keys / keys_per_prefix_;
@@ -2157,7 +2157,7 @@ class Benchmark {
         // Performs a local allocation of memory to threads in numa node.
         int n_nodes = numa_num_task_nodes();  // Number of nodes in NUMA.
         numa_exit_on_error = 1;
-        int numa_node = i % n_nodes;
+        uint64_t numa_node = i % n_nodes;
         bitmask* nodes = numa_allocate_nodemask();
         numa_bitmask_clearall(nodes);
         numa_bitmask_setbit(nodes, numa_node);
@@ -2373,7 +2373,7 @@ class Benchmark {
           NewFixedPrefixTransform(FLAGS_prefix_size));
     }
     if (FLAGS_use_uint64_comparator) {
-      options.comparator = test::Uint64Comparator();
+      options.comparator = Uint64Comparator();
       if (FLAGS_key_size != 8) {
         fprintf(stderr, "Using Uint64 comparator but key size is not 8.\n");
         exit(1);
@@ -2538,8 +2538,8 @@ class Benchmark {
     if (FLAGS_max_bytes_for_level_multiplier_additional_v.size() > 0) {
       if (FLAGS_max_bytes_for_level_multiplier_additional_v.size() !=
           (unsigned int)FLAGS_num_levels) {
-        fprintf(stderr, "Insufficient number of fanouts specified %d\n",
-                (int)FLAGS_max_bytes_for_level_multiplier_additional_v.size());
+        fprintf(stderr, "Insufficient number of fanouts specified %zu\n",
+                FLAGS_max_bytes_for_level_multiplier_additional_v.size());
         exit(1);
       }
       options.max_bytes_for_level_multiplier_additional =
@@ -3607,9 +3607,9 @@ class Benchmark {
       Slice operand = gen.Generate(value_size_);
       if (value.size() > 0) {
         // Use a delimiter to match the semantics for StringAppendOperator
-        value.append(1,',');
+        value.append(1, ',');
       }
-      value.append(operand.data(), operand.size());
+      value.append(operand.cdata(), operand.size());
 
       // Write back to the database
       Status s = db->Put(write_options_, key, value);
@@ -3690,7 +3690,7 @@ class Benchmark {
       DB* db = SelectDB(thread);
       GenerateKeyFromInt(thread->rand.Next() % merge_keys_, merge_keys_, &key);
 
-      bool do_merge = int(thread->rand.Next() % 100) < FLAGS_mergereadpercent;
+      bool do_merge = static_cast<int>(thread->rand.Next() % 100) < FLAGS_mergereadpercent;
 
       if (do_merge) {
         Status s = db->Merge(write_options_, key, gen.Generate(value_size_));
@@ -4107,15 +4107,15 @@ int db_bench_tool(int argc, char** argv) {
     FLAGS_env  = new rocksdb::HdfsEnv(FLAGS_hdfs);
   }
 
-  if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NONE"))
+  if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NONE")) {
     FLAGS_compaction_fadvice_e = rocksdb::Options::NONE;
-  else if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NORMAL"))
+  } else if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NORMAL")) {
     FLAGS_compaction_fadvice_e = rocksdb::Options::NORMAL;
-  else if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "SEQUENTIAL"))
+  } else if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "SEQUENTIAL")) {
     FLAGS_compaction_fadvice_e = rocksdb::Options::SEQUENTIAL;
-  else if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "WILLNEED"))
+  } else if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "WILLNEED")) {
     FLAGS_compaction_fadvice_e = rocksdb::Options::WILLNEED;
-  else {
+  } else {
     fprintf(stdout, "Unknown compaction fadvice:%s\n",
             FLAGS_compaction_fadvice.c_str());
   }

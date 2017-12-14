@@ -656,7 +656,7 @@ class FaultInjectionTest : public testing::Test,
   // Return the value to associate with the specified key
   Slice Value(int k, std::string* storage) const {
     Random r(k);
-    return test::RandomString(&r, kValueSize, storage);
+    return RandomString(&r, kValueSize, storage);
   }
 
   void CloseDB() {

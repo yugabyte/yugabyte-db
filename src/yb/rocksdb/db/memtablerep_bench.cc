@@ -33,14 +33,14 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
-
 #include <atomic>
 #include <iostream>
 #include <memory>
 #include <thread>
 #include <type_traits>
 #include <vector>
+
+#include <gflags/gflags.h>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -169,7 +169,7 @@ class RandomGenerator {
   RandomGenerator() {
     Random rnd(301);
     auto size = (unsigned)std::max(1048576, FLAGS_item_size);
-    test::RandomString(&rnd, size, &data_);
+    RandomString(&rnd, size, &data_);
     pos_ = 0;
   }
 

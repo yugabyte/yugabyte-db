@@ -49,4 +49,28 @@ Random* Random::GetTLSInstance() {
   return rv;
 }
 
+Slice RandomString(Random* rnd, int len, std::string* dst) {
+  dst->resize(len);
+  for (int i = 0; i < len; i++) {
+    (*dst)[i] = static_cast<char>(' ' + rnd->Uniform(95));   // ' ' .. '~'
+  }
+  return Slice(*dst);
+}
+
+Slice CompressibleString(Random* rnd, double compressed_fraction, int len, std::string* dst) {
+  int raw = static_cast<int>(len * compressed_fraction);
+  if (raw < 1) raw = 1;
+  std::string raw_data;
+  RandomString(rnd, raw, &raw_data);
+
+  // Duplicate the random data until we have filled "len" bytes
+  dst->clear();
+  while (dst->size() < (unsigned int)len) {
+    dst->append(raw_data);
+  }
+  dst->resize(len);
+  return Slice(*dst);
+}
+
+
 }  // namespace rocksdb

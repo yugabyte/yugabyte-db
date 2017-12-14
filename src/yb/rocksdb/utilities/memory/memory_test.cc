@@ -42,7 +42,7 @@ class MemoryTest : public testing::Test {
 
   std::string RandomString(int len) {
     std::string r;
-    test::RandomString(&rnd_, len, &r);
+    rocksdb::RandomString(&rnd_, len, &r);
     return r;
   }
 

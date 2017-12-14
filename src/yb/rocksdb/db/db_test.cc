@@ -2198,7 +2198,7 @@ TEST_F(DBTest, CompressedCache) {
 
 static std::string CompressibleString(Random* rnd, int len) {
   std::string r;
-  test::CompressibleString(rnd, 0.8, len, &r);
+  CompressibleString(rnd, 0.8, len, &r);
   return r;
 }
 #endif  // ROCKSDB_LITE
@@ -2258,7 +2258,7 @@ void MinLevelHelper(DBTest* self, const Options& options) {
     std::vector<std::string> values;
     // Write 120KB (12 values, each 10K)
     for (int i = 0; i < 12; i++) {
-      values.push_back(DBTestBase::RandomString(&rnd, 10000));
+      values.push_back(RandomString(&rnd, 10000));
       ASSERT_OK(self->Put(DBTestBase::Key(i), values[i]));
     }
     self->dbfull()->TEST_WaitForFlushMemTable();
@@ -2268,7 +2268,7 @@ void MinLevelHelper(DBTest* self, const Options& options) {
   // generate one more file in level-0, and should trigger level-0 compaction
   std::vector<std::string> values;
   for (int i = 0; i < 12; i++) {
-    values.push_back(DBTestBase::RandomString(&rnd, 10000));
+    values.push_back(RandomString(&rnd, 10000));
     ASSERT_OK(self->Put(DBTestBase::Key(i), values[i]));
   }
   self->dbfull()->TEST_WaitForCompact();

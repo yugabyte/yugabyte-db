@@ -39,11 +39,6 @@
 
 namespace rocksdb {
 
-static std::string RandomString(Random* rnd, int len) {
-  std::string r;
-  test::RandomString(rnd, len, &r);
-  return r;
-}
 std::string GenerateKey(int primary_key, int secondary_key, int padding_size,
                         Random *rnd) {
   char buf[50];
@@ -111,7 +106,7 @@ TEST_F(BlockTest, SimpleTest) {
   // read contents of block sequentially
   int count = 0;
   InternalIterator *iter = reader.NewIterator(options.comparator);
-  for (iter->SeekToFirst();iter->Valid(); count++, iter->Next()) {
+  for (iter->SeekToFirst(); iter->Valid(); count++, iter->Next()) {
 
     // read kv from block
     Slice k = iter->key();

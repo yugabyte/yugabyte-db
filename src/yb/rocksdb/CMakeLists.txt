@@ -245,9 +245,11 @@ if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
 endif()
 
 add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
-target_link_libraries(rocksdb_test_util gmock rocksdb rocksdb_tools)
+target_link_libraries(rocksdb_test_util gmock rocksdb)
 
 ADD_YB_ROCKSDB_TOOL(sst_dump)
+add_executable(db_bench tools/db_bench.cc tools/db_bench_tool.cc)
+target_link_libraries(db_bench rocksdb)
 ADD_YB_ROCKSDB_TOOL(db_sanity_test)
 ADD_YB_ROCKSDB_TOOL(db_stress)
 ADD_YB_ROCKSDB_TOOL(write_stress)
@@ -322,6 +324,8 @@ ADD_YB_TEST(utilities/transactions/optimistic_transaction_test)
 ADD_YB_TEST(utilities/ttl/ttl_test)
 ADD_YB_TEST(utilities/write_batch_with_index/write_batch_with_index_test)
 
+target_link_libraries(sst_dump_test rocksdb_tools)
+
 if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
 ADD_YB_TEST(db/auto_roll_logger_test)
 ADD_YB_TEST(db/column_family_test)
@@ -359,4 +363,6 @@ ADD_YB_TEST(utilities/backupable/backupable_db_test)
 ADD_YB_TEST(utilities/checkpoint/checkpoint_test)
 ADD_YB_TEST(utilities/memory/memory_test)
 ADD_YB_TEST(utilities/transactions/transaction_test)
+
+target_link_libraries(reduce_levels_test rocksdb_tools)
 endif()

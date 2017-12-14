@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_UTIL_TESTUTIL_H
-#define ROCKSDB_UTIL_TESTUTIL_H
+#ifndef YB_ROCKSDB_UTIL_TESTUTIL_H
+#define YB_ROCKSDB_UTIL_TESTUTIL_H
 
 #pragma once
 #include <algorithm>
@@ -49,10 +49,6 @@ class SequentialFileReader;
 
 namespace test {
 
-// Store in *dst a random string of length "len" and return a Slice that
-// references the generated data.
-extern Slice RandomString(Random* rnd, int len, std::string* dst);
-
 extern std::string RandomHumanReadableString(Random* rnd, int len);
 
 // Return a random key with the specified length that may contain interesting
@@ -60,12 +56,6 @@ extern std::string RandomHumanReadableString(Random* rnd, int len);
 enum RandomKeyType : char { RANDOM, LARGEST, SMALLEST, MIDDLE };
 extern std::string RandomKey(Random* rnd, int len,
                              RandomKeyType type = RandomKeyType::RANDOM);
-
-// Store in *dst a string of length "len" that will compress to
-// "N*compressed_fraction" bytes and return a Slice that references
-// the generated data.
-extern Slice CompressibleString(Random* rnd, double compressed_fraction,
-                                int len, std::string* dst);
 
 // A wrapper that allows injection of errors.
 class ErrorEnv : public EnvWrapper {
@@ -143,13 +133,6 @@ class SimpleSuffixReverseComparator : public Comparator {
 
   virtual void FindShortSuccessor(std::string* key) const override {}
 };
-
-// Returns a user key comparator that can be used for comparing two uint64_t
-// slices. Instead of comparing slices byte-wise, it compares all the 8 bytes
-// at once. Assumes same endian-ness is used though the database's lifetime.
-// Symantics of comparison would differ from Bytewise comparator in little
-// endian machines.
-extern const Comparator* Uint64Comparator();
 
 // Iterator over a vector of keys/values
 class VectorIterator : public InternalIterator {
@@ -687,4 +670,4 @@ struct BoundaryTestValues {
 }  // namespace test
 }  // namespace rocksdb
 
-#endif // ROCKSDB_UTIL_TESTUTIL_H
+#endif // YB_ROCKSDB_UTIL_TESTUTIL_H

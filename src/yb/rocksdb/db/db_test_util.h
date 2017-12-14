@@ -20,8 +20,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef ROCKSDB_DB_DB_TEST_UTIL_H
-#define ROCKSDB_DB_DB_TEST_UTIL_H
+#ifndef YB_ROCKSDB_DB_DB_TEST_UTIL_H
+#define YB_ROCKSDB_DB_DB_TEST_UTIL_H
 
 #pragma once
 #ifndef __STDC_FORMAT_MACROS
@@ -583,12 +583,6 @@ class DBTestBase : public testing::Test {
 
   ~DBTestBase();
 
-  static std::string RandomString(Random* rnd, int len) {
-    std::string r;
-    test::RandomString(rnd, len, &r);
-    return r;
-  }
-
   static std::string Key(int i) {
     char buf[100];
     snprintf(buf, sizeof(buf), "key%06d", i);
@@ -780,4 +774,4 @@ class DBTestBase : public testing::Test {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_DB_TEST_UTIL_H
+#endif // YB_ROCKSDB_DB_DB_TEST_UTIL_H
