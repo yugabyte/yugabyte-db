@@ -652,7 +652,12 @@ bool ClusterLoadBalancer::HandleRemoveReplicas(
     sort(sorted_ts.rbegin(), sorted_ts.rend(), comparator);
     string remove_candidate = sorted_ts[0];
     if (remove_candidate == tablet_meta.leader_uuid && SkipLeaderAsVictim(tablet_id)) {
-      continue;
+      // Pick the next (non-leader) tserver for this tablet, if available.
+      if (sorted_ts.size() > 1) {
+        remove_candidate = sorted_ts[1];
+      } else {
+        continue;
+      }
     }
     *out_tablet_id = tablet_id;
     *out_from_ts = remove_candidate;

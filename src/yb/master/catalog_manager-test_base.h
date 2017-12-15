@@ -135,6 +135,9 @@ class TestLoadBalancerBase {
     gflags::SetCommandLineOption("leader_balance_threshold", "2");
     PrepareTestState(ts_descs);
     TestBalancingLeadersWithThreshold();
+
+    PrepareTestState(ts_descs);
+    TestLeaderOverReplication();
   }
 
  protected:
@@ -308,6 +311,27 @@ class TestLoadBalancerBase {
     TestRemoveLoad(expected_tablet_id, expected_from_ts);
     // Check that trying to remove another replica will fail, as we have no more over-replication.
     ASSERT_FALSE(cb_->HandleRemoveReplicas(&placeholder, &placeholder));
+  }
+
+  void TestLeaderOverReplication() {
+    LOG(INFO) << "Skip leader TS being picked with over-replication.";
+    cluster_placement_.set_num_replicas(kNumReplicas);
+
+    // Create one more TS.
+    ts_descs_.push_back(SetupTS("3333", "a"));
+
+    const auto& tablet = tablets_[0].get();
+    // Over-replicate first tablet, with one extra replica.
+    AddRunningReplica(tablet, ts_descs_[3]);
+
+    // Move leader to first replica in the list (and will be most-loaded).
+    MoveTabletLeader(tablet, ts_descs_[2]);
+
+    // Load up data.
+    ASSERT_TRUE(AnalyzeTablets());
+
+    // Ensure the tablet is picked.
+    TestRemoveLoad(tablets_[0]->tablet_id(), "");
   }
 
   void TestWithMissingPlacement() {
