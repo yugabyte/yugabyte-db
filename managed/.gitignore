@@ -40,3 +40,6 @@ src/itest/static/*.log
 
 ui/.env
 ui/public/map/
+
+src/itest/python_virtual_env
+src/itest/web_app/appllication.conf
