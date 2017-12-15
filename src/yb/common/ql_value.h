@@ -404,6 +404,7 @@ bool Comparable(const QLValuePB& lhs, const QLValue& rhs);
 bool BothNotNull(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
+int Compare(const bool lhs, const bool rhs);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \

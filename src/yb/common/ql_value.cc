@@ -97,9 +97,7 @@ int QLValue::CompareTo(const QLValue& other) const {
     // Encoded decimal is byte-comparable.
     case InternalType::kDecimalValue: return decimal_value().compare(other.decimal_value());
     case InternalType::kStringValue: return string_value().compare(other.string_value());
-    case InternalType::kBoolValue:
-      LOG(FATAL) << "Internal error: bool type not comparable";
-      return 0;
+    case InternalType::kBoolValue: return Compare(bool_value(), other.bool_value());
     case InternalType::kTimestampValue:
       return GenericCompare(timestamp_value(), other.timestamp_value());
     case InternalType::kBinaryValue: return binary_value().compare(other.binary_value());
@@ -766,9 +764,7 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     // Encoded decimal is byte-comparable.
     case QLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
     case QLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
-    case QLValuePB::kBoolValue:
-      LOG(FATAL) << "Internal error: bool type not comparable";
-      return 0;
+    case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
     case QLValuePB::kTimestampValue:
       return GenericCompare(lhs.timestamp_value(), rhs.timestamp_value());
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
@@ -827,9 +823,7 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
     // Encoded decimal is byte-comparable.
     case QLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
     case QLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
-    case QLValuePB::kBoolValue:
-      LOG(FATAL) << "Internal error: bool type not comparable";
-      return 0;
+    case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
     case QLValuePB::kTimestampValue:
       return GenericCompare(lhs.timestamp_value(), rhs.timestamp_value_pb());
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
@@ -879,6 +873,15 @@ int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs) {
 
   // If elements are equal, compare lengths.
   return GenericCompare(lhs.elems_size(), rhs.elems_size());
+}
+
+int Compare(const bool lhs, const bool rhs) {
+  // Using Cassandra semantics: true > false.
+  if (lhs) {
+    return rhs ? 0 : 1;
+  } else {
+    return rhs ? -1 : 0;
+  }
 }
 
 bool operator <(const QLValuePB& lhs, const QLValuePB& rhs) {
