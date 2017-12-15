@@ -280,8 +280,8 @@ public class UniverseControllerTest extends WithApplication {
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
 
-    ObjectNode topJson = Json.newObject();
-    ObjectNode bodyJson = Json.newObject()
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "Single UserUniverse")
       .put("isMultiAZ", false)
       .put("instanceType", "a-instance")
@@ -289,12 +289,12 @@ public class UniverseControllerTest extends WithApplication {
       .put("numNodes", 3)
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    bodyJson.set("regionList", regionList);
-    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
-    topJson.set("clusters", clustersJsonArray);
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertInternalServerError(result, "No AZ found for region: " + r.uuid);
   }
 
@@ -310,8 +310,8 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
-    ObjectNode topJson = Json.newObject();
-    ObjectNode bodyJson = Json.newObject()
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "Single UserUniverse")
       .put("isMultiAZ", false)
       .put("instanceType", i.getInstanceTypeCode())
@@ -319,12 +319,12 @@ public class UniverseControllerTest extends WithApplication {
       .put("numNodes", 3)
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    bodyJson.set("regionList", regionList);
-    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
-    topJson.set("clusters", clustersJsonArray);
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes";
-    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json.get("universeUUID"));
@@ -359,8 +359,8 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
-    ObjectNode topJson = Json.newObject();
-    ObjectNode bodyJson = Json.newObject()
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
       .put("isMultiAZ", true)
       .put("universeName", u.name)
       .put("instanceType", i.getInstanceTypeCode())
@@ -368,12 +368,12 @@ public class UniverseControllerTest extends WithApplication {
       .put("numNodes", 3)
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    bodyJson.set("regionList", regionList);
-    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
-    topJson.set("clusters", clustersJsonArray);
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -401,8 +401,8 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
-    ObjectNode topJson = Json.newObject();
-    ObjectNode bodyJson = Json.newObject()
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
       .put("masterGFlags", "abcd")
       .put("isMultiAZ", true)
       .put("universeName", u.name)
@@ -411,12 +411,12 @@ public class UniverseControllerTest extends WithApplication {
       .put("numNodes", 3)
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    bodyJson.set("regionList", regionList);
-    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
-    topJson.set("clusters", clustersJsonArray);
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -444,8 +444,8 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
-    ObjectNode topJson = Json.newObject();
-    ObjectNode bodyJson = Json.newObject()
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson = Json.newObject()
       .put("isMultiAZ", true)
       .put("universeName", u.name)
       .put("numNodes", 5)
@@ -453,12 +453,12 @@ public class UniverseControllerTest extends WithApplication {
       .put("replicationFactor", 3)
       .put("provider", p.uuid.toString());
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
-    bodyJson.set("regionList", regionList);
-    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", bodyJson));
-    topJson.set("clusters", clustersJsonArray);
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
-    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
 
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -472,8 +472,8 @@ public class UniverseControllerTest extends WithApplication {
     assertNotNull(primaryClusterJson.get("userIntent"));
 
     // Try universe expand only, and re-check.
-    bodyJson.put("numNodes", 9);
-    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, topJson);
+    userIntentJson.put("numNodes", 9);
+    result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
     assertOk(result);
     json = Json.parse(contentAsString(result));
     assertValue(json, "universeUUID", u.universeUUID.toString());
@@ -540,7 +540,7 @@ public class UniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject());
-    assertBadRequest(result, "task type is required");
+    assertBadRequest(result, "clusters: This field is required");
     assertNull(CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique());
   }
 
@@ -552,9 +552,14 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "Software")
-      .put("ybSoftwareVersion", "0.0.1");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "Software")
+        .put("ybSoftwareVersion", "0.0.1");
+    ObjectNode userIntentJson = Json.newObject()
+        .put("universeName", "Single UserUniverse")
+        .put("ybSoftwareVersion", "0.0.1");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -580,8 +585,11 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "Software");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "Software");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -597,11 +605,18 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "GFlags");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
-    bodyJson.set("masterGFlags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
-    bodyJson.set("tserverGFlags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
+    JsonNode masterGFlags = Json.parse("[{ \"name\": \"master-flag\", \"value\": \"123\"}]");
+    JsonNode tserverGFlags = Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]");
+    userIntentJson.set("masterGFlags", masterGFlags);
+    userIntentJson.set("tserverGFlags", tserverGFlags);
+    bodyJson.set("masterGFlags", masterGFlags);
+    bodyJson.set("tserverGFlags", tserverGFlags);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -626,9 +641,14 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "GFlags");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Test Universe");
+    userIntentJson.set("masterGFlags", Json.parse("[\"gflag1\", \"123\"]"));
     bodyJson.set("masterGFlags", Json.parse("[\"gflag1\", \"123\"]"));
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -643,8 +663,11 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJsonMissingGFlags = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "GFlags");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags");
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJsonMissingGFlags.set("clusters", clustersJsonArray);
 
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
@@ -661,9 +684,14 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "GFlags")
-      .put("tserverGFlags", "abcd");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags")
+        .put("tserverGFlags", "abcd");
+    ObjectNode userIntentJson = Json.newObject()
+        .put("universeName", "Single UserUniverse")
+        .put("tserverGFlags", "abcd");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -679,9 +707,14 @@ public class UniverseControllerTest extends WithApplication {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
-      .put("universeUUID", u.universeUUID.toString())
-      .put("taskType", "GFlags")
-      .put("masterGFlags", "abcd");
+        .put("universeUUID", u.universeUUID.toString())
+        .put("taskType", "GFlags")
+        .put("masterGFlags", "abcd");
+    ObjectNode userIntentJson = Json.newObject()
+        .put("universeName", "Single UserUniverse")
+        .put("masterGFlags", "abcd");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -700,9 +733,16 @@ public class UniverseControllerTest extends WithApplication {
         .put("universeUUID", u.universeUUID.toString())
         .put("taskType", "GFlags")
         .put("rollingUpgrade", false);
+    ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
-    bodyJson.set("masterGFlags", Json.parse("[{ \"name\": \"master-flag\", \"value\": \"123\"}]"));
-    bodyJson.set("tserverGFlags", Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]"));
+    JsonNode masterGFlags = Json.parse("[{ \"name\": \"master-flag\", \"value\": \"123\"}]");
+    JsonNode tserverGFlags = Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]");
+    userIntentJson.set("masterGFlags", masterGFlags);
+    userIntentJson.set("tserverGFlags", tserverGFlags);
+    bodyJson.set("masterGFlags", masterGFlags);
+    bodyJson.set("tserverGFlags", tserverGFlags);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -730,6 +770,11 @@ public class UniverseControllerTest extends WithApplication {
         .put("taskType", "Software")
         .put("rollingUpgrade", false)
         .put("ybSoftwareVersion", "new-version");
+    ObjectNode userIntentJson = Json.newObject()
+        .put("universeName", "Single UserUniverse")
+        .put("ybSoftwareVersion", "new-version");
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
