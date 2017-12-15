@@ -35,8 +35,6 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int64(db_block_cache_size_bytes);
 
-using namespace std::chrono_literals; // NOLINT
-
 namespace yb {
 namespace client {
 
@@ -127,7 +125,7 @@ class QLDmlTest : public QLDmlTestBase {
   }
 
   std::shared_ptr<YBqlReadOp> SelectRow() {
-    return SelectRow(client_->NewSession(), kAllColumns, 1, "a", 2, "b");
+    return SelectRow(NewSession(), kAllColumns, 1, "a", 2, "b");
   }
 
   __attribute__ ((warn_unused_result)) testing::AssertionResult VerifyRow(
@@ -158,8 +156,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test inserting a row.
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeout(10s);
+    const shared_ptr<YBSession> session(NewSession());
     const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -187,7 +184,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     QLAddStringRangeValue(req, "b");
     table_.AddInt32ColumnValue(req, "c1", 4);
     table_.AddStringColumnValue(req, "c2", "d");
-    const shared_ptr<YBSession> session(client_->NewSession());
+    const shared_ptr<YBSession> session(NewSession());
     CHECK_OK(session->Apply(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -196,7 +193,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   {
     // Test selecting the row back, but flush manually and using async API (inside FlushSession).
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const shared_ptr<YBSession> session = client_->NewSession();
+    const shared_ptr<YBSession> session = NewSession();
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     const shared_ptr<YBqlReadOp> op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
     CHECK_OK(FlushSession(session.get()));
@@ -212,7 +209,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
 }
 
 TEST_F(QLDmlTest, TestInsertWrongSchema) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Move to schema version 1 by altering table
@@ -265,16 +262,14 @@ size_t CountIterators(MiniCluster* cluster) {
 
 constexpr int32_t kHashInt = 42;
 const std::string kHashStr = "all_records_have_same_id";
-constexpr auto kTimeout = 30s;
 
 } // namespace
 
 TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
   constexpr size_t kTotalLines = NonTsanVsTsan(25000ULL, 5000ULL);
-  auto session = client_->NewSession();
+  auto session = NewSession();
   if (!FLAGS_mini_cluster_reuse_data) {
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    session->SetTimeout(kTimeout);
     for(int32_t i = 0; i != kTotalLines;) {
       const shared_ptr<YBqlWriteOp> op = InsertRow(session,
                                                    kHashInt,
@@ -293,8 +288,7 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
       }
     }
     ASSERT_OK(session->Flush());
-    session = client_->NewSession();
-    session->SetTimeout(kTimeout);
+    session = NewSession();
     LOG(WARNING) << "Finished creating DB";
     constexpr int32_t kProbeStep = 997;
     for(int32_t idx = 0; idx < kTotalLines; idx += kProbeStep) {
@@ -346,8 +340,7 @@ TEST_F(QLDmlTest, FlushedOpId) {
   std::atomic<int32_t> idx(0);
   for (size_t t = 0; t != kTotalThreads; ++t) {
     threads.emplace_back([this, &idx] {
-      shared_ptr<YBSession> session(client_->NewSession());
-      session->SetTimeout(kTimeout);
+      shared_ptr<YBSession> session(NewSession());
       for(;;) {
         int32_t i = idx++;
         if (i >= kTotalRows) {
@@ -378,8 +371,7 @@ TEST_F(QLDmlTest, FlushedOpId) {
   std::this_thread::sleep_for(kSleepTime * 5);
   ASSERT_OK(cluster_->RestartSync());
 
-  auto session = client_->NewSession();
-  session->SetTimeout(kTimeout);
+  auto session = NewSession();
   const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, kHashInt);
@@ -403,7 +395,7 @@ TEST_F(QLDmlTest, FlushedOpId) {
 
 TEST_F(QLDmlTest, TestInsertMultipleRows) {
   {
-    const shared_ptr<YBSession> session(client_->NewSession());
+    const shared_ptr<YBSession> session(NewSession());
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
     // Test inserting 2 rows.
@@ -430,7 +422,7 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, "b");
     AddAllColumns(req);
 
-    const shared_ptr<YBSession> session(client_->NewSession());
+    const shared_ptr<YBSession> session(NewSession());
     CHECK_OK(session->Apply(op));
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
@@ -459,7 +451,7 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
 }
 
 TEST_F(QLDmlTest, TestSelectMultipleRows) {
-  const auto session = client_->NewSession();
+  const auto session = NewSession();
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   {
 
@@ -532,7 +524,7 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
     // insert into t values (1, 'a', 4, 'b', 5, 'c');
     // ...
     // insert into t values (1, 'a', 101, 'b', 102, 'c');
-    const shared_ptr<YBSession> session(client_->NewSession());
+    const shared_ptr<YBSession> session(NewSession());
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     vector<shared_ptr<YBqlWriteOp>> ops;
     for (int32_t i = 0; i < 100; i++) {
@@ -557,7 +549,7 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
     AddAllColumns(req);
 
     req->set_limit(5);
-    const shared_ptr<YBSession> session(client_->NewSession());
+    const shared_ptr<YBSession> session(NewSession());
     CHECK_OK(session->Apply(op));
 
     // Expect 5 rows:
@@ -576,7 +568,7 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
 }
 
 TEST_F(QLDmlTest, TestUpsert) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // Test upserting a row (update as insert).
     // update t set c1 = 3 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
@@ -638,7 +630,7 @@ TEST_F(QLDmlTest, TestUpsert) {
 }
 
 TEST_F(QLDmlTest, TestDelete) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
@@ -699,7 +691,7 @@ TEST_F(QLDmlTest, TestDelete) {
 }
 
 TEST_F(QLDmlTest, TestConditionalInsert) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
@@ -854,7 +846,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
 }
 
 TEST_F(QLDmlTest, TestConditionalUpdate) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
@@ -944,7 +936,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
 }
 
 TEST_F(QLDmlTest, TestConditionalDelete) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
@@ -1070,7 +1062,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
 }
 
 TEST_F(QLDmlTest, TestError) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
@@ -1108,8 +1100,7 @@ TEST_F(QLDmlTest, TestError) {
 
 TEST_F(QLDmlTest, TestSimultaneousReadAndWrite) {
   constexpr int kNumIterations = 10;
-  const shared_ptr<YBSession> session(client_->NewSession());
-  session->SetTimeout(10s);
+  const shared_ptr<YBSession> session(NewSession());
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (int i = 0; i != kNumIterations; ++i) {
     auto write_op = InsertRow(session, 1, "a", i, "b", i * 2, "c");

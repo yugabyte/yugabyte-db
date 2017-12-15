@@ -49,7 +49,7 @@ class QLDmlTTLTest : public QLDmlTestBase {
 };
 
 TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
-  const shared_ptr<YBSession> session(client_->NewSession());
+  const shared_ptr<YBSession> session(NewSession());
   {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);

@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/callbacks.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -37,15 +38,23 @@ using std::string;
 using std::vector;
 using std::shared_ptr;
 using std::unique_ptr;
+using namespace std::chrono_literals;
 
 extern const client::YBTableName kTableName;
 
 Status FlushSession(YBSession *session);
 
-class QLDmlTestBase: public YBMiniClusterTestBase<MiniCluster> {
+class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
  public:
   void SetUp() override;
   void DoTearDown() override;
+
+  // Create a new YB session
+  shared_ptr<client::YBSession> NewSession() {
+    const shared_ptr<client::YBSession> session(client_->NewSession());
+    session->SetTimeout(60s);
+    return session;
+  }
 
  protected:
   shared_ptr<YBClient> client_;
