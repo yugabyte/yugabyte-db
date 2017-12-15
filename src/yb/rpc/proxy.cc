@@ -74,7 +74,7 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
   CHECK(messenger != nullptr);
   DCHECK(!service_name_.empty()) << "Proxy service name must not be blank";
 
-  LOG(INFO) << "Create proxy to " << service_name_ << " at " << remote;
+  VLOG(1) << "Create proxy to " << service_name_ << " at " << remote;
   size_t num_connections_to_server = FLAGS_num_connections_to_server;
   conn_ids_.reserve(num_connections_to_server);
   while (conn_ids_.size() != num_connections_to_server) {

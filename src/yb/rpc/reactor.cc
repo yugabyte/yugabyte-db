@@ -117,8 +117,8 @@ Reactor::Reactor(const shared_ptr<Messenger>& messenger,
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
-  LOG(INFO) << "Create reactor with keep alive_time: " << ToSeconds(connection_keepalive_time_)
-            << ", coarse timer granularity: " << ToSeconds(coarse_timer_granularity_);
+  VLOG(1) << "Create reactor with keep alive_time: " << ToSeconds(connection_keepalive_time_)
+          << ", coarse timer granularity: " << ToSeconds(coarse_timer_granularity_);
 
   process_outbound_queue_task_ =
       MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this));
