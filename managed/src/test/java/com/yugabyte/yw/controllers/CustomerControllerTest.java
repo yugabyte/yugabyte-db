@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.*;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
@@ -209,9 +210,9 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerMetricsWithValidTableNameParams() {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
-    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
     customer.addUniverseUUID(u1.universeUUID);
     customer.addUniverseUUID(u2.universeUUID);
@@ -238,9 +239,9 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerMetricsWithoutTableNameParams() {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
-    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
     customer.addUniverseUUID(u1.universeUUID);
     customer.addUniverseUUID(u2.universeUUID);
@@ -284,9 +285,9 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerMetricsWithMultipleUniverses() {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-a"));
-    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-b"));
     customer.addUniverseUUID(u1.universeUUID);
     customer.addUniverseUUID(u2.universeUUID);
@@ -319,9 +320,9 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerMetricsWithNodePrefixParam() {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
-    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
     customer.addUniverseUUID(u1.universeUUID);
     customer.addUniverseUUID(u2.universeUUID);
@@ -347,7 +348,7 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerMetricsWithNodeNameParam() {
     String authToken = customer.createAuthToken();
 
-    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();

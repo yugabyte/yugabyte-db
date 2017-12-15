@@ -20,6 +20,7 @@ import play.libs.Json;
 
 import java.util.*;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.anyList;
@@ -39,7 +40,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(u);
     assertThat(u.universeUUID, is(allOf(notNullValue(), equalTo(u.universeUUID))));
     assertThat(u.version, is(allOf(notNullValue(), equalTo(1))));
@@ -49,7 +50,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetSingleUniverse() {
-    Universe newUniverse = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe newUniverse = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(newUniverse);
     Universe fetchedUniverse = Universe.get(newUniverse.universeUUID);
     assertNotNull(fetchedUniverse);
@@ -58,7 +59,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testCheckIfUniverseExists() {
-    Universe newUniverse = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe newUniverse = createUniverse(defaultCustomer.getCustomerId());
     assertNotNull(newUniverse);
     assertThat(Universe.checkIfUniverseExists("Test Universe"), equalTo(true));
     assertThat(Universe.checkIfUniverseExists("Fake Universe"), equalTo(false));
@@ -66,9 +67,9 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetMultipleUniverse() {
-    Universe u1 = Universe.create("Universe1", UUID.randomUUID(), defaultCustomer.getCustomerId());
-    Universe u2 = Universe.create("Universe2", UUID.randomUUID(), defaultCustomer.getCustomerId());
-    Universe u3 = Universe.create("Universe3", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u1 = createUniverse("Universe1", defaultCustomer.getCustomerId());
+    Universe u2 = createUniverse("Universe2", defaultCustomer.getCustomerId());
+    Universe u3 = createUniverse("Universe3", defaultCustomer.getCustomerId());
     Set<UUID> uuids = Sets.newHashSet(u1.universeUUID, u2.universeUUID, u3.universeUUID);
 
     Set<Universe> universes = Universe.get(uuids);
@@ -84,7 +85,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testSaveDetails() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
@@ -146,7 +147,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testVerifyIsTrue() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     List<NodeDetails> masters = new LinkedList<>();
     NodeDetails mockNode1 = mock(NodeDetails.class);
     masters.add(mockNode1);
@@ -159,7 +160,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testMastersListEmptyVerifyIsFalse() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     assertFalse(u.verifyMastersAreQueryable(null));
     List<NodeDetails> masters = new LinkedList<>();
     assertFalse(u.verifyMastersAreQueryable(masters));
@@ -167,7 +168,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testMastersInBadStateVerifyIsFalse() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     List<NodeDetails> masters = new LinkedList<>();
     NodeDetails mockNode1 = mock(NodeDetails.class);
     masters.add(mockNode1);
@@ -183,7 +184,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetMasterAddresses() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
@@ -226,15 +227,14 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetMasterAddressesFails() {
-    Universe u = spy(Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId()));
+    Universe u = spy(createUniverse(defaultCustomer.getCustomerId()));
     when(u.verifyMastersAreQueryable(anyList())).thenReturn(false);
     assertEquals("", u.getMasterAddresses());
   }
 
   @Test
   public void testToJSONSuccess() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(),
-        defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
 
     // Create regions
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
@@ -302,8 +302,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSONWithNullRegionList() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(),
-        defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
     JsonNode universeJson = u.toJson();
@@ -317,8 +316,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSONWithNullGFlags() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(),
-        defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     UserIntent userIntent = new UserIntent();
     userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
@@ -347,7 +345,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSONWithEmptyRegionList() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
     UserIntent userIntent = new UserIntent();
@@ -367,7 +365,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSONOfGFlags() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
     JsonNode universeJson = u.toJson();
@@ -381,7 +379,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testFromJSONWithFlags() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     UserIntent userIntent = getBaseIntent();

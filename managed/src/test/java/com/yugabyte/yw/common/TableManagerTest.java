@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.common.TableManager.BULK_LOAD_SCRIPT;
 import static com.yugabyte.yw.common.TableManager.PY_WRAPPER;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -126,7 +127,7 @@ public class TableManagerTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testProvider = ModelFactory.awsProvider(testCustomer);
-    testUniverse = Universe.create("Universe-1", UUID.randomUUID(), testCustomer.getCustomerId());
+    testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     testCustomer.addUniverseUUID(testUniverse.universeUUID);
     testCustomer.save();
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
