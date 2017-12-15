@@ -380,18 +380,24 @@ public class UniverseController extends AuthenticatedController {
    * @return result of the universe update operation.
    */
   public Result upgrade(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
+
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Bind rolling restart params
+    RollingRestartParams taskParams;
     try {
-      LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
-
-      // Verify the customer with this universe is present.
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
       ObjectNode formData = (ObjectNode) request().body().asJson();
+      taskParams = bindRollingRestartFormDataToTaskParams(formData);
+    } catch (Throwable t) {
+      return ApiResponse.error(BAD_REQUEST, t.getMessage());
+    }
 
-      RollingRestartParams taskParams = bindRollingRestartFormDataToTaskParams(formData);
-
+    try {
       if (taskParams.taskType == null) {
         return ApiResponse.error(BAD_REQUEST, "task type is required");
       }
@@ -517,12 +523,12 @@ public class UniverseController extends AuthenticatedController {
 
   private RollingRestartParams bindRollingRestartFormDataToTaskParams(ObjectNode formData) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    RollingRestartParams taskParams = new RollingRestartParams();
 
+    mapClustersInParams(formData);
     Map<String, String> masterGFlagsMap = serializeGFlagListToMap(formData, "masterGFlags");
     Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(formData, "tserverGFlags");
 
-    taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
+    RollingRestartParams taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
     taskParams.masterGFlags = masterGFlagsMap;
     taskParams.tserverGFlags = tserverGFlagsMap;
     return taskParams;
@@ -539,6 +545,29 @@ public class UniverseController extends AuthenticatedController {
     if (formData.get("expectedUniverseVersion") != null) {
       expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
     }
+    List<Cluster> clusters = mapClustersInParams(formData);
+    UniverseDefinitionTaskParams taskParams = mapper.treeToValue(formData,
+        UniverseDefinitionTaskParams.class);
+    taskParams.clusters = clusters;
+    if (nodeSetArray != null) {
+      taskParams.nodeDetailsSet = new HashSet<>();
+      for (JsonNode nodeItem : nodeSetArray) {
+        taskParams.nodeDetailsSet.add(mapper.treeToValue(nodeItem, NodeDetails.class));
+      }
+    }
+    taskParams.expectedUniverseVersion = expectedUniverseVersion;
+    return taskParams;
+  }
+
+  /**
+   * The ObjectMapper fails to properly map the array of clusters. Given form data, this method
+   * does the translation. Each cluster in the array of clusters is expected to conform to the
+   * Cluster definitions, especially including the UserIntent.
+   *
+   * @param formData Parent FormObject for the clusters array.
+   * @return A list of deserialized clusters.
+   */
+  private List<Cluster> mapClustersInParams(ObjectNode formData) throws Exception {
     ArrayNode clustersJsonArray = (ArrayNode) formData.get("clusters");
     if (clustersJsonArray == null) {
       throw new Exception("clusters: This field is required");
@@ -558,23 +587,13 @@ public class UniverseController extends AuthenticatedController {
       Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(userIntent, "tserverGFlags");
       clusterJson.set("userIntent", userIntent);
       newClustersJsonArray.add(clusterJson);
-      Cluster cluster = mapper.treeToValue(clusterJson, Cluster.class);
+      Cluster cluster = (new ObjectMapper()).treeToValue(clusterJson, Cluster.class);
       cluster.userIntent.masterGFlags = masterGFlagsMap;
       cluster.userIntent.tserverGFlags = tserverGFlagsMap;
       clusters.add(cluster);
     }
     formData.set("clusters", newClustersJsonArray);
-    UniverseDefinitionTaskParams taskParams = mapper.treeToValue(formData,
-        UniverseDefinitionTaskParams.class);
-    taskParams.clusters = clusters;
-    if (nodeSetArray != null) {
-      taskParams.nodeDetailsSet = new HashSet<>();
-      for (JsonNode nodeItem : nodeSetArray) {
-        taskParams.nodeDetailsSet.add(mapper.treeToValue(nodeItem, NodeDetails.class));
-      }
-    }
-    taskParams.expectedUniverseVersion = expectedUniverseVersion;
-    return taskParams;
+    return clusters;
   }
 
   /**
