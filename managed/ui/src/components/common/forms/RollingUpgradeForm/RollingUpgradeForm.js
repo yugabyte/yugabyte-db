@@ -123,6 +123,7 @@ export default class RollingUpgradeForm extends Component {
         }
       }).filter(Boolean);
     }
+    primaryCluster.userIntent.ybSoftwareVersion = values.ybSoftwareVersion;
     primaryCluster.userIntent.masterGFlags = masterGFlagList;
     primaryCluster.userIntent.tserverGFlags = tserverGFlagList;
     payload.clusters = [primaryCluster];
