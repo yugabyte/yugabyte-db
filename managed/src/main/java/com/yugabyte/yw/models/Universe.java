@@ -113,33 +113,31 @@ public class Universe extends Model {
   public static final Find<UUID, Universe> find = new Find<UUID, Universe>() {
   };
 
+
   /**
    * Creates an empty universe.
-   * @param name : name of the universe
-   * @param universeUUID: UUID of the universe to be created
+   * @param taskParams: The details that will describe the universe.
    * @param customerId: UUID of the customer creating the universe
    * @return the newly created universe
    */
-  public static Universe create(String name, UUID universeUUID, Long customerId) {
+  public static Universe create(UniverseDefinitionTaskParams taskParams, Long customerId) {
     // Create the universe object.
     Universe universe = new Universe();
     // Generate a new UUID.
-    universe.universeUUID = universeUUID;
+    universe.universeUUID = taskParams.universeUUID;
     // Set the version of the object to 1.
     universe.version = 1;
     // Set the creation date.
     universe.creationDate = new Date();
     // Set the universe name.
-    universe.name = name;
+    universe.name = taskParams.retrievePrimaryCluster().userIntent.universeName;
     // Set the customer id.
     universe.customerId = customerId;
     // Create the default universe details. This should be updated after creation.
-    universe.universeDetails = new UniverseDefinitionTaskParams();
-    universe.universeDetails.nodeDetailsSet = new HashSet<>();
-    universe.universeDetails.upsertPrimaryCluster();
+    universe.universeDetails = taskParams;
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
     LOG.debug("Created universe {} with details [{}] with name {}.",
-      universe.universeUUID, universe.universeDetailsJson, name);
+        universe.universeUUID, universe.universeDetailsJson, universe.name);
     // Save the object.
     universe.save();
     return universe;

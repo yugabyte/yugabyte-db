@@ -14,8 +14,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Test;
 
-import java.util.UUID;
-
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -29,7 +27,8 @@ public class AnsibleSetupServerTest extends NodeTaskBaseTest {
     Region r = Region.create(p, "r-1", "r-1", "yb-image");
     AccessKey.create(p.uuid, "demo-key", accessKeyInfo);
     AvailabilityZone az = AvailabilityZone.create(r, "az-1", "az-1", "subnet-1");
-    Universe u = Universe.create(cloudType.name() + "-universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(cloudType.name() + "-universe",
+                                           defaultCustomer.getCustomerId());
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();

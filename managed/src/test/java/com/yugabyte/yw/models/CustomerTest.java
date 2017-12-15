@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.*;
 
 public class CustomerTest extends FakeDBApplication {
@@ -140,7 +141,7 @@ public class CustomerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), c.getCustomerId());
+    Universe universe = createUniverse(c.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = p.code;
     userIntent.regionList = new ArrayList<UUID>();

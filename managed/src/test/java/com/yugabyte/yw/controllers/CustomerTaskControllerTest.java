@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
 import static org.hamcrest.CoreMatchers.*;
@@ -61,7 +62,7 @@ public class CustomerTaskControllerTest extends WithApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    universe = createUniverse(customer.getCustomerId());
   }
 
   @Test
@@ -233,7 +234,7 @@ public class CustomerTaskControllerTest extends WithApplication {
   @Test
   public void testTaskHistoryUniverseList() {
     String authToken = customer.createAuthToken();
-    Universe universe1 = Universe.create("Universe 2", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe1 = createUniverse("Universe 2", customer.getCustomerId());
 
     UUID taskUUID1 = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
         Create, "Foo", "Running", 50.0);

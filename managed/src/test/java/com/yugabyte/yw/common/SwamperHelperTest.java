@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -51,7 +52,7 @@ public class SwamperHelperTest extends FakeDBApplication {
   @Test
   public void testWriteUniverseTargetJson() {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
-    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
+    Universe u = createUniverse();
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdaterWithInactiveNodes());
 
     try {
@@ -108,14 +109,14 @@ public class SwamperHelperTest extends FakeDBApplication {
     dir.setWritable(false);
 
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(dir.getPath());
-    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
+    Universe u = createUniverse();
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     swamperHelper.writeUniverseTargetJson(u.universeUUID);
   }
 
   public void testUniverseTargetWithoutTargetPath() {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn("");
-    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
+    Universe u = createUniverse();
     swamperHelper.writeUniverseTargetJson(u.universeUUID);
   }
 }

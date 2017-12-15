@@ -12,6 +12,7 @@ import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -95,10 +96,10 @@ public class UniverseControllerTest extends WithApplication {
     mockClient = mock(YBClient.class);
     mockService = mock(YBClientService.class);
     return new GuiceApplicationBuilder()
-      .configure((Map) Helpers.inMemoryDatabase())
-      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-      .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
-      .build();
+        .configure((Map) Helpers.inMemoryDatabase())
+        .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+        .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
+        .build();
   }
 
   private PlacementInfo constructPlacementInfoObject(Map<UUID, Integer> azToNumNodesMap) {
@@ -171,7 +172,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseListWithValidUUID() {
-    Universe u = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
     customer.addUniverseUUID(u.universeUUID);
     customer.save();
 
@@ -209,7 +210,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
-    UUID uUUID = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId()).universeUUID;
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(getDefaultUserIntent(customer)));
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID;
@@ -238,7 +239,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
-    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
@@ -302,7 +303,7 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseCreateWithSingleAvailabilityZones() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
+        .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
@@ -339,7 +340,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testUniverseUpdateWithInvalidParams() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject());
     assertBadRequest(result, "clusters: This field is required");
@@ -349,14 +350,14 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseUpdateWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
+        .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
@@ -391,14 +392,14 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseCreateWithInvalidTServerJson() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
+        .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
@@ -434,14 +435,14 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseExpand() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
+        .thenReturn(fakeTaskUUID);
 
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
     InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode bodyJson = Json.newObject();
@@ -498,8 +499,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseDestroyValidUUID() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     // Add the cloud info into the universe.
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -534,8 +535,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseUpgradeWithEmptyParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    UUID uUUID = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId()).universeUUID;
+        .thenReturn(fakeTaskUUID);
+    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
@@ -548,8 +549,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseSoftwareUpgradeValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -581,8 +582,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseSoftwareUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -601,8 +602,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseGFlagsUpgradeValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -635,8 +636,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseGFlagsUpgradeWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -656,8 +657,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseGFlagsUpgradeWithMissingGflags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJsonMissingGFlags = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -665,7 +666,6 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode userIntentJson = Json.newObject().put("universeName", "Single UserUniverse");
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJsonMissingGFlags.set("clusters", clustersJsonArray);
-
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags);
@@ -677,8 +677,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseGFlagsUpgradeWithMalformedTServerFlags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -699,8 +699,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseGFlagsUpgradeWithMalformedMasterGFlags() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -722,7 +722,7 @@ public class UniverseControllerTest extends WithApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -759,7 +759,7 @@ public class UniverseControllerTest extends WithApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse(customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
@@ -789,9 +789,8 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseStatusSuccess() {
     JsonNode fakeReturn = Json.newObject().set(UNIVERSE_ALIVE_METRIC, Json.newObject());
     when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
-    UUID universeUUID = UUID.randomUUID();
-    Universe.create("TestUniverse", universeUUID, customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
+    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
   }
@@ -800,9 +799,9 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseStatusError() {
     ObjectNode fakeReturn = Json.newObject().put("error", "foobar");
     when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
-    UUID universeUUID = UUID.randomUUID();
-    Universe.create("TestUniverse", universeUUID, customer.getCustomerId());
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/status";
+
+    Universe u = createUniverse(customer.getCustomerId());
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertBadRequest(result, "foobar");
   }
@@ -817,7 +816,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testFindByNameWithUniverseNameExists() {
-    Universe u = Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
+    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/find/" + u.name;
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertBadRequest(result, "Universe already exists");
@@ -825,7 +824,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Test
   public void testFindByNameWithUniverseDoesNotExist() {
-    Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
+    createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
@@ -835,7 +834,7 @@ public class UniverseControllerTest extends WithApplication {
   public void testCustomConfigureCreateWithMultiAZMultiRegion() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
+        .thenReturn(fakeTaskUUID);
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
@@ -870,9 +869,9 @@ public class UniverseControllerTest extends WithApplication {
   public void testCustomConfigureEditWithPureExpand() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
-      Matchers.any(UniverseDefinitionTaskParams.class)))
-      .thenReturn(fakeTaskUUID);
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+        Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
 
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
