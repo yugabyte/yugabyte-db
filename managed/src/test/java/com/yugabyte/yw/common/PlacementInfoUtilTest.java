@@ -19,6 +19,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Running;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -72,10 +73,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     public TestData(Common.CloudType cloud, int replFactor, int numNodes) {
       provider = ModelFactory.newProvider(customer, cloud);
 
+      // Set up base Universe
       univName = "Test Universe " + provider.code;
-      univUuid = UUID.randomUUID();
-      Universe.create(univName, univUuid, customer.getCustomerId());
+      universe = createUniverse(univName, customer.getCustomerId());
+      univUuid = universe.universeUUID;
 
+      // Create Regions/AZs for the cloud
       Region r1 = Region.create(provider, "region-1", "Region 1", "yb-image-1");
       Region r2 = Region.create(provider, "region-2", "Region 2", "yb-image-1");
       az1 = createAZ(r1, 1, 4);
@@ -85,6 +88,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       regionList.add(r1.uuid);
       regionList.add(r2.uuid);
 
+      // Update userIntent for Universe
       UserIntent userIntent = new UserIntent();
       userIntent.universeName = univName;
       userIntent.replicationFactor = replFactor;
@@ -717,7 +721,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   @Test
   public void testUpdateUniverseDefinitionForCreate() {
-    Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    createUniverse(customer.getCustomerId());
     Provider p = testData.stream().filter(t -> t.provider.code.equals(onprem.name())).findFirst().get().provider;
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
@@ -747,7 +751,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   @Test
   public void testUpdateUniverseDefinitionForEdit() {
-    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     Provider p = testData.stream().filter(t -> t.provider.code.equals(onprem.name())).findFirst().get().provider;
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");

@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -229,7 +230,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteProviderWithUniverses() {
     Provider p = ModelFactory.awsProvider(customer);
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = p.code;
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");

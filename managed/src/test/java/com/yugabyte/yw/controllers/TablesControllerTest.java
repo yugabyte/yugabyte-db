@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -138,7 +139,7 @@ public class TablesControllerTest extends WithApplication {
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
@@ -182,7 +183,7 @@ public class TablesControllerTest extends WithApplication {
   public void testUniverseListMastersNotQueryable() {
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
 
@@ -212,7 +213,7 @@ public class TablesControllerTest extends WithApplication {
   public void testCreateCassandraTableWithInvalidParams() {
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
     String authToken = customer.createAuthToken();
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -236,7 +237,7 @@ public class TablesControllerTest extends WithApplication {
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
     String authToken = customer.createAuthToken();
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -317,7 +318,7 @@ public class TablesControllerTest extends WithApplication {
 
     // Creating fake authentication
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -343,7 +344,7 @@ public class TablesControllerTest extends WithApplication {
 
     // Creating fake authentication
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -395,7 +396,7 @@ public class TablesControllerTest extends WithApplication {
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
     String authToken = customer.createAuthToken();
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -421,7 +422,7 @@ public class TablesControllerTest extends WithApplication {
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
     String authToken = customer.createAuthToken();
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -459,7 +460,7 @@ public class TablesControllerTest extends WithApplication {
 
     // Creating fake authentication
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
@@ -471,7 +472,7 @@ public class TablesControllerTest extends WithApplication {
   @Test
   public void testDeleteTableWithInvalidparams() throws Exception {
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();

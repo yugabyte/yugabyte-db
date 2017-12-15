@@ -146,14 +146,11 @@ public class UniverseController extends AuthenticatedController {
       // Set the provider code.
       Cluster primaryCluster = taskParams.retrievePrimaryCluster();
       Provider provider = Provider.find.byId(UUID.fromString(primaryCluster.userIntent.provider));
-      String providerCode = provider.code;
-      primaryCluster.userIntent.providerType = CloudType.valueOf(providerCode);
+      primaryCluster.userIntent.providerType = CloudType.valueOf(provider.code);
       updatePlacementInfo(taskParams.nodeDetailsSet, primaryCluster.placementInfo);
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
-      Universe universe = Universe.create(primaryCluster.userIntent.universeName,
-        taskParams.universeUUID,
-        customer.getCustomerId());
+      Universe universe = Universe.create(taskParams, customer.getCustomerId());
       LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
 
       // Add an entry for the universe into the customer table.

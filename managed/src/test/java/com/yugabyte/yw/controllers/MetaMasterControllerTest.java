@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -40,7 +41,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetWithValidUniverse() {
-    Universe u = Universe.create("Test Universe", UUID.randomUUID(), 0L);
+    Universe u = createUniverse();
     // Save the updates to the universe.
     Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
@@ -101,7 +102,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   private void testServerGetWithValidUniverse(boolean isYql) {
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
