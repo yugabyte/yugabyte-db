@@ -392,7 +392,13 @@ public class UniverseController extends AuthenticatedController {
     RollingRestartParams taskParams;
     try {
       ObjectNode formData = (ObjectNode) request().body().asJson();
-      taskParams = bindRollingRestartFormDataToTaskParams(formData);
+      taskParams = (RollingRestartParams) bindFormDataToTaskParams(formData, true);
+      // TODO: we need to refactor this to read from cluster
+      // instead of top level task param, for now just copy the master flag and tserver flag
+      // from primary cluster.
+      Cluster primaryCluster = taskParams.retrievePrimaryCluster();
+      taskParams.masterGFlags = primaryCluster.userIntent.masterGFlags;
+      taskParams.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
     } catch (Throwable t) {
       return ApiResponse.error(BAD_REQUEST, t.getMessage());
     }
@@ -521,20 +527,11 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
-  private RollingRestartParams bindRollingRestartFormDataToTaskParams(ObjectNode formData) throws Exception {
-    ObjectMapper mapper = new ObjectMapper();
-
-    mapClustersInParams(formData);
-    Map<String, String> masterGFlagsMap = serializeGFlagListToMap(formData, "masterGFlags");
-    Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(formData, "tserverGFlags");
-
-    RollingRestartParams taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
-    taskParams.masterGFlags = masterGFlagsMap;
-    taskParams.tserverGFlags = tserverGFlagsMap;
-    return taskParams;
+  private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData) throws Exception {
+    return bindFormDataToTaskParams(formData, false);
   }
 
-  private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData) throws Exception {
+  private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData, boolean isRolling) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     ArrayNode nodeSetArray = null;
     int expectedUniverseVersion = -1;
@@ -545,9 +542,13 @@ public class UniverseController extends AuthenticatedController {
     if (formData.get("expectedUniverseVersion") != null) {
       expectedUniverseVersion = formData.get("expectedUniverseVersion").asInt();
     }
+    UniverseDefinitionTaskParams taskParams = null;
     List<Cluster> clusters = mapClustersInParams(formData);
-    UniverseDefinitionTaskParams taskParams = mapper.treeToValue(formData,
-        UniverseDefinitionTaskParams.class);
+    if (isRolling) {
+      taskParams = mapper.treeToValue(formData, RollingRestartParams.class);
+    } else {
+      taskParams = mapper.treeToValue(formData, UniverseDefinitionTaskParams.class);
+    }
     taskParams.clusters = clusters;
     if (nodeSetArray != null) {
       taskParams.nodeDetailsSet = new HashSet<>();

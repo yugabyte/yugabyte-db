@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
@@ -227,6 +229,9 @@ public class NodeManagerTest extends FakeDBApplication {
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeUniverse.UpgradeTaskSubType taskSubType =
               UpgradeUniverse.UpgradeTaskSubType.valueOf(configureParams.getProperty("taskSubType"));
+          String processType = configureParams.getProperty("processType");
+          expectedCommand.add("--yb_process_type");
+          expectedCommand.add(processType.toLowerCase());
           switch(taskSubType) {
             case Download:
               expectedCommand.add("--tags");
@@ -248,13 +253,8 @@ public class NodeManagerTest extends FakeDBApplication {
         } else if (configureParams.type == GFlags) {
           if (!configureParams.gflags.isEmpty()) {
             String processType = configureParams.getProperty("processType");
-            if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER.toString())) {
-              expectedCommand.add("--tags");
-              expectedCommand.add("master-gflags");
-            } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.toString())) {
-              expectedCommand.add("--tags");
-              expectedCommand.add("tserver-gflags");
-            }
+            expectedCommand.add("--yb_process_type");
+            expectedCommand.add(processType.toLowerCase());
             String gflagsJson =  Json.stringify(Json.toJson(gflags));
             expectedCommand.add("--replace_gflags");
             expectedCommand.add("--gflags");
@@ -538,7 +538,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSoftwareUpgradeWithoutRequiredProperties() {
+  public void testSoftwareUpgradeWithoutProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
@@ -550,10 +550,55 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: null")));
+      }
+    }
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithInvalidProcessType() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
+      params.type = Software;
+      params.ybSoftwareVersion = "0.0.1";
+
+      for (UniverseDefinitionTaskBase.ServerType type : UniverseDefinitionTaskBase.ServerType.values()) {
+        try {
+            // master and tserver are valid process types.
+            if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+              continue;
+            }
+            params.setProperty("processType", type.toString());
+            nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+            fail();
+        } catch (RuntimeException re) {
+          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithoutTaskType() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
+      params.type = Software;
+      params.ybSoftwareVersion = "0.0.1";
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
       }
     }
   }
+
 
   @Test
   public void testSoftwareUpgradeWithDownloadNodeCommand() {
@@ -567,7 +612,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Download.toString());
-
+      params.setProperty("processType", MASTER.toString());
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Configure, params));
@@ -589,6 +634,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Install.toString());
+      params.setProperty("processType", MASTER.toString());
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
@@ -608,6 +654,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.2";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Install.toString());
+      params.setProperty("processType", MASTER.toString());
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
@@ -619,7 +666,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGFlagsUpgradeWithoutRequiredProperties() {
+  public void testGFlagsUpgradeNullProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
@@ -635,7 +682,36 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), allOf(notNullValue(), is("Null processType property.")));
+        assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: null")));
+      }
+    }
+  }
+
+  @Test
+  public void testGFlagsUpgradeInvalidProcessType() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
+      params.nodeName = t.node.getNodeName();
+      HashMap<String, String> gflags = new HashMap<>();
+      gflags.put("gflagName", "gflagValue");
+      params.gflags = gflags;
+      params.type = GFlags;
+      params.isMasterInShellMode = true;
+
+      for (UniverseDefinitionTaskBase.ServerType type : UniverseDefinitionTaskBase.ServerType.values()) {
+        try {
+          // master and tserver are valid process types.
+          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+            continue;
+          }
+          params.setProperty("processType", type.toString());
+          nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+          fail();
+        } catch (RuntimeException re) {
+          assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType: " + type.name())));
+        }
       }
     }
   }
@@ -672,7 +748,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.gflags = gflags;
       params.type = GFlags;
       params.isMasterInShellMode = true;
-      params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
+      params.setProperty("processType", MASTER.toString());
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));

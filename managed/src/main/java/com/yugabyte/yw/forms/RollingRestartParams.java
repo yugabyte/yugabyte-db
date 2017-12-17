@@ -21,7 +21,11 @@ public class RollingRestartParams extends UniverseDefinitionTaskParams {
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
 
+  @Deprecated
+  // This is deprecated use cluster.userIntent.masterGFlags
   public Map<String, String> masterGFlags = new HashMap<String, String>();
+  @Deprecated
+  // This is deprecated use cluster.userIntent.tserverGFlags
   public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
   public Integer sleepAfterMasterRestartMillis = 180000;

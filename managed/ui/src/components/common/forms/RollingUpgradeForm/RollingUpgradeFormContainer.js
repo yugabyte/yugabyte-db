@@ -78,6 +78,7 @@ function mapStateToProps(state, ownProps) {
       }
     }
   }
+  initalGFlagValues.ybSoftwareVersion = state.customer.softwareVersions[0];
   initalGFlagValues.timeDelay = 180;
   initalGFlagValues.rollingUpgrade = false;
   return {

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -29,9 +30,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.*;
+
 @Singleton
 public class NodeManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
+  private static final List<String> VALID_CONFIGURE_PROCESS_TYPES = ImmutableList.of(
+      ServerType.MASTER.name(),
+      ServerType.TSERVER.name());
 
   @Inject
   ReleaseManager releaseManager;
@@ -191,6 +197,13 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
+          String processType = taskParam.getProperty("processType");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else {
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
+          }
           String taskSubType = taskParam.getProperty("taskSubType");
           if (taskSubType == null) {
             throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
@@ -210,16 +223,11 @@ public class NodeManager extends DevopsBase {
           }
 
           String processType = taskParam.getProperty("processType");
-          if (processType == null) {
-            throw new RuntimeException("Null processType property.");
-          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER.toString())) {
-            subcommand.add("--tags");
-            subcommand.add("master-gflags");
-          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.toString())) {
-            subcommand.add("--tags");
-            subcommand.add("tserver-gflags");
+          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+            throw new RuntimeException("Invalid processType: " + processType);
           } else {
-            throw new RuntimeException("Invalid processType property: " + processType);
+            subcommand.add("--yb_process_type");
+            subcommand.add(processType.toLowerCase());
           }
           subcommand.add("--replace_gflags");
 

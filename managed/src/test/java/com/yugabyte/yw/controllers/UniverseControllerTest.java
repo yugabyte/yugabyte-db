@@ -615,8 +615,6 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode tserverGFlags = Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]");
     userIntentJson.set("masterGFlags", masterGFlags);
     userIntentJson.set("tserverGFlags", tserverGFlags);
-    bodyJson.set("masterGFlags", masterGFlags);
-    bodyJson.set("tserverGFlags", tserverGFlags);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -645,7 +643,6 @@ public class UniverseControllerTest extends WithApplication {
         .put("taskType", "GFlags");
     ObjectNode userIntentJson = Json.newObject().put("universeName", "Test Universe");
     userIntentJson.set("masterGFlags", Json.parse("[\"gflag1\", \"123\"]"));
-    bodyJson.set("masterGFlags", Json.parse("[\"gflag1\", \"123\"]"));
     ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
 
@@ -685,8 +682,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
-        .put("taskType", "GFlags")
-        .put("tserverGFlags", "abcd");
+        .put("taskType", "GFlags");
     ObjectNode userIntentJson = Json.newObject()
         .put("universeName", "Single UserUniverse")
         .put("tserverGFlags", "abcd");
@@ -708,8 +704,7 @@ public class UniverseControllerTest extends WithApplication {
 
     ObjectNode bodyJson = Json.newObject()
         .put("universeUUID", u.universeUUID.toString())
-        .put("taskType", "GFlags")
-        .put("masterGFlags", "abcd");
+        .put("taskType", "GFlags");
     ObjectNode userIntentJson = Json.newObject()
         .put("universeName", "Single UserUniverse")
         .put("masterGFlags", "abcd");
@@ -741,8 +736,6 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode tserverGFlags = Json.parse("[{ \"name\": \"tserver-flag\", \"value\": \"456\"}]");
     userIntentJson.set("masterGFlags", masterGFlags);
     userIntentJson.set("tserverGFlags", tserverGFlags);
-    bodyJson.set("masterGFlags", masterGFlags);
-    bodyJson.set("tserverGFlags", tserverGFlags);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
@@ -756,6 +749,9 @@ public class UniverseControllerTest extends WithApplication {
     assertFalse(taskParam.rollingUpgrade);
     assertEquals(taskParam.masterGFlags, ImmutableMap.of("master-flag", "123"));
     assertEquals(taskParam.tserverGFlags, ImmutableMap.of("tserver-flag", "456"));
+    UserIntent primaryClusterIntent = taskParam.retrievePrimaryCluster().userIntent;
+    assertEquals(primaryClusterIntent.masterGFlags, taskParam.masterGFlags);
+    assertEquals(primaryClusterIntent.tserverGFlags, taskParam.tserverGFlags);
   }
 
   @Test
