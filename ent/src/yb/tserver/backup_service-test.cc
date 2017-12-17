@@ -88,12 +88,10 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   WriteRequestPB write_req;
   WriteResponsePB write_resp;
   write_req.set_tablet_id(kTabletId);
-  ASSERT_OK(SchemaToPB(schema_, write_req.mutable_schema()));
 
   // Send an actual row insert.
   {
-    AddTestRowToPB(RowOperationsPB::INSERT, schema_, 1, 11, "key1",
-        write_req.mutable_row_operations());
+    AddTestRowInsert(1, 11, "key1", &write_req);
 
     RpcController rpc;
     SCOPED_TRACE(write_req.DebugString());
@@ -128,8 +126,7 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
 
   // Send the second row.
   {
-    AddTestRowToPB(RowOperationsPB::INSERT, schema_, 2, 22, "key1",
-        write_req.mutable_row_operations());
+    AddTestRowInsert(2, 22, "key1", &write_req);
 
     RpcController rpc;
     SCOPED_TRACE(write_req.DebugString());
