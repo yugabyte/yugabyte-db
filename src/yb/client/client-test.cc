@@ -237,7 +237,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int index) {
     auto insert = table.NewInsertOp();
     auto req = insert->mutable_request();
-    table.AddInt32HashValue(req, index);
+    QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2);
     table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello %d", index));
@@ -248,7 +248,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   shared_ptr<YBqlWriteOp> UpdateTestRow(const TableHandle& table, int index) {
     auto update = table.NewUpdateOp();
     auto req = update->mutable_request();
-    table.AddInt32HashValue(req, index);
+    QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
     table.AddInt32ColumnValue(req, columns[1].name(), index * 2 + 1);
     table.AddStringColumnValue(req, columns[2].name(), StringPrintf("hello again %d", index));
@@ -257,7 +257,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   shared_ptr<YBqlWriteOp> DeleteTestRow(const TableHandle& table, int index) {
     auto del = table.NewDeleteOp();
-    table.AddInt32HashValue(del->mutable_request(), index);
+    QLAddInt32HashValue(del->mutable_request(), index);
     return del;
   }
 
@@ -441,8 +441,11 @@ TableFilter MakeFilter(int32_t lower_bound, int32_t upper_bound, std::string col
 
 int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
                         int32_t lower_bound, int32_t upper_bound) {
-  return boost::size(
-      TableRange(table, consistency, {"key"}, MakeFilter(lower_bound, upper_bound)));
+  TableIteratorOptions options;
+  options.consistency = consistency;
+  options.columns = {"key"};
+  options.filter = MakeFilter(lower_bound, upper_bound);
+  return boost::size(TableRange(table, options));
 }
 
 int CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
@@ -727,7 +730,10 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
   ASSERT_NO_FATALS(InsertTestRows(client_table_, FLAGS_test_scan_num_rows));
 
   size_t nrows = 0;
-  for (const auto& row : TableRange(client_table_, {"key", "int_val"}, MakeFilter(5, 10))) {
+  TableIteratorOptions options;
+  options.columns = {"key", "int_val"};
+  options.filter = MakeFilter(5, 10);
+  for (const auto& row : TableRange(client_table_, options)) {
     int32_t key = row.column(0).int32_value();
     int32_t val = row.column(1).int32_value();
     ASSERT_EQ(key * 2, val);
@@ -744,7 +750,10 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
   ASSERT_NO_FATALS(InsertTestRows(client_table_, FLAGS_test_scan_num_rows));
 
   size_t nrows = 0;
-  TableRange range(client_table_, {"key", "int_val"}, MakeFilter(10, 20, "int_val"));
+  TableIteratorOptions options;
+  options.columns = {"key", "int_val"};
+  options.filter = MakeFilter(10, 20, "int_val");
+  TableRange range(client_table_, options);
   for (const auto& row : range) {
     int32_t key = row.column(0).int32_value();
     int32_t val = row.column(1).int32_value();
@@ -1031,14 +1040,15 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   ASSERT_NO_FATALS(InsertTestRows(table, 100));
 
-  TableRange all_range(table, TableFilter());
+  TableRange all_range(table, {});
   auto all_rows = ScanToStrings(all_range);
   ASSERT_EQ(100, all_rows.size());
 
   // Test a double-sided range within first tablet
   {
-    TableRange range(table, FilterBetween(5, Inclusive::kTrue, 8, Inclusive::kFalse));
-    auto rows = ScanToStrings(range);
+    TableIteratorOptions options;
+    options.filter = FilterBetween(5, Inclusive::kTrue, 8, Inclusive::kFalse);
+    auto rows = ScanToStrings(TableRange(table, options));
     ASSERT_EQ(8 - 5, rows.size());
     EXPECT_EQ(all_rows[5], rows.front());
     EXPECT_EQ(all_rows[7], rows.back());
@@ -1046,8 +1056,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a double-sided range spanning tablets
   {
-    TableRange range(table, FilterBetween(5, Inclusive::kTrue, 15, Inclusive::kFalse));
-    auto rows = ScanToStrings(range);
+    TableIteratorOptions options;
+    options.filter = FilterBetween(5, Inclusive::kTrue, 15, Inclusive::kFalse);
+    auto rows = ScanToStrings(TableRange(table, options));
     ASSERT_EQ(15 - 5, rows.size());
     EXPECT_EQ(all_rows[5], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
@@ -1055,8 +1066,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a double-sided range within second tablet
   {
-    TableRange range(table, FilterBetween(15, Inclusive::kTrue, 20, Inclusive::kFalse));
-    auto rows = ScanToStrings(range);
+    TableIteratorOptions options;
+    options.filter = FilterBetween(15, Inclusive::kTrue, 20, Inclusive::kFalse);
+    auto rows = ScanToStrings(TableRange(table, options));
     ASSERT_EQ(20 - 15, rows.size());
     EXPECT_EQ(all_rows[15], rows.front());
     EXPECT_EQ(all_rows[19], rows.back());
@@ -1064,8 +1076,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a lower-bound only range.
   {
-    TableRange range(table, FilterGreater(5, Inclusive::kTrue));
-    auto rows = ScanToStrings(range);
+    TableIteratorOptions options;
+    options.filter = FilterGreater(5, Inclusive::kTrue);
+    auto rows = ScanToStrings(TableRange(table, options));
     ASSERT_EQ(95, rows.size());
     EXPECT_EQ(all_rows[5], rows.front());
     EXPECT_EQ(all_rows[99], rows.back());
@@ -1073,8 +1086,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test an upper-bound only range in first tablet.
   {
-    TableRange range(table, FilterLess(5, Inclusive::kFalse));
-    auto rows = ScanToStrings(range);
+    TableIteratorOptions options;
+    options.filter = FilterLess(5, Inclusive::kFalse);
+    auto rows = ScanToStrings(TableRange(table, options));
     ASSERT_EQ(5, rows.size());
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[4], rows.back());
@@ -1082,8 +1096,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test an upper-bound only range in second tablet.
   {
-    TableRange range(table, FilterLess(15, Inclusive::kFalse));
-    auto rows = ScanToStrings(range);
+    TableIteratorOptions options;
+    options.filter = FilterLess(15, Inclusive::kFalse);
+    auto rows = ScanToStrings(TableRange(table, options));
     ASSERT_EQ(15, rows.size());
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
@@ -1314,7 +1329,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   ASSERT_EQ(QLResponsePB::YQL_STATUS_RUNTIME_ERROR, insert->response().status());
 
   // Retry
-  client_table_.AddInt32HashValue(insert->mutable_request(), 12345);
+  QLAddInt32HashValue(insert->mutable_request(), 12345);
   ASSERT_OK(session->Apply(insert));
   ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
 
@@ -1330,7 +1345,7 @@ CHECKED_STATUS ApplyInsertToSession(YBSession* session,
                                     const char* string_val,
                                     std::shared_ptr<YBqlOp>* op = nullptr) {
   auto insert = table.NewInsertOp();
-  table.AddInt32HashValue(insert->mutable_request(), row_key);
+  QLAddInt32HashValue(insert->mutable_request(), row_key);
   table.AddInt32ColumnValue(insert->mutable_request(), "int_val", int_val);
   table.AddStringColumnValue(insert->mutable_request(), "string_val", string_val);
   if (op) {
@@ -1344,7 +1359,7 @@ CHECKED_STATUS ApplyUpdateToSession(YBSession* session,
                                     int row_key,
                                     int int_val) {
   auto update = table.NewUpdateOp();
-  table.AddInt32HashValue(update->mutable_request(), row_key);
+  QLAddInt32HashValue(update->mutable_request(), row_key);
   table.AddInt32ColumnValue(update->mutable_request(), "int_val", int_val);
   return session->Apply(update);
 }
@@ -1353,7 +1368,7 @@ CHECKED_STATUS ApplyDeleteToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key) {
   auto del = table.NewDeleteOp();
-  table.AddInt32HashValue(del->mutable_request(), row_key);
+  QLAddInt32HashValue(del->mutable_request(), row_key);
   return session->Apply(del);
 }
 
@@ -1691,20 +1706,6 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_.get(), &rows);
   ASSERT_EQ(0, rows.size());
-}
-
-TEST_F(ClientTest, TestWriteWithBadColumn) {
-  shared_ptr<YBTable> table;
-  ASSERT_OK(client_->OpenTable(kTableName, &table));
-
-  // Try to do a write with the bad schema.
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  gscoped_ptr<KuduInsert> insert(table->NewInsert());
-  ASSERT_OK(insert->mutable_row()->SetInt32("key", 12345));
-  Status s = insert->mutable_row()->SetInt32("bad_col", 12345);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "No such column: bad_col");
 }
 
 // Do a write with a bad schema on the client side. This should make the Prepare

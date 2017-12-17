@@ -101,6 +101,7 @@ set(COMMON_SRCS
   ql_type.cc
   ql_value.cc
   ql_bfunc.cc
+  ql_protocol_util.cc
   ql_scanspec.cc
   ql_rowblock.cc
   ql_resultset.cc

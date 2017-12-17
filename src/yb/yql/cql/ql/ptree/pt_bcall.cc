@@ -16,6 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
+
+#include "yb/client/client.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/bfql/bfql.h"
 #include "yb/common/ql_bfunc.h"

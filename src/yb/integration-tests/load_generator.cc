@@ -19,7 +19,13 @@
 #include <random>
 #include <thread>
 
+#include "yb/client/client.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/partial_row.h"
+#include "yb/common/rowblock.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -56,7 +62,6 @@ using yb::client::YBClient;
 using yb::client::YBError;
 using yb::client::YBNoOp;
 using yb::client::YBPredicate;
-using yb::client::KuduInsert;
 using yb::client::YBSession;
 using yb::client::YBScanBatch;
 using yb::client::YBScanner;
@@ -164,7 +169,7 @@ ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
 // SessionFactory
 // ------------------------------------------------------------------------------------------------
 
-YBSessionFactory::YBSessionFactory(yb::client::YBClient* client, yb::client::YBTable* table)
+YBSessionFactory::YBSessionFactory(client::YBClient* client, client::TableHandle* table)
     : client_(client), table_(table) {}
 
 string YBSessionFactory::ClientId() { return client_->client_id(); }
@@ -394,31 +399,35 @@ void YBSingleThreadedWriter::ConfigureSession() {
 
 bool YBSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
-  shared_ptr<KuduInsert> insert(table_->NewInsert());
+  auto insert = table_->NewInsertOp();
   // Generate a Put for key_str, value_str
-  CHECK_OK(insert->mutable_row()->SetBinary("k", key_str.c_str()));
-  CHECK_OK(insert->mutable_row()->SetBinary("v", value_str.c_str()));
+  QLAddStringHashValue(insert->mutable_request(), key_str);
+  table_->AddStringColumnValue(insert->mutable_request(), "v", value_str);
   // submit a the put to apply.
   // If successful, add to inserted
   Status apply_status = session_->Apply(insert);
-  if (apply_status.ok()) {
-    Status flush_status = session_->Flush();
-    if (flush_status.ok()) {
-      multi_threaded_writer_->inserted_keys_.Insert(key_index);
-      VLOG(2) << "Successfully inserted key #" << key_index << " at hybrid_time "
-              << client_->GetLatestObservedHybridTime() << " or earlier";
-    } else {
-      LOG(WARNING) << "Error inserting key '" << key_str << "': "
-                   << "Flush() failed"
-                   << " (" << flush_status.ToString() << ")";
-      return false;
-    }
-  } else {
+  if (!apply_status.ok()) {
     LOG(WARNING) << "Error inserting key '" << key_str << "': "
                  << "Apply() failed"
                  << " (" << apply_status.ToString() << ")";
     return false;
   }
+  Status flush_status = session_->Flush();
+  if (!flush_status.ok()) {
+    LOG(WARNING) << "Error inserting key '" << key_str << "': "
+                 << "Flush() failed"
+                 << " (" << flush_status.ToString() << ")";
+    return false;
+  }
+  if (insert->response().status() != QLResponsePB::YQL_STATUS_OK) {
+    LOG(WARNING) << "Error inserting key '" << key_str << "': "
+                 << insert->response().error_message();
+    return false;
+  }
+
+  multi_threaded_writer_->inserted_keys_.Insert(key_index);
+  VLOG(2) << "Successfully inserted key #" << key_index << " at hybrid_time "
+          << client_->GetLatestObservedHybridTime() << " or earlier";
 
   return true;
 }
@@ -467,23 +476,13 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
 // SingleThreadedScanner
 // ------------------------------------------------------------------------------------------------
 
-SingleThreadedScanner::SingleThreadedScanner(YBTable* table)
-    : table_(table),
-      num_rows_(0) {
-}
+SingleThreadedScanner::SingleThreadedScanner(client::TableHandle* table) : table_(table) {}
 
 int64_t SingleThreadedScanner::CountRows() {
-  YBScanner scanner(table_);
-  CHECK_OK(scanner.Open());
-  vector<YBRowResult> results;
-  while (scanner.HasMoreRows()) {
-    CHECK_OK(scanner.NextBatch(&results));
-    num_rows_ += results.size();
-    results.clear();
-  }
+  auto result = boost::size(client::TableRange(*table_, {}));
 
-  LOG(INFO) << " num read rows = " << num_rows_;
-  return num_rows_;
+  LOG(INFO) << " num read rows = " << result;
+  return result;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -563,7 +562,7 @@ void YBSingleThreadedReader::ConfigureSession() {
 
 bool NoopSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
-  YBNoOp noop(table_);
+  YBNoOp noop(table_->get());
   gscoped_ptr<YBPartialRow> row(table_->schema().NewRow());
   CHECK_OK(row->SetBinary("k", key_str));
   Status s = noop.Execute(*row);
@@ -577,56 +576,61 @@ bool NoopSingleThreadedWriter::Write(
 ReadStatus YBSingleThreadedReader::PerformRead(
     int64_t key_index, const string& key_str, const string& expected_value_str) {
   uint64_t read_ts = client_->GetLatestObservedHybridTime();
-  YBScanner scanner(table_);
-  CHECK_OK(scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
-  CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
-  CHECK_OK(scanner.AddConjunctPredicate(
-      table_->NewComparisonPredicate("k", YBPredicate::EQUAL, YBValue::CopyString(key_str))));
 
-  Status scanner_open_status = scanner.Open();
-  for (int i = 1;
-       i <= FLAGS_load_gen_scanner_open_retries && !scanner_open_status.ok();
-       ++i) {
-    LOG(ERROR) << "Failed to open scanner: " << scanner_open_status.ToString() << ", re-trying.";
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_load_gen_wait_time_increment_step_ms * i));
-    scanner_open_status = scanner.Open();
-  }
-  CHECK_OK(scanner_open_status);
-
-  if (!scanner.HasMoreRows()) {
-    LOG(ERROR) << "No rows found for key #" << key_index << " (read hybrid_time: " << read_ts
-               << ")";
-    // We don't increment the read error count here because the caller may retry up to the
-    // configured number of times in this case.
-    return ReadStatus::NO_ROWS;
-  }
-
-  vector<YBScanBatch::RowPtr> rows;
-  CHECK_OK(scanner.NextBatch(&rows));
-  if (rows.size() != 1) {
-    LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": " << rows.size()
-               << " (expected to find 1 row), read hybrid_time: " << read_ts;
-    multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
-    return ReadStatus::OTHER_ERROR;
-  }
-
-  Slice returned_key, returned_value;
-  CHECK_OK(rows.front().GetBinary("k", &returned_key));
-  if (returned_key != key_str) {
-    LOG(ERROR) << "Invalid key returned by the read operation: '" << returned_key << "', "
-               << "expected: '" << key_str << "', read hybrid_time: " << read_ts;
-    multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
-    return ReadStatus::OTHER_ERROR;
-  }
-
-  CHECK_OK(rows.front().GetBinary("v", &returned_value));
-  if (returned_value != expected_value_str) {
-    LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str
-               << "': " << FormatWithSize(returned_value.ToString())
-               << ", expected: " << FormatWithSize(expected_value_str)
-               << ", read hybrid_time: " << read_ts;
-    multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
-    return ReadStatus::OTHER_ERROR;
+  for (int i = 1;; ++i) {
+    auto read_op = table_->NewReadOp();
+    QLAddStringHashValue(read_op->mutable_request(), key_str);
+    table_->AddColumns({"k", "v"}, read_op->mutable_request());
+    auto status = session_->Apply(read_op);
+    if (status.ok()) {
+      status = session_->Flush();
+    }
+    boost::optional<QLRowBlock> row_block;
+    if (status.ok()) {
+      auto result = read_op->MakeRowBlock();
+      if (!result.ok()) {
+        status = std::move(result.status());
+      } else {
+        row_block = std::move(*result);
+      }
+    }
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to read: " << status << ", re-trying.";
+      if (i >= FLAGS_load_gen_scanner_open_retries) {
+        CHECK_OK(status);
+      }
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_load_gen_wait_time_increment_step_ms * i));
+      continue;
+    }
+    if (row_block->row_count() == 0) {
+      LOG(ERROR) << "No rows found for key #" << key_index
+                 << " (read hybrid_time: " << read_ts << ")";
+      return ReadStatus::NO_ROWS;
+    }
+    if (row_block->row_count() != 1) {
+      LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": "
+                 << row_block->row_count() << " (expected to find 1 row), read hybrid_time: "
+                 << read_ts;
+      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
+      return ReadStatus::OTHER_ERROR;
+    }
+    auto row = row_block->rows()[0];
+    if (row.column(0).binary_value() != key_str) {
+      LOG(ERROR) << "Invalid key returned by the read operation: '" << row.column(0).binary_value()
+                 << "', expected: '" << key_str << "', read hybrid_time: " << read_ts;
+      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
+      return ReadStatus::OTHER_ERROR;
+    }
+    auto returned_value = row.column(1).binary_value();
+    if (returned_value != expected_value_str) {
+      LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str
+                 << "': " << FormatWithSize(returned_value)
+                 << ", expected: " << FormatWithSize(expected_value_str)
+                 << ", read hybrid_time: " << read_ts;
+      multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
+      return ReadStatus::OTHER_ERROR;
+    }
+    break;
   }
 
   return ReadStatus::OK;

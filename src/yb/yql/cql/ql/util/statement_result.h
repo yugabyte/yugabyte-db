@@ -18,8 +18,9 @@
 #ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_
 #define YB_YQL_CQL_QL_UTIL_STATEMENT_RESULT_H_
 
-#include "yb/client/yb_op.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"

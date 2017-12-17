@@ -255,7 +255,7 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
     case YBHashSchema::kMultiColumnHash: {
       string tmp;
       for (const auto &col_expr_pb : hash_col_values) {
-        RETURN_NOT_OK(AppendToKey(col_expr_pb.value(), &tmp));
+        AppendToKey(col_expr_pb.value(), &tmp);
       }
       const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
       *buf = EncodeMultiColumnHashValue(hash_value);

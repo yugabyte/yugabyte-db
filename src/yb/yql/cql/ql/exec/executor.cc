@@ -15,7 +15,9 @@
 
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/util/logging.h"
+#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/yb_op.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/util/decimal.h"
 

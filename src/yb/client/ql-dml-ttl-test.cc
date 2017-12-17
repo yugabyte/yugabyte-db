@@ -12,7 +12,10 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
+
+#include "yb/client/client.h"
 #include "yb/client/table_handle.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 namespace yb {
@@ -51,7 +54,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, 1);
+    QLAddInt32HashValue(req, 1);
     table_.AddInt32ColumnValue(req, "c1", 1);
     table_.AddStringColumnValue(req, "c2", "yuga-hello");
     req->set_ttl(2 * 1000);
@@ -64,7 +67,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // insert into t (k, c3, c4) values (1, 2, "yuga-hi") using ttl 4;
     const shared_ptr<YBqlWriteOp> op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, 1);
+    QLAddInt32HashValue(req, 1);
     table_.AddInt32ColumnValue(req, "c3", 2);
     table_.AddStringColumnValue(req, "c4", "yuga-hi");
     req->set_ttl(4 * 1000);
@@ -77,7 +80,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // select * from t where k = 1;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, 1);
+    QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
 
     CHECK_OK(session->Apply(op));
@@ -101,7 +104,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // select * from t where k = 1;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, 1);
+    QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
 
     CHECK_OK(session->Apply(op));
@@ -125,7 +128,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     // select * from t where k = 1;
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, 1);
+    QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
 
     CHECK_OK(session->Apply(op));

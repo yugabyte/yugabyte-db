@@ -18,6 +18,8 @@
 #include <vector>
 #include <map>
 
+#include "yb/common/ql_type.h"
+
 #include "yb/util/bfql/directory.h"
 #include "yb/gutil/strings/substitute.h"
 

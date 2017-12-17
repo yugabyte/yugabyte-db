@@ -26,6 +26,22 @@ namespace yb {
 namespace client {
 namespace internal {
 
+TabletInvoker::TabletInvoker(bool consistent_prefix,
+                             YBClient* client,
+                             rpc::RpcCommand* command,
+                             TabletRpc* rpc,
+                             RemoteTablet* tablet,
+                             rpc::RpcRetrier* retrier,
+                             Trace* trace)
+      : client_(client),
+        command_(command),
+        rpc_(rpc),
+        tablet_(tablet),
+        tablet_id_(tablet != nullptr ? tablet->tablet_id() : std::string()),
+        retrier_(retrier),
+        trace_(trace),
+        consistent_prefix_(consistent_prefix) {}
+
 void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
   std::vector<RemoteTabletServer*> candidates;
   current_ts_ = client_->data_->SelectTServer(tablet_.get(),

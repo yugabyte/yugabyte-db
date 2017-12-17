@@ -19,7 +19,6 @@
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
-#include "yb/client/client.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"
 

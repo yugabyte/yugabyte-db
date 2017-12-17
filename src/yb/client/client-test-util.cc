@@ -34,6 +34,9 @@
 
 #include <vector>
 
+#include "yb/client/client.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/util/test_util.h"
 
@@ -57,6 +60,18 @@ void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
     i++;
   }
   CHECK_OK(s); // will fail
+}
+
+void FlushSessionOrDie(const std::shared_ptr<YBSession>& session,
+                       const std::vector<std::shared_ptr<YBqlOp>>& ops) {
+  Status s = session->Flush();
+  if (PREDICT_FALSE(!s.ok())) {
+    LogSessionErrorsAndDie(session, s);
+  }
+  for (auto& op : ops) {
+    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
+        << "Status: " << QLResponsePB::QLStatus_Name(op->response().status());
+  }
 }
 
 void ScanTableToStrings(YBTable* table, vector<string>* row_strings) {

@@ -39,7 +39,6 @@
 #include <vector>
 #include <thread>
 
-#include "yb/client/client.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"

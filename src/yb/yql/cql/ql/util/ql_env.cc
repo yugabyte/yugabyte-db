@@ -17,6 +17,9 @@
 
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/client.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/trace.h"
@@ -196,6 +199,10 @@ void QLEnv::Reset() {
   op_errors_.clear();
 }
 
+Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {
+  return client_->CreateNamespace(keyspace_name);
+}
+
 Status QLEnv::DeleteKeyspace(const string& keyspace_name) {
   RETURN_NOT_OK(client_->DeleteNamespace(keyspace_name));
 
@@ -228,6 +235,13 @@ Status QLEnv::UseKeyspace(const string& keyspace_name) {
   }
 
   return Status::OK();
+}
+
+Status QLEnv::CreateUDType(const std::string &keyspace_name,
+                           const std::string &type_name,
+                           const std::vector<std::string> &field_names,
+                           const std::vector<std::shared_ptr<QLType>> &field_types) {
+  return client_->CreateUDType(keyspace_name, type_name, field_names, field_types);
 }
 
 Status QLEnv::DeleteUDType(const std::string &keyspace_name, const std::string &type_name) {

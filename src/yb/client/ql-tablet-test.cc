@@ -73,7 +73,7 @@ class QLTabletTest : public QLDmlTestBase {
   void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, TableHandle* table) {
     const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    table->AddInt32HashValue(req, key);
+    QLAddInt32HashValue(req, key);
     table->AddInt32ColumnValue(req, kValue, value);
     ASSERT_OK(session->Apply(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
@@ -93,7 +93,7 @@ class QLTabletTest : public QLDmlTestBase {
   std::shared_ptr<YBqlReadOp> CreateReadOp(int32_t key, TableHandle* table) {
     auto op = table->NewReadOp();
     auto req = op->mutable_request();
-    table->AddInt32HashValue(req, key);
+    QLAddInt32HashValue(req, key);
     auto value_column_id = table->ColumnId(kValue);
     req->add_selected_exprs()->set_column_id(value_column_id);
     req->mutable_column_refs()->add_ids(value_column_id);
@@ -441,7 +441,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   session->SetTimeout(15s);
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
-  table.AddInt32HashValue(req, 1);
+  QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, kValue, 1);
   auto status = session->Apply(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;

@@ -38,6 +38,7 @@
 #include "yb/client/client.h"
 #include "yb/client/row_result.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -61,7 +62,6 @@ DEFINE_int32(seconds_to_run, 4,
 namespace yb {
 namespace tablet {
 
-using client::KuduInsert;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
@@ -75,7 +75,6 @@ using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
-using client::KuduUpdate;
 using std::shared_ptr;
 
 // This integration test tries to trigger all the update-related bits while also serving as a
@@ -300,7 +299,7 @@ void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) con
 void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
                                             int64_t val,
                                             QLWriteRequestPB* req) const {
-  table_.AddInt64HashValue(req, key);
+  QLAddInt64HashValue(req, key);
   table_.AddStringColumnValue(req, "string", "TODO random string");
   table_.AddInt64ColumnValue(req, "int64", val);
 }

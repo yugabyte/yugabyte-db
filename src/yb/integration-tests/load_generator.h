@@ -24,8 +24,7 @@
 
 #include <cpp_redis/cpp_redis>
 
-#include "yb/client/client.h"
-
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/countdown_latch.h"
@@ -71,7 +70,7 @@ class SessionFactory {
 
 class YBSessionFactory : public SessionFactory {
  public:
-  YBSessionFactory(yb::client::YBClient* client, yb::client::YBTable* table);
+  YBSessionFactory(yb::client::YBClient* client, yb::client::TableHandle* table);
 
   virtual string ClientId() override;
   SingleThreadedWriter* GetWriter(MultiThreadedWriter* writer, int idx) override;
@@ -79,12 +78,12 @@ class YBSessionFactory : public SessionFactory {
 
  protected:
   yb::client::YBClient* client_;
-  yb::client::YBTable* table_;
+  yb::client::TableHandle* table_;
 };
 
 class NoopSessionFactory : public YBSessionFactory {
  public:
-  NoopSessionFactory(yb::client::YBClient* client, yb::client::YBTable* table)
+  NoopSessionFactory(yb::client::YBClient* client, yb::client::TableHandle* table)
       : YBSessionFactory(client, table) {}
 
   SingleThreadedWriter* GetWriter(MultiThreadedWriter* writer, int idx) override;
@@ -167,7 +166,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
       int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
       std::atomic_bool* stop_flag, int value_size, int max_num_write_errors);
 
-  virtual void Start() override;
+  void Start() override;
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
   const KeyIndexSet* InsertedKeys() const { return &inserted_keys_; }
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
@@ -221,13 +220,13 @@ class SingleThreadedWriter {
 class YBSingleThreadedWriter : public SingleThreadedWriter {
  public:
   YBSingleThreadedWriter(
-      MultiThreadedWriter* writer, client::YBClient* client, client::YBTable* table,
+      MultiThreadedWriter* writer, client::YBClient* client, client::TableHandle* table,
       int writer_index)
       : SingleThreadedWriter(writer, writer_index), client_(client), table_(table) {}
 
  protected:
   client::YBClient* client_;
-  client::YBTable* table_;
+  client::TableHandle* table_;
   shared_ptr<client::YBSession> session_;
 
  private:
@@ -240,7 +239,7 @@ class YBSingleThreadedWriter : public SingleThreadedWriter {
 class NoopSingleThreadedWriter : public YBSingleThreadedWriter {
  public:
   NoopSingleThreadedWriter(
-      MultiThreadedWriter* reader, client::YBClient* client, client::YBTable* table,
+      MultiThreadedWriter* reader, client::YBClient* client, client::TableHandle* table,
       int reader_index) : YBSingleThreadedWriter(reader, client, table, reader_index) {}
 
  private:
@@ -279,13 +278,12 @@ class RedisNoopSingleThreadedWriter : public RedisSingleThreadedWriter {
 // TODO: create a multi-threaded version of this.
 class SingleThreadedScanner {
  public:
-  explicit SingleThreadedScanner(yb::client::YBTable* table);
+  explicit SingleThreadedScanner(client::TableHandle* table);
 
   int64_t CountRows();
 
  private:
-  yb::client::YBTable* table_;
-  int64_t num_rows_;
+  client::TableHandle* table_;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -353,13 +351,13 @@ class SingleThreadedReader {
 class YBSingleThreadedReader : public SingleThreadedReader {
  public:
   YBSingleThreadedReader(
-      MultiThreadedReader* reader, client::YBClient* client, client::YBTable* table,
+      MultiThreadedReader* reader, client::YBClient* client, client::TableHandle* table,
       int reader_index)
       : SingleThreadedReader(reader, reader_index), client_(client), table_(table) {}
 
  protected:
   client::YBClient* client_;
-  client::YBTable* table_;
+  client::TableHandle* table_;
   shared_ptr<client::YBSession> session_;
 
  private:

@@ -255,7 +255,6 @@ void RpcServerBase::MetricsLoggingThread() {
   // logging metrics.
   const MonoDelta kWaitBetweenFailures = MonoDelta::FromSeconds(60);
 
-
   MonoTime next_log = MonoTime::Now();
   while (!stop_metrics_logging_latch_.WaitUntil(next_log)) {
     next_log = MonoTime::Now();

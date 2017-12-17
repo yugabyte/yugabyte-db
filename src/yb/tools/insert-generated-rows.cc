@@ -41,6 +41,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
@@ -63,7 +64,6 @@ using std::vector;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::KuduInsert;
 using client::YBSchema;
 using client::YBSession;
 using client::YBTable;

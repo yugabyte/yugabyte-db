@@ -305,7 +305,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   req.set_tablet_id(tablet_id);
   Schema schema = GetSimpleTestSchema();
   ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
-  AddTestRowToPB(RowOperationsPB::INSERT, schema, 1, 1, "", req.mutable_row_operations());
+  AddTestRowInsert(1, 1, "", &req);
   leader_ts->tserver_proxy->WriteAsync(req, &resp, &rpc, [&latch]() { latch.CountDown(); });
 
   // Wait for the replicate to show up (this doesn't wait for COMMIT messages).

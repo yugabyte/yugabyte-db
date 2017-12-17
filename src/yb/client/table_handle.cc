@@ -13,6 +13,9 @@
 
 #include "yb/client/table_handle.h"
 
+#include "yb/client/client.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/master/master.pb.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -60,6 +63,23 @@ Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
   return Status::OK();
 }
 
+const YBTableName& TableHandle::name() const {
+  return table_->name();
+}
+
+const YBSchema& TableHandle::schema() const {
+  return table_->schema();
+}
+
+std::vector<std::string> TableHandle::AllColumnNames() const {
+  std::vector<std::string> result;
+  result.reserve(table_->schema().columns().size());
+  for (const auto& column : table_->schema().columns()) {
+    result.push_back(column.name());
+  }
+  return result;
+}
+
 namespace {
 
 template<class T>
@@ -87,92 +107,49 @@ std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp() const {
   return op;
 }
 
-void TableHandle::AddInt32ColumnValue(
-    QLWriteRequestPB* req, const string& column_name, int32_t value) const {
-  auto column_value = req->add_column_values();
-  column_value->set_column_id(ColumnId(column_name));
-  column_value->mutable_expr()->mutable_value()->set_int32_value(value);
+QLValuePB* TableHandle::PrepareColumn(QLWriteRequestPB* req, const string& column_name) const {
+  return QLPrepareColumn(req, ColumnId(column_name));
 }
 
-void TableHandle::AddInt64ColumnValue(
-    QLWriteRequestPB* req, const string& column_name, int64_t value) const {
-  auto column_value = req->add_column_values();
-  column_value->set_column_id(ColumnId(column_name));
-  column_value->mutable_expr()->mutable_value()->set_int64_value(value);
-}
+#define TABLE_HANDLE_TYPE_DEFINITIONS_IMPL(name, lname, type) \
+void TableHandle::PP_CAT3(Add, name, ColumnValue)( \
+    QLWriteRequestPB* req, const std::string &column_name, type value) const { \
+  PrepareColumn(req, column_name)->PP_CAT3(set_, lname, _value)(value); \
+} \
+\
+void TableHandle::PP_CAT3(Set, name, Condition)( \
+    QLConditionPB* const condition, const string& column_name, const QLOperator op, \
+    type value) const { \
+  PrepareCondition(condition, column_name, op)->PP_CAT3(set_, lname, _value)(value); \
+} \
+\
+void TableHandle::PP_CAT3(Add, name, Condition)( \
+    QLConditionPB* const condition, const string& column_name, const QLOperator op, \
+    type value) const { \
+  PP_CAT3(Set, name, Condition)( \
+    condition->add_operands()->mutable_condition(), column_name, op, value); \
+} \
 
-void TableHandle::AddStringColumnValue(
-    QLWriteRequestPB* req, const string& column_name, const string& value) const {
-  auto column_value = req->add_column_values();
-  column_value->set_column_id(ColumnId(column_name));
-  column_value->mutable_expr()->mutable_value()->set_string_value(value);
-}
+#define TABLE_HANDLE_TYPE_DEFINITIONS(i, data, entry) TABLE_HANDLE_TYPE_DEFINITIONS_IMPL entry
 
-void TableHandle::AddInt32RangeValue(QLWriteRequestPB* req, int32_t value) const {
-  SetInt32Expression(req->add_range_column_values(), value);
-}
-
-void TableHandle::AddInt64RangeValue(QLWriteRequestPB* req, int64_t value) const {
-  SetInt64Expression(req->add_range_column_values(), value);
-}
-
-void TableHandle::AddStringRangeValue(QLWriteRequestPB* req, const std::string& value) const {
-  SetStringExpression(req->add_range_column_values(), value);
-}
-
-void TableHandle::SetInt32Expression(QLExpressionPB* expr, int32_t value) const {
-  expr->mutable_value()->set_int32_value(value);
-}
-
-void TableHandle::SetInt64Expression(QLExpressionPB* expr, int64_t value) const {
-  expr->mutable_value()->set_int64_value(value);
-}
-
-void TableHandle::SetStringExpression(QLExpressionPB* expr, const string& value) const {
-  expr->mutable_value()->set_string_value(value);
-}
+BOOST_PP_SEQ_FOR_EACH(TABLE_HANDLE_TYPE_DEFINITIONS, ~, QL_PROTOCOL_TYPES);
 
 void TableHandle::SetColumn(QLColumnValuePB* column_value, const string& column_name) const {
   column_value->set_column_id(ColumnId(column_name));
 }
 
-void TableHandle::SetInt32Condition(
-    QLConditionPB* const condition, const string& column_name, const QLOperator op,
-    const int32_t value) const {
-  condition->add_operands()->set_column_id(ColumnId(column_name));
-  condition->set_op(op);
-  auto* const val = condition->add_operands()->mutable_value();
-  val->set_int32_value(value);
-}
-
-void TableHandle::SetStringCondition(
-    QLConditionPB* const condition, const string& column_name, const QLOperator op,
-    const string& value) const {
-  condition->add_operands()->set_column_id(ColumnId(column_name));
-  condition->set_op(op);
-  auto* const val = condition->add_operands()->mutable_value();
-  val->set_string_value(value);
-}
-
-void TableHandle::AddInt32Condition(
-    QLConditionPB* const condition, const string& column_name, const QLOperator op,
-    const int32_t value) const {
-  SetInt32Condition(condition->add_operands()->mutable_condition(), column_name, op, value);
-}
-
-void TableHandle::AddStringCondition(
-    QLConditionPB* const condition, const string& column_name, const QLOperator op,
-    const string& value) const {
-  SetStringCondition(condition->add_operands()->mutable_condition(), column_name, op, value);
+QLValuePB* TableHandle::PrepareCondition(
+    QLConditionPB* const condition, const string& column_name, const QLOperator op) const {
+  return QLPrepareCondition(condition, ColumnId(column_name), op);
 }
 
 void TableHandle::AddCondition(QLConditionPB* const condition, const QLOperator op) const {
   condition->add_operands()->mutable_condition()->set_op(op);
 }
 
-void TableHandle::AddColumns(const std::vector <std::string>& columns, QLReadRequestPB* req) const {
+void TableHandle::AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const {
   QLRSRowDescPB* rsrow_desc = req->mutable_rsrow_desc();
-  for (const auto column : columns) {
+  for (const auto& column : columns) {
     auto id = ColumnId(column);
     req->add_selected_exprs()->set_column_id(id);
     req->mutable_column_refs()->add_ids(id);
@@ -185,15 +162,24 @@ void TableHandle::AddColumns(const std::vector <std::string>& columns, QLReadReq
 
 TableIterator::TableIterator() : table_(nullptr) {}
 
-TableIterator::TableIterator(
-    const TableHandle* table,
-    YBConsistencyLevel consistency,
-    const std::vector<std::string>& columns,
-    const TableFilter& filter)
+TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table) {
+  if (options.status) {
+    *options.status = Status::OK();
+  }
+  Status status_placeholder;
+  Status* status = options.status ? options.status : &status_placeholder;
   auto client = (*table)->client();
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  CHECK_OK(client->GetTablets(table->name(), 0, &tablets));
+  *status = client->GetTablets(table->name(), 0, &tablets);
+  if (!status->ok() && options.status) {
+    return;
+  }
+  CHECK_OK(*status);
+  if (tablets.size() == 0) {
+    table_ = nullptr;
+    return;
+  }
   ops_.reserve(tablets.size());
 
   auto session = client->NewSession();
@@ -202,26 +188,44 @@ TableIterator::TableIterator(
   for (const auto& tablet : tablets) {
     auto op = table->NewReadOp();
     auto req = op->mutable_request();
-    op->set_yb_consistency_level(consistency);
+    op->set_yb_consistency_level(options.consistency);
 
     const auto& key_start = tablet.partition().partition_key_start();
     if (!key_start.empty()) {
       req->set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(key_start));
     }
 
-    if (filter) {
-      filter(*table_, req->mutable_where_expr()->mutable_condition());
+    if (options.filter) {
+      options.filter(*table_, req->mutable_where_expr()->mutable_condition());
     }
-    table_->AddColumns(columns, req);
+    if (options.read_time.read.is_valid()) {
+      op->SetReadTime(options.read_time);
+    }
+    table_->AddColumns(options.columns, req);
 
-    CHECK_OK(session->Apply(op));
+    *status = session->Apply(op);
+    if (!status->ok() && options.status) {
+      return;
+    }
+    CHECK_OK(*status);
     ops_.push_back(std::move(op));
   }
 
-  CHECK_OK(session->Flush());
+  *status = session->Flush();
+  if (!status->ok() && options.status) {
+    return;
+  }
+  CHECK_OK(*status);
 
   for(const auto& op : ops_) {
-    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
+    if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
+      if (options.status) {
+        LOG(ERROR) << "Error for " << op->ToString() << ": " << op->response().error_message();
+        *options.status = STATUS(RuntimeError, op->response().error_message());
+        return;
+      }
+      LOG(FATAL) << "Error for " << op->ToString() << ": " << op->response().error_message();
+    }
   }
 
   ops_index_ = 0;
@@ -275,6 +279,12 @@ void FilterGreater::operator()(const TableHandle& table, QLConditionPB* conditio
 void FilterLess::operator()(const TableHandle& table, QLConditionPB* condition) const {
   table.SetInt32Condition(
       condition, column_, inclusive_ ? QL_OP_LESS_THAN_EQUAL : QL_OP_LESS_THAN, bound_);
+}
+
+template <>
+void FilterEqualImpl<std::string>::operator()(
+    const TableHandle& table, QLConditionPB* condition) const {
+  table.SetBinaryCondition(condition, column_, QL_OP_EQUAL, t_);
 }
 
 } // namespace client

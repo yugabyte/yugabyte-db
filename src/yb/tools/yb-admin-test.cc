@@ -107,7 +107,6 @@ TEST_F(AdminCliTest, TestChangeConfig) {
                                   tablet_id_, 1));
 
   TestWorkload workload(cluster_.get());
-  workload.use_yql();
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(10000);

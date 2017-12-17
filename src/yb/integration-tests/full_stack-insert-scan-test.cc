@@ -324,7 +324,7 @@ const std::vector<string>& Int64ColumnNames() {
 // id. The key is assigned to "key," and the other fields are random.
 void RandomRow(Random* rng, QLWriteRequestPB* req, char* buf, int64_t key, int id,
                client::TableHandle* table) {
-  table->AddInt64HashValue(req, key);
+  QLAddInt64HashValue(req, key);
   int len = kRandomStrMinLength + rng->Uniform(kRandomStrMaxLength - kRandomStrMinLength + 1);
   RandomString(buf, len, rng);
   buf[len] = '\0';

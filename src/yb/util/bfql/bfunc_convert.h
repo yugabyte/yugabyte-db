@@ -33,9 +33,12 @@
 #include <iostream>
 #include <string>
 
-#include "yb/util/status.h"
-#include "yb/util/logging.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/util/date_time.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace bfql {

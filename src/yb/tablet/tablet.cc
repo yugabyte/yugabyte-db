@@ -769,7 +769,6 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
                key_value_write_request->row_operations().rows().size() > 0)
           << "QL write and Kudu row operations not supported in the same request";
       if (key_value_write_request->ql_write_batch_size() > 0) {
-        std::vector<QLResponsePB> responses;
         RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(data));
         if (restart_read_ht->is_valid()) {
           return Status::OK();

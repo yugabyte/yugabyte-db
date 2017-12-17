@@ -15,6 +15,7 @@
 
 #include "yb/client/transaction_manager.h"
 
+#include "yb/rpc/rpc.h"
 #include "yb/rpc/thread_pool.h"
 #include "yb/rpc/tasks_pool.h"
 

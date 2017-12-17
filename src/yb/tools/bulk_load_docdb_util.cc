@@ -17,6 +17,7 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tools/bulk_load_docdb_util.h"
+#include "yb/util/env.h"
 #include "yb/util/path_util.h"
 
 DECLARE_int32(num_memtables);

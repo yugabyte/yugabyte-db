@@ -35,6 +35,7 @@
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/env.h"
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"

@@ -18,10 +18,12 @@
 #include <thread>
 #include <vector>
 
-#include "cpp_redis/cpp_redis"
+#include <cpp_redis/cpp_redis>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/client/meta_cache.h"
 
 #include "yb/integration-tests/redis_table_test_base.h"
 

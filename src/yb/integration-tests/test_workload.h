@@ -59,10 +59,6 @@ class TestWorkload {
   explicit TestWorkload(MiniClusterBase* cluster);
   ~TestWorkload();
 
-  void use_yql() {
-    use_yql_ = true;
-  }
-
   void set_payload_bytes(int n) {
     payload_bytes_ = n;
   }
@@ -149,7 +145,6 @@ class TestWorkload {
   client::YBClientBuilder client_builder_;
   std::shared_ptr<client::YBClient> client_;
 
-  bool use_yql_ = false; // TODO in future it should be only true, when we remove Kudu ops fully.
   int payload_bytes_;
   int num_write_threads_;
   int write_batch_size_;

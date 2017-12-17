@@ -185,33 +185,17 @@ class TabletPeerTest : public YBTabletTest,
 
  protected:
   // Generate monotonic sequence of key column integers.
-  Status GenerateSequentialInsertRequest(WriteRequestPB* write_req) {
-    Schema schema(GetTestSchema());
+  void GenerateSequentialInsertRequest(WriteRequestPB* write_req) {
     write_req->set_tablet_id(tablet()->tablet_id());
-    CHECK_OK(SchemaToPB(schema, write_req->mutable_schema()));
-
-    YBPartialRow row(&schema);
-    CHECK_OK(row.SetInt32("key", (insert_counter_++)));
-
-    RowOperationsPBEncoder enc(write_req->mutable_row_operations());
-    enc.Add(RowOperationsPB::INSERT, row);
-    return Status::OK();
+    AddTestRowInsert(insert_counter_++, write_req);
   }
 
   // Generate monotonic sequence of deletions, starting with 0.
   // Will assert if you try to delete more rows than you inserted.
-  Status GenerateSequentialDeleteRequest(WriteRequestPB* write_req) {
+  void GenerateSequentialDeleteRequest(WriteRequestPB* write_req) {
     CHECK_LT(delete_counter_, insert_counter_);
-    Schema schema(GetTestSchema());
     write_req->set_tablet_id(tablet()->tablet_id());
-    CHECK_OK(SchemaToPB(schema, write_req->mutable_schema()));
-
-    YBPartialRow row(&schema);
-    CHECK_OK(row.SetInt32("key", delete_counter_++));
-
-    RowOperationsPBEncoder enc(write_req->mutable_row_operations());
-    enc.Add(RowOperationsPB::DELETE, row);
-    return Status::OK();
+    AddTestRowDelete(delete_counter_++, write_req);
   }
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
@@ -238,11 +222,11 @@ class TabletPeerTest : public YBTabletTest,
   }
 
   // Execute insert requests and roll log after each one.
-  Status ExecuteInsertsAndRollLogs(int num_inserts) {
+  CHECKED_STATUS ExecuteInsertsAndRollLogs(int num_inserts) {
     for (int i = 0; i < num_inserts; i++) {
-      gscoped_ptr<WriteRequestPB> req(new WriteRequestPB());
-      RETURN_NOT_OK(GenerateSequentialInsertRequest(req.get()));
-      RETURN_NOT_OK(ExecuteWriteAndRollLog(tablet_peer_.get(), *req));
+      WriteRequestPB req;
+      GenerateSequentialInsertRequest(&req);
+      RETURN_NOT_OK(ExecuteWriteAndRollLog(tablet_peer_.get(), req));
     }
 
     return Status::OK();
@@ -251,9 +235,9 @@ class TabletPeerTest : public YBTabletTest,
   // Execute delete requests and roll log after each one.
   Status ExecuteDeletesAndRollLogs(int num_deletes) {
     for (int i = 0; i < num_deletes; i++) {
-      gscoped_ptr<WriteRequestPB> req(new WriteRequestPB());
-      CHECK_OK(GenerateSequentialDeleteRequest(req.get()));
-      CHECK_OK(ExecuteWriteAndRollLog(tablet_peer_.get(), *req));
+      WriteRequestPB req;
+      GenerateSequentialDeleteRequest(&req);
+      CHECK_OK(ExecuteWriteAndRollLog(tablet_peer_.get(), req));
     }
 
     return Status::OK();

@@ -21,7 +21,6 @@
 
 #include <vector>
 
-#include "yb/client/client.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/bfql/gen_operator.h"

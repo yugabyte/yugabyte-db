@@ -13,8 +13,11 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+
+#include "yb/client/client.h"
+
+#include "yb/yql/cql/ql/util/ql_env.h"
 
 namespace yb {
 namespace ql {

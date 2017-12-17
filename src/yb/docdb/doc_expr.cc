@@ -3,6 +3,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/docdb/doc_expr.h"
+
+#include "yb/client/schema.h"
+
 #include "yb/docdb/subdocument.h"
 
 namespace yb {

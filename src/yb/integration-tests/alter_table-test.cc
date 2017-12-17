@@ -42,6 +42,7 @@
 #include "yb/client/row_result.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -438,7 +439,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
     // compactions may actually be triggered.
     int32_t key = bswap_32(i);
     auto req = op->mutable_request();
-    table.AddInt32HashValue(req, key);
+    QLAddInt32HashValue(req, key);
 
     if (table.schema().num_columns() > 1) {
       table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), i);
@@ -467,7 +468,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
 
   auto update = table.NewUpdateOp();
   int32_t key = bswap_32(row_key); // endian swap to match 'InsertRows'
-  table.AddInt32HashValue(update->mutable_request(), key);
+  QLAddInt32HashValue(update->mutable_request(), key);
   for (const auto& e : updates) {
     table.AddInt32ColumnValue(update->mutable_request(), e.first, e.second);
   }
@@ -747,7 +748,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
 
       if (type == QLWriteRequestPB::QL_STMT_INSERT) {
         int32_t key = bswap_32(i++);
-        table.AddInt32HashValue(req, key);
+        QLAddInt32HashValue(req, key);
         table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), i);
       } else {
         int32_t max = inserted_idx_.Load();
@@ -758,7 +759,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
         }
         // Endian-swap the key to match the way the insert generates keys.
         int32_t key = bswap_32(rng.Uniform(max));
-        table.AddInt32HashValue(req, key);
+        QLAddInt32HashValue(req, key);
         table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), i);
       }
 
@@ -865,7 +866,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   ASSERT_OK(table.Open(kSplitTableName, client_.get()));
   auto insert = table.NewInsertOp();
   auto req = insert->mutable_request();
-  table.AddInt32HashValue(req, 1);
+  QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, "c1", 1);
   table.AddInt32ColumnValue(req, "new-i32", 1);
   shared_ptr<YBSession> session = client_->NewSession();

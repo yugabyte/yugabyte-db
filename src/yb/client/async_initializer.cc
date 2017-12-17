@@ -12,6 +12,8 @@
 
 #include "yb/client/async_initializer.h"
 
+#include "yb/common/wire_protocol.h"
+
 using namespace std::literals;
 
 namespace yb {

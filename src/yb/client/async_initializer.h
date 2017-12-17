@@ -16,6 +16,7 @@
 #include <future>
 
 #include "yb/client/client.h"
+
 #include "yb/server/server_base_options.h"
 
 namespace yb {
@@ -33,7 +34,9 @@ class AsyncClientInitialiser {
   void Shutdown() { stopping_ = true; }
 
   const std::shared_ptr<client::YBClient>& client() const;
-  const std::shared_future<client::YBClientPtr>& get_client_future() const { return client_future_; }
+  const std::shared_future<client::YBClientPtr>& get_client_future() const {
+    return client_future_;
+  }
 
  private:
   void InitClient();

@@ -18,7 +18,6 @@
 
 #include <unordered_set>
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client_fwd.h"
 
@@ -58,15 +57,7 @@ class TabletInvoker {
                          TabletRpc* rpc,
                          RemoteTablet* tablet,
                          rpc::RpcRetrier* retrier,
-                         Trace* trace)
-      : client_(client),
-        command_(command),
-        rpc_(rpc),
-        tablet_(tablet),
-        tablet_id_(tablet != nullptr ? tablet->tablet_id() : std::string()),
-        retrier_(retrier),
-        trace_(trace),
-        consistent_prefix_(consistent_prefix) {}
+                         Trace* trace);
 
   virtual ~TabletInvoker() {}
 

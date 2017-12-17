@@ -50,79 +50,13 @@ namespace client {
 using std::shared_ptr;
 using std::unique_ptr;
 
-RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
-  switch (type) {
-    case YBOperation::INSERT: return RowOperationsPB_Type_INSERT;
-    case YBOperation::UPDATE: return RowOperationsPB_Type_UPDATE;
-    case YBOperation::DELETE: return RowOperationsPB_Type_DELETE;
-    default: LOG(FATAL) << "Unexpected write operation type: " << type;
-  }
-  return RowOperationsPB_Type_UNKNOWN;
-}
-
-// WriteOperation --------------------------------------------------------------
+// YBOperation --------------------------------------------------------------
 
 YBOperation::YBOperation(const shared_ptr<YBTable>& table)
   : table_(table) {
 }
 
 YBOperation::~YBOperation() {}
-
-// KuduOperation ----------------------------------------------------------------
-KuduOperation::KuduOperation(const shared_ptr<YBTable>& table)
-    : YBOperation(table), row_(&internal::GetSchema(table->schema())) {
-}
-
-Status KuduOperation::GetPartitionKey(std::string *partition_key) const {
-  return table_->partition_schema().EncodeKey(row_, partition_key);
-}
-
-int64_t KuduOperation::SizeInBuffer() const {
-  const Schema* schema = row_.schema();
-  int size = 1; // for the operation type
-
-  // Add size of isset bitmap (always present).
-  size += BitmapSize(schema->num_columns());
-  // Add size of null bitmap (present if the schema has nullables)
-  size += ContiguousRowHelper::null_bitmap_size(*schema);
-  // The column data itself:
-  for (int i = 0; i < schema->num_columns(); i++) {
-    if (row_.IsColumnSet(i) && !row_.IsNull(i)) {
-      size += schema->column(i).type_info()->size();
-      if (schema->column(i).type_info()->physical_type() == BINARY) {
-        ContiguousRow row(schema, row_.row_data_);
-        Slice bin;
-        memcpy(&bin, row.cell_ptr(i), sizeof(bin));
-        size += bin.size();
-      }
-    }
-  }
-  return size;
-}
-
-// Insert -----------------------------------------------------------------------
-
-KuduInsert::KuduInsert(const shared_ptr<YBTable>& table) : KuduOperation(table) {
-}
-
-KuduInsert::~KuduInsert() {
-}
-
-// Update -----------------------------------------------------------------------
-
-KuduUpdate::KuduUpdate(const shared_ptr<YBTable>& table) : KuduOperation(table) {
-}
-
-KuduUpdate::~KuduUpdate() {
-}
-
-// Delete -----------------------------------------------------------------------
-
-KuduDelete::KuduDelete(const shared_ptr<YBTable>& table) : KuduOperation(table) {
-}
-
-KuduDelete::~KuduDelete() {
-}
 
 // YBRedisOp ----------------------------------------------------------------------
 
@@ -141,8 +75,7 @@ RedisResponsePB* YBRedisOp::mutable_response() {
 
 
 const RedisResponsePB& YBRedisOp::response() const {
-  assert(redis_response_ != nullptr);
-  return *redis_response_;
+  return *DCHECK_NOTNULL(redis_response_.get());
 }
 
 // YBRedisWriteOp -----------------------------------------------------------------

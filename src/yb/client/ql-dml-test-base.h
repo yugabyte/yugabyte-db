@@ -20,7 +20,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/callbacks.h"
 #include "yb/common/ql_protocol.pb.h"

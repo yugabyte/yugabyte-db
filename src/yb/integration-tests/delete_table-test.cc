@@ -836,6 +836,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   // Run a write workload and wait some time for the workload to add data.
   workload.Start();
   SleepFor(MonoDelta::FromMilliseconds(2000));
+  ASSERT_GT(workload.rows_inserted(), 20);
   // Shut down the leader so it doesn't try to bootstrap our follower later.
   workload.StopAndJoin();
   cluster_->tablet_server(kLeaderIndex)->Shutdown();
@@ -996,14 +997,11 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
       TestWorkload::kDefaultTableName.namespace_name()));
   const int kNumTablets = 2;
   vector<const YBPartialRow*> split_rows;
-  Schema schema(GetSimpleTestSchema());
+  Schema schema(GetSimpleYqlTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
-  YBPartialRow* split_row = client_schema.NewRow();
-  ASSERT_OK(split_row->SetInt32(0, numeric_limits<int32_t>::max() / kNumTablets));
-  split_rows.push_back(split_row);
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkload::kDefaultTableName)
-                          .split_rows(split_rows)
+                          .num_tablets(kNumTablets)
                           .schema(&client_schema)
                           .num_replicas(3)
                           .Create());

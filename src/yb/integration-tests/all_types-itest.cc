@@ -35,6 +35,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/client/row_result.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/ts_itest-base.h"
@@ -50,7 +51,82 @@ using std::shared_ptr;
 
 static const int kNumTabletServers = 3;
 static const int kNumTablets = 3;
-static const int KMaxBatchSize = 8 * 1024 * 1024;
+
+// Wrap the actual DataType so that we can have the setup structs be friends of other classes
+// without leaking DataType.
+template<DataType KeyType>
+struct KeyTypeWrapper {
+  static const DataType type = KeyType;
+};
+
+template<class Value>
+struct TypeDescriptor;
+
+template<>
+struct TypeDescriptor<KeyTypeWrapper<yb::DataType::BINARY>> {
+  static void AddHashValue(QLWriteRequestPB* req, int value) {
+    QLAddBinaryHashValue(req, StringPrintf("%016x", value));
+  }
+
+  static int64_t GetIntVal(const QLValue& value) {
+    return std::stoll(value.binary_value(), nullptr, 16);
+  }
+};
+
+template<>
+struct TypeDescriptor<KeyTypeWrapper<yb::DataType::STRING>> {
+  static void AddHashValue(QLWriteRequestPB* req, int value) {
+    QLAddStringHashValue(req, StringPrintf("%016x", value));
+  }
+
+  static int64_t GetIntVal(const QLValue& value) {
+    return std::stoll(value.string_value(), nullptr, 16);
+  }
+};
+
+template<>
+struct TypeDescriptor<int64_t> {
+  static void AddHashValue(QLWriteRequestPB* req, int64_t value) {
+    QLAddInt64HashValue(req, value);
+  }
+
+  static int64_t GetIntVal(const QLValue& value) {
+    return value.int64_value();
+  }
+};
+
+template<>
+struct TypeDescriptor<int32_t> {
+  static void AddHashValue(QLWriteRequestPB* req, int32_t value) {
+    QLAddInt32HashValue(req, value);
+  }
+
+  static int64_t GetIntVal(const QLValue& value) {
+    return value.int32_value();
+  }
+};
+
+template<>
+struct TypeDescriptor<int16_t> {
+  static void AddHashValue(QLWriteRequestPB* req, int16_t value) {
+    QLAddInt16HashValue(req, value);
+  }
+
+  static int64_t GetIntVal(const QLValue& value) {
+    return value.int16_value();
+  }
+};
+
+template<>
+struct TypeDescriptor<int8_t> {
+  static void AddHashValue(QLWriteRequestPB* req, int8_t value) {
+    QLAddInt8HashValue(req, value);
+  }
+
+  static int64_t GetIntVal(const QLValue& value) {
+    return value.int8_value();
+  }
+};
 
 template<typename KeyTypeWrapper>
 struct SliceKeysTestSetup {
@@ -62,50 +138,16 @@ struct SliceKeysTestSetup {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
-    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->PrimaryKey();
+    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->HashPrimaryKey();
   }
 
-  // Split points are calculated by equally partitioning the int64_t key space and then
-  // using the stringified hexadecimal representation to create the split keys (with
-  // zero padding). We use 016x since INET requires either 4 or 16 bytes.
-  vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
-    vector<string> splits;
-    splits.reserve(kNumTablets - 1);
-    for (int i = 1; i < kNumTablets; i++) {
-      int split = i * increment_;
-      splits.push_back(StringPrintf("%016x", split));
-    }
-    vector<const YBPartialRow*> rows;
-    for (string val : splits) {
-      Slice slice(val);
-      YBPartialRow* row = schema.NewRow();
-      CHECK_OK(row->SetSliceCopy<TypeTraits<KeyTypeWrapper::type> >(0, slice));
-      rows.push_back(row);
-    }
-    return rows;
-  }
-
-  Status GenerateRowKey(KuduInsert* insert, int split_idx, int row_idx) const {
+  void GenerateRowKey(YBqlWriteOp* insert, int split_idx, int row_idx) const {
     int row_key_num = (split_idx * increment_) + row_idx;
-    string row_key = StringPrintf("%016x", row_key_num);
-    Slice row_key_slice(row_key);
-    return insert->mutable_row()->SetSliceCopy<TypeTraits<KeyTypeWrapper::type> >(0,
-                                                                                  row_key_slice);
+    TypeDescriptor<KeyTypeWrapper>::AddHashValue(insert->mutable_request(), row_key_num);
   }
 
-  Status VerifyRowKey(const YBRowResult& result, int split_idx, int row_idx) const {
-    int expected_row_key_num = (split_idx * increment_) + row_idx;
-    string expected_row_key = StringPrintf("%016x", expected_row_key_num);
-    Slice expected_row_key_slice(expected_row_key);
-    Slice row_key;
-    RETURN_NOT_OK(result.Get<TypeTraits<KeyTypeWrapper::type> >(0, &row_key));
-    if (expected_row_key_slice.compare(row_key) != 0) {
-      return STATUS(Corruption, strings::Substitute("Keys didn't match. Expected: $0 Got: $1",
-                                                    expected_row_key_slice.ToDebugString(),
-                                                    row_key.ToDebugString()));
-    }
-
-    return Status::OK();
+  int64_t KeyIntVal(const QLRow& row) const {
+    return TypeDescriptor<KeyTypeWrapper>::GetIntVal(row.column(0));
   }
 
   int GetRowsPerTablet() const {
@@ -114,6 +156,10 @@ struct SliceKeysTestSetup {
 
   int GetMaxRows() const {
     return max_rows_;
+  }
+
+  int Increment() const {
+    return increment_;
   }
 
   vector<string> GetKeyColumns() const {
@@ -142,38 +188,16 @@ struct IntKeysTestSetup {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
-    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->PrimaryKey();
+    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->HashPrimaryKey();
   }
 
-  vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
-    vector<CppType> splits;
-    splits.reserve(kNumTablets - 1);
-    for (int64_t i = 1; i < kNumTablets; i++) {
-      splits.push_back(i * increment_);
-    }
-    vector<const YBPartialRow*> rows;
-    for (CppType val : splits) {
-      YBPartialRow* row = schema.NewRow();
-      CHECK_OK(row->Set<TypeTraits<KeyTypeWrapper::type> >(0, val));
-      rows.push_back(row);
-    }
-    return rows;
-  }
-
-  Status GenerateRowKey(KuduInsert* insert, int split_idx, int row_idx) const {
+  void GenerateRowKey(YBqlWriteOp* insert, int split_idx, int row_idx) const {
     CppType val = (split_idx * increment_) + row_idx;
-    return insert->mutable_row()->Set<TypeTraits<KeyTypeWrapper::type> >(0, val);
+    TypeDescriptor<CppType>::AddHashValue(insert->mutable_request(), val);
   }
 
-  Status VerifyRowKey(const YBRowResult& result, int split_idx, int row_idx) const {
-    CppType val;
-    RETURN_NOT_OK(result.Get<TypeTraits<KeyTypeWrapper::type> >(0, &val));
-    int expected = (split_idx * increment_) + row_idx;
-    if (val != expected) {
-      return STATUS(Corruption, strings::Substitute("Keys didn't match. Expected: $0 Got: $1",
-                                                    expected, val));
-    }
-    return Status::OK();
+  int64_t KeyIntVal(const QLRow& row) const {
+    return TypeDescriptor<CppType>::GetIntVal(row.column(0));
   }
 
   int GetRowsPerTablet() const {
@@ -184,10 +208,12 @@ struct IntKeysTestSetup {
     return max_rows_;
   }
 
-  vector<string> GetKeyColumns() const {
-    vector<string> key_col;
-    key_col.push_back("key");
-    return key_col;
+  int Increment() const {
+    return increment_;
+  }
+
+  std::vector<std::string> GetKeyColumns() const {
+    return {"key"};
   }
 
   int max_rows_;
@@ -239,41 +265,33 @@ class AllTypesItest : public YBTest {
 
   Status CreateTable() {
     CreateAllTypesSchema();
-    vector<const YBPartialRow*> split_rows = setup_.GenerateSplitRows(schema_);
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-
-    for (const YBPartialRow* row : split_rows) {
-      split_rows_.push_back(*row);
-    }
 
     const YBTableName table_name("my_keyspace", "all-types-table");
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
     RETURN_NOT_OK(table_creator->table_name(table_name)
                   .schema(&schema_)
-                  .split_rows(split_rows)
+                  .num_tablets(kNumTablets)
                   .num_replicas(kNumTabletServers)
-                  .table_type(client::YBTableType::YQL_TABLE_TYPE)
                   .Create());
-    return client_->OpenTable(table_name, &table_);
+    return table_.Open(table_name, client_.get());
   }
 
   Status GenerateRow(YBSession* session, int split_idx, int row_idx) {
-    KuduInsert* insert = table_->NewInsert();
-    RETURN_NOT_OK(setup_.GenerateRowKey(insert, split_idx, row_idx));
+    auto insert = table_.NewInsertOp();
+    setup_.GenerateRowKey(insert.get(), split_idx, row_idx);
     int int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
-    YBPartialRow* row = insert->mutable_row();
-    RETURN_NOT_OK(row->SetInt8("int8_val", int_val));
-    RETURN_NOT_OK(row->SetInt16("int16_val", int_val));
-    RETURN_NOT_OK(row->SetInt32("int32_val", int_val));
-    RETURN_NOT_OK(row->SetInt64("int64_val", int_val));
-    string content = StringPrintf("hello %010x", int_val);
-    Slice slice_val(content);
-    RETURN_NOT_OK(row->SetStringCopy("string_val", slice_val));
-    RETURN_NOT_OK(row->SetBinaryCopy("binary_val", slice_val));
-    RETURN_NOT_OK(row->SetBool("bool_val", int_val % 2));
+    auto req = insert->mutable_request();
+    table_.AddInt8ColumnValue(req, "int8_val", int_val);
+    table_.AddInt16ColumnValue(req, "int16_val", int_val);
+    table_.AddInt32ColumnValue(req, "int32_val", int_val);
+    table_.AddInt64ColumnValue(req, "int64_val", int_val);
+    std::string content = StringPrintf("hello %010x", int_val);
+    table_.AddStringColumnValue(req, "string_val", content);
+    table_.AddBinaryColumnValue(req, "binary_val", content);
+    table_.AddBoolColumnValue(req, "bool_val", int_val % 2);
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
-    RETURN_NOT_OK(session->Apply(shared_ptr<KuduInsert>(insert)));
-    return Status::OK();
+    return session->Apply(insert);
   }
 
   // This inserts kNumRowsPerTablet in each of the tablets. In the end we should have
@@ -296,10 +314,7 @@ class AllTypesItest : public YBTest {
   }
 
   void SetupProjection(vector<string>* projection) {
-    vector<string> keys = setup_.GetKeyColumns();
-    for (const string& key : keys) {
-      projection->push_back(key);
-    }
+    *projection = setup_.GetKeyColumns();
     projection->push_back("int8_val");
     projection->push_back("int16_val");
     projection->push_back("int32_val");
@@ -309,84 +324,34 @@ class AllTypesItest : public YBTest {
     projection->push_back("bool_val");
   }
 
-  void VerifyRow(const YBRowResult& row, int split_idx, int row_idx) {
-    ASSERT_OK(setup_.VerifyRowKey(row, split_idx, row_idx));
-
+  void VerifyRow(const QLRow& row) {
+    int64_t key_int_val = setup_.KeyIntVal(row);
+    int64_t row_idx = key_int_val % setup_.Increment();;
+    int64_t split_idx = key_int_val / setup_.Increment();
     int64_t expected_int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
-    int8_t int8_val;
-    ASSERT_OK(row.GetInt8("int8_val", &int8_val));
-    ASSERT_EQ(int8_val, static_cast<int8_t>(expected_int_val));
-    int16_t int16_val;
-    ASSERT_OK(row.GetInt16("int16_val", &int16_val));
-    ASSERT_EQ(int16_val, static_cast<int16_t>(expected_int_val));
-    int32_t int32_val;
-    ASSERT_OK(row.GetInt32("int32_val", &int32_val));
-    ASSERT_EQ(int32_val, static_cast<int32_t>(expected_int_val));
-    int64_t int64_val;
-    ASSERT_OK(row.GetInt64("int64_val", &int64_val));
-    ASSERT_EQ(int64_val, expected_int_val);
 
+    ASSERT_EQ(static_cast<int8_t>(expected_int_val), row.column(1).int8_value());
+    ASSERT_EQ(static_cast<int16_t>(expected_int_val), row.column(2).int16_value());
+    ASSERT_EQ(static_cast<int32_t>(expected_int_val), row.column(3).int32_value());
+    ASSERT_EQ(expected_int_val, row.column(4).int64_value());
     string content = StringPrintf("hello %010" PRIx64, expected_int_val);
-    Slice expected_slice_val(content);
-    Slice string_val;
-    ASSERT_OK(row.GetString("string_val", &string_val));
-    ASSERT_EQ(string_val, expected_slice_val);
-    Slice binary_val;
-    ASSERT_OK(row.GetBinary("binary_val", &binary_val));
-    ASSERT_EQ(binary_val, expected_slice_val);
-    Slice inet_val;
-    bool expected_bool_val = expected_int_val % 2;
-    bool bool_val;
-    ASSERT_OK(row.GetBool("bool_val", &bool_val));
-    ASSERT_EQ(bool_val, expected_bool_val);
+    ASSERT_EQ(content, row.column(5).string_value());
+    ASSERT_EQ(content, row.column(6).binary_value());
+    ASSERT_EQ(expected_int_val % 2, row.column(7).bool_value());
   }
 
-  Status VerifyRows() {
-    vector<string> projection;
+  void VerifyRows() {
+    std::vector<std::string> projection;
     SetupProjection(&projection);
 
-    int total_rows = 0;
-    // Scan a single tablet and make sure it has the rows we expect in the amount we
-    // expect.
-    for (int i = 0; i < kNumTablets; ++i) {
-      YBScanner scanner(table_.get());
-      string low_split;
-      string high_split;
-      if (i != 0) {
-        const YBPartialRow& split = split_rows_[i - 1];
-        RETURN_NOT_OK(scanner.AddLowerBound(split));
-        low_split = split.ToString();
-      }
-      if (i != kNumTablets - 1) {
-        const YBPartialRow& split = split_rows_[i];
-        RETURN_NOT_OK(scanner.AddExclusiveUpperBound(split));
-        high_split = split.ToString();
-      }
-
-      RETURN_NOT_OK(scanner.SetProjectedColumns(projection));
-      RETURN_NOT_OK(scanner.SetBatchSizeBytes(KMaxBatchSize));
-      RETURN_NOT_OK(scanner.SetFaultTolerant());
-      RETURN_NOT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
-      RETURN_NOT_OK(scanner.SetTimeoutMillis(5000));
-      RETURN_NOT_OK(scanner.Open());
-      LOG(INFO) << "Scanning tablet: [" << low_split << ", " << high_split << ")";
-
-      int total_rows_in_tablet = 0;
-      while (scanner.HasMoreRows()) {
-        vector<YBRowResult> rows;
-        RETURN_NOT_OK(scanner.NextBatch(&rows));
-
-        for (int j = 0; j < rows.size(); ++j) {
-          VLOG(1) << "Scanned row: " << rows[j].ToString();
-          VerifyRow(rows[j], i, total_rows_in_tablet + j);
-        }
-        total_rows_in_tablet += rows.size();
-      }
-      CHECK_EQ(total_rows_in_tablet, setup_.GetRowsPerTablet());
-      total_rows += total_rows_in_tablet;
+    TableIteratorOptions options;
+    options.columns = projection;
+    auto count = 0;
+    for (const auto& row : TableRange(table_, options)) {
+      VerifyRow(row);
+      ++count;
     }
-    CHECK_EQ(total_rows, setup_.GetRowsPerTablet() * kNumTablets);
-    return Status::OK();
+    ASSERT_EQ(setup_.GetRowsPerTablet() * kNumTablets, count);
   }
 
   void RunTest() {
@@ -398,7 +363,7 @@ class AllTypesItest : public YBTest {
     // Verify always passes.
     ASSERT_NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
     // Check that the inserted data matches what we thought we inserted.
-    ASSERT_OK(VerifyRows());
+    VerifyRows();
   }
 
   void TearDown() override {
@@ -409,17 +374,9 @@ class AllTypesItest : public YBTest {
  protected:
   TestSetup setup_;
   YBSchema schema_;
-  vector<YBPartialRow> split_rows_;
   shared_ptr<YBClient> client_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<YBTable> table_;
-};
-
-// Wrap the actual DataType so that we can have the setup structs be friends of other classes
-// without leaking DataType.
-template<DataType KeyType>
-struct KeyTypeWrapper {
-  static const DataType type = KeyType;
+  TableHandle table_;
 };
 
 typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<INT8>>,

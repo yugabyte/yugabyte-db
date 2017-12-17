@@ -713,7 +713,7 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 
   req.set_tablet_id(tablet_id);
 
-  AddTestRow(key, int_val, string_val, &req);
+  AddTestRowInsert(key, int_val, string_val, &req);
 
   RETURN_NOT_OK(replica->tserver_proxy->Write(req, &resp, &rpc));
   if (resp.has_error()) {

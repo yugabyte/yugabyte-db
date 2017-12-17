@@ -33,7 +33,6 @@
 #define YB_CLIENT_ERROR_INTERNAL_H_
 
 #include "yb/client/client.h"
-#include "yb/gutil/gscoped_ptr.h"
 
 namespace yb {
 
@@ -54,4 +53,4 @@ class YBError::Data {
 }  // namespace client
 }  // namespace yb
 
-#endif
+#endif // YB_CLIENT_ERROR_INTERNAL_H_

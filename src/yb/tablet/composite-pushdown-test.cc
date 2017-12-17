@@ -47,12 +47,12 @@ const char* const kTestHostnames[] = { "foo", "foobar", "baz", nullptr };
 class CompositePushdownTest : public YBTabletTest {
  public:
   CompositePushdownTest()
-      : YBTabletTest(Schema({ ColumnSchema("year", INT16),
-                                ColumnSchema("month", INT8),
-                                ColumnSchema("day", INT8),
-                                ColumnSchema("hostname", STRING),
-                                ColumnSchema("data", STRING) },
-                              4)) {
+      : YBTabletTest(Schema({ ColumnSchema("year", INT16, false, true),
+                              ColumnSchema("month", INT8, false, true),
+                              ColumnSchema("day", INT8, false, true),
+                              ColumnSchema("hostname", STRING, false, true),
+                              ColumnSchema("data", STRING) },
+                            4)) {
   }
 
   void SetUp() override {
@@ -66,18 +66,18 @@ class CompositePushdownTest : public YBTabletTest {
     int i = 0;
 
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    YBPartialRow row(&client_schema_);
     for (int16_t year = 2000; year <= 2010; year++) {
       for (int8_t month = 1; month <= 12; month++) {
         for (int8_t day = 1; day <= 28; day++) {
           for (int host_idx = 0; kTestHostnames[host_idx] != nullptr; host_idx++) {
-            CHECK_OK(row.SetInt16(0, year));
-            CHECK_OK(row.SetInt8(1, month));
-            CHECK_OK(row.SetInt8(2, day));
-            CHECK_OK(row.SetStringCopy(3, kTestHostnames[host_idx]));
-            CHECK_OK(row.SetStringCopy(4, StringPrintf("%d/%02d/%02d-%s", year, month, day,
-                                                       kTestHostnames[host_idx])));
-            ASSERT_OK_FAST(writer.Insert(row));
+            QLWriteRequestPB req;
+            QLAddInt16HashValue(&req, year);
+            QLAddInt8HashValue(&req, month);
+            QLAddInt8HashValue(&req, day);
+            QLAddStringHashValue(&req, kTestHostnames[host_idx]);
+            QLAddStringColumnValue(&req, kFirstColumnId + 4,
+                StringPrintf("%d/%02d/%02d-%s", year, month, day, kTestHostnames[host_idx]));
+            ASSERT_OK_FAST(writer.Write(&req));
 
             if (i == nrows * 9 / 10) {
               ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
@@ -98,20 +98,25 @@ class CompositePushdownTest : public YBTabletTest {
   // string ("2001/02/01" vs. "2001/12/01")
   struct SuffixComparator {
     bool operator()(const string &a, const string &b) {
-      string s_a = a.substr(a.find("data="));
-      string s_b = b.substr(b.find("data="));
+      string s_a = a.substr(a.find("\", string:"));
+      string s_b = b.substr(b.find("\", string:"));
       return s_a < s_b;
     }
   };
 
-  void ScanTablet(ScanSpec *spec, vector<string> *results, const char *descr) {
-    SCOPED_TRACE(descr);
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
-    ASSERT_OK(iter->Init(spec));
-    ASSERT_TRUE(spec->predicates().empty()) << "Should have accepted all predicates";
-    LOG_TIMING(INFO, descr) {
-      ASSERT_OK(IterateToStringList(iter.get(), results));
+  void ScanTablet(QLReadRequestPB* req, vector<string> *results) {
+    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeTimestampToRead());
+    QLReadRequestResult result;
+    TransactionMetadataPB transaction;
+    QLAddColumns(schema_, {}, req);
+    EXPECT_OK(tablet()->HandleQLReadRequest(read_time, *req, transaction, &result));
+
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
+        << "Error: " << result.response.error_message();
+
+    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data);
+    for (const auto& row : row_block->rows()) {
+      results->push_back(row.ToString());
     }
     std::sort(results->begin(), results->end(), SuffixComparator());
     for (const string &str : *results) {
@@ -121,25 +126,26 @@ class CompositePushdownTest : public YBTabletTest {
 };
 
 TEST_F(CompositePushdownTest, TestPushDownExactEquality) {
-  ScanSpec spec;
   int16_t year = 2001;
   int8_t month = 9;
   int8_t day = 7;
-  Slice host(kTestHostnames[0]);
-  ColumnRangePredicate pred_year(schema_.column(0), &year, &year);
-  ColumnRangePredicate pred_month(schema_.column(1), &month, &month);
-  ColumnRangePredicate pred_day(schema_.column(2), &day, &day);
-  ColumnRangePredicate pred_host(schema_.column(3), &host, &host);
-  spec.AddPredicate(pred_year);
-  spec.AddPredicate(pred_month);
-  spec.AddPredicate(pred_day);
-  spec.AddPredicate(pred_host);
-  vector<string> results;
 
-  ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Exact match using compound key"));
+  QLReadRequestPB req;
+  auto cond = req.mutable_where_expr()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+  cond = cond->add_operands()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month);
+  cond = cond->add_operands()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_EQUAL, day);
+  QLAddStringCondition(cond, kFirstColumnId + 3, QL_OP_EQUAL, kTestHostnames[0]);
+
+  vector<string> results;
+  ASSERT_NO_FATALS(ScanTablet(&req, &results));
   ASSERT_EQ(1, results.size());
-  EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=7, "
-            "string hostname=foo, string data=2001/09/07-foo)",
+  EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"foo\", string:\"2001/09/07-foo\" }",
             results.front());
 }
 
@@ -147,95 +153,89 @@ TEST_F(CompositePushdownTest, TestPushDownExactEquality) {
 // Test for "host <= 'foo'" which should reject 'foobaz'.
 // Regression test for a bug in an earlier implementation of predicate pushdown.
 TEST_F(CompositePushdownTest, TestPushDownStringInequality) {
-  ScanSpec spec;
   int16_t year = 2001;
   int8_t month = 9;
   int8_t day = 7;
-  Slice host("foo");
-  ColumnRangePredicate pred_year(schema_.column(0), &year, &year);
-  ColumnRangePredicate pred_month(schema_.column(1), &month, &month);
-  ColumnRangePredicate pred_day(schema_.column(2), &day, &day);
-  ColumnRangePredicate pred_host(schema_.column(3), nullptr, &host);
-  spec.AddPredicate(pred_year);
-  spec.AddPredicate(pred_month);
-  spec.AddPredicate(pred_day);
-  spec.AddPredicate(pred_host);
-  vector<string> results;
 
-  ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Exact match using compound key"));
+  QLReadRequestPB req;
+  auto cond = req.mutable_where_expr()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+  cond = cond->add_operands()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month);
+  cond = cond->add_operands()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_EQUAL, day);
+  QLAddStringCondition(cond, kFirstColumnId + 3, QL_OP_LESS_THAN_EQUAL, kTestHostnames[0]);
+
+  vector<string> results;
+  ASSERT_NO_FATALS(ScanTablet(&req, &results));
   ASSERT_EQ(2, results.size());
-  EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=7, "
-            "string hostname=baz, string data=2001/09/07-baz)",
+  EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"baz\", string:\"2001/09/07-baz\" }",
             results.front());
-  EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=7, "
-            "string hostname=foo, string data=2001/09/07-foo)",
+  EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"foo\", string:\"2001/09/07-foo\" }",
             results.back());
 }
 
-
 TEST_F(CompositePushdownTest, TestPushDownDateEquality) {
-  ScanSpec spec;
   int16_t year = 2001;
   int8_t month = 9;
   int8_t day = 7;
-  ColumnRangePredicate pred_year(schema_.column(0), &year, &year);
-  ColumnRangePredicate pred_month(schema_.column(1), &month, &month);
-  ColumnRangePredicate pred_day(schema_.column(2), &day, &day);
-  spec.AddPredicate(pred_year);
-  spec.AddPredicate(pred_month);
-  spec.AddPredicate(pred_day);
-  vector<string> results;
 
-  ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Exact match using compound key"));
+  QLReadRequestPB req;
+  auto cond = req.mutable_where_expr()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+  cond = cond->add_operands()->mutable_condition();
+  cond->set_op(QLOperator::QL_OP_AND);
+  QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month);
+  QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_EQUAL, day);
+
+  vector<string> results;
+  ASSERT_NO_FATALS(ScanTablet(&req, &results));
   ASSERT_EQ(3, results.size());
-  EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=7, "
-            "string hostname=baz, string data=2001/09/07-baz)",
+  EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"baz\", string:\"2001/09/07-baz\" }",
             results[0]);
-  EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=7, "
-            "string hostname=foo, string data=2001/09/07-foo)",
+  EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"foo\", string:\"2001/09/07-foo\" }",
             results[1]);
-  EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=7, "
-            "string hostname=foobar, string data=2001/09/07-foobar)",
+  EXPECT_EQ("{ int16:2001, int8:9, int8:7, string:\"foobar\", string:\"2001/09/07-foobar\" }",
             results[2]);
 }
 
 TEST_F(CompositePushdownTest, TestPushDownPrefixEquality) {
   int16_t year = 2001;
   int8_t month = 9;
-  ColumnRangePredicate pred_year(schema_.column(0), &year, &year);
-  ColumnRangePredicate pred_month(schema_.column(1), &month, &month);
 
   {
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
-    spec.AddPredicate(pred_month);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results,
-                                       "Prefix match using 2/3 of a compound key"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=1, "
-              "string hostname=baz, string data=2001/09/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=28, "
-              "string hostname=foobar, string data=2001/09/28-foobar)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:28, string:\"foobar\", string:\"2001/09/28-foobar\" }",
               results.back());
   }
 
   {
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    QLSetInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results,
-                                       "Prefix match using 1/3 of a compound key"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(28 * 12 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=1, int8 day=1, "
-              "string hostname=baz, string data=2001/01/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=2, int8 day=1, "
-              "string hostname=baz, string data=2001/02/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:2, int8:1, string:\"baz\", string:\"2001/02/01-baz\" }",
               results[28 * 3]);
-    EXPECT_EQ("(int16 year=2001, int8 month=12, int8 day=28, "
-              "string hostname=foobar, string data=2001/12/28-foobar)",
+    EXPECT_EQ("{ int16:2001, int8:12, int8:28, string:\"foobar\", string:\"2001/12/28-foobar\" }",
               results.back());
   }
 }
@@ -247,154 +247,157 @@ TEST_F(CompositePushdownTest, TestPushDownPrefixEqualitySuffixInequality) {
   int8_t day_l = 1;
   int8_t day_u = 15;
 
-  ColumnRangePredicate pred_year(schema_.column(0), &year, &year);
-
-  ColumnRangePredicate pred_month_eq(schema_.column(1), &month_l, &month_l);
-  ColumnRangePredicate pred_month_ge_le(schema_.column(1), &month_l, &month_u);
-  ColumnRangePredicate pred_month_le(schema_.column(1), nullptr, &month_l);
-
-  ColumnRangePredicate pred_day_ge_le(schema_.column(2), &day_l, &day_u);
-  ColumnRangePredicate pred_day_ge(schema_.column(2), &day_l, nullptr);
-  ColumnRangePredicate pred_day_le(schema_.column(2), nullptr, &day_u);
-
   {
     // year=2001, month=9, day >= 1 && day <= 15
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
-    spec.AddPredicate(pred_month_eq);
-    spec.AddPredicate(pred_day_ge_le);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+    cond = cond->add_operands()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month_l);
+    cond = cond->add_operands()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_GREATER_THAN_EQUAL, day_l);
+    QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_LESS_THAN_EQUAL, day_u);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix equality, suffix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(15 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=1, "
-              "string hostname=baz, string data=2001/09/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=15, "
-              "string hostname=foobar, string data=2001/09/15-foobar)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:15, string:\"foobar\", string:\"2001/09/15-foobar\" }",
               results.back());
   }
 
   {
     // year=2001, month=9, day >= 1
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
-    spec.AddPredicate(pred_month_eq);
-    spec.AddPredicate(pred_day_ge);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+    cond = cond->add_operands()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month_l);
+    QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_GREATER_THAN_EQUAL, day_l);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix equality, suffix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=1, "
-              "string hostname=baz, string data=2001/09/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=28, "
-              "string hostname=foobar, string data=2001/09/28-foobar)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:28, string:\"foobar\", string:\"2001/09/28-foobar\" }",
               results.back());
   }
 
   {
     // year=2001, month=9, day <= 15
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
-    spec.AddPredicate(pred_month_eq);
-    spec.AddPredicate(pred_day_le);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+    cond = cond->add_operands()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_EQUAL, month_l);
+    QLAddInt8Condition(cond, kFirstColumnId + 2, QL_OP_LESS_THAN_EQUAL, day_u);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix equality, suffix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(15 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=1, "
-              "string hostname=baz, string data=2001/09/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=15, "
-              "string hostname=foobar, string data=2001/09/15-foobar)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:15, string:\"foobar\", string:\"2001/09/15-foobar\" }",
               results.back());
   }
 
   {
     // year=2001, month >= 9 && month <= 11
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
-    spec.AddPredicate(pred_month_ge_le);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+    cond = cond->add_operands()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_GREATER_THAN_EQUAL, month_l);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_LESS_THAN_EQUAL, month_u);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix equality, suffix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(3 * 28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=1, "
-              "string hostname=baz, string data=2001/09/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:1, string:\"baz\", string:\"2001/09/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=11, int8 day=28, "
-              "string hostname=foobar, string data=2001/11/28-foobar)",
+    EXPECT_EQ( "{ int16:2001, int8:11, int8:28, string:\"foobar\", string:\"2001/11/28-foobar\" }",
               results.back());
   }
 
   {
     // year=2001, month <= 9
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
-    spec.AddPredicate(pred_month_le);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_EQUAL, year);
+    QLAddInt8Condition(cond, kFirstColumnId + 1, QL_OP_LESS_THAN_EQUAL, month_l);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix equality, suffix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(9 * 28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=1, int8 day=1, "
-              "string hostname=baz, string data=2001/01/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
                results.front());
-    EXPECT_EQ("(int16 year=2001, int8 month=9, int8 day=28, "
-              "string hostname=foobar, string data=2001/09/28-foobar)",
+    EXPECT_EQ("{ int16:2001, int8:9, int8:28, string:\"foobar\", string:\"2001/09/28-foobar\" }",
               results.back());
   }
 }
 
 TEST_F(CompositePushdownTest, TestPushdownPrefixInequality) {
-
   int16_t year_2001 = 2001;
   int16_t year_2003 = 2003;
   {
     // year >= 2001 && year <= 2003
-    ColumnRangePredicate pred_year(schema_.column(0), &year_2001, &year_2003);
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_GREATER_THAN_EQUAL, year_2001);
+    QLAddInt16Condition(cond, kFirstColumnId, QL_OP_LESS_THAN_EQUAL, year_2003);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(3 * 12 * 28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=1, int8 day=1, "
-              "string hostname=baz, string data=2001/01/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2003, int8 month=12, int8 day=28, "
-              "string hostname=foobar, string data=2003/12/28-foobar)",
+    EXPECT_EQ("{ int16:2003, int8:12, int8:28, string:\"foobar\", string:\"2003/12/28-foobar\" }",
               results.back());
   }
 
   {
     // year >= 2001
-    ColumnRangePredicate pred_year(schema_.column(0), &year_2001, nullptr);
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    QLSetInt16Condition(cond, kFirstColumnId, QL_OP_GREATER_THAN_EQUAL, year_2001);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(10 * 12 * 28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2001, int8 month=1, int8 day=1, "
-              "string hostname=baz, string data=2001/01/01-baz)",
+    EXPECT_EQ("{ int16:2001, int8:1, int8:1, string:\"baz\", string:\"2001/01/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2010, int8 month=12, int8 day=28, "
-              "string hostname=foobar, string data=2010/12/28-foobar)",
+    EXPECT_EQ("{ int16:2010, int8:12, int8:28, string:\"foobar\", string:\"2010/12/28-foobar\" }",
               results.back());
   }
 
   {
     // year <= 2003
-    ColumnRangePredicate pred_year(schema_.column(0), nullptr, &year_2003);
-    ScanSpec spec;
-    spec.AddPredicate(pred_year);
+    QLReadRequestPB req;
+    auto cond = req.mutable_where_expr()->mutable_condition();
+    QLSetInt16Condition(cond, kFirstColumnId, QL_OP_LESS_THAN_EQUAL, year_2003);
+
     vector<string> results;
-    ASSERT_NO_FATALS(ScanTablet(&spec, &results, "Prefix inequality"));
+    ASSERT_NO_FATALS(ScanTablet(&req, &results));
     ASSERT_EQ(4 * 12 * 28 * 3, results.size());
-    EXPECT_EQ("(int16 year=2000, int8 month=1, int8 day=1, "
-              "string hostname=baz, string data=2000/01/01-baz)",
+    EXPECT_EQ("{ int16:2000, int8:1, int8:1, string:\"baz\", string:\"2000/01/01-baz\" }",
               results.front());
-    EXPECT_EQ("(int16 year=2003, int8 month=12, int8 day=28, "
-              "string hostname=foobar, string data=2003/12/28-foobar)",
+    EXPECT_EQ("{ int16:2003, int8:12, int8:28, string:\"foobar\", string:\"2003/12/28-foobar\" }",
               results.back());
   }
 }
-
-
 
 } // namespace tablet
 } // namespace yb

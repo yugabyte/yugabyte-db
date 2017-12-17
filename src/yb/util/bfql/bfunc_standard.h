@@ -28,6 +28,9 @@
 #include <iostream>
 #include <string>
 
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
 #include "yb/util/yb_partition.h"
@@ -71,7 +74,7 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
   string encoded_key = "";
   for (int i = 0; i < params.size(); i++) {
     const PTypePtr& param = params[i];
-    RETURN_NOT_OK(param->AppendToKeyBytes(&encoded_key));
+    param->AppendToKeyBytes(&encoded_key);
   }
 
   uint16_t hash = YBPartition::HashColumnCompoundValue(encoded_key);

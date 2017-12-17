@@ -30,7 +30,7 @@
 namespace yb {
 
 //--------------------------------------------------------------------------------------------------
-CHECKED_STATUS AppendToKey(const QLValuePB &value_pb, string *bytes);
+void AppendToKey(const QLValuePB &value_pb, std::string *bytes);
 
 //--------------------------------------------------------------------------------------------------
 // An abstract class that defines a QL value interface to support different implementations
@@ -171,8 +171,8 @@ class QLValue {
     return varint;
   }
 
-  virtual CHECKED_STATUS AppendToKeyBytes(string *bytes) const {
-    return AppendToKey(pb_, bytes);
+  virtual void AppendToKeyBytes(string *bytes) const {
+    AppendToKey(pb_, bytes);
   }
 
   //----------------------------------- set value methods -----------------------------------

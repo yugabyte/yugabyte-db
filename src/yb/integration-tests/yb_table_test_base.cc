@@ -12,6 +12,9 @@
 //
 
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/client/yb_op.h"
+
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/curl_util.h"
@@ -24,7 +27,6 @@ namespace yb {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::KuduInsert;
 using client::YBScanner;
 using client::YBScanBatch;
 using client::YBSchemaBuilder;
@@ -148,7 +150,7 @@ shared_ptr<yb::client::YBClient> YBTableTestBase::CreateYBClient() {
 }
 
 void YBTableTestBase::OpenTable() {
-  ASSERT_OK(client_->OpenTable(table_name(), &table_));
+  ASSERT_OK(table_.Open(table_name(), client_.get()));
   session_ = NewSession();
 }
 
@@ -165,7 +167,7 @@ void YBTableTestBase::CreateTable() {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name().namespace_name()));
 
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
+    b.AddColumn("k")->Type(BINARY)->NotNull()->HashPrimaryKey();
     b.AddColumn("v")->Type(BINARY)->NotNull();
     ASSERT_OK(b.Build(&schema_));
 
@@ -189,20 +191,15 @@ shared_ptr<YBSession> YBTableTestBase::NewSession() {
 }
 
 void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
-  shared_ptr<KuduInsert> insert(table_->NewInsert());
-  ASSERT_OK(insert->mutable_row()->SetBinary("k", key));
-  ASSERT_OK(insert->mutable_row()->SetBinary("v", value));
+  auto insert = table_.NewInsertOp();
+  QLAddStringHashValue(insert->mutable_request(), key);
+  table_.AddStringColumnValue(insert->mutable_request(), "v", value);
   ASSERT_OK(session->Apply(insert));
   ASSERT_OK(session->Flush());
 }
 
 void YBTableTestBase::PutKeyValue(string key, string value) {
   PutKeyValue(session_.get(), key, value);
-}
-
-void YBTableTestBase::ConfigureScanner(YBScanner* scanner) {
-  ASSERT_OK(scanner->SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
-  ASSERT_OK(scanner->SetProjectedColumns({ "k", "v" }));
 }
 
 void YBTableTestBase::RestartCluster() {
@@ -212,17 +209,14 @@ void YBTableTestBase::RestartCluster() {
   ASSERT_NO_FATALS(OpenTable());
 }
 
-void YBTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, string>>* result_kvs) {
-  while (scanner->HasMoreRows()) {
-    vector<YBScanBatch::RowPtr> rows;
-    ASSERT_OK(scanner->NextBatch(&rows));
-    for (auto row : rows) {
-      Slice returned_key, returned_value;
-      ASSERT_OK(row.GetBinary("k", &returned_key));
-      ASSERT_OK(row.GetBinary("v", &returned_value));
-      result_kvs->emplace_back(make_pair(returned_key.ToString(), returned_value.ToString()));
-    }
+std::vector<std::pair<std::string, std::string>> YBTableTestBase::GetScanResults(
+    const client::TableRange& range) {
+  std::vector<std::pair<std::string, std::string>> result;
+  for (const auto& row : range) {
+    result.emplace_back(row.column(0).binary_value(), row.column(1).binary_value());
   }
+  std::sort(result.begin(), result.end());
+  return result;
 }
 
 void YBTableTestBase::FetchTSMetricsPage() {

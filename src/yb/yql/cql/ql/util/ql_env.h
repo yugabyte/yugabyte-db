@@ -21,7 +21,6 @@
 #ifndef YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
-#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/yql/cql/ql/ql_session.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -79,9 +78,7 @@ class QLEnv {
   // Keyspace related methods.
 
   // Create a new keyspace with the given name.
-  virtual CHECKED_STATUS CreateKeyspace(const std::string& keyspace_name) {
-    return client_->CreateNamespace(keyspace_name);
-  }
+  virtual CHECKED_STATUS CreateKeyspace(const std::string& keyspace_name);
 
   // Delete keyspace with the given name.
   virtual CHECKED_STATUS DeleteKeyspace(const std::string& keyspace_name);
@@ -101,9 +98,7 @@ class QLEnv {
   CHECKED_STATUS CreateUDType(const std::string &keyspace_name,
                               const std::string &type_name,
                               const std::vector<std::string> &field_names,
-                              const std::vector<std::shared_ptr<QLType>> &field_types) {
-    return client_->CreateUDType(keyspace_name, type_name, field_names, field_types);
-  }
+                              const std::vector<std::shared_ptr<QLType>> &field_types);
 
   // Delete (user-defined) type by name.
   virtual CHECKED_STATUS DeleteUDType(const std::string &keyspace_name,

@@ -59,6 +59,13 @@ inline Schema GetSimpleTestSchema() {
                 1);
 }
 
+inline Schema GetSimpleYqlTestSchema() {
+  return Schema({ ColumnSchema("key", INT32, false, true),
+                  ColumnSchema("int_val", INT32),
+                  ColumnSchema("string_val", STRING, true) },
+                1);
+}
+
 inline void AddTestRowWithNullableStringToPB(RowOperationsPB::Type op_type,
                                              const Schema& schema,
                                              int32_t key,
@@ -95,27 +102,75 @@ inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
   enc.Add(op_type, row);
 }
 
-template <class WriteRequestPB>
-void AddTestRow(int32_t key,
-                int32_t int_val,
-                const string& string_val,
-                WriteRequestPB* req) {
-  req->mutable_row_operations(); // To mark write as non empty.
+template <class WriteRequestPB, class Type>
+QLWriteRequestPB* TestRow(int32_t key, Type type, WriteRequestPB* req) {
   req->set_external_consistency_mode(ExternalConsistencyMode::CLIENT_PROPAGATED);
   auto wb = req->add_ql_write_batch();
   wb->set_schema_version(0);
-  wb->set_type(QLWriteRequestPB::QL_STMT_INSERT);
+  wb->set_type(type);
 
   std::string hash_key;
   YBPartition::AppendIntToKey<int32_t, uint32_t>(key, &hash_key);
   wb->set_hash_code(YBPartition::HashColumnCompoundValue(hash_key));
   wb->add_hashed_column_values()->mutable_value()->set_int32_value(key);
+  return wb;
+}
+
+template <class WriteRequestPB>
+QLWriteRequestPB* AddTestRowDelete(int32_t key, WriteRequestPB* req) {
+  return TestRow(key, QLWriteRequestPB::QL_STMT_DELETE, req);
+}
+
+template <class WriteRequestPB>
+QLWriteRequestPB* AddTestRowInsert(int32_t key, WriteRequestPB* req) {
+  return TestRow(key, QLWriteRequestPB::QL_STMT_INSERT, req);
+}
+
+template <class Type, class WriteRequestPB>
+QLWriteRequestPB* AddTestRow(int32_t key,
+                int32_t int_val,
+                Type type,
+                WriteRequestPB* req) {
+  auto wb = TestRow(key, type, req);
   auto column_value = wb->add_column_values();
   column_value->set_column_id(kFirstColumnId + 1);
   column_value->mutable_expr()->mutable_value()->set_int32_value(int_val);
-  column_value = wb->add_column_values();
+  return wb;
+}
+
+template <class Type, class WriteRequestPB>
+void AddTestRow(int32_t key,
+                int32_t int_val,
+                const string& string_val,
+                Type type,
+                WriteRequestPB* req) {
+  auto wb = AddTestRow(key, int_val, type, req);
+  auto column_value = wb->add_column_values();
   column_value->set_column_id(kFirstColumnId + 2);
   column_value->mutable_expr()->mutable_value()->set_string_value(string_val);
+}
+
+template <class WriteRequestPB>
+void AddTestRowInsert(int32_t key,
+                      int32_t int_val,
+                      WriteRequestPB* req) {
+  AddTestRow(key, int_val, QLWriteRequestPB::QL_STMT_INSERT, req);
+}
+
+template <class WriteRequestPB>
+void AddTestRowInsert(int32_t key,
+                      int32_t int_val,
+                      const string& string_val,
+                      WriteRequestPB* req) {
+  AddTestRow(key, int_val, string_val, QLWriteRequestPB::QL_STMT_INSERT, req);
+}
+
+template <class WriteRequestPB>
+void AddTestRowUpdate(int32_t key,
+                      int32_t int_val,
+                      const string& string_val,
+                      WriteRequestPB* req) {
+  AddTestRow(key, int_val, string_val, QLWriteRequestPB::QL_STMT_UPDATE, req);
 }
 
 inline void AddKVToPB(int32_t key_val,

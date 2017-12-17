@@ -33,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"

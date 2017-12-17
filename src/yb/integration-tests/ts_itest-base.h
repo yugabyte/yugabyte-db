@@ -37,7 +37,6 @@
 #include <vector>
 #include <glog/stl_logging.h>
 
-#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
 #include "yb/client/table_handle.h"

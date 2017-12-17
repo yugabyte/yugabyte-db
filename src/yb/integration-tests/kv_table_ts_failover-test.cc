@@ -60,8 +60,8 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     // Create two separate clients for read and writes.
     shared_ptr<YBClient> write_client = CreateYBClient();
     shared_ptr<YBClient> read_client = CreateYBClient();
-    yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), table_.get());
-    yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), table_.get());
+    yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), &table_);
+    yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), &table_);
 
     yb::load_generator::MultiThreadedWriter writer(rows, start_key, writer_threads,
                                                    &write_session_factory, &stop_requested_flag,
@@ -78,7 +78,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     reader.Start();
 
     for (int i = 0; i < 3; ++i) {
-      SleepFor(MonoDelta::FromSeconds(2));
+      SleepFor(MonoDelta::FromSeconds(5));
       LOG(INFO) << "Killing tablet server #" << i;
       external_mini_cluster()->tablet_server(i)->Shutdown();
       LOG(INFO) << "Re-starting tablet server #" << i;
@@ -102,6 +102,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
 
     // Assuming every thread has time to do at least 50 writes. Had to lower this from 100 after
     // enabling TSAN.
+    LOG(INFO) << "Reads: " << reader.num_reads() << ", writes: " << writer.num_writes();
     ASSERT_GE(writer.num_writes(), writer_threads * 50);
     // Assuming at least 100 reads and 100 writes.
     ASSERT_GE(reader.num_reads(), 100);

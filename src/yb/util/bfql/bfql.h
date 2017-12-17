@@ -76,7 +76,6 @@
 #include <vector>
 #include <list>
 
-#include "yb/client/client.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfql_template.h"
 #include "yb/util/bfql/tserver_opcodes.h"

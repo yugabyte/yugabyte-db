@@ -19,6 +19,9 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/yb_op.h"
+
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/util/pb_util.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
@@ -73,9 +76,6 @@ shared_ptr<vector<ColumnSchema>> GetColumnSchemasFromOp(const YBqlOp& op, const 
       return column_schemas;
     }
 
-    case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-    case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-    case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
     case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
     case YBOperation::Type::REDIS_WRITE:
       break;
@@ -92,9 +92,6 @@ QLClient GetClientFromOp(const YBqlOp& op) {
       return static_cast<const YBqlReadOp&>(op).request().client();
     case YBOperation::Type::QL_WRITE:
       return static_cast<const YBqlWriteOp&>(op).request().client();
-    case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-    case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-    case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
     case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
     case YBOperation::Type::REDIS_WRITE:
       break;
@@ -167,14 +164,7 @@ Status RowsResult::Append(const RowsResult& other) {
 }
 
 std::unique_ptr<QLRowBlock> RowsResult::GetRowBlock() const {
-  Schema schema(*column_schemas_, 0);
-  unique_ptr<QLRowBlock> rowblock(new QLRowBlock(schema));
-  Slice data(rows_data_);
-  if (!data.empty()) {
-    // TODO: a better way to handle errors here?
-    CHECK_OK(rowblock->Deserialize(client_, &data));
-  }
-  return rowblock;
+  return CreateRowBlock(client_, Schema(*column_schemas_, 0), rows_data_);
 }
 
 //------------------------------------------------------------------------------------------------

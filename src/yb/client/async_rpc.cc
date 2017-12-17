@@ -165,10 +165,6 @@ void AsyncRpc::Failed(const Status& status) {
         resp->set_error_message(error_message);
         break;
       }
-      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::DELETE:
-        break;
       default:
         LOG(FATAL) << "Unsupported operation " << yb_op->type();
         break;
@@ -254,7 +250,9 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    InFlightOps ops)
     : AsyncRpcBase(batcher, tablet, ops, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated to $0", tablet->tablet_id());
+#ifndef NDEBUG
   const Schema& schema = GetSchema(table()->schema());
+#endif
 
   switch (batcher->external_consistency_mode()) {
     case yb::client::YBSession::CLIENT_PROPAGATED:
@@ -267,11 +265,8 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
       LOG(FATAL) << "Unsupported consistency mode: " << batcher->external_consistency_mode();
   }
 
-  RowOperationsPB* requested = req_.mutable_row_operations();
-
   // Add the rows
   int ctr = 0;
-  RowOperationsPBEncoder enc(requested);
   for (auto& op : ops_) {
 #ifndef NDEBUG
     const Partition& partition = op->tablet->partition();
@@ -286,15 +281,6 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
       case YBOperation::REDIS_WRITE: {
         CHECK_OK(op->yb_op->GetPartitionKey(&partition_key));
         partition_contains_row = partition.ConstainsKey(partition_key);
-        break;
-      }
-
-      case YBOperation::INSERT: FALLTHROUGH_INTENDED;
-      case YBOperation::UPDATE: FALLTHROUGH_INTENDED;
-      case YBOperation::DELETE: {
-        auto* kudu_op = down_cast<KuduOperation*>(op->yb_op.get());
-        const YBPartialRow& row = kudu_op->row();
-        CHECK_OK(partition_schema.PartitionContainsRow(partition, row, &partition_contains_row));
         break;
       }
     }
@@ -320,19 +306,6 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
         // in ProcessResponseFromTserver.
         auto* ql_op = down_cast<YBqlWriteOp*>(op->yb_op.get());
         req_.add_ql_write_batch()->Swap(ql_op->mutable_request());
-        break;
-      }
-      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::DELETE: {
-        CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE)
-            << "unsupported table type " << table()->table_type() << " for insert/update/delete";
-        auto* kudu_op = down_cast<KuduOperation*>(op->yb_op.get());
-        enc.Add(ToInternalWriteType(kudu_op->type()), kudu_op->row());
-        if (!req_.has_schema()) {
-          // Only in the Kudu case, we still need the schema as part of every WriteRequest.
-          CHECK_OK(SchemaToPB(schema, req_.mutable_schema(), SCHEMA_PB_WITHOUT_IDS));
-        }
         break;
       }
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
@@ -431,11 +404,6 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
         break;
       }
 
-      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::DELETE:
-        break; // these writes have no separate responses
-
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_READ:
         LOG(FATAL) << "Not a write operation " << op->yb_op->type();
@@ -479,11 +447,11 @@ ReadRpc::ReadRpc(
         // in ProcessResponseFromTserver.
         auto* ql_op = down_cast<YBqlReadOp*>(op->yb_op.get());
         req_.add_ql_batch()->Swap(ql_op->mutable_request());
+        if (ql_op->read_time().read.is_valid()) {
+          ql_op->read_time().AddToPB(&req_);
+        }
         break;
       }
-      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE:
         LOG(FATAL) << "Not a read operation " << op->yb_op->type();
@@ -570,9 +538,6 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
         ql_idx++;
         break;
       }
-      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
-      case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE:
         LOG(FATAL) << "Not a read operation " << op->yb_op->type();

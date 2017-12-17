@@ -36,6 +36,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+using namespace std::literals;
+
 using std::string;
 using std::vector;
 using std::unique_ptr;
@@ -78,12 +80,7 @@ class KVTableTest : public YBTableTestBase {
   }
 
   void CheckSampleKeysValues() {
-    YBScanner scanner(table_.get());
-    ConfigureScanner(&scanner);
-    ASSERT_OK(scanner.Open());
-
-    vector<pair<string, string>> result_kvs;
-    GetScanResults(&scanner, &result_kvs);
+    auto result_kvs = GetScanResults(client::TableRange(table_));
 
     ASSERT_EQ(3, result_kvs.size());
     ASSERT_EQ("key123", result_kvs.front().first);
@@ -107,15 +104,9 @@ TEST_F(KVTableTest, SimpleKVTableTest) {
 TEST_F(KVTableTest, PointQuery) {
   ASSERT_NO_FATALS(PutSampleKeysValues());
 
-  YBScanner scanner(table_.get());
-  ASSERT_NO_FATALS(ConfigureScanner(&scanner));
-  ASSERT_OK(
-      scanner.AddConjunctPredicate(
-          table_->NewComparisonPredicate(
-              "k", YBPredicate::EQUAL, YBValue::CopyString("key200"))));
-  ASSERT_OK(scanner.Open());
-  vector<pair<string, string>> result_kvs;
-  GetScanResults(&scanner, &result_kvs);
+  client::TableIteratorOptions options;
+  options.filter = client::FilterEqual("key200"s, "k"s);
+  auto result_kvs = GetScanResults(client::TableRange(table_, options));
   ASSERT_EQ(1, result_kvs.size());
   ASSERT_EQ("key200", result_kvs.front().first);
   ASSERT_EQ("value200", result_kvs.front().second);
@@ -148,8 +139,8 @@ TEST_F(KVTableTest, LoadTest) {
   // Create two separate clients for read and writes.
   shared_ptr<YBClient> write_client = CreateYBClient();
   shared_ptr<YBClient> read_client = CreateYBClient();
-  yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), table_.get());
-  yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), table_.get());
+  yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), &table_);
+  yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), &table_);
 
   yb::load_generator::MultiThreadedWriter writer(rows, start_key, writer_threads,
                                                  &write_session_factory, &stop_requested_flag,

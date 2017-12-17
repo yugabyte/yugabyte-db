@@ -20,8 +20,6 @@
 #ifndef YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
 #define YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
 
-#include "yb/client/client.h"
-
 #include "yb/yql/cql/cqlserver/cql_message.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"

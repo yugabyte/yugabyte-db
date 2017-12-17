@@ -40,7 +40,9 @@
 
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"

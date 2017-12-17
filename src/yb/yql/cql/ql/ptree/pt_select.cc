@@ -19,6 +19,8 @@
 
 #include <functional>
 
+#include "yb/client/client.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 namespace yb {

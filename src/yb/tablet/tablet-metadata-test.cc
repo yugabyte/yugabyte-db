@@ -34,6 +34,7 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/local_tablet_writer.h"
@@ -45,7 +46,7 @@ namespace tablet {
 class TestTabletMetadata : public YBTabletTest {
  public:
   TestTabletMetadata()
-      : YBTabletTest(GetSimpleTestSchema()) {
+      : YBTabletTest(GetSimpleYqlTestSchema()) {
   }
 
   void SetUp() override {
@@ -55,31 +56,31 @@ class TestTabletMetadata : public YBTabletTest {
   }
 
   void BuildPartialRow(int key, int intval, const char* strval,
-                       gscoped_ptr<YBPartialRow>* row);
+                       QLWriteRequestPB* req);
 
  protected:
   gscoped_ptr<LocalTabletWriter> writer_;
 };
 
 void TestTabletMetadata::BuildPartialRow(int key, int intval, const char* strval,
-                                         gscoped_ptr<YBPartialRow>* row) {
-  row->reset(new YBPartialRow(&client_schema_));
-  CHECK_OK((*row)->SetInt32(0, key));
-  CHECK_OK((*row)->SetInt32(1, intval));
-  CHECK_OK((*row)->SetStringCopy(2, strval));
+                                         QLWriteRequestPB* req) {
+  req->Clear();
+  QLAddInt32HashValue(req, key);
+  QLAddInt32ColumnValue(req, kFirstColumnId + 1, intval);
+  QLAddStringColumnValue(req, kFirstColumnId + 2, strval);
 }
 
 // Test that loading & storing the superblock results in an equivalent file.
 TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
   // Write some data to the tablet and flush.
-  gscoped_ptr<YBPartialRow> row;
-  BuildPartialRow(0, 0, "foo", &row);
-  ASSERT_OK(writer_->Insert(*row));
+  QLWriteRequestPB req;
+  BuildPartialRow(0, 0, "foo", &req);
+  ASSERT_OK(writer_->Write(&req));
   ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Create one more row. Write and flush.
-  BuildPartialRow(1, 1, "bar", &row);
-  ASSERT_OK(writer_->Insert(*row));
+  BuildPartialRow(1, 1, "bar", &req);
+  ASSERT_OK(writer_->Write(&req));
   ASSERT_OK(harness_->tablet()->Flush(tablet::FlushMode::kSync));
 
   // Shut down the tablet.

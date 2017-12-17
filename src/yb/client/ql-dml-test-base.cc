@@ -15,6 +15,8 @@
 
 #include "yb/client/ql-dml-test-base.h"
 
+#include "yb/client/client.h"
+
 namespace yb {
 namespace client {
 

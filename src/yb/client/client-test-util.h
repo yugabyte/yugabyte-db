@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 
-#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
@@ -47,22 +47,11 @@ class YBSchema;
 
 // Log any pending errors in the given session, and then crash the current
 // process.
-void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
-                            const Status& s);
+void LogSessionErrorsAndDie(const YBSessionPtr& session, const Status& s);
 
 // Flush the given session. If any errors occur, log them and crash
 // the process.
-inline void FlushSessionOrDie(const std::shared_ptr<YBSession>& session,
-                              const std::vector<std::shared_ptr<YBqlOp>>& ops = {}) {
-  Status s = session->Flush();
-  if (PREDICT_FALSE(!s.ok())) {
-    LogSessionErrorsAndDie(session, s);
-  }
-  for (auto& op : ops) {
-    CHECK_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
-        << "Status: " << QLResponsePB::QLStatus_Name(op->response().status());
-  }
-}
+void FlushSessionOrDie(const YBSessionPtr& session, const std::vector<YBqlOpPtr>& ops = {});
 
 // Scans in LEADER_ONLY mode, returning stringified rows in the given vector.
 void ScanTableToStrings(YBTable* table, std::vector<std::string>* row_strings);

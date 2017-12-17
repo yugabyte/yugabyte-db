@@ -36,7 +36,11 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
+
+#include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/util/test_macros.h"
@@ -48,9 +52,9 @@ namespace tablet {
 class TabletPushdownTest : public YBTabletTest {
  public:
   TabletPushdownTest()
-    : YBTabletTest(Schema({ ColumnSchema("key", INT32),
-                              ColumnSchema("int_val", INT32),
-                              ColumnSchema("string_val", STRING) }, 1)) {
+    : YBTabletTest(Schema({ ColumnSchema("key", INT32, false, true),
+                            ColumnSchema("int_val", INT32),
+                            ColumnSchema("string_val", STRING) }, 1)) {
   }
 
   void SetUp() override {
@@ -68,80 +72,59 @@ class TabletPushdownTest : public YBTabletTest {
     }
 
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    YBPartialRow row(&client_schema_);
+    QLWriteRequestPB req;
     for (int64_t i = 0; i < nrows_; i++) {
-      CHECK_OK(row.SetInt32(0, i));
-      CHECK_OK(row.SetInt32(1, i * 10));
-      CHECK_OK(row.SetStringCopy(2, StringPrintf("%08" PRId64, i)));
-      ASSERT_OK_FAST(writer.Insert(row));
+      QLAddInt32HashValue(&req, i);
+      QLAddInt32ColumnValue(&req, kFirstColumnId + 1, i * 10);
+      QLAddStringColumnValue(&req, kFirstColumnId + 2, StringPrintf("%08" PRId64, i));
+      ASSERT_OK_FAST(writer.Write(&req));
     }
   }
 
   // The predicates tested in the various test cases all yield
   // the same set of rows. Run the scan and verify that the
   // expected rows are returned.
-  void TestScanYieldsExpectedResults(ScanSpec spec) {
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
-    ASSERT_OK(iter->Init(&spec));
-    ASSERT_TRUE(spec.predicates().empty()) << "Should have accepted all predicates";
+  void TestScanYieldsExpectedResults(int column_id, int lower, int upper) {
+    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeTimestampToRead());
+    QLReadRequestPB req;
+    auto* condition = req.mutable_where_expr()->mutable_condition();
+    condition->set_op(QLOperator::QL_OP_AND);
+    QLAddInt32Condition(condition, column_id, QL_OP_GREATER_THAN_EQUAL, lower);
+    QLAddInt32Condition(condition, column_id, QL_OP_LESS_THAN_EQUAL, upper);
+    QLReadRequestResult result;
+    TransactionMetadataPB transaction;
+    QLAddColumns(schema_, {}, &req);
+    EXPECT_OK(tablet()->HandleQLReadRequest(read_time, req, transaction, &result));
 
-    vector<string> results;
-    LOG_TIMING(INFO, "Filtering by int value") {
-      ASSERT_OK(IterateToStringList(iter.get(), &results));
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
+        << "Error: " << result.response.error_message();
+
+    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data);
+    std::vector<std::string> results;
+    for (const auto& row : row_block->rows()) {
+      results.push_back(row.ToString());
     }
     std::sort(results.begin(), results.end());
     for (const string &str : results) {
       LOG(INFO) << str;
     }
     ASSERT_EQ(11, results.size());
-    ASSERT_EQ("(int32 key=200, int32 int_val=2000, string string_val=00000200)", results[0]);
-    ASSERT_EQ("(int32 key=210, int32 int_val=2100, string string_val=00000210)", results[10]);
+    ASSERT_EQ("{ int32:200, int32:2000, string:\"00000200\" }", results[0]);
+    ASSERT_EQ("{ int32:210, int32:2100, string:\"00000210\" }", results[10]);
   }
 
-  // Test that a scan with an empty projection and the given spec
-  // returns the expected number of rows. The rows themselves
-  // should be empty.
-  void TestCountOnlyScanYieldsExpectedResults(ScanSpec spec) {
-    Schema empty_schema(std::vector<ColumnSchema>(), 0);
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(empty_schema, boost::none, &iter));
-    ASSERT_OK(iter->Init(&spec));
-    ASSERT_TRUE(spec.predicates().empty()) << "Should have accepted all predicates";
-
-    vector<string> results;
-    ASSERT_OK(IterateToStringList(iter.get(), &results));
-    ASSERT_EQ(11, results.size());
-    for (const string& result : results) {
-      ASSERT_EQ("()", result);
-    }
-  }
  private:
   uint64_t nrows_;
 };
 
 TEST_F(TabletPushdownTest, TestPushdownIntKeyRange) {
-  ScanSpec spec;
-  int32_t lower = 200;
-  int32_t upper = 210;
-  ColumnRangePredicate pred0(schema_.column(0), &lower, &upper);
-  spec.AddPredicate(pred0);
-
-  TestScanYieldsExpectedResults(spec);
-  TestCountOnlyScanYieldsExpectedResults(spec);
+  TestScanYieldsExpectedResults(kFirstColumnId, 200, 210);
 }
 
 // TODO: Value range scan is not working yet, it returns 2100 rows.
-TEST_F(TabletPushdownTest, DISABLED_TestPushdownIntValueRange) {
+TEST_F(TabletPushdownTest, TestPushdownIntValueRange) {
   // Push down a double-ended range on the integer value column.
-
-  ScanSpec spec;
-  int32_t lower = 2000;
-  int32_t upper = 2100;
-  ColumnRangePredicate pred1(schema_.column(1), &lower, &upper);
-  spec.AddPredicate(pred1);
-
-  TestScanYieldsExpectedResults(spec);
+  TestScanYieldsExpectedResults(kFirstColumnId + 1, 2000, 2100);
 }
 
 } // namespace tablet

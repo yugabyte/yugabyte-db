@@ -20,6 +20,8 @@
 #include <boost/thread/mutex.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/partition.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -184,18 +186,18 @@ int main(int argc, char *argv[]) {
       shared_ptr<YBClient> client = CreateYBClient();
       SetupYBTable(client);
 
-      shared_ptr<YBTable> table;
-      CHECK_OK(client->OpenTable(table_name, &table));
+      yb::client::TableHandle table;
+      CHECK_OK(table.Open(table_name, client.get()));
       if (FLAGS_reads_only) {
-        SingleThreadedScanner scanner(table.get());
+        SingleThreadedScanner scanner(&table);
         scanner.CountRows();
       } else if (FLAGS_noop_only) {
-        NoopSessionFactory session_factory(client.get(), table.get());
+        NoopSessionFactory session_factory(client.get(), &table);
         // Noop operations are done as write operations.
         FLAGS_writes_only = true;
         LaunchYBLoadTest(&session_factory);
       } else {
-        YBSessionFactory session_factory(client.get(), table.get());
+        YBSessionFactory session_factory(client.get(), &table);
         LaunchYBLoadTest(&session_factory);
       }
     } else {

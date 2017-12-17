@@ -14,7 +14,7 @@
 #ifndef YB_TOOLS_YB_GENERATE_PARTITIONS_H
 #define YB_TOOLS_YB_GENERATE_PARTITIONS_H
 
-#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"

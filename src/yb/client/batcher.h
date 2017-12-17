@@ -37,7 +37,6 @@
 #include <vector>
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction.h"
 

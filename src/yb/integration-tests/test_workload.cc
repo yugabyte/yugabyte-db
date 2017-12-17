@@ -35,6 +35,7 @@
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"
@@ -51,7 +52,6 @@ namespace yb {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;;
-using client::KuduInsert;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
@@ -60,7 +60,6 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 using client::YBTableName;
-using client::KuduUpdate;
 using std::shared_ptr;
 
 const YBTableName TestWorkload::kDefaultTableName("my_keyspace", "test-workload");
@@ -136,72 +135,33 @@ void TestWorkload::WriteThread() {
           }
         } else {
           inserting_one_row = true;
-          if (use_yql_) {
-            auto update = table.NewUpdateOp();
-            auto req = update->mutable_request();
-            table.AddInt32HashValue(req, 0);
-            table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
-            ops.push_back(update);
-            CHECK_OK(session->Apply(update));
-          } else {
-            shared_ptr<KuduUpdate> update(table->NewUpdate());
-            YBPartialRow* row = update->mutable_row();
-            CHECK_OK(row->SetInt32(0, 0));
-            CHECK_OK(row->SetInt32(1, r.Next()));
-            CHECK_OK(session->Apply(update));
-          }
+          auto update = table.NewUpdateOp();
+          auto req = update->mutable_request();
+          QLAddInt32HashValue(req, 0);
+          table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
+          ops.push_back(update);
+          CHECK_OK(session->Apply(update));
           break;
         }
       }
-      if (use_yql_) {
-        auto insert = table.NewInsertOp();
-        auto req = insert->mutable_request();
-        table.AddInt32HashValue(req, pathological_one_row_enabled_ ? 0 : r.Next());
-        table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
-        table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
-        ops.push_back(insert);
-        CHECK_OK(session->Apply(insert));
-      } else {
-        shared_ptr<KuduInsert> insert(table->NewInsert());
-        YBPartialRow* row = insert->mutable_row();
-        CHECK_OK(row->SetInt32(0, pathological_one_row_enabled_ ? 0 : r.Next()));
-        CHECK_OK(row->SetInt32(1, r.Next()));
-        CHECK_OK(row->SetStringCopy(2, test_payload));
-        CHECK_OK(session->Apply(insert));
-      }
+      auto insert = table.NewInsertOp();
+      auto req = insert->mutable_request();
+      QLAddInt32HashValue(req, pathological_one_row_enabled_ ? 0 : r.Next());
+      table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
+      table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
+      ops.push_back(insert);
+      CHECK_OK(session->Apply(insert));
     }
 
     Status s = session->Flush();
 
     int inserted;
-    if (use_yql_) {
-      inserted = 0;
-      for (const auto& op : ops) {
-        if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
-          ++inserted;
-        } else {
-          VLOG(1) << "Op failed: " << op->ToString() << ": " << op->response().ShortDebugString();
-        }
-      }
-    } else {
-      inserted = inserting_one_row ? 1 : write_batch_size_;
-      if (PREDICT_FALSE(!s.ok())) {
-        client::CollectedErrors errors = session->GetPendingErrors();
-        for (const auto& e : errors) {
-          if (timeout_allowed_ && e->status().IsTimedOut()) {
-            continue;
-          }
-
-          if (not_found_allowed_ && e->status().IsNotFound()) {
-            continue;
-          }
-          // We don't handle write idempotency yet. (i.e making sure that when a leader fails
-          // writes to it that were eventually committed by the new leader but un-ackd to the
-          // client are not retried), so some errors are expected.
-          // It's OK as long as the errors are Status::AlreadyPresent();
-          CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
-        }
-        inserted -= errors.size();
+    inserted = 0;
+    for (const auto& op : ops) {
+      if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
+        ++inserted;
+      } else {
+        VLOG(1) << "Op failed: " << op->ToString() << ": " << op->response().ShortDebugString();
       }
     }
 
@@ -238,20 +198,13 @@ void TestWorkload::Setup(YBTableType table_type) {
   CHECK_OK(s);
 
   if (!table_exists) {
-    YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
+    YBSchema client_schema(YBSchemaFromSchema(GetSimpleYqlTestSchema()));
 
-    vector<const YBPartialRow*> splits;
-    for (int i = 1; i < num_tablets_; i++) {
-      YBPartialRow* r = client_schema.NewRow();
-      CHECK_OK(r->SetInt32("key", MathLimits<int32_t>::kMax / num_tablets_ * i));
-      splits.push_back(r);
-    }
-
-    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(table_name_)
              .schema(&client_schema)
              .num_replicas(num_replicas_)
-             .split_rows(splits)
+             .num_tablets(num_tablets_)
              // NOTE: this is quite high as a timeout, but the default (5 sec) does not
              // seem to be high enough in some cases (see KUDU-550). We should remove
              // this once that ticket is addressed.

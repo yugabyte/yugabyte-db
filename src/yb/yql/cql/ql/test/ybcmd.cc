@@ -36,6 +36,8 @@
 #include <iostream>
 #include <cstddef>
 
+#include "yb/client/client.h"
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::cout;

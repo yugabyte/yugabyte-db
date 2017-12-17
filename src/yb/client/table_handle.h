@@ -18,11 +18,12 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/client/client.h"
-
+#include "yb/client/client_fwd.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/util/strongly_typed_bool.h"
 
@@ -43,6 +44,19 @@ class YBSchemaBuilder;
 
 class TableIterator;
 class TableRange;
+
+#define TABLE_HANDLE_TYPE_DECLARATIONS_IMPL(name, lname, type) \
+    void PP_CAT3(Add, name, ColumnValue)( \
+        QLWriteRequestPB* req, const std::string &column_name, type value) const; \
+    \
+    void PP_CAT3(Set, name, Condition)( \
+        QLConditionPB *const condition, const std::string &column_name, const QLOperator op, \
+        type value) const; \
+    void PP_CAT3(Add, name, Condition)( \
+        QLConditionPB *const condition, const std::string &column_name, const QLOperator op, \
+        type value) const; \
+
+#define TABLE_HANDLE_TYPE_DECLARATIONS(i, data, entry) TABLE_HANDLE_TYPE_DECLARATIONS_IMPL entry
 
 // Utility class for manually filling QL operations.
 class TableHandle {
@@ -88,62 +102,10 @@ class TableHandle {
     return it != column_types_.end() ? it->second : not_found;
   }
 
-  void AddInt32ColumnValue(
-      QLWriteRequestPB* req, const std::string &column_name, int32_t value) const;
-  void AddInt64ColumnValue(
-      QLWriteRequestPB* req, const std::string &column_name, int64_t value) const;
-  void AddStringColumnValue(
-      QLWriteRequestPB* req, const std::string &column_name, const std::string &value) const;
-
-  template <class RequestPB>
-  void AddInt32HashValue(RequestPB* req, int32_t value) const {
-    SetInt32Expression(req->add_hashed_column_values(), value);
-  }
-
-  template <class RequestPB>
-  void AddInt64HashValue(RequestPB* req, int64_t value) const {
-    SetInt64Expression(req->add_hashed_column_values(), value);
-  }
-
-  template <class RequestPB>
-  void AddStringHashValue(RequestPB* req, const std::string& value) const {
-    SetStringExpression(req->add_hashed_column_values(), value);
-  }
-
-  void AddInt32RangeValue(QLWriteRequestPB* req, int32_t value) const;
-  void AddInt64RangeValue(QLWriteRequestPB* req, int64_t value) const;
-  void AddStringRangeValue(QLWriteRequestPB* req, const std::string& value) const;
-
-  void SetInt32Expression(QLExpressionPB *expr, int32_t value) const;
-  void SetInt64Expression(QLExpressionPB *expr, int64_t value) const;
-  void SetStringExpression(QLExpressionPB *expr, const std::string &value) const;
+  BOOST_PP_SEQ_FOR_EACH(TABLE_HANDLE_TYPE_DECLARATIONS, ~, QL_PROTOCOL_TYPES);
 
   // Set a column id without value - for DELETE
   void SetColumn(QLColumnValuePB *column_value, const std::string &column_name) const;
-
-  // Set a int32 column value comparison.
-  // E.g. <column-id> = <int32-value>
-  void SetInt32Condition(
-      QLConditionPB *const condition, const std::string &column_name, const QLOperator op,
-      const int32_t value) const;
-
-  // Set a string column value comparison.
-  // E.g. <column-id> = <string-value>
-  void SetStringCondition(
-      QLConditionPB *const condition, const std::string &column_name, const QLOperator op,
-      const std::string &value) const;
-
-  // Add a int32 column value comparison under a logical comparison condition.
-  // E.g. Add <column-id> = <int32-value> under "... AND <column-id> = <int32-value>".
-  void AddInt32Condition(
-      QLConditionPB *const condition, const std::string &column_name, const QLOperator op,
-      const int32_t value) const;
-
-  // Add a string column value comparison under a logical comparison condition.
-  // E.g. Add <column-id> = <string-value> under "... AND <column-id> = <string-value>".
-  void AddStringCondition(
-      QLConditionPB *const condition, const std::string &column_name, const QLOperator op,
-      const std::string &value) const;
 
   // Add a simple comparison operation under a logical comparison condition.
   // E.g. Add <EXISTS> under "... AND <EXISTS>".
@@ -155,13 +117,9 @@ class TableHandle {
     return table_;
   }
 
-  const YBTableName& name() const {
-    return table_->name();
-  }
+  const YBTableName& name() const;
 
-  const YBSchema& schema() const {
-    return table_->schema();
-  }
+  const YBSchema& schema() const;
 
   YBTable* operator->() const {
     return table_.get();
@@ -171,16 +129,13 @@ class TableHandle {
     return table_.get();
   }
 
-  std::vector<std::string> AllColumnNames() const {
-    std::vector<std::string> result;
-    result.reserve(table_->schema().columns().size());
-    for (const auto& column : table_->schema().columns()) {
-      result.push_back(column.name());
-    }
-    return result;
-  }
+  std::vector<std::string> AllColumnNames() const;
 
  private:
+  QLValuePB* PrepareColumn(QLWriteRequestPB* req, const string& column_name) const;
+  QLValuePB* PrepareCondition(
+      QLConditionPB* const condition, const string& column_name, const QLOperator op) const;
+
   typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;
   typedef std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>> ColumnTypesMap;
 
@@ -191,14 +146,19 @@ class TableHandle {
 
 typedef std::function<void(const TableHandle&, QLConditionPB*)> TableFilter;
 
+struct TableIteratorOptions {
+  YBConsistencyLevel consistency = YBConsistencyLevel::STRONG;
+  std::vector<std::string> columns;
+  TableFilter filter;
+  ReadHybridTime read_time;
+  Status* status = nullptr;
+};
+
 class TableIterator : public std::iterator<
     std::forward_iterator_tag, QLRow, ptrdiff_t, const QLRow*, const QLRow&> {
  public:
   TableIterator();
-  explicit TableIterator(const TableHandle* table,
-                         YBConsistencyLevel consistency,
-                         const std::vector<std::string>& columns,
-                         const TableFilter& filter);
+  explicit TableIterator(const TableHandle* table, const TableIteratorOptions& options);
 
   bool Equals(const TableIterator& rhs) const;
 
@@ -235,19 +195,15 @@ class TableRange {
   typedef TableIterator const_iterator;
   typedef TableIterator iterator;
 
-  TableRange(const TableHandle& table, YBConsistencyLevel consistency,
-             std::vector<std::string> columns, TableFilter filter)
-       : table_(&table), consistency_(consistency), columns_(std::move(columns)),
-         filter_(std::move(filter)) {}
-
-  TableRange(const TableHandle& table, std::vector<std::string> columns, TableFilter filter)
-       : TableRange(table, YBConsistencyLevel::STRONG, std::move(columns), std::move(filter)) {}
-
-  TableRange(const TableHandle& table, TableFilter filter)
-       : TableRange(table, YBConsistencyLevel::STRONG, table.AllColumnNames(), std::move(filter)) {}
+  explicit TableRange(const TableHandle& table, TableIteratorOptions options = {})
+       : table_(&table), options_(std::move(options)) {
+    if (options_.columns.empty()) {
+      options_.columns = table.AllColumnNames();
+    }
+  }
 
   const_iterator begin() const {
-    return TableIterator(table_, consistency_, columns_, filter_);
+    return TableIterator(table_, options_);
   }
 
   const_iterator end() const {
@@ -256,9 +212,7 @@ class TableRange {
 
  private:
   const TableHandle* table_;
-  YBConsistencyLevel consistency_;
-  std::vector<std::string> columns_;
-  TableFilter filter_;
+  TableIteratorOptions options_;
 };
 
 YB_STRONGLY_TYPED_BOOL(Inclusive);
@@ -304,6 +258,23 @@ class FilterLess {
   Inclusive inclusive_;
   std::string column_;
 };
+
+template <class T>
+class FilterEqualImpl {
+ public:
+  FilterEqualImpl(const T& t, std::string column)
+      : t_(t), column_(std::move(column)) {}
+
+  void operator()(const TableHandle& table, QLConditionPB* condition) const;
+ private:
+  T t_;
+  std::string column_;
+};
+
+template <class T>
+FilterEqualImpl<T> FilterEqual(const T& t, std::string column = "key") {
+  return FilterEqualImpl<T>(t, std::move(column));
+}
 
 } // namespace client
 } // namespace yb

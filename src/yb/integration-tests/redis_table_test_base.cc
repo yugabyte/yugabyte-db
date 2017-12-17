@@ -16,6 +16,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
@@ -67,14 +68,14 @@ RedisClientCommand SlicesFromString(const vector<string>& args) {
 }
 
 void RedisTableTestBase::PutKeyValue(string key, string value) {
-  auto set_op = std::make_shared<YBRedisWriteOp>(table_);
+  auto set_op = std::make_shared<YBRedisWriteOp>(table_->shared_from_this());
   ASSERT_OK(ParseSet(set_op.get(), SlicesFromString({"set", key, value})));
   ASSERT_OK(session_->Apply(set_op));
   ASSERT_OK(session_->Flush());
 }
 
 void RedisTableTestBase::PutKeyValueWithTtlNoFlush(string key, string value, int64_t ttl_msec) {
-  auto set_op = std::make_shared<YBRedisWriteOp>(table_);
+  auto set_op = std::make_shared<YBRedisWriteOp>(table_->shared_from_this());
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
   ASSERT_OK(session_->Apply(set_op));
@@ -82,7 +83,7 @@ void RedisTableTestBase::PutKeyValueWithTtlNoFlush(string key, string value, int
 
 void RedisTableTestBase::GetKeyValue(
     const string& key, const string& value, bool expect_not_found) {
-  auto get_op = std::make_shared<YBRedisReadOp>(table_);
+  auto get_op = std::make_shared<YBRedisReadOp>(table_->shared_from_this());
   ASSERT_OK(ParseGet(get_op.get(), SlicesFromString({"get", key})));
   ASSERT_OK(session_->ReadSync(get_op));
   if (expect_not_found) {

@@ -92,7 +92,7 @@ class TabletServerTestBase : public YBTest {
   typedef pair<int32_t, int32_t> KeyValue;
 
   explicit TabletServerTestBase(TableType table_type = YQL_TABLE_TYPE)
-      : schema_(GetSimpleTestSchema()),
+      : schema_(GetSimpleYqlTestSchema()),
         table_type_(table_type),
         ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(
                                    &ts_test_metric_registry_, "ts_server-test")) {
@@ -183,8 +183,7 @@ class TabletServerTestBase : public YBTest {
     controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
     string new_string_val(strings::Substitute("mutated$0", row_idx));
 
-    AddTestRowToPB(RowOperationsPB::UPDATE, schema_, row_idx, new_val, new_string_val,
-                   req.mutable_row_operations());
+    AddTestRowUpdate(row_idx, new_val, new_string_val, &req);
     ASSERT_OK(proxy_->Write(req, &resp, &controller));
 
     SCOPED_TRACE(resp.DebugString());
@@ -204,10 +203,10 @@ class TabletServerTestBase : public YBTest {
   // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
   void InsertTestRowsDirect(int64_t start_row, uint64_t num_rows) {
     tablet::LocalTabletWriter writer(tablet_peer_->tablet(), &schema_);
-    YBPartialRow row(&schema_);
+    QLWriteRequestPB req;
     for (int64_t i = 0; i < num_rows; i++) {
-      BuildTestRow(start_row + i, &row);
-      CHECK_OK(writer.Insert(row));
+      BuildTestRow(start_row + i, &req);
+      CHECK_OK(writer.Write(&req));
     }
   }
 
@@ -238,29 +237,22 @@ class TabletServerTestBase : public YBTest {
     WriteResponsePB resp;
     rpc::RpcController controller;
 
-    RowOperationsPB* data = req.mutable_row_operations();
-
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
-
     uint64_t inserted_since_last_report = 0;
     for (int i = 0; i < num_batches; ++i) {
-
       // reset the controller and the request
       controller.Reset();
       controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
-      data->Clear();
+      req.clear_ql_write_batch();
 
       uint64_t first_row_in_batch = first_row + (i * count / num_batches);
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        string str_val = strings::Substitute("original$0", j);
-        const char* cstr_val = str_val.c_str();
         if (!string_field_defined) {
-          cstr_val = NULL;
+          AddTestRowInsert(j, j, &req);
+        } else {
+          AddTestRowInsert(j, j, strings::Substitute("original$0", j), &req);
         }
-        AddTestRowWithNullableStringToPB(RowOperationsPB::INSERT, schema_, j, j,
-                                         cstr_val, data);
       }
       CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
       if (write_hybrid_times_collector) {
@@ -299,11 +291,9 @@ class TabletServerTestBase : public YBTest {
     rpc::RpcController controller;
 
     req.set_tablet_id(tablet_id);
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
-    RowOperationsPB* ops = req.mutable_row_operations();
     for (int64_t rowid = first_row; rowid < first_row + count; rowid++) {
-      AddTestKeyToPB(RowOperationsPB::DELETE, schema_, rowid, ops);
+      AddTestRowDelete(rowid, &req);
     }
 
     SCOPED_TRACE(req.DebugString());
@@ -312,10 +302,15 @@ class TabletServerTestBase : public YBTest {
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
   }
 
-  void BuildTestRow(int index, YBPartialRow* row) {
-    ASSERT_OK(row->SetInt32(0, index));
-    ASSERT_OK(row->SetInt32(1, index * 2));
-    ASSERT_OK(row->SetStringCopy(2, StringPrintf("hello %d", index)));
+  void BuildTestRow(int index, QLWriteRequestPB* req) {
+    req->add_hashed_column_values()->mutable_value()->set_int32_value(index);
+    auto column_value = req->add_column_values();
+    column_value->set_column_id(kFirstColumnId + 1);
+    column_value->mutable_expr()->mutable_value()->set_int32_value(index * 2);
+    column_value = req->add_column_values();
+    column_value->set_column_id(kFirstColumnId + 2);
+    column_value->mutable_expr()->mutable_value()->set_string_value(
+        StringPrintf("hello %d", index));
   }
 
   void DrainScannerToStrings(const string& scanner_id,

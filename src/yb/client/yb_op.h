@@ -37,6 +37,7 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/client/meta_cache.h"
 
@@ -76,9 +77,6 @@ class YBTable;
 class YBOperation {
  public:
   enum Type {
-    INSERT = 1,
-    UPDATE = 2,
-    DELETE = 3,
     REDIS_WRITE = 4,
     REDIS_READ = 5,
     QL_WRITE = 6,
@@ -117,118 +115,6 @@ class YBOperation {
   scoped_refptr<internal::RemoteTablet> tablet_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
-};
-
-// Kudu operations are currently only used in some tests and should be removed once the dependent
-// tests are migrated to YbQL operations.
-class KuduOperation : public YBOperation {
- public:
-  // See YBPartialRow API for field setters, etc.
-  const YBPartialRow& row() const { return row_; }
-  YBPartialRow* mutable_row() { return &row_; }
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const;
-
- protected:
-  explicit KuduOperation(const std::shared_ptr<YBTable>& table);
-  YBPartialRow row_;
-
- private:
-  friend class internal::Batcher;
-
-  // Return the number of bytes required to buffer this operation,
-  // including direct and indirect data.
-  int64_t SizeInBuffer() const;
-};
-
-// Kudu inserts are currently only used in some tests and should be removed once the dependent
-// tests are migrated to YbQL operations.
-//
-// A single row insert to be sent to the cluster.
-// Row operation is defined by what's in the PartialRow instance here.
-// Use mutable_row() to change the row being inserted
-// An insert requires all key columns from the table schema to be defined.
-class KuduInsert : public KuduOperation {
- public:
-  virtual ~KuduInsert();
-
-  std::string ToString() const override { return "INSERT " + row_.ToString(); }
-
-  bool read_only() override { return false; };
-  bool succeeded() override { return false; };
-
-  // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
-  // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
-  void SetHashCode(uint16_t hash_code) override {};
-
- protected:
-  virtual Type type() const override {
-    return INSERT;
-  }
-
- private:
-  friend class YBTable;
-  explicit KuduInsert(const std::shared_ptr<YBTable>& table);
-};
-
-// Kudu updates are currently only used in some tests and should be removed once the dependent
-// tests are migrated to use YbQL operations.
-//
-// A single row update to be sent to the cluster.
-// Row operation is defined by what's in the PartialRow instance here.
-// Use mutable_row() to change the row being updated.
-// An update requires the key columns and at least one other column
-// in the schema to be defined.
-class KuduUpdate : public KuduOperation {
- public:
-  virtual ~KuduUpdate();
-
-  std::string ToString() const override { return "UPDATE " + row_.ToString(); }
-
-  bool read_only() override { return false; };
-  bool succeeded() override { return false; };
-
-  // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
-  // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
-  void SetHashCode(uint16_t hash_code) override {};
-
- protected:
-  virtual Type type() const override {
-    return UPDATE;
-  }
-
- private:
-  friend class YBTable;
-  explicit KuduUpdate(const std::shared_ptr<YBTable>& table);
-};
-
-// Kudu deletes are currently only used in some tests and should be removed once the dependent
-// tests are migrated to use YbQL operations.
-//
-// A single row delete to be sent to the cluster.
-// Row operation is defined by what's in the PartialRow instance here.
-// Use mutable_row() to change the row being deleted
-// A delete requires just the key columns to be defined.
-class KuduDelete : public KuduOperation {
- public:
-  virtual ~KuduDelete();
-
-  std::string ToString() const override { return "DELETE " + row_.ToString(); }
-
-  bool read_only() override { return false; };
-  bool succeeded() override { return false; };
-
-  // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
-  // when KuduInsert / KuduUpdate / KuduDelete are deprecated.
-  void SetHashCode(uint16_t hash_code) override {};
-
- protected:
-  virtual Type type() const override {
-    return DELETE;
-  }
-
- private:
-  friend class YBTable;
-  explicit KuduDelete(const std::shared_ptr<YBTable>& table);
 };
 
 class YBRedisOp : public YBOperation {
@@ -339,8 +225,6 @@ class YBqlOp : public YBOperation {
   std::string rows_data_;
 };
 
-typedef std::shared_ptr<YBqlOp> YBqlOpPtr;
-
 class YBqlWriteOp : public YBqlOp {
  public:
   explicit YBqlWriteOp(const std::shared_ptr<YBTable>& table);
@@ -408,6 +292,9 @@ class YBqlReadOp : public YBqlOp {
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
   Result<QLRowBlock> MakeRowBlock() const;
 
+  const ReadHybridTime& read_time() const { return read_time_; }
+  void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
+
  protected:
   virtual Type type() const override { return QL_READ; }
 
@@ -416,9 +303,8 @@ class YBqlReadOp : public YBqlOp {
   explicit YBqlReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<QLReadRequestPB> ql_read_request_;
   YBConsistencyLevel yb_consistency_level_;
+  ReadHybridTime read_time_;
 };
-
-typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
 
 std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
   const google::protobuf::RepeatedPtrField<QLRSColDescPB>& rscol_descs);

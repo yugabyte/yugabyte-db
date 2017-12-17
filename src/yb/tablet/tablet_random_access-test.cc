@@ -44,7 +44,7 @@
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/util/stopwatch.h"
 
-DEFINE_int32(keyspace_size, 3000, "number of unique row keys to insert/mutate");
+DEFINE_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
 DEFINE_int32(runtime_seconds, 1, "number of seconds to run the test");
 DEFINE_int32(sleep_between_background_ops_ms, 100,
              "number of milliseconds to sleep between flushing or compacting");
@@ -81,12 +81,12 @@ const char* TestOp_names[] = {
 // a single thread, so that it's easy to verify that the tablet always matches the expected
 // state.
 class TestRandomAccess : public YBTabletTest {
-  static constexpr auto VALUE_NOT_FOUND = "()";
+  static constexpr auto VALUE_NOT_FOUND = "";
 
  public:
   TestRandomAccess()
-    : YBTabletTest(Schema({ ColumnSchema("key", INT32), ColumnSchema("val", INT32, true) }, 1)),
-                   done_(1) {
+    : YBTabletTest(
+        Schema({ ColumnSchema("key", INT32, false, true), ColumnSchema("val", INT32, true) }, 1)) {
     OverrideFlagForSlowTests("keyspace_size", "30000");
     OverrideFlagForSlowTests("runtime_seconds", "10");
     OverrideFlagForSlowTests("sleep_between_background_ops_ms", "1000");
@@ -119,10 +119,9 @@ class TestRandomAccess : public YBTabletTest {
     string val_in_table = GetRow(key);
     // Since we start with expected_tablet_state_ sized `keyspace_size`, there might not
     // be all keys present initially. So we do not assert for the value when key is not present.
-    if (val_in_table != VALUE_NOT_FOUND)
-      ASSERT_EQ("(" + cur_val + ")", val_in_table);
+    ASSERT_EQ(cur_val, val_in_table);
 
-    vector<LocalTabletWriter::Op> pending;
+    LocalTabletWriter::Batch pending;
     for (int i = 0; i < 3; i++) {
       int new_val = rand_r(&random_seed_);
       if (cur_val.empty()) {
@@ -136,10 +135,7 @@ class TestRandomAccess : public YBTabletTest {
         }
       }
     }
-    CHECK_OK(writer_->WriteBatch(pending));
-    for (LocalTabletWriter::Op op : pending) {
-      delete op.row;
-    }
+    CHECK_OK(writer_->WriteBatch(&pending));
   }
 
   void DoRandomBatches() {
@@ -163,64 +159,60 @@ class TestRandomAccess : public YBTabletTest {
     }
   }
 
+  std::string UpsertRow(QLWriteRequestPB::QLStmtType stmt, int key, int val,
+                        LocalTabletWriter::Batch* batch) {
+    QLWriteRequestPB* req = batch->Add();
+    req->set_type(stmt);
+    QLAddInt32HashValue(req, key);
+    if (val & 1) {
+      QLAddNullColumnValue(req, kFirstColumnId + 1);
+    } else {
+      QLAddInt32ColumnValue(req, kFirstColumnId + 1, val);
+    }
+    return Format("{ int32:$0, $1 }", key, val & 1 ? "null" : Format("int32:$0", val));
+  }
+
   // Adds an insert for the given key/value pair to 'ops', returning the new stringified
   // value of the row.
-  string InsertRow(int key, int val, vector<LocalTabletWriter::Op>* ops) {
-    gscoped_ptr<YBPartialRow> row(new YBPartialRow(&client_schema_));
-    CHECK_OK(row->SetInt32(0, key));
-    if (val & 1) {
-      CHECK_OK(row->SetNull(1));
-    } else {
-      CHECK_OK(row->SetInt32(1, val));
-    }
-    string ret = row->ToString();
-    ops->push_back(LocalTabletWriter::Op(RowOperationsPB::INSERT, row.release()));
-    return ret;
+  string InsertRow(int key, int val, LocalTabletWriter::Batch* batch) {
+    return UpsertRow(QLWriteRequestPB::QL_STMT_INSERT, key, val, batch);
   }
 
   // Adds an update of the given key/value pair to 'ops', returning the new stringified
   // value of the row.
-  string MutateRow(int key, uint32_t new_val, vector<LocalTabletWriter::Op>* ops) {
-    gscoped_ptr<YBPartialRow> row(new YBPartialRow(&client_schema_));
-    CHECK_OK(row->SetInt32(0, key));
-    if (new_val & 1) {
-      CHECK_OK(row->SetNull(1));
-    } else {
-      CHECK_OK(row->SetInt32(1, new_val));
-    }
-    string ret = row->ToString();
-    ops->push_back(LocalTabletWriter::Op(RowOperationsPB::UPDATE, row.release()));
-    return ret;
+  string MutateRow(int key, uint32_t new_val, LocalTabletWriter::Batch* batch) {
+    return UpsertRow(QLWriteRequestPB::QL_STMT_UPDATE, key, new_val, batch);
   }
 
   // Adds a delete of the given row to 'ops', returning an empty string (indicating that
   // the row no longer exists).
-  string DeleteRow(int key, vector<LocalTabletWriter::Op>* ops) {
-    gscoped_ptr<YBPartialRow> row(new YBPartialRow(&client_schema_));
-    CHECK_OK(row->SetInt32(0, key));
-    ops->push_back(LocalTabletWriter::Op(RowOperationsPB::DELETE, row.release()));
-    return "";
+  std::string DeleteRow(int key, LocalTabletWriter::Batch* batch) {
+    auto req = batch->Add();
+    req->set_type(QLWriteRequestPB::QL_STMT_DELETE);
+    QLAddInt32HashValue(req, key);
+    return std::string();
   }
 
   // Random-read the given row, returning its current value.
   // If the row doesn't exist, returns "()".
   string GetRow(int key) {
-    ScanSpec spec;
-    const Schema& schema = this->client_schema_;
-    gscoped_ptr<RowwiseIterator> iter;
+    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeTimestampToRead());
+    QLReadRequestPB req;
+    auto* condition = req.mutable_where_expr()->mutable_condition();
+    QLSetInt32Condition(condition, kFirstColumnId, QL_OP_EQUAL, key);
+    QLReadRequestResult result;
+    TransactionMetadataPB transaction;
+    QLAddColumns(schema_, {}, &req);
+    EXPECT_OK(tablet()->HandleQLReadRequest(read_time, req, transaction, &result));
 
-    // TODO(dtxn) pass correct transaction ID if needed
-    CHECK_OK(this->tablet()->NewRowIterator(schema, boost::none, &iter));
-    ColumnRangePredicate pred_one(schema.column(0), &key, &key);
-    spec.AddPredicate(pred_one);
-    CHECK_OK(iter->Init(&spec));
+    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
-    string ret = VALUE_NOT_FOUND;
-    std::vector<string> results;
-    CHECK_OK(IterateToStringList(iter.get(), &results));
-    if (results.size() == 1)
-      return results[0];
-    return VALUE_NOT_FOUND;
+    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data);
+    if (row_block->row_count() == 0) {
+      return VALUE_NOT_FOUND;
+    }
+    EXPECT_EQ(1, row_block->row_count());
+    return row_block->row(0).ToString();
   }
 
  protected:
@@ -232,7 +224,7 @@ class TestRandomAccess : public YBTabletTest {
 
   // Latch triggered when the main thread is finished performing
   // operations. This stops the compact/flush thread.
-  CountDownLatch done_;
+  CountDownLatch done_{1};
 
   gscoped_ptr<LocalTabletWriter> writer_;
 
@@ -302,7 +294,7 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
   LOG(INFO) << "test case: " << DumpTestCase(test_ops);
 
   LocalTabletWriter writer(tablet().get(), &client_schema_);
-  vector<LocalTabletWriter::Op> ops;
+  LocalTabletWriter::Batch batch;
 
   string cur_val = "";
   string pending_val = "";
@@ -310,29 +302,26 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
   int i = 0;
   for (TestOp test_op : test_ops) {
     string val_in_table = GetRow(1);
-    if (val_in_table != VALUE_NOT_FOUND)
-      ASSERT_EQ("(" + cur_val + ")", val_in_table);
+    if (val_in_table != VALUE_NOT_FOUND) {
+      ASSERT_EQ(cur_val, val_in_table);
+    }
 
     i++;
     LOG(INFO) << TestOp_names[test_op];
     switch (test_op) {
       case TEST_INSERT:
-        pending_val = InsertRow(1, i, &ops);
+        pending_val = InsertRow(1, i, &batch);
         break;
       case TEST_UPDATE:
         for (int j = 0; j < update_multiplier; j++) {
-          pending_val = MutateRow(1, i, &ops);
+          pending_val = MutateRow(1, i, &batch);
         }
         break;
       case TEST_DELETE:
-        pending_val = DeleteRow(1, &ops);
+        pending_val = DeleteRow(1, &batch);
         break;
       case TEST_FLUSH_OPS:
-        ASSERT_OK(writer.WriteBatch(ops));
-        for (LocalTabletWriter::Op op : ops) {
-          delete op.row;
-        }
-        ops.clear();
+        ASSERT_OK(writer.WriteBatch(&batch));
         cur_val = pending_val;
         break;
       case TEST_FLUSH_TABLET:
@@ -341,9 +330,6 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
       default:
         LOG(FATAL) << test_op;
     }
-  }
-  for (LocalTabletWriter::Op op : ops) {
-    delete op.row;
   }
 }
 

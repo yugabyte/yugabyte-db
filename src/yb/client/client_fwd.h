@@ -31,9 +31,34 @@ typedef std::shared_ptr<YBClient> YBClientPtr;
 class YBTransaction;
 typedef std::shared_ptr<YBTransaction> YBTransactionPtr;
 
+class YBqlOp;
+typedef std::shared_ptr<YBqlOp> YBqlOpPtr;
+
+class YBqlReadOp;
+typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
+
+class YBqlWriteOp;
+typedef std::shared_ptr<YBqlWriteOp> YBqlWriteOpPtr;
+
+class YBRedisOp;
+class YBRedisReadOp;
+class YBRedisWriteOp;
+
+class YBScanner;
+
+class YBSession;
+typedef std::shared_ptr<YBSession> YBSessionPtr;
+
+class YBTable;
+typedef std::shared_ptr<YBTable> YBTablePtr;
+
+class TableHandle;
 class TransactionManager;
+class YBMetaDataCache;
 class YBOperation;
 class YBSchema;
+class YBTableAlterer;
+class YBTableCreator;
 class YBTableName;
 
 namespace internal {

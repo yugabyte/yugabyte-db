@@ -37,6 +37,7 @@
 
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {

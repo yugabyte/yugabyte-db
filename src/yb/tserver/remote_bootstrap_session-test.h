@@ -42,6 +42,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
@@ -88,9 +89,7 @@ using tablet::WriteOperationState;
 class RemoteBootstrapTest : public YBTabletTest {
  public:
   explicit RemoteBootstrapTest(TableType table_type)
-    : YBTabletTest(Schema({ ColumnSchema("key", STRING),
-                            ColumnSchema("val", INT32) }, 1),
-                   table_type) {
+    : YBTabletTest(GetSimpleYqlTestSchema(), table_type) {
     CHECK_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
   }
 
@@ -172,28 +171,21 @@ class RemoteBootstrapTest : public YBTabletTest {
 
   void PopulateTablet() {
     for (int32_t i = 0; i < 1000; i++) {
-      unique_ptr<WriteRequestPB> req(new WriteRequestPB());
-      req->set_tablet_id(tablet_peer_->tablet_id());
-      ASSERT_OK(SchemaToPB(client_schema_, req->mutable_schema()));
-      RowOperationsPB* data = req->mutable_row_operations();
-      RowOperationsPBEncoder enc(data);
-      YBPartialRow row(&client_schema_);
-
-      string key = Substitute("key$0", i);
-      ASSERT_OK(row.SetString(0, key));
-      ASSERT_OK(row.SetInt32(1, i));
-      enc.Add(RowOperationsPB::INSERT, row);
+      WriteRequestPB req;
+      req.set_tablet_id(tablet_peer_->tablet_id());
+      AddTestRowInsert(i, i * 2, Substitute("key$0", i), &req);
 
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      auto state = std::make_unique<WriteOperationState>(tablet_peer_.get(), req.get(), &resp);
+      auto state = std::make_unique<WriteOperationState>(tablet_peer_.get(), &req, &resp);
       typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
       state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
       ASSERT_OK(tablet_peer_->SubmitWrite(std::move(state)));
       latch.Wait();
       ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
-      ASSERT_EQ(0, resp.per_row_errors_size()) << "Insert error: " << resp.ShortDebugString();
+      ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<
+          "Insert error: " << resp.ShortDebugString();
     }
     ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
   }

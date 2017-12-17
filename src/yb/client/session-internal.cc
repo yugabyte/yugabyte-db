@@ -38,6 +38,7 @@
 #include "yb/client/batcher.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/error_collector.h"
+#include "yb/client/yb_op.h"
 
 namespace yb {
 
@@ -129,19 +130,6 @@ void YBSessionData::FlushAsync(YBStatusCallback* callback) {
 }
 
 Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
-  // Check if the Kudu operations have the hashed keys.
-  // For QL/Redis operations this should be checked during analysis before getting here.
-  if (yb_op->type() == YBOperation::INSERT ||
-      yb_op->type() == YBOperation::UPDATE ||
-      yb_op->type() == YBOperation::DELETE) {
-    auto* kudu_op = down_cast<KuduOperation *>(yb_op.get());
-    if (!kudu_op->row().IsHashOrPrimaryKeySet()) {
-      Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
-      error_collector_->AddError(yb_op, status);
-      return status;
-    }
-  }
-
   Status s = batcher_->Add(yb_op);
   if (!PREDICT_FALSE(s.ok())) {
     error_collector_->AddError(yb_op, s);

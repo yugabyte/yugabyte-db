@@ -134,7 +134,7 @@ int QLValue::CompareTo(const QLValue& other) const {
 // TODO(mihnea) After the hash changes, this method does not do the key encoding anymore
 // (not needed for hash computation), so AppendToBytes() is better describes what this method does.
 // The internal methods such as AppendIntToKey should be renamed accordingly.
-CHECKED_STATUS AppendToKey(const QLValuePB &value_pb, string *bytes) {
+void AppendToKey(const QLValuePB &value_pb, string *bytes) {
   switch (value_pb.value_case()) {
     case QLValue::InternalType::kInt8Value: {
       YBPartition::AppendIntToKey<int8, uint8>(value_pb.int8_value(), bytes);
@@ -198,7 +198,7 @@ CHECKED_STATUS AppendToKey(const QLValuePB &value_pb, string *bytes) {
     }
     case QLValue::InternalType::kFrozenValue: {
       for (const auto& elem_pb : value_pb.frozen_value().elems()) {
-        RETURN_NOT_OK(AppendToKey(elem_pb, bytes));
+        AppendToKey(elem_pb, bytes);
       }
       break;
     }
@@ -212,8 +212,6 @@ CHECKED_STATUS AppendToKey(const QLValuePB &value_pb, string *bytes) {
                  << int(value_pb.value_case())
                  << ") is not supported in hash key";
   }
-
-  return Status::OK();
 }
 
 void QLValue::Serialize(

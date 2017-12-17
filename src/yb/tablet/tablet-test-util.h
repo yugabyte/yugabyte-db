@@ -146,12 +146,22 @@ static inline CHECKED_STATUS IterateToStringList(RowwiseIterator *iter,
   Arena arena(1024, 1024);
   RowBlock block(schema, 100, &arena);
   int fetched = 0;
+  std::vector<std::pair<std::string, std::string>> temp;
   while (iter->HasNext() && fetched < limit) {
     RETURN_NOT_OK(iter->NextBlock(&block));
     for (size_t i = 0; i < block.nrows() && fetched < limit; i++) {
-      out->push_back(schema.DebugRow(block.row(i)));
+      auto row = block.row(i);
+      std::string key(static_cast<const char*>(row.cell(0).ptr()), row.cell(0).size());
+      temp.emplace_back(key, schema.DebugRow(row));
       fetched++;
     }
+  }
+  auto type_info = schema.column(0).type_info();
+  std::sort(temp.begin(), temp.end(), [type_info](const auto& lhs, const auto& rhs) {
+    return type_info->Compare(lhs.first.c_str(), rhs.first.c_str()) < 0;
+  });
+  for (auto& p : temp) {
+    out->push_back(std::move(p.second));
   }
   return Status::OK();
 }

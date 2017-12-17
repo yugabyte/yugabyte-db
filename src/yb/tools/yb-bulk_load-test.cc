@@ -18,6 +18,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
@@ -43,6 +44,8 @@
 DECLARE_uint64(initial_seqno);
 DECLARE_uint64(bulk_load_num_files_per_tablet);
 
+using namespace std::literals;
+
 namespace yb {
 namespace tools {
 
@@ -60,7 +63,7 @@ static const char* const kNamespace = "bulk_load_test_namespace";
 static const char* const kTableName = "my_table";
 // Lower number of runs for tsan due to low perf.
 static constexpr int32_t kNumIterations = NonTsanVsTsan(10000, 30);
-static constexpr int32_t kNumTablets = NonTsanVsTsan(32, 3);
+static constexpr int32_t kNumTablets = NonTsanVsTsan(3, 3);
 // Use 3 tservers to test a more realistic scenario.
 static constexpr int32_t kNumTabletServers = NonTsanVsTsan(3, 1);
 static constexpr int32_t kV2Value = 12345;
@@ -228,16 +231,16 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
   class LoadGenerator {
    public:
-    LoadGenerator(const string& tablet_id, tserver::TabletServerServiceProxy* tserver_proxy)
+    LoadGenerator(const string& tablet_id, const client::TableHandle* table,
+                  tserver::TabletServerServiceProxy* tserver_proxy)
       : tablet_id_(tablet_id),
-        running_(true),
-        random_(0),
+        table_(table),
         tserver_proxy_(tserver_proxy) {
     }
 
     void RunLoad() {
       while (running_.load()) {
-        WriteRow(tablet_id_);
+        ASSERT_NO_FATALS(WriteRow(tablet_id_));
       }
     }
 
@@ -249,31 +252,34 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       tserver::WriteRequestPB req;
       tserver::WriteResponsePB resp;
       rpc::RpcController controller;
-      controller.set_timeout(MonoDelta::FromSeconds(3));
+      controller.set_timeout(15s);
 
       req.set_tablet_id(tablet_id);
       QLWriteRequestPB* ql_write = req.add_ql_write_batch();
-      QLExpressionPB* hash_column = ql_write->add_hashed_column_values();
-      hash_column->mutable_value()->set_int64_value(random_.Next64());
+      QLAddInt64HashValue(ql_write, random_.Next64());
+      QLAddTimestampHashValue(ql_write, random_.Next32());
+      QLAddStringHashValue(ql_write, std::to_string(random_.Next32()));
+      QLSetHashCode(ql_write);
 
-      hash_column = ql_write->add_hashed_column_values();
-      hash_column->mutable_value()->set_timestamp_value(random_.Next32());
+      QLAddTimestampRangeValue(ql_write, random_.Next64());
 
-      hash_column = ql_write->add_hashed_column_values();
-      hash_column->mutable_value()->set_string_value(std::to_string(random_.Next32()));
+      table_->AddStringColumnValue(ql_write, "v1", "");
+      table_->AddInt32ColumnValue(ql_write, "v2", 0);
+      table_->AddFloatColumnValue(ql_write, "v3", 0);
+      table_->AddDoubleColumnValue(ql_write, "v4", 0);
 
-      QLExpressionPB* range_column = ql_write->add_range_column_values();
-      range_column->mutable_value()->set_timestamp_value(random_.Next64());
-
-      ASSERT_OK(tserver_proxy_->Write(req, &resp, &controller));
-      ASSERT_FALSE(resp.has_error());
+      auto status = tserver_proxy_->Write(req, &resp, &controller);
+      ASSERT_TRUE(status.ok() || status.IsTimedOut()) << "Bad status: " << status;
+      ASSERT_FALSE(resp.has_error()) << "Resp: " << resp.ShortDebugString();
     }
 
    private:
     string tablet_id_;
-    std::atomic<bool> running_;
-    Random random_;
+    const client::TableHandle* table_;
     tserver::TabletServerServiceProxy* tserver_proxy_;
+
+    std::atomic<bool> running_{true};
+    Random random_{0};
   };
 
   string GenerateRow(int index) {
@@ -306,6 +312,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     req.add_tablet_ids(tablet_id);
     master::GetTabletLocationsResponsePB resp;
     rpc::RpcController controller;
+    controller.set_timeout(60s);
     ASSERT_OK(proxy_->GetTabletLocations(req, &resp, &controller));
     ASSERT_FALSE(resp.has_error());
     ASSERT_EQ(1, resp.tablet_locations_size());
@@ -328,12 +335,13 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
                    std::unique_ptr<QLRowBlock>* rowblock) {
     tserver::ReadResponsePB resp;
     rpc::RpcController controller;
-    controller.set_timeout(MonoDelta::FromSeconds(3));
+    controller.set_timeout(15s);
     ASSERT_OK(tserver_proxy->Read(req, &resp, &controller));
     ASSERT_FALSE(resp.has_error());
     ASSERT_EQ(1, resp.ql_batch_size());
     QLResponsePB ql_resp = resp.ql_batch(0);
-    ASSERT_EQ(QLResponsePB_QLStatus_YQL_STATUS_OK, ql_resp.status());
+    ASSERT_EQ(QLResponsePB_QLStatus_YQL_STATUS_OK, ql_resp.status())
+        << "Response: " << ql_resp.ShortDebugString();
     ASSERT_TRUE(ql_resp.has_rows_data_sidecar());
 
     // Retrieve row.
@@ -484,6 +492,8 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
   ASSERT_OK(proxy_->GetTableLocations(req, &resp, &controller));
   ASSERT_FALSE(resp.has_error());
   ASSERT_EQ(kNumTablets, resp.tablet_locations_size());
+  client::TableHandle table;
+  ASSERT_OK(table.Open(*table_name_, client_.get()));
 
   for (const master::TabletLocationsPB& tablet_location : resp.tablet_locations()) {
     const string& tablet_id = tablet_location.tablet_id();
@@ -514,7 +524,7 @@ TEST_F(YBBulkLoadTest, TestCLITool) {
                                                                              leader_tserver);
 
     // Start the load generator to ensure we can import files with running load.
-    LoadGenerator load_generator(tablet_id, tserver_proxy.get());
+    LoadGenerator load_generator(tablet_id, &table, tserver_proxy.get());
     std::thread load_thread(&LoadGenerator::RunLoad, &load_generator);
     // Wait for load generator to generate some traffic.
     SleepFor(MonoDelta::FromSeconds(5));

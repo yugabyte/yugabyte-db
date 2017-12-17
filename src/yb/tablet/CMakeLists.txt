@@ -92,7 +92,11 @@ target_link_libraries(tablet
   yb_docdb
   yb_client)
 
-set(YB_TEST_LINK_LIBS tablet ${YB_MIN_TEST_LIBS})
+add_library(tablet_test_util
+            local_tablet_writer.cc)
+target_link_libraries(tablet_test_util tablet yb_common yb_util)
+
+set(YB_TEST_LINK_LIBS tablet tablet_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)
 ADD_YB_TEST(tablet-metadata-test)
 ADD_YB_TEST(verifyrows-tablet-test)

@@ -1200,18 +1200,6 @@ const Schema& YBTable::InternalSchema() const {
   return internal::GetSchema(data_->schema_);
 }
 
-KuduInsert* YBTable::NewInsert() {
-  return new KuduInsert(shared_from_this());
-}
-
-KuduUpdate* YBTable::NewUpdate() {
-  return new KuduUpdate(shared_from_this());
-}
-
-KuduDelete* YBTable::NewDelete() {
-  return new KuduDelete(shared_from_this());
-}
-
 YBqlWriteOp* YBTable::NewQLWrite() {
   return new YBqlWriteOp(shared_from_this());
 }

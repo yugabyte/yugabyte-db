@@ -286,9 +286,15 @@ CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
       break;
     }
     case DataType::INT64: {
-      RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
+      auto expected_type = col_schema.type_info()->type() == DataType::TIMESTAMP
+          ? ValueType::kTimestamp : ValueType::kInt64;
+      RETURN_NOT_OK(ExpectValueType(expected_type, col_schema, value));
       // TODO: double-check that we can just assign the 64-bit integer here.
-      *(reinterpret_cast<int64_t*>(dest_ptr)) = value.GetInt64();
+      if (expected_type == ValueType::kInt64) {
+        *(reinterpret_cast<int64_t*>(dest_ptr)) = value.GetInt64();
+      } else {
+        *(reinterpret_cast<int64_t*>(dest_ptr)) = value.GetTimestamp().ToInt64();
+      }
       break;
     }
     case DataType::INT32: {
@@ -316,6 +322,16 @@ CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
                                  "Expected true/false, got $0", value.ToString());
       }
       *(reinterpret_cast<bool*>(dest_ptr)) = value.value_type() == ValueType::kTrue;
+      break;
+    }
+    case DataType::FLOAT: {
+      RETURN_NOT_OK(ExpectValueType(ValueType::kFloat, col_schema, value));
+      *(reinterpret_cast<float*>(dest_ptr)) = value.GetFloat();
+      break;
+    }
+    case DataType::DOUBLE: {
+      RETURN_NOT_OK(ExpectValueType(ValueType::kDouble, col_schema, value));
+      *(reinterpret_cast<double*>(dest_ptr)) = value.GetDouble();
       break;
     }
     default:

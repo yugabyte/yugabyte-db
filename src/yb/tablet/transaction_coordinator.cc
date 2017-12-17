@@ -36,6 +36,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc.h"
 
 #include "yb/server/clock.h"
 

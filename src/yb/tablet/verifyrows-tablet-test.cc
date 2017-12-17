@@ -36,6 +36,7 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/local_tablet_writer.h"
@@ -151,9 +152,10 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
           }
 
           // Rebuild the key by extracting the cells from the row
-          setup_.BuildRowKeyFromExistingRow(&row, rb_row);
-          CHECK_OK(row.SetInt32(col_idx, new_val));
-          CHECK_OK(writer.Update(row));
+          QLWriteRequestPB req;
+          setup_.BuildRowKeyFromExistingRow(&req, rb_row);
+          QLAddInt32ColumnValue(&req, kFirstColumnId + col_idx, new_val);
+          CHECK_OK(writer.Write(&req));
 
           if (++updates_since_last_report >= 10) {
             updates->AddValue(updates_since_last_report);

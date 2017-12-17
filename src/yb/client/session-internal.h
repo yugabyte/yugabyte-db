@@ -35,7 +35,6 @@
 #include <unordered_set>
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/client.h"
 #include "yb/util/locks.h"
 
 namespace yb {

@@ -14,6 +14,8 @@
 #include <map>
 #include <boost/algorithm/string.hpp>
 
+#include "yb/client/client.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/date_time.h"

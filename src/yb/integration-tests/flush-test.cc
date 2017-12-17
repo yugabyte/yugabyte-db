@@ -85,8 +85,8 @@ class FlushITest : public YBTest {
   const size_t kServerLimitMB = 10;
   const size_t kNumTablets = 3;
   const size_t kPayloadBytes = 8 * 1024; // 8KB
-  gscoped_ptr<MiniCluster> cluster_;
-  gscoped_ptr<TestWorkload> workload_;
+  std::unique_ptr<MiniCluster> cluster_;
+  std::unique_ptr<TestWorkload> workload_;
 };
 
 TEST_F(FlushITest, TestFlushHappens) {

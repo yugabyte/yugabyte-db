@@ -30,7 +30,6 @@
 #include "yb/util/string_case.h"
 
 #include "yb/client/async_initializer.h"
-#include "yb/client/client.h"
 
 namespace yb {
 

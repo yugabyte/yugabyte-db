@@ -18,7 +18,6 @@
 #ifndef YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
 #define YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
 
-#include "yb/client/client.h"
 #include "yb/common/types.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/util/memory/mc_types.h"

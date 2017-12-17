@@ -32,6 +32,7 @@
 #include "yb/client/tablet_rpc.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/yb_op.h"
 
 using namespace std::placeholders;
 

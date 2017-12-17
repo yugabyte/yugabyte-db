@@ -157,7 +157,7 @@ class QLTransactionTest : public QLDmlTestBase {
     const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
     const auto op = table_.NewWriteOp(stmt_type);
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, key);
+    QLAddInt32HashValue(req, key);
     table_.AddInt32ColumnValue(req, kValueColumn, value);
     RETURN_NOT_OK(session->Apply(op));
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
@@ -190,7 +190,7 @@ class QLTransactionTest : public QLDmlTestBase {
                             const std::string& column = kValueColumn) {
     const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
     auto* const req = op->mutable_request();
-    table_.AddInt32HashValue(req, key);
+    QLAddInt32HashValue(req, key);
     table_.AddColumns({column}, req);
     auto status = session->Apply(op);
     if (status.IsIOError()) {
@@ -330,7 +330,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
       auto key = KeyForTransactionAndIndex(0, r);
       auto old_value = ValueForTransactionAndIndex(0, r, WriteOpType::INSERT);
       auto value = ValueForTransactionAndIndex(0, r, WriteOpType::UPDATE);
-      table_.AddInt32HashValue(req, key);
+      QLAddInt32HashValue(req, key);
       table_.AddInt32ColumnValue(req, kExtraColumn, value);
       auto cond = req->mutable_where_expr()->mutable_condition();
       table_.SetInt32Condition(cond, kValueColumn, QLOperator::QL_OP_EQUAL, old_value);

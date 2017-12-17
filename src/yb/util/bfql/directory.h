@@ -68,11 +68,8 @@
 #ifndef YB_UTIL_BFQL_DIRECTORY_H_
 #define YB_UTIL_BFQL_DIRECTORY_H_
 
-#include <initializer_list>
 #include <vector>
 
-#include "yb/client/client.h"
-#include "yb/util/logging.h"
 #include "yb/util/bfql/bfdecl.h"
 
 namespace yb {

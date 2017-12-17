@@ -18,8 +18,6 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
 #define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
 
-#include "yb/client/client.h"
-
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"

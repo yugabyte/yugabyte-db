@@ -22,9 +22,9 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/table_handle.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strcat.h"
@@ -75,13 +75,11 @@ class YBTableTestBase : public YBTest {
   void DeleteTable();
   virtual void PutKeyValue(yb::client::YBSession* session, string key, string value);
   virtual void PutKeyValue(string key, string value);
-  void ConfigureScanner(yb::client::YBScanner* scanner);
   void RestartCluster();
-  void GetScanResults(yb::client::YBScanner* scanner,
-                      vector<pair<string, string>>* result_kvs);
+  std::vector<std::pair<std::string, std::string>> GetScanResults(const client::TableRange& range);
   void FetchTSMetricsPage();
 
-  std::shared_ptr<yb::client::YBTable> table_;
+  client::TableHandle table_;
   std::shared_ptr<yb::client::YBClient> client_;
   bool table_exists_ = false;
 

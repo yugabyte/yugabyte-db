@@ -35,7 +35,9 @@
 #include <map>
 #include <vector>
 
+#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"

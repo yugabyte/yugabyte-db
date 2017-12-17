@@ -18,6 +18,7 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 
+#include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
 #include "yb/common/table_properties_constants.h"
 

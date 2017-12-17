@@ -68,8 +68,8 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   // Create two separate clients for read and writes.
   shared_ptr<YBClient> write_client = CreateYBClient();
   shared_ptr<YBClient> read_client = CreateYBClient();
-  yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), table_.get());
-  yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), table_.get());
+  yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), &table_);
+  yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), &table_);
 
   yb::load_generator::MultiThreadedWriter writer(kRows, kStartKey, kWriterThreads,
                                                  &write_session_factory, &stop_requested_flag,

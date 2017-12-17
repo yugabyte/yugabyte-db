@@ -64,7 +64,6 @@ typedef QLValue::InternalType InternalType;
 class ColumnSchema;
 class YBPartialRow;
 class Schema;
-class TestWorkload;
 class TableProperties;
 
 namespace tools {

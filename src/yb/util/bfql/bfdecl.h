@@ -19,7 +19,10 @@
 #ifndef YB_UTIL_BFQL_BFDECL_H_
 #define YB_UTIL_BFQL_BFDECL_H_
 
-#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/gutil/macros.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/bfql/tserver_opcodes.h"
 

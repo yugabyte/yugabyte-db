@@ -32,6 +32,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client_builder-internal.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/redis_protocol.pb.h"
 
