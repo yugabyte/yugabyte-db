@@ -724,7 +724,10 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
     if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      doc_ops.emplace_back(new QLWriteOperation(req, metadata_->schema(), resp, *txn_op_ctx));
+      const auto& schema = metadata_->schema();
+      auto write_op = std::make_unique<QLWriteOperation>(schema, *txn_op_ctx);
+      RETURN_NOT_OK(write_op->Init(req, resp));
+      doc_ops.emplace_back(std::move(write_op));
     }
   }
   RETURN_NOT_OK(StartDocWriteOperation(doc_ops, data));
@@ -874,12 +877,13 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           CHECK(decoder.is_update());
           RowChangeListDecoder::DecodedUpdate update;
           RETURN_NOT_OK(decoder.DecodeNext(&update));
+          auto column = schema()->column_by_id(update.col_id);
+          RETURN_NOT_OK(column);
           doc_ops.emplace_back(new KuduWriteOperation(
               DocPathForColumn(encoded_doc_key, update.col_id),
               update.null ? PrimitiveValue::kTombstone
-                          : PrimitiveValue::FromKuduValue(
-                                schema()->column_by_id(update.col_id).type_info()->type(),
-                                update.raw_value)));
+                          : PrimitiveValue::FromKuduValue((*column)->type_info()->type(),
+                                                          update.raw_value)));
         }
         break;
       }

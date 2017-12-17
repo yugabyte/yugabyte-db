@@ -154,10 +154,14 @@ class RedisReadOperation {
 
 class QLWriteOperation : public DocOperation, public DocExprExecutor {
  public:
+  QLWriteOperation(const Schema& schema,
+                   const TransactionOperationContextOpt& txn_op_context)
+      : schema_(schema),
+        txn_op_context_(txn_op_context)
+  {}
+
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
-  QLWriteOperation(
-      QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response,
-      const TransactionOperationContextOpt& txn_op_context);
+  CHECKED_STATUS Init(QLWriteRequestPB* request, QLResponsePB* response);
 
   bool RequireReadSnapshot() const override { return require_read_; }
 
@@ -203,17 +207,16 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   std::unique_ptr<DocPath> pk_doc_path_;
 
   QLWriteRequestPB request_;
-  QLResponsePB* response_;
+  QLResponsePB* response_ = nullptr;
   const TransactionOperationContextOpt txn_op_context_;
 
-  // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
-  // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column
+  // The row that is returned to the CQL client for an INSERT/UPDATE/DELETE that has a
+  // "... IF <condition> ..." clause. The row contains the "[applied]" status column
   // plus the values of all columns referenced in the if-clause if the condition is not satisfied.
-  std::unique_ptr<Schema> projection_;
   std::unique_ptr<QLRowBlock> rowblock_;
 
   // Does this write operation require a read?
-  const bool require_read_;
+  bool require_read_ = false;
 };
 
 class QLReadOperation : public DocExprExecutor {

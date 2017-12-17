@@ -111,10 +111,10 @@ void AddTestRow(int32_t key,
   wb->set_hash_code(YBPartition::HashColumnCompoundValue(hash_key));
   wb->add_hashed_column_values()->mutable_value()->set_int32_value(key);
   auto column_value = wb->add_column_values();
-  column_value->set_column_id(11);
+  column_value->set_column_id(kFirstColumnId + 1);
   column_value->mutable_expr()->mutable_value()->set_int32_value(int_val);
   column_value = wb->add_column_values();
-  column_value->set_column_id(12);
+  column_value->set_column_id(kFirstColumnId + 2);
   column_value->mutable_expr()->mutable_value()->set_string_value(string_val);
 }
 

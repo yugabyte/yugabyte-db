@@ -313,7 +313,7 @@ if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/[^
     # results. Jenkins JUnit plugin would pick up JUnit-compatible test result XML files from both
     # the real build directory, e.g. build/release-gcc-dynamic-enterprise, and from the
     # build/latest directory pointing to the same directory.
-    NOT $ENV{YB_DISABLE_LATEST_SYMLINK})
+    NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
   if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/latest")
     message(FATAL_ERROR "Should not run cmake inside the build/latest symlink. "
             "First change directories into the destination of the symlink.")

@@ -1077,17 +1077,18 @@ void JoinStaticRow(
 
 } // namespace
 
-QLWriteOperation::QLWriteOperation(
-    QLWriteRequestPB* request, const Schema& schema, QLResponsePB* response,
-    const TransactionOperationContextOpt& txn_op_context)
-    : schema_(schema), response_(response), txn_op_context_(txn_op_context),
-      require_read_(RequireRead(*request, schema)) {
+Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
+  response_ = response;
+  require_read_ = RequireRead(*request, schema_);
+
   request_.Swap(request);
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
   bool write_non_static_columns = false;
   for (const auto& column : request_.column_values()) {
-    if (schema.column_by_id(ColumnId(column.column_id())).is_static()) {
+    auto schema_column = schema_.column_by_id(ColumnId(column.column_id()));
+    RETURN_NOT_OK(schema_column);
+    if ((*schema_column)->is_static()) {
       write_static_columns = true;
     } else {
       write_non_static_columns = true;
@@ -1097,16 +1098,15 @@ QLWriteOperation::QLWriteOperation(
     }
   }
 
-  bool is_range_operation = IsRangeOperation(request_, schema);
+  bool is_range_operation = IsRangeOperation(request_, schema_);
 
   // We need the hashed key if writing to the static columns, and need primary key if writing to
   // non-static columns or writing the full primary key (i.e. range columns are present or table
   // does not have range columns).
-  CHECK_OK(InitializeKeys(
+  return InitializeKeys(
       write_static_columns || is_range_operation,
-      write_non_static_columns ||
-      !request_.range_column_values().empty() ||
-      schema.num_range_key_columns() == 0));
+      write_non_static_columns || !request_.range_column_values().empty() ||
+          schema_.num_range_key_columns() == 0);
 }
 
 Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primary_key) {
@@ -1287,10 +1287,15 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         }
 
         for (const auto& column_value : request_.column_values()) {
-          CHECK(column_value.has_column_id())
-              << "column id missing: " << column_value.DebugString();
+          if (!column_value.has_column_id()) {
+            return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
+                                 column_value.DebugString());
+          }
           const ColumnId column_id(column_value.column_id());
-          const auto& column = schema_.column_by_id(column_id);
+          const auto maybe_column = schema_.column_by_id(column_id);
+          RETURN_NOT_OK(maybe_column);
+          const ColumnSchema& column = **maybe_column;
+
           DocPath sub_path(column.is_static() ? hashed_doc_path_->encoded_doc_key()
                                               : pk_doc_path_->encoded_doc_key(),
                            PrimitiveValue(column_id));
@@ -1401,10 +1406,11 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             CHECK(column_value.has_column_id())
                 << "column id missing: " << column_value.DebugString();
             const ColumnId column_id(column_value.column_id());
-            const auto& column = schema_.column_by_id(column_id);
+            const auto column = schema_.column_by_id(column_id);
+            RETURN_NOT_OK(column);
             const DocPath sub_path(
-                column.is_static() ?
-                hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
+                (*column)->is_static() ? hashed_doc_path_->encoded_doc_key()
+                                       : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
             RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
                                                              request_.query_id(), user_timestamp));

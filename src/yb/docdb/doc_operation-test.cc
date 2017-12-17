@@ -94,8 +94,8 @@ class DocOperationTest : public DocDBTestBase {
   void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
                 QLResponsePB* ql_writeresp_pb,
                 const HybridTime& hybrid_time = HybridTime::kMax) {
-    QLWriteOperation ql_write_op(
-        ql_writereq_pb, schema, ql_writeresp_pb, kNonTransactionalOperationContext);
+    QLWriteOperation ql_write_op(schema, kNonTransactionalOperationContext);
+    ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     CHECK_OK(ql_write_op.Apply({&doc_write_batch, ReadHybridTime()}));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
@@ -199,10 +199,11 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
       ql_read_req.add_selected_exprs()->set_column_id(i);
       ql_read_req.mutable_column_refs()->add_ids(i);
 
-      const ColumnSchema& col = query_schema.column_by_id(ColumnId(i));
+      auto col = query_schema.column_by_id(ColumnId(i));
+      EXPECT_OK(col);
       QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
-      rscol_desc->set_name(col.name());
-      col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
+      rscol_desc->set_name((*col)->name());
+      (*col)->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
