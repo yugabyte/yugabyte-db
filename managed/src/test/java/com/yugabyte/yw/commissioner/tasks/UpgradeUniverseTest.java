@@ -7,6 +7,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static org.junit.Assert.assertEquals;
@@ -123,7 +125,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE = ImmutableList.of(
       TaskType.SetNodeState,
-      TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
@@ -135,12 +136,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       TaskType.SetNodeState,
       TaskType.AnsibleClusterServerCtl,
       TaskType.AnsibleConfigureServers,
-      TaskType.AnsibleConfigureServers,
       TaskType.AnsibleClusterServerCtl,
       TaskType.SetNodeState
   );
 
   private int assertSoftwareUpgradeSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
+                                            UniverseDefinitionTaskBase.ServerType serverType,
                                             int startPosition, boolean isRollingUpgrade) {
 
     int position = startPosition;
@@ -151,6 +152,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           Map<String, Object> assertValues = new HashMap();
           List<TaskInfo> tasks = subTasksByPosition.get(position);
           TaskType taskType = tasks.get(0).getTaskType();
+          UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
           assertEquals(1, tasks.size());
           assertEquals(SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE.get(j), taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
@@ -160,7 +162,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               String version = "new-version";
-              assertValues.putAll(ImmutableMap.of("ybSoftwareVersion", version ));
+              String taskSubType = subTaskGroupType.equals(DownloadingSoftware) ? "Download" :  "Install";
+              assertValues.putAll(ImmutableMap.of(
+                  "ybSoftwareVersion", version,
+                  "processType", serverType.toString(),
+                  "taskSubType", taskSubType));
             }
             assertNodeSubTask(tasks, assertValues);
           }
@@ -183,7 +189,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           ));
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
             String version = "new-version";
-            assertValues.putAll(ImmutableMap.of("ybSoftwareVersion", version));
+            assertValues.putAll(ImmutableMap.of(
+                "ybSoftwareVersion", version,
+                "processType", serverType.toString()));
           }
           assertEquals(3, tasks.size());
           assertNodeSubTask(tasks, assertValues);
@@ -374,17 +382,22 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
 
     int position = 0;
+    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
+    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
+    assertEquals(3, downloadTasks.size());
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
-    position = assertSoftwareUpgradeSequence(subTasksByPosition, position, true);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, true);
+    position = assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, true);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(19, position);
+    assertEquals(33, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -397,16 +410,20 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeUniverse.UpgradeTaskType.Software);
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
-    verify(mockNodeManager, times(12)).nodeCommand(any(), commandParams.capture());
+    verify(mockNodeManager, times(21)).nodeCommand(any(), commandParams.capture());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
     int position = 0;
+    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
+    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
+    assertEquals(3, downloadTasks.size());
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
-    position = assertSoftwareUpgradeSequence(subTasksByPosition, position, false);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, false);
+    position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, false);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
-    assertEquals(8, position);
+    assertEquals(14, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }

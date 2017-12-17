@@ -75,9 +75,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
         case Software:
           LOG.info("Upgrading software version to {} in universe {}",
               taskParams().ybSoftwareVersion, universe.name);
+          // TODO: This is assuming that master nodes is a subset of tserver node, instead we should do a union
+          createDownloadTasks(tServerNodes);
           // Disable the load balancer.
           createLoadBalancerStateChangeTask(false /*enable*/)
             .setSubTaskGroupType(getTaskSubGroupType());
+
+          createAllUpgradeTasks(masterNodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
           createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
           // Enable the load balancer.
           createLoadBalancerStateChangeTask(true /*enable*/)
@@ -146,16 +150,23 @@ public class UpgradeUniverse extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
+  private void createDownloadTasks(List<NodeDetails> nodes) {
+    String subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
+        SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
+    SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      downloadTaskGroup.addTask(getConfigureTask(node, ServerType.TSERVER, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
+    }
+    downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
+    subTaskGroupQueue.add(downloadTaskGroup);
+  }
+
   private void createNodeUpgradeTask(NodeDetails node, ServerType processType) {
     NodeDetails.NodeState nodeState = taskParams().taskType == UpgradeTaskType.Software ? UpgradeSoftware : UpdateGFlags;
     createSetNodeStateTask(node, nodeState).setSubTaskGroupType(getTaskSubGroupType());
     createServerControlTask(node, processType, "stop", 0).setSubTaskGroupType(getTaskSubGroupType());
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Download Software) for: " + node.nodeName, executor);
-      subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
-      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-      subTaskGroupQueue.add(subTaskGroup);
-      subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Install Software) for: " + node.nodeName, executor);
+      SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers (Install Software) for: " + node.nodeName, executor);
       subTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
       subTaskGroupQueue.add(subTaskGroup);
@@ -178,16 +189,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(getTaskSubGroupType());
     String subGroupDescription = null;
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
-          SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
-      SubTaskGroup downloadTaskGroup = new SubTaskGroup(subGroupDescription, executor);
-      for (NodeDetails node : nodes) {
-        downloadTaskGroup.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
-      }
-      downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
-      subTaskGroupQueue.add(downloadTaskGroup);
       createServerControlTasks(nodes, processType, "stop", 0).setSubTaskGroupType(getTaskSubGroupType());
-
       subGroupDescription = String.format("AnsibleConfigureServers (%s) for: %s",
           SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
       SubTaskGroup installTaskGroup =  new SubTaskGroup(subGroupDescription, executor);
