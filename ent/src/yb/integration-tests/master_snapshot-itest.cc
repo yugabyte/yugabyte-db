@@ -335,10 +335,10 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
 
   template <typename TReq, typename TResp, typename TProxy>
   auto ProxyCallLambda(
-      const TReq& req, TResp* resp, TProxy* proxy,
+      const TReq* req, TResp* resp, TProxy* proxy,
       Status (TProxy::*call)(const TReq&, TResp*, rpc::RpcController* controller)) {
-    return [&]() -> bool {
-      EXPECT_OK((proxy->*call)(req, resp, ResetAndGetController()));
+    return [=]() -> bool {
+      EXPECT_OK((proxy->*call)(*req, resp, ResetAndGetController()));
       EXPECT_FALSE(resp->has_error());
       EXPECT_TRUE(resp->has_done());
       return resp->done();
@@ -369,7 +369,7 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
 
     WaitTillComplete(
         "IsCreateTableDone", ProxyCallLambda(
-            is_create_req, &is_create_resp, proxy_.get(), &MasterServiceProxy::IsCreateTableDone));
+            &is_create_req, &is_create_resp, proxy_.get(), &MasterServiceProxy::IsCreateTableDone));
 
     ListTablesResponsePB tables;
     ASSERT_NO_FATALS(DoListAllTables(&tables));
@@ -406,7 +406,7 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
 
     WaitTillComplete(
         op_name, ProxyCallLambda(
-            is_snapshot_done_req, &is_snapshot_done_resp,
+            &is_snapshot_done_req, &is_snapshot_done_resp,
             proxy_backup_.get(), &MasterBackupServiceProxy::IsSnapshotOpDone));
   }
 
