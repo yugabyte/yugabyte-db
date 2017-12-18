@@ -41,8 +41,8 @@ class LoginForm extends Component {
             </div>
 
             <div className="clearfix">
-              <Field name="email" placeholder="Enter email" type="text" component={YBInputField} label="Username" />
-              <Field name="password" placeholder="Your password" type="password" component={YBInputField} label="Password" />
+              <Field name="email" placeHolder="Email Address" type="text" component={YBInputField} />
+              <Field name="password" placeHolder="Password" type="password" component={YBInputField} />
             </div>
             <div className="clearfix">
               <YBButton btnType="submit" btnDisabled={submitting || getPromiseState(authToken).isLoading()}

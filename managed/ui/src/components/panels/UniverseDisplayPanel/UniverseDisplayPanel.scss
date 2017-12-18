@@ -34,6 +34,7 @@
     position: relative;
     height: 24px;
   }
+
   .provider-name {
     font-size: 13px;
     font-weight: 400;
@@ -75,15 +76,25 @@
     font-size: 12px;
   }
 }
-a:hover > .universe-display-item-container {
-  @include transition(0.125s);
-  transform: scale(1.02, 1.02);
-  transform-origin: 50% 50%;
-  box-shadow: 0 3px 7px rgba(35, 35, 41, 0.2);
-  .display-name {
-    color: $YB_ORANGE;
+
+.create-universe-button,
+.universe-display-item-container {
+  @include transition(0.3s);
+}
+
+a:hover > {
+  .create-universe-button,
+  .universe-display-item-container {
+    transform: scale(1.02, 1.02);
+    transform-origin: 50% 50%;
+    box-shadow: 0 3px 7px rgba(35, 35, 41, 0.2);
+
+    .display-name {
+      color: $YB_ORANGE;
+    }
   }
 }
+
 .universe-display-item-container,
 .checkbox-inline input[type="checkbox"] {
   position: relative !important;
@@ -99,12 +110,11 @@ a:hover > .universe-display-item-container {
     height: 178px;
     margin-bottom: 10px;
     padding: 50px 0 4px 0;
-    border: 1px dashed desaturate(rgba($YB_VIOLET, 0.35), 20%);
+    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
     text-align: center;
-    @include transition(0.125s);
+
     &:hover {
       background: rgba(white, 0.5);
-      @include transition(0.35s);
     }
   }
 
@@ -121,12 +131,13 @@ a:hover > .universe-display-item-container {
   cursor: pointer;
 
   .display-name {
-    font-weight: 300;
+    font-weight: 500;
     font-size: 1.2em;
-    color: saturate(rgba($YB_TEXT_COLOR, 0.35), 60%);
+    color: $YB_VIOLET_TEXT;
     padding-top: 6px;
     text-decoration: none;
   }
+
   .btn-icon {
     position: relative;
     display: inline-block;
@@ -138,6 +149,7 @@ a:hover > .universe-display-item-container {
     text-align: center;
     color: white;
     border-radius: 60px;
+
     i {
       line-height: 53px;
       width: 51px;
@@ -148,15 +160,11 @@ a:hover > .universe-display-item-container {
       transition: none;
     }
   }
+
   &:hover {
-    .btn-icon i {
-      transform: rotate(90deg);
-      transform-origin: 50% 50%;
-      @include transition(0.35s);
-    }
+    border: 0 solid #fff;
   }
 }
-
 
 .get-started-config {
   font-size: 14px;
@@ -164,6 +172,7 @@ a:hover > .universe-display-item-container {
   text-align: center;
   margin-bottom: 30px;
 }
+
 .get-started-config span {
   display: block;
   margin-top: 10px;

@@ -107,7 +107,9 @@ export default class TaskListTable extends Component {
                               columnClassName="no-border name-column" className="no-border">
               End Time
             </TableHeaderColumn>
-            <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort/>
+            <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
+              Notes
+            </TableHeaderColumn>
           </BootstrapTable>
         }
       />

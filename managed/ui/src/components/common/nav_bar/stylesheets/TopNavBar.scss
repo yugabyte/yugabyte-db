@@ -9,15 +9,19 @@
   flex-wrap: nowrap;
   justify-content: space-between;
   width: 100%;
+
   .navbar-header {
     margin: 0;
   }
+
   & > *:first-child {
     flex: 0 0 90px;
   }
+
   & > *:not(:first-child):not(:last-child) {
     flex: 1;
   }
+
   & > *:last-child {
     flex: 0 0 auto;
   }
@@ -29,19 +33,19 @@
 }
 
 .yb-nav-bar .navbar {
-    margin-bottom: 0px;
-    border: none;
+  margin-bottom: 0px;
+  border: none;
 }
 
 .nav_title {
-    width: 100% !important;
+  width: 100% !important;
 }
 
 .yb-logo-img {
-    padding: 0;
-    margin-top: 10px;
-    width: 50px;
-    height: 50px;
+  padding: 0;
+  margin-top: 10px;
+  width: 50px;
+  height: 50px;
 }
 
 /* From gentelella.css need to cleanup */
@@ -49,40 +53,48 @@
 .navbar {
   margin-bottom: 0
 }
+
 .main-container .navbar-right {
   margin-right: 0;
 }
+
 .navbar-static-top {
   position: fixed;
   top: 0;
   width: 100%;
 }
 
-
 .navbar-nav {
   margin: 0;
+
   > li {
     float: left;
   }
+
   .dropdown {
     float: left;
+
     .dropdown-toggle i, .task-list-heading i {
       color: $YB_VIOLET_TEXT;
       vertical-align: middle;
       margin-top: -2px;
     }
+
     &.open .dropdown-toggle {
       background-color: $YB_BACKGROUND !important;
     }
+
     #profile-dropdown + ul {
-      padding: 0;
+      padding: 5px 0;
       border: 0;
+
       li {
         a {
-          padding: 15px 20px;
-          height: 52px;
+          padding: 10px 20px;
+          height: 42px;
           font-weight: 300;
         }
+
         i {
           color: $YB_ORANGE;
           vertical-align: middle;
@@ -103,7 +115,7 @@
 }
 
 
-.dropdown-menu{
+.dropdown-menu {
   > li {
     > a {
       &:hover, &:focus {
@@ -129,12 +141,12 @@
   }
 }
 
-.navbar-nav>li>a, .navbar-brand, .navbar-nav>li>a {
+.navbar-nav > li > a, .navbar-brand {
   color: #fff !important;
 }
 
-.navbar-brand, .navbar-nav>li>a {
-  font-weight: 300;
+.navbar-brand, .navbar-nav > li > a {
+  font-weight: 500;
   color: #ECF0F1 !important;
   margin-left: 0 !important;
   height: 60px;

@@ -9,38 +9,50 @@
   align-items: flex-start;
 }
 
+.dashboard-heading {
+  float: left;
+}
+
 .dashboard-stats {
   position: fixed;
   z-index: 2040;
   top: 10px;
   left: 50%;
   margin-left: -300px;
-  @media (max-width:767px) {
+
+  @media (max-width: 767px) {
     margin-left: -160px;
   }
+
   .highlighted-stats-panel {
     max-width: 700px;
     min-width: 400px;
     align-content: space-between;
   }
+
   .tile_count .tile_stats_count {
     border-left: 1px solid $YB_GRAY_HOVER;
     padding: 0 50px;
     text-align: center;
     margin: 0;
+
     @media (max-width:767px) {
       padding: 0 30px;
     }
   }
+
   .tile_count .tile_stats_count:first-child {
     border-left: none;
   }
+
   * {
     text-align: center;
   }
+
   span {
     display: block;
   }
+
   .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
     font-size: 24px;
     line-height: 24px;
