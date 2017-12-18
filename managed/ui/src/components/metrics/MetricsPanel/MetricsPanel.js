@@ -52,7 +52,7 @@ export default class MetricsPanel extends Component {
         metric.layout.yaxis = {range: [0, max]};
       }
       metric.layout.font = {
-        family: 'Helvetica Neue, Helvetica, Roboto, Arial, Droid Sans, sans-serif',
+        family: 'Open Sans, sans-serif',
       };
       metric.layout.legend = {
         orientation: "h",

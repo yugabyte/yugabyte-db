@@ -16,6 +16,8 @@ footer {
   bottom: 0;
   left: 0;
   right: 0;
+  font-weight: 300;
+
   object {
     margin-right: 20px;
     margin-top: -1px;
@@ -23,6 +25,7 @@ footer {
     vertical-align: middle;
     display: inline-block;
   }
+
   .flex-grow:last-child {
     text-align: right;
   }
