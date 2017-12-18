@@ -16,22 +16,21 @@ class AWSProviderInitView extends Component {
     super(props);
     this.createProviderConfig = this.createProviderConfig.bind(this);
     this.isHostInAWS = this.isHostInAWS.bind(this);
-    this.state = {useHostVpc: false};
   }
 
   createProviderConfig(formValues) {
     const {hostInfo} = this.props;
-    this.setState({useHostVpc: isDefinedNotNull(formValues.useHostVpc)});
     const awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
       'AWS_SECRET_ACCESS_KEY': formValues.secretKey
     };
     let regionFormVals = {};
+
     if (this.isHostInAWS()) {
       regionFormVals = {
         "regionList": [hostInfo["region"]],
         "hostVpcId": hostInfo["vpc-id"],
-        "destVpcId": this.state.useHostVpc ? hostInfo["vpc-id"] : "",
+        "destVpcId": isDefinedNotNull(formValues.useHostVpc) ? hostInfo["vpc-id"] : "",
       };
     } else {
       // TODO: Temporary change to it work locally.
@@ -65,7 +64,7 @@ class AWSProviderInitView extends Component {
                      component={YBToggle}
                      label="Use Host's VPC"
                      subLabel={subLabel}
-                     defaultChecked={this.state.useHostVpc}
+                     defaultChecked={false}
                      isReadOnly={!this.isHostInAWS()} />
             </div>
           </Col>
