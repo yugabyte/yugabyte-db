@@ -257,10 +257,11 @@ class WrappedRpcFuture {
   std::future<Result<Value>> operator()(Args&&... args) const {
     auto handle = rpcs_->Prepare();
     auto promise = std::make_shared<std::promise<Result<Value>>>();
+    auto future = promise->get_future();
     *handle = functor_(std::forward<Args>(args)...,
                        RpcFutureCallback<Value>(handle, rpcs_, promise));
     (**handle).SendRpc();
-    return promise->get_future();
+    return future;
   }
  private:
   Functor* functor_;
