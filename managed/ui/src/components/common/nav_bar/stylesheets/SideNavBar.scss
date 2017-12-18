@@ -58,41 +58,49 @@
     position: relative;
     display: block;
     cursor: pointer;
+
     a {
       & {
-        color: #ddd;
-        font-weight: 500;
+        color: $YB_SIDEBAR_TEXT;
+        font-weight: 500 !important;
 
         i {
-          color: $YB_VIOLET_TEXT;
+          color: $YB_SIDEBAR_ICON;
         }
       }
+
       &, &:focus {
         padding: 3px 0;
-        @include transition(0.35s);
         background: transparent;
+
         i, span {
           transition: inherit;
         }
       }
+
       &:hover {
         transition: none;
         background: $YB_VIOLET_DARK;
         text-decoration: none;
+        color: $YB_SIDEBAR_TEXT_HOVER;
+
         i, span {
           transition: inherit;
         }
+
         i {
-          color: $YB_SIDEBAR_VIOLET_LIGHT_HOVER;
+          color: $YB_SIDEBAR_ICON_HOVER;
         }
       }
     }
+
     &.active {
       a {
         &, &:hover {
           text-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0;
           color: #fff;
-          background: $YB_SIDEBAR_VIOLET_LIGHT;
+          background: $YB_SIDEBAR_ACTIVE;
+
           i {
             color: #fff;
           }

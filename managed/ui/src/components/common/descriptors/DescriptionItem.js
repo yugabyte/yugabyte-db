@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import './stylesheets/DescriptionList.css';
+import './stylesheets/DescriptionItem.scss';
 
 export default class DescriptionItem extends Component {
   static propTypes = {

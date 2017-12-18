@@ -1,39 +1,41 @@
+/* Copyright (c) YugaByte, Inc. */
+
 .dl-normal {
-    margin-top: 20px;
-    margin-bottom: 0px;
+  margin-top: 20px;
+  margin-bottom: 0px;
 }
 
 @media (min-width: 768px) {
-    .dl-normal {
-        margin-top: 20px;
-        margin-bottom: 10px;
-    }
+  .dl-normal {
+    margin-top: 20px;
+    margin-bottom: 10px;
+  }
 
-    .dl-normal dt {
-        float: left;
-        overflow: hidden;
-        clear: left;
-        width: 120px;
-        text-align: left;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        letter-spacing: -.03em;
-    }
+  .dl-normal dt {
+    float: left;
+    overflow: hidden;
+    clear: left;
+    width: 120px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: -.03em;
+  }
 
-    .dl-normal dd {
-        margin-left: 130px;
-        line-height: 24px;
-    }
+  .dl-normal dd {
+    margin-left: 130px;
+    line-height: 24px;
+  }
 
-    .dl-nested {
-        margin-bottom: 0px;
-    }
+  .dl-nested {
+    margin-bottom: 0px;
+  }
 
-    .dl-nested dl {
-    }
-    .dl-nested dd {
-        margin: 0px;
-        overflow: visible;
-        white-space: normal;
-    }
+  .dl-nested dl {
+  }
+  .dl-nested dd {
+    margin: 0px;
+    overflow: visible;
+    white-space: normal;
+  }
 }
