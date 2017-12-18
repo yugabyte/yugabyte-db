@@ -76,8 +76,8 @@ void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
     req->mutable_column_refs()->add_ids(id);
 
     QLRSColDescPB* rscol_desc = rsrow_desc->add_rscol_descs();
-    rscol_desc->set_name((**column).name());
-    (**column).type()->ToQLTypePB(rscol_desc->mutable_ql_type());
+    rscol_desc->set_name(column->name());
+    column->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
   }
 }
 

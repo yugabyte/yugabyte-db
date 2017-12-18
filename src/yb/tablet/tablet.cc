@@ -881,7 +881,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           doc_ops.emplace_back(new KuduWriteOperation(
               DocPathForColumn(encoded_doc_key, update.col_id),
               update.null ? PrimitiveValue::kTombstone
-                          : PrimitiveValue::FromKuduValue((*column)->type_info()->type(),
+                          : PrimitiveValue::FromKuduValue(column->type_info()->type(),
                                                           update.raw_value)));
         }
         break;

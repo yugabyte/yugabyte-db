@@ -92,6 +92,10 @@ void CheckStatus() {
 template<class TValue>
 void CheckValue(TValue value) {
   typedef yb::Result<TValue> Result;
+
+  static_assert(sizeof(Result) == sizeof(void*) + std::max(sizeof(TValue), sizeof(void*)),
+                "Invalid Result size");
+
   auto value2 = value;
   auto value3 = value;
 
@@ -110,6 +114,19 @@ void CheckValue(TValue value) {
   CheckFromResult(result, [value](const auto& res) { CheckResultIsValue(res, value); });
 }
 
+Result<std::string&> GetStringReference() {
+  static std::string result = "shared string";
+  return result;
+}
+
+Result<std::string&> GetBadStringReference() {
+  return STATUS(RuntimeError, "Just for test");
+}
+
+Result<const std::string&> GetConstStringReference() {
+  return GetStringReference();
+}
+
 } // namespace
 
 TEST_F(ResultTest, Status) {
@@ -126,6 +143,35 @@ TEST_F(ResultTest, Result) {
   yb::Result<std::string> result(kString);
   ASSERT_TRUE(result.ok());
   ASSERT_EQ(result->size(), kString.size()); // Check of operator->
+}
+
+TEST_F(ResultTest, NonCopyable) {
+  Result<std::unique_ptr<int>> ptr = std::make_unique<int>(42);
+  Result<std::unique_ptr<int>> ptr2(std::move(ptr));
+  ASSERT_OK(ptr2);
+
+  std::unique_ptr<int>& unique = *ptr2;
+  ASSERT_EQ(42, *unique);
+}
+
+TEST_F(ResultTest, Reference) {
+  LOG(INFO) << GetStringReference();
+  LOG(INFO) << GetConstStringReference();
+  auto result = GetStringReference();
+  auto const_result = GetConstStringReference();
+
+  static_assert(sizeof(result) == 2 * sizeof(void*), "Invalid Result size");
+
+  ASSERT_OK(result);
+  Result<std::string&> result2(result);
+  const_result = result;
+  const_result = std::move(result);
+  result = GetBadStringReference();
+  ASSERT_NOK(result);
+  auto status = std::move(result.status());
+  ASSERT_NOK(status);
+  result = GetStringReference();
+  ASSERT_OK(result);
 }
 
 } // namespace test

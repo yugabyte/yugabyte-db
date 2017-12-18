@@ -1088,7 +1088,7 @@ Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response)
   for (const auto& column : request_.column_values()) {
     auto schema_column = schema_.column_by_id(ColumnId(column.column_id()));
     RETURN_NOT_OK(schema_column);
-    if ((*schema_column)->is_static()) {
+    if (schema_column->is_static()) {
       write_static_columns = true;
     } else {
       write_non_static_columns = true;
@@ -1294,7 +1294,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           const ColumnId column_id(column_value.column_id());
           const auto maybe_column = schema_.column_by_id(column_id);
           RETURN_NOT_OK(maybe_column);
-          const ColumnSchema& column = **maybe_column;
+          const ColumnSchema& column = *maybe_column;
 
           DocPath sub_path(column.is_static() ? hashed_doc_path_->encoded_doc_key()
                                               : pk_doc_path_->encoded_doc_key(),
@@ -1409,8 +1409,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             const auto column = schema_.column_by_id(column_id);
             RETURN_NOT_OK(column);
             const DocPath sub_path(
-                (*column)->is_static() ? hashed_doc_path_->encoded_doc_key()
-                                       : pk_doc_path_->encoded_doc_key(),
+                column->is_static() ? hashed_doc_path_->encoded_doc_key()
+                                    : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
             RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
                                                              request_.query_id(), user_timestamp));

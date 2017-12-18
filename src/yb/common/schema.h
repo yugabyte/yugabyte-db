@@ -650,12 +650,12 @@ class Schema {
   }
 
   // Return the ColumnSchema corresponding to the given column ID.
-  inline Result<const ColumnSchema*> column_by_id(ColumnId id) const {
+  inline Result<const ColumnSchema&> column_by_id(ColumnId id) const {
     int idx = find_column_by_id(id);
     if (idx < 0) {
       return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", idx);
     }
-    return Result<const ColumnSchema*>(&cols_[idx]);
+    return cols_[idx];
   }
 
   // Return the column ID corresponding to the given column index

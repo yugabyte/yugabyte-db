@@ -202,8 +202,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
       auto col = query_schema.column_by_id(ColumnId(i));
       EXPECT_OK(col);
       QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
-      rscol_desc->set_name((*col)->name());
-      (*col)->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
+      rscol_desc->set_name(col->name());
+      col->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);

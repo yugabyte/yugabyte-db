@@ -16,16 +16,55 @@
 #ifndef YB_UTIL_RESULT_H
 #define YB_UTIL_RESULT_H
 
+#include <type_traits>
+
 #include "yb/util/status.h"
 
 namespace yb {
 
 template<class TValue>
+struct ResultTraits {
+  typedef TValue Stored;
+  typedef const TValue* ConstPointer;
+  typedef TValue* Pointer;
+  typedef const TValue& ConstReference;
+
+  static const TValue& ToStored(const TValue& value) { return value; }
+  static void Destroy(Stored* value) { value->~TValue(); }
+  static Stored* GetPtr(Stored* value) { return value; }
+  static const Stored* GetPtr(const Stored* value) { return value; }
+};
+
+template<class TValue>
+struct ResultTraits<TValue&> {
+  typedef TValue* Stored;
+  typedef const TValue* ConstPointer;
+  typedef TValue* Pointer;
+  typedef const TValue& ConstReference;
+
+  static TValue* ToStored(TValue& value) { return &value; } // NOLINT
+  static void Destroy(Stored* value) {}
+  static TValue* GetPtr(const Stored* value) { return *value; }
+};
+
+template<class TValue>
 class Result {
  public:
+  typedef ResultTraits<TValue> Traits;
+
   Result(const Result& rhs) : success_(rhs.success_) {
     if (success_) {
-      new (&value_) TValue(rhs.value_);
+      new (&value_) typename Traits::Stored(rhs.value_);
+    } else {
+      new (&status_) Status(rhs.status_);
+    }
+  }
+
+  template<class UValue,
+           typename = typename std::enable_if<std::is_convertible<UValue, TValue>::value>::type>
+  Result(const Result<UValue>& rhs) : success_(rhs.success_) {
+    if (success_) {
+      new (&value_) typename Traits::Stored(rhs.value_);
     } else {
       new (&status_) Status(rhs.status_);
     }
@@ -33,7 +72,7 @@ class Result {
 
   Result(Result&& rhs) : success_(rhs.success_) {
     if (success_) {
-      new (&value_) TValue(std::move(rhs.value_));
+      new (&value_) typename Traits::Stored(std::move(rhs.value_));
     } else {
       new (&status_) Status(std::move(rhs.status_));
     }
@@ -47,8 +86,18 @@ class Result {
     CHECK(!status_.ok());
   }
 
-  Result(const TValue& value) : success_(true), value_(value) {} // NOLINT
-  Result(TValue&& value) : success_(true), value_(std::move(value)) {} // NOLINT
+  Result(TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
+
+  template <class UValue,
+            typename = typename std::enable_if<
+                std::is_convertible<const UValue&, const TValue&>::value>::type>
+  Result(const UValue& value) // NOLINT
+      : success_(true), value_(Traits::ToStored(value)) {}
+
+  template <class UValue,
+            typename = typename std::enable_if<
+                std::is_convertible<UValue&&, TValue&&>::value>::type>
+  Result(UValue&& value) : success_(true), value_(std::move(value)) {} // NOLINT
 
   Result& operator=(const Result& rhs) {
     if (&rhs == this) {
@@ -64,6 +113,13 @@ class Result {
     }
     this->~Result();
     return *new (this) Result(std::move(rhs));
+  }
+
+  template<class UValue,
+           typename = typename std::enable_if<std::is_convertible<UValue, TValue>::value>::type>
+  Result& operator=(const Result<UValue>& rhs) {
+    this->~Result();
+    return *new (this) Result(rhs);
   }
 
   Result& operator=(const Status& status) {
@@ -83,7 +139,10 @@ class Result {
     return *new (this) Result(value);
   }
 
-  Result& operator=(TValue&& value) {
+  template <class UValue,
+            typename = typename std::enable_if<
+                std::is_convertible<UValue&&, TValue&&>::value>::type>
+  Result& operator=(UValue&& value) {
     this->~Result();
     return *new (this) Result(std::move(value));
   }
@@ -127,21 +186,8 @@ class Result {
     return status_;
   }
 
-  const TValue& operator*() const& {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(success_);
-    return value_;
-  }
-
-  TValue& operator*() & {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(success_);
-    return value_;
-  }
+  auto& operator*() const& { return *get_ptr(); }
+  auto& operator*() & { return *get_ptr(); }
 
   TValue&& operator*() && {
 #ifndef NDEBUG
@@ -151,39 +197,26 @@ class Result {
     return value_;
   }
 
-  const TValue* operator->() const {
+  auto operator->() const { return get_ptr(); }
+  auto operator->() { return get_ptr(); }
+
+  auto get_ptr() const {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
     CHECK(success_);
-    return &value_;
+    return Traits::GetPtr(&value_);
   }
 
-  TValue* operator->() {
+  auto get_ptr() {
 #ifndef NDEBUG
     CHECK(success_checked_);
 #endif
     CHECK(success_);
-    return &value_;
+    return Traits::GetPtr(&value_);
   }
 
-  const TValue* get_ptr() const {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(success_);
-    return &value_;
-  }
-
-  TValue* get_ptr() {
-#ifndef NDEBUG
-    CHECK(success_checked_);
-#endif
-    CHECK(success_);
-    return &value_;
-  }
-
-  CHECKED_STATUS MoveTo(TValue* value) {
+  CHECKED_STATUS MoveTo(typename Traits::Pointer value) {
     if (!ok()) {
       return status();
     }
@@ -193,7 +226,7 @@ class Result {
 
   ~Result() {
     if (success_) {
-      value_.~TValue();
+      Traits::Destroy(&value_);
     } else {
       status_.~Status();
     }
@@ -206,8 +239,10 @@ class Result {
 #endif
   union {
     Status status_;
-    TValue value_;
+    typename Traits::Stored value_;
   };
+
+  template <class UValue> friend class Result;
 };
 
 // Specify Result<bool> to avoid confusion with operator bool and operator!.
