@@ -97,17 +97,36 @@ static string GetDefaultDocumentRoot() {
 
   // If YB_HOME is not set, we use the path where the binary is located
   // (e.g., /opt/yugabyte/tserver/bin/yb-tserver) to determine the doc root.
-  // We assume that the document root is the "www" directory at the same
-  // level as the "bin" directory. So, for our example, the doc root will
-  // be /opt/yugabyte/tserver/www.
+  // To find "www"'s location, we search whether "www" exists at each directory, starting with
+  // the directory where the current binary (yb-tserver, or yb-master) is located.
+  // During each iteration, we keep going up one directory and do the search again.
+  // If we can't find a directory that contains "www", we return a default value for now.
   string executable_path;
   auto status = Env::Default()->GetExecutablePath(&executable_path);
   if (!status.ok()) {
     LOG(WARNING) << "Ignoring status error: " << status.ToString();
     return "";
   }
-  const string base_dir = DirName(DirName(executable_path));
-  return JoinPathSegments(base_dir, "www");
+
+  auto path = executable_path;
+  while (path != "/") {
+    path = DirName(path);
+    auto www_dir = JoinPathSegments(path, "www");
+    bool is_dir = false;
+    auto status = Env::Default()->IsDirectory(www_dir, &is_dir);
+    if (!status.ok()) {
+      continue;
+    }
+    if (is_dir) {
+      return www_dir;
+    }
+  }
+
+  LOG(ERROR) << "Unable to find www directory by starting the search at path "
+             << DirName(executable_path) << " and walking up the directory structure";
+
+  // Return a path.
+  return JoinPathSegments(DirName(DirName(executable_path)), "www");
 }
 
 WebserverOptions::WebserverOptions()
