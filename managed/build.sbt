@@ -31,7 +31,7 @@ resolvers += {
   if (mavenLocal != null && mavenLocal.equals("true")) {
     Resolver.mavenLocal
   } else {
-    "Yugabyte S3 Snapshots" at "s3://no-such-url/"
+    "Yugabyte Nexus Snapshots" at "http://no-such-url/repository/yugabyte-snapshots"
   }
 }
 
