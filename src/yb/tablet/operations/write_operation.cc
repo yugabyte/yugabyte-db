@@ -138,7 +138,6 @@ void WriteOperation::PreCommit() {
   TRACE("PRECOMMIT: Releasing row and schema locks");
   // Perform early lock release after we've applied all changes
   state()->ReleaseDocDbLocks(tablet_peer()->tablet());
-  state()->ReleaseSchemaLock();
 }
 
 void WriteOperation::Finish(OperationResult result) {
@@ -195,8 +194,7 @@ WriteOperationState::WriteOperationState(TabletPeer* tablet_peer,
       // layer.
       request_(request ? new WriteRequestPB(*request) : nullptr),
       response_(response),
-      mvcc_tx_(nullptr),
-      schema_at_decode_time_(nullptr) {
+      mvcc_tx_(nullptr) {
   if (request) {
     external_consistency_mode_ = request->external_consistency_mode();
   } else {
@@ -216,19 +214,6 @@ void WriteOperationState::SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOper
   mvcc_tx_ = std::move(mvcc_tx);
 }
 
-void WriteOperationState::AcquireSchemaLock(rw_semaphore* schema_lock) {
-  TRACE("Acquiring schema lock in shared mode");
-  shared_lock<rw_semaphore> temp(*schema_lock);
-  schema_lock_.swap(temp);
-  TRACE("Acquired schema lock");
-}
-
-void WriteOperationState::ReleaseSchemaLock() {
-  shared_lock<rw_semaphore> temp;
-  schema_lock_.swap(temp);
-  TRACE("Released schema lock");
-}
-
 void WriteOperationState::StartApplying() {
   lock_guard<mutex> lock(mvcc_tx_mutex_);
   if (!mvcc_tx_) {
@@ -241,7 +226,6 @@ void WriteOperationState::Abort() {
   ResetMvccTx([](ScopedWriteOperation* mvcc_tx) { mvcc_tx->Abort(); });
 
   ReleaseDocDbLocks(tablet_peer()->tablet());
-  ReleaseSchemaLock();
 
   // After aborting, we may respond to the RPC and delete the
   // original request, so null them out here.
@@ -282,11 +266,10 @@ void WriteOperationState::Reset() {
   Commit();
   tx_metrics_.Reset();
   hybrid_time_ = HybridTime::kInvalidHybridTime;
-  schema_at_decode_time_ = nullptr;
 }
 
 void WriteOperationState::ResetRpcFields() {
-  std::lock_guard<simple_spinlock> l(txn_state_lock_);
+  std::lock_guard<simple_spinlock> l(mutex_);
   response_ = nullptr;
   STLDeleteElements(&row_ops_);
 }
@@ -313,13 +296,12 @@ string WriteOperationState::ToString() const {
   // user data escaping into the log. See KUDU-387.
   string row_ops_str = "[";
   {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     const size_t kMaxToStringify = 3;
     for (int i = 0; i < std::min(row_ops_.size(), kMaxToStringify); i++) {
       if (i > 0) {
         row_ops_str.append(", ");
       }
-      row_ops_str.append(row_ops_[i]->ToString(*DCHECK_NOTNULL(schema_at_decode_time_)));
     }
     if (row_ops_.size() > kMaxToStringify) {
       row_ops_str.append(", ...");

@@ -93,9 +93,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  void RequestStatusAt(const TransactionId& id,
-                       HybridTime time,
-                       TransactionStatusCallback callback) override;
+  void RequestStatusAt(const StatusRequest& request) override;
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 

@@ -71,6 +71,14 @@ struct TransactionStatusResult {
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 struct TransactionMetadata;
 
+// Used by RequestStatusAt.
+struct StatusRequest {
+  const TransactionId* id;
+  HybridTime read_ht;
+  HybridTime global_limit_ht;
+  TransactionStatusCallback callback;
+};
+
 class TransactionStatusManager {
  public:
   virtual ~TransactionStatusManager() {}
@@ -89,9 +97,7 @@ class TransactionStatusManager {
   // 3. Status tablet could not determine transaction status at this time. In this case callback
   // will be invoked with TryAgain result.
   // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
-  virtual void RequestStatusAt(const TransactionId& id,
-                               HybridTime time,
-                               TransactionStatusCallback callback) = 0;
+  virtual void RequestStatusAt(const StatusRequest& request) = 0;
 
   virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
 

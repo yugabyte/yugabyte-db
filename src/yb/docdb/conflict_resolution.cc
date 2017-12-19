@@ -38,6 +38,7 @@ struct TransactionData {
   TransactionStatus status;
   HybridTime commit_time;
   TransactionMetadata metadata;
+  Status failure;
 
   void ProcessStatus(const TransactionStatusResult& result) {
     status = result.status;
@@ -211,6 +212,7 @@ class ConflictResolver {
   CHECKED_STATUS Cleanup() {
     auto write_iterator = transactions_.begin();
     for (const auto& transaction : transactions_) {
+      RETURN_NOT_OK(transaction.failure);
       auto status = transaction.status;
       if (status == TransactionStatus::COMMITTED) {
         RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, transaction.commit_time));
@@ -234,18 +236,23 @@ class ConflictResolver {
     CountDownLatch latch(transactions_.size());
     for (auto& i : transactions_) {
       auto& transaction = i;
-      status_manager().RequestStatusAt(
-          transaction.id,
-          context_.GetHybridTime(),
-          [&transaction, &latch](Result<TransactionStatusResult> result) {
-            if (result.ok()) {
-              transaction.ProcessStatus(*result);
-            } else {
-              CHECK(result.status().IsTryAgain()); // TODO(dtxn) Handle errors.
-              transaction.status = TransactionStatus::PENDING;
-            }
-            latch.CountDown();
-          });
+      StatusRequest request = {
+        &transaction.id,
+        context_.GetHybridTime(),
+        context_.GetHybridTime(),
+        [&transaction, &latch](Result<TransactionStatusResult> result) {
+          if (result.ok()) {
+            transaction.ProcessStatus(*result);
+          } else if (result.status().IsTryAgain()) {
+            // It is safe to suppose that transaction in PENDING state in case of try again error.
+            transaction.status = TransactionStatus::PENDING;
+          } else {
+            transaction.failure = result.status();
+          }
+          latch.CountDown();
+        }
+      };
+      status_manager().RequestStatusAt(request);
     }
     latch.Wait();
   }

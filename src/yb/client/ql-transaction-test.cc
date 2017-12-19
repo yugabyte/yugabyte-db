@@ -47,6 +47,7 @@ DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_uint64(transaction_check_interval_usec);
 DECLARE_uint64(transaction_read_skew_usec);
+DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 
 namespace yb {
 namespace client {
@@ -222,17 +223,9 @@ class QLTransactionTest : public QLDmlTestBase {
   }
 
   void WriteData(const WriteOpType op_type = WriteOpType::INSERT) {
-    CountDownLatch latch(1);
-    {
-      auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
-      auto session = CreateSession(tc);
-      WriteRows(session, 0, op_type);
-      tc->Commit([&latch](const Status& status) {
-          ASSERT_OK(status);
-          latch.CountDown(1);
-      });
-    }
-    latch.Wait();
+    auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    WriteRows(CreateSession(tc), 0, op_type);
+    ASSERT_OK(tc->CommitFuture().get());
     LOG(INFO) << "Committed";
   }
 
@@ -264,6 +257,11 @@ class QLTransactionTest : public QLDmlTestBase {
     return result;
   }
 
+  // We write data with first transaction then try to read it another one.
+  // If commit is true, then first transaction is committed and second should be restarted.
+  // Otherwise second transaction would see pending intents from first one and should not restart.
+  void TestReadRestart(bool commit = true);
+
   TableHandle table_;
   boost::optional<TransactionManager> transaction_manager_;
   server::TestClock* clock_;
@@ -275,33 +273,62 @@ TEST_F(QLTransactionTest, Simple) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-TEST_F(QLTransactionTest, ReadRestart) {
+void QLTransactionTest::TestReadRestart(bool commit) {
   google::FlagSaver saver;
 
   FLAGS_transaction_read_skew_usec = 250000;
 
-  WriteData();
+  auto write_txn = std::make_shared<YBTransaction>(
+      transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+  WriteRows(CreateSession(write_txn));
+  if (commit) {
+    ASSERT_OK(write_txn->CommitFuture().get());
+  }
 
   server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
-                                              IsolationLevel::SNAPSHOT_ISOLATION);
+  auto txn1 = std::make_shared<YBTransaction>(
+      transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
   auto session = CreateSession(txn1);
-  for (size_t r = 0; r != kNumRows; ++r) {
-    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-    ASSERT_NOK(row);
-    ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
-        << "Bad row: " << row;
+  if (commit) {
+    for (size_t r = 0; r != kNumRows; ++r) {
+      auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+      ASSERT_NOK(row);
+      ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
+                    << "Bad row: " << row;
+    }
+    auto txn2 = txn1->CreateRestartedTransaction();
+    session->SetTransaction(txn2);
+    for (size_t r = 0; r != kNumRows; ++r) {
+      auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+      ASSERT_OK(row);
+      ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
+    }
+    VerifyData();
+  } else {
+    for (size_t r = 0; r != kNumRows; ++r) {
+      auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+      ASSERT_TRUE(!row.ok() && row.status().IsNotFound()) << "Bad row: " << row;
+    }
   }
-  auto txn2 = txn1->CreateRestartedTransaction();
-  session->SetTransaction(txn2);
-  for (size_t r = 0; r != kNumRows; ++r) {
-    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-    ASSERT_OK(row);
-    ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
-  }
-  VerifyData();
 
-  CHECK_OK(cluster_->RestartSync());
+  ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, ReadRestart) {
+  TestReadRestart();
+}
+
+TEST_F(QLTransactionTest, ReadRestartWithIntents) {
+  google::FlagSaver saver;
+  DisableApplyingIntents();
+  TestReadRestart();
+}
+
+TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
+  google::FlagSaver saver;
+  FLAGS_transaction_allow_rerequest_status_in_tests = false;
+  DisableApplyingIntents();
+  TestReadRestart(false /* commit */);
 }
 
 TEST_F(QLTransactionTest, WriteRestart) {
@@ -536,6 +563,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
   google::FlagSaver flag_saver;
+  FLAGS_transaction_read_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -576,6 +604,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   google::FlagSaver flag_saver;
+  FLAGS_transaction_read_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.

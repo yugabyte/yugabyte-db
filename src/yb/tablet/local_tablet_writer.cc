@@ -68,7 +68,6 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
   tx_state_->Commit();
   tx_state_->ReleaseDocDbLocks(tablet_);
-  tx_state_->ReleaseSchemaLock();
 
   // Return the status of first failed op.
   int op_idx = 0;

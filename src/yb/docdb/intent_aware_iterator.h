@@ -35,6 +35,27 @@ class Value;
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 
+// Caches transaction statuses fetched by single IntentAwareIterator.
+// Thread safety is not required, because IntentAwareIterator is used in a single thread only.
+class TransactionStatusCache {
+ public:
+  TransactionStatusCache(TransactionStatusManager* txn_status_manager,
+                         const ReadHybridTime& read_time)
+      : txn_status_manager_(txn_status_manager), read_time_(read_time) {}
+
+  // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
+  // otherwise.
+  Result<HybridTime> GetCommitTime(const TransactionId& transaction_id);
+
+ private:
+  HybridTime GetLocalCommitTime(const TransactionId& transaction_id);
+  Result<HybridTime> DoGetCommitTime(const TransactionId& transaction_id);
+
+  TransactionStatusManager* txn_status_manager_;
+  ReadHybridTime read_time_;
+  std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
+};
+
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
 // for caller. Implementation relies on intents order in RocksDB, which is determined by intent key
 // format. If (sub)key A goes before/after (sub)key B, all intents for A should go before/after all
@@ -185,6 +206,7 @@ class IntentAwareIterator {
   KeyBytes resolved_intent_sub_doc_key_encoded_;
   KeyBytes resolved_intent_value_;
   std::vector<Slice> prefix_stack_;
+  TransactionStatusCache transaction_status_cache_;
 };
 
 // Utility class that controls stack of prefixes in IntentAwareIterator.

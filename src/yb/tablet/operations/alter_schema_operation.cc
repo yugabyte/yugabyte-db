@@ -109,9 +109,7 @@ Status AlterSchemaOperation::Prepare() {
 }
 
 void AlterSchemaOperation::Start() {
-  if (!state()->has_hybrid_time()) {
-    state()->set_hybrid_time(state()->tablet_peer()->clock().Now());
-  }
+  state()->TrySetHybridTimeFromClock();
   TRACE("START. HybridTime: $0",
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }

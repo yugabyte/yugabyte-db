@@ -245,7 +245,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   consensus::Consensus::LeaderStatus LeaderStatus() const override;
 
-  HybridTime LastCommittedHybridTime() const override;
+  HybridTime HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
     return log_anchor_registry_;

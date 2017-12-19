@@ -621,18 +621,15 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return HybridTime::kInvalidHybridTime;
   }
 
-  void RequestStatusAt(
-      const TransactionId &id,
-      HybridTime time,
-      TransactionStatusCallback callback) override {
-    auto it = txn_commit_time_.find(id);
+  void RequestStatusAt(const StatusRequest& request) override {
+    auto it = txn_commit_time_.find(*request.id);
     if (it == txn_commit_time_.end()) {
-      callback(STATUS_FORMAT(TryAgain, "Unknown transaction id: $0", id));
+      request.callback(STATUS_FORMAT(TryAgain, "Unknown transaction id: $0", *request.id));
     } else {
-      if (time >= it->second) {
-        callback(TransactionStatusResult{TransactionStatus::COMMITTED, it->second});
+      if (request.read_ht >= it->second) {
+        request.callback(TransactionStatusResult{TransactionStatus::COMMITTED, it->second});
       } else {
-        callback(TransactionStatusResult{TransactionStatus::PENDING, HybridTime::kMin});
+        request.callback(TransactionStatusResult{TransactionStatus::PENDING, HybridTime::kMin});
       }
     }
   }

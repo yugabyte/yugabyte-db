@@ -199,8 +199,19 @@ class TransactionState {
     } else {
       CHECK_EQ(TransactionStatus::PENDING, status_);
       response->set_status(TransactionStatus::PENDING);
-      response->set_status_hybrid_time(
-          context_.coordinator_context().LastCommittedHybridTime().Decremented().ToUint64());
+      HybridTime status_ht = context_.coordinator_context().clock().Now();
+      if (replicating_) {
+        auto replicating_status = replicating_->request()->status();
+        if (replicating_status == TransactionStatus::COMMITTED ||
+            replicating_status == TransactionStatus::ABORTED) {
+          auto replicating_ht = replicating_->hybrid_time_even_if_unset();
+          if (replicating_ht.is_valid()) {
+            status_ht = replicating_ht;
+          }
+        }
+      }
+      status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
+      response->set_status_hybrid_time(status_ht.Decremented().ToUint64());
     }
     return Status::OK();
   }

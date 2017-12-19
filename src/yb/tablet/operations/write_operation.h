@@ -139,26 +139,6 @@ class WriteOperationState : public OperationState {
   // WriteOperationState object.
   void SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOperation> mvcc_tx);
 
-  // Take a shared lock on the given schema lock.
-  // This is required prior to decoding rows so that the schema does
-  // not change in between performing the projection and applying
-  // the writes.
-  void AcquireSchemaLock(rw_semaphore* schema_lock);
-
-  // Release the already-acquired schema lock.
-  void ReleaseSchemaLock();
-
-
-  void set_schema_at_decode_time(const Schema* schema) {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    schema_at_decode_time_ = schema;
-  }
-
-  const Schema* schema_at_decode_time() const {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    return schema_at_decode_time_;
-  }
-
   // Notifies the MVCC manager that this operation is about to start applying
   // its in-memory edits. After this method is called, the transaction _must_
   // Commit() within a bounded amount of time (there may be other threads
@@ -196,7 +176,7 @@ class WriteOperationState : public OperationState {
   // Moves the given lock batch into this object so it can be unlocked when the operation is
   // complete.
   void ReplaceDocDBLocks(LockBatch&& docdb_locks) {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     docdb_locks_ = std::move(docdb_locks);
   }
 
@@ -227,7 +207,7 @@ class WriteOperationState : public OperationState {
   tserver::WriteResponsePB* response_;
 
   // The row operations which are decoded from the request during PREPARE
-  // Protected by superclass's txn_state_lock_.
+  // Protected by superclass's mutex_.
   std::vector<RowOp*> row_ops_;
 
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
@@ -248,16 +228,6 @@ class WriteOperationState : public OperationState {
   //                transaction cannot be aborted after the Apply process has started? See if
   //                we actually get counterexamples for this in tests.
   std::mutex mvcc_tx_mutex_;
-
-  // A lock held on the tablet's schema. Prevents concurrent schema change
-  // from racing with a write.
-  shared_lock<rw_semaphore> schema_lock_;
-
-  // The Schema of the tablet when the transaction was first decoded.
-  // This is verified at APPLY time to ensure we don't have races against
-  // schema change.
-  // Protected by superclass's txn_state_lock_.
-  const Schema* schema_at_decode_time_;
 
   DISALLOW_COPY_AND_ASSIGN(WriteOperationState);
 };

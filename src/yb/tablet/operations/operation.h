@@ -220,19 +220,22 @@ class OperationState {
   // Sets the hybrid_time for the transaction
   void set_hybrid_time(const HybridTime& hybrid_time);
 
+  // If this operation does not have hybrid time yet, then it will be inited from clock.
+  void TrySetHybridTimeFromClock();
+
   HybridTime hybrid_time() const {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     DCHECK(hybrid_time_ != HybridTime::kInvalidHybridTime);
     return hybrid_time_;
   }
 
   HybridTime hybrid_time_even_if_unset() const {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     return hybrid_time_;
   }
 
   bool has_hybrid_time() const {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(mutex_);
     return hybrid_time_ != HybridTime::kInvalidHybridTime;
   }
 
@@ -263,7 +266,7 @@ class OperationState {
 
   AutoReleasePool pool_;
 
-  // This transaction's hybrid_time. Protected by txn_state_lock_.
+  // This transaction's hybrid_time. Protected by mutex_.
   HybridTime hybrid_time_;
 
   // The clock error when hybrid_time_ was read.
@@ -279,8 +282,8 @@ class OperationState {
   // The defined consistency mode for this transaction.
   ExternalConsistencyMode external_consistency_mode_;
 
-  // Lock that protects access to transaction state.
-  mutable simple_spinlock txn_state_lock_;
+  // Lock that protects access to operation state.
+  mutable simple_spinlock mutex_;
 };
 
 // A parent class for the callback that gets called when transactions

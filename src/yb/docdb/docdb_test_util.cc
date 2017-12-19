@@ -62,9 +62,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return HybridTime::kInvalidHybridTime;
   }
 
-  void RequestStatusAt(const TransactionId &id,
-      HybridTime time,
-      TransactionStatusCallback callback) override {
+  void RequestStatusAt(const StatusRequest& request) override {
     Fail();
   }
 

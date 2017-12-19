@@ -235,9 +235,11 @@ class RaftConsensus : public Consensus,
   // additional short time interval (e.g. 100 ms) in case we've just acquired the lease and the
   // waiting thread missed the notification. However, as of 08/14/2017 this is only used in a
   // context where this does not matter, such as catalog manager initialization.
-  Status WaitForLeaderLeaseImprecise(MonoTime deadline) override;
+  CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) override;
 
-  Status CheckIsActiveLeaderAndHasLease() const override;
+  CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
+
+  MicrosTime majority_replicated_ht_lease_expiration() const override;
 
  private:
   CHECKED_STATUS DoStartElection(

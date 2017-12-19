@@ -39,6 +39,8 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/ref_counted_replicate.h"
@@ -348,9 +350,15 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
-  virtual Status WaitForLeaderLeaseImprecise(MonoTime deadline) = 0;
+  virtual CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) = 0;
 
-  virtual Status CheckIsActiveLeaderAndHasLease() const = 0;
+  // Check that this Consensus is a leader and has lease, returns Status::OK in this case.
+  // Otherwise error status is returned.
+  virtual CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const = 0;
+
+  // Returns majority replicated ht lease, so we know that after leader change
+  // operations would not be added with hybrid time below this lease.
+  virtual MicrosTime majority_replicated_ht_lease_expiration() const = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;

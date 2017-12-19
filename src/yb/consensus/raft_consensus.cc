@@ -2207,6 +2207,10 @@ Status RaftConsensus::CheckIsActiveLeaderAndHasLease() const {
   return state_->CheckIsActiveLeaderAndHasLease();
 }
 
+MicrosTime RaftConsensus::majority_replicated_ht_lease_expiration() const {
+  return state_->majority_replicated_ht_lease_expiration();
+}
+
 std::string RaftConsensus::GetRequestVoteLogPrefixUnlocked() const {
   return state_->LogPrefixUnlocked() + "Leader election vote request";
 }

@@ -45,9 +45,7 @@ Status UpdateTxnOperation::Prepare() {
 }
 
 void UpdateTxnOperation::Start() {
-  if (!state()->has_hybrid_time()) {
-    state()->set_hybrid_time(state()->tablet_peer()->clock().Now());
-  }
+  state()->TrySetHybridTimeFromClock();
 }
 
 TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {

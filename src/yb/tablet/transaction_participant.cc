@@ -79,20 +79,21 @@ class RunningTransaction {
   }
 
   void RequestStatusAt(client::YBClient* client,
-                       HybridTime time,
-                       TransactionStatusCallback callback,
+                       const StatusRequest& request,
                        std::unique_lock<std::mutex>* lock) const {
     if (last_known_status_hybrid_time_ > HybridTime::kMin) {
       auto transaction_status =
-          GetStatusAt(time, last_known_status_hybrid_time_, last_known_status_);
+          GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_);
+      // If we don't have status at global_limit_ht, then we should request updated status.
       if (transaction_status) {
         lock->unlock();
-        callback(TransactionStatusResult{*transaction_status, last_known_status_hybrid_time_});
+        request.callback(
+            TransactionStatusResult{*transaction_status, last_known_status_hybrid_time_});
         return;
       }
     }
     bool was_empty = status_waiters_.empty();
-    status_waiters_.push_back(StatusWaiter{std::move(callback), time});
+    status_waiters_.push_back(request);
     if (!was_empty) {
       return;
     }
@@ -143,7 +144,6 @@ class RunningTransaction {
       case TransactionStatus::ABORTED:
         return TransactionStatus::ABORTED;
       case TransactionStatus::COMMITTED:
-        // TODO(dtxn) clock skew
         return last_known_status_hybrid_time > time
             ? TransactionStatus::PENDING
             : TransactionStatus::COMMITTED;
@@ -168,10 +168,11 @@ class RunningTransaction {
     decltype(status_waiters_) status_waiters;
     HybridTime time;
     TransactionStatus transaction_status;
+    const bool ok = status.ok();
     {
       std::unique_lock<std::mutex> lock(*mutex);
       status_waiters_.swap(status_waiters);
-      if (status.ok()) {
+      if (ok) {
         DCHECK(response.has_status_hybrid_time() ||
                response.status() == TransactionStatus::ABORTED);
         time = response.has_status_hybrid_time()
@@ -185,23 +186,36 @@ class RunningTransaction {
         transaction_status = last_known_status_;
       }
     }
-    if (!status.ok()) {
+    if (!ok) {
       for (const auto& waiter : status_waiters) {
         waiter.callback(status);
       }
-    } else {
-      for (const auto& waiter : status_waiters) {
-        auto status_for_waiter = GetStatusAt(waiter.time, time, transaction_status);
-        if (status_for_waiter) {
-          waiter.callback(TransactionStatusResult{*status_for_waiter, time});
-        } else {
-          waiter.callback(STATUS_FORMAT(
-              TryAgain,
-              "Cannot determine transaction status at $0, last known: $1 at $2",
-              waiter.time,
-              transaction_status,
-              time));
-        }
+      return;
+    }
+    for (const auto& waiter : status_waiters) {
+      auto status_for_waiter = GetStatusAt(waiter.global_limit_ht, time, transaction_status);
+      if (status_for_waiter) {
+        // We know status at global_limit_ht, so could notify waiter.
+        waiter.callback(TransactionStatusResult{*status_for_waiter, time});
+      } else if (time >= waiter.read_ht) {
+        // It means that between read_ht and global_limit_ht transaction was pending.
+        // It implies that transaction was not committed before request was sent.
+        // We could safely respond PENDING to caller.
+        //
+        // TODO(dtxn) there could be cases for multiple requests, when transaction actually was
+        // committed after we sent request for first one. So we should remember
+        // waiters at the moment of sending request. One them could be addressed by this case.
+        // Remaining waiters should generate new status request.
+        waiter.callback(TransactionStatusResult{TransactionStatus::PENDING, time});
+      } else {
+        waiter.callback(STATUS_FORMAT(
+            TryAgain,
+            "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+                "last known: $2 at $3",
+            waiter.read_ht,
+            waiter.global_limit_ht,
+            TransactionStatus_Name(transaction_status),
+            time));
       }
     }
   }
@@ -243,14 +257,9 @@ class RunningTransaction {
   TransactionParticipantContext& context_;
   HybridTime local_commit_time_ = HybridTime::kInvalidHybridTime;
 
-  struct StatusWaiter {
-    TransactionStatusCallback callback;
-    HybridTime time;
-  };
-
   mutable TransactionStatus last_known_status_;
   mutable HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
-  mutable std::vector<StatusWaiter> status_waiters_;
+  mutable std::vector<StatusRequest> status_waiters_;
   mutable rpc::Rpcs::Handle get_status_handle_;
   mutable rpc::Rpcs::Handle abort_handle_;
   mutable std::vector<TransactionStatusCallback> abort_waiters_;
@@ -312,17 +321,16 @@ class TransactionParticipant::Impl {
     return it->metadata();
   }
 
-  void RequestStatusAt(const TransactionId& id,
-                       HybridTime time,
-                       TransactionStatusCallback callback) {
+  void RequestStatusAt(const StatusRequest& request) {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto it = FindOrLoad(id);
+    auto it = FindOrLoad(*request.id);
     if (it == transactions_.end()) {
       lock.unlock();
-      callback(STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", id));
+      request.callback(
+          STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
       return;
     }
-    return it->RequestStatusAt(client(), time, std::move(callback), &lock);
+    return it->RequestStatusAt(client(), request, &lock);
   }
 
   void Abort(const TransactionId& id,
@@ -473,10 +481,8 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
-void TransactionParticipant::RequestStatusAt(const TransactionId& id,
-                                             HybridTime time,
-                                             TransactionStatusCallback callback) {
-  return impl_->RequestStatusAt(id, time, std::move(callback));
+void TransactionParticipant::RequestStatusAt(const StatusRequest& request) {
+  return impl_->RequestStatusAt(request);
 }
 
 void TransactionParticipant::Abort(const TransactionId& id,

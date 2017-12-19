@@ -765,10 +765,10 @@ consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
   return consensus ? consensus->leader_status() : consensus::Consensus::LeaderStatus::NOT_LEADER;
 }
 
-HybridTime TabletPeer::LastCommittedHybridTime() const {
-  return tablet_->mvcc_manager()->LastCommittedHybridTime();
+HybridTime TabletPeer::HtLeaseExpiration() const {
+  HybridTime result(consensus_->majority_replicated_ht_lease_expiration(), 0);
+  return std::max(result, tablet_->mvcc_manager()->LastCommittedHybridTime());
 }
-
 
 }  // namespace tablet
 }  // namespace yb

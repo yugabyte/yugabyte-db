@@ -13,8 +13,8 @@
 
 #include "yb/docdb/intent_aware_iterator.h"
 
+#include <future>
 #include <thread>
-#include <boost/thread/latch.hpp>
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
@@ -25,7 +25,10 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
+
+DEFINE_bool(transaction_allow_rerequest_status_in_tests, true,
+            "Allow rerequest transaction status when try again is received.");
 
 namespace yb {
 namespace docdb {
@@ -45,69 +48,78 @@ KeyBytes GetIntentPrefixForKey(const SubDocKey& subdoc_key) {
   return GetIntentPrefixForKeyWithoutHt(subdoc_key.Encode(false /* include_hybrid_time */));
 }
 
+} // namespace
+
 // For locally committed transactions returns commit time if committed at specified time or
 // HybridTime::kMin otherwise. For other transactions returns HybridTime::kInvalidHybridTime.
-HybridTime GetTxnLocalCommitTime(
-    TransactionStatusManager* txn_status_manager, const TransactionId& transaction_id,
-    const HybridTime& time) {
-  const HybridTime local_commit_time = txn_status_manager->LocalCommitTime(transaction_id);
+HybridTime TransactionStatusCache::GetLocalCommitTime(const TransactionId& transaction_id) {
+  const HybridTime local_commit_time = txn_status_manager_->LocalCommitTime(transaction_id);
   return local_commit_time.is_valid()
-      ? (local_commit_time <= time ? local_commit_time : HybridTime::kMin)
+      ? local_commit_time <= read_time_.global_limit ? local_commit_time : HybridTime::kMin
       : local_commit_time;
 }
 
-// Returns transaction commit time if already committed at specified time or HybridTime::kMin
-// otherwise.
-Result<HybridTime> GetTxnCommitTime(
-    TransactionStatusManager* txn_status_manager,
-    const TransactionId& transaction_id,
-    const HybridTime& time) {
-  DCHECK_ONLY_NOTNULL(txn_status_manager);
+Result<HybridTime> TransactionStatusCache::GetCommitTime(const TransactionId& transaction_id) {
+  auto it = cache_.find(transaction_id);
+  if (it != cache_.end()) {
+    return it->second;
+  }
 
-  HybridTime local_commit_time = GetTxnLocalCommitTime(
-      txn_status_manager, transaction_id, time);
+  auto result = DoGetCommitTime(transaction_id);
+  if (result.ok()) {
+    cache_.emplace(transaction_id, *result);
+  }
+  return result;
+}
+
+Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& transaction_id) {
+  HybridTime local_commit_time = GetLocalCommitTime(transaction_id);
   if (local_commit_time.is_valid()) {
     return local_commit_time;
   }
 
-  Result<TransactionStatusResult> txn_status_result = STATUS(Uninitialized, "");
-  boost::latch latch(1);
+  TransactionStatusResult txn_status;
   for(;;) {
-    auto callback = [&txn_status_result, &latch](Result<TransactionStatusResult> result) {
-      txn_status_result = std::move(result);
-      latch.count_down();
+    std::promise<Result<TransactionStatusResult>> txn_status_promise;
+    auto future = txn_status_promise.get_future();
+    auto callback = [&txn_status_promise](Result<TransactionStatusResult> result) {
+      txn_status_promise.set_value(std::move(result));
     };
-    txn_status_manager->RequestStatusAt(transaction_id, time, callback);
-    latch.wait();
+    txn_status_manager_->RequestStatusAt(
+        {&transaction_id, read_time_.read, read_time_.global_limit, callback});
+    future.wait();
+    auto txn_status_result = future.get();
     if (txn_status_result.ok()) {
+      txn_status = std::move(*txn_status_result);
       break;
-    } else {
-      LOG(WARNING)
-          << "Failed to request transaction " << yb::ToString(transaction_id) << " status: "
-          <<  txn_status_result.status();
-      if (txn_status_result.status().IsTryAgain()) {
-        // TODO(dtxn) In case of TryAgain error status we need to re-request transaction status.
-        // Temporary workaround is to sleep for 0.5s and re-request.
-        std::this_thread::sleep_for(500ms);
-        latch.reset(1);
-        continue;
-      } else {
-        RETURN_NOT_OK(txn_status_result);
-      }
     }
+    LOG(WARNING)
+        << "Failed to request transaction " << yb::ToString(transaction_id) << " status: "
+        <<  txn_status_result.status();
+    if (!txn_status_result.status().IsTryAgain()) {
+      return std::move(txn_status_result.status());
+    }
+    DCHECK(FLAGS_transaction_allow_rerequest_status_in_tests);
+    // TODO(dtxn) In case of TryAgain error status we need to re-request transaction status.
+    // Temporary workaround is to sleep for 0.05s and re-request.
+    std::this_thread::sleep_for(50ms);
   }
-  VLOG(4) << "Transaction_id " << transaction_id << " at " << time
-          << ": status: " << ToString(txn_status_result->status)
-          << ", status_time: " << txn_status_result->status_time;
-  if (txn_status_result->status == TransactionStatus::ABORTED) {
-    local_commit_time = GetTxnLocalCommitTime(txn_status_manager, transaction_id, time);
+  VLOG(4) << "Transaction_id " << transaction_id << " at " << read_time_
+          << ": status: " << ToString(txn_status.status)
+          << ", status_time: " << txn_status.status_time;
+  // There could be case when transaction was committed and applied between previous call to
+  // GetLocalCommitTime, in this case coordinator does not know transaction and will respond
+  // with ABORTED status. So we recheck whether it was committed locally.
+  if (txn_status.status == TransactionStatus::ABORTED) {
+    local_commit_time = GetLocalCommitTime(transaction_id);
     return local_commit_time.is_valid() ? local_commit_time : HybridTime::kMin;
   } else {
-    return txn_status_result->status == TransactionStatus::COMMITTED
-        ? txn_status_result->status_time
-        : HybridTime::kMin;
+    return txn_status.status == TransactionStatus::COMMITTED ? txn_status.status_time
+                                                             : HybridTime::kMin;
   }
 }
+
+namespace {
 
 struct DecodeStrongWriteIntentResult {
   Slice intent_prefix;
@@ -134,8 +146,8 @@ std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult&
 // For current transaction returns intent record hybrid time as value_time.
 // Consumes intent from value_slice leaving only value itself.
 Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
-    TransactionOperationContext txn_op_context, const ReadHybridTime& read_time,
-    rocksdb::Iterator* intent_iter) {
+    TransactionOperationContext txn_op_context, rocksdb::Iterator* intent_iter,
+    TransactionStatusCache* transaction_status_cache) {
   IntentType intent_type;
   DocHybridTime intent_ht;
   DecodeStrongWriteIntentResult result;
@@ -149,11 +161,9 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     if (result.same_transaction) {
       result.value_time = intent_ht;
     } else {
-      Result<HybridTime> commit_ht = GetTxnCommitTime(
-          &txn_op_context.txn_status_manager, *txn_id, read_time.global_limit);
+      Result<HybridTime> commit_ht = transaction_status_cache->GetCommitTime(*txn_id);
       RETURN_NOT_OK(commit_ht);
-      VLOG(4) << "Transaction id: " << *txn_id << " at " << read_time
-              << " commit time: " << *commit_ht;
+      VLOG(4) << "Transaction id: " << *txn_id << " commit time: " << *commit_ht;
       result.value_time = DocHybridTime(*commit_ht);
     }
   } else {
@@ -194,7 +204,9 @@ IntentAwareIterator::IntentAwareIterator(
     const ReadHybridTime& read_time,
     const TransactionOperationContextOpt& txn_op_context)
     : read_time_(read_time),
-      txn_op_context_(txn_op_context) {
+      txn_op_context_(txn_op_context),
+      transaction_status_cache_(
+          txn_op_context ? &txn_op_context->txn_status_manager : nullptr, read_time) {
   VLOG(4) << "IntentAwareIterator, txp_op_context: " << txn_op_context_;
   if (txn_op_context.is_initialized()) {
     intent_iter_ = docdb::CreateRocksDBIterator(rocksdb,
@@ -371,7 +383,7 @@ void IntentAwareIterator::SeekForwardRegular(const Slice& slice, const Slice& pr
 
 void IntentAwareIterator::ProcessIntent() {
   auto decode_result = DecodeStrongWriteIntent(
-      txn_op_context_.get(), read_time_, intent_iter_.get());
+      txn_op_context_.get(), intent_iter_.get(), &transaction_status_cache_);
   if (!decode_result.ok()) {
     status_ = decode_result.status();
     return;

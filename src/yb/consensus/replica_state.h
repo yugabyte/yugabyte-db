@@ -383,6 +383,10 @@ class ReplicaState {
 
   bool MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const;
 
+  MicrosTime majority_replicated_ht_lease_expiration() const {
+    return majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
+  }
+
  private:
 
   template <class Policy>
@@ -477,7 +481,8 @@ class ReplicaState {
 
   // LEADER only: the latest committed hybrid time lease expiration deadline for the current leader.
   // The leader is allowed to add new log entries only when lease of old leader is expired.
-  MicrosTime majority_replicated_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
+  std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_
+      {HybridTime::kMin.GetPhysicalValueMicros()};
 };
 
 }  // namespace consensus
