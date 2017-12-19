@@ -27,7 +27,7 @@ import java.util.zip.Checksum;
 
 /**
  * This workload writes and reads some random string keys from a Redis server. One reader and one
- * writer thread thread each is spawned.
+ * writer thread each is spawned.
  */
 public class RedisPipelinedKeyValue extends RedisKeyValue {
   private static final Logger LOG = Logger.getLogger(RedisPipelinedKeyValue.class);
@@ -56,7 +56,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
     return flushPipelineIfNecessary();
   }
 
-  private int flushPipelineIfNecessary() {
+  protected int flushPipelineIfNecessary() {
     if (pipelinedOpResponseCallables.size() % appConfig.redisPipelineLength != 0)
       return 0;
 
@@ -85,7 +85,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
     return getRedisPipeline().get(key.asString().getBytes());
   }
 
-  public void verifyReadString(final Key key, final Response<String> value) {
+  private void verifyReadString(final Key key, final Response<String> value) {
     pipelinedOpResponseCallables.add(new Callable<Integer>() {
       @Override
       public Integer call() throws Exception {
@@ -95,7 +95,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
     });
   }
 
-  public void verifyReadBytes(final Key key, final Response<byte[]> value) {
+  private void verifyReadBytes(final Key key, final Response<byte[]> value) {
     pipelinedOpResponseCallables.add(new Callable<Integer>() {
       @Override
       public Integer call() throws Exception {
@@ -129,7 +129,7 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
     return retVal;
   }
 
-  public long verifyWriteResult(final Key key, final Response<String> retVal) {
+  private long verifyWriteResult(final Key key, final Response<String> retVal) {
     pipelinedOpResponseCallables.add(new Callable<Integer>() {
       @Override
       public Integer call() throws Exception {

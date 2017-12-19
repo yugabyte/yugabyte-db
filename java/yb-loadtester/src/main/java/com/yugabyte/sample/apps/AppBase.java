@@ -33,6 +33,8 @@ import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.CmdLineOpts.Node;
+import com.yugabyte.sample.common.RedisHashLoadGenerator;
+import com.yugabyte.sample.common.RedisHashLoadGenerator.KeySubKey;
 import com.yugabyte.sample.common.SimpleLoadGenerator;
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import com.yugabyte.sample.common.metrics.MetricsTracker;
@@ -74,8 +76,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   private volatile Jedis jedisClient = null;
   private volatile Pipeline jedisPipeline = null;
   private Node redisServerInUse = null;
-  // Instance of the load generator.
-  private static volatile SimpleLoadGenerator loadGenerator = null;
+  // Instances of the load generator.
+  private static volatile SimpleLoadGenerator simpleLoadGenerator = null;
+  private static volatile RedisHashLoadGenerator redisHashLoadGenerator = null;
+
   // Keyspace name.
   private static String keyspace = "ybdemo_keyspace";
 
@@ -176,6 +180,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   Random random = new Random();
   byte[] buffer;
   Checksum checksum = new Adler32();
+
   // For binary values we store checksum in bytes.
   static final int CHECKSUM_SIZE = 4;
   // For ASCII values we store checksum in hex string.
@@ -196,19 +201,29 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   protected byte[] getRandomValue(Key key) {
-    buffer[0] = appConfig.restrictValuesToAscii ? ASCII_MARKER : BINARY_MARKER;
+    getRandomValue(key, buffer);
+    return buffer;
+  }
+
+  protected byte[] getRandomValue(Key key, byte[] outBuffer) {
+    getRandomValue(key, outBuffer.length, outBuffer);
+    return outBuffer;
+  }
+
+  protected void getRandomValue(Key key, int valueSize, byte[] outBuffer) {
+    outBuffer[0] = appConfig.restrictValuesToAscii ? ASCII_MARKER : BINARY_MARKER;
     final int checksumSize = appConfig.restrictValuesToAscii ? CHECKSUM_ASCII_SIZE : CHECKSUM_SIZE;
-    final boolean isUseChecksum = isUseChecksum(appConfig.valueSize, checksumSize);
-    final int contentSize = appConfig.valueSize - (isUseChecksum ? checksumSize : 0);
+    final boolean isUseChecksum = isUseChecksum(valueSize, checksumSize);
+    final int contentSize = valueSize - (isUseChecksum ? checksumSize : 0);
     int i = 1;
-    if (isUsePrefix(appConfig.valueSize)) {
+    if (isUsePrefix(valueSize)) {
       final byte[] keyValueBytes = key.getValueStr().getBytes();
 
       // Beginning of value is not random, but has format "<MARKER><PREFIX>", where prefix is
       // "val: $key" (or part of it in case small value size). This is needed to verify expected
       // value during read.
       final int prefixSize = Math.min(contentSize - 1 /* marker */, keyValueBytes.length);
-      System.arraycopy(keyValueBytes, 0, buffer, 1, prefixSize);
+      System.arraycopy(keyValueBytes, 0, outBuffer, 1, prefixSize);
       i += prefixSize;
     }
 
@@ -222,40 +237,38 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
         // This makes distribution non-uniform, but should be OK for load tests.
         for (int n = Math.min(Integer.BYTES, contentSize - i); n > 0;
           r /= ASCII_RANGE_SIZE, n--) {
-          buffer[i++] = (byte) (ASCII_START + r % ASCII_RANGE_SIZE);
+          outBuffer[i++] = (byte) (ASCII_START + r % ASCII_RANGE_SIZE);
         }
       }
     } else {
       while (i < contentSize) {
         for (int r = random.nextInt(), n = Math.min(Integer.BYTES, contentSize - i); n > 0;
              r >>= Byte.SIZE, n--)
-          buffer[i++] = (byte) r;
+            outBuffer[i++] = (byte) r;
       }
     }
 
     if (isUseChecksum) {
       checksum.reset();
-      checksum.update(buffer, 0, contentSize);
+      checksum.update(outBuffer, 0, contentSize);
       long cs = checksum.getValue();
       if (appConfig.restrictValuesToAscii) {
         String csHexStr = Long.toHexString(cs);
         // Prepend zeros
-        while (i < appConfig.valueSize - csHexStr.length()) {
-          buffer[i++] = (byte) '0';
+        while (i < valueSize - csHexStr.length()) {
+          outBuffer[i++] = (byte) '0';
         }
-        System.arraycopy(csHexStr.getBytes(), 0, buffer, i, csHexStr.length());
+        System.arraycopy(csHexStr.getBytes(), 0, outBuffer, i, csHexStr.length());
       } else {
-        while (i < appConfig.valueSize) {
-          buffer[i++] = (byte) cs;
+        while (i < valueSize) {
+          outBuffer[i++] = (byte) cs;
           cs >>= Byte.SIZE;
         }
       }
     }
-
-    return buffer;
   }
 
-  protected void verifyRandomValue(Key key, byte[] value) {
+  protected boolean verifyRandomValue(Key key, byte[] value) {
     final boolean isAscii = value[0] == ASCII_MARKER;
     final int checksumSize = isAscii ? CHECKSUM_ASCII_SIZE : CHECKSUM_SIZE;
     final boolean hasChecksum = isUseChecksum(value.length, checksumSize);
@@ -269,6 +282,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
         LOG.fatal("Value mismatch for key: " + key.toString() +
                   ", expected to start with: " + keyValueStr +
                   ", got: " + prefix);
+        return false;
       }
     }
     if (hasChecksum) {
@@ -290,8 +304,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
         LOG.fatal("Value mismatch for key: " + key.toString() +
                   ", expected checksum: " + expectedCs +
                   ", got: " + checksum.getValue());
+        return false;
       }
     }
+    return true;
   }
 
   ///////////////////// The following methods are overridden by the apps ///////////////////////////
@@ -527,15 +543,30 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   public SimpleLoadGenerator getSimpleLoadGenerator() {
-    if (loadGenerator == null) {
+    if (simpleLoadGenerator == null) {
       synchronized (AppBase.class) {
-        if (loadGenerator == null) {
-          loadGenerator = new SimpleLoadGenerator(0, appConfig.numUniqueKeysToWrite,
+        if (simpleLoadGenerator == null) {
+          simpleLoadGenerator = new SimpleLoadGenerator(0,
+              appConfig.numUniqueKeysToWrite,
               appConfig.maxWrittenKey);
         }
       }
     }
-    return loadGenerator;
+    return simpleLoadGenerator;
+  }
+
+  public RedisHashLoadGenerator getRedisHashLoadGenerator() {
+    if (redisHashLoadGenerator == null) {
+      synchronized (AppBase.class) {
+        if (redisHashLoadGenerator == null) {
+          redisHashLoadGenerator = new RedisHashLoadGenerator(appConfig.uuid,
+              (int)appConfig.numUniqueKeysToWrite, appConfig.numSubkeysPerKey,
+              appConfig.keyUpdateFreqZipfExponent, appConfig.subkeyUpdateFreqZipfExponent,
+              appConfig.numSubkeysPerWrite, appConfig.numSubkeysPerRead);
+        }
+      }
+    }
+    return redisHashLoadGenerator;
   }
 
   public static long numOps() {

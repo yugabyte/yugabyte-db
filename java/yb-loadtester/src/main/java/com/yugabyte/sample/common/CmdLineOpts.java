@@ -51,9 +51,10 @@ public class CmdLineOpts {
     CassandraTimeseries,
     CassandraUserId,
     CassandraSparkWordCount,
+    CassandraSparkKeyValueCopy,
     RedisKeyValue,
     RedisPipelinedKeyValue,
-    CassandraSparkKeyValueCopy,
+    RedisHashPipelined
   }
 
   // The class type of the app needed to spawn new objects.
@@ -139,7 +140,8 @@ public class CmdLineOpts {
       }
       LOG.info("CassandraBatchKeyValue batch size : " + AppBase.appConfig.cassandraBatchSize);
     }
-    if (appName == AppName.RedisPipelinedKeyValue) {
+    if (appName == AppName.RedisPipelinedKeyValue ||
+        appName == AppName.RedisHashPipelined) {
       if (commandLine.hasOption("pipeline_length")) {
         AppBase.appConfig.redisPipelineLength =
             Integer.parseInt(commandLine.getOptionValue("pipeline_length"));
@@ -149,6 +151,52 @@ public class CmdLineOpts {
         }
       }
       LOG.info("RedisPipelinedKeyValue pipeline length : " + AppBase.appConfig.redisPipelineLength);
+    }
+    if (appName == AppName.RedisHashPipelined) {
+      if (commandLine.hasOption("num_subkeys_per_key")) {
+        AppBase.appConfig.numSubkeysPerKey =
+            Integer.parseInt(commandLine.getOptionValue("num_subkeys_per_key"));
+        if (AppBase.appConfig.redisPipelineLength >
+            AppBase.appConfig.numUniqueKeysToWrite) {
+          LOG.fatal(
+              "The pipeline length cannot be more than the number of unique keys");
+          System.exit(-1);
+        }
+      }
+      if (commandLine.hasOption("key_freq_zipf_exponent")) {
+        AppBase.appConfig.keyUpdateFreqZipfExponent = Double.parseDouble(
+            commandLine.getOptionValue("key_freq_zipf_exponent"));
+      }
+      if (commandLine.hasOption("subkey_freq_zipf_exponent")) {
+        AppBase.appConfig.subkeyUpdateFreqZipfExponent = Double.parseDouble(
+            commandLine.getOptionValue("subkey_freq_zipf_exponent"));
+      }
+      if (commandLine.hasOption("subkey_value_size_zipf_exponent")) {
+        AppBase.appConfig.valueSizeZipfExponent = Double.parseDouble(
+            commandLine.getOptionValue("subkey_value_size_zipf_exponent"));
+      }
+      if (commandLine.hasOption("subkey_value_max_size")) {
+        AppBase.appConfig.maxValueSize = Integer.parseInt(
+            commandLine.getOptionValue("subkey_value_max_size"));
+      }
+      if (commandLine.hasOption("num_subkeys_per_write")) {
+        AppBase.appConfig.numSubkeysPerWrite = Integer.parseInt(
+            commandLine.getOptionValue("num_subkeys_per_write"));
+        if (AppBase.appConfig.numSubkeysPerWrite >
+            AppBase.appConfig.numSubkeysPerKey) {
+          LOG.fatal("Writing more subkeys than the number of subkeys per key.");
+          System.exit(-1);
+        }
+      }
+      if (commandLine.hasOption("num_subkeys_per_read")) {
+        AppBase.appConfig.numSubkeysPerRead = Integer.parseInt(
+            commandLine.getOptionValue("num_subkeys_per_read"));
+        if (AppBase.appConfig.numSubkeysPerRead >
+            AppBase.appConfig.numSubkeysPerKey) {
+          LOG.fatal("Writing more subkeys than the number of subkeys per key.");
+          System.exit(-1);
+        }
+      }
     }
     if (commandLine.hasOption("with_local_dc")) {
       if (AppBase.appConfig.disableYBLoadBalancingPolicy == true) {
@@ -434,7 +482,42 @@ public class CmdLineOpts {
     // Options for Redis Pipelined Key Value
     options.addOption(
         "pipeline_length", true,
-        "[RedisPipelinedKeyValue] Number of commands to be sent out in a redis pipelined sync.");
+        "[RedisPipelinedKeyValue/RedisHashPipelined] Number of commands to be sent out"
+            + " in a redis pipelined sync.");
+
+    options.addOption(
+        "num_subkeys_per_key", true,
+        "[RedisHashPipelined] Number of subkeys in each key for the RedisHashPipelined workload.");
+    options.addOption(
+        "num_subkeys_per_write", true,
+        "[RedisHashPipelined] Number of subkeys updated in each HMSet "
+            + "for the RedisHashPipelined workload.");
+    options.addOption(
+        "num_subkeys_per_read", true,
+        "[RedisHashPipelined] Number of subkeys read in each HMGet "
+            + "for the RedisHashPipelined workload.");
+
+    options.addOption(
+        "key_freq_zipf_exponent", true,
+        "[RedisHashPipelined] The zipf distribution exponent, if keys " +
+        "should be picked using a Zipf distribution. If <= 0, we use " +
+        "a uniform distribution");
+    options.addOption(
+        "subkey_freq_zipf_exponent", true,
+        "[RedisHashPipelined] The zipf distribution exponent, if subkeys " +
+        "should be picked using a Zipf distribution. If <= 0, we use " +
+        "a uniform distribution");
+    options.addOption(
+        "subkey_value_size_zipf_exponent", true,
+        "[RedisHashPipelined] The zipf distribution exponent, if the value " +
+        "sizes should be picked using a Zipf distribution. Value sizes are " +
+        "chosen such that the expected mean is the value specified by --value_size. " +
+        "If <= 0, all subkeys will have the value specified by --value_size");
+    options.addOption(
+            "subkey_value_max_size", true,
+            "[RedisHashPipelined] If using zipf distribution to choose value sizes, " +
+            "specifies an upper bound on the value sizes.");
+
     CommandLineParser parser = new BasicParser();
     CommandLine commandLine = null;
 

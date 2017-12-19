@@ -48,6 +48,7 @@ import com.yugabyte.sample.common.IOPSThread.IOType;
  *     |__ CassandraTimeseries.java  : Sample timeseries workload app/
  *     |__ RedisKeyValue.java        : Simple Redis app, good starting point for writing Redis apps.
  *     |__ RedisPipelinedKeyValue.java : Similar to RedisKeyValue but uses pipelined mode.
+ *     |__ RedisHashPipelined        : Similar to RedisPipelinedKeyValue. Uses HMSET/HMGET instead.
  *
  *
  * Usage

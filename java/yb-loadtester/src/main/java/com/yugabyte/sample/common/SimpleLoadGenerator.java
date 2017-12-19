@@ -84,7 +84,8 @@ public class SimpleLoadGenerator {
   // Random number generator.
   Random random = new Random();
 
-  public SimpleLoadGenerator(long startKey, long endKey, long maxWrittenKey) {
+  public SimpleLoadGenerator(long startKey, final long endKey,
+                             long maxWrittenKey) {
     this.startKey = startKey;
     this.endKey = endKey;
     this.maxWrittenKey = new AtomicLong(maxWrittenKey);
@@ -173,5 +174,9 @@ public class SimpleLoadGenerator {
 
   private Key generateKey(long key) {
     return new Key(key, keyPrefix);
+  }
+
+  public boolean stillLoading() {
+    return maxGeneratedKey.get() < endKey - 1;
   }
 }
