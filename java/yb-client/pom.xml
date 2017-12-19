@@ -34,17 +34,6 @@
     <yb.thirdparty.dir>${project.basedir}/../../thirdparty</yb.thirdparty.dir>
   </properties>
 
-  <distributionManagement>
-    <repository>
-      <id>s3.release</id>
-      <url>s3://releases.yugabyte.com</url>
-    </repository>
-    <snapshotRepository>
-      <id>s3.snapshot</id>
-      <url>s3://snapshots.yugabyte.com</url>
-    </snapshotRepository>
-  </distributionManagement>
-
   <dependencies>
     <dependency>
       <groupId>com.google.code.gson</groupId>
