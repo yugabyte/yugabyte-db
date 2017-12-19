@@ -68,9 +68,7 @@ Status SnapshotOperation::Prepare() {
 void SnapshotOperation::Start() {
   DCHECK(state()->tablet_peer()->tablet()->table_type() == TableType::YQL_TABLE_TYPE);
 
-  if (!state()->has_hybrid_time()) {
-    state()->set_hybrid_time(state()->tablet_peer()->clock().Now());
-  }
+  state()->TrySetHybridTimeFromClock();
 
   TRACE("START. HybridTime: $0",
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
