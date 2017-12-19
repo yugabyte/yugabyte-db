@@ -106,7 +106,7 @@ void TestWorkload::WriteThread() {
   }
 
   shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(write_timeout_millis_);
+  session->SetTimeout(MonoDelta::FromMilliseconds(write_timeout_millis_));
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Wait for all of the workload threads to be ready to go. This maximizes the chance

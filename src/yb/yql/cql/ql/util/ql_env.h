@@ -39,7 +39,6 @@ class QLEnv {
   // Public types.
   typedef std::unique_ptr<QLEnv> UniPtr;
   typedef std::unique_ptr<const QLEnv> UniPtrConst;
-  static const int kSessionTimeoutMs = 60000;
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.

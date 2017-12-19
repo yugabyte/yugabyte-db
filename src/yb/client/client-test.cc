@@ -195,11 +195,19 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
+  YBSessionPtr CreateSession(YBClient* client = nullptr) {
+    if (client == nullptr) {
+      client = client_.get();
+    }
+    std::shared_ptr<YBSession> session = client->NewSession();
+    EXPECT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    session->SetTimeout(10s);
+    return session;
+  }
+
   // Inserts 'num_rows' test rows using 'client'
   void InsertTestRows(YBClient* client, const TableHandle& table, int num_rows, int first_row = 0) {
-    shared_ptr<YBSession> session = client->NewSession();
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    session->SetTimeoutMillis(10000);
+    auto session = CreateSession(client);
     for (int i = first_row; i < num_rows + first_row; i++) {
       ASSERT_OK(session->Apply(BuildTestRow(table, i)));
     }
@@ -213,9 +221,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void UpdateTestRows(const TableHandle& table, int lo, int hi) {
-    shared_ptr<YBSession> session = client_->NewSession();
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    session->SetTimeoutMillis(10000);
+    auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
       ASSERT_OK(session->Apply(UpdateTestRow(table, i)));
     }
@@ -224,9 +230,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DeleteTestRows(const TableHandle& table, int lo, int hi) {
-    shared_ptr<YBSession> session = client_->NewSession();
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    session->SetTimeoutMillis(10000);
+    auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
       ASSERT_OK(session->Apply(DeleteTestRow(table, i)));
     }
@@ -629,9 +633,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  session->SetTimeoutMillis(5000);
+    auto session = CreateSession();
   for (int i = 1; i < 5; i++) {
     ASSERT_OK(session->Apply(BuildTestRow(table, 2 + (i * 10))));
     ASSERT_OK(session->Apply(BuildTestRow(table, 3 + (i * 10))));
@@ -1315,9 +1317,8 @@ static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
 // with manual batching.
 // TODO Actually we need to check that hash columns present during insert. But it is not done yet.
 TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
-  shared_ptr<YBSession> session = client_->NewSession();
+  auto session = CreateSession();
   ASSERT_FALSE(session->HasPendingOperations());
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   auto insert = client_table_.NewInsertOp();
   // Try inserting without specifying a key: should fail.
@@ -1375,14 +1376,13 @@ CHECKED_STATUS ApplyDeleteToSession(YBSession* session,
 } // namespace
 
 TEST_F(ClientTest, TestWriteTimeout) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
 
   // First time out the lookup on the master side.
   {
     google::FlagSaver saver;
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
-    session->SetTimeoutMillis(100);
+    session->SetTimeout(100ms);
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
     ASSERT_TRUE(s.IsIOError()) << "unexpected status: " << s.ToString();
@@ -1414,8 +1414,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
 // Test which does an async flush and then drops the reference
 // to the Session. This should still call the callback.
 TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   Synchronizer s;
   YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
@@ -1425,8 +1424,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
 
   // Try again, this time should not have an error response (to re-insert the same row).
   s.Reset();
-  session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   ASSERT_EQ(1, session->CountBufferedOperations());
   session->FlushAsync(&cb);
@@ -1436,8 +1434,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
 }
 
 TEST_F(ClientTest, TestSessionClose) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   // Closing the session now should return Status::IllegalState since we
   // have a pending operation.
@@ -1454,8 +1451,7 @@ TEST_F(ClientTest, TestSessionClose) {
 // Test which sends multiple batches through the same session, each of which
 // contains multiple rows spread across multiple tablets.
 TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
 
   const int kNumBatches = 5;
   const int kRowsPerBatch = 10;
@@ -1491,8 +1487,7 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
 
 // Test a batch where one of the inserted rows succeeds and duplicates succeed too.
 TEST_F(ClientTest, TestBatchWithDuplicates) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
 
   // Insert a row with key "1"
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
@@ -1518,16 +1513,14 @@ TEST_F(ClientTest, TestBatchWithDuplicates) {
 
 // Test flushing an empty batch (should be a no-op).
 TEST_F(ClientTest, TestEmptyBatch) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   FlushSessionOrDie(session);
 }
 
 void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
   DontVerifyClusterBeforeNextTearDown();
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(1000);
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
+  session->SetTimeout(1s);
 
   // Shut down the server.
   switch (which) {
@@ -1575,8 +1568,7 @@ TEST_F(ClientTest, TestWriteWithDeadTabletServer) {
 }
 
 void ClientTest::DoApplyWithoutFlushTest(int sleep_micros) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
   SleepFor(MonoDelta::FromMicroseconds(sleep_micros));
   session.reset(); // should not crash!
@@ -1614,9 +1606,7 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
   // in an error.
   {
     bool got_expected_error = false;
-    shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(60s);
-    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    auto session = CreateSession();
     for (int i = 0; i < 1000000; i++) {
       Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
       if (s.IsIncomplete()) {
@@ -1642,8 +1632,7 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
 
 // Test that update updates and delete deletes with expected use
 TEST_F(ClientTest, TestMutationsWork) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
   FlushSessionOrDie(session);
 
@@ -1664,8 +1653,7 @@ TEST_F(ClientTest, TestMutationsWork) {
 
 TEST_F(ClientTest, TestMutateDeletedRow) {
   vector<string> rows;
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
   FlushSessionOrDie(session);
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
@@ -1690,8 +1678,7 @@ TEST_F(ClientTest, TestMutateDeletedRow) {
 
 TEST_F(ClientTest, TestMutateNonexistentRow) {
   vector<string> rows;
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
 
   // Attempt update nonexistent row
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
@@ -1717,8 +1704,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
   ASSERT_OK(table_alterer->DropColumn("int_val")->Alter());
 
   // Try to do a write with the bad schema.
-  shared_ptr<YBSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   std::shared_ptr<YBqlOp> op;
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 12345, 12345, "x", &op));
   ASSERT_OK(session->Flush());
@@ -2098,9 +2084,7 @@ void CheckCorrectness(YBScanner* scanner, int expected[], int nrows) {
 
 // Randomized mutations accuracy testing
 TEST_F(ClientTest, TestRandomWriteOperation) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(5000);
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
   int row[FLAGS_test_scan_num_rows]; // -1 indicates empty
   int nrows;
   YBScanner scanner(client_table_.get());
@@ -2165,9 +2149,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
 // Test whether a batch can handle several mutations in a batch
 TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(5000);
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  auto session = CreateSession();
 
   // Test insert/update
   LOG(INFO) << "Testing insert/update in same batch, key " << 1 << ".";
@@ -2294,9 +2276,9 @@ int CheckRowsEqual(YBTable* tbl, int32_t expected) {
 // to the parameter value. Larger timeouts decrease false positives.
 shared_ptr<YBSession> LoadedSession(const shared_ptr<YBClient>& client,
                                     const TableHandle& tbl,
-                                    bool fwd, int max, int timeout) {
+                                    bool fwd, int max, MonoDelta timeout) {
   shared_ptr<YBSession> session = client->NewSession();
-  session->SetTimeoutMillis(timeout);
+  session->SetTimeout(timeout);
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
@@ -2328,10 +2310,8 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 
   // Load up some rows
   const int kNumRows = 300;
-  const int kTimeoutMillis = 60000;
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(kTimeoutMillis);
-  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  const auto kTimeout = 60s;
+  auto session = CreateSession();
   for (int i = 0; i < kNumRows; ++i)
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, i, i,  ""));
   FlushSessionOrDie(session);
@@ -2347,8 +2327,8 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   shared_ptr<YBSession> fwd_sessions[kNumSessions];
   shared_ptr<YBSession> rev_sessions[kNumSessions];
   for (int i = 0; i < kNumSessions; ++i) {
-    fwd_sessions[i] = LoadedSession(client_, client_table_, true, kNumRows, kTimeoutMillis);
-    rev_sessions[i] = LoadedSession(rev_client, rev_table, true, kNumRows, kTimeoutMillis);
+    fwd_sessions[i] = LoadedSession(client_, client_table_, true, kNumRows, kTimeout);
+    rev_sessions[i] = LoadedSession(rev_client, rev_table, true, kNumRows, kTimeout);
   }
 
   // Run async calls - one thread updates sequentially, another in reverse.

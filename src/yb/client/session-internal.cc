@@ -40,6 +40,14 @@
 #include "yb/client/error_collector.h"
 #include "yb/client/yb_op.h"
 
+MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
+                 yb::client::YBSession::AUTO_FLUSH_SYNC,
+                 yb::client::YBSession::MANUAL_FLUSH);
+
+MAKE_ENUM_LIMITS(yb::client::YBSession::ExternalConsistencyMode,
+                 yb::client::YBSession::CLIENT_PROPAGATED,
+                 yb::client::YBSession::COMMIT_WAIT);
+
 namespace yb {
 
 namespace client {
@@ -63,39 +71,13 @@ YBSessionData::~YBSessionData() {
 }
 
 void YBSessionData::SetTransaction(YBTransactionPtr transaction) {
+  transaction_ = std::move(transaction);
   internal::BatcherPtr old_batcher;
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    transaction_ = std::move(transaction);
-    old_batcher = NewBatcherUnlocked();
+  old_batcher.swap(batcher_);
+  if (old_batcher) {
+    LOG_IF(DFATAL, old_batcher->HasPendingOperations()) << "SetTransaction with non empty batcher";
+    old_batcher->Abort(STATUS(Aborted, "Transaction changed"));
   }
-  LOG_IF(DFATAL, old_batcher->HasPendingOperations()) << "SetTransaction with non empty batcher";
-  old_batcher->Abort(STATUS(Aborted, "Transaction changed"));
-}
-
-void YBSessionData::Init() {
-  CHECK(!batcher_);
-  NewBatcher();
-}
-
-scoped_refptr<Batcher> YBSessionData::NewBatcher() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return NewBatcherUnlocked();
-}
-
-scoped_refptr<Batcher> YBSessionData::NewBatcherUnlocked() {
-  scoped_refptr<Batcher> batcher(
-    new Batcher(client_.get(), error_collector_.get(), shared_from_this(),
-                external_consistency_mode_, transaction_));
-  if (timeout_ms_ != -1) {
-    batcher->SetTimeoutMillis(timeout_ms_);
-  }
-  batcher.swap(batcher_);
-
-  if (batcher) {
-    CHECK(flushed_batchers_.insert(batcher).second);
-  }
-  return batcher;
 }
 
 void YBSessionData::FlushFinished(internal::BatcherPtr batcher) {
@@ -104,16 +86,20 @@ void YBSessionData::FlushFinished(internal::BatcherPtr batcher) {
 }
 
 void YBSessionData::Abort() {
-  if (batcher_->HasPendingOperations()) {
-    NewBatcher()->Abort(STATUS(Aborted, "Batch aborted"));
+  if (batcher_ && batcher_->HasPendingOperations()) {
+    batcher_->Abort(STATUS(Aborted, "Batch aborted"));
+    batcher_.reset();
   }
 }
 
 Status YBSessionData::Close(bool force) {
-  if (batcher_->HasPendingOperations() && !force) {
-    return STATUS(IllegalState, "Could not close. There are pending operations.");
+  if (batcher_) {
+    if (batcher_->HasPendingOperations() && !force) {
+      return STATUS(IllegalState, "Could not close. There are pending operations.");
+    }
+    batcher_->Abort(STATUS(Aborted, "Batch aborted"));
+    batcher_.reset();
   }
-  batcher_->Abort(STATUS(Aborted, "Batch aborted"));
   return Status::OK();
 }
 
@@ -126,10 +112,28 @@ void YBSessionData::FlushAsync(YBStatusCallback* callback) {
   // Send off any buffered data. Important to do this outside of the lock
   // since the callback may itself try to take the lock, in the case that
   // the batch fails "inline" on the same thread.
-  NewBatcher()->FlushAsync(callback);
+
+  internal::BatcherPtr old_batcher;
+  old_batcher.swap(batcher_);
+  if (old_batcher) {
+    {
+      std::lock_guard<simple_spinlock> l(lock_);
+      flushed_batchers_.insert(old_batcher);
+    }
+    old_batcher->FlushAsync(callback);
+  } else {
+    callback->Run(Status::OK());
+  }
 }
 
 Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
+  if (!batcher_) {
+    batcher_.reset(new Batcher(client_.get(), error_collector_.get(), shared_from_this(),
+                               external_consistency_mode_, transaction_));
+    if (timeout_.Initialized()) {
+      batcher_->SetTimeout(timeout_);
+    }
+  }
   Status s = batcher_->Add(yb_op);
   if (!PREDICT_FALSE(s.ok())) {
     error_collector_->AddError(yb_op, s);
@@ -148,6 +152,73 @@ Status YBSessionData::Flush() {
   YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
   FlushAsync(&ksmcb);
   return s.Wait();
+}
+
+Status YBSessionData::SetFlushMode(YBSession::FlushMode mode) {
+  if (mode == YBSession::AUTO_FLUSH_BACKGROUND) {
+    return STATUS(NotSupported, "AUTO_FLUSH_BACKGROUND has not been implemented in the"
+        " c++ client (see KUDU-456).");
+  }
+  if (batcher_ && batcher_->HasPendingOperations()) {
+    // TODO: there may be a more reasonable behavior here.
+    return STATUS(IllegalState, "Cannot change flush mode when writes are buffered");
+  }
+  if (!tight_enum_test<YBSession::FlushMode>(mode)) {
+    // Be paranoid in client code.
+    return STATUS(InvalidArgument, "Bad flush mode");
+  }
+
+  flush_mode_ = mode;
+  return Status::OK();
+}
+
+Status YBSessionData::SetExternalConsistencyMode(YBSession::ExternalConsistencyMode mode) {
+  if (batcher_ && batcher_->HasPendingOperations()) {
+    // TODO: there may be a more reasonable behavior here.
+    return STATUS(IllegalState, "Cannot change external consistency mode when writes are "
+        "buffered");
+  }
+  if (!tight_enum_test<YBSession::ExternalConsistencyMode>(mode)) {
+    // Be paranoid in client code.
+    return STATUS(InvalidArgument, "Bad external consistency mode");
+  }
+
+  external_consistency_mode_ = mode;
+  return Status::OK();
+}
+
+void YBSessionData::SetTimeout(MonoDelta timeout) {
+  CHECK_GE(timeout, MonoDelta::kZero);
+  timeout_ = timeout;
+  if (batcher_) {
+    batcher_->SetTimeout(timeout);
+  }
+}
+
+int YBSessionData::CountBufferedOperations() const {
+  CHECK_EQ(flush_mode_, YBSession::MANUAL_FLUSH);
+  return batcher_ ? batcher_->CountBufferedOperations() : 0;
+}
+
+bool YBSessionData::HasPendingOperations() const {
+  if (batcher_ && batcher_->HasPendingOperations()) {
+    return true;
+  }
+  std::lock_guard<simple_spinlock> l(lock_);
+  for (const auto& b : flushed_batchers_) {
+    if (b->HasPendingOperations()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int YBSessionData::CountPendingErrors() const {
+  return error_collector_->CountErrors();
+}
+
+CollectedErrors YBSessionData::GetPendingErrors() {
+  return error_collector_->GetErrors();
 }
 
 }  // namespace client

@@ -62,6 +62,8 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/util/stopwatch.h"
 
+using namespace std::literals;
+
 DEFINE_int32(num_client_threads, 8,
              "Number of client threads to launch");
 DEFINE_int64(client_inserts_per_thread, 50,
@@ -245,7 +247,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     ASSERT_OK(table.Open(kTableName, client_.get()));
 
     shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeoutMillis(60000);
+    session->SetTimeout(60s);
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
     for (int i = 0; i < num_batches; i++) {

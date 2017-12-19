@@ -837,7 +837,7 @@ class YBSessionData;
 // Users who are familiar with the Hibernate ORM framework should find this
 // concept of a Session familiar.
 //
-// This class is not thread-safe except where otherwise specified.
+// This class is not thread-safe.
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
   explicit YBSession(const std::shared_ptr<YBClient>& client,
@@ -932,12 +932,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   CHECKED_STATUS SetMutationBufferSpace(size_t size) WARN_UNUSED_RESULT;
 
   // Set the timeout for writes made in this session.
-  void SetTimeoutMillis(int millis);
-
-  template<class Rep, class Period>
-  void SetTimeout(const std::chrono::duration<Rep, Period>& timeout) {
-    SetTimeoutMillis(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
-  }
+  void SetTimeout(MonoDelta timeout);
 
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
@@ -1002,8 +997,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // should not block.
   //
   // For FlushAsync, 'cb' must remain valid until it is invoked.
-  //
-  // This function is thread-safe.
   CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
   void FlushAsync(YBStatusCallback* cb);
 
@@ -1019,8 +1012,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // flushed) as well as in-flight operations (i.e those that are in the process of
   // being sent to the servers).
   // TODO: maybe "incomplete" or "undelivered" is clearer?
-  //
-  // This function is thread-safe.
   bool HasPendingOperations() const;
 
   // Return the number of buffered operations. These are operations that have
@@ -1033,22 +1024,16 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // decrease except for after a manual Flush, after which point it will be 0.
   // In the other flush modes, data is immediately put en-route to the destination,
   // so this will return 0.
-  //
-  // This function is thread-safe.
   int CountBufferedOperations() const;
 
   // Return the number of errors which are pending. Errors may accumulate when
   // using the AUTO_FLUSH_BACKGROUND mode.
-  //
-  // This function is thread-safe.
   int CountPendingErrors() const;
 
   // Return any errors from previous calls. If there were more errors
   // than could be held in the session's error storage, then sets *overflowed to true.
   //
   // Caller takes ownership of the returned errors.
-  //
-  // This function is thread-safe.
   CollectedErrors GetPendingErrors();
 
   YBClient* client() const;

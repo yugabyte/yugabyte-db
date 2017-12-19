@@ -23,6 +23,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 
@@ -187,11 +188,24 @@ std::ostream& operator<<(std::ostream& out, const Outputable& outputable) {
   return out << "Outputable(" << outputable.value << ")";
 }
 
+class ToStringableAndOutputable {
+ public:
+  std::string ToString() const {
+    return "ToString";
+  }
+};
+
+std::ostream& operator<<(std::ostream& out, const ToStringableAndOutputable& outputable) {
+  return out << "operator<<";
+}
+
 TEST_F(ToStringTest, LexicalCast) {
   std::vector<Outputable> v = { Outputable(1), Outputable(2) };
 
   ASSERT_EQ("Outputable(1)", ToString(v[0]));
   ASSERT_EQ("[Outputable(1), Outputable(2)]", ToString(v));
+  ASSERT_EQ("ToString", ToString(ToStringableAndOutputable()));
+  ASSERT_EQ("0.000s", ToString(MonoDelta::kZero));
 }
 
 } // namespace util_test

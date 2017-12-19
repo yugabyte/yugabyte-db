@@ -45,6 +45,8 @@ struct AsyncRpcMetrics {
   scoped_refptr<Histogram> time_to_send;
 };
 
+typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
+
 // An Async RPC which is in-flight to a tablet. Initially, the RPC is sent
 // to the leader replica, but it may be retried with another replica if the
 // leader fails.

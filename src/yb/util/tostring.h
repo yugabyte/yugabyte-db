@@ -28,6 +28,32 @@
 
 #include "yb/gutil/strings/numbers.h"
 
+// We should use separate namespace for some checkers.
+// Because there could be cases when operator<< is available in yb namespace, but
+// unavailable to boost::lexical_cast.
+// For instance MonoDelta is implicitly constructible from std::chrono::duration
+// and has operator<<.
+// So when we are trying to convert std::chrono::duration to string, SupportsOutputToStream
+// reports true, but boost::lexical_cast cannot output std::chrono::duration to stream.
+// Because such operator<< could not be found using ADL.
+namespace yb_tostring {
+
+template <class T>
+struct SupportsOutputToStream {
+  typedef int Yes;
+  typedef struct { Yes array[2]; } No;
+  typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
+
+  template <class U>
+  static auto Test(std::ostream* out, const U* u) -> decltype(*out << *u, Yes(0)) {}
+  static No Test(...) {}
+
+  static constexpr bool value =
+      sizeof(Test(nullptr, static_cast<const CleanedT*>(nullptr))) == sizeof(Yes);
+};
+
+} // namespace yb_tostring
+
 // This utility actively use SFINAE (http://en.cppreference.com/w/cpp/language/sfinae)
 // technique to route ToString to correct implementation.
 namespace yb {
@@ -46,20 +72,6 @@ namespace yb {
 // If class has ToString member function - use it.
 HAS_MEMBER_FUNCTION(ToString);
 HAS_MEMBER_FUNCTION(to_string);
-
-template <class T>
-struct SupportsOutputToStream {
-  typedef int Yes;
-  typedef struct { Yes array[2]; } No;
-  typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
-
-  template <class U>
-  static auto Test(std::ostream* out, const U* u) -> decltype(*out << *u, Yes(0)) {}
-  static No Test(...) {}
-
-  static constexpr bool value =
-      sizeof(Test(nullptr, static_cast<const CleanedT*>(nullptr))) == sizeof(Yes);
-};
 
 template <class T>
 typename std::enable_if<HasMemberFunction_ToString<T>::value, std::string>::type
@@ -201,10 +213,13 @@ typename std::enable_if<IsCollection<T>::value,
 template <class T>
 typename std::enable_if<
     boost::mpl::and_<
-        boost::mpl::bool_<SupportsOutputToStream<T>::value>,
-        boost::mpl::bool_<!IsPointerLike<T>::value>,
-        boost::mpl::bool_<!std::is_integral<typename std::remove_reference<T>::type>::value>,
-        boost::mpl::bool_<!IsCollection<T>::value>
+        boost::mpl::bool_<yb_tostring::SupportsOutputToStream<T>::value>,
+        boost::mpl::bool_<!
+            (IsPointerLike<T>::value ||
+             std::is_integral<typename std::remove_reference<T>::type>::value ||
+             IsCollection<T>::value ||
+             HasMemberFunction_ToString<T>::value ||
+             HasMemberFunction_to_string<T>::value)>
     >::value,
     std::string>::type
 ToString(T&& value) {

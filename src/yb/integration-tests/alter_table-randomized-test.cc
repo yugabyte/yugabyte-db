@@ -47,6 +47,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 using client::YBClient;
@@ -370,7 +372,7 @@ struct MirrorTable {
   Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
     shared_ptr<YBSession> session = client_->NewSession();
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    session->SetTimeoutMillis(15 * 1000);
+    session->SetTimeout(15s);
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
     auto op = CreateOp(table, op_type);

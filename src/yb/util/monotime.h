@@ -119,6 +119,10 @@ inline bool operator<=(const MonoDelta& lhs, const MonoDelta& rhs) { return !(rh
 
 std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other);
 
+inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
+  return out << delta.ToString();
+}
+
 // Represent a particular point in time, relative to some fixed but unspecified
 // reference point.
 //

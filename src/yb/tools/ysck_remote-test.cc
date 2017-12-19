@@ -43,6 +43,8 @@
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
@@ -127,7 +129,7 @@ class RemoteYsckTest : public YBTest {
       return;
     }
     shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeoutMillis(10000);
+    session->SetTimeout(10s);
     status = session->SetFlushMode(YBSession::MANUAL_FLUSH);
     if (!status.ok()) {
       promise->Set(status);
@@ -158,7 +160,7 @@ class RemoteYsckTest : public YBTest {
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
     shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeoutMillis(10000);
+    session->SetTimeout(10s);
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;

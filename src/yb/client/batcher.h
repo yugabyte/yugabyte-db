@@ -101,7 +101,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // The timeout is currently set on all of the RPCs, but in the future will be relative
   // to when the Flush call is made (eg even if the lookup of the TS takes a long time, it
   // may time out before even sending an op). TODO: implement that
-  void SetTimeoutMillis(int millis);
+  void SetTimeout(MonoDelta timeout);
 
   // Add a new operation to the batch. Requires that the batch has not yet been flushed.
   // TODO: in other flush modes, this may not be the case -- need to
@@ -245,7 +245,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Amount of time to wait for a given op, from start to finish.
   //
-  // Set by SetTimeoutMillis.
+  // Set by SetTimeout.
   MonoDelta timeout_;
 
   // After flushing, the absolute deadline for all in-flight ops.

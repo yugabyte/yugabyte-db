@@ -72,6 +72,8 @@
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 
+using namespace std::literals;
+
 // Test size parameters
 DEFINE_int32(concurrent_inserts, -1, "Number of inserting clients to launch");
 DEFINE_int32(inserts_per_client, -1,
@@ -109,6 +111,12 @@ using client::YBTableType;
 using client::YBTableName;
 using strings::Split;
 using strings::Substitute;
+
+namespace {
+
+const auto kSessionTimeout = 60s;
+
+}
 
 class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
@@ -170,7 +178,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
       tables_.push_back(std::move(table));
     }
     std::shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeoutMillis(kSessionTimeoutMs);
+    session->SetTimeout(kSessionTimeout);
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     sessions_[id] = session;
   }
@@ -185,7 +193,6 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   vector<string> AllColumnNames() const;
 
   static const YBTableName kTableName;
-  static const int kSessionTimeoutMs = 60000;
   const int kFlushEveryN;
 
   Random random_;

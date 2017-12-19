@@ -52,6 +52,8 @@
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 
+using namespace std::literals;
+
 DEFINE_string(master_address, "localhost",
               "Comma separated list of master addresses to run against.");
 
@@ -102,7 +104,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   YBSchema schema = table->schema();
 
   shared_ptr<YBSession> session = client->NewSession();
-  session->SetTimeoutMillis(5000); // Time out after 5 seconds.
+  session->SetTimeout(5s); // Time out after 5 seconds.
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   Random random(GetRandomSeed32());

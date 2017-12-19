@@ -64,6 +64,8 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -426,7 +428,7 @@ TEST_F(AlterTableTest, TestGetSchemaAfterAlterTable) {
 void AlterTableTest::InsertRows(int start_row, int num_rows) {
   shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  session->SetTimeoutMillis(15 * 1000);
+  session->SetTimeout(15s);
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client_.get()));
   std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -461,7 +463,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
                                const map<string, int32_t>& updates) {
   shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  session->SetTimeoutMillis(15 * 1000);
+  session->SetTimeout(15s);
 
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client_.get()));
@@ -729,7 +731,7 @@ std::pair<bool, int> AnalyzeResponse(const Ops& ops) {
 void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
   shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  session->SetTimeoutMillis(15 * 1000);
+  session->SetTimeout(15s);
 
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client_.get()));
@@ -871,7 +873,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   table.AddInt32ColumnValue(req, "new-i32", 1);
   shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-  session->SetTimeoutMillis(15000);
+  session->SetTimeout(15s);
   ASSERT_OK(session->Apply(insert));
   Status s = session->Flush();
   if (!s.ok()) {

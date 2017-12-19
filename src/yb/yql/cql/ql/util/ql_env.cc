@@ -24,6 +24,8 @@
 #include "yb/rpc/messenger.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace ql {
 
@@ -44,6 +46,12 @@ using client::YBTableName;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
+namespace {
+
+const auto kSessionTimeout = 60s;
+
+}
+
 // Runs the callback (cb) and returns if the status s is not OK.
 #define CB_RETURN_NOT_OK(cb, s)    \
   do {                             \
@@ -63,7 +71,7 @@ QLEnv::QLEnv(
       messenger_(messenger),
       flush_done_cb_(this, &QLEnv::FlushAsyncDone),
       cql_rpcserver_env_(cql_rpcserver_env) {
-  session_->SetTimeoutMillis(kSessionTimeoutMs);
+  session_->SetTimeout(kSessionTimeout);
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 

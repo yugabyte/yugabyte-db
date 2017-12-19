@@ -52,6 +52,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+using namespace std::literals;
+
 DECLARE_int32(log_segment_size_mb);
 DECLARE_int32(maintenance_manager_polling_interval_ms);
 DEFINE_int32(mbs_for_flushes_and_rolls, 1, "How many MBs are needed to flush and roll");
@@ -131,7 +133,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   shared_ptr<YBSession> CreateSession() {
     shared_ptr<YBSession> session = client_->NewSession();
     // Bumped this up from 5 sec to 30 sec in hope to fix the flakiness in this test.
-    session->SetTimeoutMillis(30000);
+    session->SetTimeout(30s);
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     return session;
   }

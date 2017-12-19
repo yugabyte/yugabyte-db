@@ -38,6 +38,8 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/threadlocal.h"
 
+using namespace std::literals;
+
 using std::atomic;
 using std::atomic_bool;
 using std::unique_ptr;
@@ -91,7 +93,7 @@ namespace {
 
 void ConfigureYBSession(YBSession* session) {
   CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
-  session->SetTimeoutMillis(60000);
+  session->SetTimeout(60s);
   CHECK_OK(
       session->SetExternalConsistencyMode(YBSession::ExternalConsistencyMode::CLIENT_PROPAGATED));
 }

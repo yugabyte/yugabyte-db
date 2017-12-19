@@ -126,14 +126,6 @@ using std::string;
 using std::vector;
 using google::protobuf::RepeatedPtrField;
 
-MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
-                 yb::client::YBSession::AUTO_FLUSH_SYNC,
-                 yb::client::YBSession::MANUAL_FLUSH);
-
-MAKE_ENUM_LIMITS(yb::client::YBSession::ExternalConsistencyMode,
-                 yb::client::YBSession::CLIENT_PROPAGATED,
-                 yb::client::YBSession::COMMIT_WAIT);
-
 MAKE_ENUM_LIMITS(yb::client::YBScanner::ReadMode,
                  yb::client::YBScanner::READ_LATEST,
                  yb::client::YBScanner::READ_AT_SNAPSHOT);
@@ -1279,7 +1271,6 @@ YBError::~YBError() {}
 YBSession::YBSession(const shared_ptr<YBClient>& client,
                      const YBTransactionPtr& transaction)
     : data_(std::make_shared<YBSessionData>(client, transaction)) {
-  data_->Init();
 }
 
 void YBSession::SetTransaction(YBTransactionPtr transaction) {
@@ -1299,42 +1290,15 @@ Status YBSession::Close() {
 }
 
 Status YBSession::SetFlushMode(FlushMode m) {
-  if (m == AUTO_FLUSH_BACKGROUND) {
-    return STATUS(NotSupported, "AUTO_FLUSH_BACKGROUND has not been implemented in the"
-        " c++ client (see KUDU-456).");
-  }
-  if (data_->batcher_->HasPendingOperations()) {
-    // TODO: there may be a more reasonable behavior here.
-    return STATUS(IllegalState, "Cannot change flush mode when writes are buffered");
-  }
-  if (!tight_enum_test<FlushMode>(m)) {
-    // Be paranoid in client code.
-    return STATUS(InvalidArgument, "Bad flush mode");
-  }
-
-  data_->flush_mode_ = m;
-  return Status::OK();
+  return data_->SetFlushMode(m);
 }
 
 Status YBSession::SetExternalConsistencyMode(ExternalConsistencyMode m) {
-  if (data_->batcher_->HasPendingOperations()) {
-    // TODO: there may be a more reasonable behavior here.
-    return STATUS(IllegalState, "Cannot change external consistency mode when writes are "
-        "buffered");
-  }
-  if (!tight_enum_test<ExternalConsistencyMode>(m)) {
-    // Be paranoid in client code.
-    return STATUS(InvalidArgument, "Bad external consistency mode");
-  }
-
-  data_->external_consistency_mode_ = m;
-  return Status::OK();
+  return data_->SetExternalConsistencyMode(m);
 }
 
-void YBSession::SetTimeoutMillis(int millis) {
-  CHECK_GE(millis, 0);
-  data_->timeout_ms_ = millis;
-  data_->batcher_->SetTimeoutMillis(millis);
+void YBSession::SetTimeout(MonoDelta timeout) {
+  data_->SetTimeout(timeout);
 }
 
 Status YBSession::Flush() {
@@ -1346,16 +1310,7 @@ void YBSession::FlushAsync(YBStatusCallback* user_callback) {
 }
 
 bool YBSession::HasPendingOperations() const {
-  std::lock_guard<simple_spinlock> l(data_->lock_);
-  if (data_->batcher_->HasPendingOperations()) {
-    return true;
-  }
-  for (const auto& b : data_->flushed_batchers_) {
-    if (b->HasPendingOperations()) {
-      return true;
-    }
-  }
-  return false;
+  return data_->HasPendingOperations();
 }
 
 Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
@@ -1376,22 +1331,19 @@ Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
 }
 
 int YBSession::CountBufferedOperations() const {
-  std::lock_guard<simple_spinlock> l(data_->lock_);
-  CHECK_EQ(data_->flush_mode_, MANUAL_FLUSH);
-
-  return data_->batcher_->CountBufferedOperations();
+  return data_->CountBufferedOperations();
 }
 
 int YBSession::CountPendingErrors() const {
-  return data_->error_collector_->CountErrors();
+  return data_->CountPendingErrors();
 }
 
 CollectedErrors YBSession::GetPendingErrors() {
-  return data_->error_collector_->GetErrors();
+  return data_->GetPendingErrors();
 }
 
 YBClient* YBSession::client() const {
-  return data_->client_.get();
+  return data_->client();
 }
 
 ////////////////////////////////////////////////////////////

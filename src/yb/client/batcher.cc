@@ -106,7 +106,7 @@ Batcher::Batcher(YBClient* client,
     next_op_sequence_number_(0),
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0),
-    async_rpc_metrics_(session_data->async_rpc_metrics_),
+    async_rpc_metrics_(session_data->async_rpc_metrics()),
     transaction_(std::move(transaction)) {
 }
 
@@ -144,12 +144,11 @@ Batcher::~Batcher() {
   CHECK(state_ == kFlushed || state_ == kAborted) << "Bad state: " << state_;
 }
 
-void Batcher::SetTimeoutMillis(int millis) {
-  CHECK_GE(millis, 0);
+void Batcher::SetTimeout(MonoDelta timeout) {
+  CHECK_GE(timeout, MonoDelta::kZero);
   std::lock_guard<simple_spinlock> l(lock_);
-  timeout_ = MonoDelta::FromMilliseconds(millis);
+  timeout_ = timeout;
 }
-
 
 bool Batcher::HasPendingOperations() const {
   std::lock_guard<simple_spinlock> l(lock_);

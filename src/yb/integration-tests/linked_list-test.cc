@@ -71,6 +71,8 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 DEFINE_int32(seconds_to_run, 5, "Number of seconds for which to run the test");
 
 DEFINE_int32(num_chains, 50, "Number of parallel chains to generate");
@@ -374,7 +376,7 @@ class ScopedRowUpdater {
  private:
   void RowUpdaterThread() {
     std::shared_ptr<client::YBSession> session(table_->client()->NewSession());
-    session->SetTimeoutMillis(15000);
+    session->SetTimeout(15s);
     CHECK_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
 
     int64_t next_key;
@@ -575,7 +577,7 @@ Status LinkedListTester::LoadLinkedList(
   auto deadline = start + run_for.ToSteadyDuration();
 
   std::shared_ptr<client::YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(15000);
+  session->SetTimeout(15s);
   RETURN_NOT_OK_PREPEND(session->SetFlushMode(client::YBSession::MANUAL_FLUSH),
                         "Couldn't set flush mode");
 

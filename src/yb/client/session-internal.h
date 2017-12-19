@@ -48,6 +48,8 @@ class ErrorCollector;
 
 // Single instance of YBSessionData is used by YBSession.
 // But each Batcher stores weak_ptr to YBSessionData.
+//
+// For description of public interface see YBSession comments.
 class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
  public:
   explicit YBSessionData(std::shared_ptr<YBClient> client,
@@ -56,8 +58,6 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   YBSessionData(const YBSessionData&) = delete;
   void operator=(const YBSessionData&) = delete;
-
-  void Init();
 
   CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op);
 
@@ -79,18 +79,31 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // operations.
   CHECKED_STATUS Close(bool force);
 
-  // Swap in a new Batcher instance, returning the old one.
-  internal::BatcherPtr NewBatcher();
-  internal::BatcherPtr NewBatcherUnlocked();
 
+  CHECKED_STATUS SetFlushMode(YBSession::FlushMode mode);
+  CHECKED_STATUS SetExternalConsistencyMode(YBSession::ExternalConsistencyMode mode);
+  void SetTimeout(MonoDelta timeout);
+  bool HasPendingOperations() const;
+  int CountBufferedOperations() const;
+
+  int CountPendingErrors() const;
+  CollectedErrors GetPendingErrors();
+
+  YBClient* client() const {
+    return client_.get();
+  }
+
+  const internal::AsyncRpcMetricsPtr& async_rpc_metrics() const {
+    return async_rpc_metrics_;
+  }
+
+ private:
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
 
   YBTransactionPtr transaction_;
 
-  // Lock protecting internal state.
-  // Note that this lock should not be taken if the thread is already holding
-  // a Batcher lock. This must be acquired first.
+  // Lock protecting flushed_batchers_.
   mutable simple_spinlock lock_;
 
   // Buffer for errors.
@@ -113,9 +126,9 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   YBSession::ExternalConsistencyMode external_consistency_mode_ = YBSession::CLIENT_PROPAGATED;
 
   // Timeout for the next batch.
-  int timeout_ms_ = -1;
+  MonoDelta timeout_;
 
-  std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
+  internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 };
 
 }  // namespace client
