@@ -50,6 +50,7 @@ using yb::util::FastDecodeSignedVarInt;
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED; \
+    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED; \
     case ValueType::kTtl: FALLTHROUGH_INTENDED; \
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: \
@@ -87,6 +88,12 @@ string PrimitiveValue::ToString() const {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull:
       return "null";
+    case ValueType::kCounter:
+      return "counter";
+    case ValueType::kSSForward:
+      return "SSforward";
+    case ValueType::kSSReverse:
+      return "SSreverse";
     case ValueType::kFalse:
       return "false";
     case ValueType::kTrue:
@@ -159,6 +166,8 @@ string PrimitiveValue::ToString() const {
       return "()";
     case ValueType::kRedisTS:
       return "<>";
+    case ValueType::kRedisSortedSet:
+      return "(->)";
     case ValueType::kTombstone:
       return "DEL";
     case ValueType::kArray:
@@ -191,6 +200,9 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kMaxByte: return;
     case ValueType::kNullDescending: return;
     case ValueType::kNull: return;
+    case ValueType::kCounter: return;
+    case ValueType::kSSForward: return;
+    case ValueType::kSSReverse: return;
     case ValueType::kFalse: return;
     case ValueType::kTrue: return;
 
@@ -324,12 +336,16 @@ string PrimitiveValue::ToValue() const {
   switch (type_) {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kCounter: FALLTHROUGH_INTENDED;
+    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
+    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: return result;
 
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
@@ -461,6 +477,9 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
   switch (value_type) {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kCounter: FALLTHROUGH_INTENDED;
+    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
+    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
@@ -771,12 +790,16 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
   switch (value_type) {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kCounter: FALLTHROUGH_INTENDED;
+    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
+    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kObject: FALLTHROUGH_INTENDED;
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
     case ValueType::kTombstone:
       type_ = value_type;
       complex_data_structure_ = nullptr;
@@ -1002,7 +1025,10 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
   switch (type_) {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
+    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
@@ -1064,6 +1090,9 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
   switch (type_) {
     case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
     case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kCounter: FALLTHROUGH_INTENDED;
+    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
+    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;

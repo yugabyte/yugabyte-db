@@ -143,6 +143,7 @@ class RedisReadOperation {
   CHECKED_STATUS ExecuteExists();
   CHECKED_STATUS ExecuteGetRange();
   CHECKED_STATUS ExecuteCollectionGetRange();
+  CHECKED_STATUS ExecuteGetCard(rocksdb::DB *rocksdb, HybridTime hybrid_time);
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 

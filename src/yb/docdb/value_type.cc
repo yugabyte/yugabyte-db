@@ -27,6 +27,9 @@ string ToString(ValueType value_type) {
     case ValueType::kGroupEndDescending: return "GroupEndDescending";
     case ValueType::kIntentPrefix: return "IntentPrefix";
     case ValueType::kNull: return "Null";
+    case ValueType::kCounter: return "Counter";
+    case ValueType::kSSForward: return "SSforward";
+    case ValueType::kSSReverse:return "SSreverse";
     case ValueType::kNullDescending: return "NullDescending";
     case ValueType::kFalse: return "False";
     case ValueType::kTrue: return "True";
@@ -55,6 +58,7 @@ string ToString(ValueType value_type) {
     case ValueType::kObject: return "Object";
     case ValueType::kRedisSet: return "RedisSet";
     case ValueType::kRedisTS: return "RedisTimeseries";
+    case ValueType::kRedisSortedSet: return "RedisSortedSet";
     case ValueType::kArray: return "Array";
     case ValueType::kArrayIndex: return "ArrayIndex";
     case ValueType::kTombstone: return "Tombstone";

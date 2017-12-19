@@ -80,6 +80,10 @@ CHECKED_STATUS PrimitiveValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb,
       // value sorts on top.
       *primitive_value = PrimitiveValue(subkey_pb.timestamp_subkey(), SortOrder::kDescending);
       break;
+    case RedisKeyValueSubKeyPB::SubkeyCase::kDoubleSubkey: {
+      *primitive_value = PrimitiveValue::Double(subkey_pb.double_subkey());
+      break;
+    }
     default:
       return STATUS_SUBSTITUTE(IllegalState, "Invalid enum value $0", subkey_pb.subkey_case());
   }
@@ -93,7 +97,6 @@ CHECKED_STATUS PrimitiveValueFromSubKeyStrict(const RedisKeyValueSubKeyPB &subke
   switch (data_type) {
     case REDIS_TYPE_LIST: FALLTHROUGH_INTENDED;
     case REDIS_TYPE_SET: FALLTHROUGH_INTENDED;
-    case REDIS_TYPE_SORTEDSET: FALLTHROUGH_INTENDED;
     case REDIS_TYPE_HASH:
       if (!subkey_pb.has_string_subkey()) {
         return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of string type",
@@ -104,6 +107,12 @@ CHECKED_STATUS PrimitiveValueFromSubKeyStrict(const RedisKeyValueSubKeyPB &subke
       if (!subkey_pb.has_timestamp_subkey()) {
         return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of int64 type",
                                  subkey_pb.ShortDebugString());
+      }
+      break;
+    case REDIS_TYPE_SORTEDSET:
+      if (!subkey_pb.has_double_subkey()) {
+        return STATUS_SUBSTITUTE(InvalidArgument, "subkey: $0 should be of double type",
+                             subkey_pb.ShortDebugString());
       }
       break;
     default:
@@ -171,6 +180,8 @@ Result<RedisDataType> GetRedisValueType(
       return REDIS_TYPE_SET;
     case ValueType::kRedisTS:
       return REDIS_TYPE_TIMESERIES;
+    case ValueType::kRedisSortedSet:
+      return REDIS_TYPE_SORTEDSET;
     case ValueType::kNull: FALLTHROUGH_INTENDED; // This value is a set member.
     case ValueType::kString:
       return REDIS_TYPE_STRING;
@@ -223,6 +234,8 @@ Result<RedisValue> GetRedisValue(
         return RedisValue{REDIS_TYPE_HASH};
       case ValueType::kRedisTS:
         return RedisValue{REDIS_TYPE_TIMESERIES};
+      case ValueType::kRedisSortedSet:
+        return RedisValue{REDIS_TYPE_SORTEDSET};
       case ValueType::kRedisSet:
         return RedisValue{REDIS_TYPE_SET};
       default:
@@ -272,15 +285,26 @@ bool VerifyTypeAndSetCode(
 
 CHECKED_STATUS AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
                                                 RedisArrayPB* redis_array) {
-  if (value.IsString()) {
-    redis_array->add_elements(value.GetString());
-  } else if (value.IsInt64()) {
-    redis_array->add_elements(std::to_string(value.GetInt64()));
-  } else {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Invalid value type: $0",
+  switch (value.value_type()) {
+    case ValueType::kString: FALLTHROUGH_INTENDED;
+    case ValueType::kStringDescending: {
+      redis_array->add_elements(value.GetString());
+      return Status::OK();
+    }
+    case ValueType::kInt64: FALLTHROUGH_INTENDED;
+    case ValueType::kInt64Descending: {
+      redis_array->add_elements(std::to_string(value.GetInt64()));
+      return Status::OK();
+    }
+    case ValueType::kDouble: FALLTHROUGH_INTENDED;
+    case ValueType::kDoubleDescending: {
+      redis_array->add_elements(std::to_string(value.GetDouble()));
+      return Status::OK();
+    }
+    default:
+      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid value type: $0",
                              static_cast<int>(value.value_type()));
   }
-  return Status::OK();
 }
 
 CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
@@ -291,37 +315,61 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
   return Status::OK();
 }
 
-template <typename T>
+
+CHECKED_STATUS AddResponseValuesGeneric(const PrimitiveValue& first,
+                                        const PrimitiveValue& second,
+                                        RedisResponsePB* response,
+                                        bool add_keys,
+                                        bool add_values) {
+  if (add_keys) {
+    RETURN_NOT_OK(AddPrimitiveValueToResponseArray(first, response->mutable_array_response()));
+  }
+  if (add_values) {
+    RETURN_NOT_OK(AddPrimitiveValueToResponseArray(second, response->mutable_array_response()));
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS AddResponseValuesSortedSets(const PrimitiveValue& first,
+                                           const SubDocument& second,
+                                           RedisResponsePB* response,
+                                           bool add_keys,
+                                           bool add_values) {
+  for (const auto& kv : second.object_container()) {
+    const PrimitiveValue& value = kv.first;
+    RETURN_NOT_OK(AddResponseValuesGeneric(first, value,
+                                           response, add_keys, add_values));
+  }
+  return Status::OK();
+}
+
+template <typename T, typename AddResponseRow>
 CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
+                                                 AddResponseRow add_response_row,
                                                  const T& iter_end,
                                                  RedisResponsePB *response,
                                                  bool add_keys,
                                                  bool add_values) {
   response->set_allocated_array_response(new RedisArrayPB());
   for (; iter != iter_end; iter++) {
-    const PrimitiveValue& first = iter->first;
-    const PrimitiveValue& second = iter->second;
-    if (add_keys) {
-      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(first, response->mutable_array_response()));
-    }
-    if (add_values) {
-      RETURN_NOT_OK(AddPrimitiveValueToResponseArray(second, response->mutable_array_response()));
-    }
+    RETURN_NOT_OK(add_response_row(iter->first, iter->second, response, add_keys, add_values));
   }
   return Status::OK();
 }
 
+template <typename AddResponseRow>
 CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
+                                    AddResponseRow add_response_row,
                                     RedisResponsePB *response,
                                     bool add_keys,
                                     bool add_values,
                                     bool reverse = false) {
   if (reverse) {
-    return PopulateRedisResponseFromInternal(key_values.rbegin(), key_values.rend(), response,
-                                             add_keys, add_values);
+    return PopulateRedisResponseFromInternal(key_values.rbegin(), add_response_row,
+                                             key_values.rend(), response, add_keys, add_values);
   } else {
-    return PopulateRedisResponseFromInternal(key_values.begin(), key_values.end(), response,
-                                             add_keys, add_values);
+    return PopulateRedisResponseFromInternal(key_values.begin(),  add_response_row,
+                                             key_values.end(), response, add_keys, add_values);
   }
 }
 
@@ -332,6 +380,64 @@ void SetOptionalInt(RedisDataType type, int64_t value, int64_t none_value,
 
 void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response) {
   SetOptionalInt(type, value, 0, response);
+}
+
+CHECKED_STATUS GetCardinality(rocksdb::DB *rocksdb,
+                              rocksdb::QueryId query_id,
+                              ReadHybridTime hybrid_time,
+                              const RedisKeyValuePB& kv,
+                              int64_t *result) {
+  SubDocKey key_card = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
+                                    PrimitiveValue(ValueType::kCounter));
+  SubDocument subdoc_card;
+
+  bool subdoc_card_found = false;
+  GetSubDocumentData data = { &key_card, &subdoc_card, &subdoc_card_found };
+  RETURN_NOT_OK(GetSubDocument(
+  rocksdb, data, query_id, boost::none /* txn_op_context */, hybrid_time));
+  if (subdoc_card_found) {
+    *result = subdoc_card.GetInt64();
+  } else {
+    *result = 0;
+  }
+  return Status::OK();
+}
+
+template <typename AddResponseValues>
+CHECKED_STATUS GetAndPopulateResponseValues(
+    rocksdb::DB* rocksdb,
+    rocksdb::QueryId query_id,
+    ReadHybridTime hybrid_time,
+    AddResponseValues add_response_values,
+    const SubDocKey& doc_key,
+    ValueType expected_type,
+    const SubDocKeyBound& low_subkey,
+    const SubDocKeyBound& high_subkey,
+    const RedisReadRequestPB& request,
+    RedisResponsePB* response,
+    bool add_keys, bool add_values, bool reverse) {
+
+  SubDocument doc;
+  bool doc_found = false;
+  GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+  data.low_subkey = &low_subkey;
+  data.high_subkey = &high_subkey;
+  RETURN_NOT_OK(GetSubDocument(
+  rocksdb, data, query_id, boost::none /* txn_op_context */, hybrid_time));
+
+  // Validate and populate response.
+  response->set_allocated_array_response(new RedisArrayPB());
+  if (!doc_found) {
+    response->set_code(RedisResponsePB_RedisStatusCode_OK);
+    return Status::OK();
+  }
+
+  if (VerifyTypeAndSetCode(expected_type, doc.value_type(), response)) {
+    RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(),
+                                       add_response_values,
+                                       response, add_keys, add_values, reverse));
+  }
+  return Status::OK();
 }
 
 } // anonymous namespace
@@ -422,6 +528,82 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
               doc_path, kv_entries, redis_query_id(), ttl));
         }
+        break;
+      }
+      case REDIS_TYPE_SORTEDSET: {
+        if (*data_type != kv.type() && *data_type != REDIS_TYPE_NONE) {
+          response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+          return Status::OK();
+        }
+
+        // The SubDocuments to be inserted for card, the forward mapping, and reverse mapping.
+        SubDocument kv_entries_card;
+        SubDocument kv_entries_forward;
+        SubDocument kv_entries_reverse;
+
+        // The top level mapping.
+        SubDocument kv_entries;
+        // Count of distinct inserted values.
+        int count = 0;
+        for (int i = 0; i < kv.subkey_size(); i++) {
+          // Add the forward mapping to the entries.
+          SubDocument *forward_entry =
+              kv_entries_forward.
+                  GetOrAddChild(PrimitiveValue::Double(kv.subkey(i).double_subkey())).first;
+          forward_entry->SetChild(PrimitiveValue(kv.value(i)),
+                                  SubDocument(PrimitiveValue()));
+
+          // Add the reverse mapping to the entries.
+          kv_entries_reverse.SetChild(PrimitiveValue(kv.value(i)),
+                              SubDocument(PrimitiveValue::Double(kv.subkey(i).double_subkey())));
+
+          // Check whether the value is already in the document, if so delete it.
+          SubDocKey key_reverse = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
+                                            PrimitiveValue(ValueType::kSSReverse),
+                                            PrimitiveValue(kv.value(i)));
+          SubDocument subdoc_reverse;
+          bool subdoc_reverse_found = false;
+          GetSubDocumentData get_data = { &key_reverse, &subdoc_reverse, &subdoc_reverse_found };
+          RETURN_NOT_OK(GetSubDocument(
+              data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
+              boost::none /* txn_op_context */, data.read_time));
+          if (!subdoc_reverse_found) {
+            // The value is not already in the document.
+            count++;
+          } else {
+            double subkey_to_remove = subdoc_reverse.GetDouble();
+            if (subkey_to_remove != kv.subkey(i).double_subkey()) {
+              // The entry in the document is stale, need to remove the old value
+              // from the forward mapping.
+              SubDocument subdoc_forward_tombstone;
+              subdoc_forward_tombstone.SetChild(PrimitiveValue(kv.value(i)),
+                                                SubDocument(ValueType::kTombstone));
+              kv_entries_forward.SetChild(PrimitiveValue::Double(subkey_to_remove),
+                                          SubDocument(subdoc_forward_tombstone));
+            }
+          }
+        }
+
+        int64_t card;
+        RETURN_NOT_OK(GetCardinality(data.doc_write_batch->rocksdb(), redis_query_id(),
+                                     data.read_time, kv, &card));
+        // Insert card + count back into the document for the updated count.
+        kv_entries_card = SubDocument(PrimitiveValue(card + count));
+
+        kv_entries.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(kv_entries_card));
+        kv_entries.SetChild(PrimitiveValue(ValueType::kSSForward), SubDocument(kv_entries_forward));
+        kv_entries.SetChild(PrimitiveValue(ValueType::kSSReverse), SubDocument(kv_entries_reverse));
+
+        RETURN_NOT_OK(kv_entries.ConvertToRedisSortedSet());
+
+        if (*data_type == REDIS_TYPE_NONE) {
+          RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+          doc_path, kv_entries, redis_query_id(), ttl));
+        } else {
+          RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+          doc_path, kv_entries, redis_query_id(), ttl));
+        }
+        response_.set_int_response(count);
         break;
       }
       case REDIS_TYPE_STRING: {
@@ -518,32 +700,18 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
     return Status::OK();
   }
-  SubDocument values =  SubDocument();
-  int num_keys;
-  if (kv.type() == REDIS_TYPE_NONE) { // Delete any string, or container.
-    values = SubDocument(ValueType::kTombstone);
-    // Currently we only support deleting one key with DEL command.
-    num_keys = *data_type == REDIS_TYPE_NONE ? 0 : 1;
-  } else {
-    num_keys = kv.subkey_size(); // We know the subkeys are distinct.
-    // Avoid reads for redis timeseries type.
-    if (EmulateRedisResponse(kv.type())) {
-      for (int i = 0; i < kv.subkey_size(); i++) {
-        auto type = GetValueType(data, i);
-        RETURN_NOT_OK(type);
-        if (*type == REDIS_TYPE_STRING) {
-          values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
-                          SubDocument(ValueType::kTombstone));
-        } else {
-          // If the key is absent, it doesn't contribute to the count of keys being deleted.
-          num_keys--;
-        }
-      }
-    } else {
-      // If the key is invalid, GetRedisValueType will set data_type to REDIS_TYPE_NONE because it
-      // can't find the key. If the op is TSREM, then the kv.type() should be REDIS_TYPE_TIMESERIES,
-      // so we can safely return OK since there is nothing to remove.
-      if (kv.type() == REDIS_TYPE_TIMESERIES && *data_type == REDIS_TYPE_NONE) {
+
+  SubDocument values;
+  // Number of distinct keys being removed.
+  int num_keys = 0;
+  switch (kv.type()) {
+    case REDIS_TYPE_NONE: {
+      values = SubDocument(ValueType::kTombstone);
+      num_keys = *data_type == REDIS_TYPE_NONE ? 0 : 1;
+      break;
+    }
+    case REDIS_TYPE_TIMESERIES: {
+      if (*data_type == REDIS_TYPE_NONE) {
         return Status::OK();
       }
       for (int i = 0; i < kv.subkey_size(); i++) {
@@ -551,6 +719,71 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), *data_type, &primitive_value));
         values.SetChild(primitive_value, SubDocument(ValueType::kTombstone));
       }
+      break;
+    }
+    case REDIS_TYPE_SORTEDSET: {
+      SubDocument values_card;
+      SubDocument values_forward;
+      SubDocument values_reverse;
+      num_keys = kv.subkey_size();
+      for (int i = 0; i < kv.subkey_size(); i++) {
+        // Check whether the value is already in the document.
+        SubDocument doc_reverse;
+        bool doc_reverse_found = false;
+        SubDocKey subdoc_key_reverse = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
+                                                 PrimitiveValue(ValueType::kSSReverse),
+                                                 PrimitiveValue(kv.subkey(i).string_subkey()));
+        // Todo(Rahul): Add values to the write batch cache and then do an additional check.
+        // As of now, we only check to see if a value is in rocksdb, and we should also check
+        // the write batch.
+        GetSubDocumentData get_data = { &subdoc_key_reverse, &doc_reverse, &doc_reverse_found };
+        RETURN_NOT_OK(GetSubDocument(
+        data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
+        boost::none /* txn_op_context */, data.read_time));
+        if (doc_reverse_found && doc_reverse.value_type() != ValueType::kTombstone) {
+          // The value is already in the doc, needs to be removed.
+          values_reverse.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
+                          SubDocument(ValueType::kTombstone));
+          // For sorted sets, the forward mapping also needs to be deleted.
+          SubDocument doc_forward;
+          doc_forward.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
+                               SubDocument(ValueType::kTombstone));
+          values_forward.SetChild(PrimitiveValue::Double(doc_reverse.GetDouble()),
+                          SubDocument(doc_forward));
+        } else {
+          // If the key is absent, it doesn't contribute to the count of keys being deleted.
+          num_keys--;
+        }
+      }
+      int64_t card;
+      RETURN_NOT_OK(GetCardinality(data.doc_write_batch->rocksdb(), redis_query_id(),
+                                   data.read_time, kv, &card));
+      // The new cardinality is card - num_keys.
+      values_card = SubDocument(PrimitiveValue(card - num_keys));
+
+      values.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(values_card));
+      values.SetChild(PrimitiveValue(ValueType::kSSForward), SubDocument(values_forward));
+      values.SetChild(PrimitiveValue(ValueType::kSSReverse), SubDocument(values_reverse));
+
+      break;
+    }
+    default: {
+      num_keys = kv.subkey_size(); // We know the subkeys are distinct.
+      // Avoid reads for redis timeseries type.
+      if (EmulateRedisResponse(kv.type())) {
+        for (int i = 0; i < kv.subkey_size(); i++) {
+          auto type = GetValueType(data, i);
+          RETURN_NOT_OK(type);
+          if (*type == REDIS_TYPE_STRING) {
+            values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
+                            SubDocument(ValueType::kTombstone));
+          } else {
+            // If the key is absent, it doesn't contribute to the count of keys being deleted.
+            num_keys--;
+          }
+        }
+      }
+      break;
     }
   }
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
@@ -734,20 +967,47 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
   GetSubDocumentData data = { &doc_key, &doc, &doc_found };
-  RETURN_NOT_OK(GetSubDocument(
+  switch (value_type) {
+    case ValueType::kRedisSortedSet: {
+      if (add_keys || add_values) {
+        RETURN_NOT_OK(GetSubDocument(
+        db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
+        response_.set_allocated_array_response(new RedisArrayPB());
+        if (!doc_found) {
+          response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+          return Status::OK();
+        }
+        if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
+          RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
+                                             &response_, add_keys, add_values));
+        }
+      } else {
+        int64_t card;
+        RETURN_NOT_OK(GetCardinality(db_, redis_query_id(), read_time_,
+                                     request_.key_value(), &card));
+        response_.set_int_response(card);
+      }
+      break;
+    }
+    default: {
+      RETURN_NOT_OK(GetSubDocument(
       db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
-  if (add_keys || add_values) {
-    response_.set_allocated_array_response(new RedisArrayPB());
-  }
-  if (!doc_found) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-    return Status::OK();
-  }
-  if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
-    if (add_keys || add_values) {
-      RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), &response_, add_keys, add_values));
-    } else {
-      response_.set_int_response(doc.object_container().size());
+      if (add_keys || add_values) {
+        response_.set_allocated_array_response(new RedisArrayPB());
+      }
+      if (!doc_found) {
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+        return Status::OK();
+      }
+      if (VerifyTypeAndSetCode(value_type, doc.value_type(), &response_)) {
+        if (add_keys || add_values) {
+          RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
+                                             &response_, add_keys, add_values));
+        } else {
+          response_.set_int_response(doc.object_container().size());
+        }
+      }
+      break;
     }
   }
   return Status::OK();
@@ -762,6 +1022,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
   const auto request_type = request_.get_collection_range_request().request_type();
   switch (request_type) {
+    case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE: FALLTHROUGH_INTENDED;
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
       const RedisSubKeyBoundPB& lower_bound = request_.subkey_range().lower_bound();
       const RedisSubKeyBoundPB& upper_bound = request_.subkey_range().upper_bound();
@@ -772,46 +1033,64 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
               upper_bound.infinity_type() == RedisSubKeyBoundPB_InfinityType_NEGATIVE)) {
         // Return empty response.
         response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-        RETURN_NOT_OK(PopulateResponseFrom(SubDocument::ObjectContainer(), &response_,
-            /* add_keys */ true, /* add_values */ true));
+        RETURN_NOT_OK(PopulateResponseFrom(SubDocument::ObjectContainer(), AddResponseValuesGeneric,
+                                           &response_, /* add_keys */ true, /* add_values */ true));
         return Status::OK();
       }
 
-      int64_t low_timestamp = lower_bound.subkey_bound().timestamp_subkey();
-      int64_t high_timestamp = upper_bound.subkey_bound().timestamp_subkey();
+      if (request_type == RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE) {
+        SubDocKey doc_key(
+            DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()),
+            PrimitiveValue(ValueType::kSSForward));
+        double low_double = lower_bound.subkey_bound().double_subkey();
+        double high_double = upper_bound.subkey_bound().double_subkey();
 
-      // Look for the appropriate subdoc.
-      SubDocKey doc_key(
-          DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+        SubDocKey low_sub_key_bound = SubDocKey(doc_key.doc_key(),
+                                                PrimitiveValue(ValueType::kSSForward),
+                                                PrimitiveValue::Double(low_double));
 
-      // Need to switch the order since we store the timestamps in descending order.
-      SubDocKeyBound low_subkey = (upper_bound.has_infinity_type()) ?
-          SubDocKeyBound(): SubDocKeyBound(doc_key.doc_key(),
-                                           PrimitiveValue(high_timestamp, SortOrder::kDescending),
-                                           upper_bound.is_exclusive(), /* is_lower_bound */ true);
-      SubDocKeyBound high_subkey = (lower_bound.has_infinity_type()) ?
-          SubDocKeyBound(): SubDocKeyBound(doc_key.doc_key(),
-                                           PrimitiveValue(low_timestamp, SortOrder::kDescending),
-                                           lower_bound.is_exclusive(), /* is_lower_bound */ false);
+        SubDocKey high_sub_key_bound = SubDocKey(doc_key.doc_key(),
+                                                 PrimitiveValue(ValueType::kSSForward),
+                                                 PrimitiveValue::Double(high_double));
 
-      SubDocument doc;
-      bool doc_found = false;
-      GetSubDocumentData data = { &doc_key, &doc, &doc_found };
-      data.low_subkey = &low_subkey;
-      data.high_subkey = &high_subkey;
-      RETURN_NOT_OK(GetSubDocument(
-          db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
+        SubDocKeyBound low_subkey = (lower_bound.has_infinity_type()) ?
+            SubDocKeyBound() : SubDocKeyBound(low_sub_key_bound,
+                                              lower_bound.is_exclusive(),
+                                              /* is_lower_bound */ true);
+        SubDocKeyBound high_subkey = (upper_bound.has_infinity_type()) ?
+            SubDocKeyBound() : SubDocKeyBound(high_sub_key_bound,
+                                              upper_bound.is_exclusive(),
+                                              /* is_lower_bound */ false);
 
-      // Validate and populate response.
-      response_.set_allocated_array_response(new RedisArrayPB());
-      if (!doc_found) {
-        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
-        return Status::OK();
-      }
-      if (VerifyTypeAndSetCode(ValueType::kRedisTS, doc.value_type(), &response_)) {
-        // Need to reverse the order here since we store the timestamps in descending order.
-        RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), &response_, /* add_keys */ true,
-            /* add_values */ true, /* reverse */ true));
+        bool add_keys = request_.get_collection_range_request().with_scores();
+
+        RETURN_NOT_OK(GetAndPopulateResponseValues(
+            db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, doc_key,
+            ValueType::kObject,  low_subkey, high_subkey, request_, &response_,
+            /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
+
+      } else {
+        SubDocKey doc_key(
+            DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+        int64_t low_timestamp = lower_bound.subkey_bound().timestamp_subkey();
+        int64_t high_timestamp = upper_bound.subkey_bound().timestamp_subkey();
+        // Need to switch the order since we store the timestamps in descending order.
+        SubDocKeyBound low_subkey = (upper_bound.has_infinity_type()) ?
+            SubDocKeyBound() : SubDocKeyBound(SubDocKey(doc_key.doc_key(),
+                                                        PrimitiveValue(high_timestamp,
+                                                                       SortOrder::kDescending)),
+                                              upper_bound.is_exclusive(), /* is_lower_bound */
+                                              true);
+        SubDocKeyBound high_subkey = (lower_bound.has_infinity_type()) ?
+            SubDocKeyBound() : SubDocKeyBound(SubDocKey(doc_key.doc_key(),
+                                                        PrimitiveValue(low_timestamp,
+                                                                       SortOrder::kDescending)),
+                                              lower_bound.is_exclusive(), /* is_lower_bound */
+                                              false);
+        RETURN_NOT_OK(GetAndPopulateResponseValues(
+            db_, redis_query_id(), read_time_, AddResponseValuesGeneric, doc_key,
+            ValueType::kRedisTS,  low_subkey, high_subkey, request_, &response_,
+            /* add_keys */ true, /* add_values */ true, /* reverse */ true));
       }
       break;
     }
@@ -909,6 +1188,8 @@ Status RedisReadOperation::ExecuteGet() {
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSet, true, false);
     case RedisGetRequestPB_GetRequestType_SCARD:
       return ExecuteHGetAllLikeCommands(ValueType::kRedisSet, false, false);
+    case RedisGetRequestPB_GetRequestType_ZCARD:
+      return ExecuteHGetAllLikeCommands(ValueType::kRedisSortedSet, false, false);
     case RedisGetRequestPB_GetRequestType_UNKNOWN: {
       return STATUS(InvalidCommand, "Unknown Get Request not supported");
     }

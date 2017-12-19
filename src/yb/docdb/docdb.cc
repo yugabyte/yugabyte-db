@@ -340,7 +340,6 @@ CHECKED_STATUS BuildSubDocument(
                   low_ts.ToString(),
                   data.table_ttl.ToString());
   const KeyBytes encoded_key = data.subdocument_key->Encode();
-
   while (iter->valid()) {
     auto iter_key = iter->FetchKey();
     RETURN_NOT_OK(iter_key);
@@ -410,7 +409,12 @@ CHECKED_STATUS BuildSubDocument(
           *data.result = SubDocument(doc_value.value_type());
         }
 
-        if (IsObjectType(doc_value.value_type()) && data.low_subkey->IsValid()) {
+        // If the low subkey cannot include the found key, we want to skip to the low subkey,
+        // but if it can, we want to seek to the next key. This prevents an infinite loop
+        // where the iterator keeps seeking to itself if the found key matches the low subkey.
+        if (IsObjectType(doc_value.value_type()) &&
+        data.low_subkey->IsValid() &&
+        !data.low_subkey->CanInclude(found_key)) {
           // Try to seek to the low_subkey for efficiency.
           SeekToLowerBound(*data.low_subkey, iter);
         } else {
@@ -465,13 +469,20 @@ CHECKED_STATUS BuildSubDocument(
       continue;
     }
 
-    if (data.low_subkey->IsValid() && !data.low_subkey->CanInclude(found_key)) {
+    // For the purposes of comparison, we strip the found key until it matches the length of both
+    // the low and high subkeys for their respective calculations.
+    SubDocKey found_key_prefix_low = found_key;
+    SubDocKey found_key_prefix_high = found_key;
+    found_key_prefix_low.KeepPrefix(data.low_subkey->num_subkeys());
+    found_key_prefix_high.KeepPrefix(data.high_subkey->num_subkeys());
+
+    if (data.low_subkey->IsValid() && !data.low_subkey->CanInclude(found_key_prefix_low)) {
       // The value provided is lower than what we are looking for, seek to the lower bound.
       SeekToLowerBound(*data.low_subkey, iter);
       continue;
     }
 
-    if (data.high_subkey->IsValid() && !data.high_subkey->CanInclude(found_key)) {
+    if (data.high_subkey->IsValid() && !data.high_subkey->CanInclude(found_key_prefix_high)) {
       // We have encountered a subkey higher than our constraints, we should stop here.
       return Status::OK();
     }
@@ -569,6 +580,8 @@ yb::Status GetSubDocument(
       RETURN_NOT_OK(data.result->ConvertToRedisSet());
     } else if (*data.doc_found && doc_value.value_type() == ValueType::kRedisTS) {
       RETURN_NOT_OK(data.result->ConvertToRedisTS());
+    } else if (*data.doc_found && doc_value.value_type() == ValueType::kRedisSortedSet) {
+      RETURN_NOT_OK(data.result->ConvertToRedisSortedSet());
     }
     // TODO: Also could handle lists here.
 

@@ -157,6 +157,29 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  // Used to check pairs of doubles and strings, for range scans withscores.
+  void DoRedisTestScoreValueArray(int line,
+                        const std::vector<std::string>& command,
+                        const std::vector<double>& expected_scores,
+                        const std::vector<std::string>& expected_values) {
+    ASSERT_EQ(expected_scores.size(), expected_values.size());
+    DoRedisTest(line, command, cpp_redis::reply::type::array,
+      [line, expected_scores, expected_values](const RedisReply& reply) {
+        const auto& replies = reply.as_array();
+        ASSERT_EQ(expected_scores.size()*2, replies.size())
+                      << "Originator: " << __FILE__ << ":" << line;
+        for (size_t i = 0; i < expected_scores.size(); i++) {
+          std::string::size_type sz;
+          double reply_score = std::stod(replies[2 * i].as_string(), &sz);
+          ASSERT_EQ(expected_scores[i], reply_score)
+                        << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+          ASSERT_EQ(expected_values[i], replies[2 * i + 1].as_string())
+                        << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+        }
+      }
+    );
+  }
+
   void DoRedisTestNull(int line,
                        const std::vector<std::string>& command) {
     DoRedisTest(line, command, cpp_redis::reply::type::null,
@@ -1037,6 +1060,153 @@ TEST_F(TestRedisService, TestTimeSeries) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestSortedSets) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+
+  // Need an double for sorted sets as a score.
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "subkey1", "42"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "subkey2", "12"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "1", "v1", "2", "v2", "abc", "v3"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "1", "v1", "2", "v2", "123abc", "v3"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "1", "v1", "2", "v2", " 123", "v3"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "1", " 2"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "1", "abc"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "abc", "2"});
+
+
+  // Incorrect number of arguments.
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "subkey1"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "1", "v1", "2", "v2", "3"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "1"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "1", "2", "3"});
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "1", "2", "WITHSCORES", "abc"});
+  DoRedisTestExpectError(__LINE__, {"ZREM", "z_key"});
+
+  // Valid statements
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "-30.0", "v1"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "-20.0", "v2"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "-10.0", "v3"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "10.0", "v4"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "20.0", "v5"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "30.0", "v6"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key",
+      strings::Substitute("$0", std::numeric_limits<double>::max()), "vmax"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key",
+      strings::Substitute("$0",  -std::numeric_limits<double>::max()), "vmin"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "40.0", "v6"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "0x1e", "v6"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "-20", "v1"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "-30", "v1"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "30.000001", "v7"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "30.000001", "v8"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 10);
+
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "-10.0", "v3", "-20.0", "v2", "-30.0", "v1",
+      "10.0", "v4", "20.0", "v5", "30.0", "v6"}, 6);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "40.0", "v6", "0x1e", "v6", "-20", "v1", "-30", "v1",
+      "30.000001", "v7", "30.000001", "v8"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi",
+      strings::Substitute("$0", std::numeric_limits<double>::max()), "vmax",
+      strings::Substitute("$0", -std::numeric_limits<double>::max()), "vmin"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 10);
+
+  // Ensure we retrieve appropriate results.
+  LOG(INFO) << "Starting ZRANGE queries";
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "+inf", "-inf"}, {});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
+                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "(-inf", "(+inf"},
+                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "30.0"}, {"v5", "v6"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "30.000001"},
+                   {"v5", "v6", "v7", "v8"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "(30.000001"}, {"v5", "v6"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "(20.0", "30.000001"}, {"v6", "v7", "v8"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-20.0", "-10.0"}, {"v2", "v3"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "(-20.0", "(-10.0"}, {});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "+inf", "-inf"}, {});
+
+  DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "30.0", "WITHSCORES"},
+                             {20.0, 30.0}, {"v5", "v6"});
+  DoRedisTestScoreValueArray(__LINE__,
+                             {"ZRANGEBYSCORE", "z_key", "20.0", "30.000001", "withscores"},
+                             {20.0, 30.0, 30.000001, 30.000001}, {"v5", "v6", "v7", "v8"});
+
+
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "-inf", "+inf"},
+                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "(-inf", "(+inf"},
+                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "30.0"}, {"v5", "v6"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "30.000001"},
+                   {"v5", "v6", "v7", "v8"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "(30.000001"}, {"v5", "v6"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "(20.0", "30.000001"},
+                   {"v6", "v7", "v8"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "-20.0", "-10.0"}, {"v2", "v3"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "(-20.0", "(-10.0"}, {});
+
+  DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "30.0", "WITHSCORES"},
+                             {20.0, 30.0}, {"v5", "v6"});
+  DoRedisTestScoreValueArray(__LINE__,
+                             {"ZRANGEBYSCORE", "z_multi", "20.0", "30.000001", "withscores"},
+                             {20.0, 30.0, 30.000001, 30.000001}, {"v5", "v6", "v7", "v8"});
+
+  DoRedisTestInt(__LINE__, {"ZREM", "z_key", "v6"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZREM", "z_key", "v6"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZREM", "z_key", "v7"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZREM", "z_key", "v9"}, 0);
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"ZREM", "z_multi", "v6", "v7", "v9"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZREM", "z_multi", "v6", "v7", "v9"}, 0);
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
+                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 8);
+
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "-inf", "+inf"},
+                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 8);
+
+  // HGET/SISMEMBER/GET/TS should not work with this.
+  DoRedisTestExpectError(__LINE__, {"SISMEMBER", "z_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"HEXISTS", "z_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"GET", "z_key"});
+  DoRedisTestExpectError(__LINE__, {"TSRANGE", "z_key", "1", "a"});
+
+
+  // ZADD should not work with HSET.
+  DoRedisTestInt(__LINE__, {"HSET", "map_key", "30", "v1"}, 1);
+  DoRedisTestExpectError(__LINE__, {"ZADD", "map_key", "40", "v2"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestTimeSeriesTTL) {
   int64_t ttl_sec = 5;
   TestTSTtl("EXPIRE_IN", ttl_sec, ttl_sec, "test_expire_in");
@@ -1054,7 +1224,7 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
-TEST_F(TestRedisService, TestTsRangeByTime) {
+  TEST_F(TestRedisService, TestTsRangeByTime) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
       "-40", "v2",

@@ -41,7 +41,10 @@ SubDocument::SubDocument(ValueType value_type) : PrimitiveValue(value_type) {
 SubDocument::~SubDocument() {
   switch (type_) {
     case ValueType::kObject: FALLTHROUGH_INTENDED;
-    case ValueType::kRedisTS:
+    case ValueType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
+    case ValueType::kSSForward: FALLTHROUGH_INTENDED;
+    case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet:
       if (has_valid_container()) {
         delete &object_container();
@@ -158,6 +161,11 @@ Status SubDocument::ConvertToRedisSet() {
   return ConvertToCollection(ValueType::kRedisSet);
 }
 
+Status SubDocument::ConvertToRedisSortedSet() {
+  type_ = ValueType::kRedisSortedSet;
+  return Status::OK();
+}
+
 SubDocument* SubDocument::GetChild(const PrimitiveValue& key) {
   if (!has_valid_object_container()) {
     return nullptr;
@@ -185,7 +193,7 @@ const SubDocument* SubDocument::GetChild(const PrimitiveValue& key) const {
 }
 
 pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
-  DCHECK_EQ(ValueType::kObject, type_);
+  DCHECK(IsObjectType(type_));
   EnsureContainerAllocated();
   auto& obj_container = object_container();
   auto iter = obj_container.find(key);
@@ -245,6 +253,7 @@ void SubDocumentToStreamInternal(ostream& out,
     return;
   }
   switch (subdoc.value_type()) {
+    case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
     case ValueType::kObject: {
       out << "{";
       if (subdoc.container_allocated()) {

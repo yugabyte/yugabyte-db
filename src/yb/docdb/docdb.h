@@ -189,8 +189,8 @@ class DocVisitor {
   virtual CHECKED_STATUS EndArray() = 0;
 };
 
-// Denotes one component of a range of primitive values. This component can be the lower/upper
-// bound of the range and can be exclusive or inclusive.
+// Represents a general SubDocKey with information on whether this bound is lower/upper and whether
+// it is exclusive. Used in range requests.
 class SubDocKeyBound : public SubDocKey {
  public:
   SubDocKeyBound()
@@ -198,11 +198,10 @@ class SubDocKeyBound : public SubDocKey {
         is_lower_bound_(false) {
   }
 
-  SubDocKeyBound(const DocKey& doc_key,
-                 const PrimitiveValue& sub_key,
+  SubDocKeyBound(const SubDocKey& subdoc_key,
                  bool is_exclusive,
                  bool is_lower_bound)
-      : SubDocKey(doc_key, sub_key),
+      : SubDocKey(subdoc_key),
         is_exclusive_(is_exclusive),
         is_lower_bound_(is_lower_bound) {
   }

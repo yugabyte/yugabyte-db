@@ -58,9 +58,18 @@ enum class ValueType : char {
   // Null must be lower than the other primitive types so that it compares as smaller than them.
   // It is used for frozen CQL user-defined types (which can contain null elements) on ASC columns.
   kNull = '$',  // ASCII code 36
+
+  // Counter to check cardinality.
+  kCounter = '%',  // ASCII code 37
+
+  // Forward and reverse mappings for sorted sets.
+  kSSForward = '&', // ASCII code 38
+  kSSReverse = '\'', // ASCII code 39
+
   kRedisSet = '(', // ASCII code 40
   // This is the redis timeseries type.
   kRedisTS = '+', // ASCII code 43
+  kRedisSortedSet = ',', // ASCII code 44
   kInetaddress = '-',  // ASCII code 45
   kInetaddressDescending = '.',  // ASCII code 46
   kFrozen = '<', // ASCII code 60
@@ -192,7 +201,8 @@ std::string ToString(ValueType value_type);
 // kArray is handled slightly differently and hence we only have kObject, kRedisTS and kRedisSet.
 constexpr inline bool IsObjectType(const ValueType value_type) {
   return value_type == ValueType::kRedisTS || value_type == ValueType::kObject ||
-      value_type == ValueType::kRedisSet;
+      value_type == ValueType::kRedisSet || value_type == ValueType::kRedisSortedSet ||
+      value_type == ValueType::kSSForward || value_type == ValueType::kSSReverse;
 }
 
 constexpr inline bool IsCollectionType(const ValueType value_type) {

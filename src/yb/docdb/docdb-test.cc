@@ -1808,12 +1808,12 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb:
                  SubDocument* doc_from_rocksdb, bool* subdoc_found,
                  const SubDocKey& subdoc_to_search) {
   HybridTime ht = HybridTime::FromMicros(1000000);
-  SubDocKeyBound lower_bound(doc_key,
-                             PrimitiveValue("subkey" + std::to_string(base + lower)),
+  SubDocKeyBound lower_bound(SubDocKey(doc_key,
+                                       PrimitiveValue("subkey" + std::to_string(base + lower))),
                              /* is_exclusive */ false,
                              /* is_lower_bound */ true);
-  SubDocKeyBound upper_bound(doc_key,
-                             PrimitiveValue("subkey" + std::to_string(base + upper)),
+  SubDocKeyBound upper_bound(SubDocKey(doc_key,
+                                       PrimitiveValue("subkey" + std::to_string(base + upper))),
                              /* is_exclusive */ false,
                              /* is_lower_bound */ false);
   GetSubDocumentData data = { &subdoc_to_search, doc_from_rocksdb, subdoc_found };
