@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 set(LINK_LIBS
   yb_client
   log
@@ -53,7 +55,10 @@ target_link_libraries(insert-generated-rows
   yb_tools_util
   ${LINK_LIBS})
 
-add_executable(yb-admin yb-admin.cc)
+add_executable(yb-admin
+  yb-admin_client.cc
+  yb-admin_cli.cc
+  ${YB_ADMIN_SRCS_EXTENSIONS})
 target_link_libraries(yb-admin
   ${LINK_LIBS})
 

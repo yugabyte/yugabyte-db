@@ -151,7 +151,7 @@ set(TSERVER_SRCS
   tablet_service.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
-  ${TSERVER_SRCS_EXTENTIONS})
+  ${TSERVER_SRCS_EXTENSIONS})
 
 add_library(tserver ${TSERVER_SRCS})
 target_link_libraries(tserver
@@ -218,5 +218,5 @@ ADD_YB_TEST(ts_tablet_manager-test)
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.
   set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-  ADD_YB_TEST(${TSERVER_EXTENTIONS_TEST1})
+  ADD_YB_TEST(${TSERVER_EXTENSIONS_TEST1})
 endif()

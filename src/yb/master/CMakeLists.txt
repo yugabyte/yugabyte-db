@@ -52,7 +52,7 @@ ADD_YB_LIBRARY(master_proto
 
 set(MASTER_PROTO_LIBS
   master_proto
-  ${MASTER_PROTO_LIBS_EXTENTIONS})
+  ${MASTER_PROTO_LIBS_EXTENSIONS})
 
 set(MASTER_SRCS
   system_tablet.cc
@@ -89,7 +89,7 @@ set(MASTER_SRCS
   master_tablet_service.cc
   master_tserver.cc
   call_home.cc
-  ${MASTER_SRCS_EXTENTIONS})
+  ${MASTER_SRCS_EXTENSIONS})
 
 add_library(master ${MASTER_SRCS})
 target_link_libraries(master
@@ -135,7 +135,7 @@ ADD_YB_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.
   set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-  ADD_YB_TEST(${CATALOG_MANAGER_EXTENTIONS_TEST1})
+  ADD_YB_TEST(${CATALOG_MANAGER_EXTENSIONS_TEST1})
 endif()
 
 # Actual master executable

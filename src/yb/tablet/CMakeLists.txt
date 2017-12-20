@@ -57,7 +57,7 @@ set(TABLET_SRCS
   key_value_iterator.cc
   tablet_retention_policy.cc
   prepare_thread.cc
-  ${TABLET_SRCS_EXTENTIONS})
+  ${TABLET_SRCS_EXTENSIONS})
 
 PROTOBUF_GENERATE_CPP(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS

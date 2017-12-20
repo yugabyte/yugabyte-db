@@ -29,226 +29,49 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-// Tool to administer a cluster from the CLI.
+#include "yb/tools/yb-admin_client.h"
 
-#include <iostream>
-#include <memory>
-#include <strstream>
-#include <numeric>
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-
-#include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.h"
+#include "yb/client/client.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tserver_service.proxy.h"
-#include "yb/util/env.h"
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
-#include "yb/util/math_util.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/string_case.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/util/string_case.h"
 
-DEFINE_string(master_addresses, "localhost:7100",
-              "Comma-separated list of YB Master server addresses");
-DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
+#include "yb/consensus/consensus.proxy.h"
+#include "yb/master/master.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
-#define EXIT_NOT_OK_PREPEND(status, msg) \
-  do { \
-    Status _s = (status); \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      std::cerr << _s.CloneAndPrepend(msg).ToString() << std::endl; \
-      google::ShowUsageWithFlagsRestrict(g_progname, __FILE__); \
-      exit(1); \
-    } \
-  } while (0)
+// Maximum number of elements to dump on unexpected errors.
+static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
 namespace yb {
 namespace tools {
 
-using std::ostringstream;
-using std::string;
-using std::vector;
-
 using google::protobuf::RepeatedPtrField;
 
-using client::YBClient;
 using client::YBClientBuilder;
-using client::YBTabletServer;
 using client::YBTableName;
+using rpc::MessengerBuilder;
+using rpc::RpcController;
+using strings::Substitute;
+using tserver::TabletServerServiceProxy;
+
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
 using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
+
+using master::MasterServiceProxy;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
 using master::ListMasterRaftPeersRequestPB;
 using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
-using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
-using rpc::Messenger;
-using rpc::MessengerBuilder;
-using rpc::RpcController;
-using strings::Split;
-using strings::Substitute;
-using tserver::TabletServerServiceProxy;
-
-const char* const kChangeConfigOp = "change_config";
-const char* const kListTablesOp = "list_tables";
-const char* const kListTabletsOp = "list_tablets";
-const char* const kListTabletServersOp = "list_tablet_servers";
-const char* const kDeleteTableOp = "delete_table";
-const char* const kListAllTabletServersOp = "list_all_tablet_servers";
-const char* const kListAllMastersOp ="list_all_masters";
-const char* const kChangeMasterConfigOp = "change_master_config";
-const char* const kDumpMastersStateOp = "dump_masters_state";
-const char* const kListTabletServersLogLocationsOp = "list_tablet_server_log_locations";
-const char* const kListTabletsForTabletServerOp = "list_tablets_for_tablet_server";
-const char* const kSetLoadBalancerEnabled = "set_load_balancer_enabled";
-const char* const kGetLoadMoveCompletion = "get_load_move_completion";
-const char* const kListLeaderCounts = "list_leader_counts";
-const char* const kSetupRedisTable = "setup_redis_table";
-const char* const kDropRedisTable = "drop_redis_table";
-static const char* g_progname = nullptr;
-
-// Maximum number of elements to dump on unexpected errors.
-#define MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR 10
-
-enum PeerMode {
-  LEADER = 1,
-  FOLLOWER
-};
-
-class ClusterAdminClient {
- public:
-  // Creates an admin client for host/port combination e.g.,
-  // "localhost" or "127.0.0.1:7050".
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
-
-  // Initialized the client and connects to the specified tablet
-  // server.
-  Status Init();
-
-  // Parse the user-specified change type to consensus change type
-  Status ParseChangeType(
-    const string& change_type,
-    consensus::ChangeConfigType* cc_type);
-
-    // Change the configuration of the specified tablet.
-  Status ChangeConfig(
-    const string& tablet_id,
-    const string& change_type,
-    const string& peer_uuid,
-    const boost::optional<string>& member_type);
-
-  // Change the configuration of the master tablet.
-  Status ChangeMasterConfig(
-    const string& change_type,
-    const string& peer_host,
-    int16 peer_port);
-
-  Status DumpMasterState();
-
-  // List all the tables.
-  Status ListTables();
-
-  // List all tablets of this table
-  Status ListTablets(const YBTableName& table_name, const int max_tablets);
-
-  // Per Tablet list of all tablet servers
-  Status ListPerTabletTabletServers(const std::string& tablet_id);
-
-  // Delete a single table by name.
-  Status DeleteTable(const YBTableName& table_name);
-
-  // List all tablet servers known to master
-  Status ListAllTabletServers();
-
-  // List all masters
-  Status ListAllMasters();
-
-  // List the log locations of all tablet servers, by uuid
-  Status ListTabletServersLogLocations();
-
-  // List all the tablets a certain tablet server is serving
-  Status ListTabletsForTabletServer(const std::string& ts_uuid);
-
-  Status SetLoadBalancerEnabled(const bool is_enabled);
-
-  Status GetLoadMoveCompletion();
-
-  Status ListLeaderCounts(const YBTableName& table_name);
-
-  Status SetupRedisTable();
-
-  Status DropRedisTable();
-
- private:
-  // Fetch the locations of the replicas for a given tablet from the Master.
-  Status GetTabletLocations(const std::string& tablet_id,
-                            TabletLocationsPB* locations);
-
-  // Fetch information about the location of a tablet peer from the leader master.
-  Status GetTabletPeer(
-    const std::string& tablet_id,
-    PeerMode mode,
-    TSInfoPB* ts_info);
-
-  // Set the uuid and the socket information for a peer of this tablet.
-  Status SetTabletPeerInfo(
-    const string& tablet_id,
-    PeerMode mode,
-    string* peer_uuid,
-    Endpoint* peer_socket);
-
-  // Fetch the latest list of tablet servers from the Master.
-  Status ListTabletServers(RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers);
-
-  // Look up the RPC address of the server with the specified UUID from the Master.
-  Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
-
-  Status GetEndpointForHostPort(const HostPort& hp, Endpoint* addr);
-
-  Status GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr);
-
-  Status LeaderStepDown(
-    const string& leader_uuid,
-    const string& tablet_id,
-    std::unique_ptr<ConsensusServiceProxy>* leader_proxy);
-
-  Status StartElection(const string& tablet_id);
-
-  Status MasterLeaderStepDown(const string& leader_uuid);
-  Status GetMasterLeaderInfo(string* leader_uuid);
-
-  const std::string master_addr_list_;
-  const MonoDelta timeout_;
-  Endpoint leader_sock_;
-  bool initted_;
-  std::shared_ptr<rpc::Messenger> messenger_;
-  gscoped_ptr<MasterServiceProxy> master_proxy_;
-  std::shared_ptr<YBClient> yb_client_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
-};
 
 ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
     : master_addr_list_(std::move(addrs)),
@@ -1014,227 +837,5 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
   return Status::OK();
 }
 
-static void SetUsage(const char* argv0) {
-  ostringstream str;
-
-  str << argv0 << " [-master_addresses server1,server2,server3] "
-      << " [-timeout_ms <millisec>] <operation>\n"
-      << "<operation> must be one of:\n"
-      << " 1. " << kChangeConfigOp << " <tablet_id> "
-                << "<ADD_SERVER|REMOVE_SERVER> <peer_uuid> "
-                << "[PRE_VOTER|PRE_OBSERVER]" << std::endl
-      << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
-      << " 3. " << kListTablesOp << std::endl
-      << " 4. " << kListTabletsOp << " <keyspace> <table_name> " << " [max_tablets]"
-                << " (default 10, set 0 for max)" << std::endl
-      << " 5. " << kDeleteTableOp << " <keyspace> <table_name>" << std::endl
-      << " 6. " << kListAllTabletServersOp << std::endl
-      << " 7. " << kListAllMastersOp << std::endl
-      << " 8. " << kChangeMasterConfigOp
-                << " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port>" << std::endl
-      << " 9. " << kDumpMastersStateOp << std::endl
-      << " 10. " << kListTabletServersLogLocationsOp << std::endl
-      << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
-      << " 12. " << kSetLoadBalancerEnabled << " <0|1>" << std::endl
-      << " 13. " << kGetLoadMoveCompletion << std::endl
-      << " 14. " << kListLeaderCounts << " <keyspace> <table_name>" << std::endl
-      << " 15. " << kSetupRedisTable << std::endl
-      << " 16. " << kDropRedisTable;
-
-  google::SetUsageMessage(str.str());
-}
-
-static void UsageAndExit(const char* prog_name) {
-  google::ShowUsageWithFlagsRestrict(prog_name, __FILE__);
-  exit(1);
-}
-
-static string GetOp(int argc, char** argv) {
-  if (argc < 2) {
-    UsageAndExit(argv[0]);
-  }
-
-  return argv[1];
-}
-
-static int ClusterAdminCliMain(int argc, char** argv) {
-  g_progname = argv[0];
-  FLAGS_logtostderr = 1;
-  SetUsage(argv[0]);
-  ParseCommandLineFlags(&argc, &argv, true);
-  InitGoogleLoggingSafe(argv[0]);
-  const string addrs = FLAGS_master_addresses;
-
-  string op = GetOp(argc, argv);
-
-  ClusterAdminClient client(addrs, FLAGS_timeout_ms);
-
-  EXIT_NOT_OK_PREPEND(client.Init(), "Unable to establish connection to " + addrs);
-
-  if (op == kChangeConfigOp) {
-    if (argc < 5) {
-      UsageAndExit(argv[0]);
-    }
-    string tablet_id = argv[2];
-    string change_type = argv[3];
-    string peer_uuid = argv[4];
-    boost::optional<string> member_type;
-    if (argc > 5) {
-      member_type = std::string(argv[5]);
-    }
-    Status s = client.ChangeConfig(tablet_id, change_type, peer_uuid, member_type);
-    if (!s.ok()) {
-      std::cerr << "Unable to change config: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListTablesOp) {
-    Status s = client.ListTables();
-    if (!s.ok()) {
-      std::cerr << "Unable to list tables: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListAllTabletServersOp) {
-    Status s = client.ListAllTabletServers();
-    if (!s.ok()) {
-      std::cerr << "Unable to list tablet servers: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListAllMastersOp) {
-    Status s = client.ListAllMasters();
-    if (!s.ok()) {
-      std::cerr << "Unable to list masters: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListTabletsOp) {
-    if (argc < 4) {
-      UsageAndExit(argv[0]);
-    }
-    const YBTableName table_name(argv[2], argv[3]);
-    int max = -1;
-    if (argc > 4) {
-      max = std::stoi(argv[4]);
-    }
-    Status s = client.ListTablets(table_name, max);
-    if (!s.ok()) {
-      std::cerr << "Unable to list tablets of table " << table_name.ToString()
-                << ": " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListTabletServersOp) {
-    if (argc < 3) {
-      UsageAndExit(argv[0]);
-    }
-    string tablet_id = argv[2];
-    Status s = client.ListPerTabletTabletServers(tablet_id);
-    if (!s.ok()) {
-      std::cerr << "Unable to list tablet servers of tablet " << tablet_id << ": " << s.ToString()
-                << std::endl;
-      return 1;
-    }
-  } else if (op == kDeleteTableOp) {
-    if (argc != 4) {
-      UsageAndExit(argv[0]);
-    }
-    const YBTableName table_name(argv[2], argv[3]);
-    Status s = client.DeleteTable(table_name);
-    if (!s.ok()) {
-      std::cerr << "Unable to delete table " << table_name.ToString()
-                << ": " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kChangeMasterConfigOp) {
-    int16 new_port = 0;
-    string new_host;
-
-    if (argc != 5) {
-      UsageAndExit(argv[0]);
-    }
-
-    string change_type = argv[2];
-    if (change_type != "ADD_SERVER" && change_type != "REMOVE_SERVER") {
-      UsageAndExit(argv[0]);
-    }
-
-    new_host = argv[3];
-    new_port = atoi(argv[4]);
-
-    Status s = client.ChangeMasterConfig(change_type, new_host, new_port);
-    if (!s.ok()) {
-      std::cerr << "Unable to change master config: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kDumpMastersStateOp) {
-    Status s = client.DumpMasterState();
-    if (!s.ok()) {
-      std::cerr << "Unable to dump master state: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListTabletServersLogLocationsOp) {
-    Status s = client.ListTabletServersLogLocations();
-    if (!s.ok()) {
-      std::cerr << "Unable to list tablet server log locations: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListTabletsForTabletServerOp) {
-    if (argc != 3) {
-      UsageAndExit(argv[0]);
-    }
-    const string& ts_uuid = argv[2];
-    Status s = client.ListTabletsForTabletServer(ts_uuid);
-    if (!s.ok()) {
-      std::cerr << "Unable to list tablet server tablets: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kSetLoadBalancerEnabled) {
-    if (argc != 3) {
-      UsageAndExit(argv[0]);
-    }
-
-    const bool is_enabled = atoi(argv[2]) != 0;
-    Status s = client.SetLoadBalancerEnabled(is_enabled);
-    if (!s.ok()) {
-      std::cerr << "Unable to change load balancer state: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kGetLoadMoveCompletion) {
-    Status s = client.GetLoadMoveCompletion();
-    if (!s.ok()) {
-      std::cerr << "Unable to get load completion: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kListLeaderCounts) {
-    if (argc != 4) {
-      UsageAndExit(argv[0]);
-    }
-    const YBTableName table_name(argv[2], argv[3]);
-    Status s = client.ListLeaderCounts(table_name);
-    if (!s.ok()) {
-      std::cerr << "Unable to get leader counts: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kSetupRedisTable) {
-    Status s = client.SetupRedisTable();
-    if (!s.ok()) {
-      std::cerr << "Unable to setup Redis keyspace and table: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else if (op == kDropRedisTable) {
-    Status s = client.DropRedisTable();
-    if (!s.ok()) {
-      std::cerr << "Unable to drop Redis table: " << s.ToString() << std::endl;
-      return 1;
-    }
-  } else {
-    std::cerr << "Invalid operation: " << op << std::endl;
-    UsageAndExit(argv[0]);
-  }
-
-  return 0;
-}
-
 }  // namespace tools
 }  // namespace yb
-
-int main(int argc, char** argv) {
-  return yb::tools::ClusterAdminCliMain(argc, argv);
-}
