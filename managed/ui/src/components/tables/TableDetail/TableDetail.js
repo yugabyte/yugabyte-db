@@ -40,7 +40,7 @@ export default class TableDetail extends Component {
       tables: { currentTableDetail }
     } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
-      const primaryCluster = getPrimaryCluster(currentUniverse.data.clusters);
+      const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
       if (isNonEmptyObject(primaryCluster)) {
         tableInfoContent = (
           <div>
