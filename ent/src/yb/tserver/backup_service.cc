@@ -50,7 +50,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     return;
   }
 
-  auto tx_state = std::make_unique<SnapshotOperationState>(tablet_peer.get(), req);
+  auto tx_state = std::make_unique<SnapshotOperationState>(tablet_peer->tablet(), req);
 
   auto clock = tablet_manager_->server()->Clock();
   tx_state->set_completion_callback(

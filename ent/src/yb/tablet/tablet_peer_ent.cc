@@ -13,7 +13,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       DCHECK(replicate_msg->has_snapshot_request()) << "SNAPSHOT_OP replica"
           " transaction must receive an TabletSnapshotOpRequestPB";
       return std::make_unique<SnapshotOperation>(
-          std::make_unique<SnapshotOperationState>(this), consensus::REPLICA);
+          std::make_unique<SnapshotOperationState>(tablet()), consensus::REPLICA);
   }
 
   return super::CreateOperation(replicate_msg);
