@@ -94,10 +94,10 @@ network_bytes:
   metric: ""
   function: "rate|avg"
   range: "1m"
-  #operator: "/ 10"
   filters:
     saved_name: "node_network_receive_bytes|node_network_transmit_bytes"
-    device: "eth0"
+    # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
+    device: "[^l].*"
   group_by: "saved_name"
   layout:
     title: "Network Bytes / Sec / Node"
@@ -112,12 +112,10 @@ network_packets:
   metric: ""
   function: "rate|avg"
   range: "1m"
-  #operator: "/ 10"
-  # TODO. FIXME: This is off by a factor of 2 on GCP.
-  # When compared to what's reported by GCP Console.
   filters:
     saved_name: "node_network_receive_packets|node_network_transmit_packets"
-    device: "eth0"
+    # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
+    device: "[^l].*"
   group_by: "saved_name"
   layout:
     title: "Network Packets / Sec / Node"
@@ -134,7 +132,8 @@ network_errors:
   range: "1m"
   filters:
     saved_name: "node_network_receive_errs|node_network_transmit_errs"
-    device: "eth0"
+    # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
+    device: "[^l].*"
   group_by: "saved_name"
   layout:
     title: "Network Errors / Sec / Node"
