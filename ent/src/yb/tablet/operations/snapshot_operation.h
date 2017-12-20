@@ -19,9 +19,9 @@ class SnapshotOperationState : public OperationState {
  public:
   ~SnapshotOperationState() {}
 
-  SnapshotOperationState(TabletPeer* tablet_peer,
+  SnapshotOperationState(Tablet* tablet,
                          const tserver::TabletSnapshotOpRequestPB* request = nullptr)
-      : OperationState(tablet_peer),
+      : OperationState(tablet),
         request_(request) {
   }
 
