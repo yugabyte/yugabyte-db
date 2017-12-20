@@ -79,11 +79,6 @@ class LogicalClock : public Clock {
 
   virtual std::string Stringify(HybridTime hybrid_time) override;
 
-  // Logical clock doesn't support COMMIT_WAIT.
-  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) override {
-    return mode != COMMIT_WAIT;
-  }
-
   // Creates a logical clock whose first output value on a Now() call is 'hybrid_time'.
   static LogicalClock* CreateStartingAt(const HybridTime& hybrid_time);
 

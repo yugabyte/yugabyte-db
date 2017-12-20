@@ -52,8 +52,6 @@ import org.jboss.netty.buffer.ChannelBuffers;
 
 import java.io.IOException;
 
-import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
-
 /**
  * Abstract base class for all RPC requests going out to YB.
  * <p>
@@ -104,7 +102,6 @@ public abstract class YRpc<R> {
   final DeadlineTracker deadlineTracker;
 
   protected long propagatedTimestamp = -1;
-  protected ExternalConsistencyMode externalConsistencyMode = CLIENT_PROPAGATED;
 
   /**
    * How many times have we retried this RPC?.
@@ -159,19 +156,6 @@ public abstract class YRpc<R> {
    * @throws Exception An exception that will be sent to errback.
    */
   abstract Pair<R, Object> deserialize(CallResponse callResponse, String tsUUID) throws Exception;
-
-  /**
-   * Sets the external consistency mode for this RPC.
-   * TODO make this cover most if not all RPCs (right now only scans and writes use this).
-   * @param externalConsistencyMode the mode to set
-   */
-  public void setExternalConsistencyMode(ExternalConsistencyMode externalConsistencyMode) {
-    this.externalConsistencyMode = externalConsistencyMode;
-  }
-
-  public ExternalConsistencyMode getExternalConsistencyMode() {
-    return this.externalConsistencyMode;
-  }
 
   /**
    * Sets the propagated timestamp for this RPC.

@@ -254,17 +254,6 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   const Schema& schema = GetSchema(table()->schema());
 #endif
 
-  switch (batcher->external_consistency_mode()) {
-    case yb::client::YBSession::CLIENT_PROPAGATED:
-      req_.set_external_consistency_mode(yb::CLIENT_PROPAGATED);
-      break;
-    case yb::client::YBSession::COMMIT_WAIT:
-      req_.set_external_consistency_mode(yb::COMMIT_WAIT);
-      break;
-    default:
-      LOG(FATAL) << "Unsupported consistency mode: " << batcher->external_consistency_mode();
-  }
-
   // Add the rows
   int ctr = 0;
   for (auto& op : ops_) {

@@ -172,7 +172,7 @@ void OperationDriver::HandleConsensusAppend() {
   CHECK(!replicate_msg->has_hybrid_time());
   replicate_msg->set_hybrid_time(operation_->state()->hybrid_time().ToUint64());
   replicate_msg->set_monotonic_counter(
-      *operation_->state()->tablet_peer()->tablet()->monotonic_counter());
+      *operation_->state()->tablet()->monotonic_counter());
 }
 
 void OperationDriver::PrepareAndStartTask() {
@@ -368,11 +368,6 @@ Status OperationDriver::ApplyAsync() {
       DCHECK_EQ(replication_state_, REPLICATED);
       order_verifier_->CheckApply(op_id_copy_.index(),
                                   prepare_physical_hybrid_time_);
-      // Now that the operation is committed in consensus advance the safe time.
-      if (operation_->state()->external_consistency_mode() != COMMIT_WAIT) {
-        operation_->state()->tablet_peer()->tablet()->mvcc_manager()->
-            OfflineAdjustSafeTime(operation_->state()->hybrid_time());
-      }
     } else {
       DCHECK_EQ(replication_state_, REPLICATION_FAILED);
       DCHECK(!operation_status_.ok());
@@ -383,16 +378,10 @@ Status OperationDriver::ApplyAsync() {
   }
 
   TRACE_EVENT_FLOW_BEGIN0("operation", "ApplyTask", this);
-  switch (table_type_) {
-    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-    case TableType::REDIS_TABLE_TYPE:
-      // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
-      // the order.
-      ApplyTask();
-      return Status::OK();
-  }
-  LOG(FATAL) << "Invalid table type: " << table_type_;
-  return STATUS_FORMAT(IllegalState, "Invalid table type: $0", table_type_);
+  // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
+  // the order.
+  ApplyTask();
+  return Status::OK();
 }
 
 void OperationDriver::ApplyTask() {
@@ -418,37 +407,10 @@ void OperationDriver::ApplyTask() {
       commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
     }
 
-    // If the client requested COMMIT_WAIT as the external consistency mode
-    // calculate the latest that the prepare hybrid_time could be and wait
-    // until now.earliest > prepare_latest. Only after this are the locks
-    // released.
-    if (mutable_state()->external_consistency_mode() == COMMIT_WAIT) {
-      // TODO: only do this on the leader side
-      TRACE("APPLY: Commit Wait.");
-      // If we can't commit wait and have already applied we might have consistency
-      // issues if we still reply to the client that the operation was a success.
-      // On the other hand we don't have rollbacks as of yet thus we can't undo the
-      // the apply either, so we just CHECK_OK for now.
-      CHECK_OK(CommitWait());
-    }
-
     operation_->PreCommit();
 
     Finalize();
   }
-}
-
-Status OperationDriver::CommitWait() {
-  MonoTime before = MonoTime::Now();
-  DCHECK(mutable_state()->external_consistency_mode() == COMMIT_WAIT);
-  // TODO: we could plumb the RPC deadline in here, and not bother commit-waiting
-  // if the deadline is already expired.
-  RETURN_NOT_OK(
-      mutable_state()->tablet_peer()->clock().WaitUntilAfter(mutable_state()->hybrid_time(),
-                                                             MonoTime::Max()));
-  mutable_state()->mutable_metrics()->commit_wait_duration_usec =
-      MonoTime::Now().GetDeltaSince(before).ToMicroseconds();
-  return Status::OK();
 }
 
 void OperationDriver::Finalize() {

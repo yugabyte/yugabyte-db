@@ -80,9 +80,6 @@ class Clock : public ClockBase {
     return STATUS(NotSupported, "clock does not support global properties");
   }
 
-  // Indicates whether this clock supports the required external consistency mode.
-  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) = 0;
-
   // Update the clock with a transaction timestamp originating from
   // another server. For instance replicas can call this so that,
   // if elected leader, they are guaranteed to generate timestamps

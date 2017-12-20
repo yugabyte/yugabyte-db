@@ -88,7 +88,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
           const std::shared_ptr<YBSessionData>& session,
-          yb::client::YBSession::ExternalConsistencyMode consistency_mode,
           YBTransactionPtr transaction);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
@@ -125,12 +124,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // and the caller must inspect the ErrorCollector to retrieve more detailed
   // information on which operations failed.
   void FlushAsync(YBStatusCallback* cb);
-
-  // Returns the consistency mode set on the batcher by the session when it was initially
-  // created.
-  yb::client::YBSession::ExternalConsistencyMode external_consistency_mode() const {
-    return consistency_mode_;
-  }
 
   MonoTime deadline() const {
     return deadline_;
@@ -215,9 +208,6 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   YBClient* const client_;
   std::weak_ptr<YBSessionData> weak_session_data_;
-
-  // The consistency mode set in the session.
-  YBSession::ExternalConsistencyMode consistency_mode_;
 
   // Errors are reported into this error collector.
   scoped_refptr<ErrorCollector> const error_collector_;

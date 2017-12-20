@@ -234,10 +234,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // results from the Apply().
   void ApplyTask();
 
-  // Sleeps until the operation is allowed to commit based on the
-  // requested consistency mode.
-  CHECKED_STATUS CommitWait();
-
   // Called on Operation::Apply() after the CommitMsg has been successfully
   // appended to the WAL.
   void Finalize();

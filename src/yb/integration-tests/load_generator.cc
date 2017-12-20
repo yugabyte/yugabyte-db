@@ -94,8 +94,6 @@ namespace {
 void ConfigureYBSession(YBSession* session) {
   CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   session->SetTimeout(60s);
-  CHECK_OK(
-      session->SetExternalConsistencyMode(YBSession::ExternalConsistencyMode::CLIENT_PROPAGATED));
 }
 
 string FormatWithSize(const string& s) {

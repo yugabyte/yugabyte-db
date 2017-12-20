@@ -106,7 +106,6 @@ class MaintenanceOpStats;
 namespace tablet {
 
 class AlterSchemaOperationState;
-class MvccSnapshot;
 struct RowOp;
 class ScopedReadOperation;
 struct TabletMetrics;
@@ -229,9 +228,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // it's not the first thing in a transaction!
   void StartOperation(WriteOperationState* operation_state);
 
-  // Signal that the given transaction is about to Apply.
-  void StartApplying(WriteOperationState* operation_state);
-
   // Apply all of the row operations associated with this transaction.
   void ApplyRowOperations(WriteOperationState* operation_state);
 
@@ -304,7 +300,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a new row iterator for some historical snapshot.
   CHECKED_STATUS NewRowIterator(
       const Schema &projection,
-      const MvccSnapshot &snap,
+      HybridTime read_ht,
       const OrderMode order,
       const boost::optional<TransactionId>& transaction_id,
       gscoped_ptr<RowwiseIterator> *iter) const;
@@ -427,6 +423,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTime SafeTimestampToRead() const override;
 
+  void SetHybridTimeLeaseProvider(std::function<MicrosTime()> provider) {
+    ht_lease_provider_ = std::move(provider);
+  }
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -444,14 +444,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // The returned iterators are not Init()ed.
   // 'projection' must remain valid and unchanged for the lifetime of the returned iterators.
   CHECKED_STATUS CaptureConsistentIterators(const Schema *projection,
-      const MvccSnapshot &snap,
+      HybridTime read_ht,
       const ScanSpec *spec,
       const boost::optional<TransactionId>& transaction_id,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   CHECKED_STATUS QLCaptureConsistentIterators(
       const Schema *projection,
-      const MvccSnapshot &snap,
+      HybridTime read_ht,
       const ScanSpec *spec,
       const boost::optional<TransactionId>& transaction_id,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
@@ -615,6 +615,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // be flushed in RocksDB.
   std::shared_ptr<TabletFlushStats> flush_stats_;
 
+  std::function<MicrosTime()> ht_lease_provider_;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
@@ -643,46 +645,6 @@ class ScopedReadOperation {
  private:
   AbstractTablet* tablet_;
   ReadHybridTime read_time_;
-};
-
-class Tablet::Iterator : public RowwiseIterator {
- public:
-  virtual ~Iterator();
-
-  CHECKED_STATUS Init(ScanSpec *spec) override;
-
-  bool HasNext() const override;
-
-  CHECKED_STATUS NextBlock(RowBlock *dst) override;
-
-  std::string ToString() const override;
-
-  const Schema &schema() const override {
-    return projection_;
-  }
-
-  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
-
- private:
-  friend class Tablet;
-
-  DISALLOW_COPY_AND_ASSIGN(Iterator);
-
-  Iterator(
-      const Tablet* tablet, const Schema& projection, MvccSnapshot snap,
-      const OrderMode order, const boost::optional<TransactionId>& transaction_id);
-
-  const Tablet *tablet_;
-  Schema projection_;
-  const MvccSnapshot snap_;
-  const OrderMode order_;
-  const boost::optional<TransactionId> transaction_id_;
-  gscoped_ptr<RowwiseIterator> iter_;
-
-  // TODO: we could probably share an arena with the Scanner object inside the
-  // tserver, but piping it in would require changing a lot of call-sites.
-  Arena arena_;
-  RangePredicateEncoder encoder_;
 };
 
 }  // namespace tablet

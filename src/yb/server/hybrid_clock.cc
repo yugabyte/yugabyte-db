@@ -321,10 +321,6 @@ void HybridClock::Update(const HybridTime& to_update) {
   next_logical_ = GetLogicalValue(to_update) + 1;
 }
 
-bool HybridClock::SupportsExternalConsistencyMode(ExternalConsistencyMode mode) {
-  return true;
-}
-
 Status HybridClock::WaitUntilAfter(const HybridTime& then_latest,
                                    const MonoTime& deadline) {
   TRACE_EVENT0("clock", "HybridClock::WaitUntilAfter");

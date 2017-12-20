@@ -49,7 +49,7 @@ void UpdateTxnOperation::Start() {
 }
 
 TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {
-  return *state()->tablet_peer()->tablet()->transaction_coordinator();
+  return *state()->tablet()->transaction_coordinator();
 }
 
 ProcessingMode UpdateTxnOperation::mode() const {
@@ -60,7 +60,7 @@ Status UpdateTxnOperation::Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) 
   auto* state = this->state();
   TransactionCoordinator::ReplicatedData data = {
       mode(),
-      state->tablet_peer()->tablet(),
+      state->tablet(),
       *state->request(),
       state->op_id(),
       state->hybrid_time()

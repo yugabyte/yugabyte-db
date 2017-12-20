@@ -60,7 +60,6 @@ using client::YBTableName;
 ClusterVerifier::ClusterVerifier(MiniClusterBase* cluster)
   : cluster_(cluster),
     checksum_options_(ChecksumOptions()) {
-  checksum_options_.use_snapshot = false;
 }
 
 ClusterVerifier::~ClusterVerifier() {

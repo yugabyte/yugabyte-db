@@ -126,10 +126,6 @@ using std::string;
 using std::vector;
 using google::protobuf::RepeatedPtrField;
 
-MAKE_ENUM_LIMITS(yb::client::YBScanner::ReadMode,
-                 yb::client::YBScanner::READ_LATEST,
-                 yb::client::YBScanner::READ_AT_SNAPSHOT);
-
 MAKE_ENUM_LIMITS(yb::client::YBScanner::OrderMode,
                  yb::client::YBScanner::UNORDERED,
                  yb::client::YBScanner::ORDERED);
@@ -147,8 +143,6 @@ using internal::ErrorCollector;
 using internal::MetaCache;
 using internal::RemoteTabletServer;
 using std::shared_ptr;
-
-static const int kHtHybridTimeBitsToShift = 12;
 
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
@@ -1293,10 +1287,6 @@ Status YBSession::SetFlushMode(FlushMode m) {
   return data_->SetFlushMode(m);
 }
 
-Status YBSession::SetExternalConsistencyMode(ExternalConsistencyMode m) {
-  return data_->SetExternalConsistencyMode(m);
-}
-
 void YBSession::SetTimeout(MonoDelta timeout) {
   data_->SetTimeout(timeout);
 }
@@ -1581,17 +1571,6 @@ Status YBScanner::SetBatchSizeBytes(uint32_t batch_size) {
   return Status::OK();
 }
 
-Status YBScanner::SetReadMode(ReadMode read_mode) {
-  if (data_->open_) {
-    return STATUS(IllegalState, "Read mode must be set before Open()");
-  }
-  if (!tight_enum_test<ReadMode>(read_mode)) {
-    return STATUS(InvalidArgument, "Bad read mode");
-  }
-  data_->read_mode_ = read_mode;
-  return Status::OK();
-}
-
 Status YBScanner::SetOrderMode(OrderMode order_mode) {
   if (data_->open_) {
     return STATUS(IllegalState, "Order mode must be set before Open()");
@@ -1607,26 +1586,7 @@ Status YBScanner::SetFaultTolerant() {
   if (data_->open_) {
     return STATUS(IllegalState, "Fault-tolerance must be set before Open()");
   }
-  RETURN_NOT_OK(SetReadMode(READ_AT_SNAPSHOT));
   data_->is_fault_tolerant_ = true;
-  return Status::OK();
-}
-
-Status YBScanner::SetSnapshotMicros(uint64_t snapshot_hybrid_time_micros) {
-  if (data_->open_) {
-    return STATUS(IllegalState, "Snapshot hybrid_time must be set before Open()");
-  }
-  // Shift the HT hybrid_time bits to get well-formed HT hybrid_time with the logical
-  // bits zeroed out.
-  data_->snapshot_hybrid_time_ = snapshot_hybrid_time_micros << kHtHybridTimeBitsToShift;
-  return Status::OK();
-}
-
-Status YBScanner::SetSnapshotRaw(uint64_t snapshot_hybrid_time) {
-  if (data_->open_) {
-    return STATUS(IllegalState, "Snapshot hybrid_time must be set before Open()");
-  }
-  data_->snapshot_hybrid_time_ = snapshot_hybrid_time;
   return Status::OK();
 }
 

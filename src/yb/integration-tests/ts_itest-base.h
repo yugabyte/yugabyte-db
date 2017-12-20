@@ -432,13 +432,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void CreateTable() {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
 
-    client::YBSchemaBuilder builder;
-    builder.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn("int_val")->Type(INT32);
-    builder.AddColumn("string_val")->Type(STRING);
-
     auto num_replicas = FLAGS_num_replicas;
-    ASSERT_OK(table_.Create(kTableName, 1, client_.get(), &builder, num_replicas));
+    ASSERT_OK(table_.Create(kTableName, 1, client::YBSchema(schema_), client_.get(), num_replicas));
   }
 
   // Starts an external cluster with a single tablet and a number of replicas equal

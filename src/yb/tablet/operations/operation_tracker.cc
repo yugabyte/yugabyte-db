@@ -131,12 +131,12 @@ Status OperationTracker::Add(OperationDriver* driver) {
     }
 
     // May be null in unit tests.
-    TabletPeer* peer = driver->state()->tablet_peer();
+    Tablet* tablet = driver->state()->tablet();
 
     string msg = Substitute(
         "Operation failed, tablet $0 operation memory consumption ($1) "
         "has exceeded its limit ($2) or the limit of an ancestral tracker",
-        peer ? peer->tablet()->tablet_id() : "(unknown)",
+        tablet ? tablet->tablet_id() : "(unknown)",
         mem_tracker_->consumption(), mem_tracker_->limit());
 
     YB_LOG_EVERY_N_SECS(WARNING, 1) << msg << THROTTLE_MSG;

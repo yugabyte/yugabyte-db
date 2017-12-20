@@ -87,7 +87,6 @@ class Batch extends YRpc<BatchResponse> implements YRpc.HasKey {
     final Tserver.WriteRequestPB.Builder builder =
         Operation.createAndFillWriteRequestPB(ops.toArray(new Operation[ops.size()]));
     builder.setTabletId(ZeroCopyLiteralByteString.wrap(getTablet().getTabletIdAsBytes()));
-    builder.setExternalConsistencyMode(this.externalConsistencyMode.pbVersion());
     return toChannelBuffer(header, builder.build());
   }
 

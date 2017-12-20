@@ -24,6 +24,8 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 
+#include "yb/util/countdown_latch.h"
+
 using namespace std::placeholders;
 
 namespace yb {

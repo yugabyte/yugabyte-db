@@ -47,11 +47,10 @@ Operation::Operation(std::unique_ptr<OperationState> state,
       operation_type_(operation_type) {
 }
 
-OperationState::OperationState(TabletPeer* tablet_peer)
-    : tablet_peer_(tablet_peer),
+OperationState::OperationState(Tablet* tablet)
+    : tablet_(tablet),
       completion_clbk_(new OperationCompletionCallback()),
-      hybrid_time_error_(0),
-      external_consistency_mode_(CLIENT_PROPAGATED) {
+      hybrid_time_error_(0) {
 }
 
 Arena* OperationState::arena() {
@@ -74,7 +73,7 @@ void OperationState::set_hybrid_time(const HybridTime& hybrid_time) {
 void OperationState::TrySetHybridTimeFromClock() {
   std::lock_guard<simple_spinlock> l(mutex_);
   if (!hybrid_time_.is_valid()) {
-    hybrid_time_ = tablet_peer_->clock().Now();
+    hybrid_time_ = tablet_->clock()->Now();
   }
 }
 
@@ -107,11 +106,6 @@ const tserver::TabletServerErrorPB::Code OperationCompletionCallback::error_code
 void OperationCompletionCallback::OperationCompleted() {}
 
 OperationCompletionCallback::~OperationCompletionCallback() {}
-
-void OperationMetrics::Reset() {
-  commit_wait_duration_usec = 0;
-}
-
 
 }  // namespace tablet
 }  // namespace yb

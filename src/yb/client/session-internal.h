@@ -79,9 +79,7 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   // operations.
   CHECKED_STATUS Close(bool force);
 
-
   CHECKED_STATUS SetFlushMode(YBSession::FlushMode mode);
-  CHECKED_STATUS SetExternalConsistencyMode(YBSession::ExternalConsistencyMode mode);
   void SetTimeout(MonoDelta timeout);
   bool HasPendingOperations() const;
   int CountBufferedOperations() const;
@@ -123,7 +121,6 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
       internal::BatcherPtr, ScopedRefPtrHashFunctor, ScopedRefPtrEqualsFunctor> flushed_batchers_;
 
   YBSession::FlushMode flush_mode_ = YBSession::AUTO_FLUSH_SYNC;
-  YBSession::ExternalConsistencyMode external_consistency_mode_ = YBSession::CLIENT_PROPAGATED;
 
   // Timeout for the next batch.
   MonoDelta timeout_;

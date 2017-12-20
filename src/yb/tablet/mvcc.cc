@@ -32,603 +32,90 @@
 
 #include "yb/tablet/mvcc.h"
 
-#include <algorithm>
-#include <mutex>
+#include "yb/util/debug-util.h"
+#include "yb/util/logging.h"
 
-#include <glog/logging.h>
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/mathlimits.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/server/logical_clock.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/debug/trace_event.h"
-#include "yb/util/stopwatch.h"
+namespace yb {
+namespace tablet {
 
-namespace yb { namespace tablet {
+MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
+    : prefix_(std::move(prefix)), clock_(std::move(clock)) {}
 
-MvccManager::MvccManager(const scoped_refptr<server::Clock>& clock,
-                         EnforceInvariants enforce_invariants)
-    : no_new_transactions_at_or_before_(HybridTime::kMin),
-      earliest_in_flight_(HybridTime::kMax),
-      max_write_timestamp_(HybridTime::kMin),
-      enforce_invariants_(enforce_invariants),
-      clock_(clock) {
-  cur_snap_.all_committed_before_ = HybridTime::kInitialHybridTime;
-  cur_snap_.none_committed_at_or_after_ = HybridTime::kInitialHybridTime;
+void MvccManager::Replicated(HybridTime ht) {
+  VLOG_WITH_PREFIX(1) << "Replicated(" << ht << ")";
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  CHECK(!queue_.empty());
+  CHECK_EQ(queue_.front(), ht);
+  PopFront(&lock);
+  last_replicated_ = ht;
 }
 
-HybridTime MvccManager::StartOperation() {
-  while (true) {
-    HybridTime now = clock_->Now();
-    std::lock_guard<LockType> l(lock_);
-    if (PREDICT_TRUE(InitOperationUnlocked(now))) {
-      EnforceInvariantsIfNecessary(now);
-      return now;
-    }
-  }
-  // dummy return to avoid compiler warnings
-  LOG(FATAL) << "Unreachable, added to avoid compiler warning.";
-  return HybridTime::kInvalidHybridTime;
-}
-void MvccManager::EnforceInvariantsIfNecessary(const HybridTime& next) {
-  if (enforce_invariants_) {
-    DCHECK_GT(next, max_write_timestamp_) << "Timestamps assigned should be strictly monotonic.";
-    max_write_timestamp_ = next;
-  }
-}
+void MvccManager::Aborted(HybridTime ht) {
+  VLOG_WITH_PREFIX(1) << "Aborted(" << ht << ")";
 
-HybridTime MvccManager::StartOperationAtLatest() {
-  std::lock_guard<LockType> l(lock_);
-  HybridTime now_latest = clock_->NowLatest();
-  while (PREDICT_FALSE(!InitOperationUnlocked(now_latest))) {
-    now_latest = clock_->NowLatest();
-  }
-
-  // If in debug mode enforce that transactions have monotonically increasing
-  // hybrid_times at all times
-#ifndef NDEBUG
-  if (!hybrid_times_in_flight_.empty()) {
-    HybridTime max(std::max_element(hybrid_times_in_flight_.begin(),
-                                   hybrid_times_in_flight_.end())->first);
-    CHECK_EQ(max.value(), now_latest.value());
-  }
-#endif
-
-  EnforceInvariantsIfNecessary(now_latest);
-  return now_latest;
-}
-
-Status MvccManager::StartOperationAtHybridTime(HybridTime hybrid_time) {
-  std::lock_guard<LockType> l(lock_);
-  if (PREDICT_FALSE(cur_snap_.IsCommitted(hybrid_time))) {
-    return STATUS(IllegalState,
-        strings::Substitute("HybridTime: $0 is already committed. Current Snapshot: $1",
-                            hybrid_time.value(), cur_snap_.ToString()));
-  }
-  if (!InitOperationUnlocked(hybrid_time)) {
-    return STATUS(IllegalState,
-        strings::Substitute("There is already a transaction with hybrid_time: $0 in flight.",
-                            hybrid_time.value()));
-  }
-
-  // Not calling EnforceInvariantsIfNecessary here because a new leader can abort pending
-  // transactions and start new transactions with earlier hybrid times.
-  return Status::OK();
-}
-
-void MvccManager::StartApplyingOperation(HybridTime hybrid_time) {
-  std::lock_guard<LockType> l(lock_);
-  auto it = hybrid_times_in_flight_.find(hybrid_time.value());
-  if (PREDICT_FALSE(it == hybrid_times_in_flight_.end())) {
-    LOG(FATAL) << "Cannot mark hybrid_time " << hybrid_time.ToString() << " as APPLYING: "
-               << "not in the in-flight map.";
-  }
-
-  TxnState cur_state = it->second;
-  if (PREDICT_FALSE(cur_state != RESERVED)) {
-    LOG(FATAL) << "Cannot mark hybrid_time " << hybrid_time.ToString() << " as APPLYING: "
-               << "wrong state: " << cur_state;
-  }
-
-  it->second = APPLYING;
-}
-
-bool MvccManager::InitOperationUnlocked(const HybridTime& hybrid_time) {
-  // Ensure that we didn't mark the given hybrid_time as "safe" in between
-  // acquiring the time and taking the lock. This allows us to acquire hybrid_times
-  // outside of the MVCC lock.
-  if (PREDICT_FALSE(no_new_transactions_at_or_before_.CompareTo(hybrid_time) >= 0)) {
-    return false;
-  }
-  // Since transactions only commit once they are in the past, and new
-  // transactions always start either in the current time or the future,
-  // we should never be trying to start a new transaction at the same time
-  // as an already-committed one.
-  DCHECK(!cur_snap_.IsCommitted(hybrid_time))
-    << "Trying to start a new txn at already-committed hybrid_time "
-    << hybrid_time.ToString()
-    << " cur_snap_: " << cur_snap_.ToString();
-
-  if (hybrid_time.CompareTo(earliest_in_flight_) < 0) {
-    earliest_in_flight_ = hybrid_time;
-  }
-
-  return InsertIfNotPresent(&hybrid_times_in_flight_, hybrid_time.value(), RESERVED);
-}
-
-void MvccManager::CommitOperation(HybridTime hybrid_time) {
-  std::lock_guard<LockType> l(lock_);
-  bool was_earliest = false;
-  CommitOperationUnlocked(hybrid_time, &was_earliest);
-
-  // No more transactions will start with a ts that is lower than or equal
-  // to 'hybrid_time', so we adjust the snapshot accordingly.
-  if (no_new_transactions_at_or_before_.CompareTo(hybrid_time) < 0) {
-    no_new_transactions_at_or_before_ = hybrid_time;
-  }
-
-  if (was_earliest) {
-    // If this transaction was the earliest in-flight, we might have to adjust
-    // the max safe hybrid_time to read.
-    AdjustMaxSafetimeToRead();
-  }
-}
-
-void MvccManager::AbortOperation(HybridTime hybrid_time) {
-  std::lock_guard<LockType> l(lock_);
-
-  // Remove from our in-flight list.
-  TxnState old_state = RemoveInFlightAndGetStateUnlocked(hybrid_time);
-  CHECK_EQ(old_state, RESERVED) << "transaction with hybrid_time " << hybrid_time.ToString()
-                                << " cannot be aborted in state " << old_state;
-
-  // If we're aborting the earliest transaction that was in flight,
-  // update our cached value.
-  if (earliest_in_flight_.CompareTo(hybrid_time) == 0) {
-    AdvanceEarliestInFlightHybridTime();
-  }
-}
-
-void MvccManager::OfflineCommitOperation(HybridTime hybrid_time) {
-  std::lock_guard<LockType> l(lock_);
-
-  // Commit the transaction, but do not adjust 'all_committed_before_', that will
-  // be done with a separate OfflineAdjustCurSnap() call.
-  bool was_earliest = false;
-  CommitOperationUnlocked(hybrid_time, &was_earliest);
-
-  if (was_earliest
-      && no_new_transactions_at_or_before_.CompareTo(hybrid_time) >= 0) {
-    // If this transaction was the earliest in-flight, we might have to adjust
-    // the max safe hybrid_time to read.
-    AdjustMaxSafetimeToRead();
-  }
-}
-
-MvccManager::TxnState MvccManager::RemoveInFlightAndGetStateUnlocked(HybridTime ts) {
-  DCHECK(lock_.is_locked());
-
-  auto it = hybrid_times_in_flight_.find(ts.value());
-  if (it == hybrid_times_in_flight_.end()) {
-    LOG(FATAL) << "Trying to remove hybrid_time which isn't in the in-flight set: "
-               << ts.ToString();
-  }
-  TxnState state = it->second;
-  hybrid_times_in_flight_.erase(it);
-  return state;
-}
-
-void MvccManager::CommitOperationUnlocked(HybridTime hybrid_time,
-                                            bool* was_earliest_in_flight) {
-  DCHECK(clock_->IsAfter(hybrid_time))
-    << "Trying to commit a transaction with a future hybrid_time: "
-    << hybrid_time.ToString() << ". Current time: " << clock_->Stringify(clock_->Now());
-
-  *was_earliest_in_flight = earliest_in_flight_ == hybrid_time;
-
-  // Remove from our in-flight list.
-  TxnState old_state = RemoveInFlightAndGetStateUnlocked(hybrid_time);
-  CHECK_EQ(old_state, APPLYING)
-    << "Trying to commit a transaction which never entered APPLYING state: "
-    << hybrid_time.ToString() << " state=" << old_state;
-
-  // Add to snapshot's committed list
-  cur_snap_.AddCommittedHybridTime(hybrid_time);
-
-  // If we're committing the earliest transaction that was in flight,
-  // update our cached value.
-  if (*was_earliest_in_flight) {
-    AdvanceEarliestInFlightHybridTime();
-  }
-}
-
-void MvccManager::AdvanceEarliestInFlightHybridTime() {
-  if (hybrid_times_in_flight_.empty()) {
-    earliest_in_flight_ = HybridTime::kMax;
+  std::lock_guard<std::mutex> lock(mutex_);
+  CHECK(!queue_.empty());
+  if (queue_.front() == ht) {
+    PopFront(&lock);
   } else {
-    earliest_in_flight_ = HybridTime(std::min_element(hybrid_times_in_flight_.begin(),
-                                                     hybrid_times_in_flight_.end())->first);
+    aborted_.push(ht);
   }
 }
 
-void MvccManager::OfflineAdjustSafeTime(HybridTime safe_time) {
-  std::lock_guard<LockType> l(lock_);
-
-  // No more transactions will start with a ts that is lower than or equal
-  // to 'safe_time', so we adjust the snapshot accordingly.
-  if (no_new_transactions_at_or_before_.CompareTo(safe_time) < 0) {
-    no_new_transactions_at_or_before_ = safe_time;
-  }
-
-  AdjustMaxSafetimeToRead();
-}
-
-// Remove any elements from 'v' which are < the given watermark.
-static void FilterHybridTimes(std::vector<HybridTime::val_type>* v,
-                             HybridTime::val_type watermark) {
-  int j = 0;
-  for (const auto& ts : *v) {
-    if (ts >= watermark) {
-      (*v)[j++] = ts;
-    }
-  }
-  v->resize(j);
-}
-
-void MvccManager::AdjustMaxSafetimeToRead() {
-  // There are two possibilities:
-  //
-  // 1) We still have an in-flight transaction earlier than or exactly at
-  //    'no_new_transactions_at_or_before_'. In this case, we update the watermark to that
-  //    transaction's hybrid_time.
-  //
-  // 2) There are no in-flight transactions earlier than or at 'no_new_transactions_at_or_before_'.
-  //    (There may still be in-flight transactions with future hybrid_times due to
-  //    commit-wait transactions which start in the future). In this case, we update
-  //    the watermark to 'no_new_transactions_at_or_before_ + 1', since we know that no new
-  //    transactions can start with an earlier hybrid_time.
-  //
-  // In either case, we have to add the newly committed ts only if it remains higher than the new
-  // watermark.
-
-  if (earliest_in_flight_.CompareTo(no_new_transactions_at_or_before_) <= 0) {
-    cur_snap_.all_committed_before_ = earliest_in_flight_;
-  } else {
-    cur_snap_.all_committed_before_ = HybridTime(no_new_transactions_at_or_before_.value() + 1);
-  }
-
-  // Filter out any committed hybrid_times that now fall below the watermark
-  FilterHybridTimes(&cur_snap_.committed_hybrid_times_, cur_snap_.all_committed_before_.value());
-
-  // it may also have unblocked some waiters.
-  // Check if someone is waiting for transactions to be committed.
-  if (PREDICT_FALSE(!waiters_.empty())) {
-    auto iter = waiters_.begin();
-    while (iter != waiters_.end()) {
-      WaitingState* waiter = *iter;
-      if (IsDoneWaitingUnlocked(*waiter)) {
-        iter = waiters_.erase(iter);
-        waiter->latch->CountDown();
-        continue;
-      }
-      iter++;
-    }
-  }
-}
-
-Status MvccManager::WaitUntil(WaitFor wait_for, HybridTime ts,
-                              const MonoTime& deadline) const {
-  TRACE_EVENT2("tablet", "MvccManager::WaitUntil",
-               "wait_for", wait_for == ALL_COMMITTED ? "all_committed" : "none_applying",
-               "ts", ts.ToUint64())
-
-  CountDownLatch latch(1);
-  WaitingState waiting_state;
-  {
-    waiting_state.hybrid_time = ts;
-    waiting_state.latch = &latch;
-    waiting_state.wait_for = wait_for;
-
-    std::lock_guard<LockType> l(lock_);
-    if (IsDoneWaitingUnlocked(waiting_state)) return Status::OK();
-    waiters_.push_back(&waiting_state);
-  }
-  if (waiting_state.latch->WaitUntil(deadline)) {
-    return Status::OK();
-  }
-  // We timed out. We need to clean up our entry in the waiters_ array.
-
-  std::lock_guard<LockType> l(lock_);
-  // It's possible that while we were re-acquiring the lock, we did get
-  // notified. In that case, we have no cleanup to do.
-  if (waiting_state.latch->count() == 0) {
-    return Status::OK();
-  }
-
-  waiters_.erase(std::find(waiters_.begin(), waiters_.end(), &waiting_state));
-  return STATUS(TimedOut, strings::Substitute(
-      "Timed out waiting for all transactions with ts < $0 to $1",
-      clock_->Stringify(ts),
-      wait_for == ALL_COMMITTED ? "commit" : "finish applying"));
-}
-
-bool MvccManager::IsDoneWaitingUnlocked(const WaitingState& waiter) const {
-  switch (waiter.wait_for) {
-    case ALL_COMMITTED:
-      return AreAllOperationsCommittedUnlocked(waiter.hybrid_time);
-    case NONE_APPLYING:
-      return !AnyApplyingAtOrBeforeUnlocked(waiter.hybrid_time);
-  }
-  LOG(FATAL); // unreachable
-}
-
-bool MvccManager::AreAllOperationsCommittedUnlocked(HybridTime ts) const {
-  if (hybrid_times_in_flight_.empty()) {
-    // If nothing is in-flight, then check the clock. If the hybrid_time is in the past,
-    // we know that no new uncommitted transactions may start before this ts.
-    return ts.CompareTo(clock_->Now()) <= 0;
-  }
-  // If some transactions are in flight, then check the in-flight list.
-  return !cur_snap_.MayHaveUncommittedOperationsAtOrBefore(ts);
-}
-
-bool MvccManager::AnyApplyingAtOrBeforeUnlocked(HybridTime ts) const {
-  for (const InFlightMap::value_type entry : hybrid_times_in_flight_) {
-    if (entry.first <= ts.value()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void MvccManager::TakeSnapshot(MvccSnapshot *snap) const {
-  std::lock_guard<LockType> l(lock_);
-  *snap = cur_snap_;
-}
-
-Status MvccManager::WaitForCleanSnapshotAtHybridTime(HybridTime hybrid_time,
-                                                    MvccSnapshot *snap,
-                                                    const MonoTime& deadline) const {
-  TRACE_EVENT0("tablet", "MvccManager::WaitForCleanSnapshotAtHybridTime");
-  RETURN_NOT_OK(clock_->WaitUntilAfterLocally(hybrid_time, deadline));
-  RETURN_NOT_OK(WaitUntil(ALL_COMMITTED, hybrid_time, deadline));
-  *snap = MvccSnapshot(hybrid_time);
-  return Status::OK();
-}
-
-void MvccManager::WaitForApplyingOperationsToCommit() const {
-  TRACE_EVENT0("tablet", "MvccManager::WaitForApplyingOperationsToCommit");
-
-  // Find the highest hybrid_time of an APPLYING transaction.
-  HybridTime wait_for = HybridTime::kMin;
-  {
-    std::lock_guard<LockType> l(lock_);
-    for (const InFlightMap::value_type entry : hybrid_times_in_flight_) {
-      if (entry.second == APPLYING) {
-        wait_for = HybridTime(std::max(entry.first, wait_for.value()));
-      }
-    }
-  }
-
-  // Wait until there are no transactions applying with that hybrid_time
-  // or below. It's possible that we're a bit conservative here - more transactions
-  // may enter the APPLYING set while we're waiting, but we will eventually
-  // succeed.
-  if (wait_for == HybridTime::kMin) {
-    // None were APPLYING: we can just return.
-    return;
-  }
-  CHECK_OK(WaitUntil(NONE_APPLYING, wait_for, MonoTime::Max()));
-}
-
-bool MvccManager::AreAllOperationsCommitted(HybridTime ts) const {
-  std::lock_guard<LockType> l(lock_);
-  return AreAllOperationsCommittedUnlocked(ts);
-}
-
-HybridTime MvccManager::GetMaxSafeTimeToReadAt() const {
-  std::lock_guard<LockType> l(lock_);
-  if (hybrid_times_in_flight_.empty()) {
-    // Note(TBD): Until we introduce leader leases or have the read operations go through consensus
-    // to register the reads across all the nodes, it is possible that a leadership change could
-    // end up bringing up a new leader (who is slightly behind the current leader) that accepts
-    // a write timestamp lower than this.
-    //
-    // We are also assuming that every time we query the current clock time we get a new value (as
-    // is the case for a HybridClock or a purely logical auto-incrementing clock used in tests).
-    // With that assumption, if transactions are always created at the current time, all future
-    // transactions will get assigned a higher time than what we are about to return, so this is
-    // a safe time to read at.
-    return clock_->Now();
-  } else {
-    return cur_snap_.LastCommittedHybridTime();
-  }
-}
-
-void MvccManager::GetApplyingOperationsHybridTimes(std::vector<HybridTime>* hybrid_times) const {
-  std::lock_guard<LockType> l(lock_);
-  hybrid_times->reserve(hybrid_times_in_flight_.size());
-  for (const InFlightMap::value_type entry : hybrid_times_in_flight_) {
-    if (entry.second == APPLYING) {
-      hybrid_times->push_back(HybridTime(entry.first));
-    }
-  }
-}
-
-MvccManager::~MvccManager() {
-  CHECK(waiters_.empty());
-}
-
-////////////////////////////////////////////////////////////
-// MvccSnapshot
-////////////////////////////////////////////////////////////
-
-MvccSnapshot::MvccSnapshot()
-  : all_committed_before_(HybridTime::kInitialHybridTime),
-    none_committed_at_or_after_(HybridTime::kInitialHybridTime) {
-}
-
-MvccSnapshot::MvccSnapshot(const MvccManager &manager) {
-  manager.TakeSnapshot(this);
-}
-
-MvccSnapshot::MvccSnapshot(const HybridTime& hybrid_time)
-  : all_committed_before_(hybrid_time),
-    none_committed_at_or_after_(hybrid_time) {
-}
-
-MvccSnapshot MvccSnapshot::CreateSnapshotIncludingAllOperations() {
-  return MvccSnapshot(HybridTime::kMax);
-}
-
-MvccSnapshot MvccSnapshot::CreateSnapshotIncludingNoOperations() {
-  return MvccSnapshot(HybridTime::kMin);
-}
-
-bool MvccSnapshot::IsCommittedFallback(const HybridTime& hybrid_time) const {
-  for (const HybridTime::val_type& v : committed_hybrid_times_) {
-    if (v == hybrid_time.value()) return true;
-  }
-
-  return false;
-}
-
-bool MvccSnapshot::MayHaveCommittedOperationsAtOrAfter(const HybridTime& hybrid_time) const {
-  return hybrid_time.CompareTo(none_committed_at_or_after_) < 0;
-}
-
-bool MvccSnapshot::MayHaveUncommittedOperationsAtOrBefore(const HybridTime& hybrid_time) const {
-  // The snapshot may have uncommitted transactions before 'hybrid_time' if:
-  // - 'all_committed_before_' comes before 'hybrid_time'
-  // - 'all_committed_before_' is precisely 'hybrid_time' but 'hybrid_time' isn't in the
-  //   committed set.
-  return hybrid_time.CompareTo(all_committed_before_) > 0 ||
-      (hybrid_time.CompareTo(all_committed_before_) == 0 && !IsCommittedFallback(hybrid_time));
-}
-
-std::string MvccSnapshot::ToString() const {
-  string ret("MvccSnapshot[committed={T|");
-
-  if (committed_hybrid_times_.size() == 0) {
-    StrAppend(&ret, "T < ", all_committed_before_.ToString(), "}]");
-    return ret;
-  }
-  StrAppend(&ret, "T < ", all_committed_before_.ToString(),
-            " or (T in {");
-
-  bool first = true;
-  for (HybridTime::val_type t : committed_hybrid_times_) {
-    if (!first) {
-      ret.push_back(',');
-    }
-    first = false;
-    StrAppend(&ret, t);
-  }
-  ret.append("})}]");
-  return ret;
-}
-
-void MvccSnapshot::AddCommittedHybridTimes(const std::vector<HybridTime>& hybrid_times) {
-  for (const HybridTime& ts : hybrid_times) {
-    AddCommittedHybridTime(ts);
-  }
-}
-
-void MvccSnapshot::AddCommittedHybridTime(HybridTime hybrid_time) {
-  if (IsCommitted(hybrid_time)) return;
-
-  committed_hybrid_times_.push_back(hybrid_time.value());
-
-  // If this is a new upper bound commit mark, update it.
-  if (none_committed_at_or_after_.CompareTo(hybrid_time) <= 0) {
-    none_committed_at_or_after_ = HybridTime(hybrid_time.value() + 1);
-  }
-}
-
-HybridTime MvccSnapshot::LastCommittedHybridTime() const {
-  if (!is_clean()) {
-    if (committed_hybrid_times_.size() == 1 &&
-        all_committed_before_.value() == committed_hybrid_times_.front()) {
-      // This is a degenerate case of a dirty snapshot that is in fact clean, consisting of all
-      // hybrid_times less than X and the set {X}, e.g.:
-      // MvccSnapshot[committed={T|T < 6041797920884666368 or (T in {6041797920884666368})}]
-      return all_committed_before_;
-    }
-    // This is an invariant failure. This should never happen when MVCC transactions are being
-    // created and committed in the increasing order of timestamps. We should simplify MvccManager
-    // to make this kind of error handling unnecessary (ENG-979).
-    LOG(FATAL) << __func__ << " called on a dirty snapshot: " << ToString();
-  }
-  return all_committed_before_.Decremented();
-}
-
-////////////////////////////////////////////////////////////
-// ScopedWriteOperation
-////////////////////////////////////////////////////////////
-ScopedWriteOperation::ScopedWriteOperation(MvccManager *mgr,
-                                           HybridTimeAssignmentType assignment_type)
-  : done_(false),
-    manager_(DCHECK_NOTNULL(mgr)),
-    assignment_type_(assignment_type) {
-
-  switch (assignment_type_) {
-    case NOW: {
-      hybrid_time_ = mgr->StartOperation();
+void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
+  queue_.pop_front();
+  CHECK_GE(queue_.size(), aborted_.size());
+  while (!aborted_.empty()) {
+    if (queue_.front() != aborted_.top()) {
+      CHECK_LT(queue_.front(), aborted_.top());
       break;
     }
-    case NOW_LATEST: {
-      hybrid_time_ = mgr->StartOperationAtLatest();
-      break;
-    }
-    default: {
-      LOG(FATAL) << "Illegal OperationAssignmentType. Only NOW and NOW_LATEST are supported"
-          " by this ctor.";
-    }
+    queue_.pop_front();
+    aborted_.pop();
   }
 }
 
-ScopedWriteOperation::ScopedWriteOperation(MvccManager* mgr, HybridTime hybrid_time)
-    : done_(false),
-      manager_(DCHECK_NOTNULL(mgr)),
-      assignment_type_(PRE_ASSIGNED),
-      hybrid_time_(hybrid_time) {
-  // TODO: Do not crash the process here. Convert this to a static factory returning a status.
-  CHECK_OK(mgr->StartOperationAtHybridTime(hybrid_time));
-}
-
-ScopedWriteOperation::~ScopedWriteOperation() {
-  if (!done_) {
-    Abort();
+void MvccManager::AddPending(HybridTime* ht) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!ht->is_valid()) {
+    // ... otherwise this is a new transaction and we must assign a new hybrid_time. We assign
+    // one in the present.
+    *ht = clock_->Now();
+    VLOG_WITH_PREFIX(1) << "AddPending(<invalid>), time from clock: " << *ht;
+  } else {
+    VLOG_WITH_PREFIX(1) << "AddPending(" << *ht << ")";
   }
-}
-
-void ScopedWriteOperation::StartApplying() {
-  manager_->StartApplyingOperation(hybrid_time_);
-}
-
-void ScopedWriteOperation::Commit() {
-  switch (assignment_type_) {
-    case NOW:
-    case NOW_LATEST: {
-      manager_->CommitOperation(hybrid_time_);
-      done_ = true;
-      return;
-    }
-    case PRE_ASSIGNED: {
-      manager_->OfflineCommitOperation(hybrid_time_);
-      done_ = true;
-      return;
-    }
+  CHECK_GT(*ht, max_safe_time_returned_);
+  if (!queue_.empty()) {
+    CHECK_GT(*ht, queue_.back());
   }
-  LOG(FATAL) << "Unexpected transaction assignment type " << assignment_type_;
+  CHECK_GT(*ht, last_replicated_);
+  queue_.push_back(*ht);
 }
 
-void ScopedWriteOperation::Abort() {
-  manager_->AbortOperation(hybrid_time_);
-  done_ = true;
+void MvccManager::SetLastReplicated(HybridTime ht) {
+  VLOG_WITH_PREFIX(1) << "SetLastReplicated(" << ht << ")";
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  last_replicated_ = ht;
+}
+
+HybridTime MvccManager::SafeTimestampToRead(HybridTime limit) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  HybridTime result = !queue_.empty() ? queue_.front().Decremented() : clock_->Now();
+  result = std::min(result, limit);
+  result = std::max(result, last_replicated_); // Suitable to replica
+  CHECK_GE(result, max_safe_time_returned_);
+  max_safe_time_returned_ = result;
+  VLOG_WITH_PREFIX(1) << "GetMaxSafeTimeToReadAt(), result = " << result;
+  return result;
+}
+
+HybridTime MvccManager::LastReplicatedHybridTime() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  VLOG_WITH_PREFIX(1) << "LastReplicatedHybridTime(), result = " << last_replicated_;
+  return last_replicated_;
 }
 
 }  // namespace tablet

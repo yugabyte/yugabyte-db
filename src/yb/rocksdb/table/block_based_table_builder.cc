@@ -410,15 +410,15 @@ BlockBasedTableBuilder::~BlockBasedTableBuilder() {
 
 void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   Rep* const r = rep_;
-  assert(!r->closed);
+  DCHECK(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
-    assert(r->internal_comparator.Compare(key, Slice(r->last_key)) > 0);
+    DCHECK_GT(r->internal_comparator.Compare(key, Slice(r->last_key)), 0);
   }
 
   const auto should_flush_data = r->flush_block_policy->Update(key, value);
   if (should_flush_data) {
-    assert(!r->data_block_builder.empty());
+    DCHECK(!r->data_block_builder.empty());
     FlushDataBlock(key);
   }
 

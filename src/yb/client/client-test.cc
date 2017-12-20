@@ -540,72 +540,6 @@ TEST_F(ClientTest, TestScan) {
   DoTestScanWithKeyPredicate();
 }
 
-TEST_F(ClientTest, TestScanAtSnapshot) {
-  int half_the_rows = FLAGS_test_scan_num_rows / 2;
-
-  // Insert half the rows
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, half_the_rows));
-
-  // get the time from the server and transform to micros disregarding any
-  // logical values (we shouldn't have any with a single server anyway);
-  int64_t ts = server::HybridClock::GetPhysicalValueMicros(
-      cluster_->mini_tablet_server(0)->server()->clock()->Now());
-
-  // Insert the second half of the rows
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, half_the_rows, half_the_rows));
-
-  YBScanner scanner(client_table_.get());
-  ASSERT_OK(scanner.Open());
-  uint64_t count = 0;
-
-  // Do a "normal", READ_LATEST scan
-  YBScanBatch batch;
-  while (scanner.HasMoreRows()) {
-    ASSERT_OK(scanner.NextBatch(&batch));
-    count += batch.NumRows();
-  }
-
-  ASSERT_EQ(FLAGS_test_scan_num_rows, count);
-
-  // Now close the scanner and perform a scan at 'ts'
-  scanner.Close();
-  ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
-  ASSERT_OK(scanner.SetSnapshotMicros(ts));
-  ASSERT_OK(scanner.Open());
-
-  count = 0;
-  while (scanner.HasMoreRows()) {
-    ASSERT_OK(scanner.NextBatch(&batch));
-    count += batch.NumRows();
-  }
-
-  ASSERT_EQ(half_the_rows, count);
-}
-
-// Test scanning at a hybrid_time in the future compared to the
-// local clock. If we are within the clock error, this should wait.
-// If we are far in the future, we should get an error.
-TEST_F(ClientTest, TestScanAtFutureHybridTime) {
-  YBScanner scanner(client_table_.get());
-  ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
-
-  // Try to perform a scan at NowLatest(). This is in the future,
-  // but the server should wait until it's in the past.
-  int64_t ts = server::HybridClock::GetPhysicalValueMicros(
-      cluster_->mini_tablet_server(0)->server()->clock()->NowLatest());
-  ASSERT_OK(scanner.SetSnapshotMicros(ts));
-  ASSERT_OK(scanner.Open());
-  scanner.Close();
-
-  // Try to perform a scan far in the future (60s -- higher than max clock error).
-  // This should return an error.
-  ts += 60 * 1000000;
-  ASSERT_OK(scanner.SetSnapshotMicros(ts));
-  Status s = scanner.Open();
-  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "in the future.");
-}
-
 void CheckCounts(const TableHandle& table, const std::vector<int>& expected) {
   std::vector<std::pair<int, int>> bounds = {
     { kNoBound, kNoBound },
@@ -2422,32 +2356,6 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
   ASSERT_STR_CONTAINS(s.ToString(),
                       "Not enough live tablet servers to create a table with the requested "
                       "replication factor 3. 1 tablet servers are alive");
-}
-
-TEST_F(ClientTest, TestLatestObservedHybridTime) {
-  // Check that a write updates the latest observed hybrid_time.
-  uint64_t ht0 = client_->GetLatestObservedHybridTime();
-  ASSERT_EQ(ht0, YBClient::kNoHybridTime);
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, 1, 0));
-  uint64_t ht1 = client_->GetLatestObservedHybridTime();
-  ASSERT_NE(ht0, ht1);
-
-  // Check that the hybrid_time of the previous write will be observed by another
-  // client performing a snapshot scan at that hybrid_time.
-  shared_ptr<YBClient> client;
-  shared_ptr<YBTable> table;
-  ASSERT_OK(YBClientBuilder()
-      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
-      .Build(&client));
-  ASSERT_EQ(client->GetLatestObservedHybridTime(), YBClient::kNoHybridTime);
-  ASSERT_OK(client->OpenTable(client_table_->name(), &table));
-  YBScanner scanner(table.get());
-  ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
-  ASSERT_OK(scanner.SetSnapshotRaw(ht1));
-  ASSERT_OK(scanner.Open());
-  scanner.Close();
-  uint64_t ht2 = client->GetLatestObservedHybridTime();
-  ASSERT_EQ(ht1, ht2);
 }
 
 TEST_F(ClientTest, TestClonePredicates) {

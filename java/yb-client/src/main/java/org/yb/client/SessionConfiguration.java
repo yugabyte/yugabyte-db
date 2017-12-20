@@ -133,13 +133,6 @@ public interface SessionConfiguration {
   boolean hasPendingOperations();
 
   /**
-   * Set the new external consistency mode for this session.
-   * @param consistencyMode new external consistency mode, can the same as the previous one.
-   * @throws IllegalArgumentException if the buffer isn't empty.
-   */
-  void setExternalConsistencyMode(ExternalConsistencyMode consistencyMode);
-
-  /**
    * Tells if the session is currently ignoring row errors when the whole list returned by a tablet
    * server is of the AlreadyPresent type.
    * @return true if the session is enforcing this, else false

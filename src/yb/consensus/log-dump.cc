@@ -130,8 +130,6 @@ Status PrintDecodedWriteRequestPB(const string& indent,
   RETURN_NOT_OK(dec.DecodeOperations(&ops));
 
   cout << indent << "Tablet: " << write.tablet_id() << endl;
-  cout << indent << "Consistency: "
-       << ExternalConsistencyMode_Name(write.external_consistency_mode()) << endl;
   if (write.has_propagated_hybrid_time()) {
     cout << indent << "Propagated TS: " << write.propagated_hybrid_time() << endl;
   }

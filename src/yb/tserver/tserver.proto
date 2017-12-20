@@ -178,9 +178,6 @@ message WriteRequestPB {
 
   // NOTE: exactly one of row_operations and write_batch must be set.
 
-  // The required consistency mode for this write.
-  optional ExternalConsistencyMode external_consistency_mode = 4 [default = CLIENT_PROPAGATED];
-
   // A hybrid_time obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with
   // the hybrid_time.
@@ -341,10 +338,6 @@ message NewScanRequestPB {
   // the predicates. Note that in some cases, the scan may still require
   // multiple round-trips, and the caller must aggregate the counts.
   repeated ColumnSchemaPB projected_columns = 4;
-
-  // The read mode for this scan request.
-  // See common.proto for further information about read modes.
-  optional ReadMode read_mode = 5 [default = READ_LATEST];
 
   // The requested snapshot hybrid_time. This is only used
   // when the read mode is set to READ_AT_SNAPSHOT.

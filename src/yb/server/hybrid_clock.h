@@ -75,9 +75,6 @@ class HybridClock : public Clock {
 
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
 
-  // HybridClock supports all external consistency modes.
-  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) override;
-
   // Blocks the caller thread until the true time is after 'then'.
   // In other words, waits until the HybridClock::Now() on _all_ nodes
   // will return a value greater than 'then'.

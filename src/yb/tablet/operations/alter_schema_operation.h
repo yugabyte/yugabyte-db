@@ -44,8 +44,8 @@ namespace yb {
 
 class Schema;
 
-namespace consensus {
-class Consensus;
+namespace log {
+class Log;
 }
 
 namespace tablet {
@@ -57,11 +57,13 @@ class AlterSchemaOperationState : public OperationState {
   ~AlterSchemaOperationState() {
   }
 
-  AlterSchemaOperationState(TabletPeer* tablet_peer,
+  AlterSchemaOperationState(Tablet* tablet, log::Log* log,
                             const tserver::AlterSchemaRequestPB* request = nullptr)
-      : OperationState(tablet_peer),
-        schema_(nullptr),
-        request_(request) {
+      : OperationState(tablet), log_(log), request_(request) {
+  }
+
+  explicit AlterSchemaOperationState(const tserver::AlterSchemaRequestPB* request)
+      : AlterSchemaOperationState(nullptr, nullptr, request) {
   }
 
   const tserver::AlterSchemaRequestPB* request() const override { return request_; }
@@ -98,12 +100,15 @@ class AlterSchemaOperationState : public OperationState {
     request_ = nullptr;
   }
 
+  log::Log* log() const { return log_; }
+
   virtual std::string ToString() const override;
 
  private:
+  log::Log* const log_;
 
   // The new (target) Schema.
-  const Schema* schema_;
+  const Schema* schema_ = nullptr;
 
   // The original RPC request and response.
   const tserver::AlterSchemaRequestPB *request_;

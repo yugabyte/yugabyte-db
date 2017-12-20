@@ -223,8 +223,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   void SetLastDurableMrsIdForTests(int64_t mrs_id) { last_durable_mrs_id_ = mrs_id; }
 
-  void SetPreFlushCallback(StatusClosure callback);
-
   consensus::OpId tombstone_last_logged_opid() const { return tombstone_last_logged_opid_; }
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
@@ -364,10 +362,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // then next UnPinFlush will call Flush() again to ensure the
   // metadata is persisted.
   bool needs_flush_;
-
-  // A callback that, if set, is called before this metadata is flushed
-  // to disk.
-  StatusClosure pre_flush_callback_;
 
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
   // associated memory. At present, deleted column IDs are persisted forever, even if all the

@@ -94,53 +94,6 @@ public final class AsyncYBScanner {
 
   private static final Logger LOG = LoggerFactory.getLogger(AsyncYBScanner.class);
 
-  /**
-   * The possible read modes for scanners.
-   */
-  @InterfaceAudience.Public
-  @InterfaceStability.Evolving
-  public enum ReadMode {
-    /**
-     * When READ_LATEST is specified the server will always return committed writes at
-     * the time the request was received. This type of read does not return a snapshot
-     * timestamp and is not repeatable.
-     *
-     * In ACID terms this corresponds to Isolation mode: "Read Committed"
-     *
-     * This is the default mode.
-     */
-    READ_LATEST(Common.ReadMode.READ_LATEST),
-
-    /**
-     * When READ_AT_SNAPSHOT is specified the server will attempt to perform a read
-     * at the provided timestamp. If no timestamp is provided the server will take the
-     * current time as the snapshot timestamp. In this mode reads are repeatable, i.e.
-     * all future reads at the same timestamp will yield the same data. This is
-     * performed at the expense of waiting for in-flight transactions whose timestamp
-     * is lower than the snapshot's timestamp to complete, so it might incur a latency
-     * penalty.
-     *
-     * In ACID terms this, by itself, corresponds to Isolation mode "Repeatable
-     * Read". If all writes to the scanned tablet are made externally consistent,
-     * then this corresponds to Isolation mode "Strict-Serializable".
-     *
-     * Note: there currently "holes", which happen in rare edge conditions, by which writes
-     * are sometimes not externally consistent even when action was taken to make them so.
-     * In these cases Isolation may degenerate to mode "Read Committed". See KUDU-430.
-     */
-    READ_AT_SNAPSHOT(Common.ReadMode.READ_AT_SNAPSHOT);
-
-    private Common.ReadMode pbVersion;
-    private ReadMode(Common.ReadMode pbVersion) {
-      this.pbVersion = pbVersion;
-    }
-
-    @InterfaceAudience.Private
-    public Common.ReadMode pbVersion() {
-      return this.pbVersion;
-    }
-  }
-
   //////////////////////////
   // Initial configurations.
   //////////////////////////
@@ -189,10 +142,6 @@ public final class AsyncYBScanner {
 
   private final boolean cacheBlocks;
 
-  private final ReadMode readMode;
-
-  private final long htTimestamp;
-
   /////////////////////
   // Runtime variables.
   /////////////////////
@@ -234,26 +183,19 @@ public final class AsyncYBScanner {
   private static final AtomicBoolean PARTITION_PRUNE_WARN = new AtomicBoolean(true);
 
   AsyncYBScanner(AsyncYBClient client, YBTable table, List<String> projectedNames,
-                   List<Integer> projectedIndexes, ReadMode readMode, long scanRequestTimeout,
+                   List<Integer> projectedIndexes, long scanRequestTimeout,
                    List<Tserver.ColumnRangePredicatePB> columnRangePredicates, long limit,
                    boolean cacheBlocks, boolean prefetching,
                    byte[] startPrimaryKey, byte[] endPrimaryKey,
                    byte[] startPartitionKey, byte[] endPartitionKey,
-                   long htTimestamp, int batchSizeBytes) {
+                   int batchSizeBytes) {
     checkArgument(batchSizeBytes > 0, "Need a strictly positive number of bytes, " +
         "got %s", batchSizeBytes);
     checkArgument(limit > 0, "Need a strictly positive number for the limit, " +
         "got %s", limit);
-    if (htTimestamp != AsyncYBClient.NO_TIMESTAMP) {
-      checkArgument(htTimestamp >= 0, "Need non-negative number for the scan, " +
-          " timestamp got %s", htTimestamp);
-      checkArgument(readMode == ReadMode.READ_AT_SNAPSHOT, "When specifying a " +
-          "HybridClock timestamp, the read mode needs to be set to READ_AT_SNAPSHOT");
-    }
 
     this.client = client;
     this.table = table;
-    this.readMode = readMode;
     this.scanRequestTimeout = scanRequestTimeout;
     this.columnRangePredicates = columnRangePredicates;
     this.limit = limit;
@@ -261,7 +203,6 @@ public final class AsyncYBScanner {
     this.prefetching = prefetching;
     this.startPrimaryKey = startPrimaryKey;
     this.endPrimaryKey = endPrimaryKey;
-    this.htTimestamp = htTimestamp;
     this.batchSizeBytes = batchSizeBytes;
 
     if (!table.getPartitionSchema().isSimpleRangePartitioning() &&
@@ -365,24 +306,12 @@ public final class AsyncYBScanner {
   }
 
   /**
-   * Returns the ReadMode for this scanner.
-   * @return the configured read mode for this scanner
-   */
-  public ReadMode getReadMode() {
-    return this.readMode;
-  }
-
-  /**
    * Returns the projection schema of this scanner. If specific columns were
    * not specified during scanner creation, the table schema is returned.
    * @return the projection schema for this scanner
    */
   public Schema getProjectionSchema() {
     return this.schema;
-  }
-
-  long getSnapshotTimestamp() {
-    return this.htTimestamp;
   }
 
   /**
@@ -691,18 +620,10 @@ public final class AsyncYBScanner {
           newBuilder.setLimit(limit); // currently ignored
           newBuilder.addAllProjectedColumns(ProtobufHelper.schemaToListPb(schema));
           newBuilder.setTabletId(ZeroCopyLiteralByteString.wrap(tablet.getTabletIdAsBytes()));
-          newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
           newBuilder.setCacheBlocks(cacheBlocks);
           // if the last propagated timestamp is set send it with the scan
           if (table.getAsyncClient().getLastPropagatedTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
             newBuilder.setPropagatedHybridTime(table.getAsyncClient().getLastPropagatedTimestamp());
-          }
-          newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
-
-          // if the mode is set to read on snapshot sent the snapshot timestamp
-          if (AsyncYBScanner.this.getReadMode() == ReadMode.READ_AT_SNAPSHOT &&
-            AsyncYBScanner.this.getSnapshotTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
-            newBuilder.setSnapHybridTime(AsyncYBScanner.this.getSnapshotTimestamp());
           }
 
           if (AsyncYBScanner.this.startPrimaryKey != AsyncYBClient.EMPTY_ARRAY &&
@@ -804,11 +725,11 @@ public final class AsyncYBScanner {
      */
     public AsyncYBScanner build() {
       return new AsyncYBScanner(
-          client, table, projectedColumnNames, projectedColumnIndexes, readMode,
+          client, table, projectedColumnNames, projectedColumnIndexes,
           scanRequestTimeout, columnRangePredicates, limit, cacheBlocks,
           prefetching, lowerBoundPrimaryKey, upperBoundPrimaryKey,
           lowerBoundPartitionKey, upperBoundPartitionKey,
-          htTimestamp, batchSizeBytes);
+          batchSizeBytes);
     }
   }
 }

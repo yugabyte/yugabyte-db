@@ -63,17 +63,13 @@ namespace client {
 
 using internal::RemoteTabletServer;
 
-static const int64_t kNoHybridTime = -1;
-
 YBScanner::Data::Data(YBTable* table, const YBTransactionPtr& transaction)
   : open_(false),
     data_in_open_(false),
     has_batch_size_bytes_(false),
     batch_size_bytes_(0),
     selection_(YBClient::CLOSEST_REPLICA),
-    read_mode_(READ_LATEST),
     is_fault_tolerant_(false),
-    snapshot_hybrid_time_(kNoHybridTime),
     table_(DCHECK_NOTNULL(table)),
     arena_(1024, 1024*1024),
     spec_encoder_(&internal::GetSchema(table->schema()), &arena_),
@@ -265,11 +261,6 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
   }
 
   NewScanRequestPB* scan = next_req_.mutable_new_scan_request();
-  switch (read_mode_) {
-    case READ_LATEST: scan->set_read_mode(yb::READ_LATEST); break;
-    case READ_AT_SNAPSHOT: scan->set_read_mode(yb::READ_AT_SNAPSHOT); break;
-    default: LOG(FATAL) << "Unexpected read mode.";
-  }
 
   if (is_fault_tolerant_) {
     scan->set_order_mode(yb::ORDERED);
@@ -284,15 +275,6 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
   }
 
   scan->set_cache_blocks(spec_.cache_blocks());
-
-  if (snapshot_hybrid_time_ != kNoHybridTime) {
-    if (PREDICT_FALSE(read_mode_ != READ_AT_SNAPSHOT)) {
-      LOG(WARNING) << "Scan snapshot hybrid_time set but read mode was READ_LATEST."
-          " Ignoring hybrid_time.";
-    } else {
-      scan->set_snap_hybrid_time(snapshot_hybrid_time_);
-    }
-  }
 
   // Set up the predicates.
   scan->clear_range_predicates();
@@ -417,8 +399,6 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
   // primary key.  This is used when retrying the scan elsewhere.  The last
   // primary key is also updated on each scan response.
   if (is_fault_tolerant_) {
-    CHECK(last_response_.has_snap_hybrid_time());
-    snapshot_hybrid_time_ = last_response_.snap_hybrid_time();
     if (last_response_.has_last_primary_key()) {
       last_primary_key_ = last_response_.last_primary_key();
     }

@@ -31,8 +31,7 @@ class AutoIncrementingCounter {
 
 } // namespace
 
-LocalTabletWriter::LocalTabletWriter(Tablet* tablet,
-                           const Schema* client_schema)
+LocalTabletWriter::LocalTabletWriter(Tablet* tablet, const Schema* client_schema)
   : tablet_(tablet),
     client_schema_(client_schema) {
   CHECK(!client_schema->has_column_ids());
@@ -54,7 +53,7 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
   }
   req_.mutable_ql_write_batch()->Swap(batch);
 
-  tx_state_.reset(new WriteOperationState(nullptr, &req_, &resp_));
+  tx_state_.reset(new WriteOperationState(tablet_, &req_, &resp_));
   HybridTime read_ht;
   RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(tx_state_.get(), &read_ht));
   tablet_->StartOperation(tx_state_.get());

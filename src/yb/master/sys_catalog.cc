@@ -522,7 +522,7 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
       &latch, &resp);
   auto operation_state = std::make_unique<tablet::WriteOperationState>(
-      tablet_peer_.get(), &writer->req_, &resp);
+      tablet_peer_->tablet(), &writer->req_, &resp);
   operation_state->set_completion_callback(std::move(txn_callback));
 
   RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(operation_state)));

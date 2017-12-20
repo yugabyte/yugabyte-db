@@ -200,7 +200,8 @@ class TabletPeerTest : public YBTabletTest,
 
   Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     gscoped_ptr<WriteResponsePB> resp(new WriteResponsePB());
-    auto operation_state = std::make_unique<WriteOperationState>(tablet_peer, &req, resp.get());
+    auto operation_state = std::make_unique<WriteOperationState>(
+        tablet_peer->tablet(), &req, resp.get());
 
     CountDownLatch rpc_latch(1);
     operation_state->set_completion_callback(

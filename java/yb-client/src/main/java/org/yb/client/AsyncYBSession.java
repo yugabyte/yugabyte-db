@@ -48,8 +48,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.concurrent.GuardedBy;
 import java.util.*;
 
-import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
-
 /**
  * A AsyncYBSession belongs to a specific AsyncYBClient, and represents a context in
  * which all read/write data access should take place. Within a session,
@@ -107,7 +105,6 @@ public class AsyncYBSession implements SessionConfiguration {
   private float mutationBufferLowWatermarkPercentage = 0.5f;
   private int mutationBufferLowWatermark;
   private FlushMode flushMode;
-  private ExternalConsistencyMode consistencyMode;
   private long timeoutMs;
 
   // We assign a number to each operation that we batch, so that the batch can sort itself before
@@ -155,7 +152,6 @@ public class AsyncYBSession implements SessionConfiguration {
   AsyncYBSession(AsyncYBClient client) {
     this.client = client;
     this.flushMode = FlushMode.AUTO_FLUSH_SYNC;
-    this.consistencyMode = CLIENT_PROPAGATED;
     this.timeoutMs = client.getDefaultOperationTimeoutMs();
     setMutationBufferLowWatermark(this.mutationBufferLowWatermarkPercentage);
     errorCollector = new ErrorCollector(mutationBufferSpace);
@@ -172,15 +168,6 @@ public class AsyncYBSession implements SessionConfiguration {
       throw new IllegalArgumentException("Cannot change flush mode when writes are buffered");
     }
     this.flushMode = flushMode;
-  }
-
-  @Override
-  public void setExternalConsistencyMode(ExternalConsistencyMode consistencyMode) {
-    if (hasPendingOperations()) {
-      throw new IllegalArgumentException("Cannot change consistency mode "
-          + "when writes are buffered");
-    }
-    this.consistencyMode = consistencyMode;
   }
 
   @Override
@@ -383,7 +370,6 @@ public class AsyncYBSession implements SessionConfiguration {
       if (timeoutMs != 0) {
         operation.setTimeoutMillis(timeoutMs);
       }
-      operation.setExternalConsistencyMode(this.consistencyMode);
       return client.sendRpcToTablet(operation);
     }
 
@@ -543,7 +529,6 @@ public class AsyncYBSession implements SessionConfiguration {
         // We found a tablet that needs batching, this is the only place where
         // we schedule a flush.
         batch = new Batch(operation.getTable(), ignoreAllDuplicateRows);
-        batch.setExternalConsistencyMode(this.consistencyMode);
         Batch oldBatch = operations.put(tablet, batch);
         assert (oldBatch == null);
         addBatchCallbacks(batch);

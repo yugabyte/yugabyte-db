@@ -53,7 +53,6 @@ namespace tablet {
 class Tablet;
 class TabletPeer;
 class OperationState;
-class MvccSnapshot;
 }  // namespace tablet
 
 namespace tserver {
@@ -127,20 +126,6 @@ class TabletServiceImpl : public TabletServerServiceIf {
                                    ScanResultCollector* result_collector,
                                    bool* has_more_results,
                                    TabletServerErrorPB::Code* error_code);
-
-  CHECKED_STATUS HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
-                              const rpc::RpcContext* rpc_context,
-                              const Schema& projection,
-                              const std::shared_ptr<tablet::Tablet>& tablet,
-                              const boost::optional<TransactionId>& transaction_id,
-                              gscoped_ptr<RowwiseIterator>* iter,
-                              HybridTime* snap_hybrid_time);
-
-  // Take a MVCC snapshot for read at the specified hybrid_time
-  CHECKED_STATUS TakeReadSnapshot(tablet::Tablet* tablet,
-                          const rpc::RpcContext* rpc_context,
-                          const HybridTime& hybrid_time,
-                          tablet::MvccSnapshot* snap);
 
   // Check if the tablet peer is the leader and is in ready state for servicing IOs.
   CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer,

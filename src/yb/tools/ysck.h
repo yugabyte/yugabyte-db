@@ -56,25 +56,13 @@ struct ChecksumOptions {
 
   ChecksumOptions();
 
-  ChecksumOptions(MonoDelta timeout,
-                  int scan_concurrency,
-                  bool use_snapshot,
-                  uint64_t snapshot_hybrid_time);
+  ChecksumOptions(MonoDelta timeout, int scan_concurrency);
 
   // The maximum total time to wait for results to come back from all replicas.
   MonoDelta timeout;
 
   // The maximum number of concurrent checksum scans to run per tablet server.
   int scan_concurrency;
-
-  // Whether to use a snapshot checksum scanner.
-  bool use_snapshot;
-
-  // The snapshot hybrid_time to use for snapshot checksum scans.
-  uint64_t snapshot_hybrid_time;
-
-  // A hybrid_time indicicating that the current time should be used for a checksum snapshot.
-  static const uint64_t kCurrentHybridTime;
 };
 
 // Representation of a tablet replica on a tablet server.

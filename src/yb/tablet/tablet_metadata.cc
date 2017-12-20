@@ -275,8 +275,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
       tablet_data_state_(tablet_data_state),
       tombstone_last_logged_opid_(MinimumOpId()),
       num_flush_pins_(0),
-      needs_flush_(false),
-      pre_flush_callback_(Bind(DoNothingStatusClosure)) {
+      needs_flush_(false) {
   CHECK(schema_->has_column_ids());
   CHECK_GT(schema_->num_key_columns(), 0);
 }
@@ -293,8 +292,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager, string tablet_id)
       schema_(nullptr),
       tombstone_last_logged_opid_(MinimumOpId()),
       num_flush_pins_(0),
-      needs_flush_(false),
-      pre_flush_callback_(Bind(DoNothingStatusClosure)) {}
+      needs_flush_(false) {}
 
 Status TabletMetadata::LoadFromDisk() {
   TRACE_EVENT1("tablet", "TabletMetadata::LoadFromDisk",
@@ -467,7 +465,6 @@ Status TabletMetadata::Flush() {
     // is persisted. See KUDU-701 for details.
     orphaned.assign(orphaned_blocks_.begin(), orphaned_blocks_.end());
   }
-  pre_flush_callback_.Run();
   RETURN_NOT_OK(ReplaceSuperBlockUnlocked(pb));
   TRACE("Metadata flushed");
   l_flush.Unlock();
@@ -479,11 +476,6 @@ Status TabletMetadata::Flush() {
   DeleteOrphanedBlocks(orphaned);
 
   return Status::OK();
-}
-
-void TabletMetadata::SetPreFlushCallback(StatusClosure callback) {
-  MutexLock lock(flush_lock_);
-  pre_flush_callback_ = std::move(callback);
 }
 
 Status TabletMetadata::ReplaceSuperBlock(const TabletSuperBlockPB &pb) {

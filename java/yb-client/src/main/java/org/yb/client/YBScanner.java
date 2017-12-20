@@ -36,7 +36,6 @@ import com.stumbleupon.async.Deferred;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.client.AsyncYBScanner.ReadMode;
 
 /**
  * Synchronous version of {@link AsyncYBScanner}. Offers the same API but with blocking methods.
@@ -109,14 +108,6 @@ public class YBScanner {
   }
 
   /**
-   * Returns the ReadMode for this scanner.
-   * @return the configured read mode for this scanner
-   */
-  public ReadMode getReadMode() {
-    return asyncScanner.getReadMode();
-  }
-
-  /**
    * Returns the projection schema of this scanner. If specific columns were
    * not specified during scanner creation, the table schema is returned.
    * @return the projection schema for this scanner
@@ -144,11 +135,11 @@ public class YBScanner {
      */
     public YBScanner build() {
       return new YBScanner(new AsyncYBScanner(
-          client, table, projectedColumnNames, projectedColumnIndexes, readMode,
+          client, table, projectedColumnNames, projectedColumnIndexes,
           scanRequestTimeout, columnRangePredicates, limit, cacheBlocks,
           prefetching, lowerBoundPrimaryKey, upperBoundPrimaryKey,
           lowerBoundPartitionKey, upperBoundPartitionKey,
-          htTimestamp, batchSizeBytes));
+          batchSizeBytes));
     }
   }
 }

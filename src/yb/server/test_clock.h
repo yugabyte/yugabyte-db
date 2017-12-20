@@ -51,10 +51,6 @@ class TestClock : public Clock {
     return status;
   }
 
-  bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) override {
-    return impl_->SupportsExternalConsistencyMode(mode);
-  }
-
   void Update(const HybridTime& to_update) override {}
 
   CHECKED_STATUS WaitUntilAfter(const HybridTime& then,

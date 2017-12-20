@@ -130,7 +130,6 @@ public abstract class Operation extends YRpc<OperationResponse> implements YRpc.
   ChannelBuffer serialize(Message header) {
     final Tserver.WriteRequestPB.Builder builder = createAndFillWriteRequestPB(this);
     builder.setTabletId(ZeroCopyLiteralByteString.wrap(getTablet().getTabletIdAsBytes()));
-    builder.setExternalConsistencyMode(this.externalConsistencyMode.pbVersion());
     if (this.propagatedTimestamp != AsyncYBClient.NO_TIMESTAMP) {
       builder.setPropagatedHybridTime(this.propagatedTimestamp);
     }

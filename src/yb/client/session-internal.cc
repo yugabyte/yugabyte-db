@@ -44,10 +44,6 @@ MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
                  yb::client::YBSession::AUTO_FLUSH_SYNC,
                  yb::client::YBSession::MANUAL_FLUSH);
 
-MAKE_ENUM_LIMITS(yb::client::YBSession::ExternalConsistencyMode,
-                 yb::client::YBSession::CLIENT_PROPAGATED,
-                 yb::client::YBSession::COMMIT_WAIT);
-
 namespace yb {
 
 namespace client {
@@ -129,7 +125,7 @@ void YBSessionData::FlushAsync(YBStatusCallback* callback) {
 Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
   if (!batcher_) {
     batcher_.reset(new Batcher(client_.get(), error_collector_.get(), shared_from_this(),
-                               external_consistency_mode_, transaction_));
+                               transaction_));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
     }
@@ -169,21 +165,6 @@ Status YBSessionData::SetFlushMode(YBSession::FlushMode mode) {
   }
 
   flush_mode_ = mode;
-  return Status::OK();
-}
-
-Status YBSessionData::SetExternalConsistencyMode(YBSession::ExternalConsistencyMode mode) {
-  if (batcher_ && batcher_->HasPendingOperations()) {
-    // TODO: there may be a more reasonable behavior here.
-    return STATUS(IllegalState, "Cannot change external consistency mode when writes are "
-        "buffered");
-  }
-  if (!tight_enum_test<YBSession::ExternalConsistencyMode>(mode)) {
-    // Be paranoid in client code.
-    return STATUS(InvalidArgument, "Bad external consistency mode");
-  }
-
-  external_consistency_mode_ = mode;
   return Status::OK();
 }
 

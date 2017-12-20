@@ -273,9 +273,6 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
                                            tablet_id));
   }
 
-  // Before playing any segments we set the safe and clean times to 'kMin' so that
-  // the MvccManager will accept all transactions that we replay as uncommitted.
-  tablet_->mvcc_manager()->OfflineAdjustSafeTime(HybridTime::kMin);
   RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
 
   // Flush the consensus metadata once at the end to persist our changes, if any.
@@ -290,15 +287,6 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
 Status TabletBootstrap::FinishBootstrap(const string& message,
                                         scoped_refptr<log::Log>* rebuilt_log,
                                         shared_ptr<TabletClass>* rebuilt_tablet) {
-  // Add a callback to TabletMetadata that makes sure that each time we flush the metadata
-  // we also wait for in-flights to finish and for their wal entry to be fsynced.
-  // This might be a bit conservative in some situations but it will prevent us from
-  // ever flushing the metadata referring to tablet data blocks containing data whose
-  // commit entries are not durable, a pre-requisite for recovery.
-  meta_->SetPreFlushCallback(
-      Bind(&FlushInflightsToLogCallback::WaitForInflightsAndFlushLog,
-           make_scoped_refptr(new FlushInflightsToLogCallback(tablet_.get(),
-                                                              log_))));
   tablet_->MarkFinishedBootstrapping();
   listener_->StatusMessage(message);
   rebuilt_tablet->reset(tablet_.release());
@@ -618,35 +606,6 @@ Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry,
     }
   }
 
-  // Non-tablet operations should not advance the safe time, because they are
-  // not started serially and so may have hybrid_times that are out of order.
-  if (op_type == consensus::NO_OP || op_type == consensus::CHANGE_CONFIG_OP) {
-    return Status::OK();
-  }
-
-  // Handle safe time advancement:
-  //
-  // If this operation has an external consistency mode other than COMMIT_WAIT, we know that no
-  // future transaction will have a hybrid_time that is lower than it, so we can just advance the
-  // safe hybrid_time to this operation's hybrid_time.
-  //
-  // If the hybrid clock is disabled, all transactions will fall into this category.
-  HybridTime safe_time;
-  if (replicate->write_request().external_consistency_mode() != COMMIT_WAIT) {
-    safe_time = HybridTime(replicate->hybrid_time());
-  // ... else we set the safe hybrid_time to be the transaction's hybrid_time minus the maximum
-  // clock error. This opens the door for problems if the flags changed across reboots, but this is
-  // unlikely and the problem would manifest itself immediately and clearly (mvcc would complain
-  // the operation is already committed, with a CHECK failure).
-  } else {
-    DCHECK(data_.clock->SupportsExternalConsistencyMode(COMMIT_WAIT))
-        << "The provided clock does not support COMMIT_WAIT external consistency mode.";
-    safe_time = server::HybridClock::AddPhysicalTimeToHybridTime(
-        HybridTime(replicate->hybrid_time()),
-        MonoDelta::FromMicroseconds(-FLAGS_max_clock_sync_error_usec));
-  }
-  tablet_->mvcc_manager()->OfflineAdjustSafeTime(safe_time);
-
   return Status::OK();
 }
 
@@ -811,18 +770,14 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   }
   LOG(INFO) << "rocksdb_applied_index=" << state.rocksdb_applied_index
             << ", number of orphaned replicates=" << consensus_info->orphaned_replicates.size();
-  // In case there were no log records that told us that the commit index advanced past
-  // rocksdb_applied_index, update safe time with the timestamp of the latest log record that
-  // had rocksdb_applied_index as its index, because that entry must be the one that was
-  // committed.
-  tablet_->mvcc_manager()->OfflineAdjustSafeTime(state.rocksdb_last_entry_hybrid_time);
-  if (tablet_->mvcc_manager()->GetMaxSafeTimeToReadAt() == HybridTime::kMin &&
-      state.rocksdb_applied_index > 0) {
+  // Check that we could assign last replicated hybrid time, when there was applied records.
+  if (state.rocksdb_last_entry_hybrid_time == HybridTime::kMin && state.rocksdb_applied_index > 0) {
     return STATUS(Corruption,
-                  "Even though RocksDB is not empty, we were not able to set safe time "
-                  "correctly on tablet bootstrap. Did we fail to keep at least one committed "
-                  "entry in the log?");
+                  "Even though RocksDB is not empty, we were not able to set last replicated "
+                  "hybrid time correctly on tablet bootstrap. Did we fail to keep at least one "
+                  "committed entry in the log?");
   }
+  tablet_->mvcc_manager()->SetLastReplicated(state.rocksdb_last_entry_hybrid_time);
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;
 
@@ -866,7 +821,7 @@ Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(alter_schema->schema(), &schema));
 
-  AlterSchemaOperationState operation_state(nullptr, alter_schema);
+  AlterSchemaOperationState operation_state(alter_schema);
 
   // TODO(KUDU-860): we should somehow distinguish if an alter table failed on its original
   // attempt (e.g due to being an invalid request, or a request with a too-early
@@ -949,6 +904,8 @@ Status TabletBootstrap::PlayRowOperations(WriteOperationState* operation_state,
   }
 
   tablet_->ApplyRowOperations(operation_state);
+
+  tablet_->mvcc_manager()->Replicated(operation_state->hybrid_time());
   return Status::OK();
 }
 

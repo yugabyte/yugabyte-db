@@ -882,42 +882,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // REQUIRES: there should be no pending writes -- call Flush() first to ensure.
   CHECKED_STATUS SetFlushMode(FlushMode m) WARN_UNUSED_RESULT;
 
-  // The possible external consistency modes on which YB operates.
-  enum ExternalConsistencyMode {
-    // The response to any write will contain a hybrid_time. Any further calls from the same
-    // client to other servers will update those servers with that hybrid_time. Following
-    // write operations from the same client will be assigned hybrid_times that are strictly
-    // higher, enforcing external consistency without having to wait or incur any latency
-    // penalties.
-    //
-    // In order to maintain external consistency for writes between two different clients
-    // in this mode, the user must forward the hybrid_time from the first client to the
-    // second by using YBClient::GetLatestObservedHybridTime() and
-    // YBClient::SetLatestObservedHybridTime().
-    //
-    // WARNING: Failure to propagate hybrid_time information through back-channels between
-    // two different clients will negate any external consistency guarantee under this
-    // mode.
-    //
-    // This is the default mode.
-    CLIENT_PROPAGATED,
-
-    // The server will guarantee that write operations from the same or from other client
-    // are externally consistent, without the need to propagate hybrid_times across clients.
-    // This is done by making write operations wait until there is certainty that all
-    // follow up write operations (operations that start after the previous one finishes)
-    // will be assigned a hybrid_time that is strictly higher, enforcing external consistency.
-    //
-    // WARNING: Depending on the clock synchronization state of TabletServers this may
-    // imply considerable latency. Moreover operations in COMMIT_WAIT external consistency
-    // mode will outright fail if TabletServer clocks are either unsynchronized or
-    // synchronized but with a maximum error which surpasses a pre-configured threshold.
-    COMMIT_WAIT
-  };
-
-  // Set the new external consistency mode for this session.
-  CHECKED_STATUS SetExternalConsistencyMode(ExternalConsistencyMode m) WARN_UNUSED_RESULT;
-
   // Set the amount of buffer space used by this session for outbound writes.
   // The effect of the buffer size varies based on the flush mode of the
   // session:
@@ -1071,35 +1035,6 @@ class YBNoOp {
 // scanners on different threads may share a single YBTable object.
 class YBScanner {
  public:
-  // The possible read modes for scanners.
-  enum ReadMode {
-    // When READ_LATEST is specified the server will always return committed writes at
-    // the time the request was received. This type of read does not return a snapshot
-    // hybrid_time and is not repeatable.
-    //
-    // In ACID terms this corresponds to Isolation mode: "Read Committed"
-    //
-    // This is the default mode.
-    READ_LATEST,
-
-    // When READ_AT_SNAPSHOT is specified the server will attempt to perform a read
-    // at the provided hybrid_time. If no hybrid_time is provided the server will take the
-    // current time as the snapshot hybrid_time. In this mode reads are repeatable, i.e.
-    // all future reads at the same hybrid_time will yield the same data. This is
-    // performed at the expense of waiting for in-flight transactions whose hybrid_time
-    // is lower than the snapshot's hybrid_time to complete, so it might incur a latency
-    // penalty.
-    //
-    // In ACID terms this, by itself, corresponds to Isolation mode "Repeatable
-    // Read". If all writes to the scanned tablet are made externally consistent,
-    // then this corresponds to Isolation mode "Strict-Serializable".
-    //
-    // Note: there currently "holes", which happen in rare edge conditions, by which writes
-    // are sometimes not externally consistent even when action was taken to make them so.
-    // In these cases Isolation may degenerate to mode "Read Committed". See KUDU-430.
-    READ_AT_SNAPSHOT
-  };
-
   // Whether the rows should be returned in order. This affects the fault-tolerance properties
   // of a scanner.
   enum OrderMode {
@@ -1253,9 +1188,6 @@ class YBScanner {
   // TODO: kill this in favor of a consistency-level-based API
   CHECKED_STATUS SetSelection(YBClient::ReplicaSelection selection) WARN_UNUSED_RESULT;
 
-  // Sets the ReadMode. Default is READ_LATEST.
-  CHECKED_STATUS SetReadMode(ReadMode read_mode) WARN_UNUSED_RESULT;
-
   // DEPRECATED: use SetFaultTolerant.
   CHECKED_STATUS SetOrderMode(OrderMode order_mode) WARN_UNUSED_RESULT;
 
@@ -1270,14 +1202,6 @@ class YBScanner {
   // fault-tolerant scans. Fault tolerant scans use READ_AT_SNAPSHOT mode,
   // if no snapshot hybrid_time is provided, the server will pick one.
   CHECKED_STATUS SetFaultTolerant() WARN_UNUSED_RESULT;
-
-  // Sets the snapshot hybrid_time, in microseconds since the epoch, for scans in
-  // READ_AT_SNAPSHOT mode.
-  CHECKED_STATUS SetSnapshotMicros(uint64_t snapshot_hybrid_time_micros) WARN_UNUSED_RESULT;
-
-  // Sets the snapshot hybrid_time in raw encoded form (i.e. as returned by a
-  // previous call to a server), for scans in READ_AT_SNAPSHOT mode.
-  CHECKED_STATUS SetSnapshotRaw(uint64_t snapshot_hybrid_time) WARN_UNUSED_RESULT;
 
   // Sets the maximum time that Open() and NextBatch() are allowed to take.
   CHECKED_STATUS SetTimeoutMillis(int millis);

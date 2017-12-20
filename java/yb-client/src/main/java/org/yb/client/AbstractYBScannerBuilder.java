@@ -51,12 +51,10 @@ public abstract class AbstractYBScannerBuilder
   final YBTable table;
   final List<Tserver.ColumnRangePredicatePB> columnRangePredicates;
 
-  AsyncYBScanner.ReadMode readMode = AsyncYBScanner.ReadMode.READ_LATEST;
   int batchSizeBytes = 1024*1024;
   long limit = Long.MAX_VALUE;
   boolean prefetching = false;
   boolean cacheBlocks = true;
-  long htTimestamp = AsyncYBClient.NO_TIMESTAMP;
   byte[] lowerBoundPrimaryKey = AsyncYBClient.EMPTY_ARRAY;
   byte[] upperBoundPrimaryKey = AsyncYBClient.EMPTY_ARRAY;
   byte[] lowerBoundPartitionKey = AsyncYBClient.EMPTY_ARRAY;
@@ -70,16 +68,6 @@ public abstract class AbstractYBScannerBuilder
     this.table = table;
     this.columnRangePredicates = new ArrayList<>();
     this.scanRequestTimeout = client.getDefaultOperationTimeoutMs();
-  }
-
-  /**
-   * Sets the read mode, the default is to read the latest values.
-   * @param readMode a read mode for the scanner
-   * @return this instance
-   */
-  public S readMode(AsyncYBScanner.ReadMode readMode) {
-    this.readMode = readMode;
-    return (S) this;
   }
 
   /**
@@ -185,35 +173,6 @@ public abstract class AbstractYBScannerBuilder
    */
   public S cacheBlocks(boolean cacheBlocks) {
     this.cacheBlocks = cacheBlocks;
-    return (S) this;
-  }
-
-  /**
-   * Sets a previously encoded HT timestamp as a snapshot timestamp, for tests. None is used by
-   * default.
-   * Requires that the ReadMode is READ_AT_SNAPSHOT.
-   * @param htTimestamp a long representing a HybridClock-encoded timestamp
-   * @return this instance
-   * @throws IllegalArgumentException on build(), if the timestamp is less than 0 or if the
-   *                                  read mode was not set to READ_AT_SNAPSHOT
-   */
-  @InterfaceAudience.Private
-  public S snapshotTimestampRaw(long htTimestamp) {
-    this.htTimestamp = htTimestamp;
-    return (S) this;
-  }
-
-  /**
-   * Sets the timestamp the scan must be executed at, in microseconds since the Unix epoch. None is
-   * used by default.
-   * Requires that the ReadMode is READ_AT_SNAPSHOT.
-   * @param timestamp a long representing an instant in microseconds since the unix epoch.
-   * @return this instance
-   * @throws IllegalArgumentException on build(), if the timestamp is less than 0 or if the
-   *                                  read mode was not set to READ_AT_SNAPSHOT
-   */
-  public S snapshotTimestampMicros(long timestamp) {
-    this.htTimestamp = HybridTimeUtil.physicalAndLogicalToHTTimestamp(timestamp, 0);
     return (S) this;
   }
 

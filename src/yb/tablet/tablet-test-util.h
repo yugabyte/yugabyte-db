@@ -116,7 +116,7 @@ class YBTabletTest : public YBTest {
     tserver::AlterSchemaRequestPB req;
     req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
-    AlterSchemaOperationState operation_state(nullptr, &req);
+    AlterSchemaOperationState operation_state(nullptr, nullptr, &req);
     ASSERT_OK(tablet()->CreatePreparedAlterSchema(&operation_state, &schema));
     ASSERT_OK(tablet()->AlterSchema(&operation_state));
     operation_state.Finish();
@@ -164,62 +164,6 @@ static inline CHECKED_STATUS IterateToStringList(RowwiseIterator *iter,
     out->push_back(std::move(p.second));
   }
   return Status::OK();
-}
-
-// Performs snapshot reads, under each of the snapshots in 'snaps', and stores
-// the results in 'collected_rows'.
-static inline void CollectRowsForSnapshots(Tablet* tablet,
-                                           const Schema& schema,
-                                           const vector<MvccSnapshot>& snaps,
-                                           vector<vector<string>* >* collected_rows) {
-  for (const MvccSnapshot& snapshot : snaps) {
-    DVLOG(1) << "Snapshot: " <<  snapshot.ToString();
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet->NewRowIterator(schema,
-                                     snapshot,
-                                     Tablet::UNORDERED,
-                                     boost::none,
-                                     &iter));
-    ScanSpec scan_spec;
-    ASSERT_OK(iter->Init(&scan_spec));
-    auto collector = new vector<string>();
-    ASSERT_OK(IterateToStringList(iter.get(), collector));
-    for (const auto& mrs : *collector) {
-      DVLOG(1) << "Got from MRS: " << mrs;
-    }
-    collected_rows->push_back(collector);
-  }
-}
-
-// Performs snapshot reads, under each of the snapshots in 'snaps', and verifies that
-// the results match the ones in 'expected_rows'.
-static inline void VerifySnapshotsHaveSameResult(Tablet* tablet,
-                                                 const Schema& schema,
-                                                 const vector<MvccSnapshot>& snaps,
-                                                 const vector<vector<string>* >& expected_rows) {
-  int idx = 0;
-  // Now iterate again and make sure we get the same thing.
-  for (const MvccSnapshot& snapshot : snaps) {
-    DVLOG(1) << "Snapshot: " <<  snapshot.ToString();
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet->NewRowIterator(schema,
-                                     snapshot,
-                                     Tablet::UNORDERED,
-                                     boost::none,
-                                     &iter));
-    ScanSpec scan_spec;
-    ASSERT_OK(iter->Init(&scan_spec));
-    vector<string> collector;
-    ASSERT_OK(IterateToStringList(iter.get(), &collector));
-    ASSERT_EQ(collector.size(), expected_rows[idx]->size());
-
-    for (int i = 0; i < expected_rows[idx]->size(); i++) {
-      DVLOG(1) << "Got from DRS: " << collector[i];
-      DVLOG(1) << "Expected: " << (*expected_rows[idx])[i];
-      ASSERT_EQ((*expected_rows[idx])[i], collector[i]);
-    }
-    idx++;
-  }
 }
 
 // Take an un-initialized iterator, Init() it, and iterate through all of its rows.

@@ -49,15 +49,10 @@
 namespace yb {
 
 namespace tablet {
-class TabletPeer;
+
+class Tablet;
 class OperationCompletionCallback;
 class OperationState;
-
-// All metrics associated with a Operation.
-struct OperationMetrics {
-  void Reset();
-  uint64_t commit_wait_duration_usec = 0;
-};
 
 // Base class for transactions.
 // There are different implementations for different types (Write, AlterSchema, etc.).
@@ -114,7 +109,7 @@ class Operation {
   // hybrid_time is only available on the LEADER's commit message.
   // Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
-  virtual void  Start() = 0;
+  virtual void Start() = 0;
 
   // Executes the Apply() phase of the transaction, the actual actions of
   // this phase depend on the transaction type, but usually this is the
@@ -176,17 +171,8 @@ class OperationState {
     return consensus_round_.get();
   }
 
-  TabletPeer* tablet_peer() const {
-    return tablet_peer_;
-  }
-
-  // Return metrics related to this transaction.
-  const OperationMetrics& metrics() const {
-    return tx_metrics_;
-  }
-
-  OperationMetrics* mutable_metrics() {
-    return &tx_metrics_;
+  Tablet* tablet() const {
+    return tablet_;
   }
 
   void set_completion_callback(std::unique_ptr<OperationCompletionCallback> completion_clbk) {
@@ -247,19 +233,13 @@ class OperationState {
     return op_id_;
   }
 
-  ExternalConsistencyMode external_consistency_mode() const {
-    return external_consistency_mode_;
-  }
-
   virtual ~OperationState();
 
  protected:
-  explicit OperationState(TabletPeer* tablet_peer);
-
-  OperationMetrics tx_metrics_;
+  explicit OperationState(Tablet* tablet);
 
   // The tablet peer that is coordinating this transaction.
-  TabletPeer* const tablet_peer_;
+  Tablet* const tablet_;
 
   // Optional callback to be called once the transaction completes.
   std::unique_ptr<OperationCompletionCallback> completion_clbk_;
@@ -278,9 +258,6 @@ class OperationState {
   consensus::OpId op_id_;
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
-
-  // The defined consistency mode for this transaction.
-  ExternalConsistencyMode external_consistency_mode_;
 
   // Lock that protects access to operation state.
   mutable simple_spinlock mutex_;

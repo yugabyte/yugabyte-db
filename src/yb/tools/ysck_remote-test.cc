@@ -227,7 +227,7 @@ TEST_F(RemoteYsckTest, TestChecksum) {
     ASSERT_OK(ysck_->FetchTableAndTabletInfo());
     s = ysck_->ChecksumData(vector<string>(),
                             vector<string>(),
-                            ChecksumOptions(MonoDelta::FromSeconds(1), 16, false, 0));
+                            ChecksumOptions(MonoDelta::FromSeconds(1), 16));
     if (s.ok()) {
       break;
     }
@@ -244,7 +244,7 @@ TEST_F(RemoteYsckTest, TestChecksumTimeout) {
   // Use an impossibly low timeout value of zero!
   Status s = ysck_->ChecksumData(vector<string>(),
                                  vector<string>(),
-                                 ChecksumOptions(MonoDelta::FromNanoseconds(0), 16, false, 0));
+                                 ChecksumOptions(MonoDelta::FromNanoseconds(0), 16));
   ASSERT_TRUE(s.IsTimedOut()) << "Expected TimedOut Status, got: " << s.ToString();
 }
 
@@ -275,7 +275,7 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
   while (true) {
     ASSERT_OK(ysck_->FetchTableAndTabletInfo());
     Status s = ysck_->ChecksumData(vector<string>(), vector<string>(),
-                                   ChecksumOptions(MonoDelta::FromSeconds(10), 16, true, ts));
+                                   ChecksumOptions(MonoDelta::FromSeconds(10), 16));
     if (s.ok()) break;
     if (deadline.ComesBefore(MonoTime::Now())) break;
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -313,8 +313,7 @@ TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentHybridTime) {
 
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   ASSERT_OK(ysck_->ChecksumData(vector<string>(), vector<string>(),
-                                ChecksumOptions(MonoDelta::FromSeconds(10), 16, true,
-                                                ChecksumOptions::kCurrentHybridTime)));
+                                ChecksumOptions(MonoDelta::FromSeconds(10), 16)));
   continue_writing.Store(false);
   ASSERT_OK(promise.Get());
   writer_thread->Join();

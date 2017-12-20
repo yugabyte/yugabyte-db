@@ -98,19 +98,10 @@ using docdb::LockBatch;
 // NOTE: this class isn't thread safe.
 class WriteOperationState : public OperationState {
  public:
-  WriteOperationState(TabletPeer* tablet_peer = nullptr,
+  WriteOperationState(Tablet* tablet = nullptr,
                       const tserver::WriteRequestPB *request = nullptr,
                       tserver::WriteResponsePB *response = nullptr);
   virtual ~WriteOperationState();
-
-  // Returns the result of this transaction in its protocol buffers form.
-  // The transaction result holds information on exactly which memory stores
-  // were mutated in the context of this transaction and can be used to
-  // perform recovery.
-  //
-  // This releases part of the state of the transaction, and will crash
-  // if called more than once.
-  void ReleaseTxResultPB(TxResultPB* result) const;
 
   // Returns the original client request for this transaction, if there was
   // one.
@@ -132,33 +123,15 @@ class WriteOperationState : public OperationState {
     return response_;
   }
 
-  // Set the MVCC transaction associated with this Write operation.
-  // This must be called exactly once, during the PREPARE phase just
-  // after the MvccManager has assigned a hybrid_time.
-  // This also copies the hybrid_time from the MVCC transaction into the
-  // WriteOperationState object.
-  void SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOperation> mvcc_tx);
-
-  // Notifies the MVCC manager that this operation is about to start applying
-  // its in-memory edits. After this method is called, the transaction _must_
-  // Commit() within a bounded amount of time (there may be other threads
-  // blocked on it).
-  void StartApplying();
-
   // Commits the Mvcc transaction and releases the component lock. After
   // this method is called all the inserts and mutations will become
   // visible to other transactions.
-  //
-  // Only one of Commit() or Abort() should be called.
-  // REQUIRES: StartApplying() was called.
   //
   // Note: request_ and response_ are set to nullptr after this method returns.
   void Commit();
 
   // Aborts the mvcc transaction and releases the component lock.
   // Only one of Commit() or Abort() should be called.
-  //
-  // REQUIRES: StartApplying() must never have been called.
   void Abort();
 
   // Returns all the prepared row writes for this transaction. Usually called
@@ -196,9 +169,6 @@ class WriteOperationState : public OperationState {
   // A copy is made at initialization, so we don't need to reset it.
   void ResetRpcFields();
 
-  // Sets mvcc_tx_ to nullptr after commit/abort in a thread-safe manner.
-  void ResetMvccTx(std::function<void(ScopedWriteOperation*)> txn_action);
-
   // pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // transaction was not initiated by an RPC call.
@@ -217,17 +187,6 @@ class WriteOperationState : public OperationState {
   // Store the ids that have been locked for DocDB transaction. They need to be released on commit
   // or if an error happens.
   LockBatch docdb_locks_;
-
-  // The MVCC transaction, set up during PREPARE phase
-  std::unique_ptr<ScopedWriteOperation> mvcc_tx_;
-
-  // A lock protecting mvcc_tx_. This is important at least because mvcc_tx_ can be reset to nullptr
-  // when a transaction is being aborted (e.g. on server shutdown), and we don't want that to race
-  // with committing the transaction.
-  // TODO(mbautin): figure out why Kudu did not need this originally. Maybe that's because a
-  //                transaction cannot be aborted after the Apply process has started? See if
-  //                we actually get counterexamples for this in tests.
-  std::mutex mvcc_tx_mutex_;
 
   DISALLOW_COPY_AND_ASSIGN(WriteOperationState);
 };
@@ -290,7 +249,7 @@ class WriteOperation : public Operation {
   // this transaction's start time
   MonoTime start_time_;
 
-  TabletPeer* tablet_peer() { return state()->tablet_peer(); }
+  Tablet* tablet() { return state()->tablet(); }
 
   DISALLOW_COPY_AND_ASSIGN(WriteOperation);
 };

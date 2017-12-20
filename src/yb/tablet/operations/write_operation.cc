@@ -107,7 +107,7 @@ Status WriteOperation::Prepare() {
 
 void WriteOperation::Start() {
   TRACE("Start()");
-  state()->tablet_peer()->tablet()->StartOperation(state());
+  state()->tablet()->StartOperation(state());
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,
@@ -123,7 +123,7 @@ Status WriteOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_tablet_inject_latency_on_apply_write_txn_ms));
   }
 
-  Tablet* tablet = state()->tablet_peer()->tablet();
+  Tablet* tablet = state()->tablet();
 
   tablet->ApplyRowOperations(state());
 
@@ -137,7 +137,7 @@ void WriteOperation::PreCommit() {
   TRACE_EVENT0("txn", "WriteOperation::PreCommit");
   TRACE("PRECOMMIT: Releasing row and schema locks");
   // Perform early lock release after we've applied all changes
-  state()->ReleaseDocDbLocks(tablet_peer()->tablet());
+  state()->ReleaseDocDbLocks(tablet());
 }
 
 void WriteOperation::Finish(OperationResult result) {
@@ -154,25 +154,10 @@ void WriteOperation::Finish(OperationResult result) {
   TRACE("FINISH: making edits visible");
   state()->Commit();
 
-  TabletMetrics* metrics = state()->tablet_peer()->tablet()->metrics();
-  if (metrics) {
-    if (type() == consensus::LEADER) {
-      if (state()->external_consistency_mode() == COMMIT_WAIT) {
-        metrics->commit_wait_duration->Increment(state()->metrics().commit_wait_duration_usec);
-      }
-      uint64_t op_duration_usec =
-          MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds();
-      switch (state()->external_consistency_mode()) {
-        case CLIENT_PROPAGATED:
-          metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
-          break;
-        case COMMIT_WAIT:
-          metrics->write_op_duration_commit_wait_consistency->Increment(op_duration_usec);
-          break;
-        case UNKNOWN_EXTERNAL_CONSISTENCY_MODE:
-          break;
-      }
-    }
+  TabletMetrics* metrics = tablet()->metrics();
+  if (metrics && type() == consensus::LEADER) {
+    auto op_duration_usec = MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds();
+    metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
   }
 }
 
@@ -186,46 +171,22 @@ string WriteOperation::ToString() const {
                     DriverType_Name(type()), abs_time_formatted, state()->ToString());
 }
 
-WriteOperationState::WriteOperationState(TabletPeer* tablet_peer,
+WriteOperationState::WriteOperationState(Tablet* tablet,
                                          const tserver::WriteRequestPB *request,
                                          tserver::WriteResponsePB *response)
-    : OperationState(tablet_peer),
+    : OperationState(tablet),
       // We need to copy over the request from the RPC layer, as we're modifying it in the tablet
       // layer.
       request_(request ? new WriteRequestPB(*request) : nullptr),
-      response_(response),
-      mvcc_tx_(nullptr) {
-  if (request) {
-    external_consistency_mode_ = request->external_consistency_mode();
-  } else {
-    external_consistency_mode_ = CLIENT_PROPAGATED;
-  }
-}
-
-void WriteOperationState::SetMvccTxAndHybridTime(std::unique_ptr<ScopedWriteOperation> mvcc_tx) {
-  DCHECK(!mvcc_tx_) << "Mvcc operation already started/set.";
-  if (has_hybrid_time()) {
-    DCHECK_EQ(hybrid_time(), mvcc_tx->hybrid_time());
-  } else {
-    set_hybrid_time(mvcc_tx->hybrid_time());
-  }
-
-  lock_guard<mutex> lock(mvcc_tx_mutex_);
-  mvcc_tx_ = std::move(mvcc_tx);
-}
-
-void WriteOperationState::StartApplying() {
-  lock_guard<mutex> lock(mvcc_tx_mutex_);
-  if (!mvcc_tx_) {
-    LOG(INFO) << "mvcc_tx is nullptr for hybrid_time " << hybrid_time() << ":\n" << GetStackTrace();
-  }
-  CHECK_NOTNULL(mvcc_tx_.get())->StartApplying();
+      response_(response) {
 }
 
 void WriteOperationState::Abort() {
-  ResetMvccTx([](ScopedWriteOperation* mvcc_tx) { mvcc_tx->Abort(); });
+  if (hybrid_time_.is_valid()) {
+    tablet()->mvcc_manager()->Aborted(hybrid_time_);
+  }
 
-  ReleaseDocDbLocks(tablet_peer()->tablet());
+  ReleaseDocDbLocks(tablet());
 
   // After aborting, we may respond to the RPC and delete the
   // original request, so null them out here.
@@ -233,19 +194,11 @@ void WriteOperationState::Abort() {
 }
 
 void WriteOperationState::Commit() {
-  ResetMvccTx([](ScopedWriteOperation* mvcc_tx) { mvcc_tx->Commit(); });
+  tablet()->mvcc_manager()->Replicated(hybrid_time_);
 
   // After committing, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
-}
-
-void WriteOperationState::ReleaseTxResultPB(TxResultPB* result) const {
-  result->Clear();
-  result->mutable_ops()->Reserve(row_ops_.size());
-  for (RowOp* op : row_ops_) {
-    result->mutable_ops()->AddAllocated(CHECK_NOTNULL(op->result.release()));
-  }
 }
 
 void WriteOperationState::ReleaseDocDbLocks(Tablet* tablet) {
@@ -262,9 +215,6 @@ WriteOperationState::~WriteOperationState() {
 }
 
 void WriteOperationState::Reset() {
-  // We likely shouldn't Commit() here. See KUDU-625.
-  Commit();
-  tx_metrics_.Reset();
   hybrid_time_ = HybridTime::kInvalidHybridTime;
 }
 
@@ -272,15 +222,6 @@ void WriteOperationState::ResetRpcFields() {
   std::lock_guard<simple_spinlock> l(mutex_);
   response_ = nullptr;
   STLDeleteElements(&row_ops_);
-}
-
-void WriteOperationState::ResetMvccTx(std::function<void(ScopedWriteOperation*)> txn_action) {
-  lock_guard<mutex> lock(mvcc_tx_mutex_);
-  if (mvcc_tx_.get() != nullptr) {
-    // Abort the operation.
-    txn_action(mvcc_tx_.get());
-  }
-  mvcc_tx_.reset();
 }
 
 string WriteOperationState::ToString() const {

@@ -108,18 +108,6 @@ METRIC_DEFINE_histogram(tablet, write_op_duration_client_propagated_consistency,
   "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.",
   60000000LU, 2);
 
-METRIC_DEFINE_histogram(tablet, write_op_duration_commit_wait_consistency,
-  "Write Op Duration with Commit-Wait Consistency",
-  yb::MetricUnit::kMicroseconds,
-  "Duration of writes to this tablet with external consistency set to COMMIT_WAIT.",
-  60000000LU, 2);
-
-METRIC_DEFINE_histogram(tablet, commit_wait_duration,
-  "Commit-Wait Duration",
-  yb::MetricUnit::kMicroseconds,
-  "Time spent waiting for COMMIT_WAIT external consistency writes for this tablet.",
-  60000000LU, 2);
-
 METRIC_DEFINE_histogram(tablet, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
   yb::MetricUnit::kMicroseconds,
@@ -188,13 +176,11 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(scanner_cells_scanned_from_disk),
     MINIT(scanner_bytes_scanned_from_disk),
     MINIT(scans_started),
-    MINIT(commit_wait_duration),
     MINIT(snapshot_read_inflight_wait_duration),
     MINIT(redis_read_latency),
     MINIT(ql_read_latency),
     MINIT(write_lock_latency),
     MINIT(write_op_duration_client_propagated_consistency),
-    MINIT(write_op_duration_commit_wait_consistency),
     MINIT(leader_memory_pressure_rejections) {
 }
 #undef MINIT

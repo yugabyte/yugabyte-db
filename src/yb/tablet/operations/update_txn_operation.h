@@ -28,11 +28,11 @@ class TransactionCoordinator;
 
 class UpdateTxnOperationState : public OperationState {
  public:
-  UpdateTxnOperationState(TabletPeer* tablet_peer, const tserver::TransactionStatePB* request)
-      : OperationState(tablet_peer), request_(request) {}
+  UpdateTxnOperationState(Tablet* tablet, const tserver::TransactionStatePB* request)
+      : OperationState(tablet), request_(request) {}
 
-  explicit UpdateTxnOperationState(TabletPeer* tablet_peer)
-      : UpdateTxnOperationState(tablet_peer, nullptr) {}
+  explicit UpdateTxnOperationState(Tablet* tablet)
+      : UpdateTxnOperationState(tablet, nullptr) {}
 
   const tserver::TransactionStatePB* request() const override {
     return request_.load(std::memory_order_acquire);

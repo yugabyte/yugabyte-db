@@ -178,7 +178,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      auto state = std::make_unique<WriteOperationState>(tablet_peer_.get(), &req, &resp);
+      auto state = std::make_unique<WriteOperationState>(tablet_peer_->tablet(), &req, &resp);
       typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
       state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
       ASSERT_OK(tablet_peer_->SubmitWrite(std::move(state)));

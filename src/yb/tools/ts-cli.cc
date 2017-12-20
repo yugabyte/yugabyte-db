@@ -273,7 +273,6 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   new_req->set_tablet_id(tablet_id);
   new_req->set_cache_blocks(false);
   new_req->set_order_mode(ORDERED);
-  new_req->set_read_mode(READ_AT_SNAPSHOT);
 
   vector<YBRowResult> rows;
   while (true) {

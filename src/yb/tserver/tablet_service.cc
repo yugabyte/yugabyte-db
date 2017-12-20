@@ -551,7 +551,8 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
     return;
   }
 
-  auto operation_state = std::make_unique<AlterSchemaOperationState>(tablet_peer.get(), req);
+  auto operation_state = std::make_unique<AlterSchemaOperationState>(
+      tablet_peer->tablet(), tablet_peer->log(), req);
 
   operation_state->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -581,7 +582,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet_peer.get(),
+  auto state = std::make_unique<tablet::UpdateTxnOperationState>(tablet_peer->tablet(),
                                                                  &req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
@@ -741,42 +742,6 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   context.RespondSuccess();
 }
 
-Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
-                                           const RpcContext* rpc_context,
-                                           const HybridTime& hybrid_time,
-                                           tablet::MvccSnapshot* snap) {
-  // Wait for the in-flights in the snapshot to be finished.
-  // We'll use the client-provided deadline, but not if it's more than
-  // FLAGS_max_wait_for_safe_time_ms from now -- it's better to make the client retry than hold RPC
-  // threads busy.
-  //
-  // TODO(KUDU-1127): even this may not be sufficient -- perhaps we should check how long it
-  // has been since the MVCC manager was able to advance its safe time. If it has been
-  // a long time, it's likely that the majority of voters for this tablet are down
-  // and some writes are "stuck" and therefore won't be committed.
-  MonoTime client_deadline = rpc_context->GetClientDeadline();
-  // Subtract a little bit from the client deadline so that it's more likely we actually
-  // have time to send our response sent back before it times out.
-  client_deadline.AddDelta(MonoDelta::FromMilliseconds(-10));
-
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_max_wait_for_safe_time_ms));
-  if (client_deadline.ComesBefore(deadline)) {
-    deadline = client_deadline;
-  }
-
-  TRACE("Waiting for operations in snapshot to commit");
-  MonoTime before = MonoTime::Now();
-  RETURN_NOT_OK_PREPEND(
-      tablet->mvcc_manager()->WaitForCleanSnapshotAtHybridTime(hybrid_time, snap, deadline),
-      "could not wait for desired snapshot hybrid_time to be consistent");
-
-  uint64_t duration_usec = MonoTime::Now().GetDeltaSince(before).ToMicroseconds();
-  tablet->metrics()->snapshot_read_inflight_wait_duration->Increment(duration_usec);
-  TRACE("All operations in snapshot committed. Waited for $0 microseconds", duration_usec);
-  return Status::OK();
-}
-
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
@@ -795,15 +760,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   tablet::TabletPeerPtr tablet_peer;
   tablet::TabletPtr tablet;
   if (!PrepareModify(*req, resp, &context, &tablet_peer, &tablet)) {
-    return;
-  }
-
-  if (!server_->Clock()->SupportsExternalConsistencyMode(req->external_consistency_mode())) {
-    Status s = STATUS(NotSupported, "The configured clock does not support the"
-        " required consistency mode.");
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         &context);
     return;
   }
 
@@ -832,7 +788,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  auto operation_state = std::make_unique<WriteOperationState>(tablet_peer.get(), req, resp);
+  auto operation_state = std::make_unique<WriteOperationState>(tablet_peer->tablet(), req, resp);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));
   operation_state->set_completion_callback(
@@ -1732,15 +1688,6 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     return STATUS(InvalidArgument, "User requests should not have Column IDs");
   }
 
-  if (scan_pb.order_mode() == ORDERED) {
-    // Ordered scans must be at a snapshot so that we perform a serializable read (which can be
-    // resumed). Otherwise, this would be read committed isolation, which is not resumable.
-    if (scan_pb.read_mode() != READ_AT_SNAPSHOT) {
-      *error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
-      return STATUS(InvalidArgument, "Cannot do an ordered scan that is not a snapshot read");
-    }
-  }
-
   gscoped_ptr<ScanSpec> spec;
 
   // Missing columns will contain the columns that are not mentioned in the client
@@ -1782,33 +1729,11 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     TRACE("Creating iterator");
     TRACE_EVENT0("tserver", "Create iterator");
 
-    switch (scan_pb.read_mode()) {
-      case UNKNOWN_READ_MODE: {
-        *error_code = TabletServerErrorPB::INVALID_SCAN_SPEC;
-        s = STATUS(NotSupported, "Unknown read mode.");
-        return s;
-      }
-      case READ_LATEST: {
-        Result<boost::optional<TransactionId>> txn_id = GetTransactionId(*req);
-        if (!txn_id.ok()) {
-          s = txn_id.status();
-          break;
-        }
-        s = tablet->NewRowIterator(projection, *txn_id, &iter);
-        break;
-      }
-      case READ_AT_SNAPSHOT: {
-        Result<boost::optional<TransactionId>> txn_id = GetTransactionId(*req);
-        if (!txn_id.ok()) {
-          s = txn_id.status();
-          break;
-        }
-        s = HandleScanAtSnapshot(
-            scan_pb, rpc_context, projection, tablet, *txn_id, &iter, snap_hybrid_time);
-        if (!s.ok()) {
-          tmp_error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
-        }
-      }
+    Result<boost::optional<TransactionId>> txn_id = GetTransactionId(*req);
+    if (!txn_id.ok()) {
+      s = txn_id.status();
+    } else {
+      s = tablet->NewRowIterator(projection, *txn_id, &iter);
     }
     TRACE("Iterator created");
   }
@@ -2002,67 +1927,6 @@ Status TabletServiceImpl::HandleContinueScanRequest(const ScanRequestPB* req,
     VLOG(2) << "Scanner " << scanner->id() << " complete: removing...";
   }
 
-  return Status::OK();
-}
-
-Status TabletServiceImpl::HandleScanAtSnapshot(
-    const NewScanRequestPB& scan_pb,
-    const RpcContext* rpc_context,
-    const Schema& projection,
-    const shared_ptr<Tablet>& tablet,
-    const boost::optional<TransactionId>& transaction_id,
-    gscoped_ptr<RowwiseIterator>* iter,
-    HybridTime* snap_hybrid_time) {
-
-  // TODO check against the earliest boundary (i.e. how early can we go) right
-  // now we're keeping all undos/redos forever!
-
-  // If the client sent a hybrid_time update our clock with it.
-  if (scan_pb.has_propagated_hybrid_time()) {
-    HybridTime propagated_hybrid_time(scan_pb.propagated_hybrid_time());
-
-    // Update the clock so that we never generate snapshots lower that
-    // 'propagated_hybrid_time'. If 'propagated_hybrid_time' is lower than
-    // 'now' this call has no effect. If 'propagated_hybrid_time' is too much
-    // into the future this will fail and we abort.
-    server_->Clock()->Update(propagated_hybrid_time);
-  }
-
-  HybridTime tmp_snap_hybrid_time;
-
-  // If the client provided no snapshot hybrid_time we take the current clock
-  // time as the snapshot hybrid_time.
-  if (!scan_pb.has_snap_hybrid_time()) {
-    tmp_snap_hybrid_time = server_->Clock()->Now();
-    // ... else we use the client provided one, but make sure it is not too far
-    // in the future as to be invalid.
-  } else {
-    RETURN_NOT_OK(tmp_snap_hybrid_time.FromUint64(scan_pb.snap_hybrid_time()));
-    HybridTime max_allowed_ts;
-    Status s = server_->Clock()->GetGlobalLatest(&max_allowed_ts);
-    if (!s.ok()) {
-      return STATUS(NotSupported, "Snapshot scans not supported on this server",
-                    s.ToString());
-    }
-    if (tmp_snap_hybrid_time.CompareTo(max_allowed_ts) > 0) {
-      return STATUS(InvalidArgument,
-                    Substitute("Snapshot time $0 in the future. Max allowed hybrid_time is $1",
-                               server_->Clock()->Stringify(tmp_snap_hybrid_time),
-                               server_->Clock()->Stringify(max_allowed_ts)));
-    }
-  }
-
-  tablet::MvccSnapshot snap;
-  RETURN_NOT_OK(TakeReadSnapshot(tablet.get(), rpc_context, tmp_snap_hybrid_time, &snap));
-
-  tablet::Tablet::OrderMode order;
-  switch (scan_pb.order_mode()) {
-    case UNORDERED: order = tablet::Tablet::UNORDERED; break;
-    case ORDERED: order = tablet::Tablet::ORDERED; break;
-    default: LOG(FATAL) << "Unexpected order mode.";
-  }
-  RETURN_NOT_OK(tablet->NewRowIterator(projection, snap, order, transaction_id, iter));
-  *snap_hybrid_time = tmp_snap_hybrid_time;
   return Status::OK();
 }
 

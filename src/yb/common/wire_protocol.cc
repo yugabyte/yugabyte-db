@@ -194,7 +194,8 @@ Status StatusFromPB(const AppStatusPB& pb) {
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();
-      return STATUS(RuntimeError, "(unknown error code)", pb.message(), posix_code);
+      return STATUS_FORMAT(
+          RuntimeError, "($0 unknown): $1, $2", pb.code(), pb.message(), posix_code);
   }
 }
 

@@ -168,10 +168,6 @@ class ChecksumStepper {
         req_.mutable_new_request()->mutable_projected_columns()->CopyFrom(cols_);
         req_.mutable_new_request()->set_tablet_id(tablet_id_);
         req_.mutable_new_request()->set_cache_blocks(FLAGS_checksum_cache_blocks);
-        if (options_.use_snapshot) {
-          req_.mutable_new_request()->set_read_mode(READ_AT_SNAPSHOT);
-          req_.mutable_new_request()->set_snap_hybrid_time(options_.snapshot_hybrid_time);
-        }
         rpc_.set_timeout(GetDefaultTimeout());
         break;
       }

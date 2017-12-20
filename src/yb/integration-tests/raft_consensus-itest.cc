@@ -1269,8 +1269,8 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   // But, we should have at least as many as we got confirmation for.
   ClusterVerifier cluster_verifier(cluster_.get());
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
-  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
-                            workload.rows_inserted()));
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+      workload.table_name(), ClusterVerifier::AT_LEAST, workload.rows_inserted()));
   ASSERT_NO_FATALS(AssertNoTabletServersCrashed());
 }
 
@@ -1611,32 +1611,6 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     ASSERT_STR_CONTAINS(results[0], "term: 2 index: 2");
     ASSERT_STR_CONTAINS(results[1], "term: 2 index: 3");
     ASSERT_STR_CONTAINS(results[2], "term: 2 index: 4");
-  }
-
-  LOG(INFO) << "Try to perform a snapshot-consistent scan, expect a timeout.";
-  // At this point, we still have two operations which aren't committed. If we
-  // try to perform a snapshot-consistent scan, we should time out rather than
-  // hanging the RPC service thread.
-  {
-    ScanRequestPB req;
-    ScanResponsePB resp;
-    RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromMilliseconds(200));
-    NewScanRequestPB* scan = req.mutable_new_scan_request();
-    scan->set_tablet_id(tablet_id_);
-    scan->set_read_mode(READ_AT_SNAPSHOT);
-    ASSERT_OK(SchemaToColumnPBs(schema_, scan->mutable_projected_columns()));
-
-    // Send the call. We expect to get a timeout passed back from the server side
-    // (i.e. not an RPC timeout). This is further enforced by max_wait_for_safe_time_ms
-    // of 100 ms passed to the tablet server.
-    req.set_batch_size_bytes(0);
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(replica_ts->tserver_proxy->Scan(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    string err_str = StatusFromPB(resp.error().status()).ToString();
-    ASSERT_STR_CONTAINS(err_str, "Timed out waiting for all transactions");
-    ASSERT_STR_CONTAINS(err_str, "to commit");
   }
 
   resp.Clear();

@@ -95,12 +95,10 @@ namespace internal {
 Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
                  const std::shared_ptr<YBSessionData>& session_data,
-                 yb::client::YBSession::ExternalConsistencyMode consistency_mode,
                  YBTransactionPtr transaction)
   : state_(kGatheringOps),
     client_(client),
     weak_session_data_(session_data),
-    consistency_mode_(consistency_mode),
     error_collector_(error_collector),
     had_errors_(false),
     next_op_sequence_number_(0),

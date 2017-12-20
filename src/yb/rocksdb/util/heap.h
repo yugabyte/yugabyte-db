@@ -18,12 +18,16 @@
 // under the License.
 //
 
+#ifndef YB_ROCKSDB_UTIL_HEAP_H
+#define YB_ROCKSDB_UTIL_HEAP_H
+
 #pragma once
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include "yb/rocksdb/util/autovector.h"
+
+#include <boost/container/small_vector.hpp>
 
 namespace rocksdb {
 
@@ -58,13 +62,13 @@ class BinaryHeap {
   explicit BinaryHeap(Compare cmp) : cmp_(std::move(cmp)) { }
 
   void push(const T& value) {
-    data_.push_back(value);
-    upheap(data_.size() - 1);
+    data_.push_back(std::move(value));
+    std::push_heap(data_.begin(), data_.end(), cmp_);
   }
 
   void push(T&& value) {
     data_.push_back(std::move(value));
-    upheap(data_.size() - 1);
+    std::push_heap(data_.begin(), data_.end(), cmp_);
   }
 
   const T& top() const {
@@ -86,11 +90,8 @@ class BinaryHeap {
 
   void pop() {
     assert(!empty());
-    data_.front() = std::move(data_.back());
+    std::pop_heap(data_.begin(), data_.end(), cmp_);
     data_.pop_back();
-    if (!empty()) {
-      downheap(get_root());
-    }
   }
 
   void swap(BinaryHeap &other) {
@@ -106,50 +107,46 @@ class BinaryHeap {
     return data_.empty();
   }
 
+  size_t size() const {
+    return data_.size();
+  }
+
  private:
   static inline size_t get_root() { return 0; }
-  static inline size_t get_parent(size_t index) { return (index - 1) / 2; }
   static inline size_t get_left(size_t index) { return 2 * index + 1; }
   static inline size_t get_right(size_t index) { return 2 * index + 2; }
 
-  void upheap(size_t index) {
-    T v = std::move(data_[index]);
-    while (index > get_root()) {
-      const size_t parent = get_parent(index);
-      if (!cmp_(data_[parent], v)) {
-        break;
-      }
-      data_[index] = std::move(data_[parent]);
-      index = parent;
-    }
-    data_[index] = std::move(v);
-  }
-
   void downheap(size_t index) {
-    T v = std::move(data_[index]);
-    while (1) {
+    T* data = data_.data();
+    T v = std::move(data[index]);
+    size_t size = data_.size();
+    for(;;) {
       const size_t left_child = get_left(index);
-      if (get_left(index) >= data_.size()) {
+      if (left_child >= size) {
         break;
       }
       const size_t right_child = left_child + 1;
-      assert(right_child == get_right(index));
-      size_t picked_child = left_child;
-      if (right_child < data_.size() &&
-          cmp_(data_[left_child], data_[right_child])) {
-        picked_child = right_child;
+      DCHECK_EQ(right_child, get_right(index));
+      T* picked_child = data + left_child;
+      if (right_child < size) {
+        T* right_ptr = data + right_child;
+        if (cmp_(*picked_child, *right_ptr)) {
+          picked_child = right_ptr;
+        }
       }
-      if (!cmp_(v, data_[picked_child])) {
+      if (!cmp_(v, *picked_child)) {
         break;
       }
-      data_[index] = std::move(data_[picked_child]);
-      index = picked_child;
+      data[index] = std::move(*picked_child);
+      index = picked_child - data;
     }
-    data_[index] = std::move(v);
+    data[index] = std::move(v);
   }
 
   Compare cmp_;
-  autovector<T> data_;
+  boost::container::small_vector<T, 8> data_;
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_UTIL_HEAP_H

@@ -273,11 +273,52 @@ struct WriteOperationData {
   }
 };
 
+class Tablet::Iterator : public RowwiseIterator {
+ public:
+  virtual ~Iterator();
+
+  CHECKED_STATUS Init(ScanSpec *spec) override;
+
+  bool HasNext() const override;
+
+  CHECKED_STATUS NextBlock(RowBlock *dst) override;
+
+  std::string ToString() const override;
+
+  const Schema &schema() const override {
+    return projection_;
+  }
+
+  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
+
+ private:
+  friend class Tablet;
+
+  DISALLOW_COPY_AND_ASSIGN(Iterator);
+
+  Iterator(
+      const Tablet* tablet, const Schema& projection, HybridTime read_ht,
+      const OrderMode order, const boost::optional<TransactionId>& transaction_id);
+
+  const Tablet *tablet_;
+  Schema projection_;
+  HybridTime read_ht_;
+  const OrderMode order_;
+  const boost::optional<TransactionId> transaction_id_;
+  gscoped_ptr<RowwiseIterator> iter_;
+
+  // TODO: we could probably share an arena with the Scanner object inside the
+  // tserver, but piping it in would require changing a lot of call-sites.
+  Arena arena_;
+  RangePredicateEncoder encoder_;
+};
+
+
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
 Tablet::Tablet(
     const scoped_refptr<TabletMetadata>& metadata,
-    const scoped_refptr<server::Clock>& clock,
+    const server::ClockPtr& clock,
     const shared_ptr<MemTracker>& parent_mem_tracker,
     MetricRegistry* metric_registry,
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
@@ -292,7 +333,7 @@ Tablet::Tablet(
           MemTracker::CreateTracker(-1, Substitute("tablet-$0", tablet_id()), parent_mem_tracker)),
       dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
-      mvcc_(clock, EnforceInvariants::kTrue),
+      mvcc_(Format("T $0 ", static_cast<void*>(this)), clock),
       tablet_options_(tablet_options) {
   CHECK(schema()->has_column_ids());
 
@@ -430,12 +471,6 @@ void Tablet::Shutdown() {
   // Shutdown the RocksDB instance for this table, if present.
   rocksdb_.reset();
   state_ = kShutdown;
-
-  // In the case of deleting a tablet, we still keep the metadata around after
-  // ShutDown(), and need to flush the metadata to indicate that the tablet is deleted.
-  // During that flush, we don't want metadata to call back into the Tablet, so we
-  // have to unregister the pre-flush callback.
-  metadata_->SetPreFlushCallback(Bind(DoNothingStatusClosure));
 }
 
 Status Tablet::GetMappedReadProjection(const Schema& projection,
@@ -447,13 +482,12 @@ Status Tablet::GetMappedReadProjection(const Schema& projection,
 Status Tablet::NewRowIterator(const Schema &projection,
                               const boost::optional<TransactionId>& transaction_id,
                               gscoped_ptr<RowwiseIterator> *iter) const {
-  // Yield current rows.
-  MvccSnapshot snap(mvcc_);
-  return NewRowIterator(projection, snap, Tablet::UNORDERED, transaction_id, iter);
+  return NewRowIterator(projection, HybridTime::kMax, Tablet::UNORDERED,
+                        transaction_id, iter);
 }
 
 Status Tablet::NewRowIterator(const Schema &projection,
-                              const MvccSnapshot &snap,
+                              HybridTime read_ht,
                               const OrderMode order,
                               const boost::optional<TransactionId>& transaction_id,
                               gscoped_ptr<RowwiseIterator> *iter) const {
@@ -461,38 +495,24 @@ Status Tablet::NewRowIterator(const Schema &projection,
   if (metrics_) {
     metrics_->scans_started->Increment();
   }
-  VLOG(2) << "Created new Iterator under snap: " << snap.ToString();
-  iter->reset(new Iterator(this, projection, snap, order, transaction_id));
+  VLOG(2) << "Created new Iterator at: " << read_ht;
+  iter->reset(new Iterator(this, projection, read_ht, order, transaction_id));
   return Status::OK();
 }
 
 void Tablet::StartOperation(WriteOperationState* operation_state) {
-  std::unique_ptr<ScopedWriteOperation> mvcc_tx;
-
   // If the state already has a hybrid_time then we're replaying a transaction that occurred
   // before a crash or at another node...
-  const HybridTime existing_hybrid_time = operation_state->hybrid_time_even_if_unset();
-
-  if (existing_hybrid_time != HybridTime::kInvalidHybridTime) {
-    mvcc_tx.reset(new ScopedWriteOperation(&mvcc_, existing_hybrid_time));
-    // ... otherwise this is a new transaction and we must assign a new hybrid_time. We either
-    // assign a hybrid_time in the future, if the consistency mode is COMMIT_WAIT, or we assign
-    // one in the present if the consistency mode is any other one.
-  } else if (operation_state->external_consistency_mode() == COMMIT_WAIT) {
-    mvcc_tx.reset(new ScopedWriteOperation(&mvcc_, ScopedWriteOperation::NOW_LATEST));
-  } else {
-    mvcc_tx.reset(new ScopedWriteOperation(&mvcc_, ScopedWriteOperation::NOW));
+  HybridTime ht = operation_state->hybrid_time_even_if_unset();
+  bool was_valid = ht.is_valid();
+  mvcc_.AddPending(&ht);
+  if (!was_valid) {
+    operation_state->set_hybrid_time(ht);
   }
-  operation_state->SetMvccTxAndHybridTime(std::move(mvcc_tx));
-}
-
-void Tablet::StartApplying(WriteOperationState* operation_state) {
-  operation_state->StartApplying();
 }
 
 void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   last_committed_write_index_.store(operation_state->op_id().index(), std::memory_order_release);
-  StartApplying(operation_state);
   const KeyValueWriteBatchPB& put_batch =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
           // Online case.
@@ -1147,14 +1167,14 @@ void Tablet::DocDBDebugDump(vector<string> *lines) {
 
 Status Tablet::CaptureConsistentIterators(
     const Schema *projection,
-    const MvccSnapshot &snap,
+    HybridTime read_ht,
     const ScanSpec *spec,
     const boost::optional<TransactionId>& transaction_id,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
 
   switch (table_type_) {
     case TableType::YQL_TABLE_TYPE:
-      return QLCaptureConsistentIterators(projection, snap, spec, transaction_id, iters);
+      return QLCaptureConsistentIterators(projection, read_ht, spec, transaction_id, iters);
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
   }
@@ -1163,7 +1183,7 @@ Status Tablet::CaptureConsistentIterators(
 
 Status Tablet::QLCaptureConsistentIterators(
     const Schema *projection,
-    const MvccSnapshot &snap,
+    HybridTime read_ht,
     const ScanSpec *spec,
     const boost::optional<TransactionId>& transaction_id,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
@@ -1173,7 +1193,7 @@ Status Tablet::QLCaptureConsistentIterators(
   TransactionOperationContextOpt txn_op_ctx =
       CreateTransactionOperationContext(transaction_id);
   iters->clear();
-  auto read_time = ReadHybridTime::SingleTime(snap.LastCommittedHybridTime());
+  auto read_time = ReadHybridTime::SingleTime(read_ht);
   iters->push_back(std::make_shared<DocRowwiseIterator>(
       *projection, *schema(), txn_op_ctx, rocksdb_.get(), read_time,
       // We keep the pending operation counter incremented while the iterator exists so that
@@ -1261,11 +1281,11 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
 ////////////////////////////////////////////////////////////
 
 Tablet::Iterator::Iterator(const Tablet* tablet, const Schema& projection,
-                           MvccSnapshot snap, const OrderMode order,
+                           HybridTime read_ht, const OrderMode order,
                            const boost::optional<TransactionId>& transaction_id)
     : tablet_(tablet),
       projection_(projection),
-      snap_(std::move(snap)),
+      read_ht_(read_ht),
       order_(order),
       transaction_id_(transaction_id),
       arena_(256, 4096),
@@ -1286,7 +1306,7 @@ Status Tablet::Iterator::Init(ScanSpec *spec) {
   }
 
   RETURN_NOT_OK(tablet_->CaptureConsistentIterators(
-      &projection_, snap_, spec, transaction_id_, &iters));
+      &projection_, read_ht_, spec, transaction_id_, &iters));
 
   switch (order_) {
     case ORDERED:
@@ -1328,13 +1348,14 @@ void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
 }
 
 HybridTime Tablet::SafeTimestampToRead() const {
-  return mvcc_.GetMaxSafeTimeToReadAt();
+  auto limit = ht_lease_provider_ ? HybridTime(ht_lease_provider_(), 0) : HybridTime::kMax;
+  return mvcc_.SafeTimestampToRead(limit);
 }
 
 HybridTime Tablet::OldestReadPoint() const {
   std::lock_guard<std::mutex> lock(active_readers_mutex_);
   if (active_readers_cnt_.empty()) {
-    return SafeTimestampToRead();
+    return mvcc_.LastReplicatedHybridTime();
   }
   return active_readers_cnt_.begin()->first;
 }

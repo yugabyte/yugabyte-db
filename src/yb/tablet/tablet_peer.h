@@ -381,26 +381,6 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
 typedef scoped_refptr<TabletPeer> TabletPeerPtr;
 
-// A callback to wait for the in-flight transactions to complete and to flush
-// the Log when they do.
-// Tablet is passed as a raw pointer as this callback is set in TabletMetadata and
-// were we to keep the tablet as a shared_ptr a circular dependency would occur:
-// callback->tablet->metadata->callback. Since the tablet indirectly owns this
-// callback we know that is must still be alive when it fires.
-class FlushInflightsToLogCallback : public RefCountedThreadSafe<FlushInflightsToLogCallback> {
- public:
-  FlushInflightsToLogCallback(Tablet* tablet,
-                              const scoped_refptr<log::Log>& log)
-      : tablet_(tablet),
-        log_(log) {}
-
-  CHECKED_STATUS WaitForInflightsAndFlushLog();
-
- private:
-  Tablet* tablet_;
-  scoped_refptr<log::Log> log_;
-};
-
 }  // namespace tablet
 }  // namespace yb
 

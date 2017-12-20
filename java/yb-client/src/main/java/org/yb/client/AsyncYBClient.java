@@ -101,7 +101,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
 
 /**
  * A fully asynchronous and thread-safe client for YB.
@@ -925,8 +924,7 @@ public class AsyncYBClient implements AutoCloseable {
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.
     long lastPropagatedTs = getLastPropagatedTimestamp();
-    if (request.getExternalConsistencyMode() == CLIENT_PROPAGATED &&
-      lastPropagatedTs != NO_TIMESTAMP) {
+    if (lastPropagatedTs != NO_TIMESTAMP) {
       request.setPropagatedTimestamp(lastPropagatedTs);
     }
 

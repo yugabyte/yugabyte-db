@@ -99,7 +99,7 @@ Status AlterSchemaOperation::Prepare() {
     return s;
   }
 
-  Tablet* tablet = state()->tablet_peer()->tablet();
+  Tablet* tablet = state()->tablet();
   RETURN_NOT_OK(tablet->CreatePreparedAlterSchema(state(), schema.get()));
 
   state()->AddToAutoReleasePool(schema.release());
@@ -117,11 +117,10 @@ void AlterSchemaOperation::Start() {
 Status AlterSchemaOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   TRACE("APPLY ALTER-SCHEMA: Starting");
 
-  Tablet* tablet = state()->tablet_peer()->tablet();
+  Tablet* tablet = state()->tablet();
   RETURN_NOT_OK(tablet->AlterSchema(state()));
-  state()->tablet_peer()->log()
-    ->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
-                                                 state()->schema_version());
+  state()->log()->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
+                                             state()->schema_version());
 
   commit_msg->reset(new CommitMsg());
   (*commit_msg)->set_op_type(ALTER_SCHEMA_OP);

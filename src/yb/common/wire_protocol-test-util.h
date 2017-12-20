@@ -104,7 +104,6 @@ inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
 
 template <class WriteRequestPB, class Type>
 QLWriteRequestPB* TestRow(int32_t key, Type type, WriteRequestPB* req) {
-  req->set_external_consistency_mode(ExternalConsistencyMode::CLIENT_PROPAGATED);
   auto wb = req->add_ql_write_batch();
   wb->set_schema_version(0);
   wb->set_type(type);

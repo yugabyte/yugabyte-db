@@ -171,11 +171,6 @@ public class YBSession implements SessionConfiguration {
   }
 
   @Override
-  public void setExternalConsistencyMode(ExternalConsistencyMode consistencyMode) {
-    session.setExternalConsistencyMode(consistencyMode);
-  }
-
-  @Override
   public boolean isIgnoreAllDuplicateRows() {
     return session.isIgnoreAllDuplicateRows();
   }

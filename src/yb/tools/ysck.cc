@@ -62,10 +62,6 @@ DEFINE_int32(checksum_timeout_sec, 120,
              "before timing out.");
 DEFINE_int32(checksum_scan_concurrency, 4,
              "Number of concurrent checksum scans to execute per tablet server.");
-DEFINE_bool(checksum_snapshot, true, "Should the checksum scanner use a snapshot scan");
-DEFINE_uint64(checksum_snapshot_hybrid_time, ChecksumOptions::kCurrentHybridTime,
-              "hybrid_time to use for snapshot checksum scans, defaults to 0, which "
-              "uses the current hybrid_time of a tablet server involved in the scan");
 
 // Print an informational message to cerr.
 static ostream& Info() {
@@ -87,19 +83,11 @@ static ostream& Error() {
 
 ChecksumOptions::ChecksumOptions()
     : timeout(MonoDelta::FromSeconds(FLAGS_checksum_timeout_sec)),
-      scan_concurrency(FLAGS_checksum_scan_concurrency),
-      use_snapshot(FLAGS_checksum_snapshot),
-      snapshot_hybrid_time(FLAGS_checksum_snapshot_hybrid_time) {
-}
+      scan_concurrency(FLAGS_checksum_scan_concurrency) {}
 
-ChecksumOptions::ChecksumOptions(MonoDelta timeout, int scan_concurrency,
-                                 bool use_snapshot, uint64_t snapshot_hybrid_time)
+ChecksumOptions::ChecksumOptions(MonoDelta timeout, int scan_concurrency)
     : timeout(std::move(timeout)),
-      scan_concurrency(scan_concurrency),
-      use_snapshot(use_snapshot),
-      snapshot_hybrid_time(snapshot_hybrid_time) {}
-
-const uint64_t ChecksumOptions::kCurrentHybridTime = 0;
+      scan_concurrency(scan_concurrency) {}
 
 YsckCluster::~YsckCluster() {
 }
@@ -356,13 +344,6 @@ Status Ysck::ChecksumData(const vector<string>& tables,
           LookupOrInsertNewSharedPtr(&tablet_server_queues, ts, num_tablet_replicas);
       CHECK_EQ(QUEUE_SUCCESS, queue->Put(make_pair(table->schema(), tablet->id())));
     }
-  }
-
-  if (options.use_snapshot && options.snapshot_hybrid_time == ChecksumOptions::kCurrentHybridTime) {
-    // Set the snapshot hybrid_time to the current hybrid_time of an arbitrary tablet server.
-    RETURN_NOT_OK(
-        tablet_server_queues.begin()->first->CurrentHybridTime(&options.snapshot_hybrid_time));
-    Info() << "Using snapshot hybrid_time: " << options.snapshot_hybrid_time << endl;
   }
 
   // Kick off checksum scans in parallel. For each tablet server, we start
