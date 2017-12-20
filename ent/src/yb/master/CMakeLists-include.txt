@@ -29,11 +29,11 @@ ADD_YB_LIBRARY(master_backup_proto
   NONLINK_DEPS ${MASTER_BACKUP_YRPC_TGTS})
 #########################################
 
-set(MASTER_PROTO_LIBS_EXTENTIONS
+set(MASTER_PROTO_LIBS_EXTENSIONS
   master_backup_proto
   PARENT_SCOPE)
 
-set(MASTER_SRCS_EXTENTIONS
+set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/async_snapshot_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/async_ts_rpc_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/catalog_manager_ent.cc
