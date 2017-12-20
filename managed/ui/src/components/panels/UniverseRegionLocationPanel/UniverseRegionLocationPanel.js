@@ -5,6 +5,7 @@ import { RegionMap } from '../../maps';
 import { RegionMapLegend } from '../../maps';
 import { isNonEmptyArray, isValidObject, isEmptyArray } from 'utils/ObjectUtils';
 import {getPromiseState} from 'utils/PromiseUtils';
+import {getPrimaryCluster} from 'utils/UniverseUtils';
 
 export default class UniverseRegionLocationPanel extends Component {
   constructor(props) {
@@ -35,8 +36,9 @@ export default class UniverseRegionLocationPanel extends Component {
     const universeListByRegions = {};
     if (getPromiseState(universeList).isSuccess()) {
       universeList.data.forEach(function (universeItem) {
-        if (isNonEmptyArray(universeItem.regions)) {
-          universeItem.regions.forEach(function (regionItem) {
+        const universePrimaryRegions = getPrimaryCluster(universeItem.universeDetails.clusters).regions;
+        if (isNonEmptyArray(universePrimaryRegions)) {
+          universePrimaryRegions.forEach(function (regionItem) {
             if (isValidObject(regionItem.uuid)) {
               if (universeListByRegions.hasOwnProperty(regionItem.uuid)) {
                 universeListByRegions[regionItem.uuid].push(universeItem);
