@@ -58,7 +58,7 @@ consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
 
 Status SnapshotOperation::Prepare() {
   TRACE("PREPARE SNAPSHOT: Starting");
-  TabletClass* tablet = state()->tablet_peer()->tablet();
+  TabletClass* tablet = down_cast<TabletClass*>(state()->tablet());
   RETURN_NOT_OK(tablet->PrepareForSnapshotOp(state()));
 
   TRACE("PREPARE SNAPSHOT: finished");
@@ -66,7 +66,7 @@ Status SnapshotOperation::Prepare() {
 }
 
 void SnapshotOperation::Start() {
-  DCHECK(state()->tablet_peer()->tablet()->table_type() == TableType::YQL_TABLE_TYPE);
+  DCHECK_EQ(state()->tablet()->table_type(), TableType::YQL_TABLE_TYPE);
 
   state()->TrySetHybridTimeFromClock();
 
@@ -76,7 +76,7 @@ void SnapshotOperation::Start() {
 
 Status SnapshotOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   TRACE("APPLY SNAPSHOT: Starting");
-  TabletClass* const tablet = state()->tablet_peer()->tablet();
+  TabletClass* const tablet = down_cast<TabletClass*>(state()->tablet());
   bool handled = false;
 
   switch (state()->operation()) {
