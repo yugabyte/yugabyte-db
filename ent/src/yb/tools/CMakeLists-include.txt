@@ -7,9 +7,7 @@ set(YB_BINARY_DIR         ${CMAKE_BINARY_DIR}/src)
 string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
     YB_ENT_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(TABLET_SRCS_EXTENSIONS
-  ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_bootstrap_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_peer_ent.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/operations/snapshot_operation.cc
+set(YB_ADMIN_SRCS_EXTENSIONS
+  ${YB_ENT_CURRENT_SOURCE_DIR}/yb-admin_cli_ent.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/yb-admin_client_ent.cc
   PARENT_SCOPE)
