@@ -504,7 +504,8 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         // For an HSET command (which has only one subkey), we need to read the subkey to find out
         // if the key already existed, and return 0 or 1 accordingly. This read is unnecessary for
         // HMSET and TSADD.
-        if (kv.subkey_size() == 1 && EmulateRedisResponse(kv.type())) {
+        if (kv.subkey_size() == 1 && EmulateRedisResponse(kv.type()) &&
+            !request_.set_request().expect_ok_response()) {
           auto type = GetValueType(data, 0);
           RETURN_NOT_OK(type);
           // For HSET/TSADD, we return 0 or 1 depending on if the key already existed.

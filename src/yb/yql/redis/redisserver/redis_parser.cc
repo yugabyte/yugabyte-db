@@ -174,6 +174,10 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
   op->mutable_request()->mutable_key_value()->set_type(type);
   op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
 
+  if (type == REDIS_TYPE_HASH) {
+    op->mutable_request()->mutable_set_request()->set_expect_ok_response(true);
+  }
+
   std::unordered_map<string, string> kv_map;
   for (int i = 2; i < args.size(); i += 2) {
     // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.

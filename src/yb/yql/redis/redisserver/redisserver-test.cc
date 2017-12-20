@@ -1404,6 +1404,9 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       "4", "v400",
       "5", "v500",
   });
+  DoRedisTestOk(__LINE__, {"HMSET", "map_key",
+      "6", "v600"
+  });
   DoRedisTestOk(__LINE__, {"SET", "key", "value"});
   SyncClient();
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "map_key", "1", "5"});
