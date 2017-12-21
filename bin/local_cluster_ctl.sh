@@ -277,6 +277,7 @@ start_master() {
     echo "Starting master $master_index"
     set -x
     "$master_binary" \
+      $common_params \
       --fs_data_dirs "$master_base_dir/disk1,$master_base_dir/disk2" \
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
@@ -305,6 +306,7 @@ start_tserver() {
     echo "Starting tablet server $tserver_index"
     set -x
     "$tserver_binary" \
+       $common_params \
        --fs_data_dirs "$tserver_base_dir/disk1,$tserver_base_dir/disk2" \
        --log_dir "$tserver_base_dir/logs" \
        --v "$verbose_level" \
@@ -535,11 +537,12 @@ redis_rpc_port=10100
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
 cql_rpc_port=9042
 
+common_params=" --version_file_json_path $build_root --callhome_enabled=false"
+
 master_optional_params=""
 if [[ -n "$replication_factor" ]]; then
   master_optional_params+=" --replication_factor $replication_factor"
 fi
-master_optional_params+=" --callhome_enabled=false"
 
 tserver_optional_params=""
 if [[ -n "$yb_num_shards_per_tserver" ]]; then
@@ -549,7 +552,6 @@ if [[ -n "$tserver_db_block_cache_size_bytes" ]]; then
   tserver_optional_params+=" --db_block_cache_size_bytes $tserver_db_block_cache_size_bytes"
 fi
 tserver_optional_params+=" --use_cassandra_authentication=$use_cassandra_authentication"
-tserver_optional_params+=" --callhome_enabled=false"
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"
