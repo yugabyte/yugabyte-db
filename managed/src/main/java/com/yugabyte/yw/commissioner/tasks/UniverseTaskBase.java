@@ -96,7 +96,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void initialize(ITaskParams params) {
     super.initialize(params);
     // Create the threadpool for the subtasks to use.
-    createThreadpool(10);
+    createThreadpool();
   }
 
   @Override
