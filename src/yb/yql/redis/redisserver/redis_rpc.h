@@ -57,7 +57,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 class RedisInboundCall : public rpc::QueueableInboundCall {
  public:
   explicit RedisInboundCall(rpc::ConnectionPtr conn, CallProcessedListener call_processed_listener);
-
+  ~RedisInboundCall();
   CHECKED_STATUS ParseFrom(size_t commands, Slice source);
 
   // Serialize the response packet for the finished call.
@@ -80,6 +80,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   void RespondSuccess(size_t idx,
                       const rpc::RpcMethodMetrics& metrics,
                       RedisResponsePB* resp);
+  void MarkForClose() {quit_.store(true, std::memory_order_release);}
+
  private:
   void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
 
@@ -93,6 +95,9 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Atomic bool to indicate if the command batch has been parsed.
   std::atomic<bool> parsed_ = {false};
+
+  // Atomic bool to indicate if the quit command is present
+  std::atomic<bool> quit_ = {false};
 };
 
 } // namespace redisserver

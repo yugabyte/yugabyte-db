@@ -127,6 +127,20 @@ RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
     : QueueableInboundCall(std::move(conn), std::move(call_processed_listener)) {
 }
 
+RedisInboundCall::~RedisInboundCall() {
+  Status status;
+  if (quit_.load(std::memory_order_acquire)) {
+    rpc::ConnectionPtr conn = connection();
+    rpc::Reactor* reactor = conn->reactor();
+    reactor->ScheduleReactorTask(
+        MakeFunctorReactorTask(std::bind(&rpc::Reactor::DestroyConnection,
+                                         reactor,
+                                         conn.get(),
+                                         status),
+                               conn));
+  }
+
+}
 Status RedisInboundCall::ParseFrom(size_t commands, Slice source) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");

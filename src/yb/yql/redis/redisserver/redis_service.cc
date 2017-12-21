@@ -757,7 +757,6 @@ RedisResponsePB ParseCommand(const RedisClientCommand& command) {
 }
 
 RedisResponsePB ParseQuit(const RedisClientCommand& command) {
-  // TODO(hector): We need to implement its real meaning (close connection). Tracked by ENG-2107.
   return RedisResponsePB();
 }
 
@@ -919,6 +918,9 @@ void RedisServiceImpl::Impl::LocalCommand(
   RedisResponsePB local_response = parse(command);
   VLOG_IF(4, local_response.has_string_response()) << "Responding to " << command[0].ToBuffer()
                                                    << " with " << local_response.string_response();
+  if (!info.name.compare("quit")) {
+    context->call()->MarkForClose();
+  }
   context->call()->RespondSuccess(idx, info.metrics, &local_response);
   VLOG(4) << "Done responding to " << command[0].ToBuffer();
 }

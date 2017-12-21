@@ -262,6 +262,18 @@ class Reactor {
   // This method is thread-safe.
   bool closing() const;
 
+  // Begin the process of connection negotiation.
+  // Must be called from the reactor thread.
+  CHECKED_STATUS StartConnection(const ConnectionPtr& conn);
+
+  // Shut down the given connection, removing it from the connection tracking
+  // structures of this reactor.
+  //
+  // The connection is not explicitly deleted -- shared_ptr reference counting
+  // may hold on to the object after this, but callers should assume that it
+  // _may_ be deleted by this call.
+  void DestroyConnection(Connection *conn, const Status &conn_status);
+
   // Queue a new call to be sent. If the reactor is already shut down, marks
   // the call as failed.
   void QueueOutboundCall(OutboundCallPtr call);
@@ -307,14 +319,6 @@ class Reactor {
   CHECKED_STATUS FindOrStartConnection(const ConnectionId &conn_id,
                                        const MonoTime &deadline,
                                        ConnectionPtr* conn);
-
-  // Shut down the given connection, removing it from the connection tracking
-  // structures of this reactor.
-  //
-  // The connection is not explicitly deleted -- shared_ptr reference counting
-  // may hold on to the object after this, but callers should assume that it
-  // _may_ be deleted by this call.
-  void DestroyConnection(Connection *conn, const Status &conn_status);
 
   // Scan any open connections for idle ones that have been idle longer than
   // connection_keepalive_time_

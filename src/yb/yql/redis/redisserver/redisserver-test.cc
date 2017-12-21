@@ -11,14 +11,14 @@
 // under the License.
 //
 
+#include <cpp_redis/cpp_redis>
+
 #include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <cpp_redis/cpp_redis>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -1773,6 +1773,17 @@ TEST_F(TestRedisService, TestEmulateFlagFalse) {
 
   VerifyCallbacks();
 
+}
+
+TEST_F(TestRedisService, TestQuit) {
+  DoRedisTestOk(__LINE__, {"SET", "key", "value"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value");
+  DoRedisTestInt(__LINE__, {"DEL", "key"}, 1);
+  DoRedisTestOk(__LINE__, {"QUIT"});
+  SyncClient();
+  VerifyCallbacks();
+  // Connection closed so following command fails
+  DoRedisTestExpectError(__LINE__, {"SET", "key", "value"});
 }
 
 }  // namespace redisserver
