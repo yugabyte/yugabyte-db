@@ -61,7 +61,7 @@ bool AppendPBToString(const google::protobuf::MessageLite &msg, faststring *outp
     if (BOOST_PP_CAT(EnumType, _IsValid)(value)) { \
       return BOOST_PP_CAT(EnumType, _Name)(value); \
     } else { \
-      return Format("<unknown " BOOST_PP_STRINGIZE(EnumType) " : $0>", \
+      return yb::Format("<unknown " BOOST_PP_STRINGIZE(EnumType) " : $0>", \
           yb::util::to_underlying(value)); \
     } \
   } \

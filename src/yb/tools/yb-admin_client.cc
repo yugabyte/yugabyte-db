@@ -38,7 +38,6 @@
 #include "yb/util/string_case.h"
 
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/master/master.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 // Maximum number of elements to dump on unexpected errors.
@@ -435,7 +434,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
 
   string leader_uuid;
-  GetMasterLeaderInfo(&leader_uuid);
+  RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate master leader");
   if (leader_uuid.empty()) {
     return STATUS(ConfigurationError, "Could not locate master leader!");
   }
@@ -452,7 +451,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
     RETURN_NOT_OK(yb_client_->RefreshMasterLeaderSocket(&leader_sock_));
     master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
     leader_uuid = "";  // reset so it can be set to new leader in the GetMasterLeaderInfo call below
-    GetMasterLeaderInfo(&leader_uuid);
+    RETURN_NOT_OK_PREPEND(GetMasterLeaderInfo(&leader_uuid), "Could not locate new master leader");
     if (leader_uuid.empty()) {
       return STATUS(ConfigurationError, "Could not locate new master leader!");
     }

@@ -38,6 +38,9 @@
 #include <string>
 
 namespace yb {
+
+class Status;
+
 namespace tools {
 
 class ClusterAdminClient;
@@ -46,14 +49,15 @@ typedef YB_EDITION_NS_PREFIX ClusterAdminClient ClusterAdminClientClass;
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {
  public:
-  virtual ~ClusterAdminCli() {}
+  virtual ~ClusterAdminCli() = default;
 
   int Run(int argc, char** argv);
 
-  static void UsageAndExit(const char* prog_name);
+  static void UsageAndExit(const std::string& prog_name);
 
  protected:
-  typedef std::function<int(int, char**)> CommandFn;
+  typedef std::vector<std::string> CLIArguments;
+  typedef std::function<Status(const CLIArguments&)> CommandFn;
   struct Command {
     std::string name_;
     std::string usage_arguments_;
@@ -61,7 +65,7 @@ class ClusterAdminCli {
   };
 
   void Register(std::string&& cmd_name, std::string&& cmd_args, CommandFn&& cmd_fn);
-  void SetUsage(const char* argv0);
+  void SetUsage(const std::string& prog_name);
 
   virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);
 

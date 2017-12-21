@@ -36,8 +36,6 @@
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
 
-#include "yb/master/master.proxy.h"
-
 DEFINE_string(master_addresses, "localhost:7100",
               "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
@@ -51,24 +49,30 @@ using std::ostringstream;
 using std::string;
 
 using client::YBTableName;
+using strings::Substitute;
 
 int ClusterAdminCli::Run(int argc, char** argv) {
-  const char* const prog_name = argv[0];
+  const string prog_name = argv[0];
   FLAGS_logtostderr = 1;
   ParseCommandLineFlags(&argc, &argv, true);
-  InitGoogleLoggingSafe(prog_name);
+  InitGoogleLoggingSafe(prog_name.c_str());
 
   const string addrs = FLAGS_master_addresses;
   ClusterAdminClientClass client(addrs, FLAGS_timeout_ms);
   RegisterCommandHandlers(&client);
   SetUsage(prog_name);
 
-  if (argc < 2) {
+  CLIArguments args;
+  for (int i = 0; i < argc; ++i) {
+    args.push_back(argv[i]);
+  }
+
+  if (args.size() < 2) {
     UsageAndExit(prog_name);
   }
 
   // Find operation handler by operation name.
-  const string op = argv[1];
+  const string op = args[1];
   auto cmd = command_indexes_.find(op);
 
   if (cmd == command_indexes_.end()) {
@@ -77,7 +81,7 @@ int ClusterAdminCli::Run(int argc, char** argv) {
   }
 
   // Init client.
-  const Status s = client.Init();
+  Status s = client.Init();
 
   if (PREDICT_FALSE(!s.ok())) {
     cerr << s.CloneAndPrepend("Unable to establish connection to " + addrs).ToString() << endl;
@@ -85,11 +89,16 @@ int ClusterAdminCli::Run(int argc, char** argv) {
   }
 
   // Run found command.
-  return commands_[cmd->second].fn_(argc, argv);
+  s = commands_[cmd->second].fn_(args);
+  if (!s.ok()) {
+    cerr << "Error: " << s.ToString() << endl;
+    return 1;
+  }
+  return 0;
 }
 
-void ClusterAdminCli::UsageAndExit(const char* prog_name) {
-  google::ShowUsageWithFlagsRestrict(prog_name, __FILE__);
+void ClusterAdminCli::UsageAndExit(const string& prog_name) {
+  google::ShowUsageWithFlagsRestrict(prog_name.c_str(), __FILE__);
   exit(1);
 }
 
@@ -98,10 +107,10 @@ void ClusterAdminCli::Register(string&& cmd_name, string&& cmd_args, CommandFn&&
   commands_.push_back({std::move(cmd_name), std::move(cmd_args), std::move(cmd_fn)});
 }
 
-void ClusterAdminCli::SetUsage(const char* argv0) {
+void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
-  str << argv0 << " [-master_addresses server1,server2,server3] "
+  str << prog_name << " [-master_addresses server1,server2,server3] "
       << " [-timeout_ms <millisec>] <operation>" << endl
       << "<operation> must be one of:" << endl;
 
@@ -118,235 +127,184 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "change_config",
       " <tablet_id> <ADD_SERVER|REMOVE_SERVER> <peer_uuid> [PRE_VOTER|PRE_OBSERVER]",
-      [client](int argc, char** argv) -> int {
-        if (argc < 5) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 5) {
+          UsageAndExit(args[0]);
         }
-        const string tablet_id = argv[2];
-        const string change_type = argv[3];
-        const string peer_uuid = argv[4];
+        const string tablet_id = args[2];
+        const string change_type = args[3];
+        const string peer_uuid = args[4];
         boost::optional<string> member_type;
-        if (argc > 5) {
-          member_type = string(argv[5]);
+        if (args.size() > 5) {
+          member_type = args[5];
         }
-        const Status s = client->ChangeConfig(tablet_id, change_type, peer_uuid, member_type);
-        if (!s.ok()) {
-          cerr << "Unable to change config: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        RETURN_NOT_OK_PREPEND(client->ChangeConfig(tablet_id, change_type, peer_uuid, member_type),
+                              "Unable to change config");
+        return Status::OK();
       });
 
   Register(
       "list_tablet_servers", " <tablet_id>",
-      [client](int argc, char** argv) -> int {
-        if (argc < 3) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          UsageAndExit(args[0]);
         }
-        const string tablet_id = argv[2];
-        const Status s = client->ListPerTabletTabletServers(tablet_id);
-        if (!s.ok()) {
-          cerr << "Unable to list tablet servers of tablet " << tablet_id << ": " << s.ToString()
-               << endl;
-          return 1;
-        }
-        return 0;
+        const string tablet_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->ListPerTabletTabletServers(tablet_id),
+                              Substitute("Unable to list tablet servers of tablet $0", tablet_id));
+        return Status::OK();
       });
 
   Register(
       "list_tables", "",
-      [client](int, char**) -> int {
-        const Status s = client->ListTables();
-        if (!s.ok()) {
-          cerr << "Unable to list tables: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListTables(),
+                              "Unable to list tables");
+        return Status::OK();
       });
 
   Register(
       "list_tablets", " <keyspace> <table_name> [max_tablets] (default 10, set 0 for max)",
-      [client](int argc, char** argv) -> int {
-        if (argc < 4) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 4) {
+          UsageAndExit(args[0]);
         }
-        const YBTableName table_name(argv[2], argv[3]);
+        const YBTableName table_name(args[2], args[3]);
         int max = -1;
-        if (argc > 4) {
-          max = std::stoi(argv[4]);
+        if (args.size() > 4) {
+          max = std::stoi(args[4].c_str());
         }
-        const Status s = client->ListTablets(table_name, max);
-        if (!s.ok()) {
-          cerr << "Unable to list tablets of table " << table_name.ToString()
-               << ": " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        RETURN_NOT_OK_PREPEND(client->ListTablets(table_name, max),
+                              Substitute("Unable to list tablets of table $0",
+                                         table_name.ToString()));
+        return Status::OK();
       });
 
   Register(
       "delete_table", " <keyspace> <table_name>",
-      [client](int argc, char** argv) -> int {
-        if (argc != 4) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
         }
-        const YBTableName table_name(argv[2], argv[3]);
-        const Status s = client->DeleteTable(table_name);
-        if (!s.ok()) {
-          cerr << "Unable to delete table " << table_name.ToString()
-                    << ": " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        const YBTableName table_name(args[2], args[3]);
+        RETURN_NOT_OK_PREPEND(client->DeleteTable(table_name),
+                              Substitute("Unable to delete table $0", table_name.ToString()));
+        return Status::OK();
       });
 
   Register(
       "list_all_tablet_servers", "",
-      [client](int, char**) -> int {
-        const Status s = client->ListAllTabletServers();
-        if (!s.ok()) {
-          cerr << "Unable to list tablet servers: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListAllTabletServers(),
+                              "Unable to list tablet servers");
+        return Status::OK();
       });
 
   Register(
       "list_all_masters", "",
-      [client](int, char**) -> int {
-        const Status s = client->ListAllMasters();
-        if (!s.ok()) {
-          cerr << "Unable to list masters: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListAllMasters(),
+                              "Unable to list masters");
+        return Status::OK();
       });
 
   Register(
       "change_master_config", " <ADD_SERVER|REMOVE_SERVER> <ip_addr> <port>",
-      [client](int argc, char** argv) -> int {
+      [client](const CLIArguments& args) -> Status {
         int16 new_port = 0;
         string new_host;
 
-        if (argc != 5) {
-          UsageAndExit(argv[0]);
+        if (args.size() != 5) {
+          UsageAndExit(args[0]);
         }
 
-        const string change_type = argv[2];
+        const string change_type = args[2];
         if (change_type != "ADD_SERVER" && change_type != "REMOVE_SERVER") {
-          UsageAndExit(argv[0]);
+          UsageAndExit(args[0]);
         }
 
-        new_host = argv[3];
-        new_port = atoi(argv[4]);
-
-        const Status s = client->ChangeMasterConfig(change_type, new_host, new_port);
-        if (!s.ok()) {
-          cerr << "Unable to change master config: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        new_host = args[3];
+        new_port = atoi(args[4].c_str());
+        RETURN_NOT_OK_PREPEND(client->ChangeMasterConfig(change_type, new_host, new_port),
+                              "Unable to change master config");
+        return Status::OK();
       });
 
   Register(
       "dump_masters_state", "",
-      [client](int, char**) -> int {
-        const Status s = client->DumpMasterState();
-        if (!s.ok()) {
-          cerr << "Unable to dump master state: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->DumpMasterState(),
+                              "Unable to dump master state");
+        return Status::OK();
       });
 
   Register(
       "list_tablet_server_log_locations", "",
-      [client](int, char**) -> int {
-        const Status s = client->ListTabletServersLogLocations();
-        if (!s.ok()) {
-          cerr << "Unable to list tablet server log locations: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListTabletServersLogLocations(),
+                              "Unable to list tablet server log locations");
+        return Status::OK();
       });
 
   Register(
       "list_tablets_for_tablet_server", " <ts_uuid>",
-      [client](int argc, char** argv) -> int {
-        if (argc != 3) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          UsageAndExit(args[0]);
         }
-        const string& ts_uuid = argv[2];
-        const Status s = client->ListTabletsForTabletServer(ts_uuid);
-        if (!s.ok()) {
-          cerr << "Unable to list tablet server tablets: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        const string& ts_uuid = args[2];
+        RETURN_NOT_OK_PREPEND(client->ListTabletsForTabletServer(ts_uuid),
+                              "Unable to list tablet server tablets");
+        return Status::OK();
       });
 
   Register(
       "set_load_balancer_enabled", " <0|1>",
-      [client](int argc, char** argv) -> int {
-        if (argc != 3) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          UsageAndExit(args[0]);
         }
 
-        const bool is_enabled = atoi(argv[2]) != 0;
-        const Status s = client->SetLoadBalancerEnabled(is_enabled);
-        if (!s.ok()) {
-          cerr << "Unable to change load balancer state: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        const bool is_enabled = atoi(args[2].c_str()) != 0;
+        RETURN_NOT_OK_PREPEND(client->SetLoadBalancerEnabled(is_enabled),
+                              "Unable to change load balancer state");
+        return Status::OK();
       });
 
   Register(
       "get_load_move_completion", "",
-      [client](int, char**) -> int {
-        const Status s = client->GetLoadMoveCompletion();
-        if (!s.ok()) {
-          cerr << "Unable to get load completion: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->GetLoadMoveCompletion(),
+                              "Unable to get load completion");
+        return Status::OK();
       });
 
   Register(
       "list_leader_counts", " <keyspace> <table_name>",
-      [client](int argc, char** argv) -> int {
-        if (argc != 4) {
-          UsageAndExit(argv[0]);
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
         }
-        const YBTableName table_name(argv[2], argv[3]);
-        const Status s = client->ListLeaderCounts(table_name);
-        if (!s.ok()) {
-          cerr << "Unable to get leader counts: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+        const YBTableName table_name(args[2], args[3]);
+        RETURN_NOT_OK_PREPEND(client->ListLeaderCounts(table_name),
+                              "Unable to get leader counts");
+        return Status::OK();
       });
 
   Register(
       "setup_redis_table", "",
-      [client](int, char**) -> int {
-        const Status s = client->SetupRedisTable();
-        if (!s.ok()) {
-          cerr << "Unable to setup Redis keyspace and table: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->SetupRedisTable(),
+                              "Unable to setup Redis keyspace and table");
+        return Status::OK();
       });
 
   Register(
       "drop_redis_table", "",
-      [client](int, char**) -> int {
-        const Status s = client->DropRedisTable();
-        if (!s.ok()) {
-          cerr << "Unable to drop Redis table: " << s.ToString() << endl;
-          return 1;
-        }
-        return 0;
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->DropRedisTable(),
+                              "Unable to drop Redis table");
+        return Status::OK();
       });
 }
 

@@ -42,6 +42,7 @@
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 
 namespace yb {
 
@@ -51,10 +52,6 @@ class ConsensusServiceProxy;
 
 namespace client {
 class YBClient;
-}
-
-namespace master {
-class MasterServiceProxy;
 }
 
 namespace rpc {
@@ -74,111 +71,114 @@ class ClusterAdminClient {
   // "localhost" or "127.0.0.1:7050".
   ClusterAdminClient(std::string addrs, int64_t timeout_millis);
 
+  virtual ~ClusterAdminClient() = default;
+
   // Initialized the client and connects to the specified tablet
   // server.
-  Status Init();
+  virtual CHECKED_STATUS Init();
 
   // Parse the user-specified change type to consensus change type
-  Status ParseChangeType(
+  CHECKED_STATUS ParseChangeType(
     const std::string& change_type,
     consensus::ChangeConfigType* cc_type);
 
     // Change the configuration of the specified tablet.
-  Status ChangeConfig(
+  CHECKED_STATUS ChangeConfig(
     const std::string& tablet_id,
     const std::string& change_type,
     const std::string& peer_uuid,
     const boost::optional<std::string>& member_type);
 
   // Change the configuration of the master tablet.
-  Status ChangeMasterConfig(
+  CHECKED_STATUS ChangeMasterConfig(
     const std::string& change_type,
     const std::string& peer_host,
     int16 peer_port);
 
-  Status DumpMasterState();
+  CHECKED_STATUS DumpMasterState();
 
   // List all the tables.
-  Status ListTables();
+  CHECKED_STATUS ListTables();
 
   // List all tablets of this table
-  Status ListTablets(const client::YBTableName& table_name, const int max_tablets);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, const int max_tablets);
 
   // Per Tablet list of all tablet servers
-  Status ListPerTabletTabletServers(const std::string& tablet_id);
+  CHECKED_STATUS ListPerTabletTabletServers(const std::string& tablet_id);
 
   // Delete a single table by name.
-  Status DeleteTable(const client::YBTableName& table_name);
+  CHECKED_STATUS DeleteTable(const client::YBTableName& table_name);
 
   // List all tablet servers known to master
-  Status ListAllTabletServers();
+  CHECKED_STATUS ListAllTabletServers();
 
   // List all masters
-  Status ListAllMasters();
+  CHECKED_STATUS ListAllMasters();
 
   // List the log locations of all tablet servers, by uuid
-  Status ListTabletServersLogLocations();
+  CHECKED_STATUS ListTabletServersLogLocations();
 
   // List all the tablets a certain tablet server is serving
-  Status ListTabletsForTabletServer(const std::string& ts_uuid);
+  CHECKED_STATUS ListTabletsForTabletServer(const std::string& ts_uuid);
 
-  Status SetLoadBalancerEnabled(const bool is_enabled);
+  CHECKED_STATUS SetLoadBalancerEnabled(const bool is_enabled);
 
-  Status GetLoadMoveCompletion();
+  CHECKED_STATUS GetLoadMoveCompletion();
 
-  Status ListLeaderCounts(const client::YBTableName& table_name);
+  CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
-  Status SetupRedisTable();
+  CHECKED_STATUS SetupRedisTable();
 
-  Status DropRedisTable();
+  CHECKED_STATUS DropRedisTable();
 
- private:
+ protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
-  Status GetTabletLocations(const std::string& tablet_id,
+  CHECKED_STATUS GetTabletLocations(const std::string& tablet_id,
                             master::TabletLocationsPB* locations);
 
   // Fetch information about the location of a tablet peer from the leader master.
-  Status GetTabletPeer(
+  CHECKED_STATUS GetTabletPeer(
     const std::string& tablet_id,
     PeerMode mode,
     master::TSInfoPB* ts_info);
 
   // Set the uuid and the socket information for a peer of this tablet.
-  Status SetTabletPeerInfo(
+  CHECKED_STATUS SetTabletPeerInfo(
     const std::string& tablet_id,
     PeerMode mode,
     std::string* peer_uuid,
     Endpoint* peer_socket);
 
   // Fetch the latest list of tablet servers from the Master.
-  Status ListTabletServers(
+  CHECKED_STATUS ListTabletServers(
       google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>* servers);
 
   // Look up the RPC address of the server with the specified UUID from the Master.
-  Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
+  CHECKED_STATUS GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
 
-  Status GetEndpointForHostPort(const HostPort& hp, Endpoint* addr);
+  CHECKED_STATUS GetEndpointForHostPort(const HostPort& hp, Endpoint* addr);
 
-  Status GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr);
+  CHECKED_STATUS GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr);
 
-  Status LeaderStepDown(
+  CHECKED_STATUS LeaderStepDown(
     const std::string& leader_uuid,
     const std::string& tablet_id,
     std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
 
-  Status StartElection(const std::string& tablet_id);
+  CHECKED_STATUS StartElection(const std::string& tablet_id);
 
-  Status MasterLeaderStepDown(const std::string& leader_uuid);
-  Status GetMasterLeaderInfo(std::string* leader_uuid);
+  CHECKED_STATUS MasterLeaderStepDown(const std::string& leader_uuid);
+  CHECKED_STATUS GetMasterLeaderInfo(std::string* leader_uuid);
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;
   Endpoint leader_sock_;
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
-  gscoped_ptr<master::MasterServiceProxy> master_proxy_;
+  std::unique_ptr<master::MasterServiceProxy> master_proxy_;
   std::shared_ptr<client::YBClient> yb_client_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 
