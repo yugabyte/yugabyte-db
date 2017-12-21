@@ -301,7 +301,7 @@ class PTCreateTable : public TreeNode {
   PTQualifiedName::SharedPtr table_name() const {
     return relation_;
   }
-  client::YBTableName yb_table_name() const {
+  virtual client::YBTableName yb_table_name() const {
     return relation_->ToTableName();
   }
 

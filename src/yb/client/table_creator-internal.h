@@ -67,6 +67,8 @@ class YBTableCreator::Data {
   master::ReplicationInfoPB replication_info_;
   bool has_replication_info_ = false;
 
+  std::string indexed_table_id_;
+
   MonoDelta timeout_;
 
   bool wait_ = true;

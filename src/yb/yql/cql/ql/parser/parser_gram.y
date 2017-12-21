@@ -1647,13 +1647,13 @@ cql_drop_type:
   | SCHEMA                        { $$ = OBJECT_SCHEMA; }
   | KEYSPACE                      { $$ = OBJECT_SCHEMA; }
   | TYPE_P                        { $$ = OBJECT_TYPE; }
+  | INDEX                         { $$ = OBJECT_INDEX; }
 ;
 
 ql_drop_type:
   SEQUENCE                        { $$ = OBJECT_SEQUENCE; }
   | VIEW                          { $$ = OBJECT_VIEW; }
   | MATERIALIZED VIEW             { $$ = OBJECT_MATVIEW; }
-  | INDEX                         { $$ = OBJECT_INDEX; }
   | FOREIGN TABLE                 { $$ = OBJECT_FOREIGN_TABLE; }
   | EVENT TRIGGER                 { $$ = OBJECT_EVENT_TRIGGER; }
   | COLLATION                     { $$ = OBJECT_COLLATION; }

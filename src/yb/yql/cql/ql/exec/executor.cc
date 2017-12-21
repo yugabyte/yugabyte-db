@@ -139,7 +139,8 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     return Status::OK();
   }
   switch (tnode->opcode()) {
-    case TreeNodeOpcode::kPTCreateTable:
+    case TreeNodeOpcode::kPTCreateTable: FALLTHROUGH_INTENDED;
+    case TreeNodeOpcode::kPTCreateIndex:
       return ExecPTNode(static_cast<const PTCreateTable *>(tnode));
 
     case TreeNodeOpcode::kPTAlterTable:
@@ -270,16 +271,21 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
 
   // Create table.
   shared_ptr<YBTableCreator> table_creator(exec_context_->NewTableCreator());
-  s = table_creator->table_name(table_name)
-                    .table_type(YBTableType::YQL_TABLE_TYPE)
-                    .schema(&schema)
-                    .Create();
+  table_creator->table_name(table_name)
+                .table_type(YBTableType::YQL_TABLE_TYPE)
+                .schema(&schema);
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    table_creator->indexed_table_id(static_cast<const PTCreateIndex*>(tnode)->indexed_table_id());
+  }
+  s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
       error_code = ErrorCode::DUPLICATE_TABLE;
     } else if (s.IsNotFound()) {
-      error_code = ErrorCode::KEYSPACE_NOT_FOUND;
+      error_code = tnode->opcode() == TreeNodeOpcode::kPTCreateIndex
+                   ? ErrorCode::TABLE_NOT_FOUND
+                   : ErrorCode::KEYSPACE_NOT_FOUND;
     } else if (s.IsInvalidArgument()) {
       error_code = ErrorCode::INVALID_TABLE_DEFINITION;
     }
@@ -291,8 +297,15 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
     return exec_context_->Error(tnode->table_name(), s, error_code);
   }
 
-  result_ = std::make_shared<SchemaChangeResult>(
-      "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    const YBTableName indexed_table_name =
+        static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
+    result_ = std::make_shared<SchemaChangeResult>(
+        "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
+  } else {
+    result_ = std::make_shared<SchemaChangeResult>(
+        "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+  }
   return Status::OK();
 }
 
@@ -356,6 +369,17 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
+      break;
+    }
+
+    case OBJECT_INDEX: {
+      // Drop the index.
+      const YBTableName table_name = tnode->yb_table_name();
+      YBTableName indexed_table_name;
+      s = exec_context_->DeleteIndexTable(table_name, &indexed_table_name);
+      error_not_found = ErrorCode::TABLE_NOT_FOUND;
+      result_ = std::make_shared<SchemaChangeResult>(
+          "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
       break;
     }
 
@@ -824,7 +848,9 @@ Status Executor::ProcessStatementStatus(const ParseTree &parse_tree, const Statu
     if (errcode == ErrorCode::TABLET_NOT_FOUND ||
         errcode == ErrorCode::WRONG_METADATA_VERSION ||
         errcode == ErrorCode::INVALID_TABLE_DEFINITION ||
-        errcode == ErrorCode::INVALID_ARGUMENTS) {
+        errcode == ErrorCode::INVALID_ARGUMENTS ||
+        errcode == ErrorCode::TABLE_NOT_FOUND ||
+        errcode == ErrorCode::TYPE_NOT_FOUND) {
       parse_tree.ClearAnalyzedTableCache(ql_env_);
       parse_tree.ClearAnalyzedUDTypeCache(ql_env_);
       parse_tree.set_stale();

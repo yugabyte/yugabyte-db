@@ -2354,7 +2354,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
       .Create();
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_STR_CONTAINS(s.ToString(),
-                      "Not enough live tablet servers to create a table with the requested "
+                      "Not enough live tablet servers to create table with the requested "
                       "replication factor 3. 1 tablet servers are alive");
 }
 

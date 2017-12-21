@@ -70,9 +70,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected Cluster cluster;
   protected Session session;
 
-  /** These keyspaces will be dropped in after the current test method (in the @After handler). */
-  protected Set<String> keyspacesToDrop = new TreeSet<>();
-
   float float_infinity_positive = createFloat(0, 0b11111111, 0);
   float float_infinity_negative = createFloat(1, 0b11111111, 0);
   float float_nan_0 = createFloat(0, 0b11111111, 1);
@@ -280,6 +277,11 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     LOG.info("INSERT INTO TABLE " + tableName + " FINISHED");
   }
 
+  protected void dropIndex(String indexName) throws Exception {
+    String dropStmt = String.format("DROP INDEX %s;", indexName);
+    session.execute(dropStmt);
+  }
+
   protected void dropTable(String tableName) throws Exception {
     String dropStmt = String.format("DROP TABLE %s;", tableName);
     session.execute(dropStmt);
@@ -303,45 +305,35 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   protected void dropTables() throws Exception {
-    if (miniCluster == null) {
+    if (cluster == null) {
       return;
     }
-    for (Master.ListTablesResponsePB.TableInfo tableInfo :
-        miniCluster.getClient().getTablesList().getTableInfoList()) {
-      // Drop all non-system tables.
-      String namespaceName = tableInfo.getNamespace().getName();
-      if (!IsSystemKeyspace(namespaceName) && !IsRedisKeyspace(namespaceName)) {
-        dropTable(namespaceName + "." + tableInfo.getName());
+    for (Row row : session.execute("SELECT keyspace_name, table_name FROM system_schema.tables")) {
+      if (!IsSystemKeyspace(row.getString("keyspace_name"))) {
+        dropTable(row.getString("keyspace_name") + "." + row.getString("table_name"));
       }
     }
   }
-
 
   protected void dropUDTypes() throws Exception {
     if (cluster == null) {
       return;
     }
-
-    for (KeyspaceMetadata keyspace : cluster.getMetadata().getKeyspaces()) {
-      if (!IsSystemKeyspace(keyspace.getName())) {
-        for (UserType udt : keyspace.getUserTypes()) {
-          dropUDType(keyspace.getName(), udt.getTypeName());
-        }
+    for (Row row : session.execute("SELECT keyspace_name, type_name FROM system_schema.types")) {
+      if (!IsSystemKeyspace(row.getString("keyspace_name"))) {
+        dropUDType(row.getString("keyspace_name"), row.getString("type_name"));
       }
     }
   }
 
   protected void dropKeyspaces() throws Exception {
-    if (keyspacesToDrop.isEmpty()) {
-      LOG.info("No keyspaces to drop after the test.");
+    if (cluster == null) {
+      return;
     }
-
-    // Copy the set of keyspaces to drop to avoid concurrent modification exception, because
-    // dropKeyspace will also remove them from the keyspacesToDrop.
-    final Set<String> keyspacesToDropCopy = new TreeSet<>();
-    keyspacesToDropCopy.addAll(keyspacesToDrop);
-    for (String keyspaceName : keyspacesToDropCopy) {
-      dropKeyspace(keyspaceName);
+    for (Row row : session.execute("SELECT keyspace_name FROM system_schema.keyspaces")) {
+      if (!IsSystemKeyspace(row.getString("keyspace_name"))) {
+        dropKeyspace(row.getString("keyspace_name"));
+      }
     }
   }
 
@@ -420,13 +412,11 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   public void createKeyspace(String keyspaceName) throws Exception {
     String createKeyspaceStmt = "CREATE KEYSPACE \"" + keyspaceName + "\";";
     execute(createKeyspaceStmt);
-    keyspacesToDrop.add(keyspaceName);
   }
 
   public void createKeyspaceIfNotExists(String keyspaceName) throws Exception {
     String createKeyspaceStmt = "CREATE KEYSPACE IF NOT EXISTS \"" + keyspaceName + "\";";
     execute(createKeyspaceStmt);
-    keyspacesToDrop.add(keyspaceName);
   }
 
   public void useKeyspace(String keyspaceName) throws Exception {
@@ -437,7 +427,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   public void dropKeyspace(String keyspaceName) throws Exception {
     String deleteKeyspaceStmt = "DROP KEYSPACE \"" + keyspaceName + "\";";
     execute(deleteKeyspaceStmt);
-    keyspacesToDrop.remove(keyspaceName);
   }
 
   // Get IO metrics of all tservers.

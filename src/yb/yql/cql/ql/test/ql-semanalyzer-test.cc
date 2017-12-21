@@ -208,7 +208,7 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
 
   // Duplicate primary key columns.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r1);", &parse_tree);
-  // Duplicate covered columns.
+  // Duplicate covering columns.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) COVERING (r1);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) COVERING (r2);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2, c1) COVERING (c1);", &parse_tree);

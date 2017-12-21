@@ -27,6 +27,7 @@
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
@@ -79,7 +80,7 @@ class Executor : public QLExprExecutor {
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
 
-  // Creates a table.
+  // Creates a table (including index table for CREATE INDEX).
   CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
 
   // Alters a table.

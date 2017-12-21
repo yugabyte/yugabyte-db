@@ -90,11 +90,11 @@ CHECKED_STATUS PTName::SetupCoveringIndexColumn(SemContext *sem_context) {
     return sem_context->Error(this, "Column covered already", ErrorCode::INVALID_TABLE_DEFINITION);
   }
   if (column->is_static()) {
-    return sem_context->Error(this, "Static column not supported as a covered index column",
+    return sem_context->Error(this, "Static column not supported as a covering index column",
                               ErrorCode::SQL_STATEMENT_INVALID);
   }
 
-  // Add the analyzed covered index column to table. Need to check for proper datatype and set
+  // Add the analyzed covering index column to table. Need to check for proper datatype and set
   // column location because column definition is loaded from the indexed table definition actually.
   PTCreateTable *table = sem_context->current_create_table_stmt();
   DCHECK(table->opcode() == TreeNodeOpcode::kPTCreateIndex);
@@ -168,12 +168,12 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
       return Status::OK();
 
     case OBJECT_TABLE: FALLTHROUGH_INTENDED;
-    case OBJECT_TYPE:
+    case OBJECT_TYPE: FALLTHROUGH_INTENDED;
+    case OBJECT_INDEX:
       if (ptnames_.size() > 2) {
         return sem_context->Error(this,
                                   strings::Substitute("Invalid $0 name",
-                                                      object_type == OBJECT_TABLE ?
-                                                      "table" : "type").c_str(),
+                                                      ObjectTypeName(object_type)).c_str(),
                                   ErrorCode::SQL_STATEMENT_INVALID);
       }
       if (ptnames_.size() == 2) {
@@ -233,7 +233,6 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
     case OBJECT_FOREIGN_SERVER: FALLTHROUGH_INTENDED;
     case OBJECT_FOREIGN_TABLE: FALLTHROUGH_INTENDED;
     case OBJECT_FUNCTION: FALLTHROUGH_INTENDED;
-    case OBJECT_INDEX: FALLTHROUGH_INTENDED;
     case OBJECT_LANGUAGE: FALLTHROUGH_INTENDED;
     case OBJECT_LARGEOBJECT: FALLTHROUGH_INTENDED;
     case OBJECT_MATVIEW: FALLTHROUGH_INTENDED;

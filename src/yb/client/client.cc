@@ -337,7 +337,25 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->DeleteTable(this, table_name, deadline, wait);
+  return data_->DeleteTable(this,
+                            table_name,
+                            false /* is_index_table */,
+                            deadline,
+                            nullptr /* indexed_table_name */,
+                            wait);
+}
+
+Status YBClient::DeleteIndexTable(const YBTableName& table_name,
+                                  YBTableName* indexed_table_name,
+                                  bool wait) {
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  return data_->DeleteTable(this,
+                            table_name,
+                            true /* is_index_table */,
+                            deadline,
+                            indexed_table_name,
+                            wait);
 }
 
 YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
@@ -357,12 +375,16 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
   string table_id_ignored;
-  return data_->GetTableSchema(this,
-                               table_name,
-                               deadline,
-                               schema,
-                               partition_schema,
-                               &table_id_ignored);
+  string indexed_table_id;
+  RETURN_NOT_OK(data_->GetTableSchema(this,
+                                      table_name,
+                                      deadline,
+                                      schema,
+                                      partition_schema,
+                                      &table_id_ignored,
+                                      &indexed_table_id));
+  // Verify it is not an index table.
+  return !indexed_table_id.empty() ? STATUS(NotFound, "The table does not exist") : Status::OK();
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name) {
@@ -883,6 +905,7 @@ void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
 Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {
   YBSchema schema;
   string table_id;
+  string indexed_table_id;
   PartitionSchema partition_schema;
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
@@ -891,7 +914,12 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
                                       deadline,
                                       &schema,
                                       &partition_schema,
-                                      &table_id));
+                                      &table_id,
+                                      &indexed_table_id));
+  // Verify it is not an index table.
+  if (!indexed_table_id.empty()) {
+    return STATUS(NotFound, "The table does not exist");
+  }
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
@@ -1020,6 +1048,11 @@ YBTableCreator& YBTableCreator::replication_info(const ReplicationInfoPB& ri) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::indexed_table_id(const string& id) {
+  data_->indexed_table_id_ = id;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::timeout(const MonoDelta& timeout) {
   data_->timeout_ = timeout;
   return *this;
@@ -1031,8 +1064,9 @@ YBTableCreator& YBTableCreator::wait(bool wait) {
 }
 
 Status YBTableCreator::Create() {
+  const char *object_type = data_->indexed_table_id_.empty() ? "table" : "index";
   if (data_->table_name_.table_name().empty()) {
-    return STATUS(InvalidArgument, "Missing table name");
+    return STATUS_SUBSTITUTE(InvalidArgument, "Missing $0 name", object_type);
   }
   // For a redis table, no external schema is passed to TableCreator, we make a unique schema
   // and manage its memory withing here.
@@ -1121,6 +1155,10 @@ Status YBTableCreator::Create() {
   }
   req.mutable_partition_schema()->CopyFrom(data_->partition_schema_);
 
+  if (!data_->indexed_table_id_.empty()) {
+    req.set_indexed_table_id(data_->indexed_table_id_);
+  }
+
   MonoTime deadline = MonoTime::Now();
   if (data_->timeout_.Initialized()) {
     deadline.AddDelta(data_->timeout_);
@@ -1132,8 +1170,8 @@ Status YBTableCreator::Create() {
                                                            req,
                                                            *data_->schema_,
                                                            deadline),
-                        strings::Substitute("Error creating table $0 on the master",
-                                            data_->table_name_.ToString()));
+                        strings::Substitute("Error creating $0 $1 on the master",
+                                            object_type, data_->table_name_.ToString()));
 
   // Spin until the table is fully created, if requested.
   if (data_->wait_) {
@@ -1142,7 +1180,7 @@ Status YBTableCreator::Create() {
                                                                     deadline));
   }
 
-  LOG(INFO) << "Created table " << data_->table_name_.ToString()
+  LOG(INFO) << "Created " << object_type << " " << data_->table_name_.ToString()
             << " of type " << TableType_Name(data_->table_type_);
 
   return Status::OK();

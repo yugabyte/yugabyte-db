@@ -463,7 +463,8 @@ Status YBClient::Data::CreateTable(
       // response could be sent back, or due to a I/O pause or a
       // network blip leading to a timeout, etc...)
       YBSchema actual_schema;
-      string table_id;
+      string table_id_ignored;
+      string indexed_table_id_ignored;
       PartitionSchema actual_partition_schema;
       string keyspace = req.has_namespace_() ? req.namespace_().name() :
                         (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
@@ -480,7 +481,7 @@ Status YBClient::Data::CreateTable(
 
       RETURN_NOT_OK_PREPEND(
           GetTableSchema(client, table_name, deadline, &actual_schema,
-                         &actual_partition_schema, &table_id),
+                         &actual_partition_schema, &table_id_ignored, &indexed_table_id_ignored),
           Substitute("Unable to check the schema of table $0", table_name.ToString()));
       if (!schema.Equals(actual_schema)) {
          string msg = Format("Table $0 already exists with a different "
@@ -557,13 +558,16 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
 
 Status YBClient::Data::DeleteTable(YBClient* client,
                                    const YBTableName& table_name,
+                                   const bool is_index_table,
                                    const MonoTime& deadline,
+                                   YBTableName* indexed_table_name,
                                    bool wait) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
 
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  req.set_is_index_table(is_index_table);
   const Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
       deadline, client, req, &resp,
       &attempts, "DeleteTable", &MasterServiceProxy::DeleteTable);
@@ -583,6 +587,11 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   // Spin until the table is fully deleted, if requested.
   if (wait && resp.has_table_id()) {
     RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
+  }
+
+  if (resp.has_indexed_table()) {
+    DCHECK(indexed_table_name != nullptr);
+    indexed_table_name->GetFromTableIdentifierPB(resp.indexed_table());
   }
 
   LOG(INFO) << "Deleted table " << table_name.ToString();
@@ -774,6 +783,7 @@ class GetTableSchemaRpc : public Rpc {
                     YBSchema* out_schema,
                     PartitionSchema* out_partition_schema,
                     string* out_id,
+                    string* out_indexed_table_id,
                     const MonoTime& deadline,
                     const shared_ptr<rpc::Messenger>& messenger);
 
@@ -796,6 +806,7 @@ class GetTableSchemaRpc : public Rpc {
   YBSchema* out_schema_;
   PartitionSchema* out_partition_schema_;
   string* out_id_;
+  string* out_indexed_table_id_;
   GetTableSchemaResponsePB resp_;
 };
 
@@ -805,6 +816,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      YBSchema* out_schema,
                                      PartitionSchema* out_partition_schema,
                                      string* out_id,
+                                     string* out_indexed_table_id,
                                      const MonoTime& deadline,
                                      const shared_ptr<rpc::Messenger>& messenger)
     : Rpc(deadline, messenger),
@@ -813,7 +825,8 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
       table_name_(std::move(table_name)),
       out_schema_(DCHECK_NOTNULL(out_schema)),
       out_partition_schema_(DCHECK_NOTNULL(out_partition_schema)),
-      out_id_(DCHECK_NOTNULL(out_id)) {
+      out_id_(DCHECK_NOTNULL(out_id)),
+      out_indexed_table_id_(DCHECK_NOTNULL(out_indexed_table_id)) {
 }
 
 GetTableSchemaRpc::~GetTableSchemaRpc() {
@@ -929,6 +942,9 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
                                            out_partition_schema_);
 
       *out_id_ = resp_.identifier().table_id();
+      if (resp_.has_indexed_table_id()) {
+        *out_indexed_table_id_ = resp_.indexed_table_id();
+      }
       CHECK_GT(out_id_->size(), 0) << "Running against a too-old master";
     }
   }
@@ -945,7 +961,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const MonoTime& deadline,
                                       YBSchema* schema,
                                       PartitionSchema* partition_schema,
-                                      string* table_id) {
+                                      string* table_id,
+                                      string* indexed_table_id) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
       client,
@@ -954,6 +971,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       schema,
       partition_schema,
       table_id,
+      indexed_table_id,
       deadline,
       messenger_);
   return sync.Wait();

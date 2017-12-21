@@ -89,6 +89,10 @@ CHECKED_STATUS QLEnv::DeleteTable(const YBTableName& name) {
   return client_->DeleteTable(name);
 }
 
+CHECKED_STATUS QLEnv::DeleteIndexTable(const YBTableName& name, YBTableName* indexed_table_name) {
+  return client_->DeleteIndexTable(name, indexed_table_name);
+}
+
 void QLEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
   DCHECK(cql_call == nullptr || current_call_ == nullptr)
       << this << " Tried updating current call. Current call is " << current_call_;

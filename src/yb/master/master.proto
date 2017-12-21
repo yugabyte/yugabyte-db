@@ -191,6 +191,21 @@ message BlacklistPB {
   optional int32 initial_replica_load = 2;
 }
 
+// This message contains the metadata of a secondary index of a table. It maps the indexed table
+// columns to the index table columns.
+message IndexInfoPB {
+
+  // Index table id.
+  optional bytes table_id = 1;
+
+  // Ids of indexed table columns that compose the hash and range columns of the index table.
+  repeated uint32 hash_column_ids = 2;
+  repeated uint32 range_column_ids = 3;
+
+  // Ids of additional indexed table columns covered by the index.
+  repeated uint32 covering_column_ids = 4;
+}
+
 ////////////////////////////////////////////////////////////
 // Sys Tables Metadata
 ////////////////////////////////////////////////////////////
@@ -302,6 +317,12 @@ message SysTablesEntryPB {
   // Debug state for the table.
   optional State state = 6 [ default = UNKNOWN ];
   optional bytes state_msg = 7;
+
+  // Secondary indexes of the table.
+  repeated IndexInfoPB indexes = 12;
+
+  // For index table: indexed table id of this index.
+  optional bytes indexed_table_id = 13;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -533,6 +554,8 @@ message GetTabletLocationsResponsePB {
 // ============================================================================
 //  Catalog
 // ============================================================================
+
+// Create table request (including index table)
 message CreateTableRequestPB {
   required string name = 1;
   optional SchemaPB schema = 2;
@@ -542,6 +565,8 @@ message CreateTableRequestPB {
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
   optional NamespaceIdentifierPB namespace = 8;
+  // For index table: indexed table id of this index.
+  optional bytes indexed_table_id = 9;
 }
 
 message CreateTableResponsePB {
@@ -563,8 +588,10 @@ message IsCreateTableDoneResponsePB {
   optional bool done = 3;
 }
 
+// Delete table request (including index table)
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
+  optional bool is_index_table = 2 [ default = false ];
 }
 
 message DeleteTableResponsePB {
@@ -572,6 +599,8 @@ message DeleteTableResponsePB {
   optional MasterErrorPB error = 1;
 
   optional bytes table_id = 2;
+  // For index table, the indexed table of this index.
+  optional TableIdentifierPB indexed_table = 3;
 }
 
 message IsDeleteTableDoneRequestPB {
@@ -721,6 +750,12 @@ message GetTableSchemaResponsePB {
 
   // Table identifier
   optional TableIdentifierPB identifier = 8;
+
+  // Secondary indexes of the table.
+  repeated IndexInfoPB indexes = 10;
+
+  // For index table: indexed table id of this index.
+  optional bytes indexed_table_id = 11;
 }
 
 // ============================================================================

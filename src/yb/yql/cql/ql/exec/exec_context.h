@@ -57,6 +57,11 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->DeleteTable(name);
   }
 
+  CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,
+                                  client::YBTableName* indexed_table_name) {
+    return ql_env_->DeleteIndexTable(name, indexed_table_name);
+  }
+
   // Keyspace related methods.
 
   // Create a new keyspace with the given name.

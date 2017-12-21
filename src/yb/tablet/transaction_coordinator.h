@@ -106,7 +106,7 @@ class TransactionCoordinator {
   // Clears locks for transaction updates. Used when leader changes.
   void ClearLocks();
 
-  // Handles new request for transaction udpate.
+  // Handles new request for transaction update.
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request);
 
   // Prepares log garbage collection. Return min index that should be preserved.

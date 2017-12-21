@@ -36,6 +36,7 @@ add_library(ql_ptree
             pt_update.cc
             pt_expr.cc
             pt_bcall.cc
+            pt_option.cc
             process_context.cc
             sem_context.cc
             sem_state.cc)

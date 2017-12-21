@@ -351,7 +351,7 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
   // Use current keyspace. The table has been already created.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(table3);
   EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(table3), "Duplicate Table",
-      "Table already exists");
+      "Target table already exists");
 
   // Create the keyspace2.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace2);

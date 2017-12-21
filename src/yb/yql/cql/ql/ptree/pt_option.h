@@ -77,6 +77,8 @@ typedef enum ObjectType : int {
   OBJECT_VIEW
 } ObjectType;
 
+const char* ObjectTypeName(ObjectType object_type);
+
 }  // namespace ql
 }  // namespace yb
 

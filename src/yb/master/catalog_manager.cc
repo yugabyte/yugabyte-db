@@ -1230,8 +1230,12 @@ Status CatalogManager::CheckOnline() const {
   return Status::OK();
 }
 
-void CatalogManager::AbortTableCreation(TableInfo* table,
-                                        const vector<TabletInfo*>& tablets) {
+Status CatalogManager::AbortTableCreation(TableInfo* table,
+                                          const vector<TabletInfo*>& tablets,
+                                          const Status& s,
+                                          CreateTableResponsePB* resp) {
+  LOG(WARNING) << s;
+
   const TableId table_id = table->id();
   const TableName table_name = table->mutable_metadata()->mutable_dirty()->pb.name();
   const NamespaceId table_namespace_id =
@@ -1266,6 +1270,8 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
       << "Unable to erase table named " << table_name << " from table names map.";
   CHECK_EQ(table_ids_map_.erase(table_id), 1)
       << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
+
+  return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
 
 Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
@@ -1284,6 +1290,69 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   return Status::OK();
 }
 
+namespace {
+
+CHECKED_STATUS AddIndexedColumn(const Schema& index_schema,
+                                const size_t index_col_idx,
+                                const Schema& indexed_schema,
+                                google::protobuf::RepeatedField<google::protobuf::uint32>* cols) {
+  const auto& col_name = index_schema.column(index_col_idx).name();
+  const auto indexed_col_idx = indexed_schema.find_column(col_name);
+  if (PREDICT_FALSE(indexed_col_idx == Schema::kColumnNotFound)) {
+    return STATUS(NotFound, "The indexed table column does not exist", col_name);
+  }
+  cols->Add(indexed_schema.column_id(indexed_col_idx));
+  return Status::OK();
+}
+
+} // namespace
+
+Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
+                                           const TableId& index_table_id,
+                                           const Schema& index_schema) {
+  // Lookup the indexed table and verify if it exists.
+  TRACE("Looking up indexed table");
+  scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
+  if (indexed_table == nullptr) {
+    return STATUS(NotFound, "The indexed table does not exist");
+  }
+
+  Schema indexed_schema;
+  RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
+
+  // Populate index info.
+  IndexInfoPB index_info;
+  index_info.set_table_id(index_table_id);
+  for (size_t i = 0; i < index_schema.num_hash_key_columns(); i++) {
+    RETURN_NOT_OK(AddIndexedColumn(index_schema, i, indexed_schema,
+                                   index_info.mutable_hash_column_ids()));
+  }
+  for (size_t i = index_schema.num_hash_key_columns(); i < index_schema.num_key_columns(); i++) {
+    RETURN_NOT_OK(AddIndexedColumn(index_schema, i, indexed_schema,
+                                   index_info.mutable_range_column_ids()));
+  }
+  for (size_t i = index_schema.num_key_columns(); i < index_schema.num_columns(); i++) {
+    RETURN_NOT_OK(AddIndexedColumn(index_schema, i, indexed_schema,
+                                   index_info.mutable_covering_column_ids()));
+  }
+
+  TRACE("Locking indexed table");
+  auto l = indexed_table->LockForWrite();
+
+  // Add index info to indexed table.
+  l->mutable_data()->pb.add_indexes()->Swap(&index_info);
+
+  // Update sys-catalog with the new indexed table info.
+  TRACE("Updating indexed table metadata on disk");
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(indexed_table.get()));
+
+  // Update the in-memory state
+  TRACE("Committing in-memory state");
+  l->Commit();
+
+  return Status::OK();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -1291,6 +1360,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    rpc::RpcContext* rpc) {
   RETURN_NOT_OK(CheckOnline());
   Status s;
+
+  const char* const object_type = orig_req->indexed_table_id().empty() ? "table" : "index";
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
@@ -1401,15 +1472,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Verify that the number of replicas isn't larger than the number of live tablet servers.
   if (FLAGS_catalog_manager_check_ts_count_for_create_table && num_replicas > num_live_tservers) {
     s = STATUS_FORMAT(InvalidArgument,
-                      "Not enough live tablet servers to create a table with the requested "
-                      "replication factor $0. $1 tablet servers are alive.",
-                      num_replicas, num_live_tservers);
+                      "Not enough live tablet servers to create $0 with the requested "
+                      "replication factor $1. $2 tablet servers are alive.",
+                      object_type, num_replicas, num_live_tservers);
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
   }
 
   // Validate the table placement rules are a subset of the cluster ones.
   s = ValidateTableReplicationInfo(req.replication_info());
-  if (!s.ok()) {
+  if (PREDICT_FALSE(!s.ok())) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
   }
 
@@ -1454,7 +1525,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
 
     if (table != nullptr) {
-      s = STATUS(AlreadyPresent, "Table already exists", table->id());
+      s = STATUS(AlreadyPresent, Substitute("Target $0 already exists", object_type), table->id());
       return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
     }
 
@@ -1474,26 +1545,38 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Write Tablets to sys-tablets (in "preparing" state)
   s = sys_catalog_->AddItems(tablets);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute("An error occurred while inserting to sys-tablets: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s.ToString();
-    AbortTableCreation(table.get(), tablets);
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  if (PREDICT_FALSE(!s.ok())) {
+    return AbortTableCreation(table.get(), tablets,
+                              s.CloneAndPrepend(
+                                  Substitute("An error occurred while inserting to sys-tablets: $0",
+                                             s.ToString())),
+                              resp);
   }
   TRACE("Wrote tablets to system table");
 
   // Update the on-disk table state to "running".
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   s = sys_catalog_->AddItem(table.get());
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute("An error occurred while inserting to sys-tablets: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s.ToString();
-    AbortTableCreation(table.get(), tablets);
-    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  if (PREDICT_FALSE(!s.ok())) {
+    return AbortTableCreation(table.get(), tablets,
+                              s.CloneAndPrepend(
+                                  Substitute("An error occurred while inserting to sys-tablets: $0",
+                                             s.ToString())),
+                              resp);
   }
   TRACE("Wrote table to system table");
+
+  // For index table, insert index info in the indexed table.
+  if (req.has_indexed_table_id()) {
+    s = AddIndexInfoToTable(req.indexed_table_id(), table->id(), schema);
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(table.get(), tablets,
+                                s.CloneAndPrepend(
+                                    Substitute("An error occurred while inserting index info: $0",
+                                               s.ToString())),
+                                resp);
+    }
+  }
 
   // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
@@ -1503,7 +1586,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   VLOG(1) << "Created table " << table->ToString();
-  LOG(INFO) << "Successfully created table " << table->ToString()
+  LOG(INFO) << "Successfully created " << object_type << " " << table->ToString()
             << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
   return Status::OK();
@@ -1604,6 +1687,10 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   // whereas the user request PB does not.
   CHECK_OK(SchemaToPB(schema, metadata->mutable_schema()));
   partition_schema.ToPB(metadata->mutable_partition_schema());
+  // For index table, set indexed table id.
+  if (req.has_indexed_table_id()) {
+    metadata->set_indexed_table_id(req.indexed_table_id());
+  }
   return table;
 }
 
@@ -1678,6 +1765,48 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   return Status::OK();
 }
 
+Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
+                                                const TableId& index_table_id,
+                                                DeleteTableResponsePB* resp) {
+  // Lookup the indexed table and verify if it exists.
+  TRACE("Looking up indexed table");
+  scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
+  if (indexed_table == nullptr) {
+    return STATUS(NotFound, "The indexed table does not exist");
+  }
+
+  NamespaceIdentifierPB nsId;
+  nsId.set_id(indexed_table->namespace_id());
+  scoped_refptr<NamespaceInfo> nsInfo;
+  RETURN_NOT_OK(FindNamespace(nsId, &nsInfo));
+  auto *indexed_table_name = resp->mutable_indexed_table();
+  indexed_table_name->mutable_namespace_()->set_name(nsInfo->name());
+  indexed_table_name->set_table_name(indexed_table->name());
+
+  TRACE("Locking indexed table");
+  auto l = indexed_table->LockForWrite();
+
+  auto *indexes = l->mutable_data()->pb.mutable_indexes();
+  for (int i = 0; i < indexes->size(); i++) {
+    if (indexes->Get(i).table_id() == index_table_id) {
+
+      indexes->DeleteSubrange(i, 1);
+
+      // Update sys-catalog with the deleted indexed table info.
+      TRACE("Updating indexed table metadata on disk");
+      RETURN_NOT_OK(sys_catalog_->UpdateItem(indexed_table.get()));
+
+      // Update the in-memory state
+      TRACE("Committing in-memory state");
+      l->Commit();
+      return Status::OK();
+    }
+  }
+
+  return STATUS_SUBSTITUTE(NotFound, "Index $0 not found in indexed table $1",
+                           index_table_id, indexed_table_id);
+}
+
 // Delete a Table
 //  - Update the table state to "removed"
 //  - Write the updated table metadata to sys-table
@@ -1687,18 +1816,57 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
 Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
                                    DeleteTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc)
-            << ": " << req->ShortDebugString();
+  LOG(INFO) << "Servicing DeleteTable request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
 
   RETURN_NOT_OK(CheckOnline());
+
+  vector<scoped_refptr<TableInfo>> tables;
+  vector<scoped_refptr<DeletedTableInfo>> deleted_tables;
+  vector<unique_ptr<TableInfo::lock_type>> table_locks;
+
+  RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
+                                    true /* update_indexed_table */,
+                                    &tables, &deleted_tables, &table_locks, resp, rpc));
+
+  // Update the in-memory state
+  TRACE("Committing in-memory state");
+  for (int i = 0; i < table_locks.size(); i++) {
+    table_locks[i]->Commit();
+  }
+
+  // The table lock (l) and the global lock (lock_) must be released for the next call.
+  for (int i = 0; i < deleted_tables.size(); i++) {
+    MarkTableDeletedIfNoTablets(deleted_tables[i], tables[i].get());
+
+    // Send a DeleteTablet() request to each tablet replica in the table.
+    DeleteTabletsAndSendRequests(tables[i]);
+  }
+
+  LOG(INFO) << Substitute("Successfully deleted $0 ", req->is_index_table() ? "index" : "table")
+            << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  background_tasks_->Wake();
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identifier,
+                                           const bool is_index_table,
+                                           const bool update_indexed_table,
+                                           vector<scoped_refptr<TableInfo>>* tables,
+                                           vector<scoped_refptr<DeletedTableInfo>>* deleted_tables,
+                                           vector<unique_ptr<TableInfo::lock_type>>* table_lcks,
+                                           DeleteTableResponsePB* resp,
+                                           rpc::RpcContext* rpc) {
+  const char* const object_type = is_index_table ? "index" : "table";
 
   scoped_refptr<TableInfo> table;
 
   // Lookup the table and verify if it exists
   TRACE("Looking up table");
-  RETURN_NOT_OK(FindTable(req->table(), &table));
+  RETURN_NOT_OK(FindTable(table_identifier, &table));
   if (table == nullptr) {
-    Status s = STATUS(NotFound, "The table does not exist", req->table().DebugString());
+    Status s = STATUS(NotFound, Substitute("The $0 does not exist", object_type),
+                      table_identifier.DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
   }
 
@@ -1706,8 +1874,14 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
   auto l = table->LockForWrite();
   resp->set_table_id(table->id());
 
+  if (is_index_table == l->data().pb.indexed_table_id().empty()) {
+    Status s = STATUS_SUBSTITUTE(NotFound, "The $0 does not exist", object_type);
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
   if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The table was deleted", l->data().pb.state_msg());
+    Status s = STATUS(NotFound, Substitute("The $0 was deleted", object_type),
+                      l->data().pb.state_msg());
     return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
   }
 
@@ -1726,6 +1900,27 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
   }
 
+  // For regular (indexed) table, delete all its index tables if any. Else for index table, delete
+  // index info from the indexed table.
+  if (!is_index_table) {
+    TableIdentifierPB index_identifier;
+    for (auto index : l->data().pb.indexes()) {
+      index_identifier.set_table_id(index.table_id());
+      RETURN_NOT_OK(DeleteTableInMemory(index_identifier, true /* is_index_table */,
+                                        false /* update_index_table */, tables, deleted_tables,
+                                        table_lcks, resp, rpc));
+    }
+  } else if (update_indexed_table) {
+    s = DeleteIndexInfoFromTable(l->data().pb.indexed_table_id(), table->id(), resp);
+    if (!s.ok()) {
+      s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
+                                       s.ToString()));
+      LOG(WARNING) << s.ToString();
+      return CheckIfNoLongerLeaderAndSetupError(s, resp);
+    }
+  }
+
+
   table->AbortTasks();
   scoped_refptr<DeletedTableInfo> deleted_table(new DeletedTableInfo(table.get()));
 
@@ -1741,19 +1936,19 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     deleted_table->AddTabletsToMap(&deleted_tablet_map_);
   }
 
-  // Update the in-memory state
-  TRACE("Committing in-memory state");
-  l->Commit();
+  // For regular (indexed) table, insert table info and lock in the front of the list. Else for
+  // index table, append them to the end. We do so so that we will commit and delete the indexed
+  // table first before its indexes.
+  if (!is_index_table) {
+    tables->insert(tables->begin(), table);
+    deleted_tables->insert(deleted_tables->begin(), deleted_table);
+    table_lcks->insert(table_lcks->begin(), std::move(l));
+  } else {
+    tables->push_back(table);
+    deleted_tables->push_back(deleted_table);
+    table_lcks->push_back(std::move(l));
+  }
 
-  // The table lock (l) and the global lock (lock_) must be released for the next call.
-  MarkTableDeletedIfNoTablets(deleted_table, table.get());
-
-  // Send a DeleteTablet() request to each tablet replica in the table.
-  DeleteTabletsAndSendRequests(table);
-
-  LOG(INFO) << "Successfully deleted table " << table->ToString()
-            << " per request from " << RequestorString(rpc);
-  background_tasks_->Wake();
   return Status::OK();
 }
 
@@ -2156,6 +2351,10 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->mutable_identifier()->set_table_id(table->id());
   resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
   resp->set_version(l->data().pb.version());
+  resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
+  if (l->data().pb.has_indexed_table_id()) {
+    resp->set_indexed_table_id(l->data().pb.indexed_table_id());
+  }
 
   // Get namespace name by id.
   boost::shared_lock<LockType> l_map(lock_);
@@ -2719,8 +2918,9 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
       if (!ltm->data().started_deleting() && ltm->data().namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
-            Substitute("Cannot delete namespace which has a table: $0 [id=$1]",
-                ltm->data().name(), entry.second->id()), req->DebugString());
+                          Substitute("Cannot delete namespace which has $0: $1 [id=$2]",
+                                     ltm->data().pb.indexed_table_id().empty() ? "table" : "index",
+                                     ltm->data().name(), entry.second->id()), req->DebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
       }
     }
@@ -2736,7 +2936,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
       if (ltm->data().namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
-            Substitute("Cannot delete namespace which has a type: $0 [id=$1]",
+            Substitute("Cannot delete namespace which has type: $0 [id=$1]",
                 ltm->data().name(), entry.second->id()), req->DebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
       }
@@ -2876,8 +3076,7 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
   scoped_refptr<NamespaceInfo> ns;
 
   if (!req->has_type()) {
-    Status s = STATUS(InvalidArgument, "No type given",
-        req->DebugString());
+    Status s = STATUS(InvalidArgument, "No type given", req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
 
@@ -4716,8 +4915,12 @@ const NamespaceId TableInfo::namespace_id() const {
 
 const Status TableInfo::GetSchema(Schema* schema) const {
   auto l = LockForRead();
-  RETURN_NOT_OK(SchemaFromPB(l->data().schema(), schema));
-  return Status::OK();
+  return SchemaFromPB(l->data().schema(), schema);
+}
+
+const std::string TableInfo::indexed_table_id() const {
+  auto l = LockForRead();
+  return l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
 }
 
 bool TableInfo::RemoveTablet(const std::string& partition_key_start) {
@@ -4868,6 +5071,30 @@ void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo>> *ret) const {
   std::lock_guard<simple_spinlock> l(lock_);
   for (const TableInfo::TabletInfoMap::value_type& e : tablet_map_) {
     ret->push_back(make_scoped_refptr(e.second));
+  }
+}
+
+void TableInfo::GetIndexInfo(const TableId& index_id, IndexInfo* index_info) const {
+  index_info->hash_column_ids.clear();
+  index_info->range_column_ids.clear();
+  index_info->covering_column_ids.clear();
+  auto l = LockForRead();
+  for (const auto& index_info_pb : l->data().pb.indexes()) {
+    if (index_info_pb.table_id() == index_id) {
+      index_info->hash_column_ids.reserve(index_info_pb.hash_column_ids_size());
+      for (const auto id : index_info_pb.hash_column_ids()) {
+        index_info->hash_column_ids.push_back(ColumnId(id));
+      }
+      index_info->range_column_ids.reserve(index_info_pb.range_column_ids_size());
+      for (const auto id : index_info_pb.range_column_ids()) {
+        index_info->range_column_ids.push_back(ColumnId(id));
+      }
+      index_info->covering_column_ids.reserve(index_info_pb.covering_column_ids_size());
+      for (const auto id : index_info_pb.covering_column_ids()) {
+        index_info->covering_column_ids.push_back(ColumnId(id));
+      }
+      return;
+    }
   }
 }
 

@@ -30,6 +30,11 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
   master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
 
+    // Skip index table.
+    if (!table->indexed_table_id().empty()) {
+      continue;
+    }
+
     // Get namespace for table.
     NamespaceIdentifierPB nsId;
     nsId.set_id(table->namespace_id());

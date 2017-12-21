@@ -913,7 +913,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Cannot delete namespace which has a table: " + kTableName);
+        "Cannot delete namespace which has table: " + kTableName);
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -937,7 +937,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Cannot delete namespace which has a table: " + kTableName);
+        "Cannot delete namespace which has table: " + kTableName);
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));

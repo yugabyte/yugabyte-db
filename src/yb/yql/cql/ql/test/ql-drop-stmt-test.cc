@@ -249,7 +249,6 @@ TEST_F(TestQLDropStmt, TestQLDropStmtParser) {
       "SEQUENCE",
       "VIEW",
       "MATERIALIZED VIEW",
-      "INDEX",
       "FOREIGN TABLE",
       "EVENT TRIGGER",
       "COLLATION",

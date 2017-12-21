@@ -54,6 +54,9 @@ class QLEnv {
 
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
+  virtual CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,
+                                          client::YBTableName* indexed_table_name);
+
   // Read/write related methods.
 
   // Apply a read/write operation. The operation is batched and needs to be flushed with FlushAsync.

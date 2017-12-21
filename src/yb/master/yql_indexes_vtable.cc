@@ -11,24 +11,113 @@
 // under the License.
 //
 
+#include "yb/common/ql_value.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/yql_indexes_vtable.h"
+#include "yb/master/catalog_manager.h"
 
 namespace yb {
 namespace master {
 
 YQLIndexesVTable::YQLIndexesVTable(const Master* const master)
-    : YQLEmptyVTable(master::kSystemSchemaIndexesTableName, master, CreateSchema()) {
+    : YQLVirtualTable(master::kSystemSchemaIndexesTableName, master, CreateSchema()) {
+}
+
+namespace {
+
+const string& ColumnName(const Schema& schema, const ColumnId id) {
+  auto column = schema.column_by_id(id);
+  DCHECK(column.ok());
+  return column->name();
+}
+
+} // namespace
+
+Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
+                                      std::unique_ptr<QLRowBlock>* vtable) const {
+  vtable->reset(new QLRowBlock(schema_));
+  std::vector<scoped_refptr<TableInfo>> tables;
+  CatalogManager* catalog_manager = master_->catalog_manager();
+  catalog_manager->GetAllTables(&tables, true);
+  for (scoped_refptr<TableInfo> table : tables) {
+
+    const auto indexed_table_id = table->indexed_table_id();
+    if (indexed_table_id.empty()) {
+      continue;
+    }
+    scoped_refptr<TableInfo> indexed_table = catalog_manager->GetTableInfo(indexed_table_id);
+    Schema indexed_schema;
+    RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
+
+    // Get namespace for table.
+    NamespaceIdentifierPB nsId;
+    nsId.set_id(table->namespace_id());
+    scoped_refptr<NamespaceInfo> nsInfo;
+    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+
+    // Create appropriate row for the table;
+    QLRow& row = (*vtable)->Extend();
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kTableName, indexed_table->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kIndexName, table->name(), &row));
+    RETURN_NOT_OK(SetColumnValue(kKind, "COMPOSITES", &row));
+
+    string target;
+    IndexInfo index_info;
+    indexed_table->GetIndexInfo(table->id(), &index_info);
+    for (size_t i = 0; i < index_info.hash_column_ids.size(); i++) {
+      target += ColumnName(indexed_schema, index_info.hash_column_ids[i]);
+      if (i != index_info.hash_column_ids.size() - 1) {
+        target += ", ";
+      }
+    }
+    if (index_info.hash_column_ids.size() > 1) {
+      target = '(' + target + ')';
+    }
+    for (size_t i = 0; i < index_info.range_column_ids.size(); i++) {
+      target += ", ";
+      target += ColumnName(indexed_schema, index_info.range_column_ids[i]);
+    }
+
+    string covering;
+    for (size_t i = 0; i < index_info.covering_column_ids.size(); i++) {
+      covering += ColumnName(indexed_schema, index_info.covering_column_ids[i]);
+      if (i != index_info.covering_column_ids.size() - 1) {
+        covering += ", ";
+      }
+    }
+
+    QLValue options;
+    options.set_map_value();
+    options.add_map_key()->set_string_value("target");
+    options.add_map_value()->set_string_value(target);
+    options.add_map_key()->set_string_value("covering");
+    options.add_map_value()->set_string_value(covering);
+    RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
+
+    // Create appropriate table uuids.
+    Uuid uuid;
+    // Note: table id is in host byte order.
+    RETURN_NOT_OK(uuid.FromHexString(indexed_table_id));
+    RETURN_NOT_OK(SetColumnValue(kTableId, uuid, &row));
+    RETURN_NOT_OK(uuid.FromHexString(table->id()));
+    RETURN_NOT_OK(SetColumnValue(kIndexId, uuid, &row));
+  }
+
+  return Status::OK();
 }
 
 Schema YQLIndexesVTable::CreateSchema() const {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddHashKeyColumn("keyspace_name", QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddKeyColumn("table_name", QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddKeyColumn("index_name", QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("kind", QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("options",
+  CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddKeyColumn(kTableName, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddKeyColumn(kIndexName, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kKind, QLType::Create(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kOptions,
                              QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(kTableId, QLType::Create(DataType::UUID)));
+  CHECK_OK(builder.AddColumn(kIndexId, QLType::Create(DataType::UUID)));
+
   return builder.Build();
 }
 

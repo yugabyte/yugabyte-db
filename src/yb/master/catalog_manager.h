@@ -194,6 +194,14 @@ struct TabletReplica {
   }
 };
 
+// Index info to return the ids of the columns in the indexed table that compose the hash and range
+// columns of the index table, and any additional columns in the indexed table covered by the index.
+struct IndexInfo {
+  std::vector<ColumnId> hash_column_ids;
+  std::vector<ColumnId> range_column_ids;
+  std::vector<ColumnId> covering_column_ids;
+};
+
 // The information about a single tablet which exists in the cluster,
 // including its state and locations.
 //
@@ -353,6 +361,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
 
+  // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
+  const std::string indexed_table_id() const;
+
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
   // Add multiple tablets to this table.
@@ -367,6 +378,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
                          std::vector<scoped_refptr<TabletInfo> > *ret) const;
 
   void GetAllTablets(std::vector<scoped_refptr<TabletInfo> > *ret) const;
+
+  // Get info of the specified index.
+  void GetIndexInfo(const TableId& index_id, IndexInfo* index_info) const;
 
   // Returns true if the table creation is in-progress
   bool IsCreateInProgress() const;
@@ -1054,6 +1068,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TabletInfo *CreateTabletInfo(TableInfo* table,
                                const PartitionPB& partition);
 
+  // Add index info to the indexed table.
+  CHECKED_STATUS AddIndexInfoToTable(const TableId& indexed_table_id,
+                                     const TableId& index_table_id,
+                                     const Schema& index_schema);
+
+  // Delete index info from the indexed table.
+  CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,
+                                          const TableId& index_table_id,
+                                          DeleteTableResponsePB* resp);
+
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
   // Returns Status::ServiceUnavailable if tablet is not running.
@@ -1153,6 +1177,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // tablet.
   void SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tablet);
 
+  // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
+  // table are appended to the lists. The caller will be responsible for committing the change and
+  // deleting the actual table and tablets.
+  CHECKED_STATUS DeleteTableInMemory(const TableIdentifierPB& table_identifier,
+                                     bool is_index_table,
+                                     bool update_indexed_table,
+                                     std::vector<scoped_refptr<TableInfo>>* tables,
+                                     std::vector<scoped_refptr<DeletedTableInfo>>* deleted_tables,
+                                     std::vector<std::unique_ptr<TableInfo::lock_type>>* table_lcks,
+                                     DeleteTableResponsePB* resp,
+                                     rpc::RpcContext* rpc);
+
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(const TabletInfo* tablet, const std::string& msg);
 
@@ -1202,7 +1238,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // tasks associated with the table, and erase any state related to
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
-  void AbortTableCreation(TableInfo* table, const std::vector<TabletInfo*>& tablets);
+  CHECKED_STATUS AbortTableCreation(TableInfo* table,
+                                    const std::vector<TabletInfo*>& tablets,
+                                    const Status& s,
+                                    CreateTableResponsePB* resp);
 
   // Validates that the passed-in table replication information respects the overall cluster level
   // configuration. This should essentially not be more broader reaching than the cluster. As an

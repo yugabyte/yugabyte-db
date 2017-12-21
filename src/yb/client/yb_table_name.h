@@ -119,6 +119,7 @@ class YBTableName {
 
   // ProtoBuf helpers.
   void SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const;
+  void GetFromTableIdentifierPB(const master::TableIdentifierPB& id);
 
   static bool IsSystemNamespace(const std::string& namespace_name);
 

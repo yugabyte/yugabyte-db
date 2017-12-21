@@ -261,6 +261,12 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
 
+  // Delete the specified index table.
+  // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
+  CHECKED_STATUS DeleteIndexTable(const YBTableName& table_name,
+                                  YBTableName* indexed_table_name,
+                                  bool wait = true);
+
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
 
@@ -581,6 +587,9 @@ class YBTableCreator {
   //
   // If not provided (or if <= 0), falls back to the server-side default.
   YBTableCreator& num_replicas(int n_replicas);
+
+  // For index table: sets the indexed table id of this index.
+  YBTableCreator& indexed_table_id(const std::string& id);
 
   // Set the timeout for the operation. This includes any waiting
   // after the create has been submitted (i.e if the create is slow

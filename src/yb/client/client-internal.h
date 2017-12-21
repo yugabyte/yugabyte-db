@@ -98,7 +98,9 @@ class YBClient::Data {
 
   CHECKED_STATUS DeleteTable(YBClient* client,
                              const YBTableName& table_name,
+                             bool is_index_table,
                              const MonoTime& deadline,
+                             YBTableName* indexed_table_name,
                              bool wait = true);
 
   CHECKED_STATUS IsDeleteTableInProgress(YBClient* client,
@@ -128,7 +130,8 @@ class YBClient::Data {
                                 const MonoTime& deadline,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema,
-                                std::string* table_id);
+                                std::string* table_id,
+                                std::string* indexed_table_id);
 
   CHECKED_STATUS InitLocalHostNames();
 

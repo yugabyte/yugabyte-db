@@ -7,6 +7,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_CREATE_INDEX_H_
 #define YB_YQL_CQL_QL_PTREE_PT_CREATE_INDEX_H_
 
+#include "yb/client/client.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 
 namespace yb {
@@ -51,6 +52,19 @@ class PTCreateIndex : public PTCreateTable {
   }
   const PTListNode::SharedPtr& covering() const {
     return covering_;
+  }
+
+  client::YBTableName yb_table_name() const override {
+    return client::YBTableName(PTCreateTable::yb_table_name().namespace_name().c_str(),
+                               name_->c_str());
+  }
+
+  client::YBTableName indexed_table_name() const {
+    return PTCreateTable::yb_table_name();
+  }
+
+  const std::string& indexed_table_id() const {
+    return table_->id();
   }
 
   // Node semantics analysis.
