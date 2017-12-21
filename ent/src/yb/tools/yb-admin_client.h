@@ -5,6 +5,8 @@
 
 #include "../../../../src/yb/tools/yb-admin_client.h"
 
+#include "yb/master/master_backup.proxy.h"
+
 namespace yb {
 namespace tools {
 namespace enterprise {
@@ -14,7 +16,17 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
  public:
   ClusterAdminClient(std::string addrs, int64_t timeout_millis) : super(addrs, timeout_millis) {}
 
+  // Initialized the client and connects to the server service proxies.
+  CHECKED_STATUS Init() override;
+
+  // Snapshot operations.
+  CHECKED_STATUS ListSnapshots();
+  CHECKED_STATUS CreateSnapshot(const client::YBTableName& table_name);
+  CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
+
  private:
+  std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
+
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 
