@@ -95,8 +95,8 @@ cd /opt/downloads
 # get the replicated binary
 wget https://downloads.yugabyte.com/replicated.tar.gz 
 
-# get the yugaware binary where the 0.9.0.1 refers to the version of the binary. change this number as needed.
-wget wget https://downloads.yugabyte.com/yugaware-0.9.0.1.airgap
+# get the yugaware binary where the 0.9.1.0 refers to the version of the binary. change this number as needed.
+wget https://downloads.yugabyte.com/yugaware-0.9.1.0.airgap
 ```
 
 On the host marked for installation, first ensure that a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
