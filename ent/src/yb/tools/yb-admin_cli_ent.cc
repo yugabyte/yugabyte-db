@@ -4,17 +4,55 @@
 
 #include <iostream>
 
+#include "yb/tools/yb-admin_client.h"
+
 namespace yb {
 namespace tools {
 namespace enterprise {
 
 using std::cerr;
 using std::endl;
+using std::string;
+
+using client::YBTableName;
+using strings::Substitute;
 
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
-  // TODO: Add ENTERPRISE-ONLY commands here
+  Register(
+      "list_snapshots", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(),
+                              "Unable to list snapshots");
+        return Status::OK();
+      });
+
+  Register(
+      "create_snapshot", " <keyspace> <table_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
+        }
+        const YBTableName table_name(args[2], args[3]);
+        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(table_name),
+                              Substitute("Unable to create snapshot of table $0",
+                                         table_name.ToString()));
+        return Status::OK();
+      });
+
+  Register(
+      "restore_snapshot", " <snapshot_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          UsageAndExit(args[0]);
+        }
+
+        const string snapshot_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->RestoreSnapshot(snapshot_id),
+                              Substitute("Unable to restore snapshot $0", snapshot_id));
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise
