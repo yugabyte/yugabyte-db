@@ -31,7 +31,7 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
     super.initialize(params);
     ConfigHelper configHelper = Play.current().injector().instanceOf(ConfigHelper.class);
     // Create the threadpool for the subtasks to use.
-    createThreadpool(5);
+    createThreadpool();
     provider = Provider.get(taskParams().providerUUID);
     regionMetadata = configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
   }
