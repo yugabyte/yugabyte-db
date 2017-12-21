@@ -16,9 +16,13 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.*;
+
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+
+import redis.clients.jedis.*;
 
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertFalse;
@@ -221,5 +225,20 @@ public class TestYBJedis extends BaseJedisTest {
     }
     // We shouldn't reach here.
     assertFalse(true);
+  }
+
+  @Test
+  public void TestPool() throws Exception {
+    final List<InetSocketAddress> redisContactPoints = miniCluster.getRedisContactPoints();
+    InetSocketAddress address = redisContactPoints.get(0);
+    JedisPoolConfig config = new JedisPoolConfig();
+    config.setMaxTotal(16);
+    config.setTestOnBorrow(true);
+    JedisPool pool = new JedisPool(
+        config, address.getHostName(), address.getPort(), 10000, "password");
+    Jedis jedis = pool.getResource();
+    assertEquals("OK", jedis.set("k1", "v1"));
+    assertEquals("v1", jedis.get("k1"));
+    jedis.close();
   }
 }

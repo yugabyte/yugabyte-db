@@ -1667,7 +1667,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   );
 
   DoRedisTestBulkString(__LINE__, {"PING", "foo"}, "foo");
-  DoRedisTestBulkString(__LINE__, {"PING"}, "pong");
+  DoRedisTestBulkString(__LINE__, {"PING"}, "PONG");
 
   DoRedisTestOk(__LINE__, {"QUIT"});
 

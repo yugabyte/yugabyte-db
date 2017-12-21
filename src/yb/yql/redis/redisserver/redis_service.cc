@@ -747,7 +747,7 @@ RedisResponsePB ParsePing(const RedisClientCommand& command) {
   if (command.size() > 1) {
     responsePB.set_string_response(command[1].cdata(), command[1].size());
   } else {
-    responsePB.set_string_response("pong");
+    responsePB.set_string_response("PONG");
   }
   return responsePB;
 }
