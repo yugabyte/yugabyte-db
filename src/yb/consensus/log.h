@@ -142,13 +142,6 @@ class Log : public RefCountedThreadSafe<Log> {
   CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates,
                                        const StatusCallback& callback);
 
-  // Append the given commit message, asynchronously.
-  //
-  // Returns a bad status if the log is already shut down.
-  CHECKED_STATUS AsyncAppendCommit(gscoped_ptr<consensus::CommitMsg> commit_msg,
-                           const StatusCallback& callback);
-
-
   // Blocks the current thread until all the entries in the log queue
   // are flushed and fsynced (if fsync of log entries is enabled).
   CHECKED_STATUS WaitUntilAllFlushed();

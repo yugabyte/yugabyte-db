@@ -84,9 +84,7 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
 
   private static void destroyClient() throws Exception {
     if (client != null) {
-      Deferred<ArrayList<Void>> d = client.shutdown();
-      d.addErrback(defaultErrorCB);
-      d.join(DEFAULT_SLEEP);
+      client.shutdown();
       // No need to explicitly shutdown the sync client,
       // shutting down the async client effectively does that.
       client = null;
@@ -169,35 +167,6 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
     return rowStrings;
   }
 
-  private static final int[] KEYS = new int[] {10, 20, 30};
-  protected static YBTable createFourTabletsTableWithNineRows(String tableName) throws
-      Exception {
-    CreateTableOptions builder = new CreateTableOptions();
-    for (int i : KEYS) {
-      PartialRow splitRow = basicSchema.newPartialRow();
-      splitRow.addInt(0, i);
-      builder.addSplitRow(splitRow);
-    }
-    YBTable table = createTable(tableName, basicSchema, builder);
-    AsyncYBSession session = client.newSession();
-
-    // create a table with on empty tablet and 3 tablets of 3 rows each
-    for (int key1 : KEYS) {
-      for (int key2 = 1; key2 <= 3; key2++) {
-        Insert insert = table.newInsert();
-        PartialRow row = insert.getRow();
-        row.addInt(0, key1 + key2);
-        row.addInt(1, key1);
-        row.addInt(2, key2);
-        row.addString(3, "a string");
-        row.addBoolean(4, true);
-        session.apply(insert).join(DEFAULT_SLEEP);
-      }
-    }
-    session.close().join(DEFAULT_SLEEP);
-    return table;
-  }
-
   public static Schema getSchemaWithAllTypes() {
     List<ColumnSchema> columns =
         ImmutableList.of(
@@ -231,17 +200,6 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
         .build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column4_b", Type.BOOL).build());
     return new Schema(columns);
-  }
-
-  protected Insert createBasicSchemaInsert(YBTable table, int key) {
-    Insert insert = table.newInsert();
-    PartialRow row = insert.getRow();
-    row.addInt(0, key);
-    row.addInt(1, 2);
-    row.addInt(2, 3);
-    row.addString(3, "a string");
-    row.addBoolean(4, true);
-    return insert;
   }
 
   static Callback<Object, Object> defaultErrorCB = arg -> {

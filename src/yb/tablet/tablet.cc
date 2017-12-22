@@ -54,7 +54,6 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/iterator.h"
 #include "yb/common/row_changelist.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_rowblock.h"
@@ -83,7 +82,6 @@
 
 #include "yb/tablet/key_value_iterator.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -146,7 +144,6 @@ using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
 using yb::docdb::QLWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
-using yb::docdb::KuduWriteOperation;
 using yb::docdb::IntentKind;
 using yb::docdb::IntentTypePair;
 using yb::docdb::KeyToIntentTypeMap;
@@ -785,17 +782,10 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
       break;
     }
     case TableType::YQL_TABLE_TYPE: {
-      CHECK_NE(key_value_write_request->ql_write_batch_size() > 0,
-               key_value_write_request->row_operations().rows().size() > 0)
-          << "QL write and Kudu row operations not supported in the same request";
-      if (key_value_write_request->ql_write_batch_size() > 0) {
-        RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(data));
-        if (restart_read_ht->is_valid()) {
-          return Status::OK();
-        }
-      } else {
-        // TODO: Remove this row op based codepath after all tests set yql_write_batch.
-        RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(data));
+      CHECK_GT(key_value_write_request->ql_write_batch_size(), 0);
+      RETURN_NOT_OK(KeyValueBatchFromQLWriteBatch(data));
+      if (restart_read_ht->is_valid()) {
+        return Status::OK();
       }
       invalid_table_type = false;
       break;
@@ -812,130 +802,11 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
       << key_value_write_request->write_batch().DebugString();
   state->ReplaceDocDBLocks(std::move(locks_held));
 
-  DCHECK(!key_value_write_request->has_schema()) << "Schema not empty in key-value batch";
-  DCHECK(!key_value_write_request->has_row_operations())
-      << "Rows operations not empty in key-value batch";
   DCHECK_EQ(key_value_write_request->redis_write_batch_size(), 0)
       << "Redis write batch not empty in key-value batch";
   DCHECK_EQ(key_value_write_request->ql_write_batch_size(), 0)
       << "QL write batch not empty in key-value batch";
   return Status::OK();
-}
-
-Status Tablet::KeyValueBatchFromKuduRowOps(const WriteOperationData& data) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
-  RETURN_NOT_OK(scoped_read_operation);
-
-  TRACE("PREPARE: Decoding operations");
-
-  WriteRequestPB row_operations_request;
-  SetupKeyValueBatch(data.write_request(), &row_operations_request);
-
-  TRACE("Acquiring schema lock in shared mode");
-  shared_lock<rw_semaphore> schema_lock(schema_lock_);
-  TRACE("Acquired schema lock");
-
-  Schema client_schema;
-
-  RETURN_NOT_OK(SchemaFromPB(row_operations_request.schema(), &client_schema));
-
-  // Allocating temporary arena for decoding.
-  Arena arena(32 * 1024, 4 * 1024 * 1024);
-
-  vector<DecodedRowOperation> row_ops;
-  RowOperationsPBDecoder row_operation_decoder(&row_operations_request.row_operations(),
-                                               &client_schema,
-                                               schema(),
-                                               &arena);
-
-  RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
-
-  RETURN_NOT_OK(CreateWriteBatchFromKuduRowOps(row_ops, data));
-
-  return Status::OK();
-}
-
-namespace {
-
-DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
-  return DocPath(encoded_doc_key, PrimitiveValue(col_id));
-}
-
-}  // namespace
-
-Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                              const WriteOperationData& data) {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
-  RETURN_NOT_OK(scoped_read_operation);
-  docdb::DocOperations doc_ops;
-  for (DecodedRowOperation row_op : row_ops) {
-    // row_data contains the row key for all Kudu operation types (insert/update/delete).
-    ConstContiguousRow contiguous_row(schema(), row_op.row_data);
-    EncodedKeyBuilder key_builder(schema());
-    for (int i = 0; i < schema()->num_key_columns(); i++) {
-      DCHECK(!schema()->column(i).is_nullable())
-          << "Column " << i << " (part of row key) cannot be nullable";
-      key_builder.AddColumnKey(contiguous_row.cell_ptr(i));
-    }
-    unique_ptr<EncodedKey> encoded_key(key_builder.BuildEncodedKey());
-
-    const DocKey doc_key = DocKey::FromKuduEncodedKey(*encoded_key, *schema());
-    const auto encoded_doc_key = doc_key.Encode();
-
-    switch (row_op.type) {
-      case RowOperationsPB_Type_DELETE: {
-        doc_ops.emplace_back(
-            new KuduWriteOperation(DocPath(encoded_doc_key),
-            PrimitiveValue::kTombstone));
-        break;
-      }
-      case RowOperationsPB_Type_UPDATE: {
-        RowChangeListDecoder decoder(row_op.changelist);
-        RETURN_NOT_OK(decoder.Init());
-        while (decoder.HasNext()) {
-          CHECK(decoder.is_update());
-          RowChangeListDecoder::DecodedUpdate update;
-          RETURN_NOT_OK(decoder.DecodeNext(&update));
-          auto column = schema()->column_by_id(update.col_id);
-          RETURN_NOT_OK(column);
-          doc_ops.emplace_back(new KuduWriteOperation(
-              DocPathForColumn(encoded_doc_key, update.col_id),
-              update.null ? PrimitiveValue::kTombstone
-                          : PrimitiveValue::FromKuduValue(column->type_info()->type(),
-                                                          update.raw_value)));
-        }
-        break;
-      }
-      case RowOperationsPB_Type_INSERT: {
-        for (int i = schema()->num_key_columns(); i < schema()->num_columns(); i++) {
-          const ColumnSchema &col_schema = schema()->column(i);
-          const DataType data_type = col_schema.type_info()->type();
-
-          PrimitiveValue column_value;
-          if (col_schema.is_nullable() && contiguous_row.is_null(i)) {
-            // Skip this column as it is null and we are already overwriting the entire row at
-            // the top. Another option would be to explicitly delete it like so:
-            //
-            //   column_value = PrimitiveValue::kTombstone;
-            //
-            // This would make sense in case we just wanted to update a few columns in a
-            // Cassandra-style INSERT ("upsert").
-            continue;
-          } else {
-            column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
-          }
-          doc_ops.emplace_back(new KuduWriteOperation(DocPathForColumn(
-              encoded_doc_key, schema()->column_id(i)), column_value));
-        }
-        break;
-      }
-      default: {
-        LOG(FATAL) << "Unsupported row operation type " << row_op.type
-                   << " for a RocksDB-backed table";
-      }
-    }
-  }
-  return StartDocWriteOperation(doc_ops, data);
 }
 
 Status Tablet::Flush(FlushMode mode) {

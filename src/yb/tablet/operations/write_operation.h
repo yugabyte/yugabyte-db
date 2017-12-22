@@ -70,19 +70,12 @@ class WriteResponsePB;
 }
 
 namespace tablet {
-struct RowOp;
 class Tablet;
 
 using docdb::LockBatch;
 
 // A OperationState for a batch of inserts/mutates. This class holds and
-// owns most everything related to a transaction, including:
-// - A RowOp structure for each of the rows being inserted or mutated, which itself
-//   contains:
-//   - decoded/projected data
-//   - row lock reference
-//   - result of this particular insert/mutate operation, once executed
-// - the Replicate and Commit PB messages
+// owns most everything related to a transaction, including the Replicate and Commit PB messages
 //
 // All the transaction related pointers are owned by this class
 // and destroyed on Reset() or by the destructor.
@@ -134,12 +127,6 @@ class WriteOperationState : public OperationState {
   // Only one of Commit() or Abort() should be called.
   void Abort();
 
-  // Returns all the prepared row writes for this transaction. Usually called
-  // on the apply phase to actually make changes to the tablet.
-  const std::vector<RowOp*>& row_ops() const {
-    return row_ops_;
-  }
-
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
   std::vector<std::unique_ptr<docdb::QLWriteOperation>>* ql_write_ops() {
@@ -176,10 +163,6 @@ class WriteOperationState : public OperationState {
 
   tserver::WriteResponsePB* response_;
 
-  // The row operations which are decoded from the request during PREPARE
-  // Protected by superclass's mutex_.
-  std::vector<RowOp*> row_ops_;
-
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
   // after the transaction completes.
   std::vector<std::unique_ptr<docdb::QLWriteOperation>> ql_write_ops_;
@@ -209,8 +192,7 @@ class WriteOperation : public Operation {
   // Executes a Prepare for a write transaction
   //
   // Decodes the operations in the request PB and acquires row locks for each of the
-  // affected rows. This results in adding 'RowOp' objects for each of the operations
-  // into the WriteOperationState.
+  // affected rows.
   CHECKED_STATUS Prepare() override;
 
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
@@ -234,7 +216,7 @@ class WriteOperation : public Operation {
   // are placed in the queue (but not necessarily in the same order of the
   // original requests) which is already a requirement of the consensus
   // algorithm.
-  CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
+  CHECKED_STATUS Apply() override;
 
   // Releases the row locks (Early Lock Release).
   void PreCommit() override;

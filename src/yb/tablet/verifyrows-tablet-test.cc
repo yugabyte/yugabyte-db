@@ -247,7 +247,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // with a different value.
   void DeleteAndReinsertCycleThread(int tid) {
     int32_t iteration = 0;
-    LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
+    LocalTabletWriter writer(this->tablet().get());
 
     while (running_insert_count_.count() > 0) {
       for (int i = 0; i < 100; i++) {
@@ -263,7 +263,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // succeed in UPDATING a ghost row.
   void StubbornlyUpdateSameRowThread(int tid) {
     int32_t iteration = 0;
-    LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
+    LocalTabletWriter writer(this->tablet().get());
     while (running_insert_count_.count() > 0) {
       for (int i = 0; i < 100; i++) {
         Status s = this->UpdateTestRow(&writer, tid, iteration++);

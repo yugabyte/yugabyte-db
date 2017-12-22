@@ -49,22 +49,9 @@ import java.util.List;
 public class CreateTableOptions {
 
   private Master.CreateTableRequestPB.Builder pb = Master.CreateTableRequestPB.newBuilder();
-  private final List<PartialRow> splitRows = Lists.newArrayList();
 
   public CreateTableOptions() {
     pb.setTableType(TableType.YQL_TABLE_TYPE);
-  }
-
-  /**
-   * Add a split point for the table. The table in the end will have splits + 1 tablets.
-   * The row may be reused or modified safely after this call without changing the split point.
-   *
-   * @param row a key row for the split point
-   * @return this instance
-   */
-  public CreateTableOptions addSplitRow(PartialRow row) {
-    splitRows.add(new PartialRow(row));
-    return this;
   }
 
   /**
@@ -177,9 +164,6 @@ public class CreateTableOptions {
   }
 
   Master.CreateTableRequestPB.Builder getBuilder() {
-    if (!splitRows.isEmpty()) {
-      pb.setSplitRows(new Operation.OperationsEncoder().encodeSplitRows(splitRows));
-    }
     return pb;
   }
 }

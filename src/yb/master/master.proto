@@ -557,10 +557,11 @@ message GetTabletLocationsResponsePB {
 
 // Create table request (including index table)
 message CreateTableRequestPB {
+  // TODO(proto3) reserved 4;
+
   required string name = 1;
   optional SchemaPB schema = 2;
   optional int32 num_tablets = 3;
-  optional RowOperationsPB split_rows = 4;
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];

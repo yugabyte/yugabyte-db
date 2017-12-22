@@ -56,7 +56,7 @@ ProcessingMode UpdateTxnOperation::mode() const {
   return type() == consensus::LEADER ? ProcessingMode::LEADER : ProcessingMode::NON_LEADER;
 }
 
-Status UpdateTxnOperation::Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) {
+Status UpdateTxnOperation::Apply() {
   auto* state = this->state();
   TransactionCoordinator::ReplicatedData data = {
       mode(),

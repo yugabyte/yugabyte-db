@@ -169,35 +169,3 @@ message RowwiseRowBlockPB {
   // offset into this protobuf field.
   optional int32 indirect_data_sidecar = 3;
 }
-
-// A set of operations (INSERT, UPDATE, or DELETE) to apply to a table.
-message RowOperationsPB {
-  enum Type {
-    UNKNOWN = 0;
-    INSERT = 1;
-    UPDATE = 2;
-    DELETE = 3;
-    // Used when specifying split rows on table creation.
-    SPLIT_ROW = 4;
-  }
-
-  // The row data for each operation is stored in the following format:
-  //
-  // [operation type] (one byte):
-  //   A single-byte field which determines the type of operation. The values are
-  //   based on the 'Type' enum above.
-  // [column isset bitmap]   (one bit for each column in the Schema, rounded to nearest byte)
-  //   A set bit in this bitmap indicates that the user has specified the given column
-  //   in the row. This indicates that the column will be present in the data to follow.
-  // [null bitmap]           (one bit for each Schema column, rounded to nearest byte)
-  //   A set bit in this bitmap indicates that the given column is NULL.
-  //   This is only present if there are any nullable columns.
-  // [column data]
-  //   For each column which is set and not NULL, the column's data follows. The data
-  //   format of each cell is the canonical in-memory format (eg little endian).
-  //   For string data, the pointers are relative to 'indirect_data'.
-  //
-  // The rows are concatenated end-to-end with no padding/alignment.
-  optional bytes rows = 2;
-  optional bytes indirect_data = 3;
-}

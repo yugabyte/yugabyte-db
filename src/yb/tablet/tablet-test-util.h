@@ -42,7 +42,6 @@
 #include "yb/common/iterator.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet-harness.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/alter_schema_operation.h"

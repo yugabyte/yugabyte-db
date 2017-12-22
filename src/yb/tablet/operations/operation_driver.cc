@@ -50,7 +50,6 @@ namespace tablet {
 
 using std::shared_ptr;
 
-using consensus::CommitMsg;
 using consensus::Consensus;
 using consensus::ConsensusRound;
 using consensus::ReplicateMsg;
@@ -401,11 +400,7 @@ void OperationDriver::ApplyTask() {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    gscoped_ptr<CommitMsg> commit_msg;
-    CHECK_OK(operation_->Apply(&commit_msg));
-    if (commit_msg) {
-      commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
-    }
+    CHECK_OK(operation_->Apply());
 
     operation_->PreCommit();
 

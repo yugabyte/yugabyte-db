@@ -331,7 +331,7 @@ class TabletTestBase : public YBTabletTest {
                       int64_t count,
                       int32_t val,
                       TimeSeries *ts = NULL) {
-    LocalTabletWriter writer(tablet().get(), &client_schema_);
+    LocalTabletWriter writer(tablet().get());
 
     uint64_t inserted_since_last_report = 0;
     for (int64_t i = first_row; i < first_row + count; i++) {

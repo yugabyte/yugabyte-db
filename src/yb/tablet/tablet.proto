@@ -34,7 +34,6 @@ package yb.tablet;
 option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
-import "yb/common/wire_protocol.proto";
 import "yb/tablet/metadata.proto";
 
 // Stores the id of the MemRowSet (for inserts or mutations against MRS)
@@ -49,29 +48,6 @@ message MemStoreTargetPB {
   // ... or both of the following fields are set.
   optional int64 rs_id = 2 [ default = -1 ];
   optional int64 dms_id = 3 [ default = -1 ];
-}
-
-// Stores the result of an Insert or Mutate.
-message OperationResultPB {
-
-  // set on replay if this operation was already flushed.
-  optional bool flushed = 1 [ default = false ];
-
-  // set if this particular operation failed
-  optional yb.AppStatusPB failed_status = 2;
-
-  // The stores that the operation affected.
-  // For INSERTs, this will always be just one store.
-  // For MUTATE, it may be more than one if the mutation arrived during
-  // a compaction.
-  repeated MemStoreTargetPB mutated_stores = 3;
-}
-
-// The final result of a transaction, including the result of each individual
-// operation.
-message TxResultPB {
-  // all the operations in this transaction
-  repeated OperationResultPB ops = 1;
 }
 
 // Delta statistics for a flushed deltastore

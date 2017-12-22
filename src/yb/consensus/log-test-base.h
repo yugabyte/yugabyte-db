@@ -73,7 +73,6 @@ namespace yb {
 namespace log {
 
 using consensus::OpId;
-using consensus::CommitMsg;
 using consensus::ReplicateMsg;
 using consensus::WRITE_OP;
 using consensus::NO_OP;
@@ -83,8 +82,6 @@ using server::Clock;
 
 using tserver::WriteRequestPB;
 
-using tablet::TxResultPB;
-using tablet::OperationResultPB;
 using tablet::MemStoreTargetPB;
 using tablet::Tablet;
 
@@ -227,7 +224,6 @@ class LogTestBase : public YBTest {
     replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
     WriteRequestPB *batch_request = replicate->mutable_write_request();
-    ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
     if (writes.empty()) {
       const int opid_index_as_int = static_cast<int>(opid.index());
       writes.emplace_back(opid_index_as_int, 0, "this is a test insert");
@@ -259,50 +255,6 @@ class LogTestBase : public YBTest {
 
   static void CheckCommitResult(const Status& s) {
     CHECK_OK(s);
-  }
-
-  // Append a commit log entry containing one entry for the insert and one
-  // for the mutate.
-  void AppendCommit(const OpId& original_opid,
-                    bool sync = APPEND_SYNC) {
-    // The mrs id for the insert.
-    const int kTargetMrsId = 1;
-
-    // The rs and delta ids for the mutate.
-    const int kTargetRsId = 0;
-    const int kTargetDeltaId = 0;
-
-    AppendCommit(original_opid, kTargetMrsId, kTargetRsId, kTargetDeltaId, sync);
-  }
-
-  void AppendCommit(const OpId& original_opid,
-                    int mrs_id, int rs_id, int dms_id,
-                    bool sync = APPEND_SYNC) {
-    gscoped_ptr<CommitMsg> commit(new CommitMsg);
-    commit->set_op_type(WRITE_OP);
-
-    commit->mutable_commited_op_id()->CopyFrom(original_opid);
-
-    TxResultPB* result = commit->mutable_result();
-
-    OperationResultPB* insert = result->add_ops();
-    insert->add_mutated_stores()->set_mrs_id(mrs_id);
-
-    OperationResultPB* mutate = result->add_ops();
-    MemStoreTargetPB* target = mutate->add_mutated_stores();
-    target->set_dms_id(dms_id);
-    target->set_rs_id(rs_id);
-    AppendCommit(commit.Pass(), sync);
-  }
-
-  void AppendCommit(gscoped_ptr<CommitMsg> commit, bool sync = APPEND_SYNC) {
-    if (sync) {
-      Synchronizer s;
-      ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), s.AsStatusCallback()));
-      ASSERT_OK(s.Wait());
-    } else {
-      ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), Bind(&LogTestBase::CheckCommitResult)));
-    }
   }
 
   // Appends 'count' ReplicateMsgs and the corresponding CommitMsgs to the log

@@ -37,14 +37,12 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
@@ -65,7 +63,6 @@ using std::lock_guard;
 using std::mutex;
 using std::unique_ptr;
 using consensus::ReplicateMsg;
-using consensus::CommitMsg;
 using consensus::DriverType;
 using consensus::WRITE_OP;
 using tserver::TabletServerErrorPB;
@@ -87,21 +84,6 @@ consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
 
 Status WriteOperation::Prepare() {
   TRACE_EVENT0("txn", "WriteOperation::Prepare");
-  TRACE("PREPARE: Starting");
-
-  // Decode everything first so that we give up if something major is wrong.
-  Schema client_schema;
-  RETURN_NOT_OK_PREPEND(SchemaFromPB(state()->request()->schema(), &client_schema),
-                        "Cannot decode client schema");
-  if (client_schema.has_column_ids()) {
-    // TODO: we have this kind of code a lot - add a new SchemaFromPB variant which
-    // does this check inline.
-    Status s = STATUS(InvalidArgument, "User requests should not have Column IDs");
-    state()->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
-    return s;
-  }
-
-  TRACE("PREPARE: finished.");
   return Status::OK();
 }
 
@@ -112,7 +94,7 @@ void WriteOperation::Start() {
 
 // FIXME: Since this is called as a void in a thread-pool callback,
 // it seems pointless to return a Status!
-Status WriteOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
+Status WriteOperation::Apply() {
   TRACE_EVENT0("txn", "WriteOperation::Apply");
   TRACE("APPLY: Starting");
 
@@ -126,9 +108,6 @@ Status WriteOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   Tablet* tablet = state()->tablet();
 
   tablet->ApplyRowOperations(state());
-
-  // We don't use COMMIT messages for non-Kudu tables.
-  commit_msg->reset(nullptr);
 
   return Status::OK();
 }
@@ -221,7 +200,6 @@ void WriteOperationState::Reset() {
 void WriteOperationState::ResetRpcFields() {
   std::lock_guard<simple_spinlock> l(mutex_);
   response_ = nullptr;
-  STLDeleteElements(&row_ops_);
 }
 
 string WriteOperationState::ToString() const {
@@ -232,29 +210,10 @@ string WriteOperationState::ToString() const {
     ts_str = "<unassigned>";
   }
 
-  // Stringify the actual row operations (eg INSERT/UPDATE/etc)
-  // NOTE: we'll eventually need to gate this by some flag if we want to avoid
-  // user data escaping into the log. See KUDU-387.
-  string row_ops_str = "[";
-  {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    const size_t kMaxToStringify = 3;
-    for (int i = 0; i < std::min(row_ops_.size(), kMaxToStringify); i++) {
-      if (i > 0) {
-        row_ops_str.append(", ");
-      }
-    }
-    if (row_ops_.size() > kMaxToStringify) {
-      row_ops_str.append(", ...");
-    }
-    row_ops_str.append("]");
-  }
-
-  return Substitute("WriteOperationState $0 [op_id=($1), ts=$2, rows=$3]",
+  return Substitute("WriteOperationState $0 [op_id=($1), ts=$2]",
                     this,
                     op_id().ShortDebugString(),
-                    ts_str,
-                    row_ops_str);
+                    ts_str);
 }
 
 }  // namespace tablet

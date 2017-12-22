@@ -212,9 +212,8 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) = 0;
 
   // Creates a new ConsensusRound, the entity that owns all the data
-  // structures required for a consensus round, such as the ReplicateMsg
-  // (and later on the CommitMsg). ConsensusRound will also point to and
-  // increase the reference count for the provided callbacks.
+  // structures required for a consensus round, such as the ReplicateMsg.
+  // ConsensusRound will also point to and increase the reference count for the provided callbacks.
   ConsensusRoundPtr NewRound(
       ReplicateMsgPtr replicate_msg,
       const ConsensusReplicatedCallback& replicated_cb);
@@ -503,15 +502,6 @@ struct StateChangeContext {
 //   instance immediately stores the ReplicateMsg in the Log. Once the replicate
 //   message is stored in stable storage an ACK is sent to the leader (i.e. the
 //   replica Consensus instance does not wait for Prepare() to finish).
-//
-// - When the CommitMsg for a replicate is first received from the leader
-//   the replica waits for the corresponding Prepare() to finish (if it has
-//   not completed yet) and then proceeds to trigger the Apply().
-// TODO (mbautin, 03/11/2016): Outdated? (Does the leader still ever send CommitMsg to followers?)
-//
-// - Once Apply() completes the ReplicaOperationFactory is responsible for logging
-//   a CommitMsg to the log to ensure that the operation can be properly restored
-//   on a restart.
 class ReplicaOperationFactory {
  public:
   virtual CHECKED_STATUS StartReplicaOperation(const ConsensusRoundPtr& context) = 0;

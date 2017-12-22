@@ -64,8 +64,8 @@ DECLARE_bool(enable_leader_failure_detection);
 
 METRIC_DECLARE_entity(tablet);
 
-#define REPLICATE_SEQUENCE_OF_MESSAGES(a, b, c, d, e, f, g) \
-  ASSERT_NO_FATALS(ReplicateSequenceOfMessages(a, b, c, d, e, f, g))
+#define REPLICATE_SEQUENCE_OF_MESSAGES(...) \
+  ASSERT_NO_FATALS(ReplicateSequenceOfMessages(__VA_ARGS__))
 
 using std::shared_ptr;
 
@@ -144,7 +144,7 @@ class RaftConsensusQuorumTest : public YBTest {
       auto proxy_factory = new LocalTestPeerProxyFactory(peers_.get());
       proxy_factories.push_back(proxy_factory);
 
-      auto operation_factory = new TestOperationFactory(logs_[i].get());
+      auto operation_factory = new TestOperationFactory();
 
       string peer_uuid = Substitute("peer-$0", i);
 
@@ -259,28 +259,6 @@ class RaftConsensusQuorumTest : public YBTest {
     return Status::OK();
   }
 
-  static void FireSharedSynchronizer(const shared_ptr<Synchronizer>& sync, const Status& s) {
-    sync->StatusCB(s);
-  }
-
-  Status CommitDummyMessage(int peer_idx,
-                            ConsensusRound* round,
-                            shared_ptr<Synchronizer>* commit_sync = nullptr) {
-    StatusCallback commit_callback;
-    if (commit_sync != nullptr) {
-      commit_sync->reset(new Synchronizer());
-      commit_callback = Bind(&FireSharedSynchronizer, *commit_sync);
-    } else {
-      commit_callback = Bind(&DoNothingStatusCB);
-    }
-
-    gscoped_ptr<CommitMsg> msg(new CommitMsg());
-    msg->set_op_type(NO_OP);
-    msg->mutable_commited_op_id()->CopyFrom(round->id());
-    CHECK_OK(logs_[peer_idx]->AsyncAppendCommit(msg.Pass(), commit_callback));
-    return Status::OK();
-  }
-
   Status WaitForReplicate(ConsensusRound* round) {
     return FindOrDie(syncs_, round)->Wait();
   }
@@ -379,16 +357,12 @@ class RaftConsensusQuorumTest : public YBTest {
                                    ReplicateWaitMode wait_mode,
                                    CommitMode commit_mode,
                                    OpId* last_op_id,
-                                   vector<scoped_refptr<ConsensusRound> >* rounds,
-                                   shared_ptr<Synchronizer>* commit_sync = nullptr) {
+                                   vector<scoped_refptr<ConsensusRound> >* rounds) {
     for (int i = 0; i < seq_size; i++) {
       scoped_refptr<ConsensusRound> round;
       ASSERT_OK(AppendDummyMessage(leader_idx, &round));
       ASSERT_OK(WaitForReplicate(round.get()));
       last_op_id->CopyFrom(round->id());
-      if (commit_mode == COMMIT_ONE_BY_ONE) {
-        CommitDummyMessage(leader_idx, round.get(), commit_sync);
-      }
       rounds->push_back(round);
     }
 
@@ -492,9 +466,6 @@ class RaftConsensusQuorumTest : public YBTest {
       if (entry->has_replicate()) {
         ASSERT_TRUE(InsertIfNotPresent(&replication_ops, entry->replicate().id()))
           << "REPLICATE op id showed up twice: " << entry->ShortDebugString();
-      } else if (entry->has_commit()) {
-        ASSERT_EQ(1, replication_ops.erase(entry->commit().commited_op_id()))
-          << "COMMIT came before associated REPLICATE: " << entry->ShortDebugString();
       }
     }
   }
@@ -573,83 +544,6 @@ class RaftConsensusQuorumTest : public YBTest {
   const Schema schema_;
   unordered_map<ConsensusRound*, Synchronizer*> syncs_;
 };
-
-// Tests Replicate/Commit a single message through the leader.
-TEST_F(RaftConsensusQuorumTest, TestFollowersReplicateAndCommitMessage) {
-  // Constants with the indexes of peers with certain roles,
-  // since peers don't change roles in this test.
-  const int kFollower0Idx = 0;
-  const int kFollower1Idx = 1;
-  const int kLeaderIdx = 2;
-
-  ASSERT_OK(BuildAndStartConfig(3));
-
-  OpId last_op_id;
-  vector<scoped_refptr<ConsensusRound> > rounds;
-  shared_ptr<Synchronizer> commit_sync;
-  REPLICATE_SEQUENCE_OF_MESSAGES(1,
-                                 kLeaderIdx,
-                                 WAIT_FOR_ALL_REPLICAS,
-                                 DONT_COMMIT,
-                                 &last_op_id,
-                                 &rounds,
-                                 &commit_sync);
-
-  // Commit the operation
-  ASSERT_OK(CommitDummyMessage(kLeaderIdx, rounds[0].get(), &commit_sync));
-
-  // Wait for everyone to commit the operations.
-
-  // We need to make sure the CommitMsg lands on the leaders log or the
-  // verification will fail. Since CommitMsgs are appended to the replication
-  // queue there is a scenario where they land in the followers log before
-  // landing on the leader's log. However we know that they are durable
-  // on the leader when the commit callback is triggered.
-  // We thus wait for the commit callback to trigger, ensuring durability
-  // on the leader and then for the commits to be present on the replicas.
-  ASSERT_OK(commit_sync->Wait());
-  WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower0Idx, kLeaderIdx);
-  WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower1Idx, kLeaderIdx);
-  VerifyLogs(2, 0, 1);
-}
-
-// Tests Replicate/Commit a sequence of messages through the leader.
-// First a sequence of replicates and then a sequence of commits.
-TEST_F(RaftConsensusQuorumTest, TestFollowersReplicateAndCommitSequence) {
-  // Constants with the indexes of peers with certain roles,
-  // since peers don't change roles in this test.
-  const int kFollower0Idx = 0;
-  const int kFollower1Idx = 1;
-  const int kLeaderIdx = 2;
-
-  int seq_size = AllowSlowTests() ? 1000 : 100;
-
-  ASSERT_OK(BuildAndStartConfig(3));
-
-  OpId last_op_id;
-  vector<scoped_refptr<ConsensusRound> > rounds;
-  shared_ptr<Synchronizer> commit_sync;
-
-  REPLICATE_SEQUENCE_OF_MESSAGES(seq_size,
-                                 kLeaderIdx,
-                                 WAIT_FOR_ALL_REPLICAS,
-                                 DONT_COMMIT,
-                                 &last_op_id,
-                                 &rounds,
-                                 &commit_sync);
-
-  // Commit the operations, but wait for the replicates to finish first
-  for (const scoped_refptr<ConsensusRound>& round : rounds) {
-    ASSERT_OK(CommitDummyMessage(kLeaderIdx, round.get(), &commit_sync));
-  }
-
-  // See comment at the end of TestFollowersReplicateAndCommitMessage
-  // for an explanation on this waiting sequence.
-  ASSERT_OK(commit_sync->Wait());
-  WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower0Idx, kLeaderIdx);
-  WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower1Idx, kLeaderIdx);
-  VerifyLogs(2, 0, 1);
-}
 
 TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {
   // Constants with the indexes of peers with certain roles,
@@ -733,7 +627,6 @@ TEST_F(RaftConsensusQuorumTest, TestConsensusStopsIfAMajorityFallsBehind) {
   // After we release the locks the operation should replicate to all replicas
   // and we commit.
   ASSERT_OK(WaitForReplicate(round.get()));
-  CommitDummyMessage(kLeaderIdx, round.get());
 
   // Assert that everything was ok
   WaitForReplicateIfNotAlreadyPresent(last_op_id, kFollower0Idx);
@@ -768,7 +661,6 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
 
   GetLeaderProxyToPeer(kFollower0Idx, kLeaderIdx)->InjectCommFaultLeaderSide();
   GetLeaderProxyToPeer(kFollower1Idx, kLeaderIdx)->InjectCommFaultLeaderSide();
-  ASSERT_OK(CommitDummyMessage(kLeaderIdx, round.get()));
 
   // The commit should eventually reach both followers as well.
   last_op_id = round->id();
@@ -778,7 +670,6 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
   // Append a sequence of messages, and keep injecting errors into the
   // replica proxies.
   vector<scoped_refptr<ConsensusRound> > rounds;
-  shared_ptr<Synchronizer> commit_sync;
   for (int i = 0; i < 100; i++) {
     scoped_refptr<ConsensusRound> round;
     ASSERT_OK(AppendDummyMessage(kLeaderIdx, &round));
@@ -794,7 +685,6 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
     }
 
     ASSERT_OK(WaitForReplicate(round_ptr));
-    ASSERT_OK(CommitDummyMessage(kLeaderIdx, round_ptr, &commit_sync));
   }
 
   // Assert last operation was correctly replicated and committed.
@@ -803,7 +693,6 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasHandleCommunicationErrors) {
 
   // See comment at the end of TestFollowersReplicateAndCommitMessage
   // for an explanation on this waiting sequence.
-  ASSERT_OK(commit_sync->Wait());
   WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower0Idx, kLeaderIdx);
   WaitForCommitIfNotAlreadyPresent(last_op_id, kFollower1Idx, kLeaderIdx);
   VerifyLogs(2, 0, 1);
@@ -878,7 +767,6 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
   ASSERT_OK(BuildAndStartConfig(kInitialNumPeers));
 
   OpId last_op_id;
-  shared_ptr<Synchronizer> last_commit_sync;
   vector<scoped_refptr<ConsensusRound> > rounds;
 
   // Loop twice, successively shutting down the previous leader.
@@ -890,11 +778,9 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
                                    WAIT_FOR_ALL_REPLICAS,
                                    COMMIT_ONE_BY_ONE,
                                    &last_op_id,
-                                   &rounds,
-                                   &last_commit_sync);
+                                   &rounds);
 
     // Make sure the last operation is committed everywhere
-    ASSERT_OK(last_commit_sync->Wait());
     for (int i = 0; i < current_config_size - 1; i++) {
       WaitForCommitIfNotAlreadyPresent(last_op_id, i, current_config_size - 1);
     }
@@ -923,11 +809,9 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
                                    WAIT_FOR_MAJORITY,
                                    COMMIT_ONE_BY_ONE,
                                    &last_op_id,
-                                   &rounds,
-                                   &last_commit_sync);
+                                   &rounds);
 
     // Make sure the last operation is committed everywhere
-    ASSERT_OK(last_commit_sync->Wait());
     for (int i = 0; i < current_config_size - 2; i++) {
       WaitForCommitIfNotAlreadyPresent(last_op_id, i, current_config_size - 2);
     }
@@ -941,18 +825,15 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   ASSERT_OK(BuildAndStartConfig(3));
 
   OpId last_op_id;
-  shared_ptr<Synchronizer> last_commit_sync;
   vector<scoped_refptr<ConsensusRound> > rounds;
   REPLICATE_SEQUENCE_OF_MESSAGES(10,
                                  2, // The index of the initial leader.
                                  WAIT_FOR_ALL_REPLICAS,
                                  COMMIT_ONE_BY_ONE,
                                  &last_op_id,
-                                 &rounds,
-                                 &last_commit_sync);
+                                 &rounds);
 
   // Make sure the last operation is committed everywhere
-  ASSERT_OK(last_commit_sync->Wait());
   WaitForCommitIfNotAlreadyPresent(last_op_id, 0, 2);
   WaitForCommitIfNotAlreadyPresent(last_op_id, 1, 2);
 
@@ -1003,18 +884,15 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_OK(BuildAndStartConfig(3));
 
   OpId last_op_id;
-  shared_ptr<Synchronizer> last_commit_sync;
   vector<scoped_refptr<ConsensusRound> > rounds;
   REPLICATE_SEQUENCE_OF_MESSAGES(10,
                                  2, // The index of the initial leader.
                                  WAIT_FOR_ALL_REPLICAS,
                                  COMMIT_ONE_BY_ONE,
                                  &last_op_id,
-                                 &rounds,
-                                 &last_commit_sync);
+                                 &rounds);
 
   // Make sure the last operation is committed everywhere
-  ASSERT_OK(last_commit_sync->Wait());
   WaitForCommitIfNotAlreadyPresent(last_op_id, 0, 2);
   WaitForCommitIfNotAlreadyPresent(last_op_id, 1, 2);
 

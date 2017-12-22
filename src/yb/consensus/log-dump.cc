@@ -36,7 +36,6 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_index.h"
@@ -63,7 +62,6 @@ DEFINE_int32(truncate_data, 100,
 namespace yb {
 namespace log {
 
-using consensus::CommitMsg;
 using consensus::OperationType;
 using consensus::ReplicateMsg;
 using std::string;
@@ -105,12 +103,6 @@ void PrintIdOnly(const LogEntryPB& entry) {
            << OperationType_Name(entry.replicate().op_type());
       break;
     }
-    case log::COMMIT:
-    {
-      cout << "COMMIT " << entry.commit().commited_op_id().term()
-           << "." << entry.commit().commited_op_id().index();
-      break;
-    }
     default:
       cout << "UNKNOWN: " << entry.ShortDebugString();
   }
@@ -121,24 +113,11 @@ void PrintIdOnly(const LogEntryPB& entry) {
 Status PrintDecodedWriteRequestPB(const string& indent,
                                   const Schema& tablet_schema,
                                   const WriteRequestPB& write) {
-  Schema request_schema;
-  RETURN_NOT_OK(SchemaFromPB(write.schema(), &request_schema));
-
   Arena arena(32 * 1024, 1024 * 1024);
-  RowOperationsPBDecoder dec(&write.row_operations(), &request_schema, &tablet_schema, &arena);
-  vector<DecodedRowOperation> ops;
-  RETURN_NOT_OK(dec.DecodeOperations(&ops));
 
   cout << indent << "Tablet: " << write.tablet_id() << endl;
   if (write.has_propagated_hybrid_time()) {
     cout << indent << "Propagated TS: " << write.propagated_hybrid_time() << endl;
-  }
-
-  int i = 0;
-  for (const DecodedRowOperation& op : ops) {
-    // TODO (KUDU-515): Handle the case when a tablet's schema changes
-    // mid-segment.
-    cout << indent << "op " << (i++) << ": " << op.ToString(tablet_schema) << endl;
   }
 
   return Status::OK();
@@ -157,9 +136,6 @@ Status PrintDecoded(const LogEntryPB& entry, const Schema& tablet_schema) {
     } else {
       cout << indent << replicate.ShortDebugString() << endl;
     }
-  } else if (entry.has_commit()) {
-    // For COMMIT we'll just dump the PB
-    cout << indent << entry.commit().ShortDebugString() << endl;
   }
 
   return Status::OK();

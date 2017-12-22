@@ -209,9 +209,6 @@ public class AsyncYBClient implements AutoCloseable {
   private final HashMap<String, TabletClient> ip2client =
       new HashMap<String, TabletClient>();
 
-  @GuardedBy("sessions")
-  private final Set<AsyncYBSession> sessions = new HashSet<AsyncYBSession>();
-
   // Since the masters also go through TabletClient, we need to treat them as if they were a normal
   // table. We'll use the following fake table name to identify places where we need special
   // handling.
@@ -830,32 +827,6 @@ public class AsyncYBClient implements AutoCloseable {
             return "openScanner errback";
           }
         });
-  }
-
-  /**
-   * Create a new session for interacting with the cluster.
-   * User is responsible for destroying the session object.
-   * This is a fully local operation (no RPCs or blocking).
-   * @return a new AsyncYBSession
-   */
-  public AsyncYBSession newSession() {
-    checkIsClosed();
-    AsyncYBSession session = new AsyncYBSession(this);
-    synchronized (sessions) {
-      sessions.add(session);
-    }
-    return session;
-  }
-
-  /**
-   * This method is for YBSessions so that they can remove themselves as part of closing down.
-   * @param session Session to remove
-   */
-  void removeSession(AsyncYBSession session) {
-    synchronized (sessions) {
-      boolean removed = sessions.remove(session);
-      assert removed == true;
-    }
   }
 
   /**
@@ -1651,7 +1622,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   @Override
   public void close() throws Exception {
-    shutdown().join(defaultAdminOperationTimeoutMs);
+    shutdown();
   }
 
   /**
@@ -1672,7 +1643,7 @@ public class AsyncYBClient implements AutoCloseable {
    * to open a new AsyncYBClient if you want to retry those operations.
    * The Deferred doesn't actually hold any content.
    */
-  public Deferred<ArrayList<Void>> shutdown() {
+  public void shutdown() {
     checkIsClosed();
     closed = true;
 
@@ -1703,19 +1674,6 @@ public class AsyncYBClient implements AutoCloseable {
         return "release resources callback";
       }
     }
-
-    // 2. Terminate all connections.
-    final class DisconnectCB implements Callback<Deferred<ArrayList<Void>>,
-        ArrayList<List<OperationResponse>>> {
-      public Deferred<ArrayList<Void>> call(final ArrayList<List<OperationResponse>> arg) {
-        return disconnectEverything().addCallback(new ReleaseResourcesCB());
-      }
-      public String toString() {
-        return "disconnect callback";
-      }
-    }
-    // 1. Flush everything.
-    return closeAllSessions().addBothDeferring(new DisconnectCB());
   }
 
   private void checkIsClosed() {
@@ -1723,25 +1681,6 @@ public class AsyncYBClient implements AutoCloseable {
       throw new IllegalStateException("Cannot proceed, the client to " + getMasterAddresses() +
                                       " has already been closed.");
     }
-  }
-
-  private Deferred<ArrayList<List<OperationResponse>>> closeAllSessions() {
-    // We create a copy because AsyncYBSession.close will call removeSession which would get us a
-    // concurrent modification during the iteration.
-    Set<AsyncYBSession> copyOfSessions;
-    synchronized (sessions) {
-      copyOfSessions = new HashSet<AsyncYBSession>(sessions);
-    }
-    if (sessions.isEmpty()) {
-      return Deferred.fromResult(null);
-    }
-    // Guaranteed that we'll have at least one session to close.
-    List<Deferred<List<OperationResponse>>> deferreds = new ArrayList<>(copyOfSessions.size());
-    for (AsyncYBSession session : copyOfSessions ) {
-      deferreds.add(session.close());
-    }
-
-    return Deferred.group(deferreds);
   }
 
   /**

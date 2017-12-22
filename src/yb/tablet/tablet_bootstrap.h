@@ -40,7 +40,6 @@
 namespace yb {
 namespace tablet {
 
-struct RowOp;
 class WriteOperationState;
 
 typedef std::map<int64_t, std::unique_ptr<log::LogEntryPB>> OpIndexToEntryMap;
@@ -186,28 +185,15 @@ class TabletBootstrap {
   // later on when then tablet is rebuilt and starts accepting writes from clients.
   Status PlaySegments(consensus::ConsensusBootstrapInfo* results);
 
-  // Append the given commit message to the log.
-  // Does not support writing a TxResult.
-  Status AppendCommitMsg(const consensus::CommitMsg& commit_msg);
+  void PlayWriteRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayWriteRequest(consensus::ReplicateMsg* replicate_msg,
-                          const consensus::CommitMsg* commit_msg);
+  Status PlayUpdateTransactionRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayUpdateTransactionRequest(consensus::ReplicateMsg* replicate_msg,
-                                      const consensus::CommitMsg* commit_msg);
+  Status PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg,
-                                const consensus::CommitMsg* commit_msg);
+  Status PlayChangeConfigRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayChangeConfigRequest(consensus::ReplicateMsg* replicate_msg,
-                                 const consensus::CommitMsg* commit_msg);
-
-  Status PlayNoOpRequest(consensus::ReplicateMsg* replicate_msg,
-                         const consensus::CommitMsg* commit_msg);
-
-  // Plays operations, skipping those that have already been flushed.
-  Status PlayRowOperations(WriteOperationState* operation_state,
-                           const TxResultPB* result);
+  Status PlayNoOpRequest(consensus::ReplicateMsg* replicate_msg);
 
   void DumpReplayStateToLog(const ReplayState& state);
 
@@ -215,10 +201,9 @@ class TabletBootstrap {
   CHECKED_STATUS HandleEntry(ReplayState* state, std::unique_ptr<log::LogEntryPB>* entry);
   CHECKED_STATUS HandleReplicateMessage(
       ReplayState* state, std::unique_ptr<log::LogEntryPB>* replicate_entry);
-  CHECKED_STATUS HandleEntryPair(
-      log::LogEntryPB* replicate_entry, const log::LogEntryPB* commit_entry);
+  CHECKED_STATUS HandleEntryPair(log::LogEntryPB* replicate_entry);
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
-      consensus::ReplicateMsg* replicate, const consensus::CommitMsg* commit);
+                                         consensus::ReplicateMsg* replicate);
 
   // Decodes a HybridTime from the provided string and updates the clock
   // with it.

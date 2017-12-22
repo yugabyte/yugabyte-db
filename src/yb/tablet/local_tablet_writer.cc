@@ -31,11 +31,8 @@ class AutoIncrementingCounter {
 
 } // namespace
 
-LocalTabletWriter::LocalTabletWriter(Tablet* tablet, const Schema* client_schema)
-  : tablet_(tablet),
-    client_schema_(client_schema) {
-  CHECK(!client_schema->has_column_ids());
-  CHECK_OK(SchemaToPB(*client_schema, req_.mutable_schema()));
+LocalTabletWriter::LocalTabletWriter(Tablet* tablet)
+  : tablet_(tablet) {
 }
 
 // Perform a write against the local tablet.

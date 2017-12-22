@@ -96,9 +96,7 @@ class PrepareThread;
 //      ApplyTask() calls operation_->Apply().
 //
 //      When Apply() is called, changes are made to the in-memory data structures. These
-//      changes are not visible to clients yet. After Apply() completes, a CommitMsg
-//      is enqueued to the WAL in order to store information about the operation result
-//      and provide correct recovery.
+//      changes are not visible to clients yet.
 //
 //      After the commit message has been enqueued in the Log, the driver executes Finalize()
 //      which, in turn, makes operations make their changes visible to other operations.

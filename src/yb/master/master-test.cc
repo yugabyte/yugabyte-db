@@ -39,7 +39,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
-#include "yb/common/row_operations.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master-test-util.h"
@@ -421,6 +420,7 @@ Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
   CreateTableResponsePB resp;
 
   request->set_name(table_name);
+  request->set_num_tablets(3);
   RETURN_NOT_OK(SchemaToPB(schema, request->mutable_schema()));
 
   if (!namespace_name.empty()) {

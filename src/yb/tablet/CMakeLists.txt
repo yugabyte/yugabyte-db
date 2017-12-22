@@ -52,7 +52,6 @@ set(TABLET_SRCS
   lock_manager.cc
   maintenance_manager.cc
   mvcc.cc
-  row_op.cc
   tablet_metadata.cc
   key_value_iterator.cc
   tablet_retention_policy.cc

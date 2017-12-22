@@ -63,8 +63,8 @@ class Visitor : public VisitorBase {
 class SysCatalogWriter {
  public:
   explicit SysCatalogWriter(
-      const std::string& tablet_id, const Schema& schema, const Schema& schema_with_ids)
-      : schema_(schema), schema_with_ids_(schema_with_ids) {
+      const std::string& tablet_id, const Schema& schema_with_ids)
+      : schema_with_ids_(schema_with_ids) {
     req_.set_tablet_id(tablet_id);
   }
 
@@ -121,7 +121,6 @@ class SysCatalogWriter {
     expr_pb->mutable_value()->set_int8_value(int8_value);
   }
 
-  const Schema& schema_;
   const Schema& schema_with_ids_;
   tserver::WriteRequestPB req_;
 
@@ -191,8 +190,7 @@ CHECKED_STATUS SysCatalogTable::MutateItems(
 }
 
 std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter() {
-  return std::unique_ptr<SysCatalogWriter>(
-      new SysCatalogWriter(kSysCatalogTabletId, schema_, schema_with_ids_));
+  return std::make_unique<SysCatalogWriter>(kSysCatalogTabletId, schema_with_ids_);
 }
 
 } // namespace master

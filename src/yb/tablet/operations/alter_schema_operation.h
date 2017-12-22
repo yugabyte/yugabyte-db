@@ -145,7 +145,7 @@ class AlterSchemaOperation : public Operation {
   virtual void Start() override;
 
   // Executes an Apply for the alter schema transaction
-  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
+  virtual CHECKED_STATUS Apply() override;
 
   // Actually commits the transaction.
   virtual void Finish(OperationResult result) override;

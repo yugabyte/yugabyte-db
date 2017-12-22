@@ -57,22 +57,6 @@ class DocOperation {
 
 typedef std::vector<std::unique_ptr<DocOperation>> DocOperations;
 
-class KuduWriteOperation: public DocOperation {
- public:
-  KuduWriteOperation(DocPath doc_path, PrimitiveValue value) : doc_path_(doc_path), value_(value) {
-  }
-
-  bool RequireReadSnapshot() const override { return false; }
-
-  void GetDocPathsToLock(std::list<DocPath> *paths, IsolationLevel *level) const override;
-
-  CHECKED_STATUS Apply(const DocOperationApplyData& data) override;
-
- private:
-  DocPath doc_path_;
-  PrimitiveValue value_;
-};
-
 // Redis value data with attached type of this value.
 // Used internally by RedisWriteOperation.
 struct RedisValue {

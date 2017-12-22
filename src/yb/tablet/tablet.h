@@ -51,7 +51,6 @@
 #include "yb/common/iterator.h"
 #include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_storage_interface.h"
 
@@ -106,7 +105,6 @@ class MaintenanceOpStats;
 namespace tablet {
 
 class AlterSchemaOperationState;
-struct RowOp;
 class ScopedReadOperation;
 struct TabletMetrics;
 struct TransactionApplyData;
@@ -231,11 +229,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply all of the row operations associated with this transaction.
   void ApplyRowOperations(WriteOperationState* operation_state);
 
-  // Apply a single row operation, which must already be prepared.
-  // The result is set back into row_op->result
-  void ApplyKuduRowOperation(WriteOperationState* operation_state,
-      RowOp* row_op);
-
   // Apply a set of RocksDB row operations.
   void ApplyKeyValueRowOperations(
       const docdb::KeyValueWriteBatchPB& put_batch,
@@ -270,13 +263,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // The QL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromQLWriteBatch(const WriteOperationData& data);
-
-  // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
-  CHECKED_STATUS KeyValueBatchFromKuduRowOps(const WriteOperationData& data);
-
-  // Uses primary_key:column_name for key encoding.
-  CHECKED_STATUS CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                                const WriteOperationData& data);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YQL_TABLE_TYPE.

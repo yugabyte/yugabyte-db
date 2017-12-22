@@ -65,7 +65,7 @@ class CompositePushdownTest : public YBTabletTest {
     uint32_t nrows = 10 * 12 * 28;
     int i = 0;
 
-    LocalTabletWriter writer(tablet().get(), &client_schema_);
+    LocalTabletWriter writer(tablet().get());
     for (int16_t year = 2000; year <= 2010; year++) {
       for (int8_t month = 1; month <= 12; month++) {
         for (int8_t day = 1; day <= 28; day++) {

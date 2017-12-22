@@ -17,10 +17,9 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/yb_op-internal.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/transaction.h"
 
 #include "yb/util/cast.h"

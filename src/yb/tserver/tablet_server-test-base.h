@@ -92,7 +92,7 @@ class TabletServerTestBase : public YBTest {
   typedef pair<int32_t, int32_t> KeyValue;
 
   explicit TabletServerTestBase(TableType table_type = YQL_TABLE_TYPE)
-      : schema_(GetSimpleYqlTestSchema()),
+      : schema_(GetSimpleTestSchema()),
         table_type_(table_type),
         ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(
                                    &ts_test_metric_registry_, "ts_server-test")) {
@@ -176,7 +176,6 @@ class TabletServerTestBase : public YBTest {
 
     WriteRequestPB req;
     req.set_tablet_id(kTabletId);
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
     WriteResponsePB resp;
     rpc::RpcController controller;
@@ -202,7 +201,7 @@ class TabletServerTestBase : public YBTest {
 
   // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
   void InsertTestRowsDirect(int64_t start_row, uint64_t num_rows) {
-    tablet::LocalTabletWriter writer(tablet_peer_->tablet(), &schema_);
+    tablet::LocalTabletWriter writer(tablet_peer_->tablet());
     QLWriteRequestPB req;
     for (int64_t i = 0; i < num_rows; i++) {
       BuildTestRow(start_row + i, &req);

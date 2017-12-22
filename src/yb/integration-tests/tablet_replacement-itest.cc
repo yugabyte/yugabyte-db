@@ -303,8 +303,6 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   req.set_tablet_id(tablet_id);
-  Schema schema = GetSimpleTestSchema();
-  ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
   AddTestRowInsert(1, 1, "", &req);
   leader_ts->tserver_proxy->WriteAsync(req, &resp, &rpc, [&latch]() { latch.CountDown(); });
 

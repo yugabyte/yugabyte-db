@@ -64,14 +64,12 @@ class TabletPushdownTest : public YBTabletTest {
   }
 
   void FillTestTablet() {
-    RowBuilder rb(client_schema_);
-
     nrows_ = 2100;
     if (AllowSlowTests()) {
       nrows_ = 100000;
     }
 
-    LocalTabletWriter writer(tablet().get(), &client_schema_);
+    LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     for (int64_t i = 0; i < nrows_; i++) {
       QLAddInt32HashValue(&req, i);

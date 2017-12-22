@@ -46,13 +46,12 @@ namespace tablet {
 class TestTabletMetadata : public YBTabletTest {
  public:
   TestTabletMetadata()
-      : YBTabletTest(GetSimpleYqlTestSchema()) {
+      : YBTabletTest(GetSimpleTestSchema()) {
   }
 
   void SetUp() override {
     YBTabletTest::SetUp();
-    writer_.reset(new LocalTabletWriter(harness_->tablet().get(),
-                                        &client_schema_));
+    writer_.reset(new LocalTabletWriter(harness_->tablet().get()));
   }
 
   void BuildPartialRow(int key, int intval, const char* strval,

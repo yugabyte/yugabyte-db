@@ -39,7 +39,6 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/row.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/doc_key.h"
@@ -53,53 +52,10 @@ using docdb::PrimitiveValue;
 using docdb::ValueType;
 
 inline Schema GetSimpleTestSchema() {
-  return Schema({ ColumnSchema("key", INT32),
-                  ColumnSchema("int_val", INT32),
-                  ColumnSchema("string_val", STRING, true) },
-                1);
-}
-
-inline Schema GetSimpleYqlTestSchema() {
   return Schema({ ColumnSchema("key", INT32, false, true),
                   ColumnSchema("int_val", INT32),
                   ColumnSchema("string_val", STRING, true) },
                 1);
-}
-
-inline void AddTestRowWithNullableStringToPB(RowOperationsPB::Type op_type,
-                                             const Schema& schema,
-                                             int32_t key,
-                                             int32_t int_val,
-                                             const char* string_val,
-                                             RowOperationsPB* ops) {
-  DCHECK(schema.initialized());
-  YBPartialRow row(&schema);
-  CHECK_OK(row.SetInt32("key", key));
-  CHECK_OK(row.SetInt32("int_val", int_val));
-  if (string_val) {
-    CHECK_OK(row.SetStringCopy("string_val", string_val));
-  }
-  RowOperationsPBEncoder enc(ops);
-  enc.Add(op_type, row);
-}
-
-inline void AddTestRowToPB(RowOperationsPB::Type op_type,
-                           const Schema& schema,
-                           int32_t key,
-                           int32_t int_val,
-                           const string& string_val,
-                           RowOperationsPB* ops) {
-  AddTestRowWithNullableStringToPB(op_type, schema, key, int_val, string_val.c_str(), ops);
-}
-
-inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
-                           const Schema& schema,
-                           int32_t key,
-                           RowOperationsPB* ops) {
-  YBPartialRow row(&schema);
-  CHECK_OK(row.SetInt32(0, key));
-  RowOperationsPBEncoder enc(ops);
-  enc.Add(op_type, row);
 }
 
 template <class WriteRequestPB, class Type>

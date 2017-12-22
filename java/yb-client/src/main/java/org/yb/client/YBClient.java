@@ -821,17 +821,6 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Create a new session for interacting with the cluster.
-   * User is responsible for destroying the session object.
-   * This is a fully local operation (no RPCs or blocking).
-   * @return a synchronous wrapper around YBSession.
-   */
-  public YBSession newSession() {
-    AsyncYBSession session = asyncClient.newSession();
-    return new YBSession(session);
-  }
-
-  /**
    * Creates a new {@link YBScanner.YBScannerBuilder} for a particular table.
    * @param table the name of the table you intend to scan.
    * The string is assumed to use the platform's default charset.
@@ -855,8 +844,7 @@ public class YBClient implements AutoCloseable {
    * @throws Exception
    */
   public void shutdown() throws Exception {
-    Deferred<ArrayList<Void>> d = asyncClient.shutdown();
-    d.join(getDefaultAdminOperationTimeoutMs());
+    asyncClient.shutdown();
   }
 
   /**

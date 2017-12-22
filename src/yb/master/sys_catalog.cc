@@ -40,7 +40,6 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_value.h"
@@ -515,7 +514,6 @@ Status SysCatalogTable::WaitUntilRunning() {
 }
 
 CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
-  RETURN_NOT_OK(SchemaToPB(writer->schema_, writer->req_.mutable_schema()));
   tserver::WriteResponsePB resp;
 
   CountDownLatch latch(1);

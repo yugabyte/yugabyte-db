@@ -56,33 +56,33 @@ class TestTabletSchema : public YBTabletTest {
     : YBTabletTest(CreateBaseSchema(), YQL_TABLE_TYPE) {
   }
 
-  void InsertRows(const Schema& schema, size_t first_key, size_t nrows) {
+  void InsertRows(size_t first_key, size_t nrows) {
     for (size_t i = first_key; i < nrows; ++i) {
-      InsertRow(schema, i);
+      InsertRow(i);
       if (i == (nrows / 2)) {
         ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
       }
     }
   }
 
-  void InsertRow(const Schema& schema, size_t key) {
-    LocalTabletWriter writer(tablet().get(), &schema);
+  void InsertRow(size_t key) {
+    LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     QLAddInt32HashValue(&req, key);
     QLAddInt32ColumnValue(&req, kFirstColumnId + 1, key);
     ASSERT_OK(writer.Write(&req));
   }
 
-  void DeleteRow(const Schema& schema, size_t key) {
-    LocalTabletWriter writer(tablet().get(), &schema);
+  void DeleteRow(size_t key) {
+    LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     req.set_type(QLWriteRequestPB::QL_STMT_DELETE);
     QLAddInt32HashValue(&req, key);
     ASSERT_OK(writer.Write(&req));
   }
 
-  void MutateRow(const Schema& schema, size_t key, size_t col_idx, int32_t new_val) {
-    LocalTabletWriter writer(tablet().get(), &schema);
+  void MutateRow(size_t key, size_t col_idx, int32_t new_val) {
+    LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
     QLAddInt32HashValue(&req, key);
     QLAddInt32ColumnValue(&req, kFirstColumnId + col_idx, new_val);
@@ -125,7 +125,7 @@ TEST_F(TestTabletSchema, TestRead) {
                       ColumnSchema("c3", STRING) },
                     1);
 
-  InsertRows(client_schema_, 0, kNumRows);
+  InsertRows(0, kNumRows);
 
   gscoped_ptr<RowwiseIterator> iter;
   ASSERT_OK(tablet()->NewRowIterator(projection, boost::none, &iter));
@@ -142,7 +142,7 @@ TEST_F(TestTabletSchema, DISABLED_TestWrite) {
   const size_t kNumBaseRows = 10;
 
   // Insert some rows with the base schema
-  InsertRows(client_schema_, 0, kNumBaseRows);
+  InsertRows(0, kNumBaseRows);
 
   // Add one column with a default value
   const int32_t c2_write_default = 5;
@@ -157,7 +157,7 @@ TEST_F(TestTabletSchema, DISABLED_TestWrite) {
 
   // Insert with base/old schema
   size_t s2Key = kNumBaseRows + 1;
-  InsertRow(client_schema_, s2Key);
+  InsertRow(s2Key);
 
   // Verify the default value
   std::vector<std::pair<string, string> > keys =
@@ -166,13 +166,13 @@ TEST_F(TestTabletSchema, DISABLED_TestWrite) {
   VerifyTabletRows(s2, keys);
 
   // Delete the row
-  DeleteRow(s2, s2Key);
+  DeleteRow(s2Key);
 
   // Verify the default value
   VerifyTabletRows(s2, keys);
 
   // Re-Insert with base/old schema
-  InsertRow(client_schema_, s2Key);
+  InsertRow(s2Key);
   VerifyTabletRows(s2, keys);
 
   VerifyTabletRows(s2, keys);
@@ -182,9 +182,9 @@ TEST_F(TestTabletSchema, DISABLED_TestWrite) {
 TEST_F(TestTabletSchema, DISABLED_TestReInsert) {
   // Insert some rows with the base schema
   size_t s1Key = 0;
-  InsertRow(client_schema_, s1Key);
-  DeleteRow(client_schema_, s1Key);
-  InsertRow(client_schema_, s1Key);
+  InsertRow(s1Key);
+  DeleteRow(s1Key);
+  InsertRow(s1Key);
 
   // Add one column with a default value
   const int32_t c2_write_default = 5;
@@ -199,7 +199,7 @@ TEST_F(TestTabletSchema, DISABLED_TestReInsert) {
 
   // Insert with base/old schema
   size_t s2Key = 1;
-  InsertRow(client_schema_, s2Key);
+  InsertRow(s2Key);
 
   // Verify the default value
   std::vector<std::pair<string, string> > keys;
@@ -217,7 +217,7 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   std::vector<std::pair<string, string> > keys;
 
   // Insert with the base schema
-  InsertRow(client_schema_, 1);
+  InsertRow(1);
 
   // Switch schema to s2
   SchemaBuilder builder(tablet()->metadata()->schema());
@@ -226,7 +226,7 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   Schema s2 = builder.BuildWithoutIds();
 
   // Insert with the s2 schema after AlterSchema(s2)
-  InsertRow(s2, 2);
+  InsertRow(2);
 
   // Read and verify using the s2 schema
   keys.clear();
@@ -237,10 +237,10 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   VerifyTabletRows(s2, keys);
 
   // Delete the first two rows
-  DeleteRow(s2, /* key= */ 1);
+  DeleteRow(/* key= */ 1);
 
   // Alter the remaining row
-  MutateRow(s2,      /* key= */ 2, /* col_idx= */ 1, /* new_val= */ 6);
+  MutateRow(/* key= */ 2, /* col_idx= */ 1, /* new_val= */ 6);
 
   // Read and verify using the s2 schema
   keys.clear();
@@ -253,8 +253,8 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
   std::vector<std::pair<string, string> > keys;
 
   // Insert and Mutate with the base schema
-  InsertRow(client_schema_, 1);
-  MutateRow(client_schema_, /* key= */ 1, /* col_idx= */ 1, /* new_val= */ 2);
+  InsertRow(1);
+  MutateRow(/* key= */ 1, /* col_idx= */ 1, /* new_val= */ 2);
 
   keys.clear();
   keys.push_back(std::pair<string, string>("key=1", "c1=2"));

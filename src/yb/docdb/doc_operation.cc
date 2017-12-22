@@ -48,15 +48,6 @@ using std::list;
 using std::make_shared;
 using strings::Substitute;
 
-void KuduWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
-  paths->push_back(doc_path_);
-  *level = IsolationLevel::SNAPSHOT_ISOLATION;
-}
-
-Status KuduWriteOperation::Apply(const DocOperationApplyData& data) {
-  return data.doc_write_batch->SetPrimitive(doc_path_, value_);
-}
-
 void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
   paths->push_back(DocPath::DocPathFromRedisKey(request_.key_value().hash_code(),
                                                 request_.key_value().key()));

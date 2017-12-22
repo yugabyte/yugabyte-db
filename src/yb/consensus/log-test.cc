@@ -71,7 +71,6 @@ extern const char* kTestTablet;
 struct TestLogSequenceElem {
   enum ElemType {
     REPLICATE,
-    COMMIT,
     ROLL
   };
   ElemType type;
@@ -900,9 +899,6 @@ std::ostream& operator<<(std::ostream& os, const TestLogSequenceElem& elem) {
     case TestLogSequenceElem::REPLICATE:
       os << "R" << elem.id;
       break;
-    case TestLogSequenceElem::COMMIT:
-      os << "C" << elem.id;
-      break;
   }
   return os;
 }
@@ -949,17 +945,6 @@ void LogTest::GenerateTestSequence(Random* rng, int seq_len,
     ops->push_back(op);
     (*terms_by_index)[id.index()] = id.term();
     max_repl_index = std::max(max_repl_index, id.index());
-
-    // Advance the commit index sometimes
-    if (rng->OneIn(5)) {
-      while (committed_index < id.index()) {
-        committed_index++;
-        TestLogSequenceElem op;
-        op.type = TestLogSequenceElem::COMMIT;
-        op.id = MakeOpId((*terms_by_index)[committed_index], committed_index);
-        ops->push_back(op);
-      }
-    }
   }
   terms_by_index->resize(max_repl_index + 1);
 }
@@ -972,16 +957,6 @@ void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
       {
         OpId id(e.id);
         ASSERT_OK(AppendNoOp(&id));
-        break;
-      }
-      case TestLogSequenceElem::COMMIT:
-      {
-        gscoped_ptr<CommitMsg> commit(new CommitMsg);
-        commit->set_op_type(NO_OP);
-        commit->mutable_commited_op_id()->CopyFrom(e.id);
-        Synchronizer s;
-        ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), s.AsStatusCallback()));
-        ASSERT_OK(s.Wait());
         break;
       }
       case TestLogSequenceElem::ROLL:

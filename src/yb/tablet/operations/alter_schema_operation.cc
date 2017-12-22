@@ -48,7 +48,6 @@ namespace tablet {
 
 using std::bind;
 using consensus::ReplicateMsg;
-using consensus::CommitMsg;
 using consensus::ALTER_SCHEMA_OP;
 using consensus::DriverType;
 using strings::Substitute;
@@ -114,7 +113,7 @@ void AlterSchemaOperation::Start() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status AlterSchemaOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
+Status AlterSchemaOperation::Apply() {
   TRACE("APPLY ALTER-SCHEMA: Starting");
 
   Tablet* tablet = state()->tablet();
@@ -122,8 +121,6 @@ Status AlterSchemaOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
   state()->log()->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
                                              state()->schema_version());
 
-  commit_msg->reset(new CommitMsg());
-  (*commit_msg)->set_op_type(ALTER_SCHEMA_OP);
   return Status::OK();
 }
 

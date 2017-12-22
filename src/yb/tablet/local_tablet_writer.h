@@ -36,7 +36,6 @@
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/gutil/macros.h"
@@ -54,14 +53,13 @@ class LocalTabletWriter {
  public:
   typedef google::protobuf::RepeatedPtrField<QLWriteRequestPB> Batch;
 
-  explicit LocalTabletWriter(Tablet* tablet, const Schema* client_schema);
+  explicit LocalTabletWriter(Tablet* tablet);
 
   CHECKED_STATUS Write(QLWriteRequestPB* req);
   CHECKED_STATUS WriteBatch(Batch* batch);
 
  private:
   Tablet* const tablet_;
-  const Schema* client_schema_;
 
   tserver::WriteRequestPB req_;
   tserver::WriteResponsePB resp_;

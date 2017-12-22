@@ -198,7 +198,7 @@ void TestWorkload::Setup(YBTableType table_type) {
   CHECK_OK(s);
 
   if (!table_exists) {
-    YBSchema client_schema(YBSchemaFromSchema(GetSimpleYqlTestSchema()));
+    YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
 
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(table_name_)

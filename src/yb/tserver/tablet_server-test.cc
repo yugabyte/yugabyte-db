@@ -342,7 +342,6 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_FALSE(resp.has_error());
-  req.clear_row_operations();
 
   // make sure the server returned a write hybrid_time where only
   // the logical value was increased since he should have updated
@@ -400,7 +399,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     WriteRequestPB req;
     WriteResponsePB resp;
     req.set_tablet_id(kTabletId);
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
     AddTestRowUpdate(1234, 2, "mutated", &req);
     SCOPED_TRACE(req.DebugString());
@@ -415,7 +413,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     WriteRequestPB req;
     WriteResponsePB resp;
     req.set_tablet_id(kTabletId);
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
     AddTestRowDelete(1, &req);
     SCOPED_TRACE(req.DebugString());
@@ -430,7 +427,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     WriteRequestPB req;
     WriteResponsePB resp;
     req.set_tablet_id(kTabletId);
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
     AddTestRowUpdate(1, 2, "mutated1", &req);
     SCOPED_TRACE(req.DebugString());
@@ -448,7 +444,6 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     WriteRequestPB req;
     WriteResponsePB resp;
     req.set_tablet_id(kTabletId);
-    ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
     // op 0: Mutate row 1, which doesn't exist. This should not fail.
     AddTestRowUpdate(1, 3, "mutate_should_not_fail", &req);
@@ -1209,7 +1204,6 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   WriteResponsePB resp;
   RpcController controller;
   req.set_tablet_id(tabletId);
-  ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
   for (auto op : { QLWriteRequestPB::QL_STMT_INSERT, QLWriteRequestPB::QL_STMT_UPDATE }) {
     AddTestRow(20, 1, "1", op, &req);

@@ -89,7 +89,6 @@ set(COMMON_SRCS
   rowblock.cc
   row_changelist.cc
   row_key-util.cc
-  row_operations.cc
   scan_predicate.cc
   scan_spec.cc
   schema.cc
@@ -138,7 +137,6 @@ ADD_YB_TEST(predicate-test)
 ADD_YB_TEST(predicate_encoder-test)
 ADD_YB_TEST(row_changelist-test)
 ADD_YB_TEST(row_key-util-test)
-ADD_YB_TEST(row_operations-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)

@@ -65,7 +65,6 @@
 #include <glog/logging.h>
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_peers.h"
@@ -1440,8 +1439,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       break;
     }
     case YBHashSchema::kRedisHash: {
-      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
-                                                      kRedisClusterSlots));
+          RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
+          kRedisClusterSlots));
       break;
     }
   }

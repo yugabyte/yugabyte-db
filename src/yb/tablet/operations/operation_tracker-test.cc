@@ -87,7 +87,7 @@ class OperationTrackerTest : public YBTest {
 
     Status Prepare() override { return Status::OK(); }
     void Start() override {}
-    Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override {
+    Status Apply() override {
       return Status::OK();
     }
     std::string ToString() const override {

@@ -129,7 +129,6 @@ static const char kSegmentPlaceholderFileTemplate[] = ".tmp.newsegmentXXXXXX";
 namespace yb {
 namespace log {
 
-using consensus::CommitMsg;
 using consensus::OpId;
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
@@ -478,22 +477,6 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs,
   // the LogEntryBatch. This will make sure there's a reference for each
   // replicate while we're appending.
   reserved_entry_batch->SetReplicates(msgs);
-
-  RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, callback));
-  return Status::OK();
-}
-
-Status Log::AsyncAppendCommit(gscoped_ptr<consensus::CommitMsg> commit_msg,
-                              const StatusCallback& callback) {
-  MAYBE_FAULT(FLAGS_fault_crash_before_append_commit);
-
-  LogEntryBatchPB batch;
-  LogEntryPB* entry = batch.add_entry();
-  entry->set_type(COMMIT);
-  entry->set_allocated_commit(commit_msg.release());
-
-  LogEntryBatch* reserved_entry_batch;
-  RETURN_NOT_OK(Reserve(COMMIT, &batch, &reserved_entry_batch));
 
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, callback));
   return Status::OK();

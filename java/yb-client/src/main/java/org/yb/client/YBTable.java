@@ -146,30 +146,6 @@ public class YBTable {
   }
 
   /**
-   * Get a new insert configured with this table's schema. The returned object should not be reused.
-   * @return an insert with this table's schema
-   */
-  public Insert newInsert() {
-    return new Insert(this);
-  }
-
-  /**
-   * Get a new update configured with this table's schema. The returned object should not be reused.
-   * @return an update with this table's schema
-   */
-  public Update newUpdate() {
-    return new Update(this);
-  }
-
-  /**
-   * Get a new delete configured with this table's schema. The returned object should not be reused.
-   * @return a delete with this table's schema
-   */
-  public Delete newDelete() {
-    return new Delete(this);
-  }
-
-  /**
    * Get all the tablets for this table. This may query the master multiple times if there
    * are a lot of tablets.
    * @param deadline deadline in milliseconds for this method to finish

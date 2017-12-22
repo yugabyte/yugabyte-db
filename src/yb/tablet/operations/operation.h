@@ -114,7 +114,7 @@ class Operation {
   // Executes the Apply() phase of the transaction, the actual actions of
   // this phase depend on the transaction type, but usually this is the
   // method where data-structures are changed.
-  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) = 0;
+  virtual CHECKED_STATUS Apply() = 0;
 
   // Executed after Apply() but before the commit is submitted to consensus.
   // Some transactions use this to perform pre-commit actions (e.g. write

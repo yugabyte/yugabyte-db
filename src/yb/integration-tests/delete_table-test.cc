@@ -995,7 +995,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
       TestWorkload::kDefaultTableName.namespace_name()));
   const int kNumTablets = 2;
-  Schema schema(GetSimpleYqlTestSchema());
+  Schema schema(GetSimpleTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkload::kDefaultTableName)

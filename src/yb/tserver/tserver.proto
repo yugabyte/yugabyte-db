@@ -149,15 +149,9 @@ message ReadHybridTimePB {
 
 // A batched set of insert/mutate requests.
 message WriteRequestPB {
+  // TODO(proto3) reserved 2, 3;
+
   required bytes tablet_id = 1;
-
-  // The schema as seen by the client. This may be out-of-date, in which case
-  // it will be projected to the current schema automatically, with defaults/NULLs
-  // being filled in.
-  optional SchemaPB schema = 2;
-
-  // Operations to perform (insert/update/delete)
-  optional RowOperationsPB row_operations = 3;
 
   // When replicating RocksDB write operations through Raft for single-shard transactions,
   // we put a write batch here.
@@ -175,8 +169,6 @@ message WriteRequestPB {
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 9 [default = true];
-
-  // NOTE: exactly one of row_operations and write_batch must be set.
 
   // A hybrid_time obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with

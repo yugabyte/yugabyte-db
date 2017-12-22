@@ -616,8 +616,6 @@ Status ReadableLogSegment::MakeCorruptionStatus(
       string opid_str;
       if (type == log::REPLICATE && entry->has_replicate()) {
         opid_str = consensus::OpIdToString(entry->replicate().id());
-      } else if (entry->has_commit() && entry->commit().has_commited_op_id()) {
-        opid_str = consensus::OpIdToString(entry->commit().commited_op_id());
       } else {
         opid_str = "<unknown>";
       }

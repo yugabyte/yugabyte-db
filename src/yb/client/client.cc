@@ -60,7 +60,6 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -1116,43 +1115,36 @@ Status YBTableCreator::Create() {
 
   // Check if partition schema is to multi column hash value.
   int32_t num_hash_keys = data_->schema_->num_hash_key_columns();
-  if (num_hash_keys > 0 ||
-      data_->partition_schema_.hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA) {
-    if (!data_->split_rows_.empty()) {
-      return STATUS(InvalidArgument,
-                    "Split rows cannot be used with schema that contains hash key columns");
-    }
-
-    // Setup the number splits (i.e. number of tablets).
-    if (data_->num_tablets_ <= 0) {
-      if (data_->table_name_.is_system()) {
-        data_->num_tablets_ = 1;
-        VLOG(1) << "num_tablets=1: using one tablet for a system table";
-      } else {
-        if (FLAGS_yb_num_total_tablets > 0) {
-          data_->num_tablets_ = FLAGS_yb_num_total_tablets;
-          VLOG(1) << "num_tablets=" << data_->num_tablets_
-                  << ": --yb_num_total_tablets is specified.";
-        } else {
-          int tserver_count = 0;
-          RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
-          data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
-          VLOG(1) << "num_tablets=" << data_->num_tablets_<< ": "
-                  << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
-                  << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
-        }
-      }
-    } else {
-      VLOG(1) << "num_tablets: number of tablets explicitly specified: " << data_->num_tablets_;
-    }
-    req.set_num_tablets(data_->num_tablets_);
-  } else {
-    RowOperationsPBEncoder encoder(req.mutable_split_rows());
-
-    for (const YBPartialRow* row : data_->split_rows_) {
-      encoder.Add(RowOperationsPB::SPLIT_ROW, *row);
-    }
+  DCHECK(num_hash_keys > 0 ||
+         data_->partition_schema_.hash_schema() == PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+  if (!data_->split_rows_.empty()) {
+    return STATUS(InvalidArgument,
+                  "Split rows cannot be used with schema that contains hash key columns");
   }
+
+  // Setup the number splits (i.e. number of tablets).
+  if (data_->num_tablets_ <= 0) {
+    if (data_->table_name_.is_system()) {
+      data_->num_tablets_ = 1;
+      VLOG(1) << "num_tablets=1: using one tablet for a system table";
+    } else {
+      if (FLAGS_yb_num_total_tablets > 0) {
+        data_->num_tablets_ = FLAGS_yb_num_total_tablets;
+        VLOG(1) << "num_tablets=" << data_->num_tablets_
+                << ": --yb_num_total_tablets is specified.";
+      } else {
+        int tserver_count = 0;
+        RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
+        data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+        VLOG(1) << "num_tablets=" << data_->num_tablets_<< ": "
+                << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
+                << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
+      }
+    }
+  } else {
+    VLOG(1) << "num_tablets: number of tablets explicitly specified: " << data_->num_tablets_;
+  }
+  req.set_num_tablets(data_->num_tablets_);
   req.mutable_partition_schema()->CopyFrom(data_->partition_schema_);
 
   if (!data_->indexed_table_id_.empty()) {

@@ -45,7 +45,6 @@ import "yb/consensus/metadata.proto";
 enum LogEntryTypePB {
   UNKNOWN = 0;
   REPLICATE = 1;
-  COMMIT = 2;
   // Marker entry for dummy log messages. These will never end up in the log,
   // just serve the purpose of making sure that all entries up to the FLUSH_MARKER
   // entry are flushed.
@@ -56,7 +55,6 @@ enum LogEntryTypePB {
 message LogEntryPB {
   required LogEntryTypePB type = 1;
   optional consensus.ReplicateMsg replicate = 2;
-  optional consensus.CommitMsg commit = 3;
 }
 
 // A batch of entries in the WAL.

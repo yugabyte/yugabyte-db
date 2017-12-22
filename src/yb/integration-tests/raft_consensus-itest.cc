@@ -611,7 +611,6 @@ TEST_F(RaftConsensusITest, TestInsertOnNonLeader) {
   WriteResponsePB resp;
   RpcController rpc;
   req.set_tablet_id(tablet_id_);
-  ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
   AddTestRowInsert(kTestRowKey, kTestRowIntVal, "hello world via RPC", &req);
 
   // Get the leader.
@@ -1404,7 +1403,6 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
   WriteResponsePB resp;
   RpcController rpc;
   req.set_tablet_id(tablet_id_);
-  ASSERT_OK(SchemaToPB(schema_, req.mutable_schema()));
   AddTestRowInsert(kTestRowKey, kTestRowIntVal, "hello world", &req);
 
   while (!finish->Load()) {
@@ -1465,7 +1463,6 @@ void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
   msg->set_hybrid_time(id.index());
   msg->set_op_type(consensus::WRITE_OP);
   WriteRequestPB* write_req = msg->mutable_write_request();
-  CHECK_OK(SchemaToPB(schema_, write_req->mutable_schema()));
   write_req->set_tablet_id(tablet_id_);
   int32_t key = static_cast<int32_t>(id.index() * 10000 + id.term());
   string str_val = Substitute("term: $0 index: $1", id.term(), id.index());

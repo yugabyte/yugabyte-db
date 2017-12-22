@@ -35,7 +35,6 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/alter_schema_operation.h"
@@ -71,7 +70,6 @@ using log::LogReader;
 using log::ReadableLogSegment;
 using consensus::ChangeConfigRecordPB;
 using consensus::RaftConfigPB;
-using consensus::CommitMsg;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
@@ -453,10 +451,6 @@ Status TabletBootstrap::HandleEntry(ReplayState* state, std::unique_ptr<LogEntry
     case log::REPLICATE:
       RETURN_NOT_OK(HandleReplicateMessage(state, entry_ptr));
       break;
-    case log::COMMIT:
-      CHECK(entry.has_commit() && entry.commit().op_type() == consensus::NO_OP);
-      entry_ptr->reset();
-      break;
     default:
       return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
   }
@@ -550,30 +544,29 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   // REPLICATE entry during bootstrap without Kudu's local COMMIT messages.
   state->UpdateCommittedOpId(replicate.committed_op_id());
 
-  state->ApplyCommittedPendingReplicates(
-      std::bind(&TabletBootstrap::HandleEntryPair, this, _1, nullptr));
+  state->ApplyCommittedPendingReplicates(std::bind(&TabletBootstrap::HandleEntryPair, this, _1));
 
   return Status::OK();
 }
 
 Status TabletBootstrap::HandleOperation(OperationType op_type,
-                                        ReplicateMsg* replicate,
-                                        const CommitMsg* commit) {
+                                        ReplicateMsg* replicate) {
   switch (op_type) {
     case consensus::WRITE_OP:
-      return PlayWriteRequest(replicate, commit);
+      PlayWriteRequest(replicate);
+      return Status::OK();
 
     case consensus::ALTER_SCHEMA_OP:
-      return PlayAlterSchemaRequest(replicate, commit);
+      return PlayAlterSchemaRequest(replicate);
 
     case consensus::CHANGE_CONFIG_OP:
-      return PlayChangeConfigRequest(replicate, commit);
+      return PlayChangeConfigRequest(replicate);
 
     case consensus::NO_OP:
-      return PlayNoOpRequest(replicate, commit);
+      return PlayNoOpRequest(replicate);
 
     case consensus::UPDATE_TRANSACTION_OP:
-      return PlayUpdateTransactionRequest(replicate, commit);
+      return PlayUpdateTransactionRequest(replicate);
 
     // Unexpected cases:
     case consensus::SNAPSHOT_OP:
@@ -588,21 +581,16 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.
-Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry,
-                                        const LogEntryPB* commit_entry) {
+Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry) {
   ReplicateMsg* replicate = replicate_entry->mutable_replicate();
-  const CommitMsg* commit = commit_entry == nullptr ? nullptr : &commit_entry->commit();
-  const OperationType op_type =
-      commit == nullptr ? replicate_entry->replicate().op_type() : commit->op_type();
+  const OperationType op_type = replicate_entry->replicate().op_type();
 
   {
-    const auto status = HandleOperation(op_type, replicate, commit);
+    const auto status = HandleOperation(op_type, replicate);
     if (!status.ok()) {
       return status.CloneAndAppend(Format(
-          "Failed to play $0 request. ReplicateMsg: { $1 }, CommitMsg: { $2 }",
-          OperationType_Name(op_type),
-          *replicate,
-          commit ? commit->ShortDebugString() : "N/A"s));
+          "Failed to play $0 request. ReplicateMsg: { $1 }",
+          OperationType_Name(op_type), *replicate));
     }
   }
 
@@ -784,17 +772,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   return Status::OK();
 }
 
-Status TabletBootstrap::AppendCommitMsg(const CommitMsg& commit_msg) {
-  LogEntryPB commit_entry;
-  commit_entry.set_type(log::COMMIT);
-  CommitMsg* commit = commit_entry.mutable_commit();
-  commit->CopyFrom(commit_msg);
-  return log_->Append(&commit_entry);
-}
-
-Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
-                                         const CommitMsg* commit_msg) {
-  DCHECK(commit_msg == nullptr);
+void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
   DCHECK(replicate_msg->has_hybrid_time());
 
   WriteRequestPB* write = replicate_msg->mutable_write_request();
@@ -810,11 +788,12 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
   // Use committed OpId for mem store anchoring.
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
-  return PlayRowOperations(&operation_state, nullptr);
+  tablet_->ApplyRowOperations(&operation_state);
+
+  tablet_->mvcc_manager()->Replicated(operation_state.hybrid_time());
 }
 
-Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
-                                               const CommitMsg* commit_msg) {
+Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg) {
   AlterSchemaRequestPB* alter_schema = replicate_msg->mutable_alter_schema_request();
 
   // Decode schema
@@ -836,11 +815,10 @@ Status TabletBootstrap::PlayAlterSchemaRequest(ReplicateMsg* replicate_msg,
   // takes care of this, but our new log isn't hooked up to the tablet yet.
   log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
 
-  return commit_msg == nullptr ? Status::OK() : AppendCommitMsg(*commit_msg);
+  return Status::OK();
 }
 
-Status TabletBootstrap::PlayChangeConfigRequest(ReplicateMsg* replicate_msg,
-                                                const CommitMsg* commit_msg) {
+Status TabletBootstrap::PlayChangeConfigRequest(ReplicateMsg* replicate_msg) {
   ChangeConfigRecordPB* change_config = replicate_msg->mutable_change_config_record();
   RaftConfigPB config = change_config->new_config();
 
@@ -863,15 +841,14 @@ Status TabletBootstrap::PlayChangeConfigRequest(ReplicateMsg* replicate_msg,
                         << "Skipping application of this config change.";
   }
 
-  return commit_msg == nullptr ? Status::OK() : AppendCommitMsg(*commit_msg);
+  return Status::OK();
 }
 
-Status TabletBootstrap::PlayNoOpRequest(ReplicateMsg* replicate_msg, const CommitMsg* commit_msg) {
-  return commit_msg == nullptr ? Status::OK() : AppendCommitMsg(*commit_msg);
+Status TabletBootstrap::PlayNoOpRequest(ReplicateMsg* replicate_msg) {
+  return Status::OK();
 }
 
-Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg,
-                                                     const CommitMsg* commit_msg) {
+Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg) {
   DCHECK(replicate_msg->has_hybrid_time());
 
   UpdateTxnOperationState operation_state(
@@ -890,22 +867,6 @@ Status TabletBootstrap::PlayUpdateTransactionRequest(ReplicateMsg* replicate_msg
   };
   RETURN_NOT_OK(transaction_coordinator->ProcessReplicated(replicated_data));
 
-  return Status::OK();
-}
-
-Status TabletBootstrap::PlayRowOperations(WriteOperationState* operation_state,
-                                          const TxResultPB* result) {
-  Schema inserts_schema;
-  RETURN_NOT_OK_PREPEND(SchemaFromPB(operation_state->request()->schema(), &inserts_schema),
-                        "Couldn't decode client schema");
-
-  if (result != nullptr) {
-    CHECK_EQ(operation_state->row_ops().size(), result->ops_size());
-  }
-
-  tablet_->ApplyRowOperations(operation_state);
-
-  tablet_->mvcc_manager()->Replicated(operation_state->hybrid_time());
   return Status::OK();
 }
 

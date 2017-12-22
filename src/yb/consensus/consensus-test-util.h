@@ -600,10 +600,8 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
 // work.
 class TestDriver {
  public:
-  TestDriver(ThreadPool* pool, Log* log, const scoped_refptr<ConsensusRound>& round)
-      : round_(round),
-        pool_(pool),
-        log_(log) {
+  TestDriver(ThreadPool* pool, const scoped_refptr<ConsensusRound>& round)
+      : round_(round), pool_(pool) {
   }
 
   void SetRound(const scoped_refptr<ConsensusRound>& round) {
@@ -631,13 +629,7 @@ class TestDriver {
  private:
   // The commit message has the exact same type of the replicate message, but
   // no content.
-  void Apply() {
-    gscoped_ptr<CommitMsg> msg(new CommitMsg);
-    msg->set_op_type(round_->replicate_msg()->op_type());
-    msg->mutable_commited_op_id()->CopyFrom(round_->id());
-    CHECK_OK(log_->AsyncAppendCommit(msg.Pass(),
-                                     Bind(&TestDriver::CommitCallback, Unretained(this))));
-  }
+  void Apply() {}
 
   void CommitCallback(const Status& s) {
     CHECK_OK(s);
@@ -645,7 +637,6 @@ class TestDriver {
   }
 
   ThreadPool* pool_;
-  Log* log_;
 };
 
 // Fake ReplicaOperationFactory that allows for instantiating and unit
@@ -662,8 +653,7 @@ class MockOperationFactory : public ReplicaOperationFactory {
 // A transaction factory for tests, usually this is implemented by TabletPeer.
 class TestOperationFactory : public ReplicaOperationFactory {
  public:
-  explicit TestOperationFactory(Log* log) : log_(log) {
-
+  TestOperationFactory() {
     CHECK_OK(ThreadPoolBuilder("test-operation-factory").set_max_threads(1).Build(&pool_));
   }
 
@@ -672,7 +662,7 @@ class TestOperationFactory : public ReplicaOperationFactory {
   }
 
   CHECKED_STATUS StartReplicaOperation(const scoped_refptr<ConsensusRound>& round) override {
-    auto txn = new TestDriver(pool_.get(), log_, round);
+    auto txn = new TestDriver(pool_.get(), round);
     txn->round_->SetConsensusReplicatedCallback(Bind(&TestDriver::ReplicationFinished,
                                                      Unretained(txn)));
     return Status::OK();
@@ -698,7 +688,6 @@ class TestOperationFactory : public ReplicaOperationFactory {
  private:
   gscoped_ptr<ThreadPool> pool_;
   Consensus* consensus_ = nullptr;
-  Log* log_;
 };
 
 // Consensus fault hooks impl. that simply counts the number of calls to

@@ -40,7 +40,6 @@
 #include "yb/tablet/tablet-test-util.h"
 
 #include "yb/common/partial_row.h"
-#include "yb/common/row_operations.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus_meta.h"
@@ -89,7 +88,7 @@ using tablet::WriteOperationState;
 class RemoteBootstrapTest : public YBTabletTest {
  public:
   explicit RemoteBootstrapTest(TableType table_type)
-    : YBTabletTest(GetSimpleYqlTestSchema(), table_type) {
+    : YBTabletTest(GetSimpleTestSchema(), table_type) {
     CHECK_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
   }
 

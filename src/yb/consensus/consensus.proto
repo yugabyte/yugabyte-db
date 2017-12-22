@@ -39,8 +39,6 @@ import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/util/opid.proto";
-import "yb/tablet/metadata.proto";
-import "yb/tablet/tablet.proto";
 import "yb/tserver/backup.proto";
 import "yb/tserver/tserver_admin.proto";
 import "yb/tserver/tserver.proto";
@@ -205,18 +203,6 @@ message ReplicateMsg {
   optional OpIdPB committed_op_id = 8;
 
   optional NoOpRequestPB noop_request = 999;
-}
-
-// A commit message for a previous operation.
-// This is a commit in the consensus sense and may abort/commit any operation
-// that required a consensus round.
-// This is not being used for RocksDB-backed tables.
-message CommitMsg {
-  required OperationType op_type = 1;
-  // the id of the message this commit pertains to
-  optional OpIdPB commited_op_id = 2;
-  // The operations that were applied and/or failed in this transaction.
-  optional tablet.TxResultPB result = 3;
 }
 
 // ===========================================================================

@@ -777,8 +777,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  bool has_operations = req->has_row_operations() || req->ql_write_batch_size() != 0 ||
-                        req->redis_write_batch_size() != 0;
+  bool has_operations = req->ql_write_batch_size() != 0 || req->redis_write_batch_size() != 0;
   if (!has_operations && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.

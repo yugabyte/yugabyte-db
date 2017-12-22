@@ -67,7 +67,6 @@ DECLARE_int32(log_min_seconds_to_retain);
 namespace yb {
 namespace tablet {
 
-using consensus::CommitMsg;
 using consensus::Consensus;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
@@ -286,12 +285,12 @@ class DelayedApplyOperation : public WriteOperation {
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
 
-  Status Apply(gscoped_ptr<CommitMsg>* commit_msg) override {
+  Status Apply() override {
     apply_started_->CountDown();
     LOG(INFO) << "Delaying apply...";
     apply_continue_->Wait();
     LOG(INFO) << "Apply proceeding";
-    return WriteOperation::Apply(commit_msg);
+    return WriteOperation::Apply();
   }
 
  private:

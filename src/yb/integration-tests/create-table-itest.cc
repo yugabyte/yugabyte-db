@@ -161,6 +161,7 @@ TEST_F(CreateTableITest, TestCreateWithPlacement) {
 // be stuck forever with its minority never able to elect a leader.
 TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   const int kNumReplicas = 3;
+  const int kNumTablets = 1;
   vector<string> ts_flags;
   vector<string> master_flags;
   master_flags.push_back("--tablet_creation_timeout_ms=1000");
@@ -179,6 +180,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
             .num_replicas(3)
+            .num_tablets(kNumTablets)
             .wait(false)
             .Create());
 
@@ -220,13 +222,13 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   // properly should get deleted.
   vector<string> tablets;
   int wait_iter = 0;
-  while (tablets.size() != 24 && wait_iter++ < 100) {
-    LOG(INFO) << "Waiting for only one tablet to be left on TS 0. Currently have: "
-              << tablets;
+  while (tablets.size() != kNumTablets && wait_iter++ < 100) {
+    LOG(INFO) << "Waiting for only " << kNumTablets << " tablet(s) to be left on TS 0. "
+              << "Currently have: " << tablets;
     SleepFor(MonoDelta::FromMilliseconds(100));
     tablets = inspect_->ListTabletsWithDataOnTS(0);
   }
-  ASSERT_EQ(24, tablets.size()) << "Tablets on TS0: " << tablets;
+  ASSERT_EQ(tablets.size(), kNumTablets) << "Tablets on TS0: " << tablets;
 }
 
 // Regression test for KUDU-1317. Ensure that, when a table is created,
