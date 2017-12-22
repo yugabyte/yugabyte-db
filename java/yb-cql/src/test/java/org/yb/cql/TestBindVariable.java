@@ -1760,6 +1760,56 @@ public class TestBindVariable extends BaseCQLTest {
       assertTrue(expectedValues.isEmpty());
     }
 
+    // Test binding full hash key.
+    {
+      List<Integer> intList = new LinkedList<>();
+      intList.add(1);
+      intList.add(-1);
+      intList.add(3);
+      intList.add(7);
+
+      List<String> strList = new LinkedList<>();
+      strList.add("h1");
+      strList.add("h3");
+      strList.add("h7");
+      strList.add("h10");
+
+      {
+        ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN ? AND h2 IN ?",
+                                       intList, strList);
+        Set<Integer> expectedValues = new HashSet<>();
+        expectedValues.add(1);
+        expectedValues.add(3);
+        expectedValues.add(7);
+        // Check rows
+        for (Row row : rs) {
+          Integer h1 = row.getInt("h1");
+          assertTrue(expectedValues.contains(h1));
+          expectedValues.remove(h1);
+        }
+        assertTrue(expectedValues.isEmpty());
+      }
+
+      {
+        ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN :b1 AND h2 IN :b2",
+                                       new HashMap<String, Object>() {{
+                                           put("b1", intList);
+                                           put("b2", strList);
+                                         }});
+        Set<Integer> expectedValues = new HashSet<>();
+        expectedValues.add(1);
+        expectedValues.add(3);
+        expectedValues.add(7);
+        // Check rows
+        for (Row row : rs) {
+          Integer h1 = row.getInt("h1");
+          assertTrue(expectedValues.contains(h1));
+          expectedValues.remove(h1);
+        }
+        assertTrue(expectedValues.isEmpty());
+      }
+    }
+
     // Test prepare bind.
     {
       List<String> stringList = new LinkedList<>();
@@ -1769,7 +1819,7 @@ public class TestBindVariable extends BaseCQLTest {
       stringList.add("r101");
 
       PreparedStatement prepared =
-              session.prepare("SELECT * FROM in_bind_test WHERE r2 IN ?");
+          session.prepare("SELECT * FROM in_bind_test WHERE r2 IN ?");
       ResultSet rs = session.execute(prepared.bind(stringList));
       Set<Integer> expectedValues = new HashSet<>();
       expectedValues.add(1);
@@ -1787,7 +1837,7 @@ public class TestBindVariable extends BaseCQLTest {
     // Test binding IN elems individually - one element
     {
       ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?)",
-              new Integer(2));
+                                     new Integer(2));
       Set<Integer> expectedValues = new HashSet<>();
       expectedValues.add(2);
       // Check rows
@@ -1802,7 +1852,7 @@ public class TestBindVariable extends BaseCQLTest {
     // Test binding IN elems individually - multiple conditions
     {
       ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?) AND r1 IN (?)",
-              new Integer(5), new Integer(105));
+                                     new Integer(5), new Integer(105));
       Set<Integer> expectedValues = new HashSet<>();
       expectedValues.add(5);
       // Check rows
@@ -1817,7 +1867,7 @@ public class TestBindVariable extends BaseCQLTest {
     // Test binding IN elems individually - several elements
     {
       ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 IN (?, ?, ?)",
-              new Integer(9), new Integer(4), new Integer(-1));
+                                     new Integer(9), new Integer(4), new Integer(-1));
       Set<Integer> expectedValues = new HashSet<>();
       expectedValues.add(4);
       expectedValues.add(9);

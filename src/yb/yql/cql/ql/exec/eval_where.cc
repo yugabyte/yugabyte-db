@@ -152,32 +152,33 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
           is_multi_partition = true;
           partitions_count = 1;
         }
-        auto *in_expr = static_cast<const PTCollectionExpr *>(op.expr().get());
-        if (in_expr->size() == 0) {
+
+        // De-duplicating and ordering values from the 'IN' expression.
+        QLExpressionPB col_pb;
+        Status s = PTExprToPB(op.expr(), &col_pb);
+        if (PREDICT_FALSE(!s.ok())) {
+          return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+        }
+
+        // Fast path for returning no results when 'IN' list is empty.
+        if (col_pb.value().list_value().elems_size() == 0) {
           *no_results = true;
           return Status::OK();
-        } else {
-          // De-duplicating and ordering values from the 'IN' expression.
-          QLExpressionPB col_pb;
-          Status s = PTExprToPB(op.expr(), &col_pb);
-          if (PREDICT_FALSE(!s.ok())) {
-            return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
-          }
+        }
 
-          std::set<QLValuePB> set_values;
-          for (const QLValuePB &value_pb : col_pb.value().list_value().elems()) {
-            set_values.insert(value_pb);
-          }
+        std::set<QLValuePB> set_values;
+        for (const QLValuePB &value_pb : col_pb.value().list_value().elems()) {
+          set_values.insert(value_pb);
+        }
 
-          // Adding partition options information to the execution context.
-          partitions_count *= set_values.size();
-          exec_context_->hash_values_options()->emplace_back();
-          auto& options = exec_context_->hash_values_options()->back();
-          for (const QLValuePB &value_pb : set_values) {
-            options.emplace_back();
-            options.back().set_column_id(col_desc->id());
-            options.back().mutable_value()->CopyFrom(value_pb);
-          }
+        // Adding partition options information to the execution context.
+        partitions_count *= set_values.size();
+        exec_context_->hash_values_options()->emplace_back();
+        auto& options = exec_context_->hash_values_options()->back();
+        for (const QLValuePB &value_pb : set_values) {
+          options.emplace_back();
+          options.back().set_column_id(col_desc->id());
+          options.back().mutable_value()->CopyFrom(value_pb);
         }
         break;
       }
