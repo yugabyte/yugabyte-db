@@ -51,6 +51,7 @@ class ClusterOptions():
 
     def __init__(self):
         self.max_daemon_index = 20
+        self.num_shards_per_tserver = None
         self.replication_factor = None
         self.base_local_url_format = "127.0.0.{}"
 
@@ -90,6 +91,7 @@ class ClusterOptions():
         self.custom_binary_dir = args.binary_dir
         self.cluster_base_dir = args.data_dir
         self.require_clock_sync = args.require_clock_sync
+        self.num_shards_per_tserver = args.num_shards_per_tserver
 
     def validate_daemon_type(self, daemon_type):
         if daemon_type not in ClusterOptions.DAEMON_TYPES:
@@ -165,7 +167,9 @@ class ClusterControl():
         self.parser.add_argument(
             "--require_clock_sync", default=False, type=bool,
             help="Use ntpd for clock syncronization. Needed for real time dependent use-cases.")
-
+        self.parser.add_argument(
+            "--num_shards_per_tserver", default=2, type=int,
+            help="Number of shards (tablets) to create per tablet server for each table.")
         p = self.setup_base_parser("create", help="Create a new cluster")
 
         p = self.setup_base_parser("destroy", help="Destroy the current cluster")
@@ -253,6 +257,7 @@ class ClusterControl():
         return [
             "--tserver_master_addrs {}".format(self.options.master_addresses),
             "--memory_limit_hard_bytes {}".format(1024 * 1024 * 1024),
+            "--yb_num_shards_per_tserver {}".format(self.options.num_shards_per_tserver),
             "--redis_proxy_bind_address {}".format(
                 self.options.get_local_url_for_index(daemon_index)),
             "--cql_proxy_bind_address {}".format(
