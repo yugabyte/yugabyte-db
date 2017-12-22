@@ -98,7 +98,6 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
     ASSERT_OK(proxy_->Write(write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
-    write_req.clear_row_operations();
   }
 
   VerifyRows(schema_, { KeyValue(1, 11) });
@@ -133,7 +132,6 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
     ASSERT_OK(proxy_->Write(write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
     ASSERT_FALSE(write_resp.has_error());
-    write_req.clear_row_operations();
   }
 
   VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) });
