@@ -18,7 +18,6 @@ namespace tablet {
 
 using std::bind;
 using consensus::ReplicateMsg;
-using consensus::CommitMsg;
 using consensus::SNAPSHOT_OP;
 using consensus::DriverType;
 using strings::Substitute;
@@ -74,7 +73,7 @@ void SnapshotOperation::Start() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status SnapshotOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
+Status SnapshotOperation::Apply() {
   TRACE("APPLY SNAPSHOT: Starting");
   TabletClass* const tablet = down_cast<TabletClass*>(state()->tablet());
   bool handled = false;
@@ -97,8 +96,6 @@ Status SnapshotOperation::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
     FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, state()->operation());
   }
 
-  commit_msg->reset(new CommitMsg());
-  (*commit_msg)->set_op_type(SNAPSHOT_OP);
   return Status::OK();
 }
 
