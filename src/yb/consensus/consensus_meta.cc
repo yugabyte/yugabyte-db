@@ -70,6 +70,7 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
                                                  fs_manager->GetConsensusMetadataPath(tablet_id),
                                                  &cmeta->pb_));
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
+  RETURN_NOT_OK(cmeta->UpdateOnDiskSize());
   cmeta_out->swap(cmeta);
   return Status::OK();
 }
@@ -222,6 +223,7 @@ Status ConsensusMetadata::Flush() {
       pb_util::SYNC),
           Substitute("Unable to write consensus meta file for tablet $0 to path $1",
                      tablet_id_, meta_file_path));
+  RETURN_NOT_OK(UpdateOnDiskSize());
   return Status::OK();
 }
 
@@ -232,7 +234,8 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
       tablet_id_(std::move(tablet_id)),
       peer_uuid_(std::move(peer_uuid)),
       has_pending_config_(false),
-      active_role_(RaftPeerPB::UNKNOWN_ROLE) {}
+      active_role_(RaftPeerPB::UNKNOWN_ROLE),
+      on_disk_size_(0) {}
 
 std::string ConsensusMetadata::LogPrefix() const {
   return Substitute("T $0 P $1: ", tablet_id_, peer_uuid_);
@@ -246,6 +249,15 @@ void ConsensusMetadata::UpdateActiveRole() {
                         << " to " << RaftPeerPB::Role_Name(active_role_)
                         << ". Consensus state: " << cstate.ShortDebugString()
                         << ", has_pending_config = " << has_pending_config_;
+}
+
+
+Status ConsensusMetadata::UpdateOnDiskSize() {
+  string path = fs_manager_->GetConsensusMetadataPath(tablet_id_);
+  uint64_t on_disk_size = 0;
+  RETURN_NOT_OK(fs_manager_->env()->GetFileSize(path, &on_disk_size));
+  on_disk_size_.store(on_disk_size);
+  return Status::OK();
 }
 
 } // namespace consensus

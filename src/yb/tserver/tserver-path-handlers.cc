@@ -216,6 +216,9 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
       tablet_id_or_link = EscapeForHtmlToString(id);
     }
     string n_bytes = "";
+    if (status.has_estimated_on_disk_size()) {
+      n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
+    }
     string partition = peer->tablet_metadata()
                            ->partition_schema()
                             .PartitionDebugString(peer->status_listener()->partition(),

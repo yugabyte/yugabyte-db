@@ -42,7 +42,6 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
@@ -169,12 +168,11 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 
     TRACE("Creating consensus instance");
 
-    gscoped_ptr<ConsensusMetadata> cmeta;
     RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
-                                          meta_->fs_manager()->uuid(), &cmeta));
+                                          meta_->fs_manager()->uuid(), &cmeta_));
 
     consensus_ = RaftConsensus::Create(options,
-                                       cmeta.Pass(),
+                                       cmeta_.Pass(),
                                        local_peer_pb_,
                                        metric_entity,
                                        clock_,
@@ -434,6 +432,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) const {
   status_listener_->partition().ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);
   status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+  status_pb_out->set_estimated_on_disk_size(OnDiskSize());
 }
 
 Status TabletPeer::RunLogGC() {
@@ -702,6 +701,24 @@ void TabletPeer::UnregisterMaintenanceOps() {
     op->Unregister();
   }
   STLDeleteElements(&maintenance_ops_);
+}
+
+uint64_t TabletPeer::OnDiskSize() const {
+  uint64_t ret = 0;
+
+  if (cmeta_) {
+    ret += cmeta_->on_disk_size();
+  }
+
+  if (tablet_) {
+    ret += tablet_->GetTotalSSTFileSizes();
+  }
+
+  if (log_) {
+    ret += log_->OnDiskSize();
+  }
+
+  return ret;
 }
 
 scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {

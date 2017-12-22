@@ -125,7 +125,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // Asynchronously appends 'entry' to the log. Once the append completes and is synced, 'callback'
   // will be invoked.
   CHECKED_STATUS AsyncAppend(LogEntryBatch* entry,
-                     const StatusCallback& callback);
+                             const StatusCallback& callback);
 
   // Synchronously append a new entry to the log.  Log does not take ownership of the passed
   // 'entry'.
@@ -217,6 +217,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
   // entries appended up to this point are available in closed, readable segments.
   CHECKED_STATUS AllocateSegmentAndRollOver();
+
+  // Returns the total size of the current segments, in bytes.
+  // Returns 0 if the log is shut down.
+  uint64_t OnDiskSize();
 
   // Returns this Log's FsManager.
   FsManager* GetFsManager();
@@ -418,6 +422,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   scoped_refptr<MetricEntity> metric_entity_;
   gscoped_ptr<LogMetrics> metrics_;
+
+  // The cached on-disk size of the log, used to track its size even if it has been closed.
+  std::atomic<uint64_t> on_disk_size_;
 
   std::shared_ptr<LogFaultHooks> log_hooks_;
 

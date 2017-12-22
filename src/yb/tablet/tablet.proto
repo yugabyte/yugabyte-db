@@ -48,6 +48,7 @@ message TabletStatusPB {
   optional bytes start_key = 5;
   // DEPRECATED.
   optional bytes end_key = 6;
+  optional int64 estimated_on_disk_size = 7;
   optional PartitionPB partition = 9;
 }
 

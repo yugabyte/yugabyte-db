@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -296,6 +297,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return tablet()->table_type();
   }
 
+  // Return the total on-disk size of this tablet replica, in bytes.
+  // Caller should hold the lock_.
+  uint64_t OnDiskSize() const;
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -318,6 +323,9 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
 
   const scoped_refptr<TabletMetadata> meta_;
+
+  // Cache the consensus meta information for this peer.
+  gscoped_ptr<consensus::ConsensusMetadata> cmeta_;
 
   const std::string tablet_id_;
 

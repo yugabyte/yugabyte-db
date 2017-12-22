@@ -313,7 +313,8 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
       sync_disabled_(false),
       allocation_state_(kAllocationNotStarted),
-      metric_entity_(metric_entity) {
+      metric_entity_(metric_entity),
+      on_disk_size_(0) {
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
     metrics_.reset(new LogMetrics(metric_entity_));
@@ -806,6 +807,25 @@ void Log::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
 
 LogReader* Log::GetLogReader() const {
   return reader_.get();
+}
+
+uint64_t Log::OnDiskSize() {
+  SegmentSequence segments;
+  {
+    shared_lock<rw_spinlock> l(state_lock_.get_lock());
+    // If the log is closed, the tablet is either being deleted or tombstoned,
+    // so we don't count the size of its log anymore as it should be deleted.
+    if (log_state_ == kLogClosed || !reader_->GetSegmentsSnapshot(&segments).ok()) {
+      return on_disk_size_.load();
+    }
+  }
+  uint64_t ret = 0;
+  for (const auto& segment : segments) {
+    ret += segment->file_size();
+  }
+
+  on_disk_size_.store(ret, std::memory_order_acquire);
+  return ret;
 }
 
 void Log::SetSchemaForNextLogSegment(const Schema& schema,

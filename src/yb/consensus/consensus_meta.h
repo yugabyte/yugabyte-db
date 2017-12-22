@@ -153,6 +153,11 @@ class ConsensusMetadata {
   // Persist current state of the protobuf to disk.
   CHECKED_STATUS Flush();
 
+  // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
+  int64_t on_disk_size() const {
+    return on_disk_size_.load(std::memory_order_acquire);
+  }
+
  private:
   ConsensusMetadata(FsManager* fs_manager, std::string tablet_id,
                     std::string peer_uuid);
@@ -161,6 +166,9 @@ class ConsensusMetadata {
 
   // Updates the cached active role.
   void UpdateActiveRole();
+
+  // Updates the cached on-disk size of the consensus metadata.
+  Status UpdateOnDiskSize();
 
   // Transient fields.
   // Constants:
@@ -179,6 +187,9 @@ class ConsensusMetadata {
 
   // Durable fields.
   ConsensusMetadataPB pb_;
+
+  // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
+  std::atomic<uint64_t> on_disk_size_;
 
   DISALLOW_COPY_AND_ASSIGN(ConsensusMetadata);
 };
