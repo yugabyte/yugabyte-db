@@ -64,6 +64,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 
+using namespace std::literals;
+
 using std::shared_ptr;
 using std::unique_ptr;
 
@@ -524,7 +526,9 @@ CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   operation_state->set_completion_callback(std::move(txn_callback));
 
   RETURN_NOT_OK(tablet_peer_->SubmitWrite(std::move(operation_state)));
-  latch.Wait();
+  while (!latch.WaitFor(15s)) {
+    LOG(DFATAL) << "SyncWrite hang";
+  }
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());

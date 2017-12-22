@@ -36,44 +36,6 @@ option java_package = "org.yb.tablet";
 import "yb/common/common.proto";
 import "yb/tablet/metadata.proto";
 
-// Stores the id of the MemRowSet (for inserts or mutations against MRS)
-// or of the (row set, delta ID) pair for mutations against a DiskRowSet.
-message MemStoreTargetPB {
-  // -1 defaults here are so that, if a caller forgets to check has_mrs_id(),
-  // they won't accidentally see real-looking (i.e 0) IDs.
-
-  // Either this field...
-  optional int64 mrs_id = 1 [ default = -1];
-
-  // ... or both of the following fields are set.
-  optional int64 rs_id = 2 [ default = -1 ];
-  optional int64 dms_id = 3 [ default = -1 ];
-}
-
-// Delta statistics for a flushed deltastore
-message DeltaStatsPB {
-  // Number of deletes (deletes result in deletion of an entire row)
-  required int64 delete_count = 1;
-
-  // REMOVED: replaced by column_stats, which maps by column ID,
-  // whereas this older version mapped by index.
-  // repeated int64 per_column_update_count = 2;
-
-  // The min Timestamp that was stored in this delta.
-  required fixed64 min_hybrid_time = 3;
-  // The max Timestamp that was stored in this delta.
-  required fixed64 max_hybrid_time = 4;
-
-  // Per-column statistics about this delta file.
-  message ColumnStats {
-    // The column ID.
-    required int32 col_id = 1;
-    // The number of updates which refer to this column ID.
-    optional int64 update_count = 2 [ default = 0 ];
-  }
-  repeated ColumnStats column_stats = 5;
-}
-
 message TabletStatusPB {
   required string tablet_id = 1;
   required string table_name = 2;

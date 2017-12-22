@@ -1051,7 +1051,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     // Update the on-disk table state to "running".
     table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
     RETURN_NOT_OK(sys_catalog_->AddItem(table.get()));
-    LOG(INFO) << "Wrote table to system catalog: " << ToString(table);
+    LOG(INFO) << "Wrote table to system catalog: " << ToString(table) << ", tablets: "
+              << ToString(tablets);
   } else {
     // Still need to create the tablets.
     RETURN_NOT_OK(CreateTabletsFromTable(partitions, table, &tablets));

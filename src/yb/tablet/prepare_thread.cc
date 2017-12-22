@@ -26,18 +26,18 @@
 #include "yb/tablet/operations/operation_driver.h"
 
 DEFINE_int32(max_group_replicate_batch_size, 16,
-             "Maximum number of transactions to submit to consensus for replication in a batch.");
+             "Maximum number of operations to submit to consensus for replication in a batch.");
 
 // We have to make the queue length really long. Otherwise we risk crashes on followers when they
-// fail to append entries to the queue, as we try to cancel the transaction in that case, and it
-// is not possible to cancel an already-replicated transaction. The proper way to handle that would
+// fail to append entries to the queue, as we try to cancel the operation in that case, and it
+// is not possible to cancel an already-replicated operation. The proper way to handle that would
 // probably be to implement backpressure in UpdateReplica.
 //
 // Note that the lock-free queue seems to be preallocating memory proportional to the queue size
 // (about 64 bytes per entry for 8-byte pointer keys) -- something to keep in mind with a large
 // number of tablets.
 DEFINE_int32(prepare_queue_max_size, 100000,
-             "Maximum number of transactions waiting in the per-tablet prepare queue.");
+             "Maximum number of operations waiting in the per-tablet prepare queue.");
 
 using std::vector;
 
@@ -54,7 +54,7 @@ class PrepareThreadImpl {
   CHECKED_STATUS Start();
   void Stop();
 
-  CHECKED_STATUS Submit(OperationDriver* txn_driver);
+  CHECKED_STATUS Submit(OperationDriver* operation_driver);
 
  private:
   using OperationDrivers = std::vector<OperationDriver*>;
@@ -137,7 +137,7 @@ void PrepareThreadImpl::Stop() {
 
   bool expected = false;
   if (stop_requested_.compare_exchange_strong(expected, true, std::memory_order_release)) {
-    // We need this to unblock waiting for new transactions to arrive. Since nothing has been added,
+    // We need this to unblock waiting for new operations to arrive. Since nothing has been added,
     // we'll just go through the loop one more time and exit at the next iteration.
     processing_.store(true, std::memory_order_release);
     cond_.notify_one();
@@ -155,11 +155,11 @@ void PrepareThreadImpl::Stop() {
   }
 }
 
-Status PrepareThreadImpl::Submit(OperationDriver* txnd) {
+Status PrepareThreadImpl::Submit(OperationDriver* operation_driver) {
   if (stop_requested_.load(std::memory_order_acquire)) {
     return STATUS(IllegalState, "Prepare thread is shutting down");
   }
-  if (!queue_.bounded_push(txnd)) {
+  if (!queue_.bounded_push(operation_driver)) {
     return STATUS_FORMAT(ServiceUnavailable,
                          "Prepare queue is full (max capacity $0)",
                          FLAGS_prepare_queue_max_size);
@@ -250,8 +250,8 @@ void PrepareThreadImpl::ProcessItem(OperationDriver* item) {
     // AlterSchemaOperation in a batch of its own.
     const bool is_alter = item->operation_type() == Operation::ALTER_SCHEMA_TXN;
 
-    // Don't add more than the max number of transactions to a batch, and also don't add
-    // transactions bound to different terms, so as not to fail unrelated transactions
+    // Don't add more than the max number of operations to a batch, and also don't add
+    // operations bound to different terms, so as not to fail unrelated operations
     // unnecessarily in case of a bound term mismatch.
     if (leader_side_batch_.size() >= FLAGS_max_group_replicate_batch_size ||
         !leader_side_batch_.empty() &&
@@ -264,8 +264,8 @@ void PrepareThreadImpl::ProcessItem(OperationDriver* item) {
       ProcessAndClearLeaderSideBatch();
     }
   } else {
-    // We found a non-leader-side transaction. We need to process the accumulated batch of
-    // leader-side transactions first, and then process this other transaction.
+    // We found a non-leader-side operation. We need to process the accumulated batch of
+    // leader-side operations first, and then process this other operation.
     ProcessAndClearLeaderSideBatch();
     item->PrepareAndStartTask();
   }
@@ -277,7 +277,7 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mut
     return false;
   }
 
-  VLOG(1) << "Preparing a batch of " << leader_side_batch_.size() << " leader-side txns";
+  VLOG(1) << "Preparing a batch of " << leader_side_batch_.size() << " leader-side operations";
 
   auto iter = leader_side_batch_.begin();
   auto replication_subbatch_begin = iter;
@@ -285,20 +285,20 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mut
 
   // PrepareAndStart does not call Consensus::Replicate anymore as of 07/07/2017, and it is our
   // responsibility to do so in case of success. We call Consensus::ReplicateBatch for batches
-  // of consecutive successfully prepared transactions.
+  // of consecutive successfully prepared operations.
 
   while (iter != leader_side_batch_.end()) {
-    auto* txnd = *iter;
+    auto* operation_driver = *iter;
 
-    Status s = txnd->PrepareAndStart();
+    Status s = operation_driver->PrepareAndStart();
 
     if (PREDICT_TRUE(s.ok())) {
       replication_subbatch_end = ++iter;
     } else {
       ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end, lock);
 
-      // Handle failure for this transaction itself.
-      txnd->HandleFailure(s);
+      // Handle failure for this operation itself.
+      operation_driver->HandleFailure(s);
 
       // Now we'll start accumulating a new batch.
       replication_subbatch_begin = replication_subbatch_end = ++iter;
@@ -313,28 +313,28 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mut
 }
 
 void PrepareThreadImpl::ReplicateSubBatch(
-    OperationDrivers::iterator txnd_begin,
-    OperationDrivers::iterator txnd_end,
+    OperationDrivers::iterator batch_begin,
+    OperationDrivers::iterator batch_end,
     std::unique_lock<std::mutex>* lock) {
   DCHECK(!lock || lock->mutex() == &mtx_);
-  DCHECK_GE(std::distance(txnd_begin, txnd_end), 0);
-  if (txnd_begin == txnd_end) {
+  DCHECK_GE(std::distance(batch_begin, batch_end), 0);
+  if (batch_begin == batch_end) {
     return;
   }
-  VLOG(1) << "Replicating a sub-batch of " << std::distance(txnd_begin, txnd_end)
-          << " leader-side txns";
+  VLOG(1) << "Replicating a sub-batch of " << std::distance(batch_begin, batch_end)
+          << " leader-side operations";
   if (VLOG_IS_ON(2)) {
-    for (auto txnd_iter = txnd_begin; txnd_iter != txnd_end; ++txnd_iter) {
-      VLOG(2) << "Leader-side transaction to be replicated: " << (*txnd_iter)->ToString();
+    for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
+      VLOG(2) << "Leader-side operation to be replicated: " << (*batch_iter)->ToString();
     }
   }
 
   rounds_to_replicate_.clear();
-  rounds_to_replicate_.reserve(std::distance(txnd_begin, txnd_end));
-  for (auto txnd_iter = txnd_begin; txnd_iter != txnd_end; ++txnd_iter) {
-    DCHECK_ONLY_NOTNULL(*txnd_iter);
-    DCHECK_ONLY_NOTNULL((*txnd_iter)->consensus_round());
-    rounds_to_replicate_.push_back((*txnd_iter)->consensus_round());
+  rounds_to_replicate_.reserve(std::distance(batch_begin, batch_end));
+  for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
+    DCHECK_ONLY_NOTNULL(*batch_iter);
+    DCHECK_ONLY_NOTNULL((*batch_iter)->consensus_round());
+    rounds_to_replicate_.push_back((*batch_iter)->consensus_round());
   }
 
   if (lock && lock->owns_lock()) {
@@ -345,12 +345,12 @@ void PrepareThreadImpl::ReplicateSubBatch(
 
   if (PREDICT_FALSE(!s.ok())) {
     VLOG(1) << "ReplicateBatch failed with status " << s.ToString()
-            << ", treating all " << std::distance(txnd_begin, txnd_end) << " txns as failed "
-            << "with that status";
-    // Treat all the transactions in the batch as failed.
-    for (auto txnd_iter = txnd_begin; txnd_iter != txnd_end; ++txnd_iter) {
-      (*txnd_iter)->SetReplicationFailed(s);
-      (*txnd_iter)->HandleFailure(s);
+            << ", treating all " << std::distance(batch_begin, batch_end) << " operations as "
+            << "failed with that status";
+    // Treat all the operations in the batch as failed.
+    for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
+      (*batch_iter)->SetReplicationFailed(s);
+      (*batch_iter)->HandleFailure(s);
     }
   }
 }
@@ -375,8 +375,8 @@ void PrepareThread::Stop() {
   VLOG(1) << "The prepare thread has stopped";
 }
 
-Status PrepareThread::Submit(OperationDriver* txnd) {
-  return impl_->Submit(txnd);
+Status PrepareThread::Submit(OperationDriver* operation_driver) {
+  return impl_->Submit(operation_driver);
 }
 
 }  // namespace tablet

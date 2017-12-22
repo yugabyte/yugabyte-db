@@ -428,8 +428,8 @@ TEST_F(QLTabletTest, LeaderLease) {
   LOG(INFO) << "Filling table";
   FillTable(0, kTotalKeys, &table);
 
-  auto old_lease_ms = FLAGS_leader_lease_duration_ms;
-  FLAGS_leader_lease_duration_ms = 60 * 1000;
+  auto old_lease_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
+  SetAtomicFlag(60 * 1000, &FLAGS_leader_lease_duration_ms);
   // Wait for lease to sync
   std::this_thread::sleep_for(2ms * old_lease_ms);
 

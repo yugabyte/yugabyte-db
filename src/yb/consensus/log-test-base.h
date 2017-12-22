@@ -82,7 +82,6 @@ using server::Clock;
 
 using tserver::WriteRequestPB;
 
-using tablet::MemStoreTargetPB;
 using tablet::Tablet;
 
 using docdb::KeyValuePairPB;

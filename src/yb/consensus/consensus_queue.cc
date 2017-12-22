@@ -258,6 +258,12 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   *fake_response.mutable_status()->mutable_last_received_current_leader() = id;
   {
     LockGuard lock(queue_lock_);
+
+    // TODO This ugly fix is required because we unlock queue_lock_ while doing AppendOperations.
+    // So LocalPeerAppendFinished could be invoked before rest of AppendOperations.
+    if (queue_state_.last_appended.index() < id.index()) {
+      queue_state_.last_appended = id;
+    }
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
   }
   bool junk;
@@ -320,10 +326,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
     auto ht_lease_expiration_micros = clock_->Now().GetPhysicalValueMicros() +
                                       FLAGS_ht_lease_duration_ms * 1000;
-    request->set_leader_lease_duration_ms(FLAGS_leader_lease_duration_ms);
+    auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
+    request->set_leader_lease_duration_ms(leader_lease_duration_ms);
     request->set_ht_lease_expiration(ht_lease_expiration_micros);
     peer->last_leader_lease_expiration_sent_to_follower =
-        MonoTime::Now() + MonoDelta::FromMilliseconds(FLAGS_leader_lease_duration_ms);
+        MonoTime::Now() + MonoDelta::FromMilliseconds(leader_lease_duration_ms);
     peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
@@ -769,7 +776,9 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       auto new_majority_replicated_opid = OpIdWatermark();
       if (!OpIdEquals(new_majority_replicated_opid, MinimumOpId())) {
         if (new_majority_replicated_opid.index() == MaximumOpId().index()) {
-          queue_state_.majority_replicated_opid = queue_state_.last_appended;
+          auto it = peers_map_.find(local_peer_pb_.permanent_uuid());
+          DCHECK(it != peers_map_.end());
+          queue_state_.majority_replicated_opid = it->second->last_received;
         } else {
           queue_state_.majority_replicated_opid = new_majority_replicated_opid;
         }
