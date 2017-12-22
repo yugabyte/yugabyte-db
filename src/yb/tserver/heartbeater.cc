@@ -447,7 +447,16 @@ Status Heartbeater::Thread::TryHeartbeat() {
   RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
                         "Failed to send heartbeat");
   if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
+    if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
+      return StatusFromPB(resp.error().status());
+    } else {
+      DCHECK(!resp.leader_master());
+      // Treat a not-the-leader error code as leader_master=false.
+      if (resp.leader_master()) {
+        LOG(WARNING) << "Setting leader master to false for " << resp.error().code() << " code.";
+        resp.set_leader_master(false);
+      }
+    }
   }
 
   VLOG(2) << "Received heartbeat response:\n" << resp.DebugString();
