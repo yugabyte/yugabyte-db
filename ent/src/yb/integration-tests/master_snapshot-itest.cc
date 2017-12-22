@@ -144,48 +144,23 @@ class MiniClusterMasterTest : public YBMiniClusterTestBase<MiniCluster> {
                      const Schema& schema,
                      const NamespaceName& namespace_name,
                      string* table_id = nullptr) {
-    YBPartialRow split1(&schema);
-    RETURN_NOT_OK(split1.SetInt32("key", 10));
-
-    YBPartialRow split2(&schema);
-    RETURN_NOT_OK(split2.SetInt32("key", 20));
-
-    return CreateTableWithSplits(table_name, schema, { split1, split2 }, namespace_name, table_id);
-  }
-
-  Status CreateTableWithSplits(const TableName& table_name,
-                               const Schema& schema,
-                               const vector<YBPartialRow>& split_rows,
-                               const NamespaceName& namespace_name,
-                               string* table_id = nullptr) {
-    CreateTableRequestPB req;
-    RowOperationsPBEncoder encoder(req.mutable_split_rows());
-    for (const YBPartialRow& row : split_rows) {
-      encoder.Add(RowOperationsPB::SPLIT_ROW, row);
-    }
-    return DoCreateTable(table_name, schema, &req, namespace_name, table_id);
-  }
-
-  Status DoCreateTable(const TableName& table_name,
-                       const Schema& schema,
-                       CreateTableRequestPB* request,
-                       const NamespaceName& namespace_name,
-                       string* table_id = nullptr) {
+    CreateTableRequestPB request;
     CreateTableResponsePB resp;
 
-    request->set_table_type(TableType::YQL_TABLE_TYPE);
-    request->set_name(table_name);
-    RETURN_NOT_OK(SchemaToPB(schema, request->mutable_schema()));
+    request.set_table_type(TableType::YQL_TABLE_TYPE);
+    request.set_name(table_name);
+    request.set_num_tablets(3);
+    RETURN_NOT_OK(SchemaToPB(schema, request.mutable_schema()));
 
     if (!namespace_name.empty()) {
-      request->mutable_namespace_()->set_name(namespace_name);
+      request.mutable_namespace_()->set_name(namespace_name);
     }
 
-    request->mutable_replication_info()->mutable_live_replicas()->set_num_replicas(2);
+    request.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(2);
 
     // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
     // though, as that helps with readability and standardization.
-    RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
+    RETURN_NOT_OK(proxy_->CreateTable(request, &resp, ResetAndGetController()));
     if (resp.has_error()) {
       RETURN_NOT_OK(StatusFromPB(resp.error().status()));
     }

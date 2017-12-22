@@ -84,7 +84,7 @@ class SnapshotOperation : public Operation {
   void Start() override;
 
   // Executes an Apply for the TabletSnapshotOp operation
-  CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
+  CHECKED_STATUS Apply() override;
 
   // Actually commits the operation.
   void Finish(OperationResult result) override;
