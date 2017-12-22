@@ -12,18 +12,16 @@ namespace tablet {
 namespace enterprise {
 
 using consensus::OperationType;
-using consensus::CommitMsg;
 using consensus::ReplicateMsg;
 using tserver::TabletSnapshotOpRequestPB;
 
 Status TabletBootstrap::HandleOperation(OperationType op_type,
-                                        ReplicateMsg* replicate,
-                                        const CommitMsg* commit) {
+                                        ReplicateMsg* replicate) {
   if (op_type == consensus::SNAPSHOT_OP) {
     return PlayTabletSnapshotOpRequest(replicate);
   }
 
-  return super::HandleOperation(op_type, replicate, commit);
+  return super::HandleOperation(op_type, replicate);
 }
 
 Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg) {

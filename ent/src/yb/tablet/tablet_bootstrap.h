@@ -18,7 +18,7 @@ class TabletBootstrap : public yb::tablet::TabletBootstrap {
   Status PlayTabletSnapshotOpRequest(consensus::ReplicateMsg* replicate_msg);
 
   CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
-      consensus::ReplicateMsg* replicate, const consensus::CommitMsg* commit) override;
+                                 consensus::ReplicateMsg* replicate) override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TabletBootstrap);
