@@ -462,10 +462,9 @@ fi
 # Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
 # (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
 #
-# Also temporarily skip creating packages on macOS until we integrate the packaging script there.
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
-      $build_type != "asan" ]] && ! is_mac; then
+      $build_type != "asan" ]]; then
   log "Creating a distribution package"
 
   package_path_file="$BUILD_ROOT/package_path.txt"
