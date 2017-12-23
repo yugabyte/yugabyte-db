@@ -50,7 +50,8 @@ class PTTableProperty : public PTProperty {
     kMinIndexInterval,
     kMaxIndexInterval,
     kReadRepairChance,
-    kSpeculativeRetry
+    kSpeculativeRetry,
+    kDistributedTransactions
   };
 
   //------------------------------------------------------------------------------------------------
@@ -87,7 +88,7 @@ class PTTableProperty : public PTProperty {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const;
+  virtual CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const;
 
   PropertyType property_type() const {
     return property_type_;
@@ -103,11 +104,6 @@ class PTTableProperty : public PTProperty {
     return direction_;
   }
 
-  const TreeListNode<PTTableProperty>::SharedPtr map_elements() const {
-    DCHECK_EQ(property_type_, PropertyType::kTablePropertyMap);
-    return map_elements_;
-  }
-
  protected:
   bool IsValidProperty(const string& property_name) {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
@@ -121,7 +117,6 @@ class PTTableProperty : public PTProperty {
   CHECKED_STATUS AnalyzeSpeculativeRetry(const string &val);
 
   static const std::map<std::string, PTTableProperty::KVProperty> kPropertyDataTypes;
-  TreeListNode<PTTableProperty>::SharedPtr map_elements_;
 };
 
 std::ostream& operator<<(ostream& os, const PropertyType& property_type);
@@ -166,7 +161,8 @@ class PTTablePropertyMap : public PTTableProperty {
   enum class PropertyMapType : int {
     kCaching,
     kCompaction,
-    kCompression
+    kCompression,
+    kDistributedTransactions
   };
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -188,6 +184,8 @@ class PTTablePropertyMap : public PTTableProperty {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
+  virtual CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const override;
+
   void SetPropertyName(MCSharedPtr<MCString> property_name) {
     lhs_ = property_name;
   }
@@ -201,6 +199,7 @@ class PTTablePropertyMap : public PTTableProperty {
   Status AnalyzeCaching();
   Status AnalyzeCompaction();
   Status AnalyzeCompression();
+  Status AnalyzeDistributedTransactions();
 
   static const std::map<std::string, PTTablePropertyMap::PropertyMapType> kPropertyDataTypes;
   TreeListNode<PTTableProperty>::SharedPtr map_elements_;
@@ -250,6 +249,14 @@ struct Compaction {
 
   static std::set<std::string> kWindowUnits;
   static std::set<std::string> kTimestampResolutionUnits;
+};
+
+struct DistributedTransactions {
+  enum class Subproperty : int {
+    kEnabled
+  };
+
+  static const std::map<std::string, Subproperty> kSubpropertyDataTypes;
 };
 
 } // namespace ql

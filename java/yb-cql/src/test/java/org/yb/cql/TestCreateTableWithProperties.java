@@ -18,6 +18,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Random;
 
 public class TestCreateTableWithProperties extends BaseCQLTest {
@@ -536,6 +538,32 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
     RunValidTableProperty("compression = {'sstable_compression' : ''}");
     RunInvalidTableProperty(
         "compression = {'class' : 'LZ4Compressor', 'sstable_compression' : ''}");
+  }
+
+  @Test
+  public void testDistributedTransactions() throws Exception {
+
+    // Test create table with and without distributed_transactions.
+    String create_stmt = "create table %s (k int primary key) %s;";
+    session.execute(String.format(create_stmt, "test_dtxn_1", ""));
+    session.execute(String.format(create_stmt, "test_dtxn_2",
+                                  "with distributed_transactions = {'enabled' : false};"));
+    session.execute(String.format(create_stmt, "test_dtxn_3",
+                                  "with distributed_transactions = {'enabled' : true};"));
+
+    // Verify the distributed_transactions property.
+    assertQuery("select table_name, distributed_transactions from system_schema.tables where " +
+                "keyspace_name = '" + DEFAULT_TEST_KEYSPACE + "' and " +
+                "table_name in ('test_dtxn_1', 'test_dtxn_2', 'test_dtxn_3');",
+                new HashSet<String>(Arrays.asList("Row[test_dtxn_1, {enabled=false}]",
+                                                  "Row[test_dtxn_2, {enabled=false}]",
+                                                  "Row[test_dtxn_3, {enabled=true}]")));
+
+    // Test invalid distributed_transactions property settings.
+    RunInvalidTableProperty("distributed_transactions = {'enabled' : 'bar'}");
+    RunInvalidTableProperty("distributed_transactions = {'foo' : 'bar'}");
+    RunInvalidTableProperty("distributed_transactions = 'foo'");
+    RunInvalidTableProperty("distributed_transactions = 1234");
   }
 
 }

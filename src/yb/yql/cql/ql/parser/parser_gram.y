@@ -1412,7 +1412,7 @@ table_property:
     $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
   }
   | property_name '=' FCONST {
-    PTConstDecimal::SharedPtr pt_constdecimal= MAKE_NODE(@3, PTConstDecimal, $3);
+    PTConstDecimal::SharedPtr pt_constdecimal = MAKE_NODE(@3, PTConstDecimal, $3);
     PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1,
                                                              pt_constdecimal);
     $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
