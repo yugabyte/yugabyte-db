@@ -19,6 +19,7 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
@@ -195,8 +196,9 @@ uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
 }
 
 void YBConnectionContext::Connected(const ConnectionPtr& connection) {
-  state_ = connection->direction() == ConnectionDirection::SERVER ? RpcConnectionPB::NEGOTIATING
-                                                                  : RpcConnectionPB::OPEN;
+  auto direction = connection->direction();
+  state_ = direction == ConnectionDirection::SERVER ? RpcConnectionPB::NEGOTIATING
+                                                    : RpcConnectionPB::OPEN;
 }
 
 void YBConnectionContext::AssignConnection(const ConnectionPtr& connection) {

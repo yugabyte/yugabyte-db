@@ -39,8 +39,6 @@ class ServerEventList : public OutboundData {
   }
 };
 
-typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
-
 }  // namespace rpc
 }  // namespace yb
 #endif // YB_RPC_SERVER_EVENT_H

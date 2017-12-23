@@ -47,7 +47,7 @@ void TabletInvoker::SelectTabletServerWithConsistentPrefix() {
   current_ts_ = client_->data_->SelectTServer(tablet_.get(),
                                               YBClient::ReplicaSelection::CLOSEST_REPLICA, {},
                                               &candidates);
-  VLOG(1) << "Using tserver: " << current_ts_->ToString();
+  VLOG(1) << "Using tserver: " << yb::ToString(current_ts_);
 }
 
 void TabletInvoker::SelectTabletServer()  {

@@ -297,7 +297,7 @@ void Reactor::AsyncHandler(ev::async &watcher, int revents) {
 void Reactor::RegisterConnection(const ConnectionPtr& conn) {
   DCHECK(IsCurrentThread());
 
-  Status s = StartConnection(conn);
+  Status s = conn->Start(&loop_);
   if (s.ok()) {
     server_conns_.push_back(conn);
   } else {
@@ -474,29 +474,20 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
       }
     }
   }
-  bool connect_in_progress;
-  RETURN_NOT_OK(StartConnect(sock.get_ptr(), conn_id.remote(), &connect_in_progress));
 
   // Register the new connection in our map.
-  *conn = Connection::New(messenger_->connection_context_factory_,
-                          this,
-                          conn_id.remote(),
-                          sock->Release(),
-                          ConnectionDirection::CLIENT,
-                          Connected(!connect_in_progress));
+  auto connection = std::make_shared<Connection>(this,
+                                                 conn_id.remote(),
+                                                 sock->Release(),
+                                                 ConnectionDirection::CLIENT,
+                                                 messenger_->connection_context_factory_());
 
-  Status s = StartConnection(*conn);
-  if (s.IsIllegalState()) {
-    // Return a nicer error message to the user indicating -- if we just
-    // forward the status we'd get something generic like "ThreadPool is closing".
-    return STATUS(ServiceUnavailable, "Client RPC Messenger shutting down");
-  }
-  // Propagate any other errors as-is.
-  RETURN_NOT_OK_PREPEND(s, "Unable to start connection");
+  RETURN_NOT_OK(connection->Start(&loop_));
 
   // Insert into the client connection map to avoid duplicate connection requests.
-  client_conns_.emplace(conn_id, *conn);
+  client_conns_.emplace(conn_id, connection);
 
+  conn->swap(connection);
   return Status::OK();
 }
 
@@ -534,39 +525,6 @@ void Reactor::DropWithRemoteAddress(const IpAddress& address) {
 
   for (auto& pair : client_conns_) {
     ShutdownIfRemoteAddressIs(pair.second, address);
-  }
-}
-
-Status Reactor::StartConnection(const ConnectionPtr& conn) {
-  DCHECK(IsCurrentThread());
-
-  Status s = conn->SetNonBlocking(true);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG(DFATAL) << "Unable to set connection to non-blocking mode: " << s.ToString();
-    DestroyConnection(conn.get(), s);
-    return s;
-  }
-  conn->EpollRegister(loop_);
-  return Status::OK();
-}
-
-Status Reactor::StartConnect(Socket *sock, const Endpoint& remote, bool *in_progress) {
-  Status ret = sock->Connect(remote);
-  if (ret.ok()) {
-    VLOG(3) << "StartConnect: connect finished immediately for " << remote;
-    *in_progress = false; // connect() finished immediately.
-    return ret;
-  }
-
-  if (Socket::IsTemporarySocketError(ret)) {
-    // The connect operation is in progress.
-    *in_progress = true;
-    VLOG(3) << "StartConnect: connect in progress for " << remote;
-    return Status::OK();
-  } else {
-    LOG(WARNING) << "Failed to create an outbound connection to " << remote
-                 << " because connect failed: " << ret.ToString();
-    return ret;
   }
 }
 
@@ -742,12 +700,11 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
-  auto conn = Connection::New(messenger_->connection_context_factory_,
-                              this,
-                              remote,
-                              socket->Release(),
-                              ConnectionDirection::SERVER,
-                              Connected::kTrue);
+  auto conn = std::make_shared<Connection>(this,
+                                           remote,
+                                           socket->Release(),
+                                           ConnectionDirection::SERVER,
+                                           messenger_->connection_context_factory_());
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
   });

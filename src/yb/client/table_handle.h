@@ -151,7 +151,6 @@ struct TableIteratorOptions {
   std::vector<std::string> columns;
   TableFilter filter;
   ReadHybridTime read_time;
-  Status* status = nullptr;
 };
 
 class TableIterator : public std::iterator<
@@ -173,13 +172,16 @@ class TableIterator : public std::iterator<
   const QLRow& operator*() const;
 
  private:
+  void ExecuteOps();
   void Move();
 
   const TableHandle* table_;
   std::vector<YBqlReadOpPtr> ops_;
-  size_t ops_index_;
+  size_t executed_ops_ = 0;
+  size_t ops_index_ = 0;
   boost::optional<QLRowBlock> current_block_;
   size_t row_index_;
+  YBSessionPtr session_;
 };
 
 inline bool operator==(const TableIterator& lhs, const TableIterator& rhs) {

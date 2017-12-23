@@ -34,11 +34,15 @@ namespace yb {
 namespace rpc {
 
 class AcceptorPool;
+class ConnectionContext;
 class Messenger;
+class ReactorTask;
 class RpcContext;
 class RpcController;
 class Rpcs;
 class Scheduler;
+
+struct RpcMethodMetrics;
 
 class RpcCommand;
 typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
@@ -52,6 +56,9 @@ typedef std::shared_ptr<InboundCall> InboundCallPtr;
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
 
+class ServerEventList;
+typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
+
 class ErrorStatusPB;
 
 typedef boost::asio::io_service IoService;
@@ -59,6 +66,8 @@ typedef boost::asio::io_service IoService;
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
 // our private MonoTime.
 typedef std::chrono::steady_clock::time_point SteadyTimePoint;
+
+typedef std::function<std::unique_ptr<ConnectionContext>()> ConnectionContextFactory;
 
 } // namespace rpc
 } // namespace yb

@@ -22,6 +22,7 @@
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"

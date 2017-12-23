@@ -47,7 +47,6 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/response_callback.h"

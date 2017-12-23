@@ -20,7 +20,7 @@
 #include <mutex>
 #include <unordered_set>
 
-#include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/inbound_call.h"
 
 namespace yb {

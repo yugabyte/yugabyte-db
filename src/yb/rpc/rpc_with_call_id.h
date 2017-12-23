@@ -17,8 +17,9 @@
 #define YB_RPC_RPC_WITH_CALL_ID_H
 
 #include <functional>
+#include <unordered_map>
 
-#include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/inbound_call.h"
 
 namespace yb {

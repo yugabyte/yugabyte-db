@@ -164,26 +164,18 @@ TableIterator::TableIterator() : table_(nullptr) {}
 
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table) {
-  if (options.status) {
-    *options.status = Status::OK();
-  }
-  Status status_placeholder;
-  Status* status = options.status ? options.status : &status_placeholder;
   auto client = (*table)->client();
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  *status = client->GetTablets(table->name(), 0, &tablets);
-  if (!status->ok() && options.status) {
-    return;
-  }
-  CHECK_OK(*status);
+  CHECK_OK(client->GetTablets(table->name(), 0, &tablets));
   if (tablets.size() == 0) {
     table_ = nullptr;
     return;
   }
   ops_.reserve(tablets.size());
 
-  auto session = client->NewSession();
-  session->SetTimeout(60s);
+  session_ = client->NewSession();
+  CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
+  session_->SetTimeout(60s);
 
   for (const auto& tablet : tablets) {
     auto op = table->NewReadOp();
@@ -202,34 +194,30 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
       op->SetReadTime(options.read_time);
     }
     table_->AddColumns(options.columns, req);
-
-    *status = session->Apply(op);
-    if (!status->ok() && options.status) {
-      return;
-    }
-    CHECK_OK(*status);
     ops_.push_back(std::move(op));
   }
 
-  *status = session->Flush();
-  if (!status->ok() && options.status) {
-    return;
-  }
-  CHECK_OK(*status);
+  ExecuteOps();
+  Move();
+}
 
-  for(const auto& op : ops_) {
+void TableIterator::ExecuteOps() {
+  constexpr size_t kMaxConcurrentOps = 5;
+  const size_t new_executed_ops = std::min(ops_.size(), executed_ops_ + kMaxConcurrentOps);
+  for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
+    CHECK_OK(session_->Apply(ops_[i]));
+  }
+
+  CHECK_OK(session_->Flush());
+
+  for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
+    const auto& op = ops_[i];
     if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
-      if (options.status) {
-        LOG(ERROR) << "Error for " << op->ToString() << ": " << op->response().error_message();
-        *options.status = STATUS(RuntimeError, op->response().error_message());
-        return;
-      }
       LOG(FATAL) << "Error for " << op->ToString() << ": " << op->response().error_message();
     }
   }
 
-  ops_index_ = 0;
-  Move();
+  executed_ops_ = new_executed_ops;
 }
 
 bool TableIterator::Equals(const TableIterator& rhs) const {
@@ -250,6 +238,9 @@ void TableIterator::Move() {
   while (!current_block_ || row_index_ == current_block_->rows().size()) {
     if (current_block_) {
       ++ops_index_;
+      if (ops_index_ >= executed_ops_ && executed_ops_ < ops_.size()) {
+        ExecuteOps();
+      }
     }
     if (ops_index_ == ops_.size()) {
       table_ = nullptr;

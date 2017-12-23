@@ -15,6 +15,7 @@
 
 #include "yb/rpc/rpc_with_call_id.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 namespace yb {

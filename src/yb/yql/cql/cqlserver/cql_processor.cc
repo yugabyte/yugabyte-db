@@ -14,10 +14,15 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
-#include "yb/yql/cql/cqlserver/cql_service.h"
+
 #include "yb/gutil/strings/escaping.h"
+
+#include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/util/crypt.h"
+
+#include "yb/yql/cql/cqlserver/cql_service.h"
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,

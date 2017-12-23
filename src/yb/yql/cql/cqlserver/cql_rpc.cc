@@ -18,6 +18,7 @@
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"

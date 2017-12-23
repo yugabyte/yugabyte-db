@@ -16,6 +16,8 @@
 #include <memory>
 #include <string>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client_builder-internal.h"

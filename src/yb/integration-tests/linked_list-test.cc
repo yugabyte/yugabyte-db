@@ -577,7 +577,7 @@ Status LinkedListTester::LoadLinkedList(
   auto deadline = start + run_for.ToSteadyDuration();
 
   std::shared_ptr<client::YBSession> session = client_->NewSession();
-  session->SetTimeout(15s);
+  session->SetTimeout(30s);
   RETURN_NOT_OK_PREPEND(session->SetFlushMode(client::YBSession::MANUAL_FLUSH),
                         "Couldn't set flush mode");
 

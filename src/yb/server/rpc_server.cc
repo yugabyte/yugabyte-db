@@ -43,6 +43,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
+#include "yb/rpc/thread_pool.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/status.h"

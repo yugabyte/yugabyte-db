@@ -16,10 +16,12 @@
 #ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 #define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 #include "yb/common/redis_protocol.pb.h"
 
-#include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_queue.h"
 
 namespace yb {

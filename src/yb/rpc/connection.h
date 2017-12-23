@@ -50,9 +50,9 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/inbound_call.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/server_event.h"
 
 #include "yb/util/enums.h"
@@ -72,50 +72,8 @@ class DumpRunningRpcsRequestPB;
 class GrowableBuffer;
 class Reactor;
 class ReactorTask;
-class RpcConnectionPB;
-
-// ConnectionContext class is used by connection for doing protocol
-// specific logic.
-class ConnectionContext {
- public:
-  virtual ~ConnectionContext() {}
-
-  // Split slice into separate calls and invoke them.
-  // Return number of processed bytes in `consumed`.
-  virtual CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
-                                      Slice slice,
-                                      size_t* consumed) = 0;
-
-  // Dump information about status of this connection context to protobuf.
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
-
-  // Checks whether this connection context is idle.
-  virtual bool Idle() = 0;
-
-  // Reading buffer limit for this connection context.
-  // The reading buffer will never be larger than this limit.
-  virtual size_t BufferLimit() = 0;
-
-  // We could limit receiving of too big amount of data, if packet is big enough to avoid moving
-  // of remainder of the next packet.
-  virtual size_t MaxReceive(Slice existing_data) { return std::numeric_limits<size_t>::max(); }
-
-  virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
-
-  virtual void AssignConnection(const ConnectionPtr& connection) {}
-
-  virtual void Connected(const ConnectionPtr& connection) = 0;
-
-  virtual uint64_t ProcessedCallCount() = 0;
-
-  virtual RpcConnectionPB::StateType State() = 0;
-};
-
-typedef std::function<std::unique_ptr<ConnectionContext>()> ConnectionContextFactory;
 
 YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
-
-YB_STRONGLY_TYPED_BOOL(Connected);
 
 typedef boost::container::small_vector_base<OutboundDataPtr> OutboundDataBatch;
 
@@ -151,20 +109,9 @@ class Connection final : public std::enable_shared_from_this<Connection> {
              const Endpoint& remote,
              int socket,
              Direction direction,
-             Connected connected,
              std::unique_ptr<ConnectionContext> context);
 
-  static ConnectionPtr New(const ConnectionContextFactory& factory,
-                           Reactor* reactor,
-                           const Endpoint& remote,
-                           int socket,
-                           Connection::Direction direction,
-                           Connected connected);
-
   ~Connection();
-
-  // Set underlying socket to non-blocking (or blocking) mode.
-  CHECKED_STATUS SetNonBlocking(bool enabled);
 
   // Register our socket with an epoll loop.  We will only ever be registered in
   // one epoll loop at a time.
@@ -237,6 +184,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   void CallSent(OutboundCallPtr call);
 
+  CHECKED_STATUS Start(ev::loop_ref* loop);
+
  private:
   CHECKED_STATUS DoWrite();
 
@@ -267,7 +216,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // whether we are client or server
   Direction direction_;
 
-  Connected connected_;
+  bool connected_ = false;
 
   // The last time we read or wrote from the socket.
   CoarseMonoClock::TimePoint last_activity_time_;
@@ -301,7 +250,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
     }
   };
 
-  typedef std::pair<MonoTime, std::weak_ptr<OutboundCall>> ExpirationPair;
+  typedef std::pair<CoarseMonoClock::TimePoint, std::weak_ptr<OutboundCall>> ExpirationPair;
 
   std::priority_queue<ExpirationPair,
                       std::vector<ExpirationPair>,

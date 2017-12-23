@@ -19,7 +19,6 @@
 
 #include "yb/yql/cql/cqlserver/cql_message.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
 

@@ -47,7 +47,9 @@
 #include <boost/utility.hpp>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/rpc/connection.h"
+
+#include "yb/rpc/outbound_call.h"
+
 #include "yb/util/thread.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -260,10 +262,6 @@ class Reactor {
   // This method is thread-safe.
   bool closing() const;
 
-  // Begin the process of connection negotiation.
-  // Must be called from the reactor thread.
-  CHECKED_STATUS StartConnection(const ConnectionPtr& conn);
-
   // Queue a new call to be sent. If the reactor is already shut down, marks
   // the call as failed.
   void QueueOutboundCall(OutboundCallPtr call);
@@ -321,10 +319,6 @@ class Reactor {
   // Scan any open connections for idle ones that have been idle longer than
   // connection_keepalive_time_
   void ScanIdleConnections();
-
-  // Initiate a new connection on the given socket, setting *in_progress
-  // to true if the connection is still pending upon return.
-  static CHECKED_STATUS StartConnect(Socket *sock, const Endpoint& remote, bool *in_progress);
 
   // Assign a new outbound call to the appropriate connection object.
   // If this fails, the call is marked failed and completed.

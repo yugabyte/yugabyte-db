@@ -22,11 +22,14 @@
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
 #include "yb/client/callbacks.h"
-#include "yb/yql/cql/ql/ql_session.h"
+
+#include "yb/gutil/callback.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_rpcserver_env.h"
+#include "yb/yql/cql/ql/ql_session.h"
 
 #include "yb/util/enums.h"
 

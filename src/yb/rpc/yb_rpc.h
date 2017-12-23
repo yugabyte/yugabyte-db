@@ -16,7 +16,7 @@
 #ifndef YB_RPC_YB_RPC_H
 #define YB_RPC_YB_RPC_H
 
-#include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 
 namespace yb {

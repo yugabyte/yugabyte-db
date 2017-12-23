@@ -50,11 +50,13 @@
 
 #include "yb/util/trace.h"
 
+using namespace std::literals;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
 DEFINE_uint64(rpc_initial_buffer_size, 4096, "Initial buffer size used for RPC calls");
+DEFINE_uint64(rpc_connection_timeout_ms, 15000, "Timeout for RPC connection operations");
 
 METRIC_DEFINE_histogram(
     server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
@@ -71,40 +73,17 @@ Connection::Connection(Reactor* reactor,
                        const Endpoint& remote,
                        int socket,
                        Direction direction,
-                       Connected connected,
                        std::unique_ptr<ConnectionContext> context)
     : reactor_(reactor),
       socket_(socket),
       remote_(remote),
       direction_(direction),
-      connected_(connected),
       last_activity_time_(CoarseMonoClock::Now()),
       read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
       context_(std::move(context)) {
-  auto status = socket_.GetSocketAddress(&local_);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to get local address for: " << socket;
-  }
   const auto metric_entity = reactor->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
-}
-
-ConnectionPtr Connection::New(const ConnectionContextFactory& factory,
-                              Reactor* reactor,
-                              const Endpoint& remote,
-                              int socket,
-                              Connection::Direction direction,
-                              Connected connected) {
-  auto context = factory();
-  auto* context_ptr = context.get();
-  auto result = std::make_shared<Connection>(
-      reactor, remote, socket, direction, connected, std::move(context));
-  context_ptr->AssignConnection(result);
-  if (connected) {
-    context_ptr->Connected(result);
-  }
-  return result;
 }
 
 Connection::~Connection() {
@@ -118,12 +97,9 @@ Connection::~Connection() {
   CHECK(!is_epoll_registered_);
 }
 
-Status Connection::SetNonBlocking(bool enabled) {
-  return socket_.SetNonBlocking(enabled);
-}
-
 void Connection::EpollRegister(ev::loop_ref& loop) {  // NOLINT
   DCHECK(reactor_->IsCurrentThread());
+
   DVLOG(4) << "Registering connection for epoll: " << ToString();
   io_.set(loop);
   io_.set<Connection, &Connection::Handler>(this);
@@ -232,6 +208,10 @@ void Connection::OutboundQueued() {
   }
 }
 
+void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer) {
+  timer->start(MonoDelta(left).ToSeconds(), 0);
+}
+
 void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   DCHECK(reactor_->IsCurrentThread());
 
@@ -240,7 +220,20 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     return;
   }
 
-  auto now = MonoTime::Now();
+  auto now = CoarseMonoClock::Now();
+
+  if (!connected_) {
+    auto deadline = last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms;
+    if (now > deadline) {
+      auto passed = reactor_->cur_time() - last_activity_time_;
+      reactor_->DestroyConnection(
+          this, STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0", passed));
+      return;
+    }
+
+    StartTimer(deadline - now, &timer_);
+  }
+
   while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
     auto call = expiration_queue_.top().second.lock();
     expiration_queue_.pop();
@@ -255,9 +248,9 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
       }
     }
   }
+
   if (!expiration_queue_.empty()) {
-    auto left = expiration_queue_.top().first - now;
-    timer_.start(left.ToSeconds(), 0);
+    StartTimer(expiration_queue_.top().first - now, &timer_);
   }
 }
 
@@ -295,7 +288,7 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
 
   if (status.ok() && (revents & EV_WRITE)) {
     if (!connected_) {
-      connected_ = Connected::kTrue;
+      connected_ = true;
       context_->Connected(shared_from_this());
     }
     status = WriteHandler();
@@ -482,12 +475,11 @@ void Connection::CallSent(OutboundCallPtr call) {
   // Set up the timeout timer.
   const MonoDelta& timeout = call->controller()->timeout();
   if (timeout.Initialized()) {
-    auto expires_at = MonoTime::Now() + timeout;
+    auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
     auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
     expiration_queue_.emplace(expires_at, call);
     if (reschedule) {
-      timer_.set(timeout.ToSeconds(), 0);
-      timer_.start();
+      StartTimer(timeout.ToSteadyDuration(), &timer_);
     }
   }
 }
@@ -502,13 +494,6 @@ std::string Connection::ToString() const {
   } else {
     return strings::Substitute(format, this, "client", yb::ToString(local_), yb::ToString(remote_));
   }
-}
-
-// Disable / reset socket timeouts.
-Status DisableSocketTimeouts(Connection *conn) {
-  RETURN_NOT_OK(conn->socket()->SetSendTimeout(MonoDelta::FromNanoseconds(0L)));
-  RETURN_NOT_OK(conn->socket()->SetRecvTimeout(MonoDelta::FromNanoseconds(0L)));
-  return Status::OK();
 }
 
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
@@ -629,6 +614,38 @@ void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) 
   if (!batch) {
     OutboundQueued();
   }
+}
+
+Status Connection::Start(ev::loop_ref* loop) {
+  DCHECK(reactor_->IsCurrentThread());
+
+  RETURN_NOT_OK(socket_.SetNoDelay(true));
+  RETURN_NOT_OK(socket_.SetSendTimeout(FLAGS_rpc_connection_timeout_ms * 1ms));
+  RETURN_NOT_OK(socket_.SetRecvTimeout(FLAGS_rpc_connection_timeout_ms * 1ms));
+
+  if (direction_ == Direction::CLIENT) {
+    auto status = socket_.Connect(remote_);
+    if (!status.ok() && !Socket::IsTemporarySocketError(status)) {
+      LOG(WARNING) << "Failed to create connection " << ToString()
+                   << " because connect failed: " << status;
+      return status;
+    }
+  }
+  RETURN_NOT_OK(socket_.GetSocketAddress(&local_));
+
+  EpollRegister(*loop);
+
+  if (!connected_) {
+    StartTimer(FLAGS_rpc_connection_timeout_ms * 1ms, &timer_);
+  }
+
+  auto self = shared_from_this();
+  context_->AssignConnection(self);
+  if (direction_ == Direction::SERVER) {
+    context_->Connected(self);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace rpc

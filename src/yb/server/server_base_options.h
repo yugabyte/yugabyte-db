@@ -37,7 +37,6 @@
 #include <mutex>
 
 #include "yb/fs/fs_manager.h"
-#include "yb/rpc/connection.h"
 #include "yb/server/webserver_options.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/net/net_util.h"
