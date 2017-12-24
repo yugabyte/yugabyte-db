@@ -18,8 +18,6 @@
 
 #include <chrono>
 
-#include <boost/intrusive_ptr.hpp>
-
 #include "yb/gutil/ref_counted.h"
 
 namespace boost {

@@ -27,10 +27,11 @@
 #ifndef YB_UTIL_STATUS_H_
 #define YB_UTIL_STATUS_H_
 
-#include <stdint.h>
-
+#include <atomic>
 #include <memory>
 #include <string>
+
+#include <boost/intrusive_ptr.hpp>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -176,14 +177,6 @@ class Status {
   // Create a success status.
   Status() {}
 
-  // Copy the specified status.
-  Status(const Status& s);
-  void operator=(const Status& s);
-
-  // Move the specified status.
-  Status(Status&& s);
-  void operator=(Status&& s);
-
   // Return a success status.
   static Status OK() { return Status(); }
 
@@ -251,13 +244,8 @@ class Status {
     return (state_ == nullptr) ? kOk : static_cast<Code>(state_->code);
   }
  private:
-  struct FreeDeleter {
-    void operator()(void* ptr) const {
-      free(ptr);
-    }
-  };
-
   struct State {
+    std::atomic<size_t> counter;
     uint32_t message_len;
     uint8_t code;
     int64_t error_code;
@@ -266,37 +254,25 @@ class Status {
     const char* file_name;
     int line_number;
     char message[1];
-  } __attribute__ ((packed));
+  };
 
-  typedef std::unique_ptr<State, FreeDeleter> StatePtr;
+  typedef boost::intrusive_ptr<State> StatePtr;
+
+  friend inline void intrusive_ptr_release(State* state) {
+    if (state->counter.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      free(state);
+    }
+  }
+
+  friend inline void intrusive_ptr_add_ref(State* state) {
+    state->counter.fetch_add(1, std::memory_order_relaxed);
+  }
 
   StatePtr state_;
   static constexpr size_t kHeaderSize = offsetof(State, message);
 
   static_assert(sizeof(Code) == 4, "Code enum size is part of abi");
-
-  StatePtr CopyState() const;
 };
-
-inline Status::Status(const Status& s)
-    : state_(s.CopyState()) {
-}
-
-inline void Status::operator=(const Status& s) {
-  // The following condition catches both aliasing (when this == &s),
-  // and the common case where both s and *this are ok.
-  if (state_ != s.state_) {
-    state_ = s.CopyState();
-  }
-}
-
-inline Status::Status(Status&& s)
-    : state_(std::move(s.state_)) {
-}
-
-inline void Status::operator=(Status&& s) {
-  state_ = std::move(s.state_);
-}
 
 inline Status&& MoveStatus(Status&& status) {
   return std::move(status);

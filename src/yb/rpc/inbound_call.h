@@ -35,8 +35,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/intrusive_ptr.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"

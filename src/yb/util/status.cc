@@ -41,16 +41,6 @@ const char* kTimeoutErrorMsgs[] = {
 
 }
 
-Status::StatePtr Status::CopyState() const {
-  if (!state_)
-    return nullptr;
-  auto state = state_.get();
-  size_t size = state->message_len + kHeaderSize;
-  StatePtr result(static_cast<State*>(malloc(size)));
-  memcpy(result.get(), state, size);
-  return result;
-}
-
 Status::Status(Code code,
                const char* file_name,
                int line_number,
@@ -65,6 +55,8 @@ Status::Status(Code code,
   state_->message_len = static_cast<uint32_t>(size);
   state_->code = static_cast<uint8_t>(code);
   state_->error_code = error_code;
+  // We aleady assigned intrusive_ptr, so counter should be one.
+  state_->counter.store(1, std::memory_order_relaxed);
   state_->file_name = file_name;
   state_->line_number = line_number;
   memcpy(state_->message, msg.data(), len1);
