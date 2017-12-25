@@ -42,8 +42,10 @@
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/rpc/rtest.service.h"
 #include "yb/rpc/rpc-test-base.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
@@ -203,23 +205,22 @@ TEST_F(RpcStubTest, TestIncoherence) {
 // IO threads can deal with read/write calls that don't succeed
 // in sending the entire data in one go.
 TEST_F(RpcStubTest, TestBigCallData) {
-  const int kNumSentAtOnce = 20;
-  const size_t kMessageSize = 32 * 1024 * 1024;
-  string data;
-  data.resize(kMessageSize);
+  constexpr int kNumSentAtOnce = 20;
+  constexpr size_t kMessageSize = NonTsanVsTsan(32_MB, 4_MB);
 
   CalculatorServiceProxy p(client_messenger_, server_endpoint_);
 
   EchoRequestPB req;
-  req.set_data(data);
+  req.mutable_data()->resize(kMessageSize);
 
-  vector<EchoResponsePB> resps(kNumSentAtOnce);
-  vector<RpcController> controllers(kNumSentAtOnce);
+  std::vector<EchoResponsePB> resps(kNumSentAtOnce);
+  std::vector<RpcController> controllers(kNumSentAtOnce);
 
   CountDownLatch latch(kNumSentAtOnce);
   for (int i = 0; i < kNumSentAtOnce; i++) {
     auto resp = &resps[i];
     auto controller = &controllers[i];
+    controller->set_timeout(60s);
 
     p.EchoAsync(req, resp, controller, [&latch]() { latch.CountDown(); });
   }

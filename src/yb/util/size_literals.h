@@ -17,6 +17,8 @@
 
 namespace yb {
 
+namespace size_literals {
+
 inline constexpr size_t operator "" _KB(unsigned long long kilobytes) { // NOLINT
   return kilobytes * 1024;
 }
@@ -28,6 +30,12 @@ inline constexpr size_t operator "" _MB(unsigned long long megabytes) { // NOLIN
 inline constexpr size_t operator "" _GB(unsigned long long gigabytes) { // NOLINT
   return gigabytes * 1024 * 1024 * 1024;
 }
+
+} // namespace size_literals
+
+using size_literals::operator"" _KB;
+using size_literals::operator"" _MB;
+using size_literals::operator"" _GB;
 
 } // namespace yb
 
