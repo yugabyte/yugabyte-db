@@ -287,11 +287,12 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   }
 
   if (status.ok() && (revents & EV_WRITE)) {
-    if (!connected_) {
+    bool just_connected = !connected_;
+    if (just_connected) {
       connected_ = true;
       context_->Connected(shared_from_this());
     }
-    status = WriteHandler();
+    status = WriteHandler(just_connected);
   }
 
   if (status.ok()) {
@@ -410,12 +411,12 @@ Status Connection::HandleCallResponse(Slice call_data) {
   return Status::OK();
 }
 
-Status Connection::WriteHandler() {
+Status Connection::WriteHandler(bool just_connected) {
   DCHECK(reactor_->IsCurrentThread());
 
   if (sending_.empty()) {
-    LOG(WARNING) << ToString() << " got a ready-to-write callback, but there is "
-        "nothing to write.";
+    LOG_IF(WARNING, !just_connected) << ToString() << " got a ready-to-write callback, "
+                                     << "but there is nothing to write.";
     return Status::OK();
   }
 

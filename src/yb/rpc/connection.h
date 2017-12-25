@@ -151,7 +151,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   CHECKED_STATUS ReadHandler();
 
   // Invoked when socket is ready for writing.
-  CHECKED_STATUS WriteHandler();
+  // `just_connected` is used to avoid flooding log on each connect.
+  CHECKED_STATUS WriteHandler(bool just_connected);
 
   // Safe to be called from other threads.
   std::string ToString() const;

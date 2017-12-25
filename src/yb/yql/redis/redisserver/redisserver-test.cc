@@ -40,6 +40,10 @@ DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
+DECLARE_int32(redis_max_value_size);
+DECLARE_int32(redis_max_command_size);
+DECLARE_int32(rpc_max_message_size);
+DECLARE_int32(consensus_max_batch_size_bytes);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
               "Value of redis_max_concurrent_commands for pipeline test");
@@ -189,7 +193,7 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
-  void SyncClient() { test_client_.sync_commit(); }
+  void SyncClient() { client().sync_commit(); }
 
   void VerifyCallbacks();
 
@@ -282,7 +286,11 @@ class TestRedisService : public RedisTableTestBase {
   bool expected_no_sessions_ = false;
 
   RedisClient& client() {
-    return test_client_;
+    if (!test_client_) {
+      test_client_.emplace();
+      test_client_->connect("127.0.0.1", server_port());
+    }
+    return *test_client_;
   }
 
  protected:
@@ -292,7 +300,6 @@ class TestRedisService : public RedisTableTestBase {
   std::string int64MinExclusive_ = "(" + int64Min_;
 
  private:
-  RedisClient test_client_;
   std::atomic_int num_callbacks_called_;
   int expected_callbacks_called_;
   Socket client_sock_;
@@ -301,16 +308,25 @@ class TestRedisService : public RedisTableTestBase {
   unique_ptr<FileLock> redis_port_lock_;
   unique_ptr<FileLock> redis_webserver_lock_;
   std::vector<uint8_t> resp_;
+  boost::optional<RedisClient> test_client_;
+  boost::optional<google::FlagSaver> flag_saver_;
 };
 
 void TestRedisService::SetUp() {
+  if (IsTsan()) {
+    flag_saver_.emplace();
+    FLAGS_redis_max_value_size = 1_MB;
+    FLAGS_rpc_max_message_size = FLAGS_redis_max_value_size * 4 - 1;
+    FLAGS_redis_max_command_size = FLAGS_rpc_max_message_size - 2_KB;
+    FLAGS_consensus_max_batch_size_bytes = FLAGS_rpc_max_message_size - 2_KB;
+  }
+
   RedisTableTestBase::SetUp();
 
   StartServer();
   StartClient();
   num_callbacks_called_ = 0;
   expected_callbacks_called_ = 0;
-  test_client_.connect("127.0.0.1", server_port());
 }
 
 void TestRedisService::StartServer() {
@@ -363,10 +379,18 @@ void TestRedisService::TearDown() {
   }
   EXPECT_EQ(allocated_sessions, CountSessions(METRIC_redis_available_sessions));
 
-  test_client_.disconnect();
+  if (test_client_) {
+    test_client_.reset();
+    auto io_service = tacopie::get_default_io_service();
+    tacopie::set_default_io_service(nullptr);
+    EXPECT_OK(WaitFor(
+        [&io_service] { return io_service.use_count() == 1; }, 60s, "Redis IO Service shutdown"));
+  }
   StopClient();
   StopServer();
   RedisTableTestBase::TearDown();
+
+  flag_saver_.reset();
 }
 
 Status TestRedisService::Send(const std::string& cmd) {
@@ -452,7 +476,7 @@ void TestRedisService::DoRedisTest(int line,
                                    const Callback& callback) {
   expected_callbacks_called_++;
   VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
-  test_client_.send(command, [this, line, reply_type, callback] (RedisReply& reply) {
+  client().send(command, [this, line, reply_type, callback] (RedisReply& reply) {
     VLOG(4) << "Received response for line: " << __FILE__ << ":" << line
             << " : " << reply.as_string() << ", of type: " << util::to_underlying(reply.get_type());
     num_callbacks_called_++;
@@ -470,8 +494,7 @@ TEST_F(TestRedisService, SimpleCommandInline) {
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
-  const int kStringRepeats = 64 * 1024 * 1024;
-  string value(kStringRepeats, 'T');
+  std::string value(FLAGS_redis_max_value_size, 'T');
   DoRedisTestOk(__LINE__, {"SET", "foo", value});
   SyncClient();
   DoRedisTestBulkString(__LINE__, {"GET", "foo"}, value);
@@ -504,7 +527,7 @@ TEST_F(TestRedisService, HugeCommandInline) {
   DoRedisTestArray(
       __LINE__, {"HGETALL", "map_key1"}, {"subkey1", value, "subkey2", value, "subkey3", value});
   SyncClient();
-  value[0]  = 'B';
+  value[0] = 'B';
   DoRedisTestExpectError(
       __LINE__,
       {"HMSET", "map_key1", "subkey1", value, "subkey2", value, "subkey3", value,
