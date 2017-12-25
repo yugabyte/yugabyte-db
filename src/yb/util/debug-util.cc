@@ -265,10 +265,21 @@ class GlobalBacktraceState {
         /* threaded = */ 1,
         BacktraceErrorCallback,
         /* data */ nullptr);
+
+    // To complete initialization we should call backtrace, otherwise it could fail
+    // in case of concurrent initialization.
+    backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
+                   BacktraceErrorCallback, nullptr);
   }
 
   backtrace_state* GetState() { return bt_state_; }
  private:
+  static int DummyCallback(void *const data, const uintptr_t pc,
+                    const char* const filename, const int lineno,
+                    const char* const original_function_name) {
+    return 0;
+  }
+
   struct backtrace_state* bt_state_;
 };
 

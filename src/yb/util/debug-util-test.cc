@@ -174,6 +174,27 @@ TEST_F(DebugUtilTest, TestGetStackTraceInALoop) {
     GetStackTrace();
   }
 }
+
+TEST_F(DebugUtilTest, TestConcurrentStackTrace) {
+  constexpr size_t kTotalThreads = 10;
+  constexpr size_t kNumCycles = 100;
+  std::vector<std::thread> threads;
+  LOG(INFO) << "Spawning threads";
+  while (threads.size() != kTotalThreads) {
+    threads.emplace_back([] {
+      LOG(INFO) << "Thread started";
+      for (size_t i = 0; i != kNumCycles; ++i) {
+        GetStackTrace();
+      }
+      LOG(INFO) << "Thread finished";
+    });
+  }
+
+  LOG(INFO) << "Joining thread";
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
 #endif
 
 } // namespace yb
