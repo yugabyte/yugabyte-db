@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
@@ -64,9 +65,13 @@ public class NodeManager extends DevopsBase {
     List<String> command = new ArrayList<String>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().code);
+    UserIntent userIntent = Universe.get(nodeTaskParam.universeUUID)
+                                    .getUniverseDetails()
+                                    .retrievePrimaryCluster()
+                                    .userIntent;
 
     // Right now for docker we grab the network from application conf.
-    if (nodeTaskParam.cloud == Common.CloudType.docker) {
+    if (userIntent.providerType.equals(Common.CloudType.docker)) {
       String networkName = appConfig.getString("yb.docker.network");
       if (networkName == null) {
         throw new RuntimeException("yb.docker.network is not set in application.conf");
@@ -75,7 +80,7 @@ public class NodeManager extends DevopsBase {
       command.add(networkName);
     }
 
-    if (nodeTaskParam.cloud == Common.CloudType.onprem) {
+    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       NodeInstance node = NodeInstance.getByName(nodeTaskParam.nodeName);
       command.add("--node_metadata");
       command.add(node.getDetailsJson());
@@ -88,10 +93,16 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
-    UserIntent userIntent = Universe.get(params.universeUUID)
-                                    .getUniverseDetails()
-                                    .retrievePrimaryCluster()
-                                    .userIntent;
+    Cluster primaryCluster = Universe.get(params.universeUUID)
+        .getUniverseDetails()
+        .retrievePrimaryCluster();
+    if (primaryCluster == null) {
+      throw new RuntimeException("Universe missing primary cluster");
+    }
+    UserIntent userIntent = primaryCluster.userIntent;
+    if (userIntent == null) {
+      throw new RuntimeException("Primary cluster missing userIntent");
+    }
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase("yugabyte-default")) {
@@ -108,7 +119,7 @@ public class NodeManager extends DevopsBase {
         subCommand.add(keyInfo.privateKey);
 
         // We only need to include keyPair name for setup server call and if this is aws.
-        if (params instanceof AnsibleSetupServer.Params && params.cloud.equals(Common.CloudType.aws)) {
+        if (params instanceof AnsibleSetupServer.Params && userIntent.providerType.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
           // Also we will add the security group name
@@ -118,7 +129,7 @@ public class NodeManager extends DevopsBase {
       }
 
       if (params instanceof AnsibleSetupServer.Params &&
-          params.cloud.equals(Common.CloudType.onprem) &&
+          userIntent.providerType.equals(Common.CloudType.onprem) &&
           accessKey.getKeyInfo().airGapInstall) {
         subCommand.add("--air_gap");
       }
@@ -246,6 +257,10 @@ public class NodeManager extends DevopsBase {
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
+    UserIntent userIntent = Universe.get(nodeTaskParam.universeUUID)
+                                    .getUniverseDetails()
+                                    .retrievePrimaryCluster()
+                                    .userIntent;
 
     switch (type) {
       case Provision:
@@ -254,7 +269,8 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
-        if (nodeTaskParam.cloud != Common.CloudType.onprem) {
+        Common.CloudType cloudType = userIntent.providerType;
+        if (!userIntent.providerType.equals(Common.CloudType.onprem)) {
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
           commandArgs.add("--cloud_subnet");
@@ -263,12 +279,11 @@ public class NodeManager extends DevopsBase {
           // For now we wouldn't add machine image for aws and fallback on the default
           // one devops gives us, we need to transition to having this use versioning
           // like base_image_version [ENG-1859]
-          Common.CloudType cloudType = nodeTaskParam.cloud;
-          if (cloudType == Common.CloudType.aws && taskParam.spotPrice > 0.0) {
+          if (cloudType.equals(Common.CloudType.aws) && taskParam.spotPrice > 0.0) {
             commandArgs.add("--spot_price");
             commandArgs.add(Double.toString(taskParam.spotPrice));
           }
-          if (cloudType != Common.CloudType.aws && cloudType != Common.CloudType.gcp) {
+          if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
             commandArgs.add("--machine_image");
             commandArgs.add(taskParam.getRegion().ybImage);
           }
@@ -278,7 +293,7 @@ public class NodeManager extends DevopsBase {
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
-          if (deviceInfo.ebsType != null && nodeTaskParam.cloud == Common.CloudType.aws) {
+          if (deviceInfo.ebsType != null && cloudType.equals(Common.CloudType.aws)) {
             commandArgs.add("--volume_type");
             commandArgs.add(deviceInfo.ebsType.toString().toLowerCase());
             if (deviceInfo.ebsType.equals(PublicCloudConstants.EBSType.IO1) &&

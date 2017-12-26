@@ -79,7 +79,8 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showGFlagsModal,
       showDeleteUniverseModal,
-      closeModal
+      closeModal,
+      providers
     } = this.props;
     if (pathname === "/universes/create") {
       return <UniverseFormContainer type="Create"/>;
@@ -119,7 +120,7 @@ class UniverseDetail extends Component {
                 </Col>
                 <Col lg={7}>
                   <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                                      universeInfo={currentUniverse.data} />
+                                       universeInfo={currentUniverse.data} providers={providers} />
                 </Col>
               </Row>
               <Row>

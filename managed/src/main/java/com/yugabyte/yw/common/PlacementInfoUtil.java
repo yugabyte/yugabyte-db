@@ -314,8 +314,7 @@ public class PlacementInfoUtil {
                                               Long customerId) {
     Cluster primaryCluster = taskParams.retrievePrimaryCluster();
 
-    // Setup the cloud.
-    taskParams.cloud = primaryCluster.userIntent.providerType;
+    // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
       taskParams.nodeDetailsSet = new HashSet<>();
     }

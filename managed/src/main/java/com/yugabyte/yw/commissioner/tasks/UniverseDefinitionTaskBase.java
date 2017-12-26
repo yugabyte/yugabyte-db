@@ -76,7 +76,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           throw new RuntimeException(msg);
         }
         universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
-        universeDetails.cloud = taskParams().cloud;
         universeDetails.nodePrefix = taskParams().nodePrefix;
         universeDetails.universeUUID = taskParams().universeUUID;
         Cluster cluster = taskParams().retrievePrimaryCluster();
@@ -151,7 +150,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (universeDetails.cloud == CloudType.onprem) {
+    if (universeDetails.retrievePrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
       Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
       for (NodeDetails node : universeDetails.nodeDetailsSet) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
@@ -186,8 +185,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
-      // Set the cloud name.
-      params.cloud = userIntent.providerType;
       // Set the region code.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -223,8 +220,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       NodeTaskParams params = new NodeTaskParams();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
-      // Set the cloud name.
-      params.cloud = userIntent.providerType;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -257,8 +252,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
-      // Set the cloud name.
-      params.cloud = userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -296,8 +289,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      // Set the cloud name.
-      params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
       // Add the node name.
@@ -332,8 +323,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      // Set the cloud name.
-      params.cloud = taskParams().retrievePrimaryCluster().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -365,8 +354,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      // Set the cloud name.
-      params.cloud = taskParams().retrievePrimaryCluster().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.

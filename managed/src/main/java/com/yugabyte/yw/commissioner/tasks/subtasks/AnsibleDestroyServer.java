@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -41,8 +42,10 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     };
 
     Universe.saveDetails(taskParams().universeUUID, updater);
+    UserIntent userIntent = Universe.get(taskParams().universeUUID).getUniverseDetails()
+        .retrievePrimaryCluster().userIntent;
 
-    if (taskParams().cloud == Common.CloudType.onprem) {
+    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       // Free up the node.
       NodeInstance node = NodeInstance.getByName(nodeName);
       node.inUse = false;

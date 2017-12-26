@@ -196,8 +196,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = taskParams().deviceInfo;
-      // Set the cloud name.
-      params.cloud = CloudType.valueOf(node.cloudInfo.cloud);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -288,8 +286,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                                                        String command,
                                                        int sleepAfterCmdMillis) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    // Set the cloud name.
-    params.cloud = CloudType.valueOf(node.cloudInfo.cloud);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -439,7 +435,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     NodeTaskParams params = new NodeTaskParams();
     params.nodeName = nodeName;
     params.universeUUID = taskParams().universeUUID;
-    params.cloud = taskParams().cloud;
     DeleteNode task = new DeleteNode();
     task.initialize(params);
     subTaskGroup.addTask(task);
