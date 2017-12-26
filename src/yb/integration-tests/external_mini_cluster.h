@@ -89,21 +89,19 @@ struct ExternalMiniClusterOptions {
   // Default: "", which auto-generates a unique path for this cluster.
   std::string data_root;
 
-  // If true, binds each tablet server to a different loopback address.
-  // This affects the server's RPC server, and also forces the server to
-  // only use this IP address for outgoing socket connections as well.
-  // This allows the use of iptables on the localhost to simulate network
+  // If true, binds each tablet server to a different loopback address.  This affects the server's
+  // RPC server, and also forces the server to only use this IP address for outgoing socket
+  // connections as well.  This allows the use of iptables on the localhost to simulate network
   // partitions.
   //
   // The addressed used are 127.<A>.<B>.<C> where:
-  // - <A,B> are the high and low bytes of the pid of the process running the
-  //   minicluster (not the daemon itself).
+  // - <A,B> are the high and low bytes of the pid of the process running the minicluster (not the
+  //   daemon itself).
   // - <C> is the index of the server within this minicluster.
   //
-  // This requires that the system is set up such that processes may bind
-  // to any IP address in the localhost netblock (127.0.0.0/8). This seems
-  // to be the case on common Linux distributions. You can verify by running
-  // 'ip addr | grep 127.0.0.1' and checking that the address is listed as
+  // This requires that the system is set up such that processes may bind to any IP address in the
+  // localhost netblock (127.0.0.0/8). This seems to be the case on common Linux distributions. You
+  // can verify by running 'ip addr | grep 127.0.0.1' and checking that the address is listed as
   // '127.0.0.1/8'.
   //
   // This option is disabled by default on OS X.
@@ -123,9 +121,8 @@ struct ExternalMiniClusterOptions {
   std::vector<std::string> extra_tserver_flags;
   std::vector<std::string> extra_master_flags;
 
-  // If more than one master is specified, list of ports for the
-  // masters in a consensus configuration. Port at index 0 is used for the leader
-  // master.
+  // If more than one master is specified, list of ports for the masters in a consensus
+  // configuration. Port at index 0 is used for the leader master.
   // Default: one entry as num_masters defaults to 1. Value 0 implies, a free port
   //          is picked at runtime.
   std::vector<uint16_t> master_rpc_ports = { 0 };
@@ -138,12 +135,10 @@ struct ExternalMiniClusterOptions {
   CHECKED_STATUS AddPort(const uint16_t port);
 };
 
-// A mini-cluster made up of subprocesses running each of the daemons
-// separately. This is useful for black-box or grey-box failure testing
-// purposes -- it provides the ability to forcibly kill or stop particular
-// cluster participants, which isn't feasible in the normal MiniCluster.
-// On the other hand, there is little access to inspect the internal state
-// of the daemons.
+// A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
+// black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
+// stop particular cluster participants, which isn't feasible in the normal MiniCluster.  On the
+// other hand, there is little access to inspect the internal state of the daemons.
 class ExternalMiniCluster : public MiniClusterBase {
  public:
   // Mode to which node types a certain action (like Shutdown()) should apply.
@@ -164,44 +159,42 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Restarts the cluster. Requires that it has been Shutdown() first.
   CHECKED_STATUS Restart();
 
-  // Like the previous method but performs initialization synchronously, i.e.
-  // this will wait for all TS's to be started and initialized. Tests should
-  // use this if they interact with tablets immediately after Start();
+  // Like the previous method but performs initialization synchronously, i.e.  this will wait for
+  // all TS's to be started and initialized. Tests should use this if they interact with tablets
+  // immediately after Start();
   CHECKED_STATUS StartSync();
 
-  // Add a new TS to the cluster. The new TS is started.
-  // Requires that the master is already running.
+  // Add a new TS to the cluster. The new TS is started.  Requires that the master is already
+  // running.
   CHECKED_STATUS AddTabletServer();
 
-  // Shuts down the whole cluster or part of it, depending on the selected
-  // 'mode'.
-  // Currently, this uses SIGKILL on each daemon for a non-graceful shutdown.
+  // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
+  // uses SIGKILL on each daemon for a non-graceful shutdown.
   void Shutdown(NodeSelectionMode mode = ALL);
 
-  // Return the IP address that the tablet server with the given index will bind to.
-  // If options.bind_to_unique_loopback_addresses is false, this will be 127.0.0.1
-  // Otherwise, it is another IP in the local netblock.
+  // Return the IP address that the tablet server with the given index will bind to.  If
+  // options.bind_to_unique_loopback_addresses is false, this will be 127.0.0.1 Otherwise, it is
+  // another IP in the local netblock.
   std::string GetBindIpForTabletServer(int index) const;
 
   // Return a pointer to the running leader master. This may be NULL
   // if the cluster is not started.
   ExternalMaster* GetLeaderMaster();
 
-  // Perform an RPC to determine the leader of the external mini
-  // cluster.  Set 'index' to the leader master's index (for calls to
-  // to master() below).
+  // Perform an RPC to determine the leader of the external mini cluster.  Set 'index' to the leader
+  // master's index (for calls to to master() below).
   //
-  // NOTE: if a leader election occurs after this method is executed,
-  // the last result may not be valid.
+  // NOTE: if a leader election occurs after this method is executed, the last result may not be
+  // valid.
   CHECKED_STATUS GetLeaderMasterIndex(int* idx);
 
   // Return a non-leader master index
   CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
 
-  // Starts a new master and returns the handle of the new master object on success.
-  // Not thread safe for now. We could move this to a static function outside External Mini Cluster,
-  // but keeping it here for now as it is currently used only in conjunction with EMC.
-  // If there are any errors and if a new master could not be spawned, it will crash internally.
+  // Starts a new master and returns the handle of the new master object on success.  Not thread
+  // safe for now. We could move this to a static function outside External Mini Cluster, but
+  // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
+  // errors and if a new master could not be spawned, it will crash internally.
   void StartShellMaster(ExternalMaster** new_master);
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
@@ -216,18 +209,15 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS GetLastOpIdForLeader(consensus::OpId* opid);
 
   // The leader master sometimes does not commit the config in time on first setup, causing
-  // CheckHasCommittedOpInCurrentTermUnlocked check - that the current term
-  // should have had at least one commit - to fail. This API waits for the leader's commit term to
-  // move ahead by one.
+  // CheckHasCommittedOpInCurrentTermUnlocked check - that the current term should have had at least
+  // one commit - to fail. This API waits for the leader's commit term to move ahead by one.
   CHECKED_STATUS WaitForLeaderCommitTermAdvance();
 
   // This API waits for the commit indices of all the master peers to reach the target index.
   CHECKED_STATUS WaitForMastersToCommitUpTo(int target_index);
 
-  // If this cluster is configured for a single non-distributed
-  // master, return the single master or NULL if the master is not
-  // started. Exits with a CHECK failure if there are multiple
-  // masters.
+  // If this cluster is configured for a single non-distributed master, return the single master or
+  // NULL if the master is not started. Exits with a CHECK failure if there are multiple masters.
   ExternalMaster* master() const {
     if (masters_.empty())
       return nullptr;
@@ -237,8 +227,7 @@ class ExternalMiniCluster : public MiniClusterBase {
     return master(0);
   }
 
-  // Return master at 'idx' or NULL if the master at 'idx' has not
-  // been started.
+  // Return master at 'idx' or NULL if the master at 'idx' has not been started.
   ExternalMaster* master(int idx) const {
     CHECK_LT(idx, masters_.size());
     return masters_[idx].get();
@@ -252,8 +241,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return ExternalTabletServer given its UUID. If not found, returns NULL.
   ExternalTabletServer* tablet_server_by_uuid(const std::string& uuid) const;
 
-  // Return the index of the ExternalTabletServer that has the given 'uuid', or
-  // -1 if no such UUID can be found.
+  // Return the index of the ExternalTabletServer that has the given 'uuid', or -1 if no such UUID
+  // can be found.
   int tablet_server_index_by_uuid(const std::string& uuid) const;
 
   // Return all masters.
@@ -280,18 +269,15 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(
       scoped_refptr<ExternalMaster> master);
 
-  // If the cluster is configured for a single non-distributed master,
-  // return a proxy to that master. Requires that the single master is
-  // running.
+  // If the cluster is configured for a single non-distributed master, return a proxy to that
+  // master. Requires that the single master is running.
   std::shared_ptr<master::MasterServiceProxy> master_proxy();
 
-  // Returns an RPC proxy to the master at 'idx'. Requires that the
-  // master at 'idx' is running.
+  // Returns an RPC proxy to the master at 'idx'. Requires that the master at 'idx' is running.
   std::shared_ptr<master::MasterServiceProxy> master_proxy(int idx);
 
-  // Wait until the number of registered tablet servers reaches the
-  // given count on at least one of the running masters.  Returns
-  // Status::TimedOut if the desired count is not achieved with the
+  // Wait until the number of registered tablet servers reaches the given count on at least one of
+  // the running masters.  Returns Status::TimedOut if the desired count is not achieved with the
   // given timeout.
   CHECKED_STATUS WaitForTabletServerCount(int count, const MonoDelta& timeout);
 
@@ -309,11 +295,14 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Sets the given flag on the given daemon, which must be running.
   //
-  // This uses the 'force' flag on the RPC so that, even if the flag
-  // is considered unsafe to change at runtime, it is changed.
+  // This uses the 'force' flag on the RPC so that, even if the flag is considered unsafe to change
+  // at runtime, it is changed.
   CHECKED_STATUS SetFlag(ExternalDaemon* daemon,
-                 const std::string& flag,
-                 const std::string& value);
+                         const std::string& flag,
+                         const std::string& value);
+
+  // Sets the given flag on all tablet servers.
+  CHECKED_STATUS SetFlagOnTServers(const std::string& flag, const std::string& value);
 
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.
@@ -336,9 +325,8 @@ class ExternalMiniCluster : public MiniClusterBase {
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
-  // Create a client configured to talk to this cluster.
-  // Builder may contain override options for the client. The master address will
-  // be overridden to talk to the running master.
+  // Create a client configured to talk to this cluster.  Builder may contain override options for
+  // the client. The master address will be overridden to talk to the running master.
   //
   // REQUIRES: the cluster must have already been Start()ed.
   virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
@@ -361,8 +349,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS AddMaster(ExternalMaster* master);
   CHECKED_STATUS RemoveMaster(ExternalMaster* master);
 
-  // Get the index of this master in the vector of masters. This might not be the insertion
-  // order as we might have removed some masters within the vector.
+  // Get the index of this master in the vector of masters. This might not be the insertion order as
+  // we might have removed some masters within the vector.
   int GetIndexOfMaster(ExternalMaster* master) const;
 
   // Checks that the masters_ list and opts_ match in terms of the number of elements.
@@ -407,12 +395,12 @@ class ExternalMiniCluster : public MiniClusterBase {
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
   ExternalDaemon(
-    std::string short_description,
-    std::shared_ptr<rpc::Messenger> messenger,
-    std::string exe,
-    std::string data_dir,
-    std::string server_type,
-    std::vector<std::string> extra_flags);
+      std::string short_description,
+      std::shared_ptr<rpc::Messenger> messenger,
+      std::string exe,
+      std::string data_dir,
+      std::string server_type,
+      std::vector<std::string> extra_flags);
 
   HostPort bound_rpc_hostport() const;
   Endpoint bound_rpc_addr() const;
@@ -420,8 +408,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const NodeInstancePB& instance_id() const;
   const std::string& uuid() const;
 
-  // Return the pid of the running process.
-  // Causes a CHECK failure if the process is not running.
+  // Return the pid of the running process.  Causes a CHECK failure if the process is not running.
   pid_t pid() const;
 
   // Sends a SIGSTOP signal to the daemon.
@@ -433,28 +420,25 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
-  // Return true if the process is still running.
-  // This may return false if the process crashed, even if we didn't
-  // explicitly call Shutdown().
+  // Return true if the process is still running.  This may return false if the process crashed,
+  // even if we didn't explicitly call Shutdown().
   bool IsProcessAlive() const;
 
   virtual void Shutdown();
 
   const std::string& data_dir() const { return full_data_dir_; }
 
-  // Return a pointer to the flags used for this server on restart.
-  // Modifying these flags will only take effect on the next restart.
+  // Return a pointer to the flags used for this server on restart.  Modifying these flags will only
+  // take effect on the next restart.
   std::vector<std::string>* mutable_flags() { return &extra_flags_; }
 
-  // Retrieve the value of a given metric from this server. The metric must
-  // be of int64_t type.
+  // Retrieve the value of a given metric from this server. The metric must be of int64_t type.
   //
-  // 'value_field' represents the particular field of the metric to be read.
-  // For example, for a counter or gauge, this should be 'value'. For a
-  // histogram, it might be 'total_count' or 'mean'.
+  // 'value_field' represents the particular field of the metric to be read.  For example, for a
+  // counter or gauge, this should be 'value'. For a histogram, it might be 'total_count' or 'mean'.
   //
-  // 'entity_id' may be NULL, in which case the first entity of the same type
-  // as 'entity_proto' will be matched.
+  // 'entity_id' may be NULL, in which case the first entity of the same type as 'entity_proto' will
+  // be matched.
   CHECKED_STATUS GetInt64Metric(const MetricEntityPrototype* entity_proto,
                         const char* entity_id,
                         const MetricPrototype* metric_proto,
@@ -541,9 +525,8 @@ class ExternalMaster : public ExternalDaemon {
 
   CHECKED_STATUS Start(bool shell_mode = false);
 
-  // Restarts the daemon.
-  // Requires that it has previously been shutdown.
-  CHECKED_STATUS Restart() WARN_UNUSED_RESULT;
+  // Restarts the daemon. Requires that it has previously been shutdown.
+  CHECKED_STATUS Restart();
 
  private:
   friend class RefCountedThreadSafe<ExternalMaster>;
@@ -561,14 +544,13 @@ class ExternalTabletServer : public ExternalDaemon {
       int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
       const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
       uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
-      uint16_t cql_rpc_port, uint16_t cql_http_port,
-      const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags);
+      uint16_t cql_rpc_port, uint16_t cql_http_port, const std::vector<HostPort>& master_addrs,
+      const std::vector<std::string>& extra_flags);
 
   CHECKED_STATUS Start(bool start_cql_proxy = true);
 
-  // Restarts the daemon.
-  // Requires that it has previously been shutdown.
-  CHECKED_STATUS Restart(bool start_cql_proxy = true) WARN_UNUSED_RESULT;
+  // Restarts the daemon. Requires that it has previously been shutdown.
+  CHECKED_STATUS Restart(bool start_cql_proxy = true);
 
  protected:
   CHECKED_STATUS DeleteServerInfoPaths() override;
@@ -598,8 +580,8 @@ class ExternalTabletServer : public ExternalDaemon {
 struct MasterComparator {
   explicit MasterComparator(ExternalMaster* master) : master_(master) { }
 
-  // We look for the exact master match. Since it is possible to stop/restart master on
-  // a given host/port, we do not want a stale master pointer input to match a newer master.
+  // We look for the exact master match. Since it is possible to stop/restart master on a given
+  // host/port, we do not want a stale master pointer input to match a newer master.
   bool operator()(const scoped_refptr<ExternalMaster>& other) const {
     return master_ == other.get();
   }

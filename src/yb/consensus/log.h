@@ -69,32 +69,28 @@ class LogReader;
 
 typedef BlockingQueue<LogEntryBatch*, LogEntryBatchLogicalSize> LogEntryBatchQueue;
 
-// Log interface, inspired by Raft's (logcabin) Log. Provides durability to
-// YugaByte as a normal Write Ahead Log and also plays the role of persistent
-// storage for the consensus state machine.
+// Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
+// Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
 //
-// Note: This class is not thread safe, the caller is expected to synchronize
-// Log::Reserve() and Log::Append() calls.
+// Note: This class is not thread safe, the caller is expected to synchronize Log::Reserve() and
+// Log::Append() calls.
 //
-// Log uses group commit to improve write throughput and latency
-// without compromising ordering and durability guarantees.
+// Log uses group commit to improve write throughput and latency without compromising ordering and
+// durability guarantees.
 //
-// To add operations to the log, the caller must obtain the lock and
-// call Reserve() with the collection of operations to be added. Then,
-// the caller may release the lock and call AsyncAppend(). Reserve()
-// reserves a slot on a queue for the log entry; AsyncAppend()
-// indicates that the entry in the slot is safe to write to disk and
-// adds a callback that will be invoked once the entry is written and
-// synchronized to disk.
+// To add operations to the log, the caller must obtain the lock and call Reserve() with the
+// collection of operations to be added. Then, the caller may release the lock and call
+// AsyncAppend(). Reserve() reserves a slot on a queue for the log entry; AsyncAppend() indicates
+// that the entry in the slot is safe to write to disk and adds a callback that will be invoked once
+// the entry is written and synchronized to disk.
 //
 // For sample usage see mt-log-test.cc
 //
-// Methods on this class are _not_ thread-safe and must be externally
-// synchronized unless otherwise noted.
+// Methods on this class are _not_ thread-safe and must be externally synchronized unless otherwise
+// noted.
 //
-// Note: The Log needs to be Close()d before any log-writing class is
-// destroyed, otherwise the Log might hold references to these classes
-// to execute the callbacks after each write.
+// Note: The Log needs to be Close()d before any log-writing class is destroyed, otherwise the Log
+// might hold references to these classes to execute the callbacks after each write.
 class Log : public RefCountedThreadSafe<Log> {
  public:
   class LogFaultHooks;
@@ -104,51 +100,49 @@ class Log : public RefCountedThreadSafe<Log> {
   // Opens or continues a log and sets 'log' to the newly built Log.
   // After a successful Open() the Log is ready to receive entries.
   static CHECKED_STATUS Open(const LogOptions &options,
-                     FsManager *fs_manager,
-                     const std::string& tablet_id,
-                     const std::string& tablet_wal_path,
-                     const Schema& schema,
-                     uint32_t schema_version,
-                     const scoped_refptr<MetricEntity>& metric_entity,
-                     scoped_refptr<Log> *log);
+                             FsManager *fs_manager,
+                             const std::string& tablet_id,
+                             const std::string& tablet_wal_path,
+                             const Schema& schema,
+                             uint32_t schema_version,
+                             const scoped_refptr<MetricEntity>& metric_entity,
+                             scoped_refptr<Log> *log);
 
   ~Log();
 
   // Reserves a spot in the log's queue for 'entry_batch'.
   //
-  // 'reserved_entry' is initialized by this method and any resources
-  // associated with it will be released in AsyncAppend().  In order
-  // to ensure correct ordering of operations across multiple threads,
-  // calls to this method must be externally synchronized.
+  // 'reserved_entry' is initialized by this method and any resources associated with it will be
+  // released in AsyncAppend().  In order to ensure correct ordering of operations across multiple
+  // threads, calls to this method must be externally synchronized.
   //
-  // WARNING: the caller _must_ call AsyncAppend() or else the log
-  // will "stall" and will never be able to make forward progress.
+  // WARNING: the caller _must_ call AsyncAppend() or else the log will "stall" and will never be
+  // able to make forward progress.
   CHECKED_STATUS Reserve(LogEntryTypePB type,
                          LogEntryBatchPB* entry_batch,
                          LogEntryBatch** reserved_entry);
 
-  // Asynchronously appends 'entry' to the log. Once the append
-  // completes and is synced, 'callback' will be invoked.
+  // Asynchronously appends 'entry' to the log. Once the append completes and is synced, 'callback'
+  // will be invoked.
   CHECKED_STATUS AsyncAppend(LogEntryBatch* entry,
                      const StatusCallback& callback);
 
-  // Synchronously append a new entry to the log.
-  // Log does not take ownership of the passed 'entry'.
-  // TODO get rid of this method, transition to the asynchronous API
+  // Synchronously append a new entry to the log.  Log does not take ownership of the passed
+  // 'entry'.
+  // TODO get rid of this method, transition to the asynchronous API.
   CHECKED_STATUS Append(LogEntryPB* entry);
 
-  // Append the given set of replicate messages, asynchronously.
-  // This requires that the replicates have already been assigned OpIds.
+  // Append the given set of replicate messages, asynchronously.  This requires that the replicates
+  // have already been assigned OpIds.
   CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates,
                                        const StatusCallback& callback);
 
-  // Blocks the current thread until all the entries in the log queue
-  // are flushed and fsynced (if fsync of log entries is enabled).
+  // Blocks the current thread until all the entries in the log queue are flushed and fsynced (if
+  // fsync of log entries is enabled).
   CHECKED_STATUS WaitUntilAllFlushed();
 
-  // Kick off an asynchronous task that pre-allocates a new
-  // log-segment, setting 'allocation_status_'. To wait for the
-  // result of the task, use allocation_status_.Get().
+  // Kick off an asynchronous task that pre-allocates a new log-segment, setting
+  // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
   CHECKED_STATUS AsyncAllocateSegment();
 
   // The closure submitted to allocation_pool_ to allocate a new segment.
@@ -160,12 +154,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // Delete all WAL data from the log associated with this tablet.
   // REQUIRES: The Log must be closed.
   static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager,
-                                 const std::string& tablet_id,
-                                 const std::string& tablet_wal_path);
+                                         const std::string& tablet_id,
+                                         const std::string& tablet_wal_path);
 
-  // Returns a reader that is able to read through the previous
-  // segments. The reader pointer is guaranteed to be live as long
-  // as the log itself is initialized and live.
+  // Returns a reader that is able to read through the previous segments. The reader pointer is
+  // guaranteed to be live as long as the log itself is initialized and live.
   LogReader* GetLogReader() const;
 
   void SetMaxSegmentSizeForTests(uint64_t max_segment_size) {
@@ -180,9 +173,8 @@ class Log : public RefCountedThreadSafe<Log> {
     sync_disabled_ = true;
   }
 
-  // If we previous called DisableSync(), we should restore the
-  // default behavior and then call Sync() which will perform the
-  // actual syncing if required.
+  // If we previous called DisableSync(), we should restore the default behavior and then call
+  // Sync() which will perform the actual syncing if required.
   CHECKED_STATUS ReEnableSyncIfRequired() {
     sync_disabled_ = false;
     return Sync();
@@ -193,16 +185,15 @@ class Log : public RefCountedThreadSafe<Log> {
     return tablet_id_;
   }
 
-  // Gets the last-used OpId written to the log.
-  // If no entry has ever been written to the log, returns (0, 0)
+  // Gets the last-used OpId written to the log.  If no entry has ever been written to the log,
+  // returns (0, 0)
   void GetLatestEntryOpId(consensus::OpId* op_id) const;
 
-  // Runs the garbage collector on the set of previous segments. Segments that
-  // only refer to in-mem state that has been flushed are candidates for
-  // garbage collection.
+  // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
+  // state that has been flushed are candidates for garbage collection.
   //
-  // 'min_op_idx' is the minimum operation index required to be retained.
-  // If successful, num_gced is set to the number of deleted log segments.
+  // 'min_op_idx' is the minimum operation index required to be retained.  If successful, num_gced
+  // is set to the number of deleted log segments.
   //
   // This method is thread-safe.
   CHECKED_STATUS GC(int64_t min_op_idx, int* num_gced);
@@ -223,9 +214,8 @@ class Log : public RefCountedThreadSafe<Log> {
     return active_segment_->path();
   }
 
-  // Forces the Log to allocate a new segment and roll over.
-  // This can be used to make sure all entries appended up to this point are
-  // available in closed, readable segments.
+  // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
+  // entries appended up to this point are available in closed, readable segments.
   CHECKED_STATUS AllocateSegmentAndRollOver();
 
   // Returns this Log's FsManager.
@@ -276,16 +266,15 @@ class Log : public RefCountedThreadSafe<Log> {
   // Writes the footer and closes the current segment.
   CHECKED_STATUS CloseCurrentSegment();
 
-  // Sets 'out' to a newly created temporary file (see
-  // Env::NewTempWritableFile()) for a placeholder segment. Sets
-  // 'result_path' to the fully qualified path to the unique filename
-  // created for the segment.
+  // Sets 'out' to a newly created temporary file (see Env::NewTempWritableFile()) for a placeholder
+  // segment. Sets 'result_path' to the fully qualified path to the unique filename created for the
+  // segment.
   CHECKED_STATUS CreatePlaceholderSegment(const WritableFileOptions& opts,
-                                  std::string* result_path,
-                                  std::shared_ptr<WritableFile>* out);
+                                          std::string* result_path,
+                                          std::shared_ptr<WritableFile>* out);
 
-  // Creates a new WAL segment on disk, writes the next_segment_header_ to
-  // disk as the header, and sets active_segment_ to point to this new segment.
+  // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
+  // sets active_segment_ to point to this new segment.
   CHECKED_STATUS SwitchToAllocatedSegment();
 
   // Preallocates the space for a new segment.
@@ -294,25 +283,23 @@ class Log : public RefCountedThreadSafe<Log> {
   // Returns the desired size for the next log segment to be created.
   uint64_t NextSegmentDesiredSize();
 
-  // Writes serialized contents of 'entry' to the log. Called inside
-  // AppenderThread. If 'caller_owns_operation' is true, then the
-  // 'operation' field of the entry will be released after the entry
-  // is appended.
-  // TODO once Append() is removed, 'caller_owns_operation' and
-  // associated logic will no longer be needed.
+  // Writes serialized contents of 'entry' to the log. Called inside AppenderThread. If
+  // 'caller_owns_operation' is true, then the 'operation' field of the entry will be released after
+  // the entry is appended.
+  //
+  // TODO once Append() is removed, 'caller_owns_operation' and associated logic will no longer be
+  // needed.
   CHECKED_STATUS DoAppend(LogEntryBatch* entry, bool caller_owns_operation = true);
 
   // Update footer_builder_ to reflect the log indexes seen in 'batch'.
   void UpdateFooterForBatch(LogEntryBatch* batch);
 
-  // Update the LogIndex to include entries for the replicate messages found in
-  // 'batch'. The index entry points to the offset 'start_offset' in the current
-  // log segment.
-  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch,
-                             int64_t start_offset);
+  // Update the LogIndex to include entries for the replicate messages found in 'batch'. The index
+  // entry points to the offset 'start_offset' in the current log segment.
+  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch, int64_t start_offset);
 
-  // Replaces the last "empty" segment in 'log_reader_', i.e. the one currently
-  // being written to, by the same segment once properly closed.
+  // Replaces the last "empty" segment in 'log_reader_', i.e. the one currently being written to, by
+  // the same segment once properly closed.
   CHECKED_STATUS ReplaceSegmentInReaderUnlocked();
 
   CHECKED_STATUS Sync();
@@ -344,6 +331,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The current schema of the tablet this log is dedicated to.
   Schema schema_;
+
   // The schema version
   uint32_t schema_version_;
 
@@ -367,38 +355,36 @@ class Log : public RefCountedThreadSafe<Log> {
   // A reader for the previous segments that were not yet GC'd.
   gscoped_ptr<LogReader> reader_;
 
-  // Index which translates between operation indexes and the position
-  // of the operation in the log.
+  // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
 
-  // Lock to protect last_entry_op_id_, which is constantly written but
-  // read occasionally by things like consensus and log GC.
+  // Lock to protect last_entry_op_id_, which is constantly written but read occasionally by things
+  // like consensus and log GC.
   mutable rw_spinlock last_entry_op_id_lock_;
 
-  // The last known OpId for a REPLICATE message appended to this log
-  // (any segment). NOTE: this op is not necessarily durable.
+  // The last known OpId for a REPLICATE message appended to this log (any segment).
+  // NOTE: this op is not necessarily durable.
   consensus::OpId last_entry_op_id_;
 
-  // A footer being prepared for the current segment.
-  // When the segment is closed, it will be written.
+  // A footer being prepared for the current segment.  When the segment is closed, it will be
+  // written.
   LogSegmentFooterPB footer_builder_;
 
   // The maximum segment size, in bytes.
   uint64_t max_segment_size_;
 
-  // The maximum segment size we want for the current WAL segment, in bytes.
-  // This value keeps doubling (for each subsequent WAL segment) till it
-  // gets to max_segment_size_.
+  // The maximum segment size we want for the current WAL segment, in bytes.  This value keeps
+  // doubling (for each subsequent WAL segment) till it gets to max_segment_size_.
   // Note: The first WAL segment will start off as twice of this value.
   uint64_t cur_max_segment_size_ = 512 * 1024;
 
-  // The queue used to communicate between the thread calling
-  // Reserve() and the Log Appender thread
+  // The queue used to communicate between the thread calling Reserve() and the Log Appender thread.
   LogEntryBatchQueue entry_batch_queue_;
 
-  // Thread writing to the log
+  // Thread writing to the log.
   gscoped_ptr<AppendThread> append_thread_;
 
+  // A thread pool for asynchronously pre-allocating new log segments.
   gscoped_ptr<ThreadPool> allocation_pool_;
 
   // If true, sync on all appends.
@@ -419,8 +405,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // For periodic sync, indicates number of bytes which need to be sync'ed.
   size_t periodic_sync_unsynced_bytes_ = 0;
 
-  // If true, ignore the 'durable_wal_write_' flags above.
-  // This is used to disable fsync during bootstrap.
+  // If true, ignore the 'durable_wal_write_' flags above.  This is used to disable fsync during
+  // bootstrap.
   bool sync_disabled_;
 
   // The status of the most recent log-allocation action.
@@ -439,9 +425,7 @@ class Log : public RefCountedThreadSafe<Log> {
 };
 
 // This class represents a batch of operations to be written and synced to the log. It is opaque to
-// the user and is managed by the Log class. A single batch must have only one type of entries in it
-// (e.g. only REPLICATEs or only COMMITs). YB tables only use REPLICATE entries. COMMIT entries are
-// being used for Kudu tables and will eventually be removed.
+// the user and is managed by the Log class.
 class LogEntryBatch {
  public:
   ~LogEntryBatch();
@@ -482,8 +466,7 @@ class LogEntryBatch {
   // Mark the entry as ready to write to log.
   void MarkReady();
 
-  // Returns a Slice representing the serialized contents of the
-  // entry.
+  // Returns a Slice representing the serialized contents of the entry.
   Slice data() const {
     DCHECK_EQ(state_, kEntrySerialized);
     return Slice(buffer_);
@@ -497,7 +480,6 @@ class LogEntryBatch {
   }
 
   // The highest OpId of a REPLICATE message in this batch.
-  // Requires that this be a REPLICATE batch.
   consensus::OpId MaxReplicateOpId() const {
     DCHECK_EQ(REPLICATE, type_);
     int idx = entry_batch_pb_.entry_size() - 1;
@@ -521,18 +503,14 @@ class LogEntryBatch {
   // Number of entries in 'entry_batch_pb_'
   const size_t count_;
 
-  // The vector of refcounted replicates.
-  // Used only when type is REPLICATE, this makes sure there's at
-  // least a reference to each replicate message until we're finished
-  // appending.
+  // The vector of refcounted replicates.  This makes sure there's at least a reference to each
+  // replicate message until we're finished appending.
   ReplicateMsgs replicates_;
 
-  // Callback to be invoked upon the entries being written and
-  // synced to disk.
+  // Callback to be invoked upon the entries being written and synced to disk.
   StatusCallback callback_;
 
-  // Buffer to which 'phys_entries_' are serialized by call to
-  // 'Serialize()'
+  // Buffer to which 'phys_entries_' are serialized by call to 'Serialize()'
   faststring buffer_;
 
   enum LogEntryState {
@@ -557,15 +535,13 @@ struct LogEntryBatchLogicalSize {
 class Log::LogFaultHooks {
  public:
 
-  // Executed immediately before returning from Log::Sync() at *ALL*
-  // times.
+  // Executed immediately before returning from Log::Sync() at *ALL* times.
   virtual CHECKED_STATUS PostSync() { return Status::OK(); }
 
   // Iff fsync is enabled, executed immediately after call to fsync.
   virtual CHECKED_STATUS PostSyncIfFsyncEnabled() { return Status::OK(); }
 
-  // Emulate a slow disk where the filesystem has decided to synchronously
-  // flush a full buffer.
+  // Emulate a slow disk where the filesystem has decided to synchronously flush a full buffer.
   virtual CHECKED_STATUS PostAppend() { return Status::OK(); }
 
   virtual CHECKED_STATUS PreClose() { return Status::OK(); }

@@ -79,23 +79,16 @@ struct ReplayState {
   // The last replicate message's ID.
   consensus::OpId prev_op_id = consensus::MinimumOpId();
 
-  // The last operation known to be committed.
-  // All other operations with lower IDs are also committed.
+  // The last operation known to be committed.  All other operations with lower IDs are also
+  // committed.
   consensus::OpId committed_op_id = consensus::MinimumOpId();
 
-  // For Kudu's columnar tables: REPLICATE log entries whose corresponding COMMIT record has
-  // not yet been seen.
-  //
-  // For YugaByte's RocksDB-backed tables: all REPLICATE entries that have not been applied to
-  // RocksDB yet. We decide what entries are safe to apply and delete from this map based on the
-  // commit index included into each REPLICATE message.
+  // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
+  // safe to apply and delete from this map based on the commit index included into each REPLICATE
+  // message.
   //
   // The key in this map is the Raft index.
   OpIndexToEntryMap pending_replicates;
-
-  // COMMIT log entries which couldn't be applied immediately.
-  // Not being used for RocksDB-backed tables.
-  OpIndexToEntryMap pending_commits;
 
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables
@@ -116,29 +109,28 @@ struct ReplayState {
   HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
 };
 
-// Bootstraps an existing tablet by opening the metadata from disk, and rebuilding soft
-// state by playing log segments. A bootstrapped tablet can then be added to an existing
-// consensus configuration as a LEARNER, which will bring its state up to date with the
-// rest of the consensus configuration, or it can start serving the data itself, after it
-// has been appointed LEADER of that particular consensus configuration.
+// Bootstraps an existing tablet by opening the metadata from disk, and rebuilding soft state by
+// playing log segments. A bootstrapped tablet can then be added to an existing consensus
+// configuration as a LEARNER, which will bring its state up to date with the rest of the consensus
+// configuration, or it can start serving the data itself, after it has been appointed LEADER of
+// that particular consensus configuration.
 //
-// NOTE: this does not handle pulling data from other replicas in the cluster. That
-// is handled by the 'RemoteBootstrap' classes, which copy blocks and metadata locally
-// before invoking this local bootstrap functionality.
+// NOTE: this does not handle pulling data from other replicas in the cluster. That is handled by
+// the 'RemoteBootstrap' classes, which copy blocks and metadata locally before invoking this local
+// bootstrap functionality.
 //
-// TODO Because the table that is being rebuilt is never flushed/compacted, consensus
-// is only set on the tablet after bootstrap, when we get to flushes/compactions though
-// we need to set it before replay or we won't be able to re-rebuild.
+// TODO Because the table that is being rebuilt is never flushed/compacted, consensus is only set on
+// the tablet after bootstrap, when we get to flushes/compactions though we need to set it before
+// replay or we won't be able to re-rebuild.
 class TabletBootstrap {
  public:
   explicit TabletBootstrap(const BootstrapTabletData& data);
 
   virtual ~TabletBootstrap() {}
 
-  // Plays the log segments, rebuilding the portion of the Tablet's soft
-  // state that is present in the log (additional soft state may be present
-  // in other replicas).
-  // A successful call will yield the rebuilt tablet and the rebuilt log.
+  // Plays the log segments, rebuilding the portion of the Tablet's soft state that is present in
+  // the log (additional soft state may be present in other replicas).  A successful call will yield
+  // the rebuilt tablet and the rebuilt log.
   CHECKED_STATUS Bootstrap(std::shared_ptr<TabletClass>* rebuilt_tablet,
                            scoped_refptr<log::Log>* rebuilt_log,
                            consensus::ConsensusBootstrapInfo* results);
@@ -148,31 +140,28 @@ class TabletBootstrap {
   // Sets '*has_blocks' to true if there was any data on disk for this tablet.
   Status OpenTablet(bool* has_blocks);
 
-  // Checks if a previous log recovery directory exists. If so, it deletes any
-  // files in the log dir and sets 'needs_recovery' to true, meaning that the
-  // previous recovery attempt should be retried from the recovery dir.
+  // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir
+  // and sets 'needs_recovery' to true, meaning that the previous recovery attempt should be retried
+  // from the recovery dir.
   //
-  // Otherwise, if there is a log directory with log files in it, renames that
-  // log dir to the log recovery dir and creates a new, empty log dir so that
-  // log replay can proceed. 'needs_recovery' is also returned as true in this
-  // case.
+  // Otherwise, if there is a log directory with log files in it, renames that log dir to the log
+  // recovery dir and creates a new, empty log dir so that log replay can proceed. 'needs_recovery'
+  // is also returned as true in this case.
   //
   // If no log segments are found, 'needs_recovery' is set to false.
   Status PrepareRecoveryDir(bool* needs_recovery);
 
-  // Opens the latest log segments for the Tablet that will allow to rebuild
-  // the tablet's soft state. If there are existing log segments in the tablet's
-  // log directly they are moved to a "log-recovery" directory which is deleted
-  // when the replay process is completed (as they have been duplicated in the
-  // current log directory).
+  // Opens the latest log segments for the Tablet that will allow to rebuild the tablet's soft
+  // state. If there are existing log segments in the tablet's log directly they are moved to a
+  // "log-recovery" directory which is deleted when the replay process is completed (as they have
+  // been duplicated in the current log directory).
   //
-  // If a "log-recovery" directory is already present, we will continue to replay
-  // from the "log-recovery" directory. Tablet metadata is updated once replay
-  // has finished from the "log-recovery" directory.
+  // If a "log-recovery" directory is already present, we will continue to replay from the
+  // "log-recovery" directory. Tablet metadata is updated once replay has finished from the
+  // "log-recovery" directory.
   Status OpenLogReaderInRecoveryDir();
 
-  // Opens a new log in the tablet's log directory.
-  // The directory is expected to be clean.
+  // Opens a new log in the tablet's log directory.  The directory is expected to be clean.
   Status OpenNewLog();
 
   // Finishes bootstrap, setting 'rebuilt_log' and 'rebuilt_tablet'.
@@ -180,9 +169,9 @@ class TabletBootstrap {
                          scoped_refptr<log::Log>* rebuilt_log,
                          std::shared_ptr<TabletClass>* rebuilt_tablet);
 
-  // Plays the log segments into the tablet being built.
-  // The process of playing the segments generates a new log that can be continued
-  // later on when then tablet is rebuilt and starts accepting writes from clients.
+  // Plays the log segments into the tablet being built.  The process of playing the segments
+  // generates a new log that can be continued later on when then tablet is rebuilt and starts
+  // accepting writes from clients.
   Status PlaySegments(consensus::ConsensusBootstrapInfo* results);
 
   void PlayWriteRequest(consensus::ReplicateMsg* replicate_msg);
@@ -205,12 +194,11 @@ class TabletBootstrap {
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
                                          consensus::ReplicateMsg* replicate);
 
-  // Decodes a HybridTime from the provided string and updates the clock
-  // with it.
+  // Decodes a HybridTime from the provided string and updates the clock with it.
   void UpdateClock(uint64_t hybrid_time);
 
-  // Removes the recovery directory and all files contained therein.
-  // Intended to be invoked after log replay successfully completes.
+  // Removes the recovery directory and all files contained therein.  Intended to be invoked after
+  // log replay successfully completes.
   Status RemoveRecoveryDir();
 
   // Return a log prefix string in the standard "T xxx P yyy" format.
@@ -234,29 +222,23 @@ class TabletBootstrap {
     Stats()
       : ops_read(0),
         ops_overwritten(0),
-        ops_committed(0),
         inserts_seen(0),
         inserts_ignored(0),
         mutations_seen(0),
-        mutations_ignored(0),
-        orphaned_commits(0) {
+        mutations_ignored(0) {
     }
 
     std::string ToString() const;
 
     // Number of REPLICATE messages read from the log
     int ops_read;
+
     // Number of REPLICATE messages which were overwritten by later entries.
     int ops_overwritten;
-    // Number of REPLICATE messages for which a matching COMMIT was found.
-    int ops_committed;
 
     // Number inserts/mutations seen and ignored.
     int inserts_seen, inserts_ignored;
     int mutations_seen, mutations_ignored;
-
-    // Number of COMMIT messages for which a corresponding REPLICATE was not found.
-    int orphaned_commits;
   } stats_;
 
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;

@@ -88,6 +88,7 @@ void YBTableTestBase::SetUp() {
     opts.num_masters = num_masters();
     opts.master_rpc_ports = master_rpc_ports();
     opts.num_tablet_servers = num_tablet_servers();
+    CustomizeExternalMiniCluster(&opts);
 
     external_mini_cluster_.reset(new ExternalMiniCluster(opts));
     mini_cluster_status = external_mini_cluster_->Start();

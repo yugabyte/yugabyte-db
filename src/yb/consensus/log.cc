@@ -105,9 +105,6 @@ DEFINE_int32(log_inject_latency_ms_mean, 100,
 DEFINE_int32(log_inject_latency_ms_stddev, 100,
              "The standard deviation of latency to inject in the log. "
              "Only takes effect if --log_inject_latency is true");
-DEFINE_test_flag(double, fault_crash_before_append_commit, 0.0,
-                 "Fraction of the time when the server will crash just before appending a "
-                 "COMMIT message to the log.");
 TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
@@ -134,8 +131,7 @@ using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using strings::Substitute;
 
-// This class is responsible for managing the thread that appends to
-// the log file.
+// This class is responsible for managing the thread that appends to the log file.
 class Log::AppendThread {
  public:
   explicit AppendThread(Log* log);
@@ -143,10 +139,9 @@ class Log::AppendThread {
   // Initializes the objects and starts the thread.
   Status Init();
 
-  // Waits until the last enqueued elements are processed, sets the
-  // Appender thread to closing state. If any entries are added to the
-  // queue during the process, invoke their callbacks' 'OnFailure()'
-  // method.
+  // Waits until the last enqueued elements are processed, sets the Appender thread to closing
+  // state. If any entries are added to the queue during the process, invoke their callbacks'
+  // 'OnFailure()' method.
   void Shutdown();
 
  private:
@@ -185,11 +180,10 @@ void Log::AppendThread::RunThread() {
           + log_->interval_durable_wal_write_;
     }
 
-    // We shut down the entry_queue when it's time to shut down the append
-    // thread, which causes this call to return false, while still populating
-    // the entry_batches vector with the final set of log entry batches that
-    // were enqueued. We finish processing this last bunch of log entry batches
-    // before exiting the main RunThread() loop.
+    // We shut down the entry_queue when it's time to shut down the append thread, which causes this
+    // call to return false, while still populating the entry_batches vector with the final set of
+    // log entry batches that were enqueued. We finish processing this last bunch of log entry
+    // batches before exiting the main RunThread() loop.
     if (PREDICT_FALSE(!log_->entry_queue()->BlockingDrainTo(&entry_batches,
                                                             wait_timeout_deadline))) {
       shutting_down = true;
@@ -210,10 +204,8 @@ void Log::AppendThread::RunThread() {
         LOG(ERROR) << "Error appending to the log: " << s.ToString();
         DLOG(FATAL) << "Aborting: " << s.ToString();
         entry_batch->set_failed_to_append();
-        // TODO If a single transaction fails to append, should we
-        // abort all subsequent transactions in this batch or allow
-        // them to be appended? What about transactions in future
-        // batches?
+        // TODO If a single operation fails to append, should we abort all subsequent operations
+        // in this batch or allow them to be appended? What about operations in future batches?
         if (!entry_batch->callback().is_null()) {
           entry_batch->callback().Run(s);
         }
@@ -240,13 +232,11 @@ void Log::AppendThread::RunThread() {
       VLOG(2) << "Synchronized " << entry_batches.size() << " entry batches";
       SCOPED_WATCH_STACK(100);
       for (LogEntryBatch* entry_batch : entry_batches) {
-        if (PREDICT_TRUE(!entry_batch->failed_to_append()
-                         && !entry_batch->callback().is_null())) {
+        if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
           entry_batch->callback().Run(Status::OK());
         }
-        // It's important to delete each batch as we see it, because
-        // deleting it may free up memory from memory trackers, and the
-        // callback of a later batch may want to use that memory.
+        // It's important to delete each batch as we see it, because deleting it may free up memory
+        // from memory trackers, and the callback of a later batch may want to use that memory.
         delete entry_batch;
       }
       entry_batches.clear();
@@ -266,8 +256,8 @@ void Log::AppendThread::Shutdown() {
   }
 }
 
-// This task is submitted to allocation_pool_ in order to
-// asynchronously pre-allocate new log segments.
+// This task is submitted to allocation_pool_ in order to asynchronously pre-allocate new log
+// segments.
 void Log::SegmentAllocationTask() {
   allocation_status_.Set(PreAllocateNewSegment());
 }
@@ -343,9 +333,8 @@ Status Log::Init() {
                                 metric_entity_.get(),
                                 &reader_));
 
-  // The case where we are continuing an existing log.
-  // We must pick up where the previous WAL left off in terms of
-  // sequence numbers.
+  // The case where we are continuing an existing log.  We must pick up where the previous WAL left
+  // off in terms of sequence numbers.
   if (reader_->num_segments() != 0) {
     VLOG(1) << "Using existing " << reader_->num_segments()
             << " segments from path: " << tablet_wal_path_;
@@ -382,9 +371,7 @@ Status Log::AsyncAllocateSegment() {
   CHECK_EQ(allocation_state_, kAllocationNotStarted);
   allocation_status_.Reset();
   allocation_state_ = kAllocationInProgress;
-  RETURN_NOT_OK(allocation_pool_->SubmitClosure(
-                  Bind(&Log::SegmentAllocationTask, Unretained(this))));
-  return Status::OK();
+  return allocation_pool_->SubmitClosure(Bind(&Log::SegmentAllocationTask, Unretained(this)));
 }
 
 Status Log::CloseCurrentSegment() {
@@ -396,9 +383,7 @@ Status Log::CloseCurrentSegment() {
           << ": " << footer_builder_.ShortDebugString();
 
   footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
-  RETURN_NOT_OK(active_segment_->WriteFooterAndClose(footer_builder_));
-
-  return Status::OK();
+  return active_segment_->WriteFooterAndClose(footer_builder_);
 }
 
 Status Log::RollOver() {
@@ -428,13 +413,13 @@ Status Log::Reserve(LogEntryTypePB type,
     CHECK_EQ(kLogWriting, log_state_);
   }
 
-  // In DEBUG builds, verify that all of the entries in the batch match the specified type.
-  // In non-debug builds the foreach loop gets optimized out.
-  #ifndef NDEBUG
+  // In DEBUG builds, verify that all of the entries in the batch match the specified type.  In
+  // non-debug builds the foreach loop gets optimized out.
+#ifndef NDEBUG
   for (const LogEntryPB& entry : entry_batch->entry()) {
     DCHECK_EQ(entry.type(), type) << "Bad batch: " << entry_batch->DebugString();
   }
-  #endif
+#endif
 
   int num_ops = entry_batch->entry_size();
   gscoped_ptr<LogEntryBatch> new_entry_batch(new LogEntryBatch(type, entry_batch, num_ops));
@@ -581,11 +566,9 @@ Status Log::UpdateIndexForBatch(const LogEntryBatch& batch,
 void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
   footer_builder_.set_num_entries(footer_builder_.num_entries() + batch->count());
 
-  // We keep track of the last-written OpId here.
-  // This is needed to initialize Consensus on startup.
-  // We also retrieve the opid of the first operation in the batch so that, if
-  // we roll over to a new segment, we set the first operation in the footer
-  // immediately.
+  // We keep track of the last-written OpId here.  This is needed to initialize Consensus on
+  // startup.  We also retrieve the OpId of the first operation in the batch so that, if we roll
+  // over to a new segment, we set the first operation in the footer immediately.
   if (batch->type_ == REPLICATE) {
     // Update the index bounds for the current segment.
     for (const LogEntryPB& entry_pb : batch->entry_batch_pb_.entry()) {
@@ -688,17 +671,17 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   for (int i = 0; i < segments_to_gc->size(); i++) {
     const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
 
-    // Segments here will always have a footer, since we don't return the in-progress segment
-    // up above. However, segments written by older YB builds may not have the timestamp
-    // info. In that case, we're allowed to GC them.
+    // Segments here will always have a footer, since we don't return the in-progress segment up
+    // above. However, segments written by older YB builds may not have the timestamp info (TODO:
+    // make sure we indeed care about these old builds). In that case, we're allowed to GC them.
     if (!segment->footer().has_close_timestamp_micros()) continue;
 
     int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
     if (age_seconds < FLAGS_log_min_seconds_to_retain) {
       VLOG(2) << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
               << "cannot GC it yet due to configured time-based retention policy.";
-      // Truncate the list of segments to GC here -- if this one is too new, then
-      // all later ones are also too new.
+      // Truncate the list of segments to GC here -- if this one is too new, then all later ones are
+      // also too new.
       segments_to_gc->resize(i);
       break;
     }
@@ -724,8 +707,7 @@ Status Log::Append(LogEntryPB* phys_entry) {
 }
 
 Status Log::WaitUntilAllFlushed() {
-  // In order to make sure we empty the queue we need to use
-  // the async api.
+  // In order to make sure we empty the queue we need to use the async api.
   LogEntryBatchPB entry_batch;
   entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
   LogEntryBatch* reserved_entry_batch;
@@ -763,8 +745,8 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
         *num_gced = 0;
         return Status::OK();
       }
-      // Trim the prefix of segments from the reader so that they are no longer
-      // referenced by the log.
+      // Trim the prefix of segments from the reader so that they are no longer referenced by the
+      // log.
       RETURN_NOT_OK(reader_->TrimSegmentsUpToAndIncluding(
           segments_to_delete[segments_to_delete.size() - 1]->header().sequence_number()));
     }
@@ -778,8 +760,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       (*num_gced)++;
     }
 
-    // Determine the minimum remaining replicate index in order to properly GC
-    // the index chunks.
+    // Determine the minimum remaining replicate index in order to properly GC the index chunks.
     int64_t min_remaining_op_idx = reader_->GetMinReplicateIndex();
     if (min_remaining_op_idx > 0) {
       log_index_->GC(min_remaining_op_idx);
@@ -842,8 +823,7 @@ Status Log::Close() {
   switch (log_state_) {
     case kLogWriting:
       if (log_hooks_) {
-        RETURN_NOT_OK_PREPEND(log_hooks_->PreClose(),
-                              "PreClose hook failed");
+        RETURN_NOT_OK_PREPEND(log_hooks_->PreClose(), "PreClose hook failed");
       }
       RETURN_NOT_OK(Sync());
       RETURN_NOT_OK(CloseCurrentSegment());
@@ -899,8 +879,8 @@ Status Log::PreAllocateNewSegment() {
   if (options_.preallocate_segments) {
     uint64_t next_segment_size = NextSegmentDesiredSize();
     TRACE("Preallocating $0 byte segment in $1", next_segment_size, next_segment_path_);
-    // TODO (perf) zero the new segments -- this could result in
-    // additional performance improvements.
+    // TODO (perf) zero the new segments -- this could result in additional performance
+    // improvements.
     RETURN_NOT_OK(next_segment_file_->PreAllocate(next_segment_size));
   }
 
@@ -949,8 +929,8 @@ Status Log::SwitchToAllocatedSegment() {
 
   RETURN_NOT_OK(new_segment->WriteHeaderAndOpen(header));
 
-  // Transform the currently-active segment into a readable one, since we
-  // need to be able to replay the segments for other peers.
+  // Transform the currently-active segment into a readable one, since we need to be able to replay
+  // the segments for other peers.
   {
     if (active_segment_.get() != nullptr) {
       std::lock_guard<percpu_rwlock> l(state_lock_);
@@ -986,8 +966,7 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
   scoped_refptr<ReadableLogSegment> readable_segment(
       new ReadableLogSegment(active_segment_->path(),
                              readable_file));
-  // Note: active_segment_->header() will only contain an initialized PB if we
-  // wrote the header out.
+  // Note: active_segment_->header() will only contain an initialized PB if we wrote the header out.
   RETURN_NOT_OK(readable_segment->Init(active_segment_->header(),
                                        active_segment_->footer(),
                                        active_segment_->first_entry_offset()));
@@ -1013,6 +992,9 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
 Log::~Log() {
   WARN_NOT_OK(Close(), "Error closing log");
 }
+
+// ------------------------------------------------------------------------------------------------
+// LogEntryBatch
 
 LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_pb, size_t count)
     : type_(type),

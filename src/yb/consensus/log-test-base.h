@@ -95,9 +95,8 @@ const char* kTestTablet = "test-log-tablet";
 const bool APPEND_SYNC = true;
 const bool APPEND_ASYNC = false;
 
-// Append a single batch of 'count' NoOps to the log.
-// If 'size' is not NULL, increments it by the expected increase in log size.
-// Increments 'op_id''s index once for each operation logged.
+// Append a single batch of 'count' NoOps to the log.  If 'size' is not NULL, increments it by the
+// expected increase in log size.  Increments 'op_id''s index once for each operation logged.
 static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                            Log* log,
                                            OpId* op_id,
@@ -116,8 +115,8 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
     op_id->set_index(op_id->index() + 1);
 
     if (size) {
-      // If we're tracking the sizes we need to account for the fact that the Log wraps the
-      // log entry in an LogEntryBatchPB, and each actual entry will have a one-byte tag.
+      // If we're tracking the sizes we need to account for the fact that the Log wraps the log
+      // entry in an LogEntryBatchPB, and each actual entry will have a one-byte tag.
       *size += repl->ByteSize() + 1;
     }
     replicates.push_back(replicate);
@@ -129,8 +128,7 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
   }
 
   Synchronizer s;
-  RETURN_NOT_OK(log->AsyncAppendReplicates(replicates,
-                                           s.AsStatusCallback()));
+  RETURN_NOT_OK(log->AsyncAppendReplicates(replicates, s.AsStatusCallback()));
   RETURN_NOT_OK(s.Wait());
   return Status::OK();
 }
@@ -138,7 +136,7 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
                                           Log* log,
                                           OpId* op_id,
-                                          int* size = NULL) {
+                                          int* size = nullptr) {
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
 }
 
@@ -185,8 +183,8 @@ class LogTestBase : public YBTest {
   }
 
   void CheckRightNumberOfSegmentFiles(int expected) {
-    // Test that we actually have the expected number of files in the fs.
-    // We should have n segments plus '.' and '..'
+    // Test that we actually have the expected number of files in the fs.  We should have n segments
+    // plus '.' and '..'
     vector<string> files;
     ASSERT_OK(env_->GetChildren(tablet_wal_path_, &files));
     int count = 0;
@@ -252,10 +250,6 @@ class LogTestBase : public YBTest {
     }
   }
 
-  static void CheckCommitResult(const Status& s) {
-    CHECK_OK(s);
-  }
-
   // Appends 'count' ReplicateMsgs and the corresponding CommitMsgs to the log
   void AppendReplicateBatchToLog(int count, TableType table_type, bool sync = true) {
     for (int i = 0; i < count; i++) {
@@ -265,17 +259,14 @@ class LogTestBase : public YBTest {
     }
   }
 
-  // Append a single NO_OP entry. Increments op_id by one.
-  // If non-NULL, and if the write is successful, 'size' is incremented
-  // by the size of the written operation.
+  // Append a single NO_OP entry. Increments op_id by one.  If non-NULL, and if the write is
+  // successful, 'size' is incremented by the size of the written operation.
   CHECKED_STATUS AppendNoOp(OpId* op_id, int* size = NULL) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
-  // Append a number of no-op entries to the log.
-  // Increments op_id's index by the number of records written.
-  // If non-NULL, 'size' keeps track of the size of the operations
-  // successfully written.
+  // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
+  // written.  If non-NULL, 'size' keeps track of the size of the operations successfully written.
   CHECKED_STATUS AppendNoOps(OpId* op_id, int num, int* size = NULL) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));

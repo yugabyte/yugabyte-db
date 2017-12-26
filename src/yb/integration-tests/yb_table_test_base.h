@@ -93,6 +93,8 @@ class YBTableTestBase : public YBTest {
     return external_mini_cluster_.get();
   }
 
+  virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
+
   vector<string> master_rpc_addresses_as_strings() {
     vector<string> host_ports;
     int num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()

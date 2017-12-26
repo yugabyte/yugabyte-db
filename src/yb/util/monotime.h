@@ -141,9 +141,8 @@ class MonoTime {
   static const MonoTime kMax;
   static const MonoTime kUninitialized;
 
-  // The coarse monotonic time is faster to retrieve, but "only"
-  // accurate to within a millisecond or two.  The speed difference will
-  // depend on your timer hardware.
+  // The coarse monotonic time is faster to retrieve, but "only" accurate to within a millisecond or
+  // two.  The speed difference will depend on your timer hardware.
   static MonoTime Now();
 
   // Return MonoTime equal to farthest possible time into the future.

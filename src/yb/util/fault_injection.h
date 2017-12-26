@@ -34,8 +34,7 @@
 
 #include "yb/gutil/macros.h"
 
-// With some probability, crash at the current point in the code
-// by issuing LOG(FATAL).
+// With some probability, crash at the current point in the code by issuing LOG(FATAL).
 //
 // The probability is determined by the 'fraction_flag' argument.
 //
@@ -49,16 +48,14 @@
 #define MAYBE_FAULT(fraction_flag) \
   yb::fault_injection::MaybeFault(AS_STRING(fraction_flag), fraction_flag)
 
-// Inject a uniformly random amount of latency between 0 and the configured
-// number of milliseconds.
+// Inject a uniformly random amount of latency between 0 and the configured number of milliseconds.
 //
-// As with above, if the flag is configured to be <= 0, then this will be evaluated
-// inline and should be fast, even in hot code path.
+// As with above, if the flag is configured to be <= 0, then this will be evaluated inline and
+// should be fast, even in hot code path.
 #define MAYBE_INJECT_RANDOM_LATENCY(max_ms_flag) \
   yb::fault_injection::MaybeInjectRandomLatency(max_ms_flag);
 
-// Implementation details below.
-// Use the MAYBE_FAULT macro instead.
+// Implementation details below.  Use the MAYBE_FAULT macro instead.
 namespace yb {
 namespace fault_injection {
 

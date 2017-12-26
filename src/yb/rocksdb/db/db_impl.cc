@@ -116,10 +116,13 @@
 #include "yb/rocksdb/util/xfunc.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/fault_injection.h"
 
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
 DEFINE_bool(flush_rocksdb_on_shutdown, true,
             "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
+DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
+              "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
 namespace rocksdb {
 
@@ -1589,6 +1592,7 @@ Status DBImpl::FlushMemTableToOutputFile(
   }
   RecordFlushIOStats();
   if (s.ok()) {
+    MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
 #ifndef ROCKSDB_LITE
     // may temporarily unlock and lock the mutex.
     NotifyOnFlushCompleted(cfd, &file_meta, mutable_cf_options,

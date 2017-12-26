@@ -91,16 +91,16 @@ class BootstrapTest : public LogTestBase {
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
     RETURN_NOT_OK(TabletMetadata::LoadOrCreate(
-      fs_manager_.get(),
-      log::kTestTable,
-      log::kTestTablet,
-      log::kTestTable,
-      kTableType,
-      schema,
-      partition.first,
-      partition.second,
-      TABLET_DATA_READY,
-      meta));
+        fs_manager_.get(),
+        log::kTestTable,
+        log::kTestTablet,
+        log::kTestTable,
+        kTableType,
+        schema,
+        partition.first,
+        partition.second,
+        TABLET_DATA_READY,
+        meta));
     return (*meta)->Flush();
   }
 
@@ -160,10 +160,6 @@ class BootstrapTest : public LogTestBase {
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
     gscoped_ptr<RowwiseIterator> iter;
-    // TODO: there seems to be something funny with hybrid_times in this test.
-    // Unless we explicitly scan at a snapshot including all hybrid_times, we don't
-    // see the bootstrapped operation. This is likely due to KUDU-138 -- perhaps
-    // we aren't properly setting up the clock after bootstrap.
     ASSERT_OK(tablet->NewRowIterator(schema_, boost::none, &iter));
     ScanSpec scan_spec;
     ASSERT_OK(iter->Init(&scan_spec));
@@ -174,7 +170,7 @@ class BootstrapTest : public LogTestBase {
   }
 };
 
-// Tests a normal bootstrap scenario
+// Tests a normal bootstrap scenario.
 TEST_F(BootstrapTest, TestBootstrap) {
   BuildLog();
   const auto current_op_id = MakeOpId(1, current_index_);
@@ -187,8 +183,8 @@ TEST_F(BootstrapTest, TestBootstrap) {
   IterateTabletRows(tablet.get(), &results);
 }
 
-// Tests attempting a local bootstrap of a tablet that was in the middle of a
-// remote bootstrap before "crashing".
+// Tests attempting a local bootstrap of a tablet that was in the middle of a remote bootstrap
+// before "crashing".
 TEST_F(BootstrapTest, TestIncompleteRemoteBootstrap) {
   BuildLog();
 
@@ -201,9 +197,8 @@ TEST_F(BootstrapTest, TestIncompleteRemoteBootstrap) {
   LOG(INFO) << "State is still TABLET_DATA_COPYING, as expected: " << s.ToString();
 }
 
-// Test for where the server crashes in between REPLICATE and COMMIT.
-// Bootstrap should not replay the operation, but should return it in
-// the ConsensusBootstrapInfo
+// Test a crash before a REPLICATE message is marked as committed by a future REPLICATE message.
+// Bootstrap should not replay the operation, but should return it in the ConsensusBootstrapInfo.
 TEST_F(BootstrapTest, TestOrphanedReplicate) {
   BuildLog();
 
@@ -219,7 +214,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   shared_ptr<TabletClass> tablet;
   ASSERT_OK(BootstrapTestTablet(0, 0, &tablet, &boot_info));
 
-  // Table should be empty because we didn't replay the REPLICATE
+  // Table should be empty because we didn't replay the REPLICATE.
   vector<string> results;
   IterateTabletRows(tablet.get(), &results);
   ASSERT_EQ(0, results.size());
@@ -308,9 +303,9 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
             results[0]);
 }
 
-// Test that we do not crash when a consensus-only operation has a hybrid_time
-// that is higher than a hybrid_time assigned to a write operation that follows
-// it in the log.
+// Test that we do not crash when a consensus-only operation has a hybrid_time that is higher than a
+// hybrid_time assigned to a write operation that follows it in the log.
+// TODO: this must not happen in YB. Ensure this is not happening and update the test.
 TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   BuildLog();
 

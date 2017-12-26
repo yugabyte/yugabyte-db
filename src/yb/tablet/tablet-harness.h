@@ -60,9 +60,8 @@ namespace tablet {
 //
 // The provided schema must include column IDs.
 //
-// The partition schema will have no hash components, and a single range
-// component over the primary key columns. The partition will cover the
-// entire partition-key space.
+// The partition schema will have no hash components, and a single range component over the primary
+// key columns. The partition will cover the entire partition-key space.
 static std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schema) {
   // Create a default partition schema.
   PartitionSchema partition_schema;

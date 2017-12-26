@@ -1092,6 +1092,14 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
   return Status::OK();
 }
 
+Status ExternalMiniCluster::SetFlagOnTServers(const string& flag, const string& value) {
+  for (const auto& tablet_server : tablet_servers_) {
+    RETURN_NOT_OK(SetFlag(tablet_server.get(), flag, value));
+  }
+  return Status::OK();
+}
+
+
 uint16_t ExternalMiniCluster::AllocateFreePort() {
   // This will take a file lock ensuring the port does not get claimed by another thread/process
   // and add it to our vector of such locks that will be freed on minicluster shutdown.
@@ -1421,8 +1429,8 @@ pid_t ExternalDaemon::pid() const {
 void ExternalDaemon::Shutdown() {
   if (!process_) return;
 
-  // Before we kill the process, store the addresses. If we're told to
-  // start again we'll reuse these.
+  // Before we kill the process, store the addresses. If we're told to start again we'll reuse
+  // these.
   bound_rpc_ = bound_rpc_hostport();
   bound_http_ = bound_http_hostport();
 
@@ -1640,6 +1648,10 @@ Status ExternalMaster::Start(bool shell_mode) {
 }
 
 Status ExternalMaster::Restart() {
+  if (!IsProcessAlive()) {
+    // Make sure this function could be safely called if the process has already crashed.
+    Shutdown();
+  }
   // We store the addresses on shutdown so make sure we did that first.
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Master cannot be restarted. Must call Shutdown() first.");
@@ -1729,6 +1741,10 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
 }
 
 Status ExternalTabletServer::Restart(bool start_cql_proxy) {
+  if (!IsProcessAlive()) {
+    // Make sure this function could be safely called if the process has already crashed.
+    Shutdown();
+  }
   // We store the addresses on shutdown so make sure we did that first.
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
