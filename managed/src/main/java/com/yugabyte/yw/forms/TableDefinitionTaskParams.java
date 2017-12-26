@@ -26,7 +26,6 @@ public class TableDefinitionTaskParams extends TableTaskParams {
 
     TableDefinitionTaskParams params = new TableDefinitionTaskParams();
 
-    params.cloud = universe.getUniverseDetails().cloud;
     params.universeUUID = universe.universeUUID;
     params.expectedUniverseVersion = universe.getUniverseDetails().expectedUniverseVersion;
     params.tableUUID = tableUUID;

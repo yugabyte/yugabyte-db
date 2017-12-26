@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.forms.RollingRestartParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -235,10 +236,10 @@ public class UpgradeUniverse extends UniverseTaskBase {
                                                    UpgradeTaskType type,
                                                    UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    // Set the cloud name.
-    params.cloud = Common.CloudType.valueOf(node.cloudInfo.cloud);
+    UserIntent userIntent = Universe.get(taskParams().universeUUID).getUniverseDetails()
+        .retrievePrimaryCluster().userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = Universe.get(taskParams().universeUUID).getUniverseDetails().retrievePrimaryCluster().userIntent.deviceInfo;
+    params.deviceInfo = userIntent.deviceInfo;
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -260,7 +261,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
     }
 
-    if (params.cloud == Common.CloudType.onprem) {
+    if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       params.instanceType = node.cloudInfo.instance_type;
     }
 

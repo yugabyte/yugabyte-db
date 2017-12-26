@@ -99,7 +99,6 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
     params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator, numIterations);
-    params.cloud = Common.CloudType.valueOf(provider.code);
 
     return params;
   }
@@ -146,7 +145,6 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
     params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
-    params.cloud = Common.CloudType.valueOf(provider.code);
 
     return params;
   }

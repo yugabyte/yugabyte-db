@@ -130,7 +130,6 @@ public class NodeInstanceController extends AuthenticatedController {
       taskParams.universeUUID = universe.universeUUID;
       taskParams.expectedUniverseVersion = universe.version;
       taskParams.nodeName = nodeName;
-      taskParams.cloud = universe.getUniverseDetails().cloud;
       LOG.info("Deleting Node {} from  universe {} : name={} at version={}.",
         nodeName, universe.universeUUID, universe.name, universe.version);
       UUID taskUUID = commissioner.submit(TaskType.DeleteNodeFromUniverse, taskParams);

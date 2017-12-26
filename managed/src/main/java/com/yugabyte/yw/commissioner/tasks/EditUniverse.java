@@ -235,8 +235,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup(subtaskGroupName, executor);
     // Create the task params.
     ChangeMasterConfig.Params params = new ChangeMasterConfig.Params();
-    // Set the cloud name.
-    params.cloud = taskParams().retrievePrimaryCluster().userIntent.providerType;
     // Set the azUUID
     params.azUuid = node.azUuid;
     // Add the node name.
