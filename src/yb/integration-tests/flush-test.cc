@@ -10,10 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include <chrono>
+
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/rocksdb/memory_monitor.h"
+
+using namespace std::literals; // NOLINT
 
 DECLARE_int64(global_memstore_size_percentage);
 DECLARE_int64(global_memstore_size_mb_max);
@@ -71,14 +76,17 @@ class FlushITest : public YBTest {
     return total_flushes;
   }
 
+  size_t BytesWritten() {
+    return workload_->rows_inserted() * kPayloadBytes;
+  }
+
   void WriteAtLeast(size_t size_bytes) {
     workload_->Start();
     LOG(INFO) << "Waiting until we've written at least " << size_bytes << " bytes ...";
-    while (workload_->rows_inserted() * kPayloadBytes < size_bytes) {
-      SleepFor(MonoDelta::FromMilliseconds(10));
-    }
+    ASSERT_OK(
+        WaitFor([this, size_bytes] { return BytesWritten() >= size_bytes; }, 60s, "Write", 10ms));
     workload_->StopAndJoin();
-    LOG(INFO) << "Wrote " << size_bytes << " bytes.";
+    LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
   }
 
   const size_t kTabletLimitMB = 100;
@@ -90,14 +98,14 @@ class FlushITest : public YBTest {
 };
 
 TEST_F(FlushITest, TestFlushHappens) {
-  size_t total_flushes_before = TotalFlushes();
+  const size_t total_flushes_before = TotalFlushes();
   WriteAtLeast((kServerLimitMB << 20) + 1);
-  size_t total_flushes = TotalFlushes() - total_flushes_before;
-  LOG(INFO) << "Flushed " << total_flushes << " times.";
-  while (TotalFlushes() - total_flushes_before == 0) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-  ASSERT_GT(total_flushes, 0);
+  ASSERT_OK(WaitFor(
+      [this, total_flushes_before] { return TotalFlushes() > total_flushes_before; },
+      60s, "Flush", 10ms));
+  const size_t flushes_since_write = TotalFlushes() - total_flushes_before;
+  LOG(INFO) << "Flushed " << flushes_since_write << " times.";
+  ASSERT_GT(flushes_since_write, 0);
 }
 
 } // namespace tserver
