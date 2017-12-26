@@ -43,6 +43,7 @@
 
 DECLARE_uint64(initial_seqno);
 DECLARE_uint64(bulk_load_num_files_per_tablet);
+DECLARE_bool(enable_load_balancing);
 
 using namespace std::literals;
 
@@ -83,6 +84,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Use a high enough initial sequence number.
     FLAGS_initial_seqno = 1 << 20;
+
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
@@ -366,6 +368,15 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   Random random_;
 };
 
+class YBBulkLoadTestWithoutRebalancing : public YBBulkLoadTest {
+ public:
+  void SetUp() override {
+    FLAGS_enable_load_balancing = false;
+    YBBulkLoadTest::SetUp();
+  }
+};
+
+
 TEST_F(YBBulkLoadTest, VerifyPartitions) {
   for (int i = 0; i < kNumIterations; i++) {
     string tablet_id;
@@ -395,7 +406,7 @@ TEST_F(YBBulkLoadTest, InvalidLines) {
   ASSERT_NOK(partition_generator_->LookupTabletId("123,123.2", &tablet_id, &partition_key));
 }
 
-TEST_F(YBBulkLoadTest, TestCLITool) {
+TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
   string exe_path = GetToolPath(kPartitionToolName);
   vector<string> argv = {kPartitionToolName, "-master_addresses", master_addresses_comma_separated_,
       "-table_name", kTableName, "-namespace_name", kNamespace};
