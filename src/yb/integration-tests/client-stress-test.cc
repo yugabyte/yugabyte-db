@@ -40,9 +40,11 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 
 METRIC_DECLARE_entity(tablet);
@@ -51,6 +53,7 @@ METRIC_DECLARE_counter(follower_memory_pressure_rejections);
 
 using strings::Substitute;
 using std::vector;
+using namespace std::literals;
 
 namespace yb {
 
@@ -228,11 +231,10 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     // Note that if this number is set too low, the test will fail in a CHECK in TestWorkload
     // after retries are exhausted when writing an entry. This happened e.g. when a substantial
     // upfront memory overhead was introduced by adding a large lock-free queue in PrepareThread.
-    const int kMemLimitBytes = 64 * 1024 * 1024;
+    const int kMemLimitBytes = RegularBuildVsSanitizers(64_MB, 2_MB);
     ExternalMiniClusterOptions opts;
     opts.extra_tserver_flags.push_back(Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes));
-    opts.extra_tserver_flags.push_back("--memory_limit_soft_percentage=0");
-    opts.extra_tserver_flags.push_back("--memory_limit_soft_percentage=0");
+    opts.extra_tserver_flags.emplace_back("--memory_limit_soft_percentage=0");
 
     return opts;
   }
@@ -247,20 +249,20 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   // to QL. Cluster check is disabled, because checksum checking is failing for Kudu tables here.
   DontVerifyClusterBeforeNextTearDown();
 
-  // TSAN tests run much slower, so we don't want to wait for as many
+  // Sanitized tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.
-  const int64_t kMinRejections = NonTsanVsTsan(100, 20);
+  const int64_t kMinRejections = RegularBuildVsSanitizers(100, 20);
 
   const MonoDelta kMaxWaitTime = MonoDelta::FromSeconds(60);
 
   TestWorkload work(cluster_.get());
+  work.set_write_batch_size(RegularBuildVsSanitizers(50, 5));
 
   work.Setup();
   work.Start();
 
   // Wait until we've rejected some number of requests.
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(kMaxWaitTime);
+  MonoTime deadline = MonoTime::Now() + kMaxWaitTime;
   while (true) {
     int64_t total_num_rejections = 0;
 
