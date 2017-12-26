@@ -4249,7 +4249,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
   // If the locations are cached.
   if (!locs.empty()) {
-    if (locs.size() != cstate.config().peers_size()) {
+    if (cstate.IsInitialized() && locs.size() != cstate.config().peers_size()) {
       LOG(WARNING) << "Cached tablet replicas " << locs.size() << " does not match consensus "
                    << cstate.config().peers_size();
     }
