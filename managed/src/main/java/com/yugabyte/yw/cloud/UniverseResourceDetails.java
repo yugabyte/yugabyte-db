@@ -95,7 +95,8 @@ public class UniverseResourceDetails {
 
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
-      if (userIntent.deviceInfo.ebsType != null && params.cloud.equals(Common.CloudType.aws)) {
+      if (userIntent.deviceInfo.ebsType != null &&
+          params.retrievePrimaryCluster().userIntent.providerType.equals(Common.CloudType.aws)) {
         Integer numVolumes = userIntent.deviceInfo.numVolumes;
         Integer diskIops = userIntent.deviceInfo.diskIops;
         Integer volumeSize = userIntent.deviceInfo.volumeSize;

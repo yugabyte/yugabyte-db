@@ -46,7 +46,6 @@ const mapDispatchToProps = (dispatch) => {
       const allColumns = partitionKeyList.concat(clusteringColumnList, otherColumnList);
 
       const payload = {};
-      payload.cloud = currentUniverse.universeDetails.cloud;
       payload.universeUUID = currentUniverse.universeUUID;
       payload.tableName = values.tableName;
       payload.tableType = "YQL_TABLE_TYPE";

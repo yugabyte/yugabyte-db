@@ -86,7 +86,8 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   return {
-    universe: state.universe
+    universe: state.universe,
+    providers: state.cloud.providers
   };
 }
 

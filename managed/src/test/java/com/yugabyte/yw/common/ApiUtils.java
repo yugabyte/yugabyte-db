@@ -43,7 +43,6 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.cloud = cloudType;
         UserIntent userIntent = new UserIntent();
         userIntent.providerType = cloudType;
         userIntent.accessKeyCode = "yugabyte-default";
