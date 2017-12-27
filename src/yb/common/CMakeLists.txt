@@ -87,7 +87,6 @@ set(COMMON_SRCS
   partition.cc
   predicate_encoder.cc
   rowblock.cc
-  row_changelist.cc
   row_key-util.cc
   scan_predicate.cc
   scan_spec.cc
@@ -135,7 +134,6 @@ ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
 ADD_YB_TEST(predicate-test)
 ADD_YB_TEST(predicate_encoder-test)
-ADD_YB_TEST(row_changelist-test)
 ADD_YB_TEST(row_key-util-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)

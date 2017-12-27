@@ -32,10 +32,11 @@
 #ifndef YB_COMMON_ROW_H
 #define YB_COMMON_ROW_H
 
-#include <glog/logging.h>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/common/types.h"
 #include "yb/common/schema.h"
@@ -181,7 +182,8 @@ class RowProjector {
   // Use this method only on the read-path.
   // The col_schema.read_default_value() will be used.
   template<class RowType1, class RowType2, class ArenaType>
-  CHECKED_STATUS ProjectRowForRead(const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
+  CHECKED_STATUS ProjectRowForRead(
+      const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
     return ProjectRow<RowType1, RowType2, ArenaType, true>(src_row, dst_row, dst_arena);
   }
 
@@ -244,7 +246,8 @@ class RowProjector {
   // Project a row from one schema into another, using the projection mapping.
   // Indirected data is copied into the provided dst arena.
   template<class RowType1, class RowType2, class ArenaType, bool FOR_READ>
-  CHECKED_STATUS ProjectRow(const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
+  CHECKED_STATUS ProjectRow(
+      const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
     DCHECK_SCHEMA_EQ(*base_schema_, *src_row.schema());
     DCHECK_SCHEMA_EQ(*projection_, *dst_row->schema());
 
@@ -272,8 +275,6 @@ class RowProjector {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(RowProjector);
-
   vector<ProjectionIdxMapping> base_cols_mapping_;
   vector<ProjectionIdxMapping> adapter_cols_mapping_;
   vector<size_t> projection_defaults_;
@@ -281,103 +282,8 @@ class RowProjector {
   const Schema* base_schema_;
   const Schema* projection_;
   bool is_identity_;
-};
 
-// Projection mapping from the schema used to encode a RowChangeList
-// to the new specified schema. Used on the read/compaction path to
-// project the deltas to the user/latest specified projection.
-//
-// A projection may contain:
-//  - columns that are present in the "base schema"
-//  - columns that are present in the "base schema" but with different types.
-//    In this case an adapter should be used (e.g. INT8 to INT64, INT8 to STRING, ...)
-//  - columns that are not present in the "base schema".
-//    These columns are not considered since they cannot be in the delta.
-class DeltaProjector {
- public:
-  // The delta_schema and projection must remain valid for the lifetime
-  // of the object.
-  DeltaProjector(const Schema* delta_schema, const Schema* projection)
-    : delta_schema_(delta_schema), projection_(projection),
-      is_identity_(delta_schema->Equals(*projection)) {
-  }
-
-  CHECKED_STATUS Init() {
-    // TODO: doesn't look like this uses the is_identity performance
-    // shortcut
-    return projection_->GetProjectionMapping(*delta_schema_, this);
-  }
-
-  bool is_identity() const { return is_identity_; }
-
-  const Schema* projection() const { return projection_; }
-  const Schema* delta_schema() const { return delta_schema_; }
-
-  bool get_base_col_from_proj_idx(size_t proj_col_idx, size_t *base_col_idx) const {
-    return FindCopy(base_cols_mapping_, proj_col_idx, base_col_idx);
-  }
-
-  bool get_adapter_col_from_proj_idx(size_t proj_col_idx, size_t *base_col_idx) const {
-    return FindCopy(adapter_cols_mapping_, proj_col_idx, base_col_idx);
-  }
-
-  // TODO: Discourage the use of this. At the moment is only in RowChangeList::Project
-  bool get_proj_col_from_base_id(size_t col_id, size_t *proj_col_idx) const {
-    return FindCopy(rbase_cols_mapping_, col_id, proj_col_idx);
-  }
-
-  bool get_proj_col_from_adapter_id(size_t col_id, size_t *proj_col_idx) const {
-    return FindCopy(radapter_cols_mapping_, col_id, proj_col_idx);
-  }
-
- private:
-  friend class ::yb::Schema;
-
-  CHECKED_STATUS ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx) {
-    base_cols_mapping_[proj_col_idx] = base_col_idx;
-    if (delta_schema_->has_column_ids()) {
-      rbase_cols_mapping_[delta_schema_->column_id(base_col_idx)] = proj_col_idx;
-    } else {
-      rbase_cols_mapping_[proj_col_idx] = proj_col_idx;
-    }
-    return Status::OK();
-  }
-
-  CHECKED_STATUS ProjectAdaptedColumn(size_t proj_col_idx, size_t base_col_idx) {
-    adapter_cols_mapping_[proj_col_idx] = base_col_idx;
-    if (delta_schema_->has_column_ids()) {
-      radapter_cols_mapping_[delta_schema_->column_id(base_col_idx)] = proj_col_idx;
-    } else {
-      radapter_cols_mapping_[proj_col_idx] = proj_col_idx;
-    }
-    return Status::OK();
-  }
-
-  CHECKED_STATUS ProjectDefaultColumn(size_t proj_col_idx) {
-    // Not used, since deltas are update...
-    // we don't have this column, so we don't have updates
-    return Status::OK();
-  }
-
-  CHECKED_STATUS ProjectExtraColumn(size_t proj_col_idx) {
-    return STATUS(InvalidArgument,
-      "The column '" + delta_schema_->column(proj_col_idx).name() +
-      "' does not exist in the projection, and it does not have a "
-      "default value or a nullable type");
-  }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(DeltaProjector);
-
-  std::unordered_map<size_t, size_t> base_cols_mapping_;     // [proj_idx] = base_idx
-  std::unordered_map<size_t, size_t> rbase_cols_mapping_;    // [id] = proj_idx
-
-  std::unordered_map<size_t, size_t> adapter_cols_mapping_;  // [proj_idx] = base_idx
-  std::unordered_map<size_t, size_t> radapter_cols_mapping_; // [id] = proj_idx
-
-  const Schema* delta_schema_;
-  const Schema* projection_;
-  bool is_identity_;
+  DISALLOW_COPY_AND_ASSIGN(RowProjector);
 };
 
 // Copy any indirect (eg STRING) data referenced by the given row into the
@@ -406,7 +312,6 @@ inline CHECKED_STATUS RelocateIndirectDataToArena(RowType *row, ArenaType *dst_a
   return Status::OK();
 }
 
-
 class ContiguousRowHelper {
  public:
   static size_t null_bitmap_size(const Schema& schema) {
@@ -421,7 +326,7 @@ class ContiguousRowHelper {
     return schema.byte_size() + null_bitmap_size(schema);
   }
 
-  static void InitNullsBitmap(const Schema& schema, Slice& row_data) {
+  static void InitNullsBitmap(const Schema& schema, Slice row_data) {
     InitNullsBitmap(schema, row_data.mutable_data(), row_data.size() - schema.byte_size());
   }
 
@@ -748,8 +653,6 @@ class RowBuilder {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(RowBuilder);
-
   void AddSlice(const Slice &slice) {
     Slice *ptr = reinterpret_cast<Slice *>(buf_ + byte_idx_);
     CHECK(arena_.RelocateSlice(slice, ptr)) << "could not allocate space in arena";
@@ -785,8 +688,10 @@ class RowBuilder {
   size_t col_idx_;
   size_t byte_idx_;
   size_t bitmap_size_;
+
+  DISALLOW_COPY_AND_ASSIGN(RowBuilder);
 };
 
 } // namespace yb
 
-#endif
+#endif // YB_COMMON_ROW_H

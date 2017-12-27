@@ -53,7 +53,6 @@
 #include "yb/common/generic_iterators.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/iterator.h"
-#include "yb/common/row_changelist.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_rowblock.h"
