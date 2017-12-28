@@ -2049,8 +2049,7 @@ public class AsyncYBClient implements AutoCloseable {
                 "address");
             continue;
           }
-          byte[] buf = Bytes.get(replica.getTsInfo().getPermanentUuid());
-          String uuid = Bytes.getString(buf);
+          String uuid = replica.getTsInfo().getPermanentUuid().toStringUtf8();
           // from meta_cache.cc
           // TODO: if the TS advertises multiple host/ports, pick the right one
           // based on some kind of policy. For now just use the first always.

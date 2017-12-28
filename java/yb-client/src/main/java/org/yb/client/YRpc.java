@@ -249,19 +249,19 @@ public abstract class YRpc<R> {
   }
 
   static void readProtobuf(final Slice slice,
-      final com.google.protobuf.GeneratedMessage.Builder<?> builder) {
+                           final Message.Builder builder) {
     final int length = slice.length();
     final byte[] payload = slice.getRawArray();
     final int offset = slice.getRawOffset();
     try {
       builder.mergeFrom(payload, offset, length);
       if (!builder.isInitialized()) {
-        throw new InvalidResponseException("Could not deserialize the response," +
-            " incompatible RPC? Error is: " + builder.getInitializationErrorString(), null);
+        throw new RuntimeException("Could not deserialize the response," +
+                " incompatible RPC? Error is: " + builder.getInitializationErrorString());
       }
     } catch (InvalidProtocolBufferException e) {
       final String msg = "Invalid RPC response: length=" + length
-          + ", payload=" + Bytes.pretty(payload);
+              + ", payload=" + Bytes.pretty(payload);
       throw new InvalidResponseException(msg, e);
     }
   }

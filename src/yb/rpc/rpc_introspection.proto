@@ -31,6 +31,7 @@
 //
 // Protobuf used for introspection of RPC services (eg listing in-flight RPCs,
 // reflection, etc)
+syntax = "proto2";
 
 package yb.rpc;
 

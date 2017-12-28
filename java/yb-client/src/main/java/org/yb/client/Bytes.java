@@ -40,8 +40,6 @@
 //
 package org.yb.client;
 
-import com.google.protobuf.ByteString;
-import com.google.protobuf.ZeroCopyLiteralByteString;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Slice;
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -699,16 +697,6 @@ public final class Bytes {
     byte[] b = new byte[8];
     setDouble(b, n);
     return b;
-  }
-
-  /**
-   * Extracts the byte array from the given {@link ByteString} without copy.
-   * @param buf A buffer from which to extract the array.  This buffer must be
-   * actually an instance of a {@code LiteralByteString}.
-   * @since 1.5
-   */
-  public static byte[] get(final ByteString buf) {
-    return ZeroCopyLiteralByteString.zeroCopyGetBytes(buf);
   }
 
   /** Transforms a string into an UTF-8 encoded byte array.  */

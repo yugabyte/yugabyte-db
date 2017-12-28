@@ -37,6 +37,8 @@
 // in common/wire_protocol.proto instead. If it is only used within
 // the server(s), it should go in server/metadata.proto,
 // etc, as appropriate.
+syntax = "proto2";
+
 package yb;
 
 option java_package = "org.yb";

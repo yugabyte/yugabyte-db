@@ -32,7 +32,7 @@
 package org.yb.client;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.ZeroCopyLiteralByteString;
+import com.google.protobuf.UnsafeByteOperations;
 import org.yb.ColumnSchema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
@@ -69,12 +69,12 @@ public class ColumnRangePredicate {
 
   private void setLowerBoundInternal(byte[] value) {
     this.lowerBound = value;
-    pb.setLowerBound(ZeroCopyLiteralByteString.wrap(this.lowerBound));
+    pb.setLowerBound(UnsafeByteOperations.unsafeWrap(this.lowerBound));
   }
 
   private void setUpperBoundInternal(byte[] value) {
     this.upperBound = value;
-    pb.setUpperBound(ZeroCopyLiteralByteString.wrap(this.upperBound));
+    pb.setUpperBound(UnsafeByteOperations.unsafeWrap(this.upperBound));
   }
 
   /**

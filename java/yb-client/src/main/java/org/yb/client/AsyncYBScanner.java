@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 
 import com.google.protobuf.Message;
-import com.google.protobuf.ZeroCopyLiteralByteString;
+import com.google.protobuf.UnsafeByteOperations;
 import org.yb.ColumnSchema;
 import org.yb.Common;
 import org.yb.Schema;
@@ -619,7 +619,7 @@ public final class AsyncYBScanner {
           NewScanRequestPB.Builder newBuilder = NewScanRequestPB.newBuilder();
           newBuilder.setLimit(limit); // currently ignored
           newBuilder.addAllProjectedColumns(ProtobufHelper.schemaToListPb(schema));
-          newBuilder.setTabletId(ZeroCopyLiteralByteString.wrap(tablet.getTabletIdAsBytes()));
+          newBuilder.setTabletId(UnsafeByteOperations.unsafeWrap(tablet.getTabletIdAsBytes()));
           newBuilder.setCacheBlocks(cacheBlocks);
           // if the last propagated timestamp is set send it with the scan
           if (table.getAsyncClient().getLastPropagatedTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
@@ -628,12 +628,12 @@ public final class AsyncYBScanner {
 
           if (AsyncYBScanner.this.startPrimaryKey != AsyncYBClient.EMPTY_ARRAY &&
               AsyncYBScanner.this.startPrimaryKey.length > 0) {
-            newBuilder.setStartPrimaryKey(ZeroCopyLiteralByteString.copyFrom(startPrimaryKey));
+            newBuilder.setStartPrimaryKey(UnsafeByteOperations.unsafeWrap(startPrimaryKey));
           }
 
           if (AsyncYBScanner.this.endPrimaryKey != AsyncYBClient.EMPTY_ARRAY &&
               AsyncYBScanner.this.endPrimaryKey.length > 0) {
-            newBuilder.setStopPrimaryKey(ZeroCopyLiteralByteString.copyFrom(endPrimaryKey));
+            newBuilder.setStopPrimaryKey(UnsafeByteOperations.unsafeWrap(endPrimaryKey));
           }
 
           if (!columnRangePredicates.isEmpty()) {
@@ -643,12 +643,12 @@ public final class AsyncYBScanner {
                  .setBatchSizeBytes(batchSizeBytes);
           break;
         case NEXT:
-          builder.setScannerId(ZeroCopyLiteralByteString.wrap(scannerId))
+          builder.setScannerId(UnsafeByteOperations.unsafeWrap(scannerId))
                  .setCallSeqId(sequenceId)
                  .setBatchSizeBytes(batchSizeBytes);
           break;
         case CLOSING:
-          builder.setScannerId(ZeroCopyLiteralByteString.wrap(scannerId))
+          builder.setScannerId(UnsafeByteOperations.unsafeWrap(scannerId))
                  .setBatchSizeBytes(0)
                  .setCloseScanner(true);
       }

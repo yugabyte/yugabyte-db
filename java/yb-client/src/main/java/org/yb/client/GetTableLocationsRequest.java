@@ -33,7 +33,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import com.google.protobuf.ZeroCopyLiteralByteString;
+import com.google.protobuf.UnsafeByteOperations;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.Master;
 import org.yb.util.Pair;
@@ -89,10 +89,10 @@ class GetTableLocationsRequest extends YRpc<Master.GetTableLocationsResponsePB> 
     builder.setTable(Master.TableIdentifierPB.newBuilder().
         setTableId(ByteString.copyFromUtf8(tableId)));
     if (startPartitionKey != null) {
-      builder.setPartitionKeyStart(ZeroCopyLiteralByteString.wrap(startPartitionKey));
+      builder.setPartitionKeyStart(UnsafeByteOperations.unsafeWrap(startPartitionKey));
     }
     if (endKey != null) {
-      builder.setPartitionKeyEnd(ZeroCopyLiteralByteString.wrap(endKey));
+      builder.setPartitionKeyEnd(UnsafeByteOperations.unsafeWrap(endKey));
     }
     return toChannelBuffer(header, builder.build());
   }

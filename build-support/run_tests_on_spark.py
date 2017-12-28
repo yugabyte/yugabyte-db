@@ -107,7 +107,7 @@ ONE_SHOT_TESTS = set([
 
 HASH_COMMENT_RE = re.compile('#.*$')
 
-SPARK_TASK_MAX_FAILURES = 32
+SPARK_TASK_MAX_FAILURES = 1000
 
 verbose = False
 

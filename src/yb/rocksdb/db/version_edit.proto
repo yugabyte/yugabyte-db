@@ -12,6 +12,8 @@
 // under the License.
 //
 //
+syntax = "proto2";
+
 package rocksdb;
 
 import "yb/util/opid.proto";

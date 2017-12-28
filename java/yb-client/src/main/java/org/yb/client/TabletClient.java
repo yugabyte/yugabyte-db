@@ -694,7 +694,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
       cleanup(c);
     } else {
       LOG.warn(getPeerUuidLoggingString() + "Unexpected exception " + e.getMessage() +
-               " from downstream on " + c);
+               " from downstream on " + c, e);
     }
     if (c.isOpen()) {
       Channels.close(c);  // Will trigger channelClosed(), which will cleanup()

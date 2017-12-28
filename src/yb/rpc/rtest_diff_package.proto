@@ -31,6 +31,8 @@
 //
 // Request/Response in different package to test that RPC methods
 // handle arguments with packages different from the service itself.
+syntax = "proto2";
+
 package yb.rpc_test_diff_package;
 
 message ReqDiffPackagePB {

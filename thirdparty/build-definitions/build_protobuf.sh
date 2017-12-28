@@ -1,9 +1,13 @@
 # Copyright (c) YugaByte, Inc.
 
-PROTOBUF_VERSION=2.6.1
+PROTOBUF_VERSION=3.5.1
 PROTOBUF_DIR=$TP_SOURCE_DIR/protobuf-$PROTOBUF_VERSION
-TP_NAME_TO_SRC_DIR["protobuf"]=$PROTOBUF_DIR
-TP_NAME_TO_ARCHIVE_NAME["protobuf"]="protobuf-${PROTOBUF_VERSION}.tar.gz"
+PROTOBUF_URL_BASE="https://github.com/google/protobuf/releases/download"
+PROTOBUF_URL="${PROTOBUF_URL_BASE}/v${PROTOBUF_VERSION}/protobuf-cpp-${PROTOBUF_VERSION}.tar.gz"
+
+TP_NAME_TO_SRC_DIR["protobuf"]="${PROTOBUF_DIR}"
+TP_NAME_TO_ARCHIVE_NAME["protobuf"]="protobuf-cpp-${PROTOBUF_VERSION}.tar.gz"
+TP_NAME_TO_URL["protobuf"]="${PROTOBUF_URL}"
 
 build_protobuf() {
   create_build_dir_and_prepare "$PROTOBUF_DIR"

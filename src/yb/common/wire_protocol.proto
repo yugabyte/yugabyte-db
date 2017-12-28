@@ -34,6 +34,8 @@
 // which are exclusively used on the wire. If a protobuf is persisted on
 // disk and not used as part of the wire protocol, it belongs in another
 // place such as common/common.proto or within server/, etc.
+syntax = "proto2";
+
 package yb;
 
 option java_package = "org.yb";

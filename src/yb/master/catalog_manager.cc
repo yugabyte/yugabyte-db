@@ -1110,7 +1110,7 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
   l->mutable_data()->pb = std::move(ns_entry);
 
   namespace_ids_map_[id] = ns;
-  namespace_names_map_[ns_entry.name()] = ns;
+  namespace_names_map_[l->mutable_data()->pb.name()] = ns;
 
   // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->AddItem(ns.get()));

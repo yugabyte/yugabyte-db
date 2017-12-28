@@ -30,6 +30,8 @@
 // under the License.
 //
 // Test protocol for yb RPC.
+syntax = "proto2";
+
 package yb.rpc_test;
 
 import "yb/rpc/rpc_header.proto";

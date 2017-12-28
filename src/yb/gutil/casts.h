@@ -34,6 +34,8 @@
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/type_traits.h"
 
+namespace yb {
+
 // Use implicit_cast as a safe version of static_cast or const_cast
 // for implicit conversions. For example:
 // - Upcasting in a type hierarchy.
@@ -88,7 +90,7 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 
   // TODO(user): This should use COMPILE_ASSERT.
   if (false) {
-    ::implicit_cast<From*, To>(NULL);
+    yb::implicit_cast<From*, To>(NULL);
   }
 
   // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
@@ -110,7 +112,7 @@ inline To down_cast(From& f) { // NOLINT
   typedef typename base::remove_reference<To>::type* ToAsPointer;
   if (false) {
     // Compile-time check that To inherits from From. See above for details.
-    ::implicit_cast<From*, ToAsPointer>(NULL);
+    yb::implicit_cast<From*, ToAsPointer>(NULL);
   }
 
   assert(dynamic_cast<ToAsPointer>(&f) != NULL);  // RTTI: debug mode only
@@ -260,6 +262,7 @@ class enum_limits {
 // This checking relies on integral promotion.
 
 #define MAKE_ENUM_LIMITS(ENUM_TYPE, ENUM_MIN, ENUM_MAX) \
+namespace yb { \
 template <> \
 class enum_limits<ENUM_TYPE> { \
  public: \
@@ -268,7 +271,8 @@ class enum_limits<ENUM_TYPE> { \
   static const bool is_specialized = true; \
   COMPILE_ASSERT(ENUM_MIN >= INT_MIN, enumerator_too_negative_for_int); \
   COMPILE_ASSERT(ENUM_MAX <= INT_MAX, enumerator_too_positive_for_int); \
-};
+}; \
+} // namespace yb
 
 // The loose enum test/cast is actually the more complicated one,
 // because of the problem of finding the bounds.
@@ -377,20 +381,18 @@ inline bool tight_enum_test_cast(int e_val, Enum* e_var) {
   }
 }
 
-namespace base {
-namespace internal {
+namespace base_internal {
 
 inline void WarnEnumCastError(int value_of_int) {
   LOG(DFATAL) << "Bad enum value " << value_of_int;
 }
 
-}  // namespace internal
-}  // namespace base
+}  // namespace base_internal
 
 template <typename Enum>
 inline Enum loose_enum_cast(int e_val) {
   if (!loose_enum_test<Enum>(e_val)) {
-    base::internal::WarnEnumCastError(e_val);
+    base_internal::WarnEnumCastError(e_val);
   }
   return static_cast<Enum>(e_val);
 }
@@ -398,7 +400,7 @@ inline Enum loose_enum_cast(int e_val) {
 template <typename Enum>
 inline Enum tight_enum_cast(int e_val) {
   if (!tight_enum_test<Enum>(e_val)) {
-    base::internal::WarnEnumCastError(e_val);
+    base_internal::WarnEnumCastError(e_val);
   }
   return static_cast<Enum>(e_val);
 }
@@ -414,5 +416,14 @@ Out pointer_cast(const In* in) {
   const void* temp = in;
   return static_cast<Out>(temp);
 }
+
+} // namespace yb
+
+using yb::bit_cast;
+using yb::down_cast;
+using yb::implicit_cast;
+using yb::loose_enum_cast;
+using yb::pointer_cast;
+using yb::tight_enum_cast;
 
 #endif // YB_GUTIL_CASTS_H

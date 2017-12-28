@@ -1338,46 +1338,27 @@ find_shared_thirdparty_dir() {
     return
   fi
 
-  # We name shared prebuilt thirdparty directories on NFS like this:
-  # yugabyte-thirdparty-YYYY-MM-DDTHH_MM_SS
-  #
-  # Each of these directories is a YugaByte code checkout, so we're actually intersted in a
-  # "thirdparty" directory inside of that.
-  set +e
-  local existing_thirdparty_dirs
-  existing_thirdparty_dirs=( $(
-    ls -d "$parent_dir_for_shared_thirdparty/yugabyte-thirdparty-"*/thirdparty | sort --reverse
-  ) )
-  set -e
-  if [[ ${#existing_thirdparty_dirs[@]} -gt 0 ]]; then
-    local existing_thirdparty_dir
-    for existing_thirdparty_dir in "${existing_thirdparty_dirs[@]}"; do
-      if [[ ! -d $existing_thirdparty_dir ]]; then
-        log "Warning: third-party directory '$existing_thirdparty_dir' not found, skipping."
-        continue
-      fi
-      if [[ -e $existing_thirdparty_dir/.yb_thirdparty_do_not_use ]]; then
-        log "Skipping '$existing_thirdparty_dir' because of a 'do not use' flag file."
-        continue
-      fi
-      if [[ -d $existing_thirdparty_dir ]]; then
-        log "Using existing third-party dependencies from $existing_thirdparty_dir"
-        if is_jenkins; then
-          log "Cleaning the old dedicated third-party dependency build in '$YB_SRC_ROOT/thirdparty'"
-          unset YB_THIRDPARTY_DIR
-          "$YB_SRC_ROOT/thirdparty/clean_thirdparty.sh" --all
-        fi
-        export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
-        found_shared_thirdparty_dir=true
-        export NO_REBUILD_THIRDPARTY=1
-        return
-      fi
-    done
+  # Should be the same for CentOS and MacOS.
+  local version_content=$( cat thirdparty/version_for_jenkins.txt )
+  local version=$( echo "${version_content}" | sed -e 's/^[[:space:]]*//; s/[[:space:]]*$//' )
+  local thirdparty_dir_suffix="yugabyte-thirdparty-${version}/thirdparty"
+  local existing_thirdparty_dir="${parent_dir_for_shared_thirdparty}/${thirdparty_dir_suffix}"
+  if [[ -d $existing_thirdparty_dir ]]; then
+    log "Using existing third-party dependencies from $existing_thirdparty_dir"
+    if is_jenkins; then
+      log "Cleaning the old dedicated third-party dependency build in '$YB_SRC_ROOT/thirdparty'"
+      unset YB_THIRDPARTY_DIR
+      "$YB_SRC_ROOT/thirdparty/clean_thirdparty.sh" --all
+    fi
+    export YB_THIRDPARTY_DIR=$existing_thirdparty_dir
+    found_shared_thirdparty_dir=true
+    export NO_REBUILD_THIRDPARTY=1
+    return
   fi
+
   log "Even though the top-level directory '$parent_dir_for_shared_thirdparty'" \
-      "exists, we could not find a prebuilt shared third-party directory there that exists " \
-      "and does not have a 'do not use' flag file inside. Falling back to building our own " \
-      "third-party dependencies."
+      "exists, we could not find a prebuilt shared third-party directory there that exists. " \
+      "Falling back to building our own third-party dependencies."
 }
 
 handle_predefined_build_root() {
