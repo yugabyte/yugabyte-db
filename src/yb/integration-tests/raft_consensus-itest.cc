@@ -60,6 +60,8 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/server/server_base.pb.h"
+
+#include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 
 using namespace std::literals;
@@ -2364,13 +2366,18 @@ TEST_F(RaftConsensusITest, TestEarlyCommitDespiteMemoryPressure) {
 TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 2;
-  vector<string> ts_flags, master_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--log_cache_size_limit_mb=1");
-  ts_flags.push_back("--log_segment_size_mb=1");
-  ts_flags.push_back("--log_async_preallocate_segments=false");
-  ts_flags.push_back("--maintenance_manager_polling_interval_ms=300");
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  std::vector<std::string> ts_flags = {
+      "--enable_leader_failure_detection=false",
+      "--log_cache_size_limit_mb=1",
+      "--log_segment_size_mb=1",
+      "--log_async_preallocate_segments=false",
+      "--maintenance_manager_polling_interval_ms=300",
+      Format("--db_write_buffer_size=$0", 1_MB),
+      "--remote_bootstrap_begin_session_timeout_ms=15000"
+  };
+  std::vector<std::string> master_flags = {
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"
+  };
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   // 50K is enough to cause flushes & log rolls.
@@ -2378,6 +2385,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   if (AllowSlowTests()) {
     num_rows_to_write = 150000;
   }
+  num_rows_to_write = NonTsanVsTsan(num_rows_to_write, num_rows_to_write / 4);
 
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());

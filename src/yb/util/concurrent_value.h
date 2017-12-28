@@ -20,6 +20,7 @@ namespace yb {
 namespace internal {
 typedef decltype(std::this_thread::get_id()) ThreadId;
 
+// Tracks list of threads that is using URCU.
 template<class T>
 class ThreadList {
  public:
@@ -91,6 +92,7 @@ class ThreadList {
   std::atomic<size_t> allocated_{0};
 };
 
+// URCU data associated with thread.
 struct URCUThreadData {
   std::atomic<uint32_t> access_control{0};
   std::atomic<URCUThreadData*> next{nullptr};
@@ -102,6 +104,17 @@ struct URCUThreadData {
 constexpr uint32_t kControlBit = 0x80000000;
 constexpr uint32_t kNestMask = kControlBit - 1;
 
+// Userspace Read-copy-update.
+// Full description https://en.wikipedia.org/wiki/Read-copy-update
+// In computer science, read-copy-update (RCU) is a synchronization mechanism based on mutual
+// exclusion. It is used when performance of reads is crucial and is an example of space-time
+// tradeoff, enabling fast operations at the cost of more space.
+//
+// Read-copy-update allows multiple threads to efficiently read from shared memory by deferring
+// updates after pre-existing reads to a later time while simultaneously marking the data,
+// ensuring new readers will read the updated data. This makes all readers proceed as if there
+// were no synchronization involved, hence they will be fast, but also making updates more
+// difficult.
 class URCU {
  public:
   URCU() {}
@@ -134,7 +147,7 @@ class URCU {
   }
 
   void Synchronize() {
-    std::lock_guard <std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     FlipAndWait();
     FlipAndWait();
   }
@@ -188,6 +201,8 @@ class URCU {
 #endif
 };
 
+// Reference to concurrent value. Provides read access to concurrent value.
+// Should have short life time period.
 template<class T>
 class ConcurrentValueReference {
  public:
@@ -228,6 +243,8 @@ class ConcurrentValueReference {
   URCU* urcu_;
 };
 
+// Concurrent value is used for cases when some object has a lot of reads with small amount of
+// writes.
 template<class T>
 class ConcurrentValue {
  public:
@@ -250,9 +267,14 @@ class ConcurrentValue {
   void Set(const T& t) {
     DoSet(new T(t));
   }
+
+  void Set(T&& t) {
+    DoSet(new T(std::move(t)));
+  }
+
  private:
   void DoSet(T* new_value) {
-    auto* old_value = value_.exchange(new_value, std::memory_order_relaxed);
+    auto* old_value = value_.exchange(new_value, std::memory_order_acq_rel);
     urcu_.Synchronize();
     delete old_value;
   }
