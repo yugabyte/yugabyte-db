@@ -230,6 +230,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void ApplyRowOperations(WriteOperationState* operation_state);
 
   // Apply a set of RocksDB row operations.
+  // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   void ApplyKeyValueRowOperations(
       const docdb::KeyValueWriteBatchPB& put_batch,
       const consensus::OpId& op_id,

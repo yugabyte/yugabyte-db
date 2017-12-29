@@ -76,6 +76,9 @@ class YBInboundCall : public InboundCall {
   // See RpcContext::AddRpcSidecar()
   CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
 
+  // See RpcContext::ResetRpcSidecars()
+  void ResetRpcSidecars();
+
   // Serializes 'response' into the InboundCall's internal buffer, and marks
   // the call as a success. Enqueues the response back to the connection
   // that made the call.

@@ -157,11 +157,15 @@ string DocHybridTime::ToString() const {
   }
 
   string s = hybrid_time_.ToDebugString();
-  s.resize(s.length() - 1);
-  if (write_id_ == kMaxWriteId) {
-    s += ", w=Max)";
+  if (s[s.length() - 1] == '}') {
+    s.resize(s.length() - 2);
   } else {
-    SubstituteAndAppend(&s, ", w=$0)", write_id_);
+    s.insert(2, "{ ");
+  }
+  if (write_id_ == kMaxWriteId) {
+    s += " w: Max }";
+  } else {
+    SubstituteAndAppend(&s, " w: $0 }", write_id_);
   }
   return s;
 }

@@ -38,7 +38,7 @@ using namespace std::placeholders;
 
 DEFINE_uint64(transaction_heartbeat_usec, 500000, "Interval of transaction heartbeat in usec.");
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
-DEFINE_uint64(transaction_read_skew_usec, 50000,
+DEFINE_uint64(max_clock_skew_usec, 50000,
               "Transaction read clock skew in usec. Is maximum allowed time delta between servers "
               "of a single cluster.");
 
@@ -61,7 +61,7 @@ class YBTransaction::Impl final {
         abort_handle_(manager->rpcs().InvalidHandle()) {
     VLOG_WITH_PREFIX(1) << "Started, metadata: " << metadata_;
     read_time_.read = metadata_.start_time;
-    read_time_.local_limit = read_time_.read.AddMicroseconds(FLAGS_transaction_read_skew_usec);
+    read_time_.local_limit = read_time_.read.AddMicroseconds(FLAGS_max_clock_skew_usec);
     read_time_.global_limit = read_time_.local_limit;
     restart_read_time_ = read_time_.read;
   }

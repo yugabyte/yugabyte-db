@@ -171,6 +171,10 @@ Status RpcContext::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return call_->AddRpcSidecar(car, idx);
 }
 
+void RpcContext::ResetRpcSidecars() {
+  call_->ResetRpcSidecars();
+}
+
 const Endpoint& RpcContext::remote_address() const {
   return call_->remote_address();
 }

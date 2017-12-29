@@ -194,8 +194,9 @@ class HybridTime {
     v = is_valid() ? std::max(v, rhs.v) : rhs.v;
   }
 
-  // Set base time for ToString, to have smaller values in output.
-  static void TEST_SetBaseTimeForToString(MicrosTime micros);
+  // Set mode for HybridTime::ToString, in case of true hybrid time is rendered as human readable.
+  // It is slower than default one.
+  static void TEST_SetPrettyToString(bool flag);
 
  private:
 

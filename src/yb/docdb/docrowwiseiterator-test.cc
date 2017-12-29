@@ -112,14 +112,14 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
       PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000)]) -> "row1_e"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=3000)]) -> 30000
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2500)]) -> DEL
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2000)]) -> 20000
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(p=4000)]) -> "row2_e_prime"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(p=2000)]) -> "row2_e"
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 3000 }]) -> 30000
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> DEL
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -230,11 +230,11 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
       DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000)]) -> "row1_e"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2000)]) -> 20000
+      SubDocKey(DocKey([], ["row1", 11111]), [HT{ physical: 2500 }]) -> DEL
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -290,11 +290,11 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTestRowDeletes) {
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2800)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000, w=1)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2800, w=1)]) -> 20000
+SubDocKey(DocKey([], ["row1", 11111]), [HT{ physical: 2500 }]) -> DEL
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 w: 1 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> "row1_e"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]) -> 20000
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -347,9 +347,9 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorHasNextIdempotence) {
   ASSERT_OK(DeleteSubDoc(DocPath(kEncodedDocKey1), HybridTime::FromMicros(2500)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"
+SubDocKey(DocKey([], ["row1", 11111]), [HT{ physical: 2500 }]) -> DEL
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> "row1_e"
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -397,9 +397,9 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000, w=1)]) -> "row1_e"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=1000, w=2)]) -> 20000
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]) -> "row1_e"
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 w: 2 }]) -> 20000
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -470,14 +470,16 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorMultipleDeletes) {
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000, w=1)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"; ttl: 0.001s
-SubDocKey(DocKey([], ["row2", 22222]), [HT(p=2500, w=1)]) -> DEL
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT(p=2800, w=1)]) -> DEL
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2800, w=2)]) -> 20000
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(p=2800, w=3)]) -> "row2_e"; ttl: 0.003s
+SubDocKey(DocKey([], ["row1", 11111]), [HT{ physical: 2500 }]) -> DEL
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 w: 1 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> \
+    "row1_e"; ttl: 0.001s
+SubDocKey(DocKey([], ["row2", 22222]), [HT{ physical: 2500 w: 1 }]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 2800 w: 1 }]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 2 }]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]) -> \
+    "row2_e"; ttl: 0.003s
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -531,12 +533,12 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
 
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["row1", 11111]), [HT(p=2500)]) -> DEL
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=2800)]) -> "row1_e"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT(p=2000, w=1)]) -> "row2_c"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=1000, w=1)]) -> 20000
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(p=2000)]) -> "row2_e"
+      SubDocKey(DocKey([], ["row1", 11111]), [HT{ physical: 2500 }]) -> DEL
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> "row1_e"
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 2000 w: 1 }]) -> "row2_c"
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 w: 1 }]) -> 20000
+      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -584,8 +586,8 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorKeyProjection) {
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000, w=1)]) -> "row1_e"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]) -> "row1_e"
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -719,42 +721,42 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
   txn_status_manager.Commit(*txn2, HybridTime::FromMicros(6000));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT(p=500, w=1) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) none
-      SubDocKey(DocKey([], ["row1", 11111]), []) kStrongSnapshotWrite HT(p=4000) -> \
-TransactionId(30303030-3030-3030-3030-303030303032) DEL
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT(p=500) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) "row1_c_t1"
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) kStrongSnapshotWrite HT(p=500) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) 40000
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=500) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) "row1_e_t1"
-      SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT(p=4000, w=1) -> \
-TransactionId(30303030-3030-3030-3030-303030303032) none
-      SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT(p=500, w=1) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) none
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40)]) kStrongSnapshotWrite HT(p=500) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) 42000
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=4000) -> \
-TransactionId(30303030-3030-3030-3030-303030303032) "row2_e_t2"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=500) -> \
-TransactionId(30303030-3030-3030-3030-303030303031) "row2_e_t1"
-      TXN REV 30303030-3030-3030-3030-303030303031 -> \
-SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT(p=500, w=1)
-      TXN REV 30303030-3030-3030-3030-303030303031 -> \
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=500)
-      TXN REV 30303030-3030-3030-3030-303030303032 -> \
-SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT(p=4000, w=1)
-      TXN REV 30303030-3030-3030-3030-303030303032 -> \
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT(p=4000)
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(p=1000)]) -> "row1_c"
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(p=1000)]) -> 10000
-      SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(p=1000)]) -> "row1_e"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=3000)]) -> 30000
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2500)]) -> DEL
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(p=2000)]) -> 20000
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(p=4000)]) -> "row2_e_prime"
-      SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(p=2000)]) -> "row2_e"
+SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), []) kStrongSnapshotWrite HT{ physical: 4000 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) DEL
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) "row1_c_t1"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) 40000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) "row1_e_t1"
+SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) 42000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) "row2_e_t2"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) "row2_e_t1"
+TXN REV 30303030-3030-3030-3030-303030303031 -> \
+    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303031 -> \
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 }
+TXN REV 30303030-3030-3030-3030-303030303032 -> \
+    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 -> \
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 }
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 3000 }]) -> 30000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;

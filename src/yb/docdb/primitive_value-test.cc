@@ -151,14 +151,14 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("ArrayIndex(123)", PrimitiveValue::ArrayIndex(123).ToString());
   ASSERT_EQ("ArrayIndex(-123)", PrimitiveValue::ArrayIndex(-123).ToString());
 
-  ASSERT_EQ("HT(p=100200300400500, l=1234)",
+  ASSERT_EQ("HT{ physical: 100200300400500 logical: 1234 }",
       PrimitiveValue(HybridTime(100200300400500l * 4096 + 1234)).ToString());
 
   // HybridTimes use an unsigned 64-bit integer as an internal representation.
-  ASSERT_EQ("HT(Min)", PrimitiveValue(HybridTime(0)).ToString());
-  ASSERT_EQ("HT(Initial)", PrimitiveValue(HybridTime(1)).ToString());
-  ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(numeric_limits<uint64_t>::max())).ToString());
-  ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(-1)).ToString());
+  ASSERT_EQ("HT<min>", PrimitiveValue(HybridTime(0)).ToString());
+  ASSERT_EQ("HT<initial>", PrimitiveValue(HybridTime(1)).ToString());
+  ASSERT_EQ("HT<max>", PrimitiveValue(HybridTime(numeric_limits<uint64_t>::max())).ToString());
+  ASSERT_EQ("HT<max>", PrimitiveValue(HybridTime(-1)).ToString());
 
   ASSERT_EQ("UInt16Hash(65535)",
             PrimitiveValue::UInt16Hash(numeric_limits<uint16_t>::max()).ToString());

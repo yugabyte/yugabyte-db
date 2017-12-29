@@ -340,6 +340,7 @@ class SubDocKey {
   }
 
   std::string ToString() const;
+  static std::string DebugSliceToString(Slice slice);
 
   const DocKey& doc_key() const {
     return doc_key_;

@@ -258,6 +258,10 @@ Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return Status::OK();
 }
 
+void YBInboundCall::ResetRpcSidecars() {
+  sidecars_.clear();
+}
+
 Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                               bool is_success) {
   using serialization::SerializeMessage;

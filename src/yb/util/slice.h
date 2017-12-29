@@ -260,6 +260,11 @@ struct SliceParts {
       parts(_parts), num_parts(_num_parts) { }
   SliceParts() : parts(nullptr), num_parts(0) {}
 
+  template<size_t N>
+  SliceParts(const std::array<Slice, N>& input) // NOLINT
+      : parts(input.data()), num_parts(N) {
+  }
+
   const Slice* parts;
   int num_parts;
 };

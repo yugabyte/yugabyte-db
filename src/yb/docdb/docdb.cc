@@ -68,28 +68,26 @@ namespace docdb {
 
 namespace {
 
+// Main intent data::
+// Prefix + DocPath + IntentType + DocHybridTime -> TxnId + value of the intent
+// Reverse index by txn id:
+// Prefix + TxnId + DocHybridTime -> Main intent data key
+//
+// Expects that last entry of key is DocHybridTime.
 void AddIntent(
     const TransactionId& transaction_id,
-    Slice key,
-    Slice value,
+    const SliceParts& key,
+    const SliceParts& value,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  // TODO(dtxn) Sergei: Would be nice to reuse buffer allocated by reverse_key for other keys from
-  // the same batch. I propose to implement PrepareTransactionWriteBatch using class.
-  // And make this method of that class, also that would help to decrease closure size passed to
-  // EnumerateIntents.
-  KeyBytes reverse_key;
-  AppendTransactionKeyPrefix(transaction_id, &reverse_key);
-  int size = 0;
-  CHECK_OK(DocHybridTime::CheckAndGetEncodedSize(key, &size));
-  reverse_key.AppendRawBytes(key.cend() - size, size);
-
+  char reverse_key_prefix[2] = { static_cast<char>(ValueType::kIntentPrefix),
+                                 static_cast<char>(ValueType::kTransactionId) };
+  std::array<Slice, 3> reverse_key = {{
+      Slice(reverse_key_prefix, 2),
+      Slice(transaction_id.data, transaction_id.size()),
+      key.parts[key.num_parts - 1],
+  }};
   rocksdb_write_batch->Put(key, value);
-  rocksdb_write_batch->Put(reverse_key.data(), key);
-}
-
-void AppendTransactionId(const TransactionId& id, std::string* value) {
-  value->push_back(static_cast<char>(ValueType::kTransactionId));
-  value->append(pointer_cast<const char*>(id.data), id.size());
+  rocksdb_write_batch->Put(reverse_key, key);
 }
 
 void ApplyIntent(const string& lock_string,
@@ -168,7 +166,7 @@ void PrepareNonTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  std::string patched_key;
+  DocHybridTimeBuffer doc_ht_buffer;
   for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
     const auto& kv_pair = put_batch.kv_pairs(write_id);
     CHECK(kv_pair.has_key());
@@ -187,9 +185,6 @@ void PrepareNonTransactionWriteBatch(
     }
 #endif
 
-    patched_key.reserve(kv_pair.key().size() + kMaxBytesPerEncodedHybridTime);
-    patched_key = kv_pair.key();
-
     // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
     // The reason for this is that the HybridTime timestamp is only picked at the time of
     // appending  an entry to the tablet's Raft log. Also this is a good way to save network
@@ -199,10 +194,13 @@ void PrepareNonTransactionWriteBatch(
     // DocHybridTime encoding) that helps disambiguate between different updates to the
     // same key (row/column) within a transaction. We set it based on the position of the write
     // operation in its write batch.
-    patched_key.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
-    DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&patched_key);
 
-    rocksdb_write_batch->Put(patched_key, kv_pair.value());
+    std::array<Slice, 2> key_parts = {{
+        Slice(kv_pair.key()),
+        doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
+    }};
+    Slice key_value = kv_pair.value();
+    rocksdb_write_batch->Put(key_parts, { &key_value, 1 });
   }
 }
 
@@ -241,6 +239,85 @@ CHECKED_STATUS EnumerateIntents(
   return Status::OK();
 }
 
+class PrepareTransactionWriteBatchHelper {
+ public:
+  PrepareTransactionWriteBatchHelper(const PrepareTransactionWriteBatchHelper&) = delete;
+  void operator=(const PrepareTransactionWriteBatchHelper&) = delete;
+
+  // `rocksdb_write_batch` - in-out parameter is filled by this prepare.
+  PrepareTransactionWriteBatchHelper(HybridTime hybrid_time,
+                                     rocksdb::WriteBatch* rocksdb_write_batch,
+                                     const TransactionId& transaction_id,
+                                     IsolationLevel isolation_level)
+      : hybrid_time_(hybrid_time),
+        rocksdb_write_batch_(rocksdb_write_batch),
+        transaction_id_(transaction_id),
+        intent_types_(GetWriteIntentsForIsolationLevel(isolation_level)) {
+  }
+
+  // Using operator() to pass this object conveniently to EnumerateIntents.
+  CHECKED_STATUS operator()(IntentKind intent_kind, Slice value_slice, KeyBytes* key) {
+    if (intent_kind == IntentKind::kWeak) {
+      weak_intents_.insert(key->data());
+      return Status::OK();
+    }
+
+    const char transaction_value_type = static_cast<char>(ValueType::kTransactionId);
+    std::array<Slice, 3> value = {{
+        Slice(&transaction_value_type, 1),
+        Slice(transaction_id_.data, transaction_id_.size()),
+        value_slice
+    }};
+
+    char intent_type[2] = { static_cast<char>(ValueType::kIntentType),
+                            static_cast<char>(intent_types_.strong) };
+
+    DocHybridTimeBuffer doc_ht_buffer;
+
+    std::array<Slice, 3> key_parts = {{
+        key->AsSlice(),
+        Slice(intent_type, 2),
+        doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
+    }};
+    AddIntent(transaction_id_, key_parts, value, rocksdb_write_batch_);
+
+    return Status::OK();
+  }
+
+  void Finish() {
+    char transaction_id_value_type = static_cast<char>(ValueType::kTransactionId);
+    char intent_type[2] = { static_cast<char>(ValueType::kIntentType),
+                            static_cast<char>(intent_types_.weak) };
+
+    DocHybridTimeBuffer doc_ht_buffer;
+
+    std::array<Slice, 2> value = {{
+        Slice(&transaction_id_value_type, 1),
+        Slice(transaction_id_.data, transaction_id_.size()),
+    }};
+
+    for (const auto& intent : weak_intents_) {
+      std::array<Slice, 3> key = {{
+          Slice(intent),
+          Slice(intent_type, 2),
+          doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
+      }};
+
+      AddIntent(transaction_id_, key, value, rocksdb_write_batch_);
+    }
+  }
+
+ private:
+  // TODO(dtxn) weak & strong intent in one batch.
+  // TODO(dtxn) extract part of code knowning about intents structure to lower level.
+  HybridTime hybrid_time_;
+  rocksdb::WriteBatch* rocksdb_write_batch_;
+  const TransactionId& transaction_id_;
+  IntentTypePair intent_types_;
+  std::unordered_set<std::string> weak_intents_;
+  IntraTxnWriteId write_id_ = 0;
+};
+
 // We have the following distinct types of data in this "intent store":
 // Main intent data:
 //   Prefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value of the intent
@@ -257,51 +334,14 @@ void PrepareTransactionWriteBatch(
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level) {
-  auto intent_types = GetWriteIntentsForIsolationLevel(isolation_level);
+  PrepareTransactionWriteBatchHelper helper(
+      hybrid_time, rocksdb_write_batch, transaction_id, isolation_level);
 
-  // TODO(dtxn) weak & strong intent in one batch.
-  // TODO(dtxn) extract part of code knowning about intents structure to lower level.
-  std::unordered_set<std::string> weak_intents;
+  // We cannot recover from failures here, because it means that we cannot apply replicated
+  // operation.
+  CHECK_OK(EnumerateIntents(put_batch.kv_pairs(), std::ref(helper)));
 
-  std::string value;
-
-  IntraTxnWriteId write_id = 0;
-
-  // TODO(dtxn) This lambda is too long. This function should be implemented using utility class.
-  CHECK_OK(EnumerateIntents(put_batch.kv_pairs(),
-      [&](IntentKind intent_kind, Slice value_slice, KeyBytes* key) {
-        if (intent_kind == IntentKind::kWeak) {
-          weak_intents.insert(key->data());
-          return Status::OK();
-        }
-
-        AppendIntentKeySuffix(
-            intent_types.strong,
-            DocHybridTime(hybrid_time, write_id++),
-            key);
-
-        value.clear();
-        value.reserve(1 + transaction_id.size() + value_slice.size());
-        AppendTransactionId(transaction_id, &value);
-        value.append(value_slice.cdata(), value_slice.size());
-        AddIntent(transaction_id, key->data(), value, rocksdb_write_batch);
-
-        return Status::OK();
-      }));
-
-  KeyBytes encoded_key;
-  for (const auto& intent : weak_intents) {
-    encoded_key.Clear();
-    encoded_key.AppendRawBytes(intent);
-    AppendIntentKeySuffix(
-        intent_types.weak,
-        DocHybridTime(hybrid_time, write_id++),
-        &encoded_key);
-    value.clear();
-    value.reserve(1 + transaction_id.size());
-    AppendTransactionId(transaction_id, &value);
-    AddIntent(transaction_id, encoded_key.data(), value, rocksdb_write_batch);
-  }
+  helper.Finish();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -334,11 +374,8 @@ CHECKED_STATUS BuildSubDocument(
     const GetSubDocumentData& data,
     DocHybridTime low_ts) {
   DCHECK(!data.subdocument_key->has_hybrid_time());
-  DOCDB_DEBUG_LOG("subdocument_key=$0, high_ts=$1, low_ts=$2, table_ttl=$3",
-                  data.subdocument_key->ToString(),
-                  iter->read_time().ToString(),
-                  low_ts.ToString(),
-                  data.table_ttl.ToString());
+  VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
+          << " low_ts: " << low_ts;
   const KeyBytes encoded_key = data.subdocument_key->Encode();
   while (iter->valid()) {
     auto iter_key = iter->FetchKey();
@@ -354,11 +391,12 @@ CHECKED_STATUS BuildSubDocument(
 
     rocksdb::Slice value = iter->value();
 
-    DCHECK_GE(iter->read_time().local_limit, found_key.hybrid_time())
+    // Checking that intent aware iterator returns entry with correct time.
+    DCHECK_GE(iter->read_time().global_limit, found_key.hybrid_time())
         << "Found key: " << found_key.ToString();
 
     if (low_ts > found_key.doc_hybrid_time()) {
-      DOCDB_DEBUG_LOG("SeekPastSubKey: $0", found_key.ToString());
+      VLOG(3) << "SeekPastSubKey: $0" << found_key.ToString();
       iter->SeekPastSubKey(found_key);
       continue;
     }
@@ -418,7 +456,7 @@ CHECKED_STATUS BuildSubDocument(
           // Try to seek to the low_subkey for efficiency.
           SeekToLowerBound(*data.low_subkey, iter);
         } else {
-          DOCDB_DEBUG_LOG("SeekPastSubKey: $0", found_key.ToString());
+          VLOG(3) << "SeekPastSubKey: " << found_key.ToString();
           iter->SeekPastSubKey(found_key);
         }
         continue;
@@ -428,7 +466,7 @@ CHECKED_STATUS BuildSubDocument(
               "Expected primitive value type, got $0", doc_value.value_type());
         }
 
-        DCHECK_GE(iter->read_time().local_limit, write_time.hybrid_time());
+        DCHECK_GE(iter->read_time().global_limit, write_time.hybrid_time());
         if (ttl.Equals(Value::kMaxTtl)) {
           doc_value.mutable_primitive_value()->SetTtl(-1);
         } else {
@@ -448,8 +486,8 @@ CHECKED_STATUS BuildSubDocument(
                 ? write_time.hybrid_time().GetPhysicalValueMicros()
                 : doc_value.user_timestamp());
         *data.result = SubDocument(doc_value.primitive_value());
-        DOCDB_DEBUG_LOG("SeekForward: $0.AdvanceOutOfSubDoc() = $1", found_key.ToString(),
-            found_key.AdvanceOutOfSubDoc().ToString());
+        VLOG(3) << "SeekForward: " << found_key.ToString() << ".AdvanceOutOfSubDoc() = "
+                << found_key.AdvanceOutOfSubDoc().ToString();
         iter->SeekOutOfSubDoc(found_key);
         return Status::OK();
       }
@@ -740,10 +778,19 @@ std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, IncludeBinary include_bina
   return ss.str();
 }
 
-void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out) {
-  out->AppendValueType(docdb::ValueType::kIntentPrefix);
-  out->AppendValueType(docdb::ValueType::kTransactionId);
+void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
+  out->AppendValueType(ValueType::kIntentPrefix);
+  out->AppendValueType(ValueType::kTransactionId);
   out->AppendRawBytes(Slice(transaction_id.data, transaction_id.size()));
+}
+
+DocHybridTimeBuffer::DocHybridTimeBuffer() {
+  buffer_[0] = static_cast<char>(ValueType::kHybridTime);
+}
+
+Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
+  auto end = doc_ht.EncodedInDocDbFormat(buffer_.data() + 1);
+  return Slice(buffer_.data(), end);
 }
 
 }  // namespace docdb

@@ -86,11 +86,13 @@ TEST(DocHybridTimeTest, TestDocDbFormatEncodeDecode) {
 }
 
 TEST(DocHybridTimeTest, TestToString) {
-  ASSERT_EQ("HT(p=100200300400)", DocHybridTime(100200300400, kMinWriteId, 0).ToString());
-  ASSERT_EQ("HT(p=100200300400, l=4095)", DocHybridTime(100200300400, 4095, 0).ToString());
-  ASSERT_EQ("HT(p=100200300400, w=123)",
-            DocHybridTime(100200300400, kMinWriteId, 123).ToString());
-  ASSERT_EQ("HT(p=100200300400, l=2222, w=123)",
+  ASSERT_EQ("HT{ physical: 100200300400 }",
+            DocHybridTime(100200300400, 0, kMinWriteId).ToString());
+  ASSERT_EQ("HT{ physical: 100200300400 logical: 4095 }",
+            DocHybridTime(100200300400, 4095, 0).ToString());
+  ASSERT_EQ("HT{ physical: 100200300400 w: 123 }",
+            DocHybridTime(100200300400, 0, 123).ToString());
+  ASSERT_EQ("HT{ physical: 100200300400 logical: 2222 w: 123 }",
             DocHybridTime(100200300400, 2222, 123).ToString());
 }
 

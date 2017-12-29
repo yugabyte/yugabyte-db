@@ -207,7 +207,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(const scoped_refptr<Batcher>& batcher,
     req_.set_propagated_hybrid_time(transaction_data.propagated_ht.ToUint64());
   }
   auto read_time = transaction_data.read_time;
-  if (read_time.read.is_valid()) {
+  if (read_time) {
     auto it = transaction_data.local_limits->find(tablet_invoker_.tablet()->tablet_id());
     if (it != transaction_data.local_limits->end()) {
       read_time.local_limit = it->second;
@@ -233,7 +233,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     return false;
   }
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
-  if (restart_read_time.read.is_valid()) {
+  if (restart_read_time) {
     auto transaction = batcher_->transaction();
     if (transaction) {
       batcher_->transaction()->RestartRequired(req_.tablet_id(), restart_read_time);
@@ -435,7 +435,7 @@ ReadRpc::ReadRpc(
         // in ProcessResponseFromTserver.
         auto* ql_op = down_cast<YBqlReadOp*>(op->yb_op.get());
         req_.add_ql_batch()->Swap(ql_op->mutable_request());
-        if (ql_op->read_time().read.is_valid()) {
+        if (ql_op->read_time()) {
           ql_op->read_time().AddToPB(&req_);
         }
         break;

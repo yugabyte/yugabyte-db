@@ -104,16 +104,16 @@ class DocOperationTest : public DocDBTestBase {
   void AssertWithTTL(QLWriteRequestPB_QLStmtType stmt_type) {
     if (stmt_type == QLWriteRequestPB::QL_STMT_INSERT) {
       AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max, w=1)]) -> 2; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=2)]) -> 3; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=3)]) -> 4; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT<max>]) -> null; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ <max> w: 1 }]) -> 2; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> 3; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> 4; ttl: 2.000s
       )#");
     } else {
       AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> 2; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=1)]) -> 3; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT<max>]) -> 2; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 1 }]) -> 3; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4; ttl: 2.000s
       )#");
     }
   }
@@ -121,16 +121,16 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4; ttl: 2.000
   void AssertWithoutTTL(QLWriteRequestPB_QLStmtType stmt_type) {
     if (stmt_type == QLWriteRequestPB::QL_STMT_INSERT) {
       AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max, w=1)]) -> 2
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=2)]) -> 3
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=3)]) -> 4
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT<max>]) -> null
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ <max> w: 1 }]) -> 2
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> 3
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> 4
       )#");
     } else {
       AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> 2
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=1)]) -> 3
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT<max>]) -> 2
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 1 }]) -> 3
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
       )#");
     }
   }
@@ -295,10 +295,10 @@ TEST_F(DocOperationTest, TestQLWriteNulls) {
 
   // Null columns are converted to tombstones.
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max, w=1)]) -> DEL
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=2)]) -> DEL
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=3)]) -> DEL
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT<max>]) -> null
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ <max> w: 1 }]) -> DEL
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> DEL
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> DEL
       )#");
 }
 
@@ -312,10 +312,10 @@ TEST_F(DocOperationTest, TestQLReadWriteSimple) {
            1000, HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
       )#");
 
   // Now read the value.
@@ -339,9 +339,9 @@ TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
                          Value(PrimitiveValue::Int32(4)), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> 2
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> 3
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> 4
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> 2
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT{ physical: 0 logical: 2000 }]) -> 3
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> 4
       )#");
 
   // Now verify we can read without the system column id.
@@ -366,9 +366,9 @@ TEST_F(DocOperationTest, TestQLReadWithTombstone) {
                          Value(PrimitiveValue::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT{ physical: 0 logical: 2000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
   Schema schema = CreateSchema();
@@ -390,12 +390,13 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                          Value(PrimitiveValue::Int32(101)), HybridTime(3001)));
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1001)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2001)]) -> 2; ttl: 0.001s
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3001)]) -> 101
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT{ physical: 0 logical: 2001 }]) -> \
+    2; ttl: 0.001s
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT{ physical: 0 logical: 2000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3001 }]) -> 101
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
@@ -431,16 +432,18 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
                          Value(PrimitiveValue::kTombstone), HybridTime(3000)));
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1001)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2001)]) -> 2; ttl: 0.001s
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3001)]) -> 101
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
-SubDocKey(DocKey(0x0000, [101], []), [SystemColumnId(0); HT(p=0, l=1000)]) -> null
-SubDocKey(DocKey(0x0000, [101], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT(p=0, l=2000)]) -> 2; ttl: 0.001s
-SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1001 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT{ physical: 0 logical: 2001 }]) -> \
+    2; ttl: 0.001s
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT{ physical: 0 logical: 2000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3001 }]) -> 101
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [101], []), [SystemColumnId(0); HT{ physical: 0 logical: 1000 }]) -> null
+SubDocKey(DocKey(0x0000, [101], []), [ColumnId(1); HT{ physical: 0 logical: 1000 }]) -> DEL
+SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT{ physical: 0 logical: 2000 }]) -> \
+    2; ttl: 0.001s
+SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
@@ -643,10 +646,10 @@ TEST_F(DocOperationTest, TestQLCompactions) {
       1000, t0);
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
       )#");
 
   CompactHistoryBefore(t1);
@@ -659,10 +662,10 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.
   WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
       1000, t0);
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
      )#");
 
   // Update the columns with a higher TTL.
@@ -680,22 +683,31 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.
   WriteQL(&ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
 
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, l=1)]) -> 10; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, l=1, w=1)]) -> 20; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> \
+    null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 logical: 1 }]) -> \
+    10; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> \
+    1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 logical: 1 w: 1 }]) -> \
+    20; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> \
+    2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w: 2 }]) -> \
+    30; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
       )#");
 
   CompactHistoryBefore(t1);
 
   // Verify the rest of the columns still live.
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, l=1)]) -> 10; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, l=1, w=1)]) -> 20; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 logical: 1 }]) -> \
+    10; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 logical: 1 w: 1 }]) -> \
+    20; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w: 2 }]) -> \
+    30; ttl: 2.000s
       )#");
 
   // Verify reads work well without system column id.

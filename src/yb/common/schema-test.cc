@@ -95,7 +95,7 @@ TEST(TestSchema, TestSchema) {
             "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
             "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
             "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
-            "]",
+            "]\nproperties: contain_counters: false is_transactional: false",
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
   EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
@@ -387,7 +387,7 @@ TEST(TestSchema, TestCreateProjection) {
             "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
             "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
             "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
-            "]",
+            "]\nproperties: contain_counters: false is_transactional: false",
             partial_schema.ToString());
 
   // By names, with IDS
@@ -396,7 +396,7 @@ TEST(TestSchema, TestCreateProjection) {
                        "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
                        "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
                        "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
-                       "]",
+                       "]\nproperties: contain_counters: false is_transactional: false",
                        schema_with_ids.column_id(0),
                        schema_with_ids.column_id(1),
                        schema_with_ids.column_id(3)),
@@ -416,7 +416,7 @@ TEST(TestSchema, TestCreateProjection) {
                        "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
                        "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
                        "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
-                       "]",
+                       "]\nproperties: contain_counters: false is_transactional: false",
                        schema_with_ids.column_id(0),
                        schema_with_ids.column_id(1),
                        schema_with_ids.column_id(3)),

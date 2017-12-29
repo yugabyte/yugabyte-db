@@ -67,10 +67,21 @@ Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
                                              rocksdb::DB* db,
                                              TransactionStatusManager* status_manager);
 
-Result<IntentType> ExtractIntentType(
-    const rocksdb::Iterator* intent_iter, // used in INTENT_*_SCHECK macros
-    const Slice& transaction_id_slice, // used in INTENT_*_SCHECK macros
-    Slice* intent_key);
+struct ParsedIntent {
+  // Intent DocPath.
+  Slice doc_path;
+  IntentType type;
+  // Intent doc hybrid time.
+  Slice doc_ht;
+};
+
+// Parses the intent pointed to by intent_iter to a ParsedIntent.
+// Intent is encoded as Prefix + DocPath + IntentType + DocHybridTime.
+// `transaction_id_source` could be larger that 16 bytes, it is not problem here, because it is
+// used for error reporting.
+Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source);
+
+std::string DebugIntentKeyToString(Slice intent_key);
 
 } // namespace docdb
 } // namespace yb

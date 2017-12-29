@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/common/iterator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -110,6 +112,8 @@ DEFINE_int32(max_wait_for_safe_time_ms, 5000,
 DEFINE_bool(tserver_noop_read_write, false, "Respond NOOP to read/write.");
 TAG_FLAG(tserver_noop_read_write, unsafe);
 TAG_FLAG(tserver_noop_read_write, hidden);
+
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace tserver {
@@ -902,57 +906,54 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  Status s;
-  tablet::ScopedReadOperation read_tx(tablet.get(), ReadHybridTime::FromReadTimePB(*req));
-  switch (tablet->table_type()) {
-    case TableType::REDIS_TABLE_TYPE: {
-      for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
-        RedisResponsePB redis_response;
-        s = tablet->HandleRedisReadRequest(
-            read_tx.read_time(),
-            redis_read_req,
-            &redis_response);
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
-        resp->add_redis_batch()->Swap(&redis_response);
-      }
-      break;
-    }
-    case TableType::YQL_TABLE_TYPE: {
-      for (const QLReadRequestPB& ql_read_req : req->ql_batch()) {
-        // Update the remote endpoint.
-        const auto& remote_address = context.remote_address();
-        HostPortPB *hostPortPB =
-            const_cast<QLReadRequestPB&>(ql_read_req).mutable_remote_endpoint();
-        hostPortPB->set_host(remote_address.address().to_string());
-        hostPortPB->set_port(remote_address.port());
+  auto safe_ht_to_read = tablet->SafeTimestampToRead();
+  auto read_time = ReadHybridTime::FromReadTimePB(*req);
+  bool allow_retry = !read_time;
+  if (!read_time) {
+    // If the read time is not specified, then it is non transactional read.
+    // So we should restart it in server in case of failure.
+    read_time.read = safe_ht_to_read;
+    if (tablet->SchemaRef().table_properties().is_transactional()) {
+      read_time.local_limit = server_->Clock()->Now().AddMicroseconds(FLAGS_max_clock_skew_usec);
+      read_time.global_limit = read_time.local_limit;
 
-        tablet::QLReadRequestResult result;
-        int rows_data_sidecar_idx = 0;
-        TRACE("Start HandleQLReadRequest");
-        s = tablet->HandleQLReadRequest(
-            read_tx.read_time(),
-            ql_read_req,
-            req->transaction(),
-            &result);
-        TRACE("Done HandleQLReadRequest");
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
-        if (result.restart_read_ht.is_valid()) {
-          auto restart_read_time = resp->mutable_restart_read_time();
-          restart_read_time->set_read_ht(result.restart_read_ht.ToUint64());
-          restart_read_time->set_local_limit_ht(tablet->SafeTimestampToRead().ToUint64());
-          // Global limit is ignored by caller, so we don't set it.
-        } else {
-          s = context.AddRpcSidecar(RefCntBuffer(result.rows_data), &rows_data_sidecar_idx);
-          RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
-          result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
-          resp->add_ql_batch()->Swap(&result.response);
-        }
-      }
+      VLOG(1) << "Read time: " << read_time.ToString();
+    } else {
+      read_time.local_limit = read_time.read;
+      read_time.global_limit = read_time.read;
+    }
+  }
+
+  const auto& remote_address = context.remote_address();
+  HostPortPB host_port_pb;
+  host_port_pb.set_host(remote_address.address().to_string());
+  host_port_pb.set_port(remote_address.port());
+
+  for (;;) {
+    resp->Clear();
+    context.ResetRpcSidecars();
+    auto result = DoRead(
+        tablet.get(), req, read_time, safe_ht_to_read, &host_port_pb, resp, &context);
+    if (!result.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), result.status(), TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
+    }
+    read_time = *result;
+    // If read was successful, then restart time is invalid. Finishing.
+    if (!read_time) {
       break;
     }
-    default:
-      LOG(FATAL) << "Unknown table type: " << tablet->table_type();
+    if (!allow_retry) {
+      // The read time is specified, than we read as part of transaction. So we should restart
+      // whole transaction. In this case we report restart time and abort reading.
+      resp->Clear();
+      auto restart_read_time = resp->mutable_restart_read_time();
+      restart_read_time->set_read_ht(read_time.read.ToUint64());
+      restart_read_time->set_local_limit_ht(read_time.local_limit.ToUint64());
+      // Global limit is ignored by caller, so we don't set it.
       break;
+    }
   }
   if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
     resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
@@ -961,6 +962,58 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       std::move(context), resp, server_->Clock());
   callback.OperationCompleted();
   TRACE("Done Read");
+}
+
+Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
+                                                 const ReadRequestPB* req,
+                                                 ReadHybridTime read_time,
+                                                 HybridTime safe_ht_to_read,
+                                                 HostPortPB* host_port_pb,
+                                                 ReadResponsePB* resp,
+                                                 rpc::RpcContext* context) {
+  tablet::ScopedReadOperation read_tx(tablet, read_time);
+  switch (tablet->table_type()) {
+    case TableType::REDIS_TABLE_TYPE: {
+      for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
+        RedisResponsePB redis_response;
+        RETURN_NOT_OK(tablet->HandleRedisReadRequest(
+            read_tx.read_time(), redis_read_req, &redis_response));
+        resp->add_redis_batch()->Swap(&redis_response);
+      }
+
+      // TODO(dtxn) implement read restart for Redis.
+      return ReadHybridTime();
+    }
+    case TableType::YQL_TABLE_TYPE: {
+      ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req);
+      for (QLReadRequestPB& ql_read_req : *mutable_req->mutable_ql_batch()) {
+        // Update the remote endpoint.
+        ql_read_req.set_allocated_remote_endpoint(host_port_pb);
+        BOOST_SCOPE_EXIT(&ql_read_req) {
+          ql_read_req.release_remote_endpoint();
+        } BOOST_SCOPE_EXIT_END;
+
+        tablet::QLReadRequestResult result;
+        TRACE("Start HandleQLReadRequest");
+        RETURN_NOT_OK(tablet->HandleQLReadRequest(
+            read_tx.read_time(), ql_read_req, req->transaction(), &result));
+        TRACE("Done HandleQLReadRequest");
+        if (result.restart_read_ht.is_valid()) {
+          VLOG(1) << "Restart read required at: " << result.restart_read_ht;
+          read_time.read = result.restart_read_ht;
+          read_time.local_limit = safe_ht_to_read;
+          return read_time;
+        }
+        int rows_data_sidecar_idx = 0;
+        RETURN_NOT_OK(context->AddRpcSidecar(
+            RefCntBuffer(result.rows_data), &rows_data_sidecar_idx));
+        result.response.set_rows_data_sidecar(rows_data_sidecar_idx);
+        resp->add_ql_batch()->Swap(&result.response);
+      }
+      return ReadHybridTime();
+    }
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, tablet->table_type());
 }
 
 ConsensusServiceImpl::ConsensusServiceImpl(const scoped_refptr<MetricEntity>& metric_entity,

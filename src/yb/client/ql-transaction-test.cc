@@ -46,8 +46,9 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
 DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_uint64(transaction_check_interval_usec);
-DECLARE_uint64(transaction_read_skew_usec);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
+DECLARE_bool(use_test_clock);
 
 namespace yb {
 namespace client {
@@ -119,6 +120,7 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
 class QLTransactionTest : public QLDmlTestBase {
  protected:
   void SetUp() override {
+    FLAGS_use_test_clock = true;
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder builder;
@@ -136,7 +138,7 @@ class QLTransactionTest : public QLDmlTestBase {
     server::ClockPtr clock(
         clock_ = new server::TestClock(server::ClockPtr(new server::HybridClock)));
     ASSERT_OK(clock->Init());
-    HybridTime::TEST_SetBaseTimeForToString(clock->Now().GetPhysicalValueMicros());
+    HybridTime::TEST_SetPrettyToString(true);
     transaction_manager_.emplace(client_, clock);
   }
 
@@ -229,16 +231,39 @@ class QLTransactionTest : public QLDmlTestBase {
     LOG(INFO) << "Committed";
   }
 
+  void VerifyRows(const YBSessionPtr& session,
+                  size_t transaction = 0,
+                  const WriteOpType op_type = WriteOpType::INSERT,
+                  const std::string& column = kValueColumn) {
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+
+    std::vector<client::YBqlReadOpPtr> ops;
+    for (size_t r = 0; r != kNumRows; ++r) {
+      auto op = table_.NewReadOp();
+      auto* const req = op->mutable_request();
+      QLAddInt32HashValue(req, KeyForTransactionAndIndex(transaction, r));
+      table_.AddColumns({column}, req);
+      ASSERT_OK(session->Apply(op));
+      ops.push_back(op);
+    }
+    ASSERT_OK(session->Flush());
+    for (size_t r = 0; r != kNumRows; ++r) {
+      SCOPED_TRACE(Format("Row: $0, key: $1", r, KeyForTransactionAndIndex(transaction, r)));
+      auto& op = ops[r];
+      ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+      auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+      ASSERT_EQ(rowblock->row_count(), 1);
+      ASSERT_EQ(rowblock->row(0).column(0).int32_value(),
+                ValueForTransactionAndIndex(transaction, r, op_type));
+    }
+  }
+
   void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT,
                   const std::string& column = kValueColumn) {
     VLOG(4) << "Verifying data..." << std::endl;
     auto session = CreateSession();
     for (size_t i = 0; i != num_transactions; ++i) {
-      for (size_t r = 0; r != kNumRows; ++r) {
-        VERIFY_ROW(
-            session, KeyForTransactionAndIndex(i, r), ValueForTransactionAndIndex(i, r, op_type),
-            column);
-      }
+      VerifyRows(session, i, op_type, column);
     }
   }
 
@@ -276,7 +301,7 @@ TEST_F(QLTransactionTest, Simple) {
 void QLTransactionTest::TestReadRestart(bool commit) {
   google::FlagSaver saver;
 
-  FLAGS_transaction_read_skew_usec = 250000;
+  FLAGS_max_clock_skew_usec = 250000;
 
   auto write_txn = std::make_shared<YBTransaction>(
       transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
@@ -331,10 +356,43 @@ TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
   TestReadRestart(false /* commit */);
 }
 
+// Non transactional r estart happens in server, so we just checking that we read correct values.
+// Skewed clocks are used because there could be case when applied intents or commit transaction
+// has time greater than max safetime to read, that causes restart.
+TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
+  const auto kClockSkew = 500ms;
+  google::FlagSaver saver;
+
+  FLAGS_max_clock_skew_usec = 1000000;
+  FLAGS_transaction_table_default_num_tablets = 3;
+  FLAGS_transaction_timeout_usec = FLAGS_max_clock_skew_usec * 1000;
+
+  std::vector<server::TestClockDeltaChanger> delta_changers;
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto* tserver = cluster_->mini_tablet_server(i)->server();
+    delta_changers.emplace_back(i * kClockSkew, down_cast<server::TestClock*>(tserver->clock()));
+  }
+
+  constexpr size_t kTotalTransactions = 10;
+
+  for (size_t i = 0; i != kTotalTransactions; ++i) {
+    SCOPED_TRACE(Format("Transaction $0", i));
+    auto txn = std::make_shared<YBTransaction>(
+        transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+    WriteRows(CreateSession(txn), i);
+    ASSERT_OK(txn->CommitFuture().get());
+    ASSERT_NO_FATALS(VerifyRows(CreateSession(), i));
+
+    // We propagate hybrid time, so when commit and read finishes, all servers has about the same
+    // physical component. We are waiting double skew, until time on servers became skewed again.
+    std::this_thread::sleep_for(kClockSkew * 2);
+  }
+}
+
 TEST_F(QLTransactionTest, WriteRestart) {
   google::FlagSaver saver;
 
-  FLAGS_transaction_read_skew_usec = 250000;
+  FLAGS_max_clock_skew_usec = 250000;
 
   const std::string kExtraColumn = "v2";
   std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -561,9 +619,9 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
+TEST_F(QLTransactionTest, DISABLED_ResolveIntentsWriteReadWithinTransactionAndRollback) {
   google::FlagSaver flag_saver;
-  FLAGS_transaction_read_skew_usec = 0; // To avoid read restart in this test.
+  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -604,7 +662,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   google::FlagSaver flag_saver;
-  FLAGS_transaction_read_skew_usec = 0; // To avoid read restart in this test.
+  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -651,7 +709,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
 
 TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   google::FlagSaver flag_saver;
-  FLAGS_transaction_read_skew_usec = 0; // To avoid read restart in this test.
+  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.

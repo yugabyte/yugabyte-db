@@ -149,6 +149,16 @@ class TabletServiceImpl : public TabletServerServiceIf {
                      tablet::TabletPeerPtr* tablet_peer,
                      tablet::TabletPtr* tablet);
 
+  // Read implementation. If restart is required returns restart time, in case of success
+  // returns invalid ReadHybridTime. Otherwise returns error status.
+  Result<ReadHybridTime> DoRead(tablet::AbstractTablet* tablet,
+                                const ReadRequestPB* req,
+                                ReadHybridTime read_time,
+                                HybridTime safe_ht_to_read,
+                                HostPortPB* hostPortPB,
+                                ReadResponsePB* resp,
+                                rpc::RpcContext* context);
+
   TabletServerIf *const server_;
 };
 

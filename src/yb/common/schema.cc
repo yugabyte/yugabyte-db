@@ -335,9 +335,13 @@ string Schema::ToString() const {
     }
   }
 
+  TablePropertiesPB tablet_properties_pb;
+  table_properties_.ToTablePropertiesPB(&tablet_properties_pb);
+
   return StrCat("Schema [\n\t",
                 JoinStrings(col_strs, ",\n\t"),
-                "\n]");
+                "\n]\nproperties: ",
+                tablet_properties_pb.ShortDebugString());
 }
 
 Status Schema::DecodeRowKey(Slice encoded_key,

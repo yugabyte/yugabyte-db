@@ -145,12 +145,12 @@ TEST(DocKeyTest, TestDocKeyToString) {
 
 TEST(DocKeyTest, TestSubDocKeyToString) {
   ASSERT_EQ(
-      "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT(p=12345)])",
+      "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT{ physical: 12345 }])",
       SubDocKey(DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
                 HybridTime::FromMicros(12345L)).ToString());
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), "
-      "[\"subkey1\"; HT(p=20000)])",
+      "[\"subkey1\"; HT{ physical: 20000 }])",
       SubDocKey(
           DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
           PrimitiveValue("subkey1"), HybridTime::FromMicros(20000L)

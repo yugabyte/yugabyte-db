@@ -173,6 +173,9 @@ class RpcContext {
   // by the RPC response.
   CHECKED_STATUS AddRpcSidecar(RefCntBuffer car, int* idx);
 
+  // Removes all RpcSidecars.
+  void ResetRpcSidecars();
+
   // Return the remote endpoint which sent the current RPC call.
   const Endpoint& remote_address() const;
   // Return the local endpoint which received the current RPC call.

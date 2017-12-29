@@ -27,8 +27,8 @@ const MonoDelta Value::kMaxTtl = yb::common::kMaxTtl;
 const int64_t Value::kInvalidUserTimestamp = yb::common::kInvalidUserTimestamp;
 
 template <typename T>
-bool Value::DecodeType(const ValueType& expected_value_type, const T& default_value,
-                       rocksdb::Slice* slice, T* val) {
+bool DecodeType(const ValueType& expected_value_type, const T& default_value, Slice* slice,
+                T* val) {
   const ValueType value_type = DecodeValueType(*slice);
 
   if (value_type != expected_value_type) {
@@ -38,6 +38,14 @@ bool Value::DecodeType(const ValueType& expected_value_type, const T& default_va
 
   ConsumeValueType(slice);
   return true;
+}
+
+CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
+  if (!DecodeType(ValueType::kHybridTime, DocHybridTime::kInvalid, slice, doc_ht)) {
+    return Status::OK();
+  }
+
+  return doc_ht->DecodeFrom(slice);
 }
 
 Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
@@ -82,9 +90,19 @@ Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
 
   rocksdb::Slice slice = rocksdb_value;
 
-  RETURN_NOT_OK(DecodeTTL(&slice, &ttl_));
-  RETURN_NOT_OK(DecodeUserTimestamp(&slice, &user_timestamp_));
-  return primitive_value_.DecodeFromValue(slice);
+  RETURN_NOT_OK_PREPEND(
+      DecodeIntentDocHT(&slice, &intent_doc_ht_),
+      Format("Failed to decode intent ht in $0", rocksdb_value.ToDebugHexString()));
+  RETURN_NOT_OK_PREPEND(
+      DecodeTTL(&slice, &ttl_),
+      Format("Failed to decode TTL in $0", rocksdb_value.ToDebugHexString()));
+  RETURN_NOT_OK_PREPEND(
+      DecodeUserTimestamp(&slice, &user_timestamp_),
+      Format("Failed to decode user timestamp in $0", rocksdb_value.ToDebugHexString()));
+  RETURN_NOT_OK_PREPEND(
+      primitive_value_.DecodeFromValue(slice),
+      Format("Failed to decode value in $0", rocksdb_value.ToDebugHexString()));
+  return Status::OK();
 }
 
 string Value::ToString() const {

@@ -588,7 +588,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
     return;
   }
 
-  if (put_batch.kv_pairs_size() == 0) {
+  if (put_batch.kv_pairs_size() == 0 && rocksdb_write_batch->Count() == 0) {
     return;
   }
 
@@ -859,9 +859,11 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 
   reverse_index_iter->Seek(txn_reverse_index_prefix.data());
 
-  KeyValueWriteBatchPB put_batch;
   WriteBatch rocksdb_write_batch;
 
+  docdb::DocHybridTimeBuffer doc_ht_buffer;
+
+  IntraTxnWriteId write_id = 0;
   while (reverse_index_iter->Valid()) {
     rocksdb::Slice key_slice(reverse_index_iter->key());
 
@@ -874,33 +876,38 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       // Value of reverse index is a key of original intent record, so seek it and check match.
       intent_iter->Seek(reverse_index_iter->value());
-      if (intent_iter->Valid() && intent_iter->key() == reverse_index_iter->value()) {
-        Slice intent_key(intent_iter->key());
-        intent_key.consume_byte();
-        auto intent_type = docdb::ExtractIntentType(
-            intent_iter.get(), transaction_id_slice, &intent_key);
-        RETURN_NOT_OK(intent_type);
-
-        if (IsStrongIntent(*intent_type)) {
-          Slice intent_value(intent_iter->value());
-          INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
-                              "prefix expected");
-          intent_value.consume_byte();
-          INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
-                              "wrong transaction id");
-          intent_value.remove_prefix(transaction_id_slice.size());
-
-          auto* pair = put_batch.add_kv_pairs();
-          // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
-          // Time will be added when writing batch to rocks db.
-          pair->set_key(intent_key.cdata(), intent_key.size());
-          pair->set_value(intent_value.cdata(), intent_value.size());
-        }
-        rocksdb_write_batch.Delete(intent_iter->key());
-      } else {
+      if (!intent_iter->Valid() || intent_iter->key() != reverse_index_iter->value()) {
         LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
                     << " for " << reverse_index_iter->key().ToDebugString();
+        continue;
       }
+      auto intent = docdb::ParseIntentKey(intent_iter->key(), transaction_id_slice);
+      RETURN_NOT_OK(intent);
+
+      if (IsStrongIntent(intent->type)) {
+        Slice intent_value(intent_iter->value());
+        INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
+                            "prefix expected");
+        intent_value.consume_byte();
+        INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
+                            "wrong transaction id");
+        intent_value.remove_prefix(transaction_id_slice.size());
+
+        // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
+        // Time will be added when writing batch to rocks db.
+        std::array<Slice, 2> key_parts = {{
+            intent->doc_path,
+            doc_ht_buffer.EncodeWithValueType(data.commit_time, write_id),
+        }};
+        std::array<Slice, 2> value_parts = {{
+            intent->doc_ht,
+            intent_value,
+        }};
+        rocksdb_write_batch.Put(key_parts, value_parts);
+        ++write_id;
+      }
+
+      rocksdb_write_batch.Delete(intent_iter->key());
     }
 
     rocksdb_write_batch.Delete(reverse_index_iter->key());
@@ -910,8 +917,8 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
-  // TODO(dtxn) commit_time?
-  ApplyKeyValueRowOperations(put_batch, data.op_id, data.commit_time, &rocksdb_write_batch);
+  ApplyKeyValueRowOperations(
+      KeyValueWriteBatchPB(), data.op_id, data.commit_time, &rocksdb_write_batch);
   return Status::OK();
 }
 
@@ -1320,7 +1327,7 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
 ScopedReadOperation::ScopedReadOperation(
     AbstractTablet* tablet, const ReadHybridTime& read_time)
     : tablet_(tablet), read_time_(read_time) {
-  if (!read_time_.read.is_valid()) {
+  if (!read_time_) {
     read_time_ = ReadHybridTime::SingleTime(tablet->SafeTimestampToRead());
   }
 

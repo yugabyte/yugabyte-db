@@ -59,7 +59,7 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, Callback callback) {
     }
     RETURN_NOT_OK_PREPEND(callback(),
         Substitute("while consuming primitive values from $0",
-            ToShortDebugStr(initial_slice)));
+                   initial_slice.ToDebugHexString()));
   }
 }
 
@@ -522,6 +522,15 @@ Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
         mutable_slice.size(), ToShortDebugStr(mutable_slice));
   }
   return status;
+}
+
+std::string SubDocKey::DebugSliceToString(Slice slice) {
+  SubDocKey key;
+  auto status = key.FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
+  if (!status.ok()) {
+    return status.ToString();
+  }
+  return key.ToString();
 }
 
 string SubDocKey::ToString() const {

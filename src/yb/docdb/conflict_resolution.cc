@@ -128,15 +128,14 @@ class ConflictResolver {
             existing_value.ToDebugHexString());
       }
       existing_value.consume_byte();
-      auto existing_intent_type = ExtractIntentType(
-          intent_iter_.get(), existing_value, &existing_key);
+      auto existing_intent = docdb::ParseIntentKey(intent_iter_->key(), existing_value);
+      RETURN_NOT_OK(existing_intent);
 
-      auto transaction_id = FullyDecodeTransactionId(
-          Slice(existing_value.data(), TransactionId::static_size()));
-      RETURN_NOT_OK(transaction_id);
+      if (conflicting_intent_types.test(static_cast<size_t>(existing_intent->type))) {
+        auto transaction_id = FullyDecodeTransactionId(
+            Slice(existing_value.data(), TransactionId::static_size()));
+        RETURN_NOT_OK(transaction_id);
 
-      RETURN_NOT_OK(existing_intent_type);
-      if (conflicting_intent_types.test(static_cast<size_t>(*existing_intent_type))) {
         conflicts_.insert(*transaction_id);
       }
 
@@ -484,24 +483,49 @@ Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
   BOOST_PP_CAT(SCHECK_, op)(lhs, \
                             rhs, \
                             Corruption, \
-                            Format("Bad intent key, $0 in $1, transaction: $2", \
+                            Format("Bad intent key, $0 in $1, transaction from: $2", \
                                    msg, \
-                                   intent_iter->key().ToDebugHexString(), \
-                                   transaction_id_slice.ToDebugHexString()))
+                                   intent_key.ToDebugHexString(), \
+                                   transaction_id_source.ToDebugHexString()))
 
-Result<IntentType> ExtractIntentType(
-    const rocksdb::Iterator* intent_iter, // used in INTENT_*_SCHECK macros
-    const Slice& transaction_id_slice, // used in INTENT_*_SCHECK macros
-    Slice* intent_key) {
+// transaction_id_slice used in INTENT_KEY_SCHECK
+Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
+  ParsedIntent result;
   int doc_ht_size = 0;
-  RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(*intent_key, &doc_ht_size));
-  INTENT_KEY_SCHECK(intent_key->size(), GE, 3, "key too short");
-  intent_key->remove_suffix(doc_ht_size + 3);
-  INTENT_KEY_SCHECK(intent_key->end()[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
+  result.doc_path = intent_key;
+  // Intent is encoded as "Prefix + DocPath + IntentType + DocHybridTime".
+  result.doc_path.consume_byte();
+  RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));
+  // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
+  INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
+  result.doc_path.remove_suffix(doc_ht_size + 3);
+  auto intent_type_and_doc_ht = result.doc_path.end();
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, static_cast<uint8_t>(ValueType::kIntentType),
                     "intent type value type expected");
-  INTENT_KEY_SCHECK(intent_key->end()[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
+  result.type = static_cast<IntentType>(intent_type_and_doc_ht[1]);
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, static_cast<uint8_t>(ValueType::kHybridTime),
                     "hybrid time value type expected");
-  return static_cast<IntentType>(intent_key->end()[1]);
+  result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
+  return result;
+}
+
+std::string DebugIntentKeyToString(Slice intent_key) {
+  auto parsed = ParseIntentKey(intent_key, Slice());
+  if (!parsed.ok()) {
+    LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
+    return intent_key.ToDebugHexString();
+  }
+  DocHybridTime doc_ht;
+  auto status = doc_ht.DecodeFromEnd(parsed->doc_ht);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": " << status;
+    return intent_key.ToDebugHexString();
+  }
+  return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
+                intent_key.ToDebugHexString(),
+                SubDocKey::DebugSliceToString(parsed->doc_path),
+                ToString(parsed->type),
+                doc_ht.ToString());
 }
 
 } // namespace docdb

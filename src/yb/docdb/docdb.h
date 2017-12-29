@@ -250,7 +250,17 @@ struct GetSubDocumentData {
     result.high_subkey = high_subkey;
     return result;
   }
+
+  std::string ToString() const {
+    return Format("{ subdocument_key: $0 table_ttl: $1 return_type_only: $2 low_subkey: $3 "
+                      "high_subkey: $4 }",
+                  *subdocument_key, table_ttl, return_type_only, *low_subkey, *high_subkey);
+  }
 };
+
+inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& data) {
+  return out << data.ToString();
+}
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
@@ -298,6 +308,21 @@ std::string DocDBDebugDumpToStr(
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
+
+// Buffer for encoding DocHybridTime
+class DocHybridTimeBuffer {
+ public:
+  DocHybridTimeBuffer();
+
+  Slice EncodeWithValueType(const DocHybridTime& doc_ht);
+
+  Slice EncodeWithValueType(HybridTime ht, IntraTxnWriteId write_id) {
+    return EncodeWithValueType(DocHybridTime(ht, write_id));
+  }
+ private:
+  std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
+};
+
 
 }  // namespace docdb
 }  // namespace yb

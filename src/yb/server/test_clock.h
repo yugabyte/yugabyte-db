@@ -25,15 +25,12 @@ class TestClock : public Clock {
 
   template <class Duration>
   HybridTime SetDelta(Duration duration) {
-    auto old_delta = delta_;
-    delta_ = HybridTime(std::chrono::duration_cast<std::chrono::microseconds>(duration).count(), 0);
-    return old_delta;
+    return SetDelta(
+        HybridTime(std::chrono::duration_cast<std::chrono::microseconds>(duration).count(), 0));
   }
 
   HybridTime SetDelta(HybridTime new_delta) {
-    auto old_delta = delta_;
-    delta_ = new_delta;
-    return old_delta;
+    return delta_.exchange(new_delta);
   }
 
  private:
@@ -51,7 +48,9 @@ class TestClock : public Clock {
     return status;
   }
 
-  void Update(const HybridTime& to_update) override {}
+  void Update(const HybridTime& to_update) override {
+    impl_->Update(SubDelta(to_update));
+  }
 
   CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
                                 const MonoTime& deadline) override {
@@ -74,15 +73,15 @@ class TestClock : public Clock {
   }
 
   HybridTime AddDelta(HybridTime v) const {
-    return HybridTime(v.ToUint64() + delta_.ToUint64());
+    return HybridTime(v.ToUint64() + delta_.load().ToUint64());
   }
 
   HybridTime SubDelta(HybridTime v) const {
-    return HybridTime(v.ToUint64() - delta_.ToUint64());
+    return HybridTime(v.ToUint64() - delta_.load().ToUint64());
   }
 
   ClockPtr impl_;
-  HybridTime delta_{0};
+  std::atomic<HybridTime> delta_{HybridTime(0)};
 };
 
 class TestClockDeltaChanger {
@@ -92,8 +91,18 @@ class TestClockDeltaChanger {
       : test_clock_(test_clock), old_delta_(test_clock->SetDelta(new_delta)) {
   }
 
+  TestClockDeltaChanger(TestClockDeltaChanger&& rhs)
+      : test_clock_(rhs.test_clock_), old_delta_(rhs.old_delta_) {
+    rhs.test_clock_ = nullptr;
+  }
+
+  TestClockDeltaChanger(const TestClockDeltaChanger&) = delete;
+  void operator=(const TestClockDeltaChanger&) = delete;
+
   ~TestClockDeltaChanger() {
-    test_clock_->SetDelta(old_delta_);
+    if (test_clock_) {
+      test_clock_->SetDelta(old_delta_);
+    }
   }
 
  private:

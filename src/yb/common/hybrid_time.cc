@@ -32,6 +32,11 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include <boost/date_time/c_local_time_adjustor.hpp>
+#include <boost/date_time/posix_time/ptime.hpp>
+#include <boost/date_time/posix_time/posix_time_duration.hpp>
+#include <boost/date_time/posix_time/time_formatters.hpp>
+
 #include "yb/util/memcmpable_varint.h"
 
 using std::string;
@@ -42,7 +47,7 @@ namespace yb {
 
 namespace {
 
-MicrosTime base_time_for_to_string_in_tests_ = 0;
+std::atomic<bool> pretty_to_string_mode_{false};
 
 }
 
@@ -74,35 +79,40 @@ string HybridTime::ToString() const {
     case kInitialHybridTimeValue:
       return "<initial>";
     default:
-      return Format("{ physical: $0 logical: $1 }",
-                    GetPhysicalValueMicros() - base_time_for_to_string_in_tests_,
-                    GetLogicalValue());
+      auto logical = GetLogicalValue();
+      if (!pretty_to_string_mode_.load(std::memory_order_acquire)) {
+        if (logical) {
+          return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), logical);
+        } else {
+          return Format("{ physical: $0 }", GetPhysicalValueMicros());
+        }
+      }
+      // When time is rendered with separate minutes and seconds it is easier to understand that
+      // one value is 2 seconds later that another one.
+      // With default rendering difference appears in the middle of 10+ digits number.
+      boost::posix_time::ptime start(boost::gregorian::date(1970, 1, 1));
+      auto usec = GetPhysicalValueMicros();
+      auto utc_time = start + boost::posix_time::microseconds(usec);
+      auto local_time =
+          boost::date_time::c_local_adjustor<boost::posix_time::ptime>::utc_to_local(utc_time);
+      auto date = local_time.date();
+      auto time_of_day = local_time.time_of_day();
+      auto days = (boost::posix_time::ptime(date) - start).hours() / 24;
+      auto time_of_day_str = boost::posix_time::to_simple_string(time_of_day);
+      if (logical) {
+        return Format("{ days: $0 time: $1 logical: $2 }", days, time_of_day_str, logical);
+      } else {
+        return Format("{ days: $0 time: $1 }", days, time_of_day_str);
+      }
   }
 }
 
-void HybridTime::TEST_SetBaseTimeForToString(MicrosTime micros) {
-  base_time_for_to_string_in_tests_ = micros;
+void HybridTime::TEST_SetPrettyToString(bool flag) {
+  pretty_to_string_mode_ = flag;
 }
 
 string HybridTime::ToDebugString() const {
-  string s(kHybridTimeDebugStrPrefix);
-  s += "(";
-  switch (v) {
-    case kMinHybridTimeValue: s += "Min"; break;
-    case kInitialHybridTimeValue: s += "Initial"; break;
-
-    // For Max and Invalid, don't put the value in the string because it is a large constant.
-    case kMaxHybridTimeValue: s += "Max"; break;
-    case kInvalidHybridTimeValue: s += "Invalid"; break;
-    default:
-      SubstituteAndAppend(&s, "p=$0", GetPhysicalValueMicros());
-      const LogicalTimeComponent logical = GetLogicalValue();
-      if (logical != 0) {
-        SubstituteAndAppend(&s, ", l=$0", logical);
-      }
-  }
-  s += ")";
-  return s;
+  return kHybridTimeDebugStrPrefix + ToString();
 }
 
 uint64_t HybridTime::ToUint64() const {

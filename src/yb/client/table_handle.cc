@@ -190,7 +190,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     if (options.filter) {
       options.filter(*table_, req->mutable_where_expr()->mutable_condition());
     }
-    if (options.read_time.read.is_valid()) {
+    if (options.read_time) {
       op->SetReadTime(options.read_time);
     }
     table_->AddColumns(options.columns, req);

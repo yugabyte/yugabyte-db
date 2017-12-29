@@ -34,7 +34,7 @@ struct ReadHybridTime {
   HybridTime global_limit;
 
   static ReadHybridTime Max() {
-    return {HybridTime::kMax, HybridTime::kMax};
+    return SingleTime(HybridTime::kMax);
   }
 
   static ReadHybridTime SingleTime(HybridTime value) {
@@ -84,6 +84,14 @@ struct ReadHybridTime {
     } else {
       pb->clear_read_time();
     }
+  }
+
+  explicit operator bool() const {
+    return read.is_valid();
+  }
+
+  bool operator!() const {
+    return !read.is_valid();
   }
 
   std::string ToString() const {

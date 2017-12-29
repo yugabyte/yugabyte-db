@@ -11,9 +11,11 @@
 // under the License.
 //
 
+#include "yb/util/fast_varint.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
-#include "yb/util/fast_varint.h"
+#include "yb/util/debug-util.h"
 
 using std::string;
 

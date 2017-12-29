@@ -89,12 +89,6 @@ class Value {
   // the timestamp.
   static CHECKED_STATUS DecodeUserTimestamp(rocksdb::Slice* slice, UserTimeMicros* user_timestamp);
 
-  // Returns true if the expected_value_type is found, otherwise returns false and sets val to
-  // default_value.
-  template <typename T>
-  static bool DecodeType(const ValueType& expected_value_type, const T& default_value,
-                         rocksdb::Slice* slice, T* val);
-
   PrimitiveValue primitive_value_;
 
   // The ttl of the Value. kMaxTtl is the default value. TTL is not included in encoded
@@ -104,6 +98,10 @@ class Value {
 
   // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
   UserTimeMicros user_timestamp_;
+
+  // If this value was written using a transaction,
+  // this field stores the original intent doc hybrid time.
+  DocHybridTime intent_doc_ht_;
 };
 
 }  // namespace docdb
