@@ -25,13 +25,14 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, edition, distribution_path, force):
+    def __init__(self, repository, build_type, edition, distribution_path, force, commit):
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
         self.edition = edition
         self.distribution_path = distribution_path
         self.force = force
+        self.commit = commit or ReleaseUtil.get_head_commit_hash()
         self.base_version = None
         with open(os.path.join(self.repo, RELEASE_VERSION_FILE)) as v:
             # Remove any build number in the version.txt.
@@ -123,6 +124,10 @@ class ReleaseUtil(object):
         logging.debug("Effective release manifest:\n" +
                       json.dumps(self.release_manifest, indent=2, sort_keys=True))
 
+    @staticmethod
+    def get_head_commit_hash():
+        return check_output(["git", "rev-parse", "HEAD"]).strip()
+
     def get_release_file(self):
         """
         This method does couple of checks before generating the release file name.
@@ -134,8 +139,7 @@ class ReleaseUtil(object):
         Returns:
             (string): Release file path.
         """
-        cur_commit = check_output(["git", "rev-parse", "HEAD"]).strip()
-        release_name = "{}-{}-{}".format(self.base_version, cur_commit, self.build_type)
+        release_name = "{}-{}-{}".format(self.base_version, self.commit, self.build_type)
 
         system = platform.system().lower()
         if system == "linux":

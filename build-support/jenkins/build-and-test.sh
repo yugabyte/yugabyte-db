@@ -410,6 +410,11 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   )
 fi
 
+# Save the current HEAD commit in case we build java below and add a new commit. This is primarily
+# so that we can still upload the release under the correct commit, from Jenkins, to then be picked
+# up from itest, from the snapshots bucket.
+current_git_commit=$(git rev-parse HEAD)
+
 # -------------------------------------------------------------------------------------------------
 # Java build
 
@@ -481,6 +486,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     --build_root "$BUILD_ROOT" \
     --build_args="--skip-java" \
     --save_release_path_to_file "$package_path_file" \
+    --commit "$current_git_commit" \
     --force
 
   YB_PACKAGE_PATH=$( cat "$package_path_file" )

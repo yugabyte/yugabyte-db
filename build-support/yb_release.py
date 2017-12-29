@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--edition', help='Which edition the code is built as.',
                         default=None,
                         choices=RELEASE_EDITION_ALLOWED_VALUES)
+    parser.add_argument('--commit', help='Custom specify a git commit.')
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
     parser.add_argument('--build_target',
                         help='Target directory to put the YugaByte distribution into. This can '
@@ -174,7 +175,8 @@ def main():
 
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
-    release_util = ReleaseUtil(YB_SRC_ROOT, build_type, args.edition, build_target, args.force)
+    release_util = ReleaseUtil(YB_SRC_ROOT, build_type, args.edition, build_target, args.force,
+                               args.commit)
     release_util.rewrite_manifest(build_root)
 
     system = platform.system().lower()
