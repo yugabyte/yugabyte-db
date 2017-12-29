@@ -148,7 +148,7 @@ class Scheduler::Impl {
   std::atomic<ScheduledTaskId> id_ = {0};
   Tasks tasks_;
   // Strand that protects tasks_ and timer_ fields.
-  boost::asio::strand strand_;
+  boost::asio::io_service::strand strand_;
   boost::asio::steady_timer timer_;
   std::atomic<bool> closing_ = {false};
 };

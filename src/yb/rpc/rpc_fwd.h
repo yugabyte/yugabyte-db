@@ -18,12 +18,19 @@
 
 #include <chrono>
 
+#include <boost/version.hpp>
+
 #include "yb/gutil/ref_counted.h"
 
 namespace boost {
 namespace asio {
 
+#if BOOST_VERSION >= 106600
+class io_context;
+typedef io_context io_service;
+#else
 class io_service;
+#endif
 
 } // namespace asio
 } // namespace boost

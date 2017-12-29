@@ -18,15 +18,14 @@
 #include <thread>
 
 #include <boost/ptr_container/ptr_vector.hpp>
-#include <boost/thread/condition_variable.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/reverse_lock.hpp>
 
 #include <gtest/gtest.h>
 
 #include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace util {
@@ -107,7 +106,7 @@ class TestQueue {
 
   void Enqueue(RefCntBuffer buffer) {
     {
-      boost::lock_guard<boost::mutex> lock(mutex_);
+      std::lock_guard<std::mutex> lock(mutex_);
       YB_ASSERT_TRUE(buffer);
       // We don't use std::move in this test because we want to check reference counting.
       buffers_.push_back(buffer);
@@ -118,7 +117,7 @@ class TestQueue {
 
   void Interrupt() {
     {
-      boost::lock_guard<boost::mutex> lock(mutex_);
+      std::lock_guard<std::mutex> lock(mutex_);
       interruption_requested_ = true;
     }
     cond_.notify_one();
@@ -131,7 +130,7 @@ class TestQueue {
   }
 
   void Run() {
-    boost::unique_lock<boost::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     for (auto i = kInitialBuffers; i--;) {
       buffers_.emplace_back(kSizeLimit);
       YB_ASSERT_TRUE(buffers_.back());
@@ -150,21 +149,21 @@ class TestQueue {
       }
 
       if (buffer) {
-        boost::reverse_lock<decltype(lock)> rlock(lock);
+        lock.unlock();
         size_t queue_index = rand_r(&seed) % queues_->size();
         (*queues_)[queue_index].Enqueue(buffer);
+        lock.lock();
       }
 
-      cond_.wait_for(lock, boost::chrono::milliseconds(1)); // Wait until something enqueued,
-                                                            // or timeout.
+      cond_.wait_for(lock, 1ms); // Wait until something enqueued, or timeout.
     }
   }
  private:
   boost::ptr_vector<TestQueue>* queues_;
   std::vector<RefCntBuffer> buffers_;
   std::atomic<bool> interruption_requested_ = {false};
-  boost::mutex mutex_;
-  boost::condition_variable cond_;
+  std::mutex mutex_;
+  std::condition_variable cond_;
   size_t sent_buffers_ = 0;
   size_t received_buffers_ = 0;
 };
@@ -187,7 +186,7 @@ TEST_F(RefCntBufferTest, TestThreads) {
     threads.emplace_back(std::bind(&TestQueue::Run, &queue));
   }
 
-  boost::this_thread::sleep_for(boost::chrono::seconds(2));
+  std::this_thread::sleep_for(2s);
 
   for (auto& queue : queues) {
     queue.Interrupt();
