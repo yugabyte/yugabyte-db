@@ -51,6 +51,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/trace.h"
@@ -187,17 +188,16 @@ TEST_F(TestThreadPool, TestThreadPoolWithNoMinimum) {
   ASSERT_EQ(0, thread_pool->num_threads_);
   // We get up to 3 threads when submitting work.
   CountDownLatch latch(1);
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  BOOST_SCOPE_EXIT(&latch) {
+      latch.CountDown();
+  } BOOST_SCOPE_EXIT_END;
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(2, thread_pool->num_threads_);
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(3, thread_pool->num_threads_);
   // The 4th piece of work gets queued.
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(3, thread_pool->num_threads_);
   // Finish all work
   latch.CountDown();
@@ -205,6 +205,48 @@ TEST_F(TestThreadPool, TestThreadPoolWithNoMinimum) {
   ASSERT_EQ(0, thread_pool->active_threads_);
   thread_pool->Shutdown();
   ASSERT_EQ(0, thread_pool->num_threads_);
+}
+
+TEST_F(TestThreadPool, TestThreadPoolWithNoMaxThreads) {
+  // By default a threadpool's max_threads is set to the number of CPUs, so
+  // this test submits more tasks than that to ensure that the number of CPUs
+  // isn't some kind of upper bound.
+  const int kNumCPUs = base::NumCPUs();
+  gscoped_ptr<ThreadPool> thread_pool;
+
+  // Build a threadpool with no limit on the maximum number of threads.
+  ASSERT_OK(ThreadPoolBuilder("test")
+                .set_max_threads(std::numeric_limits<int>::max())
+                .Build(&thread_pool));
+  CountDownLatch latch(1);
+  BOOST_SCOPE_EXIT(&latch) {
+    latch.CountDown();
+    } BOOST_SCOPE_EXIT_END;
+
+  // Submit tokenless tasks. Each should create a new thread.
+  for (int i = 0; i < kNumCPUs * 2; i++) {
+    ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  }
+  ASSERT_EQ(kNumCPUs * 2, thread_pool->num_threads_);
+
+  // Submit tasks on two tokens. Only two threads should be created.
+  unique_ptr<ThreadPoolToken> t1 = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  unique_ptr<ThreadPoolToken> t2 = thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL);
+  for (int i = 0; i < kNumCPUs * 2; i++) {
+    ThreadPoolToken* t = (i % 2 == 0) ? t1.get() : t2.get();
+    ASSERT_OK(t->Submit(SlowTask::NewSlowTask(&latch)));
+  }
+  ASSERT_EQ((kNumCPUs * 2) + 2, thread_pool->num_threads_);
+
+  // Submit more tokenless tasks. Each should create a new thread.
+  for (int i = 0; i < kNumCPUs; i++) {
+    ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  }
+  ASSERT_EQ((kNumCPUs * 3) + 2, thread_pool->num_threads_);
+
+  latch.CountDown();
+  thread_pool->Wait();
+  thread_pool->Shutdown();
 }
 
 // Regression test for a bug where a task is submitted exactly
@@ -237,21 +279,16 @@ TEST_F(TestThreadPool, TestVariableSizeThreadPool) {
   ASSERT_EQ(1, thread_pool->num_threads_);
   // We get up to 4 threads when submitting work.
   CountDownLatch latch(1);
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(1, thread_pool->num_threads_);
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(2, thread_pool->num_threads_);
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(3, thread_pool->num_threads_);
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(4, thread_pool->num_threads_);
   // The 5th piece of work gets queued.
-  ASSERT_OK(thread_pool->Submit(
-        shared_ptr<Runnable>(new SlowTask(&latch))));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(4, thread_pool->num_threads_);
   // Finish all work
   latch.CountDown();
@@ -268,13 +305,13 @@ TEST_F(TestThreadPool, TestMaxQueueSize) {
       .set_max_queue_size(1).Build(&thread_pool));
 
   CountDownLatch latch(1);
-  ASSERT_OK(thread_pool->Submit(shared_ptr<Runnable>(new SlowTask(&latch))));
-  Status s = thread_pool->Submit(shared_ptr<Runnable>(new SlowTask(&latch)));
+  ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
+  Status s = thread_pool->Submit(SlowTask::NewSlowTask(&latch));
   // We race against the worker thread to re-enqueue.
   // If we get there first, we fail on the 2nd Submit().
   // If the worker dequeues first, we fail on the 3rd.
   if (s.ok()) {
-    s = thread_pool->Submit(shared_ptr<Runnable>(new SlowTask(&latch)));
+    s = thread_pool->Submit(SlowTask::NewSlowTask(&latch));
   }
   CHECK(s.IsServiceUnavailable()) << "Expected failure due to queue blowout:" << s.ToString();
   latch.CountDown();

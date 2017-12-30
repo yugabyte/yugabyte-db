@@ -244,6 +244,7 @@ class ThreadPool {
 
  private:
   FRIEND_TEST(TestThreadPool, TestThreadPoolWithNoMinimum);
+  FRIEND_TEST(TestThreadPool, TestThreadPoolWithNoMaxThreads);
   FRIEND_TEST(TestThreadPool, TestVariableSizeThreadPool);
   // Aborts if the current thread is a member of this thread pool.
   void CheckNotPoolThreadUnlocked();
