@@ -1223,7 +1223,13 @@ detect_edition() {
   # If we haven't detected edition based on BUILD_ROOT, let's do that based on existence of the
   # enterprise source directory.
   if [[ -z ${YB_EDITION:-} ]]; then
-    if [[ -d $YB_ENTERPRISE_ROOT ]]; then
+    if is_jenkins && [[ $JOB_NAME =~ -community(-|$) ]]; then
+      YB_EDITION=community
+      log "Detecting YB_EDITION: $YB_EDITION based on Jenkins job name: $JOB_NAME"
+    elif is_jenkins && [[ $JOB_NAME =~ -enterprise(-|$) ]]; then
+      YB_EDITION=enterprise
+      log "Detecting YB_EDITION: $YB_EDITION based on Jenkins job name: $JOB_NAME"
+    elif [[ -d $YB_ENTERPRISE_ROOT ]]; then
       YB_EDITION=enterprise
       log "Detected YB_EDITION: $YB_EDITION based on existence of '$YB_ENTERPRISE_ROOT'"
     else
