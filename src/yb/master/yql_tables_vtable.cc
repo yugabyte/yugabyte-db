@@ -81,7 +81,7 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     dtxn.add_map_key()->set_string_value("enabled");
     dtxn.add_map_value()->set_string_value(schema.table_properties().is_transactional() ?
                                            "true" : "false");
-    RETURN_NOT_OK(SetColumnValue(kDistributedTransactions, dtxn.value(), &row));
+    RETURN_NOT_OK(SetColumnValue(kTransactions, dtxn.value(), &row));
   }
 
   return Status::OK();
@@ -112,7 +112,7 @@ Schema YQLTablesVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn(kMinIndexInterval, QLType::Create(DataType::INT32)));
   CHECK_OK(builder.AddColumn(kReadRepairChance, QLType::Create(DataType::DOUBLE)));
   CHECK_OK(builder.AddColumn(kSpeculativeRetry, QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kDistributedTransactions,
+  CHECK_OK(builder.AddColumn(kTransactions,
                              QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   return builder.Build();
 }

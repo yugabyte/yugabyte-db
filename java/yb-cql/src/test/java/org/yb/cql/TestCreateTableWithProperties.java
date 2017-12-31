@@ -541,29 +541,29 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
   }
 
   @Test
-  public void testDistributedTransactions() throws Exception {
+  public void testTransactions() throws Exception {
 
-    // Test create table with and without distributed_transactions.
+    // Test create table with and without transactions.
     String create_stmt = "create table %s (k int primary key) %s;";
-    session.execute(String.format(create_stmt, "test_dtxn_1", ""));
-    session.execute(String.format(create_stmt, "test_dtxn_2",
-                                  "with distributed_transactions = {'enabled' : false};"));
-    session.execute(String.format(create_stmt, "test_dtxn_3",
-                                  "with distributed_transactions = {'enabled' : true};"));
+    session.execute(String.format(create_stmt, "test_txn_1", ""));
+    session.execute(String.format(create_stmt, "test_txn_2",
+                                  "with transactions = {'enabled' : false};"));
+    session.execute(String.format(create_stmt, "test_txn_3",
+                                  "with transactions = {'enabled' : true};"));
 
-    // Verify the distributed_transactions property.
-    assertQuery("select table_name, distributed_transactions from system_schema.tables where " +
+    // Verify the transactions property.
+    assertQuery("select table_name, transactions from system_schema.tables where " +
                 "keyspace_name = '" + DEFAULT_TEST_KEYSPACE + "' and " +
-                "table_name in ('test_dtxn_1', 'test_dtxn_2', 'test_dtxn_3');",
-                new HashSet<String>(Arrays.asList("Row[test_dtxn_1, {enabled=false}]",
-                                                  "Row[test_dtxn_2, {enabled=false}]",
-                                                  "Row[test_dtxn_3, {enabled=true}]")));
+                "table_name in ('test_txn_1', 'test_txn_2', 'test_txn_3');",
+                new HashSet<String>(Arrays.asList("Row[test_txn_1, {enabled=false}]",
+                                                  "Row[test_txn_2, {enabled=false}]",
+                                                  "Row[test_txn_3, {enabled=true}]")));
 
-    // Test invalid distributed_transactions property settings.
-    RunInvalidTableProperty("distributed_transactions = {'enabled' : 'bar'}");
-    RunInvalidTableProperty("distributed_transactions = {'foo' : 'bar'}");
-    RunInvalidTableProperty("distributed_transactions = 'foo'");
-    RunInvalidTableProperty("distributed_transactions = 1234");
+    // Test invalid transactions property settings.
+    RunInvalidTableProperty("transactions = {'enabled' : 'bar'}");
+    RunInvalidTableProperty("transactions = {'foo' : 'bar'}");
+    RunInvalidTableProperty("transactions = 'foo'");
+    RunInvalidTableProperty("transactions = 1234");
   }
 
 }

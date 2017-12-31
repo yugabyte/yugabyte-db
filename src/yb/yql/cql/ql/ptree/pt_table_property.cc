@@ -43,7 +43,7 @@ const std::map<std::string, PTTableProperty::KVProperty> PTTableProperty::kPrope
     {"max_index_interval", KVProperty::kMaxIndexInterval},
     {"read_repair_chance", KVProperty::kReadRepairChance},
     {"speculative_retry", KVProperty::kSpeculativeRetry},
-    {"distributed_transactions", KVProperty::kDistributedTransactions}
+    {"transactions", KVProperty::kTransactions}
 };
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
@@ -182,7 +182,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     case KVProperty::kCompaction: FALLTHROUGH_INTENDED;
     case KVProperty::kCaching: FALLTHROUGH_INTENDED;
     case KVProperty::kCompression: FALLTHROUGH_INTENDED;
-    case KVProperty::kDistributedTransactions:
+    case KVProperty::kTransactions:
       return sem_context->Error(this,
                                 Substitute("Invalid value for option '$0'. Value must be a map",
                                            table_property_name).c_str(),
@@ -330,7 +330,7 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
     case KVProperty::kCaching: FALLTHROUGH_INTENDED;
     case KVProperty::kCompaction: FALLTHROUGH_INTENDED;
     case KVProperty::kCompression: FALLTHROUGH_INTENDED;
-    case KVProperty::kDistributedTransactions:
+    case KVProperty::kTransactions:
       LOG(ERROR) << "Not primitive table property " << table_property_name;
       break;
   }
@@ -342,7 +342,7 @@ const std::map<string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::
     {"caching", PTTablePropertyMap::PropertyMapType::kCaching},
     {"compaction", PTTablePropertyMap::PropertyMapType::kCompaction},
     {"compression", PTTablePropertyMap::PropertyMapType::kCompression},
-    {"distributed_transactions", PTTablePropertyMap::PropertyMapType::kDistributedTransactions}
+    {"transactions", PTTablePropertyMap::PropertyMapType::kTransactions}
 };
 
 PTTablePropertyMap::PTTablePropertyMap(MemoryContext *memctx,
@@ -381,8 +381,8 @@ CHECKED_STATUS PTTablePropertyMap::Analyze(SemContext *sem_context) {
     case PropertyMapType::kCompression:
       RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeCompression());
       break;
-    case PropertyMapType::kDistributedTransactions:
-      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeDistributedTransactions());
+    case PropertyMapType::kTransactions:
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeTransactions());
       break;
   }
   return Status::OK();
@@ -405,15 +405,15 @@ Status PTTablePropertyMap::SetTableProperty(yb::TableProperties *table_property)
     case PropertyMapType::kCompression:
       LOG(WARNING) << "Ignoring table property " << table_property_name;
       break;
-    case PropertyMapType::kDistributedTransactions:
+    case PropertyMapType::kTransactions:
       for (const auto& subproperty : map_elements_->node_list()) {
         string subproperty_name;
         ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
-        auto iter = DistributedTransactions::kSubpropertyDataTypes.find(subproperty_name);
-        DCHECK(iter != DistributedTransactions::kSubpropertyDataTypes.end());
+        auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
+        DCHECK(iter != Transactions::kSubpropertyDataTypes.end());
         bool bool_val;
         switch(iter->second) {
-          case DistributedTransactions::Subproperty::kEnabled:
+          case Transactions::Subproperty::kEnabled:
             RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));
             table_property->SetTransactional(bool_val);
             break;
@@ -698,19 +698,19 @@ Status PTTablePropertyMap::AnalyzeCompression() {
   return Status::OK();
 }
 
-Status PTTablePropertyMap::AnalyzeDistributedTransactions() {
+Status PTTablePropertyMap::AnalyzeTransactions() {
   for (const auto& subproperty : map_elements_->node_list()) {
     string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
-    auto iter = DistributedTransactions::kSubpropertyDataTypes.find(subproperty_name);
-    if (iter == DistributedTransactions::kSubpropertyDataTypes.end()) {
-      return STATUS(InvalidArgument, Substitute("Unknown distributed_transactions option $0",
+    auto iter = Transactions::kSubpropertyDataTypes.find(subproperty_name);
+    if (iter == Transactions::kSubpropertyDataTypes.end()) {
+      return STATUS(InvalidArgument, Substitute("Unknown transactions option $0",
                                                 subproperty_name));
     }
 
     bool bool_val;
     switch(iter->second) {
-      case DistributedTransactions::Subproperty::kEnabled:
+      case Transactions::Subproperty::kEnabled:
         RETURN_NOT_OK(GetBoolValueFromExpr(subproperty->rhs(), subproperty_name, &bool_val));
         break;
     }
@@ -749,9 +749,9 @@ const std::map<std::string, Compaction::Subproperty> Compaction::kSubpropertyDat
     {"unchecked_tombstone_compaction", Compaction::Subproperty::kUncheckedTombstoneCompaction}
 };
 
-const std::map<std::string, DistributedTransactions::Subproperty>
-DistributedTransactions::kSubpropertyDataTypes = {
-    {"enabled", DistributedTransactions::Subproperty::kEnabled}
+const std::map<std::string, Transactions::Subproperty>
+Transactions::kSubpropertyDataTypes = {
+    {"enabled", Transactions::Subproperty::kEnabled}
 };
 
 const std::map<std::string, std::set<Compaction::Subproperty>> Compaction::kClassSubproperties = {

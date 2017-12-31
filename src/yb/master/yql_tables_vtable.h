@@ -49,7 +49,7 @@ class YQLTablesVTable : public YQLVirtualTable {
   static constexpr const char* const kMinIndexInterval = "min_index_interval";
   static constexpr const char* const kReadRepairChance = "read_repair_chance";
   static constexpr const char* const kSpeculativeRetry = "speculative_retry";
-  static constexpr const char* const kDistributedTransactions = "distributed_transactions";
+  static constexpr const char* const kTransactions = "transactions";
 };
 
 }  // namespace master

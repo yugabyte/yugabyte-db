@@ -51,7 +51,7 @@ class PTTableProperty : public PTProperty {
     kMaxIndexInterval,
     kReadRepairChance,
     kSpeculativeRetry,
-    kDistributedTransactions
+    kTransactions
   };
 
   //------------------------------------------------------------------------------------------------
@@ -162,7 +162,7 @@ class PTTablePropertyMap : public PTTableProperty {
     kCaching,
     kCompaction,
     kCompression,
-    kDistributedTransactions
+    kTransactions
   };
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -199,7 +199,7 @@ class PTTablePropertyMap : public PTTableProperty {
   Status AnalyzeCaching();
   Status AnalyzeCompaction();
   Status AnalyzeCompression();
-  Status AnalyzeDistributedTransactions();
+  Status AnalyzeTransactions();
 
   static const std::map<std::string, PTTablePropertyMap::PropertyMapType> kPropertyDataTypes;
   TreeListNode<PTTableProperty>::SharedPtr map_elements_;
@@ -251,7 +251,7 @@ struct Compaction {
   static std::set<std::string> kTimestampResolutionUnits;
 };
 
-struct DistributedTransactions {
+struct Transactions {
   enum class Subproperty : int {
     kEnabled
   };
