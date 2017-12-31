@@ -55,7 +55,11 @@ class MacLibraryPackager:
 
         logging.debug("Created directory %s" % dst)
 
+        bin_dir_files = []
         for seed_executable_glob in self.seed_executable_patterns:
+            if seed_executable_glob.startswith('bin/'):
+                bin_dir_files.append(os.path.basename(seed_executable_glob))
+                logging.debug("Adding file '%s' to bash_scripts" % seed_executable_glob)
             updated_glob = seed_executable_glob.replace('$BUILD_ROOT', self.build_dir)
             if updated_glob != seed_executable_glob:
                 logging.info("Substituting: {} -> {}".format(seed_executable_glob, updated_glob))
@@ -68,7 +72,9 @@ class MacLibraryPackager:
                 shutil.copy(executable, dst_bin_dir)
 
         for bin_file in os.listdir(dst_bin_dir):
-            if bin_file.endswith(".sh"):
+            if bin_file.endswith(".sh") or bin_file in bin_dir_files:
+                logging.info("Not modifying rpath for file '%s' because it's not a binary file"
+                             % bin_file)
                 continue
 
             logging.debug("Processing binary file: %s" % bin_file)
@@ -99,11 +105,32 @@ class MacLibraryPackager:
                 self.fix_load_paths(lib_file_path, lib_dir_path, "@loader_path")
                 processed_libs.append(lib)
 
+    # Run otool to extract information from an object file. Returns the command's output to stdout,
+    # or an empty string if filename is not a valid object file.
+    # parameter must include the dash.
+    def run_otool(self, parameter, filename):
+        result = run_program(["otool", parameter, filename], error_ok=True)
+
+        if result.stdout.endswith('is not an object file') or \
+                result.stderr.endswith('The file was not recognized as a valid object file'):
+            logging.info("Unable to run 'otool %s %s'. File '%s' is not an object file" %
+                         (filename, parameter, filename))
+            return None
+
+        if result.returncode != 0:
+            raise RuntimeError("Unexpected error running 'otool -l %s': '%s'" %
+                               (filename, result.stderr))
+
+        return result.stdout
+
     def extract_rpaths(self, filename):
-        result = run_program(["otool", "-l", filename])
+        stdout = self.run_otool("-l", filename)
+
+        if not stdout:
+            return []
 
         rpaths = []
-        lines = result.stdout.splitlines()
+        lines = stdout.splitlines()
         for idx, line in enumerate(lines):
             # Extract rpath. Sample output from 'otool -l':
             # Load command 78
@@ -121,14 +148,14 @@ class MacLibraryPackager:
         return rpaths
 
     def extract_dependency_paths(self, filename, rpaths):
-        output = run_program(["otool", "-L", filename]).stdout
+        stdout = self.run_otool("-L", filename)
 
-        if len(output) > 0 and output[0].endswith("is not an object file"):
+        if not stdout:
             return [], []
 
         dependency_paths = []
         absolute_dependency_paths = []
-        lines = output.splitlines()
+        lines = stdout.splitlines()
         # Skip the first line that is always the library path.
         for line in lines[1:]:
             path = line.split()[0]
@@ -203,7 +230,6 @@ class MacLibraryPackager:
 
         # Extract the paths that are used to resolve paths that start with @rpath.
         rpaths = self.extract_rpaths(filename)
-        logging.debug('rpaths for filel %s: %s' % (filename, rpaths))
 
         # Remove rpaths since we are only going to use @loader_path and absolute paths.
         self.remove_rpaths(filename, rpaths)
