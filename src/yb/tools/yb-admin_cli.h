@@ -37,10 +37,9 @@
 #include <vector>
 #include <string>
 
+#include "yb/util/status.h"
+
 namespace yb {
-
-class Status;
-
 namespace tools {
 
 class ClusterAdminClient;
