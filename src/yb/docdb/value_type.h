@@ -75,6 +75,7 @@ enum class ValueType : char {
   kFrozen = '<', // ASCII code 60
   kFrozenDescending = '>', // ASCII code 62
   kArray = 'A',  // ASCII code 65.
+  kVarInt = 'B', // ASCII code 66
   kFloat = 'C',  // ASCII code 67
   kDouble = 'D',  // ASCII code 68
   kDecimal = 'E',  // ASCII code 69
@@ -101,6 +102,7 @@ enum class ValueType : char {
   kTimestampDescending = 'c',  // ASCII code 99
   kDecimalDescending = 'd',  // ASCII code 100
   kInt32Descending = 'e',  // ASCII code 101
+  kVarIntDescending = 'f',  // ASCII code 102
 
   // Timestamp value in microseconds
   kTimestamp = 's',  // ASCII code 115

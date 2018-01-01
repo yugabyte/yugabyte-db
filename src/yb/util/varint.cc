@@ -384,6 +384,15 @@ Status VarInt::DecodeFromComparable(
   return Status::OK();
 }
 
+Status VarInt::DecodeFromComparable(const Slice& slice) {
+  size_t num_decoded_bytes;
+  return DecodeFromComparable(slice, &num_decoded_bytes);
+}
+
+Status VarInt::DecodeFromComparable(const string& str) {
+  return DecodeFromComparable(Slice(str));
+}
+
 VarInt VarInt::EncodeToTwosComplementBytes(bool* is_out_of_range, size_t num_bytes) const {
   VarInt base256 = ConvertToBase(256);
   if (base256.digits_.empty()) {

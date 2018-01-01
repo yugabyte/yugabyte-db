@@ -92,6 +92,24 @@ class KeyBytes {
     }
   }
 
+  void AppendVarInt(const std::string& encoded_varint_str) {
+    data_.append(encoded_varint_str);
+  }
+
+  void AppendVarIntDescending(const std::string& encoded_varint_str) {
+    // Flipping all the bits negates the varint number this string represents.
+
+    // 0 is a special case because the first two bits are always 10.
+    if (static_cast<uint8_t>(encoded_varint_str[0]) == 128) {
+      data_.push_back(encoded_varint_str[0]);
+      return;
+    }
+
+    for (auto c : encoded_varint_str) {
+      data_.push_back(~c);
+    }
+  }
+
   void AppendInt64(int64_t x) {
     AppendInt64ToKey(x, &data_);
   }

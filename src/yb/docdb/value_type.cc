@@ -39,6 +39,8 @@ string ToString(ValueType value_type) {
     case ValueType::kInt32Descending: return "Int32Descending";
     case ValueType::kInt64: return "Int64";
     case ValueType::kInt32: return "Int32";
+    case ValueType::kVarIntDescending: return "VarIntDescending";
+    case ValueType::kVarInt: return "VarInt";
     case ValueType::kDouble: return "Double";
     case ValueType::kDoubleDescending: return "DoubleDescending";
     case ValueType::kFloat: return "Float";

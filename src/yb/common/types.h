@@ -468,6 +468,18 @@ struct DataTypeTraits<DECIMAL> : public DerivedTypeTraits<BINARY>{
   }
 };
 
+template<>
+struct DataTypeTraits<VARINT> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "varint";
+  }
+  static void AppendDebugVarIntForValue(const void* val, string* str) {
+    const Slice *s = reinterpret_cast<const Slice *>(val);
+    str->append(strings::Utf8SafeCEscape(s->ToString()));
+  }
+};
+
+
 static const char* kDateFormat = "%Y-%m-%d %H:%M:%S";
 static const char* kDateMicrosAndTzFormat = "%s.%06d GMT";
 

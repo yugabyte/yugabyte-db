@@ -12,6 +12,7 @@
 //
 package org.yb.cql;
 
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.math.BigDecimal;
@@ -628,13 +629,14 @@ public class TestBindVariable extends BaseCQLTest {
                          "c12 timeuuid, " +
                          "c13 blob," +
                          "c14 decimal, " +
+                         "c15 varint, " +
                          "primary key (c1));";
     session.execute(createStmt);
 
     // Insert data of all supported datatypes with bind by position.
     String insertStmt = "INSERT INTO test_bind " +
-                         "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                         "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
@@ -648,7 +650,8 @@ public class TestBindVariable extends BaseCQLTest {
                     UUID.fromString("11111111-2222-3333-4444-555555555555"),
                     UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"),
                     makeByteBuffer(133143986176L), // `0000001f00000000` to check zero-bytes
-                    new BigDecimal("12.34"));
+                    new BigDecimal("12.34"),
+                    new BigInteger("5425271716563447368291929487567690209186364832966"));
     LOG.info("EXECUTED");
 
     {
@@ -673,6 +676,8 @@ public class TestBindVariable extends BaseCQLTest {
       assertEquals(makeBlobString(makeByteBuffer(133143986176L)),
                    makeBlobString(row.getBytes("c13")));
       assertEquals(0, row.getDecimal("c14").compareTo(new BigDecimal("12.34")));
+      BigInteger myVarInt = new BigInteger("5425271716563447368291929487567690209186364832966");
+      assertEquals(myVarInt, row.getVarint("c15"));
     }
 
     // Update data of all supported datatypes with bind by position.
@@ -689,7 +694,8 @@ public class TestBindVariable extends BaseCQLTest {
                          "c11 = ?, " +
                          "c12 = ?, " +
                          "c13 = ?, " +
-                         "c14 = ? " +
+                         "c14 = ?, " +
+                         "c15 = ? " +
                          "WHERE c1 = ?;";
     session.execute(updateStmt,
                     new HashMap<String, Object>() {{
@@ -707,6 +713,7 @@ public class TestBindVariable extends BaseCQLTest {
                       put("c12", UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"));
                       put("c13", makeByteBuffer(9223372036854775807L)); // max long
                       put("c14", new BigDecimal(100.0));
+                      put("c15", BigInteger.valueOf(-90087));
                     }});
 
     {
@@ -731,6 +738,7 @@ public class TestBindVariable extends BaseCQLTest {
       assertEquals(makeBlobString(makeByteBuffer(9223372036854775807L)),
                    makeBlobString(row.getBytes("c13")));
       assertEquals(0, row.getDecimal("c14").compareTo(new BigDecimal("100.0")));
+      assertEquals(BigInteger.valueOf(-90087), row.getVarint("c15"));
     }
 
     LOG.info("End test");

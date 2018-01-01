@@ -133,6 +133,10 @@ CHECKED_STATUS Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
       case DataType::INT64:
         ql_value->set_int64_value(ql_value->int64_value() + row.column(column_index).int64_value());
         break;
+      case DataType::VARINT:
+        ql_value->set_varint_value(ql_value->varint_value() +
+                                   row.column(column_index).varint_value());
+        break;
       case DataType::FLOAT:
         ql_value->set_float_value(ql_value->float_value() + row.column(column_index).float_value());
         break;

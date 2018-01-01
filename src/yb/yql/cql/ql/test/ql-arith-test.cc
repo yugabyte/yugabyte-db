@@ -33,7 +33,7 @@ class TestQLArith : public QLTestBase {
   }
 };
 
-TEST_F(TestQLArith, TestQLArithBigint) {
+TEST_F(TestQLArith, TestQLArithVarint) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -42,7 +42,46 @@ TEST_F(TestQLArith, TestQLArithBigint) {
   LOG(INFO) << "Running simple query test.";
   // Create the table 1.
   const char *create_stmt =
-    "CREATE TABLE test_bigint(h1 int primary key, c1 bigint, c2 bigint, c3 bigint);";
+      "CREATE TABLE test_varint(h1 int primary key, v1 varint, v2 varint, v3 varint);";
+  CHECK_VALID_STMT(create_stmt);
+
+  // Simple varint update
+  CHECK_VALID_STMT("UPDATE test_varint SET v1 = 70000000000007, v2 = v2 + 77 WHERE h1 = 1;");
+
+  // Checking Row
+  CHECK_VALID_STMT("SELECT * FROM test_varint WHERE h1 = 1");
+  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const QLRow& row = row_block->row(0);
+  CHECK_EQ(row.column(0).int32_value(), 1);
+  CHECK_EQ(row.column(1).varint_value(), util::VarInt("70000000000007"));
+  CHECK(row.column(2).IsNull());
+  CHECK(row.column(3).IsNull());
+
+  // Simple varint update
+  CHECK_VALID_STMT("UPDATE test_varint SET v1 = v1 + 20, v2 = v1 + v1, v3 = v1 + v2 WHERE h1 = 1;");
+
+  // Checking Row
+  CHECK_VALID_STMT("SELECT * FROM test_varint WHERE h1 = 1");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const QLRow& new_row = row_block->row(0);
+  CHECK_EQ(new_row.column(0).int32_value(), 1);
+  CHECK_EQ(new_row.column(1).varint_value(), util::VarInt("70000000000027"));
+  CHECK_EQ(new_row.column(2).varint_value(), util::VarInt("140000000000014"));
+  CHECK(new_row.column(3).IsNull());
+}
+
+TEST_F(TestQLArith, TestQLArithBigInt) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  LOG(INFO) << "Running simple query test.";
+  // Create the table 1.
+  const char *create_stmt =
+      "CREATE TABLE test_bigint(h1 int primary key, c1 bigint, c2 bigint, c3 bigint);";
   CHECK_VALID_STMT(create_stmt);
 
   // Simple counter update

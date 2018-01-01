@@ -213,6 +213,8 @@ class VarInt {
     return DecodeFromComparable(Slice(string), num_decoded_bytes, is_signed, reserved_bits);
   }
 
+  CHECKED_STATUS DecodeFromComparable(const Slice& string);
+  CHECKED_STATUS DecodeFromComparable(const std::string& string);
 
   // Each byte in the encoding encodes two digits, and a continuation bit in the beginning.
   // The continuation bit is zero if and only if this is the last byte of the encoding. Assumes
@@ -239,6 +241,8 @@ class VarInt {
   CHECKED_STATUS DecodeFromDigitPairs(const std::string& string, size_t* num_decoded_bytes) {
     return DecodeFromDigitPairs(Slice(string), num_decoded_bytes);
   }
+
+  const VarInt& Negate() { is_positive_ = !is_positive_; return *this; }
 
 
  private:

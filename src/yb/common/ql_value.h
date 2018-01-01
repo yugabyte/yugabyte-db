@@ -162,7 +162,6 @@ class QLValue {
     CHECK_OK(timeuuid.IsTimeUuid());
     return timeuuid;
   }
-
   virtual util::VarInt varint_value() const {
     CHECK(pb_.has_varint_value()) << "Value: " << pb_.ShortDebugString();
     util::VarInt varint;
@@ -170,7 +169,6 @@ class QLValue {
     CHECK_OK(varint.DecodeFromComparable(pb_.varint_value(), &num_decoded_bytes));
     return varint;
   }
-
   virtual void AppendToKeyBytes(string *bytes) const {
     AppendToKey(pb_, bytes);
   }
@@ -246,6 +244,9 @@ class QLValue {
   //--------------------------------- mutable value methods ----------------------------------
   std::string* mutable_decimal_value() {
     return pb_.mutable_decimal_value();
+  }
+  std::string* mutable_varint_value() {
+    return pb_.mutable_varint_value();
   }
   std::string* mutable_string_value() {
     return pb_.mutable_string_value();

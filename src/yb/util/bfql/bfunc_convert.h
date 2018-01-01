@@ -772,6 +772,47 @@ Status ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
   return Status::OK();
 }
 
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertI8ToVarint(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    target->set_varint_value(util::VarInt(static_cast<int64_t>(source->int8_value())));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertI16ToVarint(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    target->set_varint_value(util::VarInt(static_cast<int64_t>(source->int16_value())));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertI32ToVarint(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    target->set_varint_value(util::VarInt(static_cast<int64_t>(source->int32_value())));
+  }
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+Status ConvertI64ToVarint(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+  } else {
+    target->set_varint_value(util::VarInt(source->int64_value()));
+  }
+  return Status::OK();
+}
+
+
 } // namespace bfql
 } // namespace yb
 

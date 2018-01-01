@@ -154,6 +154,9 @@ CHECKED_STATUS DocExprExecutor::EvalSum(const QLValue& val, QLValue *aggr_sum) {
     case InternalType::kInt64Value:
       aggr_sum->set_int64_value(aggr_sum->int64_value() + val.int64_value());
       break;
+    case InternalType::kVarintValue:
+      aggr_sum->set_varint_value(aggr_sum->varint_value() + val.varint_value());
+      break;
     case InternalType::kFloatValue:
       aggr_sum->set_float_value(aggr_sum->float_value() + val.float_value());
       break;

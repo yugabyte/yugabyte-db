@@ -250,6 +250,12 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertVarintToI64",      "cast", INT64,  {VARINT, INT64} },
   { "ConvertVarintToFloat",    "cast", FLOAT,  {VARINT, FLOAT} },
   { "ConvertVarintToDouble",   "cast", DOUBLE, {VARINT, DOUBLE} },
+
+  { "ConvertI8ToVarint",       "cast", VARINT,  {INT8, VARINT}  },
+  { "ConvertI16ToVarint",      "cast", VARINT,  {INT16, VARINT} },
+  { "ConvertI32ToVarint",      "cast", VARINT,  {INT32, VARINT} },
+  { "ConvertI64ToVarint",      "cast", VARINT,  {INT64, VARINT} },
+
 };
 
 } // namespace bfql

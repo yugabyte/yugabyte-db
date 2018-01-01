@@ -1209,6 +1209,9 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::INT64:
       id = Id::BIGINT;
       return;
+    case DataType::VARINT:
+      id = Id::VARINT;
+      return;
     case DataType::FLOAT:
       id = Id::FLOAT;
       return;
@@ -1270,7 +1273,6 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DataType::VARINT: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
     case DataType::DATE: FALLTHROUGH_INTENDED;

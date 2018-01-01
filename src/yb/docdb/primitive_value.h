@@ -70,6 +70,9 @@ class PrimitiveValue {
     } else if (other.type_ == ValueType::kDecimal || other.type_ == ValueType::kDecimalDescending) {
       type_ = other.type_;
       new(&decimal_val_) std::string(other.decimal_val_);
+    } else if (other.type_ == ValueType::kVarInt || other.type_ == ValueType::kVarIntDescending) {
+      type_ = other.type_;
+      new(&varint_val_) std::string(other.varint_val_);
     } else if (other.type_ == ValueType::kUuid || other.type_ == ValueType::kUuidDescending) {
       type_ = other.type_;
       new(&uuid_val_) Uuid(std::move((other.uuid_val_)));
@@ -202,6 +205,8 @@ class PrimitiveValue {
       delete inetaddress_val_;
     } else if (type_ == ValueType::kDecimal || type_ == ValueType::kDecimalDescending) {
       decimal_val_.~basic_string();
+    } else if (type_ == ValueType::kVarInt || type_ == ValueType::kVarIntDescending) {
+      varint_val_.~basic_string();
     } else if (type_ == ValueType::kFrozen) {
       delete frozen_val_;
     }
@@ -222,6 +227,7 @@ class PrimitiveValue {
   static PrimitiveValue Float(float f, SortOrder sort_order = SortOrder::kAscending);
   // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
   static PrimitiveValue Decimal(const std::string& decimal_str, SortOrder sort_order);
+  static PrimitiveValue VarInt(const std::string& varint_str, SortOrder sort_order);
   static PrimitiveValue ArrayIndex(int64_t index);
   static PrimitiveValue UInt16Hash(uint16_t hash);
   static PrimitiveValue SystemColumnId(ColumnId column_id);
@@ -303,6 +309,11 @@ class PrimitiveValue {
   const std::string& GetDecimal() const {
     DCHECK(ValueType::kDecimal == type_ || ValueType::kDecimalDescending == type_);
     return decimal_val_;
+  }
+
+  const std::string& GetVarInt() const {
+    DCHECK(ValueType::kVarInt == type_ || ValueType::kVarIntDescending == type_);
+    return varint_val_;
   }
 
   Timestamp GetTimestamp() const {
@@ -388,6 +399,7 @@ class PrimitiveValue {
     void* complex_data_structure_;
     ColumnId column_id_val_;
     std::string decimal_val_;
+    std::string varint_val_;
   };
 
  private:
@@ -410,9 +422,13 @@ class PrimitiveValue {
       type_ = other->type_;
       inetaddress_val_ = new InetAddress(std::move(*(other->inetaddress_val_)));
     } else if (other->type_ == ValueType::kDecimal ||
-               other->type_ == ValueType::kDecimalDescending) {
+        other->type_ == ValueType::kDecimalDescending) {
       type_ = other->type_;
       new(&decimal_val_) std::string(std::move(other->decimal_val_));
+    } else if (other->type_ == ValueType::kVarInt ||
+        other->type_ == ValueType::kVarIntDescending) {
+      type_ = other->type_;
+      new(&varint_val_) std::string(std::move(other->varint_val_));
     } else if (other->type_ == ValueType::kUuid || other->type_ == ValueType::kUuidDescending) {
       type_ = other->type_;
       new(&uuid_val_) Uuid(std::move((other->uuid_val_)));

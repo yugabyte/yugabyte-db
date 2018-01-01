@@ -33,6 +33,7 @@ using std::string;
 using strings::Substitute;
 using yb::QLValuePB;
 using yb::util::Decimal;
+using yb::util::VarInt;
 using yb::util::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastAppendSignedVarIntToStr;
@@ -140,6 +141,16 @@ string PrimitiveValue::ToString() const {
         return "";
       }
       return decimal.ToString();
+    }
+    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kVarInt: {
+      util::VarInt varint;
+      auto status = varint.DecodeFromComparable(varint_val_);
+      if (!status.ok()) {
+        LOG(ERROR) << "Unable to decode varint: " << status.message().ToString();
+        return "";
+      }
+      return varint.ToString();
     }
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
@@ -265,6 +276,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kDecimalDescending:
       key_bytes->AppendDecimalDescending(decimal_val_);
+      return;
+
+    case ValueType::kVarInt:
+      key_bytes->AppendVarInt(varint_val_);
+      return;
+
+    case ValueType::kVarIntDescending:
+      key_bytes->AppendVarIntDescending(varint_val_);
       return;
 
     case ValueType::kTimestamp:
@@ -403,6 +422,11 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal:
       result.append(decimal_val_);
+      return result;
+
+    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kVarInt:
+      result.append(varint_val_);
       return result;
 
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
@@ -563,6 +587,23 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       }
       if (out) { // TODO avoid using temp variable, when out is nullptr
         new(&out->decimal_val_) string(decimal.EncodeToComparable());
+      }
+      slice->remove_prefix(num_decoded_bytes);
+      type_ref = value_type;
+      return Status::OK();
+    }
+
+    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kVarInt: {
+      util::VarInt varint;
+      Slice slice_temp(slice->data(), slice->size());
+      size_t num_decoded_bytes = 0;
+      RETURN_NOT_OK(varint.DecodeFromComparable(slice_temp, &num_decoded_bytes));
+      if (value_type == ValueType::kVarIntDescending) {
+        varint.Negate();
+      }
+      if (out) { // TODO avoid using temp variable, when out is nullptr
+        new(&out->varint_val_) string(varint.EncodeToComparable());
       }
       slice->remove_prefix(num_decoded_bytes);
       type_ref = value_type;
@@ -869,6 +910,15 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
+    case ValueType::kVarInt: {
+      util::VarInt varint;
+      size_t num_decoded_bytes = 0;
+      RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
+      type_ = value_type;
+      new(&varint_val_) string(varint.EncodeToComparable());
+      return Status::OK();
+    }
+
     case ValueType::kTimestamp:
       if (slice.size() != sizeof(Timestamp)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -919,6 +969,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kLowest: FALLTHROUGH_INTENDED;
@@ -960,6 +1011,17 @@ PrimitiveValue PrimitiveValue::Decimal(const string& encoded_decimal_str, SortOr
     primitive_value.type_ = ValueType::kDecimal;
   }
   new(&primitive_value.decimal_val_) string(encoded_decimal_str);
+  return primitive_value;
+}
+
+PrimitiveValue PrimitiveValue::VarInt(const string& encoded_varint_str, SortOrder sort_order) {
+  PrimitiveValue primitive_value;
+  if (sort_order == SortOrder::kDescending) {
+    primitive_value.type_ = ValueType::kVarIntDescending;
+  } else {
+    primitive_value.type_ = ValueType::kVarInt;
+  }
+  new(&primitive_value.varint_val_) string(encoded_varint_str);
   return primitive_value;
 }
 
@@ -1063,6 +1125,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     }
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
+    case ValueType::kVarIntDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kVarInt: return varint_val_ == other.varint_val_;
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
 
@@ -1124,6 +1188,10 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return other.decimal_val_.compare(decimal_val_);
     case ValueType::kDecimal:
       return decimal_val_.compare(other.decimal_val_);
+    case ValueType::kVarIntDescending:
+      return other.varint_val_.compare(varint_val_);
+    case ValueType::kVarInt:
+      return varint_val_.compare(other.varint_val_);
     case ValueType::kIntentType: FALLTHROUGH_INTENDED;
     case ValueType::kUInt16Hash:
       return CompareUsingLessThan(uint16_val_, other.uint16_val_);
@@ -1218,6 +1286,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     }
     case QLValuePB::kDecimalValue:
       return PrimitiveValue::Decimal(value.decimal_value(), sort_order);
+    case QLValuePB::kVarintValue:
+      return PrimitiveValue::VarInt(value.varint_value(), sort_order);
     case QLValuePB::kStringValue:
       return PrimitiveValue(value.string_value(), sort_order);
     case QLValuePB::kBinaryValue:
@@ -1260,8 +1330,7 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValuePB::kListValue: FALLTHROUGH_INTENDED;
-    case QLValuePB::kVarintValue:
+    case QLValuePB::kListValue:
       break;
 
     // default: fall through
@@ -1303,6 +1372,9 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       return;
     case DECIMAL:
       ql_value->set_decimal_value(primitive_value.GetDecimal());
+      return;
+    case VARINT:
+      ql_value->set_varint_value(primitive_value.GetVarInt());
       return;
     case BOOL:
       ql_value->set_bool_value((primitive_value.value_type() == ValueType::kTrue));
@@ -1377,7 +1449,6 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     }
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case VARINT: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;

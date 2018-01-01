@@ -24,6 +24,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
+#include "yb/util/varint.h"
 #include "yb/util/enums.h"
 
 #include "yb/util/size_literals.h"
@@ -37,7 +38,6 @@ DEFINE_int32(yql_max_value_size, 64_MB,
 // The list of unsupported datypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case VARINT: FALLTHROUGH_INTENDED;    \
   case TUPLE: FALLTHROUGH_INTENDED;     \
   case TYPEARGS: FALLTHROUGH_INTENDED;  \
   case DATE: FALLTHROUGH_INTENDED;      \
@@ -96,6 +96,7 @@ int QLValue::CompareTo(const QLValue& other) const {
     }
     // Encoded decimal is byte-comparable.
     case InternalType::kDecimalValue: return decimal_value().compare(other.decimal_value());
+    case InternalType::kVarintValue:  return varint_value().CompareTo(other.varint_value());
     case InternalType::kStringValue: return string_value().compare(other.string_value());
     case InternalType::kBoolValue: return Compare(bool_value(), other.bool_value());
     case InternalType::kTimestampValue:
@@ -116,8 +117,6 @@ int QLValue::CompareTo(const QLValue& other) const {
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
 
-    case InternalType::kVarintValue:
-      LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;
@@ -179,6 +178,11 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
       break;
     }
+    case QLValue::InternalType::kVarintValue: {
+      const string& str = value_pb.varint_value();
+      YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
+      break;
+    }
     case QLValue::InternalType::kBinaryValue: {
       const string& str = value_pb.binary_value();
       YBPartition::AppendBytesToKey(str.c_str(), str.length(), bytes);
@@ -201,7 +205,6 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
       break;
     }
     case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kVarintValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
@@ -246,6 +249,15 @@ void QLValue::Serialize(
       if(is_out_of_range) {
         LOG(ERROR) << "Out of range: Unable to encode decimal " << decimal.ToString()
                    << " into a BigDecimal serialized representation";
+      }
+      return;
+    }
+    case VARINT: {
+      bool is_out_of_range = false;
+      CQLEncodeBytes(varint_value().EncodeToTwosComplement(&is_out_of_range), buffer);
+      // This should never happen
+      if(is_out_of_range) {
+        LOG(ERROR) << "Varint encoding returned out of range for " << varint_value().ToString();
       }
       return;
     }
@@ -446,6 +458,14 @@ Status QLValue::Deserialize(
       set_decimal_value(decimal.EncodeToComparable());
       return Status::OK();
     }
+    case VARINT: {
+      string value;
+      RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
+      util::VarInt varint;
+      RETURN_NOT_OK(varint.DecodeFromTwosComplement(value));
+      set_varint_value(varint);
+      return Status::OK();
+    }
     case STRING:
       return CQLDecodeBytes(len, data, mutable_string_value());
     case BOOL: {
@@ -632,6 +652,8 @@ string QLValue::ToString() const {
     case InternalType::kDoubleValue: return "double:" + to_string(double_value());
     case InternalType::kDecimalValue:
       return "decimal: " + util::DecimalFromComparable(decimal_value()).ToString();
+    case InternalType::kVarintValue:
+      return "varint: " + varint_value().ToString();
     case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
@@ -696,8 +718,6 @@ string QLValue::ToString() const {
       return ss.str();
     }
 
-    case InternalType::kVarintValue:
-      LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       return "null";
@@ -763,6 +783,7 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     }
     // Encoded decimal is byte-comparable.
     case QLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
+    case QLValuePB::kVarintValue: return lhs.varint_value().compare(rhs.varint_value());
     case QLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
     case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
     case QLValuePB::kTimestampValue:
@@ -781,8 +802,6 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     case QLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
-    case InternalType::kVarintValue:
-      LOG(FATAL) << "Internal error: varint not implemented";
     case QLValuePB::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;
@@ -822,6 +841,7 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
     }
     // Encoded decimal is byte-comparable.
     case QLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
+    case QLValuePB::kVarintValue: return lhs.varint_value().compare(rhs.value().varint_value());
     case QLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
     case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
     case QLValuePB::kTimestampValue:
@@ -840,8 +860,6 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
     case QLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
-    case InternalType::kVarintValue:
-      LOG(FATAL) << "Internal error: varint not implemented";
     case QLValuePB::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;

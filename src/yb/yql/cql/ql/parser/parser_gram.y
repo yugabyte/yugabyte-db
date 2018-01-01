@@ -4537,7 +4537,7 @@ Numeric:
     $$ = MAKE_NODE(@1, PTDecimal);
   }
   | VARINT opt_type_modifiers {
-    PARSER_UNSUPPORTED(@1);
+    $$ = MAKE_NODE(@1, PTVarInt);
   }
   | DEC opt_type_modifiers {
     PARSER_UNSUPPORTED(@1);
