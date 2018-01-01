@@ -225,6 +225,18 @@ void MasterServiceImpl::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::IsCreateTableDone);
 }
 
+void MasterServiceImpl::TruncateTable(const TruncateTableRequestPB* req,
+                                      TruncateTableResponsePB* resp,
+                                      RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::TruncateTable);
+}
+
+void MasterServiceImpl::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                                            IsTruncateTableDoneResponsePB* resp,
+                                            RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsTruncateTableDone);
+}
+
 void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
                                     DeleteTableResponsePB* resp,
                                     RpcContext rpc) {
@@ -290,26 +302,26 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
 }
 
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
-                                        CreateUDTypeResponsePB* resp,
-                                        rpc::RpcContext rpc) {
+                                     CreateUDTypeResponsePB* resp,
+                                     rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::CreateUDType);
 }
 
 void MasterServiceImpl::DeleteUDType(const DeleteUDTypeRequestPB* req,
-                                        DeleteUDTypeResponsePB* resp,
-                                        rpc::RpcContext rpc) {
+                                     DeleteUDTypeResponsePB* resp,
+                                     rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteUDType);
 }
 
 void MasterServiceImpl::ListUDTypes(const ListUDTypesRequestPB* req,
-                                       ListUDTypesResponsePB* resp,
-                                       rpc::RpcContext rpc) {
+                                    ListUDTypesResponsePB* resp,
+                                    rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::ListUDTypes);
 }
 
 void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
-                                            GetUDTypeInfoResponsePB* resp,
-                                            rpc::RpcContext rpc) {
+                                      GetUDTypeInfoResponsePB* resp,
+                                      rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
 }
 

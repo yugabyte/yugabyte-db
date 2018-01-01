@@ -38,6 +38,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/util/fault_injection.h"
@@ -80,6 +81,7 @@ using consensus::OpIdToString;
 using consensus::ReplicateMsg;
 using strings::Substitute;
 using tserver::AlterSchemaRequestPB;
+using tserver::TruncateRequestPB;
 using tserver::WriteRequestPB;
 
 static string DebugInfo(const string& tablet_id,
@@ -552,6 +554,9 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
     case consensus::CHANGE_CONFIG_OP:
       return PlayChangeConfigRequest(replicate);
 
+    case consensus::TRUNCATE_OP:
+      return PlayTruncateRequest(replicate);
+
     case consensus::NO_OP:
       return PlayNoOpRequest(replicate);
 
@@ -776,6 +781,18 @@ Status TabletBootstrap::PlayChangeConfigRequest(ReplicateMsg* replicate_msg) {
 }
 
 Status TabletBootstrap::PlayNoOpRequest(ReplicateMsg* replicate_msg) {
+  return Status::OK();
+}
+
+Status TabletBootstrap::PlayTruncateRequest(ReplicateMsg* replicate_msg) {
+  TruncateRequestPB* req = replicate_msg->mutable_truncate_request();
+
+  TruncateOperationState operation_state(nullptr, req);
+
+  Status s = tablet_->Truncate(&operation_state);
+
+  RETURN_NOT_OK_PREPEND(s, "Failed to Truncate:");
+
   return Status::OK();
 }
 

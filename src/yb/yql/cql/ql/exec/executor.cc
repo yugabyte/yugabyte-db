@@ -164,6 +164,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTUpdateStmt:
       return ExecPTNode(static_cast<const PTUpdateStmt *>(tnode));
 
+    case TreeNodeOpcode::kPTTruncateStmt:
+      return ExecPTNode(static_cast<const PTTruncateStmt *>(tnode));
+
     case TreeNodeOpcode::kPTCreateKeyspace:
       return ExecPTNode(static_cast<const PTCreateKeyspace *>(tnode));
 
@@ -772,6 +775,12 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
 
   // Apply the operator.
   return exec_context_->Apply(update_op);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTTruncateStmt *tnode) {
+  return exec_context_->TruncateTable(tnode->table_id());
 }
 
 //--------------------------------------------------------------------------------------------------

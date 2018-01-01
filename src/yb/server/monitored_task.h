@@ -82,6 +82,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     ASYNC_CREATE_REPLICA,
     ASYNC_DELETE_REPLICA,
     ASYNC_ALTER_TABLE,
+    ASYNC_TRUNCATE_TABLET,
     ASYNC_CHANGE_CONFIG,
     ASYNC_ADD_SERVER,
     ASYNC_REMOVE_SERVER,

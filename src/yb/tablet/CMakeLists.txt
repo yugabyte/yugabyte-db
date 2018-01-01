@@ -47,6 +47,7 @@ set(TABLET_SRCS
   operations/alter_schema_operation.cc
   operations/operation_driver.cc
   operations/operation_tracker.cc
+  operations/truncate_operation.cc
   operations/update_txn_operation.cc
   operations/write_operation.cc
   lock_manager.cc

@@ -55,6 +55,8 @@ class QLEnv {
 
   virtual client::YBTableAlterer *NewTableAlterer(const client::YBTableName& table_name);
 
+  virtual CHECKED_STATUS TruncateTable(const std::string& table_id);
+
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
   virtual CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,

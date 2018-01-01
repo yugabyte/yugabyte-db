@@ -333,6 +333,11 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
   return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
 }
 
+Status YBClient::TruncateTable(const string& table_id, bool wait) {
+  MonoTime deadline = MonoTime::Now() + default_admin_operation_timeout();
+  return data_->TruncateTable(this, table_id, deadline, wait);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());

@@ -62,6 +62,7 @@
 
 #include "yb/tablet/operations/alter_schema_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
@@ -601,6 +602,12 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
           " operation must receive an TransactionStatePB";
       return std::make_unique<UpdateTxnOperation>(
           std::make_unique<UpdateTxnOperationState>(tablet()), consensus::REPLICA);
+
+    case consensus::TRUNCATE_OP:
+      DCHECK(replicate_msg->has_truncate_request()) << "TRUNCATE_OP replica"
+          " operation must receive an TruncateRequestPB";
+      return std::make_unique<TruncateOperation>(
+          std::make_unique<TruncateOperationState>(tablet()), consensus::REPLICA);
 
     case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;

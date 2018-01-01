@@ -21,8 +21,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_DB_H
-#define ROCKSDB_INCLUDE_ROCKSDB_DB_H
+#ifndef YB_ROCKSDB_DB_H
+#define YB_ROCKSDB_DB_H
 
 #include <stdint.h>
 #include <stdio.h>
@@ -789,6 +789,8 @@ class DB {
 
   virtual OpId GetFlushedOpId() { return OpId(); }
 
+  virtual CHECKED_STATUS SetFlushedOpId(const OpId& op_id) { return Status::OK(); }
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.
@@ -879,4 +881,4 @@ Status RepairDB(const std::string& dbname, const Options& options);
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_DB_H
+#endif  // YB_ROCKSDB_DB_H

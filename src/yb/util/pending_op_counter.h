@@ -15,6 +15,7 @@
 #define YB_UTIL_PENDING_OP_COUNTER_H_
 
 #include <atomic>
+#include <mutex>
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -34,12 +35,19 @@ class PendingOperationCounter {
 
   PendingOperationCounter() : counters_(0) {}
 
-  CHECKED_STATUS DisableAndWaitForOps(const MonoDelta& timeout, uint64_t num_remaining_ops = 0) {
+  CHECKED_STATUS DisableAndWaitForOps(const MonoDelta& timeout) {
     Update(kDisabledDelta);
-    return WaitForOpsToFinish(timeout, num_remaining_ops);
+    return WaitForOpsToFinish(timeout);
   }
 
-  void Enable() { Update(-kDisabledDelta); }
+  // Due to the thread restriction of "timed_mutex::.unlock()", this Unlock method must be called
+  // in the same thread that invoked DisableAndWaitForOps().
+  void Enable(const bool unlock) {
+    Update(-kDisabledDelta);
+    if (unlock) {
+      disable_.unlock();
+    }
+  }
 
   uint64_t Increment() { return Update(1); }
   void Decrement() { Update(-1); }
@@ -57,8 +65,7 @@ class PendingOperationCounter {
   }
 
  private:
-  CHECKED_STATUS WaitForOpsToFinish(
-      const MonoDelta& timeout, uint64_t num_remaining_ops = 0) const;
+  CHECKED_STATUS WaitForOpsToFinish(const MonoDelta& timeout);
 
   uint64_t Update(uint64_t delta) {
     const uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_release);
@@ -70,6 +77,9 @@ class PendingOperationCounter {
 
   // Upper bits are used for storing number of Disable() calls.
   std::atomic<uint64_t> counters_;
+
+  // Mutex to disable the resource exclusively.
+  std::timed_mutex disable_;
 };
 
 // A convenience class to automatically increment/decrement a PendingOperationCounter.
@@ -83,11 +93,17 @@ class ScopedPendingOperation {
       : counter_(counter),
         orig_counter_value_(0) {
     if (counter != nullptr) {
-      orig_counter_value_ = counter->Increment();
+      if (counter_->IsReady()) {
+        orig_counter_value_ = counter->Increment();
+      } else {
+        orig_counter_value_ = PendingOperationCounter::kDisabledDelta;
+        counter_ = nullptr; // Avoid decrementing the counter.
+      }
     }
   }
 
-  ScopedPendingOperation(ScopedPendingOperation&& op) : counter_(op.counter_) {
+  ScopedPendingOperation(ScopedPendingOperation&& op)
+      : counter_(op.counter_),  orig_counter_value_(op.orig_counter_value_) {
     op.counter_ = nullptr; // Moved ownership.
   }
 
@@ -110,6 +126,50 @@ class ScopedPendingOperation {
 // RETURN_NOT_OK macro support.
 inline Status MoveStatus(const ScopedPendingOperation& scoped) {
   return scoped.ok() ? Status::OK() : STATUS(IllegalState, "RocksDB object is unavailable");
+}
+
+// A convenience class to automatically pause/resume a PendingOperationCounter.
+class ScopedPendingOperationPause {
+ public:
+  // Object is not copyable, but movable.
+  void operator=(const ScopedPendingOperationPause&) = delete;
+  ScopedPendingOperationPause(const ScopedPendingOperationPause&) = delete;
+
+  ScopedPendingOperationPause(PendingOperationCounter* counter, const MonoDelta& timeout)
+      : counter_(counter) {
+    if (counter != nullptr) {
+      status_ = counter->DisableAndWaitForOps(timeout);
+    }
+  }
+
+  ScopedPendingOperationPause(ScopedPendingOperationPause&& p)
+      : counter_(p.counter_), status_(std::move(p.status_)) {
+    p.counter_ = nullptr; // Moved ownership.
+  }
+
+  // See PendingOperationCounter::Enable() for the thread restriction.
+  ~ScopedPendingOperationPause() {
+    if (counter_ != nullptr) {
+      counter_->Enable(status_.IsOk());
+    }
+  }
+
+  bool ok() const {
+    return status_.IsOk();
+  }
+
+  Status&& status() {
+    return std::move(status_);
+  }
+
+ private:
+  PendingOperationCounter* counter_;
+  Status status_;
+};
+
+// RETURN_NOT_OK macro support.
+inline Status&& MoveStatus(ScopedPendingOperationPause&& p) {
+  return std::move(p.status());
 }
 
 }  // namespace util

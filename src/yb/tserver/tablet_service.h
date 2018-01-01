@@ -110,6 +110,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                         AbortTransactionResponsePB* resp,
                         rpc::RpcContext context) override;
 
+  void Truncate(const TruncateRequestPB* req,
+                TruncateResponsePB* resp,
+                rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

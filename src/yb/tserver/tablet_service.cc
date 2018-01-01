@@ -59,6 +59,7 @@
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
@@ -151,6 +152,7 @@ using tablet::AlterSchemaOperationState;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tablet::TabletStatusPB;
+using tablet::TruncateOperationState;
 using tablet::OperationCompletionCallback;
 using tablet::WriteOperationState;
 
@@ -656,6 +658,31 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
                                context_ptr.get());
         }
       });
+}
+
+void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
+                                 TruncateResponsePB* resp,
+                                 rpc::RpcContext context) {
+  TRACE("Truncate");
+
+  UpdateClock(*req, server_->Clock());
+
+  scoped_refptr<tablet::TabletPeer> tablet_peer;
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
+                                 req->tablet_id(),
+                                 resp, &context,
+                                 &tablet_peer)) {
+    return;
+  }
+
+  auto tx_state = std::make_unique<TruncateOperationState>(tablet_peer->tablet(), req);
+
+  tx_state->set_completion_callback(
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+
+  // Submit the truncate tablet op. The RPC will be responded to asynchronously.
+  tablet_peer->Submit(
+      std::make_unique<tablet::TruncateOperation>(std::move(tx_state), consensus::LEADER));
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,

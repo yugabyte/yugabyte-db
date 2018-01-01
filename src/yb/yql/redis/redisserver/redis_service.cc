@@ -154,7 +154,8 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
-    ((flushdb, FlushDB, 1, LOCAL))
+    ((flushdb, FlushDB, 1, TRUNCATE)) \
+    ((flushall, FlushAll, 1, TRUNCATE))
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
@@ -181,6 +182,7 @@ typedef boost::container::small_vector_base<Slice> RedisKeyList;
 #define READ_OP YBRedisReadOp
 #define WRITE_OP YBRedisWriteOp
 #define LOCAL_OP RedisResponsePB
+#define TRUNCATE_OP void
 
 #define DO_PARSER_FORWARD(name, cname, arity, type) \
     CHECKED_STATUS BOOST_PP_CAT(Parse, cname)( \
@@ -678,6 +680,12 @@ class RedisServiceImpl::Impl {
       Parser<Op> parser,
       BatchContext* context);
 
+  void TruncateCommand(
+      const RedisCommandInfo& info,
+      size_t idx,
+      void (*parse)(const RedisClientCommand&),
+      BatchContext* context);
+
   constexpr static int kRpcTimeoutSec = 5;
 
   void PopulateHandlers();
@@ -760,9 +768,12 @@ RedisResponsePB ParseQuit(const RedisClientCommand& command) {
   return RedisResponsePB();
 }
 
-RedisResponsePB ParseFlushDB(const RedisClientCommand& command) {
-  // TODO(hector): We need to implement its real meaning (delete all keys). Tracked by ENG-2107.
-  return RedisResponsePB();
+void ParseFlushDB(const RedisClientCommand& command) {
+  // NOOP
+}
+
+void ParseFlushAll(const RedisClientCommand& command) {
+  // NOOP
 }
 
 #define REDIS_METRIC(name) \
@@ -771,6 +782,7 @@ RedisResponsePB ParseFlushDB(const RedisClientCommand& command) {
 #define READ_COMMAND Command<YBRedisReadOp>
 #define WRITE_COMMAND Command<YBRedisWriteOp>
 #define LOCAL_COMMAND LocalCommand
+#define TRUNCATE_COMMAND TruncateCommand
 
 #define DO_POPULATE_HANDLER(name, cname, arity, type) \
   { \
@@ -941,6 +953,26 @@ void RedisServiceImpl::Impl::Command(
     return;
   }
   context->Apply(idx, std::move(op), info.metrics);
+}
+
+void RedisServiceImpl::Impl::TruncateCommand(
+    const RedisCommandInfo& info,
+    size_t idx,
+    void (*parse)(const RedisClientCommand&),
+    BatchContext* context) {
+  VLOG(1) << "Processing " << info.name << ".";
+  const auto& command = context->command(idx);
+  RedisResponsePB resp;
+  const Status s = client_->TruncateTable(table_->id());
+  if (s.ok()) {
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else {
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+  }
+  context->call()->RespondSuccess(idx, info.metrics, &resp);
+  VLOG(4) << "Done responding to " << command[0].ToBuffer();
 }
 
 void RedisServiceImpl::Impl::RespondWithFailure(

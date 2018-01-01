@@ -591,6 +591,27 @@ message IsCreateTableDoneResponsePB {
   optional bool done = 3;
 }
 
+message TruncateTableRequestPB {
+  optional bytes table_id = 1;
+}
+
+message TruncateTableResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message IsTruncateTableDoneRequestPB {
+  optional bytes table_id = 1;
+}
+
+message IsTruncateTableDoneResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // true if the truncate operation is completed, false otherwise
+  optional bool done = 2;
+}
+
 // Delete table request (including index table)
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
@@ -1020,6 +1041,9 @@ service MasterService {
 
   rpc CreateTable(CreateTableRequestPB) returns (CreateTableResponsePB);
   rpc IsCreateTableDone(IsCreateTableDoneRequestPB) returns (IsCreateTableDoneResponsePB);
+
+  rpc TruncateTable(TruncateTableRequestPB) returns (TruncateTableResponsePB);
+  rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);

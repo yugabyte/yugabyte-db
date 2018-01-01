@@ -53,6 +53,10 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->NewTableAlterer(table_name);
   }
 
+  CHECKED_STATUS TruncateTable(const std::string& table_id) {
+    return ql_env_->TruncateTable(table_id);
+  }
+
   CHECKED_STATUS DeleteTable(const client::YBTableName& name) {
     return ql_env_->DeleteTable(name);
   }

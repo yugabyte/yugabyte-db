@@ -5203,14 +5203,7 @@ Status DBImpl::Import(const std::string& source_dir) {
   if (!status.ok()) {
     return status;
   }
-  auto cfd = versions_->GetColumnFamilySet()->GetDefault();
-  InstrumentedMutexLock lock(&mutex_);
-  status = versions_->LogAndApply(cfd, *cfd->GetCurrentMutableCFOptions(), &edit, &mutex_);
-  if (!status.ok()) {
-    return status;
-  }
-  cfd->InstallSuperVersion(new SuperVersion(), &mutex_);
-  return Status::OK();
+  return ApplyVersionEdit(&edit);
 }
 
 void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
@@ -5449,7 +5442,7 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 OpId DBImpl::GetFlushedOpId() {
   InstrumentedMutexLock l(&mutex_);
   auto result = versions_->FlushedOpId();
-  if (yb::IsDebug() || !result) {
+  if (!result) {
     std::vector<LiveFileMetaData> files;
     versions_->GetLiveFilesMetaData(&files);
     OpId last_op_id;
@@ -5462,6 +5455,23 @@ OpId DBImpl::GetFlushedOpId() {
     result = last_op_id;
   }
   return result;
+}
+
+Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
+  auto cfd = versions_->GetColumnFamilySet()->GetDefault();
+  InstrumentedMutexLock lock(&mutex_);
+  auto status = versions_->LogAndApply(cfd, *cfd->GetCurrentMutableCFOptions(), edit, &mutex_);
+  if (!status.ok()) {
+    return status;
+  }
+  cfd->InstallSuperVersion(new SuperVersion(), &mutex_);
+  return Status::OK();
+}
+
+Status DBImpl::SetFlushedOpId(const OpId& op_id) {
+  VersionEdit edit;
+  edit.SetFlushedOpId(op_id);
+  return ApplyVersionEdit(&edit);
 }
 
 void DBImpl::GetColumnFamilyMetaData(

@@ -61,6 +61,12 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                  IsCreateTableDoneResponsePB* resp,
                                  rpc::RpcContext rpc) override;
+  virtual void TruncateTable(const TruncateTableRequestPB* req,
+                             TruncateTableResponsePB* resp,
+                             rpc::RpcContext rpc) override;
+  virtual void IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                                   IsTruncateTableDoneResponsePB* resp,
+                                   rpc::RpcContext rpc) override;
   virtual void DeleteTable(const DeleteTableRequestPB* req,
                            DeleteTableResponsePB* resp,
                            rpc::RpcContext rpc) override;
@@ -97,17 +103,17 @@ class MasterServiceImpl : public MasterServiceIf,
                               rpc::RpcContext rpc) override;
 
   virtual void CreateUDType(const CreateUDTypeRequestPB* req,
-                               CreateUDTypeResponsePB* resp,
-                               rpc::RpcContext rpc) override;
+                            CreateUDTypeResponsePB* resp,
+                            rpc::RpcContext rpc) override;
   virtual void DeleteUDType(const DeleteUDTypeRequestPB* req,
-                               DeleteUDTypeResponsePB* resp,
-                               rpc::RpcContext rpc) override;
+                            DeleteUDTypeResponsePB* resp,
+                            rpc::RpcContext rpc) override;
   virtual void ListUDTypes(const ListUDTypesRequestPB* req,
-                              ListUDTypesResponsePB* resp,
-                              rpc::RpcContext rpc) override;
+                           ListUDTypesResponsePB* resp,
+                           rpc::RpcContext rpc) override;
   virtual void GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                              GetUDTypeInfoResponsePB* resp,
-                           rpc::RpcContext rpc) override;
+                             rpc::RpcContext rpc) override;
 
   virtual void ListMasters(const ListMastersRequestPB* req,
                            ListMastersResponsePB* resp,

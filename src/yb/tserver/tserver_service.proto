@@ -52,8 +52,7 @@ service TabletServerService {
   //
   // TODO: Consider refactoring this as a scan that runs a checksum aggregation
   // function.
-  rpc Checksum(ChecksumRequestPB)
-      returns (ChecksumResponsePB);
+  rpc Checksum(ChecksumRequestPB) returns (ChecksumResponsePB);
 
   rpc ListTabletsForTabletServer(ListTabletsForTabletServerRequestPB)
       returns (ListTabletsForTabletServerResponsePB);
@@ -62,6 +61,7 @@ service TabletServerService {
   rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB);
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
+  rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
 }
 
 message GetLogLocationRequestPB {

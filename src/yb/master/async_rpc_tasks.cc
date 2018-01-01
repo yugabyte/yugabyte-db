@@ -299,12 +299,15 @@ Status RetryingTSRpcTask::ResetTSProxy() {
   // TODO: if there is no replica available, should we still keep the task running?
   RETURN_NOT_OK(replica_picker_->PickReplica(&target_ts_desc_));
 
-  shared_ptr<tserver::TabletServerAdminServiceProxy> ts_proxy;
-  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &ts_proxy));
-  ts_proxy_.swap(ts_proxy);
-
+  shared_ptr<tserver::TabletServerServiceProxy> ts_proxy;
+  shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &ts_proxy));
+  RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &ts_admin_proxy));
   RETURN_NOT_OK(target_ts_desc_->GetProxy(master_->messenger(), &consensus_proxy));
+
+  ts_proxy_.swap(ts_proxy);
+  ts_admin_proxy_.swap(ts_admin_proxy);
   consensus_proxy_.swap(consensus_proxy);
 
   return Status::OK();
@@ -354,7 +357,7 @@ void AsyncCreateReplica::HandleResponse(int attempt) {
 }
 
 bool AsyncCreateReplica::SendRequest(int attempt) {
-  ts_proxy_->CreateTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  ts_admin_proxy_->CreateTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send create tablet request to " << permanent_uuid_ << ":\n"
           << " (attempt " << attempt << "):\n"
           << req_.DebugString();
@@ -428,7 +431,7 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
   }
 
-  ts_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
+  ts_admin_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send delete tablet request to " << permanent_uuid_
           << " (attempt " << attempt << "):\n"
           << req.DebugString();
@@ -452,11 +455,11 @@ string AsyncAlterTable::description() const {
   return tablet_->ToString() + " Alter Table RPC";
 }
 
-string AsyncAlterTable::tablet_id() const {
+TabletId AsyncAlterTable::tablet_id() const {
   return tablet_->tablet_id();
 }
 
-string AsyncAlterTable::permanent_uuid() const {
+TabletServerId AsyncAlterTable::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
@@ -508,8 +511,59 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 
   l->Unlock();
 
-  ts_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
+  ts_admin_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send alter table request to " << permanent_uuid()
+          << " (attempt " << attempt << "):\n"
+          << req.DebugString();
+  return true;
+}
+
+// ============================================================================
+//  Class AsyncTruncate.
+// ============================================================================
+AsyncTruncate::AsyncTruncate(Master *master,
+                             ThreadPool* callback_pool,
+                             const scoped_refptr<TabletInfo>& tablet)
+    : RetryingTSRpcTask(master,
+                        callback_pool,
+                        gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+                        tablet->table().get()),
+      tablet_(tablet) {
+}
+
+string AsyncTruncate::description() const {
+  return tablet_->ToString() + " Truncate Tablet RPC";
+}
+
+TabletId AsyncTruncate::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+TabletServerId AsyncTruncate::permanent_uuid() const {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+}
+
+void AsyncTruncate::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    const Status s = StatusFromPB(resp_.error().status());
+    const TabletServerErrorPB::Code code = resp_.error().code();
+    LOG(WARNING) << "TS " << permanent_uuid() << ": truncate failed for tablet " << tablet_id()
+                 << " with error code " << TabletServerErrorPB::Code_Name(code)
+                 << ": " << s.ToString();
+  } else {
+    VLOG(1) << "TS " << permanent_uuid() << ": truncate complete on tablet " << tablet_id();
+    PerformStateTransition(kStateRunning, kStateComplete);
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+}
+
+bool AsyncTruncate::SendRequest(int attempt) {
+  tserver::TruncateRequestPB req;
+  req.set_tablet_id(tablet_id());
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  ts_proxy_->TruncateAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send truncate tablet request to " << permanent_uuid()
           << " (attempt " << attempt << "):\n"
           << req.DebugString();
   return true;
@@ -530,11 +584,11 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
   deadline_ = MonoTime::Max();  // Never time out.
 }
 
-string CommonInfoForRaftTask::tablet_id() const {
+TabletId CommonInfoForRaftTask::tablet_id() const {
   return tablet_->tablet_id();
 }
 
-string CommonInfoForRaftTask::permanent_uuid() const {
+TabletServerId CommonInfoForRaftTask::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 

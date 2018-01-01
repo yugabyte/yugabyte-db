@@ -18,6 +18,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_TRUNCATE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_TRUNCATE_H_
 
+#include "yb/client/client.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
@@ -62,6 +63,11 @@ class PTTruncateStmt : public TreeNode {
   // Name of the table being truncated.
   const PTQualifiedName::SharedPtr name() const {
     return names_->element(0);
+  }
+
+  // Id of the table being truncated.
+  const std::string& table_id() const {
+    return table_->id();
   }
 
   client::YBTableName yb_table_name() const {

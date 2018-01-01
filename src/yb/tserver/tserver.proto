@@ -466,3 +466,15 @@ message TransactionStatePB {
   // Relevant only in APPLYING state.
   optional fixed64 commit_hybrid_time = 4;
 }
+
+// Truncate tablet request.
+message TruncateRequestPB {
+  optional bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+// Truncate tablet response.
+message TruncateResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}

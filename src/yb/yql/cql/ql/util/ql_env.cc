@@ -85,6 +85,10 @@ YBTableAlterer *QLEnv::NewTableAlterer(const YBTableName& table_name) {
   return client_->NewTableAlterer(table_name);
 }
 
+CHECKED_STATUS QLEnv::TruncateTable(const string& table_id) {
+  return client_->TruncateTable(table_id);
+}
+
 CHECKED_STATUS QLEnv::DeleteTable(const YBTableName& name) {
   return client_->DeleteTable(name);
 }

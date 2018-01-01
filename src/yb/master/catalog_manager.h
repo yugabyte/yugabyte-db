@@ -396,6 +396,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   std::size_t NumTasks() const;
   bool HasTasks() const;
+  bool HasTasks(MonitoredTask::Type type) const;
   void AddTask(std::shared_ptr<MonitoredTask> task);
   void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
   void AbortTasks();
@@ -737,8 +738,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Get the information about an in-progress create operation
   CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
-                           IsCreateTableDoneResponsePB* resp);
+                                   IsCreateTableDoneResponsePB* resp);
 
+  // Truncate the specified table
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  CHECKED_STATUS TruncateTable(const TruncateTableRequestPB* req,
+                               TruncateTableResponsePB* resp,
+                               rpc::RpcContext* rpc);
+
+  // Get the information about an in-progress truncate operation
+  CHECKED_STATUS IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                                     IsTruncateTableDoneResponsePB* resp);
   // Delete the specified table
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -1176,6 +1188,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Start the background task to send the AlterTable() RPC to the leader for this
   // tablet.
   void SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tablet);
+
+  // Send the "truncate table request" to all tablets of the specified table.
+  void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table);
+
+  // Start the background task to send the TruncateTable() RPC to the leader for this tablet.
+  void SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& tablet);
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
   // table are appended to the lists. The caller will be responsible for committing the change and

@@ -25,16 +25,15 @@ namespace yb {
 namespace util {
 
 // The implementation is based on OperationTracker::WaitForAllToFinish.
-Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout,
-                                                   uint64_t num_remaining_ops) const {
+Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout) {
   const int complain_ms = 1000;
-  MonoTime start_time = MonoTime::Now();
+  const MonoTime start_time = MonoTime::Now();
   int64_t num_pending_ops = 0;
   int num_complaints = 0;
   int wait_time_usec = 250;
-  while ((num_pending_ops = GetOpCounter()) > num_remaining_ops) {
-    const MonoDelta diff = MonoTime::Now().GetDeltaSince(start_time);
-    if (diff.MoreThan(timeout)) {
+  while ((num_pending_ops = GetOpCounter()) > 0) {
+    const MonoDelta diff = MonoTime::Now() - start_time;
+    if (diff > timeout) {
       return STATUS(TimedOut, Substitute(
           "Timed out waiting for all pending operations to complete. "
           "$0 transactions pending. Waited for $1",
@@ -49,8 +48,13 @@ Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout,
     wait_time_usec = std::min(wait_time_usec * 5 / 4, 1000000);
     SleepFor(MonoDelta::FromMicroseconds(wait_time_usec));
   }
-  CHECK_EQ(num_pending_ops, num_remaining_ops) << "Number of pending operations must be " <<
-      num_remaining_ops;
+  CHECK_EQ(num_pending_ops, 0) << "Number of pending operations must be 0";
+
+  const MonoTime deadline = start_time + timeout;
+  if (PREDICT_FALSE(!disable_.try_lock_until(deadline.ToSteadyTimePoint()))) {
+    return STATUS(TimedOut, "Timed out waiting to disable the resource exclusively");
+  }
+
   return Status::OK();
 }
 

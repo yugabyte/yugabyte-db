@@ -137,7 +137,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   virtual void HandleResponse(int attempt) = 0;
 
   // Return the id of the tablet that is the subject of the async request.
-  virtual std::string tablet_id() const = 0;
+  virtual TabletId tablet_id() const = 0;
 
   virtual Status ResetTSProxy();
 
@@ -177,7 +177,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   int attempt_;
   rpc::RpcController rpc_;
   TSDescriptor* target_ts_desc_ = nullptr;
-  std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_proxy_;
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
 
   std::atomic<int64_t> reactor_task_id_;
@@ -244,7 +245,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   }
 
  protected:
-  std::string tablet_id() const override { return tablet_id_; }
+  TabletId tablet_id() const override { return tablet_id_; }
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
@@ -280,7 +281,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   }
 
  protected:
-  std::string tablet_id() const override { return tablet_id_; }
+  TabletId tablet_id() const override { return tablet_id_; }
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
@@ -312,9 +313,9 @@ class AsyncAlterTable : public RetryingTSRpcTask {
   std::string description() const override;
 
  private:
-  std::string tablet_id() const override;
+  TabletId tablet_id() const override;
 
-  std::string permanent_uuid() const;
+  TabletServerId permanent_uuid() const;
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
@@ -324,13 +325,38 @@ class AsyncAlterTable : public RetryingTSRpcTask {
   tserver::AlterSchemaResponsePB resp_;
 };
 
+// Send a Truncate() RPC request.
+class AsyncTruncate : public RetryingTSRpcTask {
+ public:
+  AsyncTruncate(Master* master,
+                ThreadPool* callback_pool,
+                const scoped_refptr<TabletInfo>& tablet);
+
+  Type type() const override { return ASYNC_TRUNCATE_TABLET; }
+
+  std::string type_name() const override { return "Truncate Tablet"; }
+
+  std::string description() const override;
+
+ protected:
+  TabletId tablet_id() const override;
+
+  TabletServerId permanent_uuid() const;
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  scoped_refptr<TabletInfo> tablet_;
+  tserver::TruncateResponsePB resp_;
+};
+
 class CommonInfoForRaftTask : public RetryingTSRpcTask {
  public:
   CommonInfoForRaftTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid);
 
-  std::string tablet_id() const override;
+  TabletId tablet_id() const override;
 
   virtual std::string change_config_ts_uuid() const { return change_config_ts_uuid_; }
 
@@ -338,7 +364,7 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
   // Used by SendRequest. Return's false if RPC should not be sent.
   virtual bool PrepareRequest(int attempt) = 0;
 
-  std::string permanent_uuid() const;
+  TabletServerId permanent_uuid() const;
 
   const scoped_refptr<TabletInfo> tablet_;
   const consensus::ConsensusStatePB cstate_;

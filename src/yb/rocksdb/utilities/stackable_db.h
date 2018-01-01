@@ -16,8 +16,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_STACKABLE_DB_H
-#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_STACKABLE_DB_H
+#ifndef YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
+#define YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
 
 #pragma once
 #include <string>
@@ -269,6 +269,10 @@ class StackableDB : public DB {
     return db_->GetFlushedOpId();
   }
 
+  CHECKED_STATUS SetFlushedOpId(const OpId& op_id) override {
+    return db_->SetFlushedOpId(op_id);
+  }
+
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle *column_family,
       ColumnFamilyMetaData* cf_meta) override {
@@ -335,4 +339,4 @@ class StackableDB : public DB {
 
 } //  namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_STACKABLE_DB_H
+#endif // YB_ROCKSDB_UTILITIES_STACKABLE_DB_H

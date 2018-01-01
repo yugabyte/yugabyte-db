@@ -83,6 +83,8 @@ using master::ChangeMasterClusterConfigRequestPB;
 using master::ChangeMasterClusterConfigResponsePB;
 using master::CreateTableRequestPB;
 using master::CreateTableResponsePB;
+using master::TruncateTableRequestPB;
+using master::TruncateTableResponsePB;
 using master::DeleteTableRequestPB;
 using master::DeleteTableResponsePB;
 using master::GetMasterClusterConfigRequestPB;
@@ -94,6 +96,8 @@ using master::IsAlterTableDoneRequestPB;
 using master::IsAlterTableDoneResponsePB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
+using master::IsTruncateTableDoneRequestPB;
+using master::IsTruncateTableDoneResponsePB;
 using master::IsDeleteTableDoneRequestPB;
 using master::IsDeleteTableDoneResponsePB;
 using master::GetTableLocationsRequestPB;
@@ -525,15 +529,13 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
   IsCreateTableDoneResponsePB resp;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
-  // TODO: Add client rpc timeout and use 'default_admin_operation_timeout_' as
-  // the default timeout for all admin operations.
   const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(
           deadline,
           client,
           req,
           &resp,
-          nullptr,
+          nullptr /* num_attempts */,
           "IsCreateTableDone",
           &MasterServiceProxy::IsCreateTableDone);
   // RETURN_NOT_OK macro can't take templated function call as param,
@@ -607,15 +609,13 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   IsDeleteTableDoneResponsePB resp;
   req.set_table_id(deleted_table_id);
 
-  // TODO: Add client rpc timeout and use 'default_admin_operation_timeout_' as
-  // the default timeout for all admin operations.
   const Status s =
       SyncLeaderMasterRpc<IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB>(
           deadline,
           client,
           req,
           &resp,
-          nullptr,
+          nullptr /* num_attempts */,
           "IsDeleteTableDone",
           &MasterServiceProxy::IsDeleteTableDone);
   // RETURN_NOT_OK macro can't take templated function call as param,
@@ -638,9 +638,62 @@ Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
       std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, deleted_table_id, _1, _2));
 }
 
+Status YBClient::Data::TruncateTable(YBClient* client,
+                                     const string& table_id,
+                                     const MonoTime& deadline,
+                                     bool wait) {
+  TruncateTableRequestPB req;
+  TruncateTableResponsePB resp;
+
+  req.set_table_id(table_id);
+  RETURN_NOT_OK((SyncLeaderMasterRpc<TruncateTableRequestPB, TruncateTableResponsePB>(
+      deadline, client, req, &resp, nullptr /* num_attempts */, "TruncateTable",
+      &MasterServiceProxy::TruncateTable)));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  // Spin until the table is fully truncated, if requested.
+  if (wait) {
+    RETURN_NOT_OK(WaitForTruncateTableToFinish(client, table_id, deadline));
+  }
+
+  LOG(INFO) << "Truncated table " << table_id;
+  return Status::OK();
+}
+
+Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
+                                                 const std::string& table_id,
+                                                 const MonoTime& deadline,
+                                                 bool* truncate_in_progress) {
+  DCHECK_ONLY_NOTNULL(truncate_in_progress);
+  IsTruncateTableDoneRequestPB req;
+  IsTruncateTableDoneResponsePB resp;
+
+  req.set_table_id(table_id);
+  RETURN_NOT_OK((SyncLeaderMasterRpc<IsTruncateTableDoneRequestPB, IsTruncateTableDoneResponsePB>(
+      deadline, client, req, &resp, nullptr /* num_attempts */, "IsTruncateTableDone",
+      &MasterServiceProxy::IsTruncateTableDone)));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *truncate_in_progress = !resp.done();
+  return Status::OK();
+}
+
+Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
+                                                    const std::string& table_id,
+                                                    const MonoTime& deadline) {
+  return RetryFunc(
+      deadline, "Waiting on Truncate Table to be completed",
+      "Timed out waiting for Table Truncation",
+      std::bind(&YBClient::Data::IsTruncateTableInProgress, this, client, table_id, _1, _2));
+}
+
 Status YBClient::Data::AlterTable(YBClient* client,
-                                    const AlterTableRequestPB& req,
-                                    const MonoTime& deadline) {
+                                  const AlterTableRequestPB& req,
+                                  const MonoTime& deadline) {
   AlterTableResponsePB resp;
   Status s =
       SyncLeaderMasterRpc<AlterTableRequestPB, AlterTableResponsePB>(
@@ -648,7 +701,7 @@ Status YBClient::Data::AlterTable(YBClient* client,
           client,
           req,
           &resp,
-          nullptr,
+          nullptr /* num_attempts */,
           "AlterTable",
           &MasterServiceProxy::AlterTable);
   RETURN_NOT_OK(s);
@@ -677,7 +730,7 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
           client,
           req,
           &resp,
-          nullptr,
+          nullptr /* num_attempts */,
           "IsAlterTableDone",
           &MasterServiceProxy::IsAlterTableDone);
   RETURN_NOT_OK(s);
@@ -1181,7 +1234,7 @@ Status YBClient::Data::SetReplicationInfo(
   GetMasterClusterConfigRequestPB get_req;
   GetMasterClusterConfigResponsePB get_resp;
   Status s = SyncLeaderMasterRpc<GetMasterClusterConfigRequestPB, GetMasterClusterConfigResponsePB>(
-      deadline, client, get_req, &get_resp, nullptr, "GetMasterClusterConfig",
+      deadline, client, get_req, &get_resp, nullptr /* num_attempts */, "GetMasterClusterConfig",
       &MasterServiceProxy::GetMasterClusterConfig);
   RETURN_NOT_OK(s);
   if (get_resp.has_error()) {
@@ -1198,8 +1251,8 @@ Status YBClient::Data::SetReplicationInfo(
 
   // Try to update it on the live cluster.
   s = SyncLeaderMasterRpc<ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB>(
-      deadline, client, change_req, &change_resp, nullptr, "ChangeMasterClusterConfig",
-      &MasterServiceProxy::ChangeMasterClusterConfig);
+      deadline, client, change_req, &change_resp, nullptr /* num_attempts */,
+      "ChangeMasterClusterConfig", &MasterServiceProxy::ChangeMasterClusterConfig);
   RETURN_NOT_OK(s);
   if (change_resp.has_error()) {
     // Retry on config mismatch.

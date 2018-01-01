@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#include <cpp_redis/cpp_redis>
-
 #include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <cpp_redis/cpp_redis>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -281,6 +281,37 @@ class TestRedisService : public RedisTableTestBase {
         "-9223372036854775809"});
     DoRedisTestExpectError(__LINE__, {"TSADD", redis_key, "10", "v1", expire_command,
         std::to_string(expire_val - ttl_sec)}); // ttl of 0 not allowed.
+  }
+
+  void TestFlush(const string& flush_cmd) {
+    // Populate keys.
+    const int kKeyCount = 100;
+    for (int i = 0; i < kKeyCount; i++) {
+      DoRedisTestOk(__LINE__, {"SET", Substitute("k$0", i),  Substitute("v$0", i)});
+    }
+    SyncClient();
+
+    // Verify keys.
+    for (int i = 0; i < kKeyCount; i++) {
+      DoRedisTestBulkString(__LINE__, {"GET", Substitute("k$0", i)}, Substitute("v$0", i));
+    }
+    SyncClient();
+
+    // Delete all keys in the database and verify keys are gone.
+    DoRedisTestOk(__LINE__, {flush_cmd});
+    SyncClient();
+    for (int i = 0; i < kKeyCount; i++) {
+      DoRedisTestNull(__LINE__, {"GET", Substitute("k$0", i)});
+    }
+    SyncClient();
+
+    // Delete all keys in the database again (an NOOP) and verify there is no issue.
+    DoRedisTestOk(__LINE__, {flush_cmd});
+    SyncClient();
+    for (int i = 0; i < kKeyCount; i++) {
+      DoRedisTestNull(__LINE__, {"GET", Substitute("k$0", i)});
+    }
+    SyncClient();
   }
 
   bool expected_no_sessions_ = false;
@@ -1787,6 +1818,14 @@ TEST_F(TestRedisService, TestQuit) {
   VerifyCallbacks();
   // Connection closed so following command fails
   DoRedisTestExpectError(__LINE__, {"SET", "key", "value"});
+}
+
+TEST_F(TestRedisService, TestFlushAll) {
+  TestFlush("FLUSHALL");
+}
+
+TEST_F(TestRedisService, TestFlushDb) {
+  TestFlush("FLUSHDB");
 }
 
 }  // namespace redisserver

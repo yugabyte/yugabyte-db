@@ -111,6 +111,7 @@ struct TransactionApplyData;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
+class TruncateOperationState;
 class WriteOperationState;
 
 using docdb::LockBatch;
@@ -304,6 +305,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply the Schema of the specified transaction.
   CHECKED_STATUS AlterSchema(AlterSchemaOperationState* operation_state);
 
+  // Truncate this tablet by resetting the content of RocksDB.
+  CHECKED_STATUS Truncate(TruncateOperationState* state);
+
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.
@@ -471,6 +475,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   TransactionOperationContextOpt CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id) const;
+
+  // Pause any new read/write operations and wait for all pending read/write operations to finish.
+  Result<util::ScopedPendingOperationPause> PauseReadWriteOperations();
+
+  // Initialize RocksDB's max persistent op id to that of the operation state. Necessary for cases
+  // like truncate or restore snapshot when RocksDB is reset.
+  CHECKED_STATUS SetFlushedOpId(const consensus::OpId& op_id);
 
   // Lock protecting schema_ and key_schema_.
   //

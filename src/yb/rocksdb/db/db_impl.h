@@ -20,8 +20,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef ROCKSDB_DB_DB_IMPL_H
-#define ROCKSDB_DB_DB_IMPL_H
+#ifndef YB_ROCKSDB_DB_DB_IMPL_H
+#define YB_ROCKSDB_DB_DB_IMPL_H
 
 #pragma once
 
@@ -212,6 +212,8 @@ class DBImpl : public DB {
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
 
   OpId GetFlushedOpId() override;
+
+  CHECKED_STATUS SetFlushedOpId(const OpId& op_id) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -640,6 +642,8 @@ class DBImpl : public DB {
 
   const Snapshot* GetSnapshotImpl(bool is_write_conflict_boundary);
 
+  CHECKED_STATUS ApplyVersionEdit(VersionEdit* edit);
+
   // table_cache_ provides its own synchronization
   std::shared_ptr<Cache> table_cache_;
 
@@ -980,4 +984,4 @@ static void ClipToRange(T* ptr, V minvalue, V maxvalue) {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_DB_IMPL_H
+#endif // YB_ROCKSDB_DB_DB_IMPL_H

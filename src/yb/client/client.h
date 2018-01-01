@@ -257,6 +257,10 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress);
 
+  // Truncate the specified table.
+  // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
+  CHECKED_STATUS TruncateTable(const std::string& table_id, bool wait = true);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);

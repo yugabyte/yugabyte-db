@@ -42,6 +42,7 @@
 #include <utility>
 #include <vector>
 #include <boost/optional.hpp>
+#include <boost/scope_exit.hpp>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
@@ -86,6 +87,7 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/alter_schema_operation.h"
+#include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/bloom_filter.h"
@@ -129,10 +131,12 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 using std::unique_ptr;
+using namespace std::literals;
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
 using yb::util::ScopedPendingOperation;
+using yb::util::ScopedPendingOperationPause;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using yb::docdb::KeyValueWriteBatchPB;
@@ -454,9 +458,10 @@ void Tablet::SetShutdownRequestedFlag() {
 void Tablet::Shutdown() {
   SetShutdownRequestedFlag();
 
-  LOG_SLOW_EXECUTION(WARNING, 1000,
-                     Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
-    CHECK_OK(pending_op_counter_.DisableAndWaitForOps(MonoDelta::FromSeconds(60)));
+  auto op_pause = PauseReadWriteOperations();
+  if (!op_pause.ok()) {
+    LOG(WARNING) << Substitute("Tablet $0: failed to shut down", tablet_id());
+    return;
   }
 
   if (transaction_coordinator_) {
@@ -991,6 +996,62 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
     }
   }
 
+  return Status::OK();
+}
+
+Result<ScopedPendingOperationPause> Tablet::PauseReadWriteOperations() {
+  LOG_SLOW_EXECUTION(WARNING, 1000,
+                     Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
+    return ScopedPendingOperationPause(&pending_op_counter_, 60s);
+  }
+  return STATUS(InternalError, "unexpected return"); // should not happen
+}
+
+Status Tablet::SetFlushedOpId(const consensus::OpId& op_id) {
+  const rocksdb::OpId flushed_op_id(op_id.term(), op_id.index());
+  const Status s = rocksdb_->SetFlushedOpId(flushed_op_id);
+  if (PREDICT_FALSE(!s.ok())) {
+    LOG(WARNING) << "Failed to set flushed op id: " << s;
+    return STATUS(IllegalState, "Failed to set flushed op id", s.ToString());
+  }
+  DCHECK_EQ(flushed_op_id, rocksdb_->GetFlushedOpId());
+  return Flush(FlushMode::kAsync);
+}
+
+Status Tablet::Truncate(TruncateOperationState *state) {
+  auto op_pause = PauseReadWriteOperations();
+  RETURN_NOT_OK(op_pause);
+
+  // Check if tablet is in shutdown mode.
+  if (IsShutdownRequested()) {
+    return STATUS(IllegalState, "Tablet was shut down");
+  }
+
+  const rocksdb::SequenceNumber sequence_number = rocksdb_->GetLatestSequenceNumber();
+  const string db_dir = rocksdb_->GetName();
+
+  rocksdb_ = nullptr;
+  rocksdb::Options rocksdb_options;
+  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
+  Status s = rocksdb::DestroyDB(db_dir, rocksdb_options);
+  if (PREDICT_FALSE(!s.ok())) {
+    LOG(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
+    return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
+  }
+
+  // Creata a new database.
+  // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
+  s = OpenKeyValueTablet();
+  if (PREDICT_FALSE(!s.ok())) {
+    LOG(WARNING) << "Failed to create a new db: " << s;
+    return s;
+  }
+
+  RETURN_NOT_OK(SetFlushedOpId(state->op_id()));
+
+  LOG(INFO) << "Created new db for truncated tablet " << tablet_id();
+  LOG(INFO) << "Sequence numbers: old=" << sequence_number
+            << ", new=" << rocksdb_->GetLatestSequenceNumber();
   return Status::OK();
 }
 

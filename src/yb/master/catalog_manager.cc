@@ -1765,6 +1765,81 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   return Status::OK();
 }
 
+// Truncate a Table
+Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
+                                     TruncateTableResponsePB* resp,
+                                     rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing TruncateTable request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  // Lookup the table and verify if it exists
+  TRACE("Looking up table");
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, req->table_id());
+  if (table == nullptr) {
+    Status s = STATUS(NotFound, "The table does not exist");
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  TRACE("Locking table");
+  auto l = table->LockForRead();
+  if (l->data().started_deleting() || l->data().is_deleted()) {
+    Status s = STATUS(NotFound, "The table does not exist");
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  // Send a Truncate() request to each tablet in the table.
+  SendTruncateTableRequest(table);
+
+  LOG(INFO) << "Successfully initiated TRUNCATE for " << table->ToString()
+            << " per request from " << RequestorString(rpc);
+  background_tasks_->Wake();
+  return Status::OK();
+}
+
+void CatalogManager::SendTruncateTableRequest(const scoped_refptr<TableInfo>& table) {
+  vector<scoped_refptr<TabletInfo>> tablets;
+  table->GetAllTablets(&tablets);
+  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    SendTruncateTabletRequest(tablet);
+  }
+}
+
+void CatalogManager::SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& tablet) {
+  LOG_WITH_PREFIX(INFO) << Substitute("Truncating tablet $0", tablet->id());
+  auto call = std::make_shared<AsyncTruncate>(master_, worker_pool_.get(), tablet);
+  tablet->table()->AddTask(call);
+  auto status = call->Run();
+  WARN_NOT_OK(status, Substitute("Failed to send truncate request for tablet $0", tablet->id()));
+}
+
+Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                                           IsTruncateTableDoneResponsePB* resp) {
+  LOG(INFO) << "Servicing IsTruncateTableDone request for table id " << req->table_id();
+  RETURN_NOT_OK(CheckOnline());
+
+  // Lookup the truncated table.
+  TRACE("Looking up table $0", req->table_id());
+  std::lock_guard<LockType> l_map(lock_);
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, req->table_id());
+
+  if (table == nullptr) {
+    Status s = STATUS(NotFound, "The table does not exist");
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  TRACE("Locking table");
+  auto l = table->LockForRead();
+  if (l->data().started_deleting() || l->data().is_deleted()) {
+    Status s = STATUS(NotFound, "The table does not exist");
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_TRUNCATE_TABLET));
+  return Status::OK();
+}
+
 Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
                                                 const TableId& index_table_id,
                                                 DeleteTableResponsePB* resp) {
@@ -5019,6 +5094,16 @@ std::size_t TableInfo::NumTasks() const {
 bool TableInfo::HasTasks() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return !pending_tasks_.empty();
+}
+
+bool TableInfo::HasTasks(MonitoredTask::Type type) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  for (auto task : pending_tasks_) {
+    if (task->type() == type) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
