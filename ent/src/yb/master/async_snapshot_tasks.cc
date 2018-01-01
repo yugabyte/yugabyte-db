@@ -40,11 +40,11 @@ string AsyncTabletSnapshotOp::description() const {
   return Format("$0 Tablet Snapshot Operation $1 RPC", *tablet_, operation_);
 }
 
-string AsyncTabletSnapshotOp::tablet_id() const {
+TabletId AsyncTabletSnapshotOp::tablet_id() const {
   return tablet_->tablet_id();
 }
 
-string AsyncTabletSnapshotOp::permanent_uuid() const {
+TabletServerId AsyncTabletSnapshotOp::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
