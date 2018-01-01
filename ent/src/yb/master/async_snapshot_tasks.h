@@ -26,8 +26,8 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   std::string description() const override;
 
  private:
-  std::string tablet_id() const override;
-  std::string permanent_uuid() const;
+  TabletId tablet_id() const override;
+  TabletServerId permanent_uuid() const;
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
