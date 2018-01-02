@@ -68,7 +68,7 @@ class AuthenticatedComponent extends Component {
     const self = this;
     this.timeout = setInterval(function(){
       self.props.fetchCustomerTasks();
-    }, 60000);
+    }, 6000);
   }
 
   render() {

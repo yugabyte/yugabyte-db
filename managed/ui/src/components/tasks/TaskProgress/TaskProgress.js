@@ -5,6 +5,7 @@ import PropTypes from 'prop-types';
 import { TaskProgressBar, TaskProgressStepBar  } from '..';
 import { isValidObject } from '../../../utils/ObjectUtils';
 import { YBLoading } from '../../common/indicators';
+import {TASK_SHORT_TIMEOUT} from '../constants';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 
 export default class TaskProgress extends Component {
@@ -14,11 +15,13 @@ export default class TaskProgress extends Component {
 
   static propTypes = {
     taskUUIDs: PropTypes.array,
-    type: PropTypes.oneOf(['Bar', 'StepBar'])
+    type: PropTypes.oneOf(['Bar', 'StepBar']),
+    timeoutInterval: PropTypes.number
   }
 
   static defaultProps = {
-    type: 'Widget'
+    type: 'Widget',
+    timeoutInterval: TASK_SHORT_TIMEOUT
   }
 
   componentDidMount() {
@@ -50,8 +53,8 @@ export default class TaskProgress extends Component {
   }
 
   scheduleFetch() {
-    const { taskUUIDs } = this.props;
-    this.timeout = setTimeout(() => this.props.fetchTaskProgress(taskUUIDs[0]), 6000);
+    const { taskUUIDs, timeoutInterval } = this.props;
+    this.timeout = setTimeout(() => this.props.fetchTaskProgress(taskUUIDs[0]), timeoutInterval);
   }
 
   render() {

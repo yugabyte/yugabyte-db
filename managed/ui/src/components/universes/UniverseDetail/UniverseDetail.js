@@ -22,6 +22,7 @@ import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
+import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
 import './UniverseDetail.scss';
 
 class UniverseDetail extends Component {
@@ -249,7 +250,7 @@ class UniverseTaskList extends Component {
       currentTaskProgress = <YBLoading/>;
     }
     else if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(universeTaskUUIDs)) {
-      currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>;
+      currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar" timeoutInterval={TASK_SHORT_TIMEOUT}/>;
     }
     return (
       <div className="universe-detail-content-container">
