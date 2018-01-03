@@ -89,7 +89,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 DEFINE_int32(num_tablets_to_open_simultaneously, 0,
              "Number of threads available to open tablets during startup. If this "
@@ -263,13 +263,14 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
         FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
         &server->options(), server->metric_entity()) {
 
-  CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
-  apply_pool_->SetQueueLengthHistogram(
-      METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()));
-  apply_pool_->SetQueueTimeMicrosHistogram(
-      METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()));
-  apply_pool_->SetRunTimeMicrosHistogram(
-      METRIC_op_apply_run_time.Instantiate(server_->metric_entity()));
+  ThreadPoolMetrics metrics = {
+      METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()),
+      METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()),
+      METRIC_op_apply_run_time.Instantiate(server_->metric_entity())
+  };
+  CHECK_OK(ThreadPoolBuilder("apply")
+               .set_metrics(std::move(metrics))
+               .Build(&apply_pool_));
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();

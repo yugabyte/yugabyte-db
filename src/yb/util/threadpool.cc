@@ -101,6 +101,11 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_max_queue_size(int max_queue_size) {
   return *this;
 }
 
+ThreadPoolBuilder& ThreadPoolBuilder::set_metrics(ThreadPoolMetrics metrics) {
+  metrics_ = std::move(metrics);
+  return *this;
+}
+
 ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_timeout) {
   idle_timeout_ = idle_timeout;
   return *this;
@@ -123,9 +128,11 @@ Status ThreadPoolBuilder::Build(unique_ptr<ThreadPool>* pool) const {
 ////////////////////////////////////////////////////////
 
 ThreadPoolToken::ThreadPoolToken(ThreadPool* pool,
-                                 ThreadPool::ExecutionMode mode)
+                                 ThreadPool::ExecutionMode mode,
+                                 ThreadPoolMetrics metrics)
     : mode_(mode),
       pool_(pool),
+      metrics_(std::move(metrics)),
       state_(ThreadPoolTokenState::kIdle),
       not_running_cond_(&pool->lock_),
       active_threads_(0) {
@@ -307,7 +314,8 @@ ThreadPool::ThreadPool(const ThreadPoolBuilder& builder)
     num_threads_(0),
     active_threads_(0),
     total_queued_tasks_(0),
-    tokenless_(NewToken(ExecutionMode::CONCURRENT)) {
+    tokenless_(NewToken(ExecutionMode::CONCURRENT)),
+    metrics_(builder.metrics_) {
 }
 
 ThreadPool::~ThreadPool() {
@@ -400,8 +408,13 @@ void ThreadPool::Shutdown() {
 }
 
 unique_ptr<ThreadPoolToken> ThreadPool::NewToken(ExecutionMode mode) {
+  return NewTokenWithMetrics(mode, {});
+}
+
+unique_ptr<ThreadPoolToken> ThreadPool::NewTokenWithMetrics(
+    ExecutionMode mode, ThreadPoolMetrics metrics) {
   MutexLock guard(lock_);
-  unique_ptr<ThreadPoolToken> t(new ThreadPoolToken(this, mode));
+  unique_ptr<ThreadPoolToken> t(new ThreadPoolToken(this, mode, std::move(metrics)));
   InsertOrDie(&tokens_, t.get());
   return t;
 }
@@ -505,8 +518,11 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   guard.Unlock();
   not_empty_.Signal();
 
-  if (queue_length_histogram_) {
-    queue_length_histogram_->Increment(length_at_submit);
+  if (metrics_.queue_length_histogram) {
+    metrics_.queue_length_histogram->Increment(length_at_submit);
+  }
+  if (token->metrics_.queue_length_histogram) {
+    token->metrics_.queue_length_histogram->Increment(length_at_submit);
   }
 
   return Status::OK();
@@ -533,19 +549,6 @@ bool ThreadPool::WaitFor(const MonoDelta& delta) {
   }
   return true;
 }
-
-void ThreadPool::SetQueueLengthHistogram(const scoped_refptr<Histogram>& hist) {
-  queue_length_histogram_ = hist;
-}
-
-void ThreadPool::SetQueueTimeMicrosHistogram(const scoped_refptr<Histogram>& hist) {
-  queue_time_us_histogram_ = hist;
-}
-
-void ThreadPool::SetRunTimeMicrosHistogram(const scoped_refptr<Histogram>& hist) {
-  run_time_us_histogram_ = hist;
-}
-
 
 void ThreadPool::DispatchThread(bool permanent) {
   MutexLock unique_lock(lock_);
@@ -597,15 +600,27 @@ void ThreadPool::DispatchThread(bool permanent) {
     }
 
     // Update metrics
-    if (queue_time_us_histogram_) {
-      MonoTime now(MonoTime::Now());
-      queue_time_us_histogram_->Increment(now.GetDeltaSince(task.submit_time).ToMicroseconds());
+    MonoTime now(MonoTime::Now());
+    int64_t queue_time_us = (now - task.submit_time).ToMicroseconds();
+    if (metrics_.queue_time_us_histogram) {
+      metrics_.queue_time_us_histogram->Increment(queue_time_us);
+    }
+    if (token->metrics_.queue_time_us_histogram) {
+      token->metrics_.queue_time_us_histogram->Increment(queue_time_us);
     }
 
     // Execute the task
     {
-      ScopedLatencyMetric m(run_time_us_histogram_.get());
+      MicrosecondsInt64 start_wall_us = GetMonoTimeMicros();
       task.runnable->Run();
+      int64_t wall_us = GetMonoTimeMicros() - start_wall_us;
+
+      if (metrics_.run_time_us_histogram) {
+        metrics_.run_time_us_histogram->Increment(wall_us);
+      }
+      if (token->metrics_.run_time_us_histogram) {
+        token->metrics_.run_time_us_histogram->Increment(wall_us);
+      }
     }
     // Destruct the task while we do not hold the lock.
     //
