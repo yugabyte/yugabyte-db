@@ -93,7 +93,7 @@ class DateTime {
   static tz_ptr_type GetUtcTimezone();
   static int64_t AdjustPrecision(int64_t val, int input_precision, int output_precision);
   static constexpr int64_t kInternalPrecision = 6; // microseconds
-  static constexpr int64_t kYQLUnixTimestampPrecision = 3; // milliseconds
+  static constexpr int64_t kMillisecondPrecision = 3; // milliseconds
 
  private:
   // Utility constants to avoid overflow when increasing precision in AdjustPrecision().
