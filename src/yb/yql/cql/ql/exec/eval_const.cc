@@ -15,11 +15,12 @@
 
 #include "yb/common/jsonb.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+// #include "yb/util/jsonb.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfunc.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/decimal.h"
-#include "yb/yql/cql/ql/exec/executor.h"
 
 namespace yb {
 namespace ql {
@@ -101,8 +102,9 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value: {
       int64_t value;
-      if (!const_pt->ToInt64(&value, negate).ok()) {
-        return exec_context().Error(const_pt->loc(), "Invalid integer.",
+      if (!const_pt->ToInt64(&value, negate).ok() ||
+          !(value <= INT8_MAX && value >= INT8_MIN)) {
+        return exec_context().Error(const_pt->loc(), "Invalid tiny integer/int8.",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int8_value(value);
@@ -110,8 +112,9 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     }
     case InternalType::kInt16Value: {
       int64_t value;
-      if (!const_pt->ToInt64(&value, negate).ok()) {
-        return exec_context().Error(const_pt->loc(), "Invalid integer.",
+      if (!const_pt->ToInt64(&value, negate).ok() ||
+          !(value <= INT16_MAX && value >= INT16_MIN)) {
+        return exec_context().Error(const_pt->loc(), "Invalid small integer/int16.",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int16_value(value);
@@ -119,8 +122,9 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     }
     case InternalType::kInt32Value: {
       int64_t value;
-      if (!const_pt->ToInt64(&value, negate).ok()) {
-        return exec_context().Error(const_pt->loc(), "Invalid integer.",
+      if (!const_pt->ToInt64(&value, negate).ok() ||
+          !(value <= INT32_MAX && value >= INT32_MIN)) {
+        return exec_context().Error(const_pt->loc(), "Invalid integer/int32.",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int32_value(value);
@@ -128,8 +132,9 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *co
     }
     case InternalType::kInt64Value: {
       int64_t value;
-      if (!const_pt->ToInt64(&value, negate).ok()) {
-        return exec_context().Error(const_pt->loc(), "Invalid integer.",
+      if (!const_pt->ToInt64(&value, negate).ok() ||
+          !(value <= INT64_MAX && value >= INT64_MIN)) {
+        return exec_context().Error(const_pt->loc(), "Invalid big integer/int64.",
                                     ErrorCode::INVALID_ARGUMENTS);
       }
       const_pb->set_int64_value(value);

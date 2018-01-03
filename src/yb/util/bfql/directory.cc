@@ -95,28 +95,28 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertDoubleToFloat", "cast", "", FLOAT,  {DOUBLE, FLOAT} },
   { "ConvertFloatToDouble", "cast", "", DOUBLE, {FLOAT, DOUBLE} },
 
-  // CQL functions "TypeAsBlob".
-  { "ConvertStringToBlob",    "varcharasblob", "",   BINARY, {STRING}, TSOpcode::kNoOp, false },
-  { "ConvertStringToBlob",    "textasblob", "",      BINARY, {STRING}, TSOpcode::kNoOp, false },
+    // CQL functions "TypeAsBlob".
+  { "ConvertStringToBlob",    "varcharasblob", "",   BINARY, {STRING}, TSOpcode::kNoOp },
+  { "ConvertStringToBlob",    "textasblob", "",      BINARY, {STRING}, TSOpcode::kNoOp },
 
-  { "ConvertBoolToBlob",      "booleanasblob", "",   BINARY, {BOOL}, TSOpcode::kNoOp, false },
+  { "ConvertBoolToBlob",      "booleanasblob", "",   BINARY, {BOOL}, TSOpcode::kNoOp },
 
-  { "ConvertInt8ToBlob",      "tinyintasblob", "",   BINARY, {INT8}, TSOpcode::kNoOp, false },
-  { "ConvertInt16ToBlob",     "smallintasblob", "",  BINARY, {INT16}, TSOpcode::kNoOp, false },
-  { "ConvertInt32ToBlob",     "intasblob", "",       BINARY, {INT32}, TSOpcode::kNoOp, false },
-  { "ConvertInt64ToBlob",     "bigintasblob", "",    BINARY, {INT64}, TSOpcode::kNoOp, false },
-  { "ConvertInt64ToBlob",     "counterasblob", "",   BINARY, {INT64}, TSOpcode::kNoOp, false },
+  { "ConvertInt8ToBlob",      "tinyintasblob", "",   BINARY, {INT8}, TSOpcode::kNoOp },
+  { "ConvertInt16ToBlob",     "smallintasblob", "",  BINARY, {INT16}, TSOpcode::kNoOp },
+  { "ConvertInt32ToBlob",     "intasblob", "",       BINARY, {INT32}, TSOpcode::kNoOp },
+  { "ConvertInt64ToBlob",     "bigintasblob", "",    BINARY, {INT64}, TSOpcode::kNoOp },
+  { "ConvertInt64ToBlob",     "counterasblob", "",   BINARY, {INT64}, TSOpcode::kNoOp },
   { "ConvertVarintToBlob",    "varintasblob", "",    BINARY, {VARINT}, TSOpcode::kNoOp, false },
 
-  { "ConvertFloatToBlob",     "floatasblob", "",     BINARY, {FLOAT}, TSOpcode::kNoOp, false },
-  { "ConvertDoubleToBlob",    "doubleasblob", "",    BINARY, {DOUBLE}, TSOpcode::kNoOp, false },
+  { "ConvertFloatToBlob",     "floatasblob", "",     BINARY, {FLOAT}, TSOpcode::kNoOp },
+  { "ConvertDoubleToBlob",    "doubleasblob", "",    BINARY, {DOUBLE}, TSOpcode::kNoOp },
   { "ConvertDecimalToBlob",   "decimalasblob", "",   BINARY, {DECIMAL}, TSOpcode::kNoOp, false },
 
   { "ConvertDateToBlob",      "dateasblob", "",      BINARY, {DATE}, TSOpcode::kNoOp, false },
   { "ConvertTimeToBlob",      "timeasblob", "",      BINARY, {TIME}, TSOpcode::kNoOp, false },
-  { "ConvertTimestampToBlob", "timestampasblob", "", BINARY, {TIMESTAMP}, TSOpcode::kNoOp, false },
-  { "ConvertUuidToBlob",      "uuidasblob", "",      BINARY, {UUID}, TSOpcode::kNoOp, false },
-  { "ConvertTimeuuidToBlob",  "timeuuidasblob", "",  BINARY, {TIMEUUID}, TSOpcode::kNoOp, false },
+  { "ConvertTimestampToBlob", "timestampasblob", "", BINARY, {TIMESTAMP}, TSOpcode::kNoOp },
+  { "ConvertUuidToBlob",      "uuidasblob", "",      BINARY, {UUID}, TSOpcode::kNoOp },
+  { "ConvertTimeuuidToBlob",  "timeuuidasblob", "",  BINARY, {TIMEUUID}, TSOpcode::kNoOp },
   { "ConvertInetToBlob",      "inetasblob", "",      BINARY, {INET}, TSOpcode::kNoOp, false },
 
   { "ConvertListToBlob",      "listasblob", "",      BINARY, {LIST}, TSOpcode::kNoOp, false },
@@ -124,28 +124,28 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertSetToBlob",       "setasblob", "",       BINARY, {SET}, TSOpcode::kNoOp, false },
   { "ConvertTupleToBlob",     "tupleasblob", "",     BINARY, {TUPLE}, TSOpcode::kNoOp, false },
 
-  // CQL functions "BlobAsType".
-  { "ConvertBlobToString",    "blobasvarchar", "",   STRING,    {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToString",    "blobastext", "",      STRING,    {BINARY}, TSOpcode::kNoOp, false },
+    // CQL functions "BlobAsType".
+  { "ConvertBlobToString",    "blobasvarchar", "",   STRING,    {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToString",    "blobastext", "",      STRING,    {BINARY}, TSOpcode::kNoOp },
 
-  { "ConvertBlobToBool",      "blobasboolean", "",   BOOL,      {BINARY}, TSOpcode::kNoOp, false },
+  { "ConvertBlobToBool",      "blobasboolean", "",   BOOL,      {BINARY}, TSOpcode::kNoOp },
 
-  { "ConvertBlobToInt8",      "blobastinyint", "",   INT8,      {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToInt16",     "blobassmallint", "",  INT16,     {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToInt32",     "blobasint", "",       INT32,     {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToInt64",     "blobasbigint", "",    INT64,     {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToInt64",     "blobascounter", "",   INT64,     {BINARY}, TSOpcode::kNoOp, false },
+  { "ConvertBlobToInt8",      "blobastinyint", "",   INT8,      {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToInt16",     "blobassmallint", "",  INT16,     {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToInt32",     "blobasint", "",       INT32,     {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToInt64",     "blobasbigint", "",    INT64,     {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToInt64",     "blobascounter", "",   INT64,     {BINARY}, TSOpcode::kNoOp },
   { "ConvertBlobToVarint",    "blobasvarint", "",    VARINT,    {BINARY}, TSOpcode::kNoOp, false },
 
-  { "ConvertBlobToFloat",     "blobasfloat", "",     FLOAT,     {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToDouble",    "blobasdouble", "",    DOUBLE,    {BINARY}, TSOpcode::kNoOp, false },
+  { "ConvertBlobToFloat",     "blobasfloat", "",     FLOAT,     {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToDouble",    "blobasdouble", "",    DOUBLE,    {BINARY}, TSOpcode::kNoOp },
   { "ConvertBlobToDecimal",   "blobasdecimal", "",   DECIMAL,   {BINARY}, TSOpcode::kNoOp, false },
 
   { "ConvertBlobToDate",      "blobasdate", "",      DATE,      {BINARY}, TSOpcode::kNoOp, false },
   { "ConvertBlobToTime",      "blobastime", "",      TIME,      {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToTimestamp", "blobastimestamp", "", TIMESTAMP, {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToUuid",      "blobasuuid", "",      UUID,      {BINARY}, TSOpcode::kNoOp, false },
-  { "ConvertBlobToTimeuuid",  "blobastimeuuid", "",  TIMEUUID,  {BINARY}, TSOpcode::kNoOp, false },
+  { "ConvertBlobToTimestamp", "blobastimestamp", "", TIMESTAMP, {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToUuid",      "blobasuuid", "",      UUID,      {BINARY}, TSOpcode::kNoOp },
+  { "ConvertBlobToTimeuuid",  "blobastimeuuid", "",  TIMEUUID,  {BINARY}, TSOpcode::kNoOp },
   { "ConvertBlobToInet",      "blobasinet", "",      INET,      {BINARY}, TSOpcode::kNoOp, false },
 
   { "ConvertBlobToList",      "blobaslist", "",      LIST,      {BINARY}, TSOpcode::kNoOp, false },
