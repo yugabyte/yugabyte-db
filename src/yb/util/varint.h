@@ -75,6 +75,9 @@ class VarInt {
   uint8_t digit(std::size_t index) const { return digits_.size() > index ? digits_[index] : 0; }
   int radix() const { return radix_; }
 
+  // Returns the sign of the VarInt.
+  bool IsPositive() const { return is_positive_; }
+
   std::string ToDebugString() const;
   std::string ToString() const;
 
@@ -243,7 +246,6 @@ class VarInt {
   }
 
   const VarInt& Negate() { is_positive_ = !is_positive_; return *this; }
-
 
  private:
 
