@@ -118,6 +118,10 @@ using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
+using yb::master::CreateRoleRequestPB;
+using yb::master::CreateRoleResponsePB;
+using yb::master::DeleteRoleRequestPB;
+using yb::master::DeleteRoleResponsePB;
 using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::ListUDTypesRequestPB;
@@ -312,6 +316,20 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
     const std::function<Status(
         MasterServiceProxy*, const CreateUDTypeRequestPB&, CreateUDTypeResponsePB*,
         RpcController*)>& func);
+
+template Status YBClient::Data::SyncLeaderMasterRpc(
+        const MonoTime& deadline, YBClient* client, const CreateRoleRequestPB& req,
+        CreateRoleResponsePB* resp, int* num_attempts, const char* func_name,
+        const std::function<Status(
+                MasterServiceProxy*, const CreateRoleRequestPB&, CreateRoleResponsePB*,
+                RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const DeleteRoleRequestPB& req,
+    DeleteRoleResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const DeleteRoleRequestPB&, DeleteRoleResponsePB*,
+        RpcController*)>& func);
+
 template Status YBClient::Data::SyncLeaderMasterRpc(
     const MonoTime& deadline, YBClient* client, const DeleteUDTypeRequestPB& req,
     DeleteUDTypeResponsePB* resp, int* num_attempts, const char* func_name,

@@ -154,6 +154,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTCreateType:
       return ExecPTNode(static_cast<const PTCreateType *>(tnode));
 
+    case TreeNodeOpcode::kPTCreateRole:
+      return ExecPTNode(static_cast<const PTCreateRole *>(tnode));
+
     case TreeNodeOpcode::kPTDropStmt:
       return ExecPTNode(static_cast<const PTDropStmt *>(tnode));
 
@@ -187,6 +190,31 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     default:
       return exec_context_->Error(ErrorCode::FEATURE_NOT_SUPPORTED);
   }
+}
+
+
+
+Status Executor::ExecPTNode(const PTCreateRole *tnode) {
+
+  const std::string role_name = tnode->role_name();
+  const std::string salted_hash = tnode->salted_hash();
+
+  Status s = exec_context_->CreateRole(role_name, salted_hash, tnode->login(), tnode->superuser());
+
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
+    if (s.IsAlreadyPresent()) {
+      error_code = ErrorCode::DUPLICATE_ROLE;
+    }
+
+    if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_ROLE) {
+      return Status::OK();
+    }
+    // TODO (Bristy) : Set result_ properly
+    return exec_context_->Error(tnode, s, error_code);
+  }
+
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -425,6 +453,15 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       s = exec_context_->DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "TYPE", namespace_name, type_name);
+      break;
+    }
+
+    case OBJECT_ROLE: {
+      // Drop the role
+      const string role_name(tnode->name()->QLName());
+      s = exec_context_->DeleteRole(role_name);
+      error_not_found = ErrorCode::ROLE_NOT_FOUND;
+      // TODO (Bristy) : Set result_ properly
       break;
     }
 

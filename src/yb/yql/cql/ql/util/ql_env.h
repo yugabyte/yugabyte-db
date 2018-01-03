@@ -106,6 +106,15 @@ class QLEnv {
         current_cql_call()->ql_session()->current_keyspace() :
         current_keyspace_ != nullptr ? *current_keyspace_ : kUndefinedKeyspace;
   }
+  // Role related methods
+
+  // Create role with the given arguments
+  CHECKED_STATUS CreateRole(const std::string& role_name,
+                            const std::string&  salted_hash,
+                            const bool login, const bool superuser);
+
+  // Delete role by name
+  virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
 
   // (User-defined) Type related methods.
 
@@ -121,8 +130,8 @@ class QLEnv {
 
   // Retrieve (user-defined) type by name.
   std::shared_ptr<QLType> GetUDType(const std::string &keyspace_name,
-                                     const std::string &type_name,
-                                     bool *cache_used);
+                                    const std::string &type_name,
+                                    bool *cache_used);
 
   virtual void RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name);
 

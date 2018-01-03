@@ -73,6 +73,7 @@
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
+#include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
@@ -103,8 +104,10 @@ typedef MCSharedPtr<MCString>          PString;
 typedef TreeNode::SharedPtr            PTreeNode;
 typedef PTListNode::SharedPtr          PListNode;
 typedef PTExpr::SharedPtr              PExpr;
+typedef PTRoleOption::SharedPtr        PRoleOption;
 typedef PTRef::SharedPtr               PRef;
 typedef PTExprListNode::SharedPtr      PExprListNode;
+typedef PTRoleOptionListNode::SharedPtr     PRoleOptionListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTCollectionExpr::SharedPtr    PCollectionExpr;
 typedef PTCollection::SharedPtr        PCollection;
@@ -200,6 +203,9 @@ using namespace yb::ql;
                           columnDef ColConstraint ColConstraintElem
                           ConstraintElem ConstraintAttr
 
+                          // Create role.
+                          CreateRoleStmt
+
                           // Truncate table.
                           TruncateStmt
 
@@ -274,6 +280,8 @@ using namespace yb::ql;
                           func_expr func_application func_arg_expr
                           inactive_a_expr inactive_c_expr
 
+%type <PRoleOption>       RoleOption
+
 %type <PRef>              columnref
 
 %type <PCollectionExpr>   // An expression for CQL collections:
@@ -284,6 +292,8 @@ using namespace yb::ql;
 %type <PExprListNode>     // A list of expressions.
                           target_list opt_target_list
                           ctext_row ctext_expr_list func_arg_list col_arg_list
+
+%type <PRoleOptionListNode>   RoleOptionList optRoleOptionList
 
 %type <PDmlUsingClause>   // Using clause for DML statements.
                           opt_using_ttl_timestamp_clause using_ttl_timestamp_clause
@@ -331,7 +341,7 @@ using namespace yb::ql;
 // Name nodes.
 %type <PName>             indirection_el columnElem
 
-%type <PQualifiedNameListNode> insert_column_list any_name_list relation_expr_list
+%type <PQualifiedNameListNode>  insert_column_list any_name_list relation_expr_list
 
 %type <PQualifiedName>    qualified_name indirection relation_expr
                           insert_target insert_column_item opt_indirection
@@ -341,12 +351,15 @@ using namespace yb::ql;
 %type <PString>           // Identifier name.
                           ColId
                           alias_clause opt_alias_clause
+                          role_name
 
 // Precision for datatype FLOAT in declarations for columns or any other entities.
 %type <PInt64>            opt_float
 
 %type <KeywordType>       unreserved_keyword type_func_name_keyword
 %type <KeywordType>       col_name_keyword reserved_keyword
+
+%type <PBool>             boolean
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -411,10 +424,10 @@ using namespace yb::ql;
                           CreateSeqStmt CreateTableSpaceStmt
                           CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt
                           CreateAssertStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
-                          CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
+                          CreateUserStmt CreateUserMappingStmt CreatePolicyStmt
                           CreatedbStmt DeclareCursorStmt DefineStmt DiscardStmt DoStmt
                           DropOpClassStmt DropOpFamilyStmt DropPLangStmt
-                          DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
+                          DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
                           DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
@@ -582,7 +595,7 @@ using namespace yb::ql;
 
                           LABEL LANGUAGE LARGE_P LAST_P LATERAL_P LEADING LEAKPROOF LEAST LEFT
                           LEVEL LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
-                          LOCK_P LOCKED LOGGED
+                          LOCK_P LOCKED LOGGED LOGIN
 
                           MAP MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P
                           MOVE
@@ -606,9 +619,10 @@ using namespace yb::ql;
 
                           SAVEPOINT SCHEMA SCHEME SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
                           SEQUENCES SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF
-                          SHARE SHOW SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P
-                          STABLE STANDALONE_P START STATEMENT STATIC STATISTICS STDIN STDOUT
-                          STORAGE STRICT_P STRIP_P SUBSTRING SYMMETRIC SYSID SYSTEM_P
+
+                          SHARE SHOW SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE
+                          STANDALONE_P START STATEMENT STATIC STATISTICS STDIN STDOUT STORAGE
+                          STRICT_P STRIP_P SUBSTRING SUPERUSER SYMMETRIC SYSID SYSTEM_P
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
                           THEN TIME TIMESTAMP TIMEUUID TINYINT TO TOKEN TRAILING TRANSACTION
@@ -786,6 +800,9 @@ stmt:
     $$ = $1;
   }
   | CreateStmt {
+    $$ = $1;
+  }
+  | CreateRoleStmt {
     $$ = $1;
   }
   | TruncateStmt {
@@ -1647,6 +1664,18 @@ DropStmt:
   }
   | DROP drop_type any_name_list opt_drop_behavior {
     $$ = MAKE_NODE(@1, PTDropStmt, $2, $3, false);
+  }
+  | DROP ROLE IF_P EXISTS role_name {
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $5);
+    PTQualifiedNameListNode::SharedPtr list_node = MAKE_NODE(
+      @1, PTQualifiedNameListNode, name_node);
+    $$ = MAKE_NODE(@1, PTDropStmt, OBJECT_ROLE, list_node, true);
+  }
+  | DROP ROLE role_name {
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $3);
+    PTQualifiedNameListNode::SharedPtr list_node = MAKE_NODE(
+      @1, PTQualifiedNameListNode, name_node);
+    $$ = MAKE_NODE(@1, PTDropStmt, OBJECT_ROLE, list_node, false);
   }
   | DROP DOMAIN_P type_name_list opt_drop_behavior {
     PARSER_CQL_INVALID_MSG(@2, "DROP DOMAIN statement not supported");
@@ -4900,6 +4929,7 @@ unreserved_keyword:
   | LOCK_P { $$ = $1; }
   | LOCKED { $$ = $1; }
   | LOGGED { $$ = $1; }
+  | LOGIN { $$ = $1; }
   | MAPPING { $$ = $1; }
   | MATCH { $$ = $1; }
   | MATERIALIZED { $$ = $1; }
@@ -4998,6 +5028,7 @@ unreserved_keyword:
   | STORAGE { $$ = $1; }
   | STRICT_P { $$ = $1; }
   | STRIP_P { $$ = $1; }
+  | SUPERUSER { $$ = $1; }
   | SYSID { $$ = $1; }
   | SYSTEM_P { $$ = $1; }
   | TABLES { $$ = $1; }
@@ -5300,7 +5331,6 @@ inactive_stmt:
   | CreateTransformStmt
   | CreateTrigStmt
   | CreateEventTrigStmt
-  | CreateRoleStmt
   | CreateUserStmt
   | CreateUserMappingStmt
   | CreatedbStmt
@@ -5322,7 +5352,6 @@ inactive_stmt:
   | DropTableSpaceStmt
   | DropTransformStmt
   | DropTrigStmt
-  | DropRoleStmt
   | DropUserStmt
   | DropUserMappingStmt
   | DropdbStmt
@@ -5362,8 +5391,60 @@ inactive_stmt:
  *
  *****************************************************************************/
 
-CreateRoleStmt: CREATE ROLE RoleId opt_with OptRoleList {
+
+CreateRoleStmt: CREATE ROLE role_name optRoleOptionList {
+    $$ = MAKE_NODE(@1, PTCreateRole, $3 , $4,  false /* create_if_not_exists */ );
+  }
+  | CREATE ROLE IF_P NOT_LA EXISTS role_name optRoleOptionList{
+    $$ = MAKE_NODE(@1, PTCreateRole, $6 , $7, true /* create_if_not_exists */ );
+  }
+;
+
+role_name:
+    NonReservedWord { $$ = $1; }
+  | Sconst { $$ = $1; }
+;
+
+optRoleOptionList:
+  /*EMPTY*/ {
     $$ = nullptr;
+  }
+  | WITH RoleOptionList {
+    $$ = $2;
+  }
+;
+
+RoleOptionList:
+  RoleOption {
+    $$ = MAKE_NODE(@1, PTRoleOptionListNode, $1);
+  }
+  | RoleOptionList AND RoleOption {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+RoleOption:
+  PASSWORD '=' Sconst {
+      $$ = MAKE_NODE(@1, PTRolePassword, $3);
+  }
+  | LOGIN '=' boolean {
+      $$ = MAKE_NODE(@1, PTRoleLogin, $3);
+  }
+  | SUPERUSER '=' boolean {
+      $$ = MAKE_NODE(@1, PTRoleSuperuser, $3);
+  }
+  | OPTIONS '=' map_expr {
+      PARSER_UNSUPPORTED(@1);
+  }
+;
+
+boolean:
+  TRUE_P {
+    $$ = true;
+  }
+  | FALSE_P {
+    $$ = false;
   }
 ;
 
@@ -5481,22 +5562,6 @@ AlterUserStmt: ALTER USER RoleSpec opt_with AlterOptRoleList {
 ;
 
 AlterUserSetStmt: ALTER USER RoleSpec SetResetClause {
-  }
-;
-
-/*****************************************************************************
- *
- * Drop a postgresql DBMS role
- *
- * XXX Ideally this would have CASCADE/RESTRICT options, but since a role
- * might own objects in multiple databases, there is presently no way to
- * implement either cascading or restricting.  Caveat DBA.
- *****************************************************************************/
-
-DropRoleStmt:
-  DROP ROLE role_list {
-  }
-  | DROP ROLE IF_P EXISTS role_list {
   }
 ;
 

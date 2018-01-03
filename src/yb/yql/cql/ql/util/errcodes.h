@@ -98,6 +98,8 @@ enum class ErrorCode : int64_t {
   DUPLICATE_TYPE_FIELD = -219,
   ALTER_KEY_COLUMN = -220,
   INCOMPATIBLE_COPARTITION_SCHEMA = -221,
+  INVALID_ROLE_DEFINITION = -222,
+  DUPLICATE_ROLE = -223,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
@@ -115,6 +117,7 @@ enum class ErrorCode : int64_t {
   TYPE_NOT_FOUND = -311,
   INVALID_TYPE_DEFINITION = -312,
   RESTART_REQUIRED = -313,
+  ROLE_NOT_FOUND = -314,
 };
 
 // Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.

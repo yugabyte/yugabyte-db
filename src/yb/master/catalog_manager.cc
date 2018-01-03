@@ -950,35 +950,21 @@ CHECKED_STATUS CatalogManager::PrepareDefaultRoles() {
     return Status::OK();
   }
 
-  // Create entry.
-  SysRoleEntryPB role_entry;
-  role_entry.set_role(kDefaultCassandraUsername);
-  role_entry.set_can_login(true);
-  role_entry.set_is_superuser(true);
-  // No member of as default.
   char hash[kBcryptHashSize];
   // TODO: refactor interface to be more c++ like...
   int ret = bcrypt_hashpw(kDefaultCassandraPassword, hash);
   if (ret != 0) {
     return STATUS(IllegalState, Substitute("Could not hash password, reason: $0", ret));
   }
-  role_entry.set_salted_hash(hash);
 
   // Create in memory object.
-  scoped_refptr<RoleInfo> role = new RoleInfo(kDefaultCassandraUsername);
+  Status s = CreateRoleUnlocked(kDefaultCassandraUsername, std::string(hash, kBcryptHashSize),
+                                true, true);
+  if (PREDICT_TRUE(s.ok())) {
+    LOG(INFO) << "Created role: " << kDefaultCassandraUsername;
+  }
 
-  // Prepare write.
-  auto l = role->LockForWrite();
-  l->mutable_data()->pb = std::move(role_entry);
-
-  roles_map_[kDefaultCassandraUsername] = role;
-
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_->AddItem(role.get()));
-  l->Commit();
-
-  LOG(INFO) << "Created default role: " << role->id();
-  return Status::OK();
+  return s;
 }
 
 template <class T>
@@ -3064,6 +3050,110 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     ns->set_id(entry.second->id());
     ns->set_name(entry.second->name());
   }
+  return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager:: CreateRoleUnlocked(const std::string& role_name,
+                                                   const std::string& salted_hash,
+                                                   const bool login, const bool superuser) {
+
+  if (!lock_.is_locked()) {
+    return STATUS(IllegalState, "We don't have the catalog manager lock!");
+  }
+  // Create Entry
+  SysRoleEntryPB role_entry;
+  role_entry.set_role(role_name);
+  role_entry.set_can_login(login);
+  role_entry.set_is_superuser(superuser);
+  if (salted_hash.size() != 0) {
+    role_entry.set_salted_hash(salted_hash);
+  }
+  // Create in memory object.
+  scoped_refptr<RoleInfo> role = new RoleInfo(role_name);
+
+  // Prepare write.
+  auto l = role->LockForWrite();
+  l->mutable_data()->pb = std::move(role_entry);
+
+  roles_map_[role_name] = role;
+  TRACE("Inserted new role info into CatalogManager maps");
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->AddItem(role.get()));
+
+  l->Commit();
+  return Status::OK();
+}
+
+Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
+                                  CreateRoleResponsePB* resp,
+                                  rpc::RpcContext* rpc) {
+
+  LOG(INFO) << "CreateRole from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+
+  RETURN_NOT_OK(CheckOnline());
+  Status s;
+
+  TRACE("Acquired catalog manager lock");
+  std::lock_guard<LockType> l_big(lock_);
+
+  if (FindPtrOrNull(roles_map_, req->name()) != nullptr) {
+     s = STATUS(AlreadyPresent,
+               Substitute("Role $0 already exists", req->name()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_ALREADY_PRESENT, s);
+  }
+  s = CreateRoleUnlocked(req->name(), req->salted_hash(), req->login(), req->superuser());
+  if (PREDICT_TRUE(s.ok())) {
+    LOG(INFO) << "Created role: " << req->name();
+  }
+  return s;
+
+}
+
+
+Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
+                                  DeleteRoleResponsePB* resp,
+                                  rpc::RpcContext* rpc) {
+
+  LOG(INFO) << "Servicing DeleteRole request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+  Status s;
+
+  if (!req->has_name()) {
+    s = STATUS(InvalidArgument, "No role name given", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  TRACE("Acquired catalog manager lock");
+  std::lock_guard<LockType> l_big(lock_);
+
+  scoped_refptr<RoleInfo> role;
+  role = FindPtrOrNull(roles_map_, req->name());
+
+  if (FindPtrOrNull(roles_map_, req->name()) == nullptr) {
+    s = STATUS(NotFound,
+        Substitute("The role $0 does not exists", req->name()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  auto l = role->LockForWrite();
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->DeleteItem(role.get()));
+  // remove it from the maps
+  if (roles_map_.erase(role->id()) < 1) {
+    PANIC_RPC(rpc, "Could not remove role from map, role name=" + role->id());
+  }
+
+  // Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l->Commit();
+
+  LOG(INFO) << "Successfully deleted role " << role->ToString()
+            << " per request from " << RequestorString(rpc);
+
   return Status::OK();
 }
 

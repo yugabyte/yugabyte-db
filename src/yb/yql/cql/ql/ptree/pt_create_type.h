@@ -121,6 +121,7 @@ class PTCreateType : public TreeNode {
   PTQualifiedName::SharedPtr type_name() const {
     return name_;
   }
+
   client::YBTableName yb_type_name() const {
     return name_->ToTableName();
   }

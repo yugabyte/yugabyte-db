@@ -88,6 +88,20 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->CurrentKeyspace();
   }
 
+  // Role related methods
+
+  // Create role with given arguments
+  CHECKED_STATUS CreateRole(const std::string& role_name,
+                            const std::string& salted_hash,
+                            const bool login, const bool superuser) {
+    return ql_env_->CreateRole(role_name, salted_hash, login, superuser);
+  }
+
+  // Delete role by name.
+  CHECKED_STATUS DeleteRole(const std::string& role_name) {
+    return ql_env_->DeleteRole(role_name);
+  }
+
   // (User-defined) Type related methods.
 
   // Create (user-defined) type with the given arguments

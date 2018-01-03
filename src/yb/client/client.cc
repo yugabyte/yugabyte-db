@@ -31,7 +31,6 @@
 //
 
 #include "yb/client/client.h"
-
 #include <algorithm>
 #include <mutex>
 #include <set>
@@ -72,6 +71,7 @@
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/crypt.h"
 
 using yb::master::AlterTableRequestPB;
 using yb::master::AlterTableRequestPB_Step;
@@ -102,8 +102,12 @@ using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
+using yb::master::CreateRoleRequestPB;
+using yb::master::CreateRoleResponsePB;
 using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
+using yb::master::DeleteRoleRequestPB;
+using yb::master::DeleteRoleResponsePB;
 using yb::master::ListUDTypesRequestPB;
 using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
@@ -116,6 +120,7 @@ using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::tserver::NoOpRequestPB;
 using yb::tserver::NoOpResponsePB;
+using yb::util::kBcryptHashSize;
 using std::set;
 using std::string;
 using std::vector;
@@ -499,6 +504,49 @@ CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
   return Status::OK();
 }
 
+CHECKED_STATUS YBClient::CreateRole(const std::string& role_name,
+                                    const std::string& salted_hash,
+                                    const bool login, const bool superuser) {
+
+  // Setting up request.
+  CreateRoleRequestPB req;
+  req.set_name(role_name);
+  req.set_login(login);
+  req.set_superuser(superuser);
+  req.set_salted_hash(salted_hash);
+
+  CreateRoleResponsePB resp;
+  MonoTime deadline = MonoTime::Now();
+
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<CreateRoleRequestPB, CreateRoleResponsePB>(
+      deadline, this, req, &resp, nullptr, "CreateRole", &MasterServiceProxy::CreateRole);
+
+  RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
+  // Setting up request.
+  DeleteRoleRequestPB req;
+  req.set_name(role_name);
+
+  DeleteRoleResponsePB resp;
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<DeleteRoleRequestPB, DeleteRoleResponsePB>(
+      deadline, this, req, &resp, nullptr, "DeleteRole", &MasterServiceProxy::DeleteRole);
+      RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+
 CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
                                       const std::string &type_name,
                                       const std::vector<std::string> &field_names,
@@ -525,6 +573,8 @@ CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
   }
   return Status::OK();
 }
+
+
 
 CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
                                       const std::string &type_name) {

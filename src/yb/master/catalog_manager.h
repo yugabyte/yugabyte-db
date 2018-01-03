@@ -833,6 +833,27 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
 
+  // Create a new role for authentication/authorization
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  CHECKED_STATUS CreateRole(const CreateRoleRequestPB* req,
+                            CreateRoleResponsePB* resp,
+                            rpc::RpcContext* rpc);
+
+  // Delete the role
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  CHECKED_STATUS DeleteRole(const DeleteRoleRequestPB* req,
+                            DeleteRoleResponsePB* resp,
+                            rpc::RpcContext* rpc);
+
+  // Generic Create Role function for both default roles and user defined roles
+  CHECKED_STATUS CreateRoleUnlocked(const std::string& role_name,
+                                    const std::string& salted_hash,
+                                    const bool login, const bool superuser);
+
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -840,6 +861,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateUDType(const CreateUDTypeRequestPB* req,
                               CreateUDTypeResponsePB* resp,
                               rpc::RpcContext* rpc);
+
 
   // Delete the specified UDType.
   //

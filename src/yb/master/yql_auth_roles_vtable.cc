@@ -36,7 +36,9 @@ Status YQLAuthRolesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kIsSuperuser, pb.is_superuser(), &row));
     // TODO: how to set a list?
     // RETURN_NOT_OK(SetColumnValue(kMemberOf, pb.member_of(), &row));
-    RETURN_NOT_OK(SetColumnValue(kSaltedHash, pb.salted_hash(), &row));
+    if (pb.has_salted_hash()) {
+        RETURN_NOT_OK(SetColumnValue(kSaltedHash, pb.salted_hash(), &row));
+    }
   }
 
   return Status::OK();

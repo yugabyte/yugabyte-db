@@ -240,7 +240,14 @@ CHECKED_STATUS PTQualifiedName::AnalyzeName(SemContext *sem_context, const Objec
     case OBJECT_OPERATOR: FALLTHROUGH_INTENDED;
     case OBJECT_OPFAMILY: FALLTHROUGH_INTENDED;
     case OBJECT_POLICY: FALLTHROUGH_INTENDED;
-    case OBJECT_ROLE: FALLTHROUGH_INTENDED;
+    case OBJECT_ROLE:
+      if (ptnames_.size() != 1) {
+        return sem_context->Error(this,
+                                  strings::Substitute("Invalid $0 role name",
+                                                      ObjectTypeName(object_type)).c_str(),
+                                  ErrorCode::SQL_STATEMENT_INVALID);
+      }
+      return Status::OK();
     case OBJECT_RULE: FALLTHROUGH_INTENDED;
     case OBJECT_SEQUENCE: FALLTHROUGH_INTENDED;
     case OBJECT_TABCONSTRAINT: FALLTHROUGH_INTENDED;

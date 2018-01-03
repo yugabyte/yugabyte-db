@@ -53,7 +53,7 @@ void PTDropStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
     case OBJECT_SCHEMA: sem_output += "Keyspace "; break;
     case OBJECT_TYPE: sem_output += "Type "; break;
     case OBJECT_INDEX: sem_output += "Index "; break;
-
+    case OBJECT_ROLE: sem_output += "Role "; break;
     default: sem_output += "UNKNOWN OBJECT ";
   }
 

@@ -717,6 +717,75 @@ class TestUDTypeLoader : public Visitor<PersistentUDTypeInfo> {
   vector<UDTypeInfo*> udtypes;
 };
 
+
+class TestRoleLoader : public Visitor<PersistentRoleInfo> {
+ public:
+  TestRoleLoader() {}
+  ~TestRoleLoader() { Reset(); }
+
+  void Reset() {
+    for (RoleInfo* rl : roles) {
+      rl->Release();
+    }
+    roles.clear();
+  }
+
+  Status Visit(const RoleName& role_name, const SysRoleEntryPB& metadata) override {
+
+    // Setup the role info
+    RoleInfo* const rl = new RoleInfo(role_name);
+    auto l = rl->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+    l->Commit();
+    rl->AddRef();
+    roles.push_back(rl);
+    LOG(INFO) << " Current Role:" << rl->ToString();
+    return Status::OK();
+  }
+
+  vector<RoleInfo*> roles;
+};
+
+// Test the sys-catalog role basic operations (add, visit)
+TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestRoleLoader> loader(new TestRoleLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  SysRoleEntryPB role_entry;
+  role_entry.set_role("test_role");
+  role_entry.set_can_login(false);
+  role_entry.set_is_superuser(true);
+  role_entry.set_salted_hash("test_password");
+
+  // 1. CHECK ADD_ROLE
+  scoped_refptr<RoleInfo> rl = new RoleInfo("test_role");
+  {
+    auto l = rl->LockForWrite();
+    l->mutable_data()->pb = std::move(role_entry);
+    // Add the role
+    ASSERT_OK(sys_catalog->AddItem(rl.get()));
+    l->Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  // The first role is the default cassandra role
+  ASSERT_EQ(2, loader->roles.size());
+  ASSERT_TRUE(MetadatasEqual(rl.get(), loader->roles[1]));
+
+  // 2. CHECK DELETE Role
+  ASSERT_OK(sys_catalog->DeleteItem(rl.get()));
+
+  // Verify the result.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->roles.size());
+}
+
+
 // Test the sys-catalog udtype basic operations (add, delete, visit)
 TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();

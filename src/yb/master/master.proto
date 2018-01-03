@@ -112,6 +112,10 @@ message MasterErrorPB {
     SNAPSHOT_CANCELLED = 24;
     PARALLEL_SNAPSHOT_OPERATION = 25;
     SNAPSHOT_IS_NOT_READY = 26;
+
+    // Invalid Roles
+    ROLE_ALREADY_PRESENT = 27;
+    ROLE_NOT_FOUND = 28;
   }
 
   // The error code.
@@ -967,6 +971,31 @@ message ListNamespacesResponsePB {
 }
 
 // ============================================================================
+//  Authentication and Authorization
+// ============================================================================
+
+message CreateRoleRequestPB {
+  optional string name = 1;
+  optional string salted_hash = 2;
+  optional bool login = 3;
+  optional bool superuser = 4;
+
+}
+
+message CreateRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteRoleRequestPB {
+  optional string name = 1;
+}
+
+message DeleteRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+// ============================================================================
 //  (User-Defined) Type
 // ============================================================================
 
@@ -1059,6 +1088,8 @@ service MasterService {
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
 
+  rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);
+  rpc DeleteRole(DeleteRoleRequestPB) returns (DeleteRoleResponsePB);
   rpc CreateUDType(CreateUDTypeRequestPB) returns (CreateUDTypeResponsePB);
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);

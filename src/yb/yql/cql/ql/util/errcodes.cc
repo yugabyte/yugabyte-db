@@ -88,6 +88,8 @@ const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage
   { ErrorCode::DUPLICATE_TYPE, "Duplicate Type" },
   { ErrorCode::DUPLICATE_TYPE_FIELD, "Duplicate Type Field" },
   { ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA, "Incompatible Copartition Schema" },
+  { ErrorCode::INVALID_ROLE_DEFINITION, "Invalid Role Definition" },
+  { ErrorCode::DUPLICATE_ROLE, "Duplicate Role"},
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
@@ -105,6 +107,7 @@ const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage
   { ErrorCode::TYPE_NOT_FOUND, "Type Not Found" },
   { ErrorCode::INVALID_TYPE_DEFINITION, "Invalid Type Definition" },
   { ErrorCode::RESTART_REQUIRED, "Restart Required" },
+  { ErrorCode::ROLE_NOT_FOUND, "Role Not Found"},
 };
 
 ErrorCode GetErrorCode(const Status& s) {

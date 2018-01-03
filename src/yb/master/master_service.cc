@@ -301,6 +301,19 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
 }
 
+
+void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
+                                   CreateRoleResponsePB* resp,
+                                   rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::CreateRole);
+}
+
+void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
+                                   DeleteRoleResponsePB* resp,
+                                   rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::DeleteRole);
+}
+
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      CreateUDTypeResponsePB* resp,
                                      rpc::RpcContext rpc) {

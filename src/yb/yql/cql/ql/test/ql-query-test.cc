@@ -21,6 +21,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_manager.h"
+#include "yb/util/crypt.h"
 
 using std::string;
 using std::unique_ptr;

@@ -283,6 +283,16 @@ Status QLEnv::UseKeyspace(const string& keyspace_name) {
   return Status::OK();
 }
 
+Status QLEnv::CreateRole(const std::string& role_name,
+                         const std::string& salted_hash,
+                         const bool login, const bool superuser) {
+  return client_->CreateRole(role_name, salted_hash, login, superuser);
+}
+
+Status QLEnv::DeleteRole(const std::string& role_name) {
+  return client_->DeleteRole(role_name);
+}
+
 Status QLEnv::CreateUDType(const std::string &keyspace_name,
                            const std::string &type_name,
                            const std::vector<std::string> &field_names,

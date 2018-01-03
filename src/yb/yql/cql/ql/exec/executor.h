@@ -29,6 +29,7 @@
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
@@ -97,6 +98,9 @@ class Executor : public QLExprExecutor {
 
   // Create a user-defined type;
   CHECKED_STATUS ExecPTNode(const PTCreateType *tnode);
+
+  // Creates a role;
+  CHECKED_STATUS ExecPTNode(const PTCreateRole *tnode);
 
   // Select statement.
   CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);
