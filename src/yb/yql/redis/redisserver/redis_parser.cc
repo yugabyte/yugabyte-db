@@ -161,11 +161,43 @@ CHECKED_STATUS ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
+CHECKED_STATUS ParseZAddOptions(SortedSetOptionsPB *options,
+                                const RedisClientCommand& args, int *idx) {
+  // While we keep seeing flags, set the appropriate field in options and increment idx. When
+  // we finally stop seeing flags, the idx will be set to that token for later parsing.
+  // Note that we can see duplicate flags, and it should have the same behavior as seeing the
+  // flag once.
+  while (*idx < args.size()) {
+    if (boost::iequals(args[*idx].ToBuffer(), kCH)) {
+      options->set_ch(true);
+    } else if (boost::iequals(args[*idx].ToBuffer(), kINCR)) {
+      options->set_incr(true);
+    } else if (boost::iequals(args[*idx].ToBuffer(), kNX)) {
+      if (options->update_options() == SortedSetOptionsPB_UpdateOptions_XX) {
+        return STATUS_SUBSTITUTE(InvalidArgument,
+                                 "XX and NX options at the same time are not compatible");
+      }
+      options->set_update_options(SortedSetOptionsPB_UpdateOptions_NX);
+    } else if (boost::iequals(args[*idx].ToBuffer(), kXX)) {
+      if (options->update_options() == SortedSetOptionsPB_UpdateOptions_NX) {
+        return STATUS_SUBSTITUTE(InvalidArgument,
+                                 "XX and NX options at the same time are not compatible");
+      }
+      options->set_update_options(SortedSetOptionsPB_UpdateOptions_XX);
+    } else {
+      // We have encountered a non-option token, return.
+      return Status::OK();
+    }
+    *idx = *idx + 1;
+  }
+  return Status::OK();
+}
+
 template <typename AddSubKey>
 CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
                                       const RedisDataType& type,
                                       AddSubKey add_sub_key) {
-  if (args.size() < 4 || args.size() % 2 == 1) {
+  if (args.size() < 4) {
     return STATUS_SUBSTITUTE(InvalidArgument,
                              "wrong number of arguments: $0 for command: $1", args.size(),
                              string(args[0].cdata(), args[0].size()));
@@ -178,8 +210,31 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
     op->mutable_request()->mutable_set_request()->set_expect_ok_response(true);
   }
 
+  int start_idx = 2;
+  if (type == REDIS_TYPE_SORTEDSET) {
+    RETURN_NOT_OK(ParseZAddOptions(
+        op->mutable_request()->mutable_set_request()->mutable_sorted_set_options(),
+        args, &start_idx));
+
+    // If the INCR flag is set, can only have one [score member] pair.
+    if (op->request().set_request().sorted_set_options().incr() && (args.size() - start_idx) != 2) {
+      return STATUS_SUBSTITUTE(InvalidArgument,
+                               "wrong number of tokens after INCR flag specified: Need 2 but found "
+                                   "$0 for command: $1", args.size() - start_idx,
+                               string(args[0].cdata(), args[0].size()));
+    }
+  }
+
+  // Need [score member] to come in pairs.
+  if ((args.size() - start_idx) % 2 == 1 || args.size() - start_idx == 0) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+                             "Expect even and non-zero number of arguments "
+                             "for command: $0, found $1",
+                             string(args[0].cdata(), args[0].size()), args.size() - start_idx);
+  }
+
   std::unordered_map<string, string> kv_map;
-  for (int i = 2; i < args.size(); i += 2) {
+  for (int i = start_idx; i < args.size(); i += 2) {
     // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.
     if ((args[i] == kExpireAt || args[i] == kExpireIn) && type == REDIS_TYPE_TIMESERIES) {
       if (i + 2 != args.size()) {

@@ -150,7 +150,7 @@ class SubDocument : public PrimitiveValue {
   bool DeleteChild(const PrimitiveValue& key);
 
   int object_num_keys() const {
-    DCHECK_EQ(ValueType::kObject, type_);
+    DCHECK(IsObjectType(type_));
     if (!has_valid_object_container()) {
       return 0;
     }

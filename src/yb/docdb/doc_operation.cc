@@ -535,20 +535,10 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 
         // The top level mapping.
         SubDocument kv_entries;
-        // Count of distinct inserted values.
-        int count = 0;
+
+        int new_elements_added = 0;
+        int return_value = 0;
         for (int i = 0; i < kv.subkey_size(); i++) {
-          // Add the forward mapping to the entries.
-          SubDocument *forward_entry =
-              kv_entries_forward.
-                  GetOrAddChild(PrimitiveValue::Double(kv.subkey(i).double_subkey())).first;
-          forward_entry->SetChild(PrimitiveValue(kv.value(i)),
-                                  SubDocument(PrimitiveValue()));
-
-          // Add the reverse mapping to the entries.
-          kv_entries_reverse.SetChild(PrimitiveValue(kv.value(i)),
-                              SubDocument(PrimitiveValue::Double(kv.subkey(i).double_subkey())));
-
           // Check whether the value is already in the document, if so delete it.
           SubDocKey key_reverse = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
                                             PrimitiveValue(ValueType::kSSReverse),
@@ -559,43 +549,114 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
           RETURN_NOT_OK(GetSubDocument(
               data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
               boost::none /* txn_op_context */, data.read_time));
+
+          // Flag indicating whether we should add the given entry to the sorted set.
+          bool should_add_entry = true;
+          // Flag indicating whether we shoould remove an entry from the sorted set.
+          bool should_remove_existing_entry = false;
+
           if (!subdoc_reverse_found) {
             // The value is not already in the document.
-            count++;
-          } else {
-            double subkey_to_remove = subdoc_reverse.GetDouble();
-            if (subkey_to_remove != kv.subkey(i).double_subkey()) {
-              // The entry in the document is stale, need to remove the old value
-              // from the forward mapping.
-              SubDocument subdoc_forward_tombstone;
-              subdoc_forward_tombstone.SetChild(PrimitiveValue(kv.value(i)),
-                                                SubDocument(ValueType::kTombstone));
-              kv_entries_forward.SetChild(PrimitiveValue::Double(subkey_to_remove),
-                                          SubDocument(subdoc_forward_tombstone));
+            switch (request_.set_request().sorted_set_options().update_options()) {
+              case SortedSetOptionsPB_UpdateOptions_NX: FALLTHROUGH_INTENDED;
+              case SortedSetOptionsPB_UpdateOptions_NONE: {
+                // Both these options call for inserting new elements, increment return_value and
+                // keep should_add_entry as true.
+                return_value++;
+                new_elements_added++;
+                break;
+              }
+              default: {
+                // XX option calls for no new elements, don't increment return_value and set
+                // should_add_entry to false.
+                should_add_entry = false;
+                break;
+              }
             }
+          } else {
+            // The value is already in the document.
+            switch (request_.set_request().sorted_set_options().update_options()) {
+              case SortedSetOptionsPB_UpdateOptions_XX:
+              case SortedSetOptionsPB_UpdateOptions_NONE: {
+                // First make sure that the new score is different from the old score.
+                // Both these options call for updating existing elements, set
+                // should_remove_existing_entry to true, and if the CH flag is on (return both
+                // elements changed and elements added), increment return_value.
+                double score_to_remove = subdoc_reverse.GetDouble();
+                if (score_to_remove != kv.subkey(i).double_subkey()) {
+                  should_remove_existing_entry = true;
+                  if (request_.set_request().sorted_set_options().ch()) {
+                    return_value++;
+                  }
+                }
+                break;
+              }
+              default: {
+                // NX option calls for only new elements, set should_add_entry to false.
+                should_add_entry = false;
+                break;
+              }
+            }
+          }
+
+          if (should_remove_existing_entry) {
+            double score_to_remove = subdoc_reverse.GetDouble();
+            SubDocument subdoc_forward_tombstone;
+            subdoc_forward_tombstone.SetChild(PrimitiveValue(kv.value(i)),
+                                              SubDocument(ValueType::kTombstone));
+            kv_entries_forward.SetChild(PrimitiveValue::Double(score_to_remove),
+                                        SubDocument(subdoc_forward_tombstone));
+          }
+
+          if (should_add_entry) {
+            // If the incr option is specified, we need insert the existing score + new score
+            // instead of just the new score.
+            double score_to_add = request_.set_request().sorted_set_options().incr() ?
+                kv.subkey(i).double_subkey() + subdoc_reverse.GetDouble() :
+                kv.subkey(i).double_subkey();
+
+            // Add the forward mapping to the entries.
+            SubDocument *forward_entry =
+                kv_entries_forward.GetOrAddChild(PrimitiveValue::Double(score_to_add)).first;
+            forward_entry->SetChild(PrimitiveValue(kv.value(i)),
+                                    SubDocument(PrimitiveValue()));
+
+            // Add the reverse mapping to the entries.
+            kv_entries_reverse.SetChild(PrimitiveValue(kv.value(i)),
+                                        SubDocument(PrimitiveValue::Double(score_to_add)));
           }
         }
 
-        int64_t card;
-        RETURN_NOT_OK(GetCardinality(data.doc_write_batch->rocksdb(), redis_query_id(),
-                                     data.read_time, kv, &card));
-        // Insert card + count back into the document for the updated count.
-        kv_entries_card = SubDocument(PrimitiveValue(card + count));
-
-        kv_entries.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(kv_entries_card));
-        kv_entries.SetChild(PrimitiveValue(ValueType::kSSForward), SubDocument(kv_entries_forward));
-        kv_entries.SetChild(PrimitiveValue(ValueType::kSSReverse), SubDocument(kv_entries_reverse));
-
-        RETURN_NOT_OK(kv_entries.ConvertToRedisSortedSet());
-
-        if (*data_type == REDIS_TYPE_NONE) {
-          RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-          doc_path, kv_entries, redis_query_id(), ttl));
-        } else {
-          RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-          doc_path, kv_entries, redis_query_id(), ttl));
+        if (new_elements_added > 0) {
+          int64_t card;
+          RETURN_NOT_OK(GetCardinality(data.doc_write_batch->rocksdb(), redis_query_id(),
+                                       data.read_time, kv, &card));
+          // Insert card + new_elements_added back into the document for the updated card.
+          kv_entries_card = SubDocument(PrimitiveValue(card + new_elements_added));
+          kv_entries.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(kv_entries_card));
         }
-        response_.set_int_response(count);
+
+        if (kv_entries_forward.object_num_keys() > 0) {
+          kv_entries.SetChild(PrimitiveValue(ValueType::kSSForward),
+                              SubDocument(kv_entries_forward));
+        }
+
+        if (kv_entries_reverse.object_num_keys() > 0) {
+          kv_entries.SetChild(PrimitiveValue(ValueType::kSSReverse),
+                              SubDocument(kv_entries_reverse));
+        }
+
+        if (kv_entries.object_num_keys() > 0) {
+          RETURN_NOT_OK(kv_entries.ConvertToRedisSortedSet());
+          if (*data_type == REDIS_TYPE_NONE) {
+                RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
+                doc_path, kv_entries, redis_query_id(), ttl));
+          } else {
+                RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
+                doc_path, kv_entries, redis_query_id(), ttl));
+          }
+        }
+        response_.set_int_response(return_value);
         break;
       }
       case REDIS_TYPE_STRING: {

@@ -22,6 +22,10 @@ static constexpr uint16_t kRedisClusterSlots = 16384;
 static constexpr const char* const kExpireAt = "EXPIRE_AT";
 static constexpr const char* const kExpireIn = "EXPIRE_IN";
 static constexpr const char* const kWithScores = "WITHSCORES";
+static constexpr const char* const kNX = "NX";
+static constexpr const char* const kXX = "XX";
+static constexpr const char* const kINCR = "INCR";
+static constexpr const char* const kCH = "CH";
 static constexpr int64_t kRedisMaxTtlSeconds = std::numeric_limits<int64_t>::max() /
     yb::MonoTime::kNanosecondsPerSecond;
 // Note that this deviates from vanilla Redis, since vanilla Redis allows negative TTLs. We

@@ -137,11 +137,24 @@ message RedisKeyValuePB {
   repeated bytes value = 6;
 }
 
+message SortedSetOptionsPB {
+  enum UpdateOptions {
+    NX = 1;
+    XX = 2;
+    NONE = 3;
+  }
+
+  optional UpdateOptions update_options = 4 [ default = NONE ];
+  optional bool ch = 5 [ default = false ];
+  optional bool incr = 6 [ default = false ];
+}
+
 // SET, SETNX, SETXX, HSET, HSETNX, LSET, MSET, HMSET, MSETNX
 message RedisSetRequestPB {
   optional bool expect_ok_response = 1 [ default = false ];
   optional int64 ttl = 2;                  // Expiry time in milliseconds.
   optional RedisWriteMode mode = 3 [ default = REDIS_WRITEMODE_UPSERT ];
+  optional SortedSetOptionsPB sorted_set_options = 14;
 }
 
 // GET, HGET, MGET, HMGET, HGETALL, SMEMBERS
@@ -180,7 +193,7 @@ message RedisCollectionGetRangeRequestPB {
   }
 
   optional GetRangeRequestType request_type = 1 [ default = TSRANGEBYTIME ];
-  optional bool with_scores = 2 [default = false]; // Used only with ZRANGEBYSCORE.
+  optional bool with_scores = 2 [ default = false ]; // Used only with ZRANGEBYSCORE.
 }
 
 // GETSET

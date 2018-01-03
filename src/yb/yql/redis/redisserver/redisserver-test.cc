@@ -1256,6 +1256,69 @@ TEST_F(TestRedisService, TestSortedSets) {
                    {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
   DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 8);
 
+  // Test NX/CH option.
+  LOG(INFO) << "Starting ZADD with options";
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "NX", "0", "v8"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "NX", "CH", "0", "v8"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "NX", "0", "v9"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "NX", "40", "v9"}, 0);
+  SyncClient();
+
+  // Make sure that only v9 exists at 0 and not at 40.
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "0.0", "0.0"}, {"v9"});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "40.0", "40.0"}, {});
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 9);
+
+  // Test XX/CH option.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "XX", "CH", "0", "v8"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "XX", "30.000001", "v8"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "XX", "0", "v10"}, 0);
+  SyncClient();
+
+  // Make sure that only v9 exists at 0 and v8 exists at 30.000001.
+  DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "0.0", "0.0", "WITHSCORES"},
+                             {0.0}, {"v9"});
+  DoRedisTestScoreValueArray(__LINE__,
+                             {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
+                             {30.000001}, {"v8"});
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 9);
+
+  // Test NX/XX/CH option for multi.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "NX", "0", "v8", "40", "v9"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "CH", "0", "v8", "0", "v9"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "XX", "CH", "30.000001", "v8", "0", "v10"}, 1);
+  SyncClient();
+
+  // Make sure that only v9 exists and 0 and v8 exists at 30.000001.
+  DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "0.0", "0.0", "WITHSCORES"},
+                             {0.0}, {"v9"});
+  DoRedisTestScoreValueArray(__LINE__,
+                             {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
+                             {30.000001}, {"v8"});
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 9);
+
+  // Test incr option.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "INCR", "10", "v8"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "INCR", "XX", "CH", "10", "v8"}, 1);
+  SyncClient();
+  // This shouldn't do anything, since NX option is specified.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "INCR", "NX", "10", "v8"}, 0);
+  SyncClient();
+
+  // Make sure v8 has been incremented by 20.
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001"}, {});
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "50.000001", "50.000001"}, {"v8"});
+  DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 9);
+
+
   // HGET/SISMEMBER/GET/TS should not work with this.
   DoRedisTestExpectError(__LINE__, {"SISMEMBER", "z_key", "30"});
   DoRedisTestExpectError(__LINE__, {"HEXISTS", "z_key", "30"});
@@ -1266,6 +1329,15 @@ TEST_F(TestRedisService, TestSortedSets) {
   // ZADD should not work with HSET.
   DoRedisTestInt(__LINE__, {"HSET", "map_key", "30", "v1"}, 1);
   DoRedisTestExpectError(__LINE__, {"ZADD", "map_key", "40", "v2"});
+
+  // Cannot have both NX and XX options.
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "CH", "NX", "XX", "0", "v1"});
+
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "CH", "NX", "INCR"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "XX"});
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "CH", "NX", "0", "v1", "1"});
+  // Cannot have incr with multiple score value pairs.
+  DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "INCR", "0", "v1", "1", "v2"});
 
   SyncClient();
   VerifyCallbacks();
