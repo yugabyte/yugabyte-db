@@ -206,6 +206,8 @@ class UniverseForm extends Component {
         if (isNonEmptyObject(prevPrimaryCluster) && isNonEmptyObject(nextPrimaryCluster) &&
             areIntentsEqual(prevPrimaryCluster.userIntent, nextPrimaryCluster.userIntent)) {
           this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
+        } else {
+          this.props.submitConfigureUniverse(universeTaskParams);
         }
       } else {
         this.props.submitConfigureUniverse(universeTaskParams);
