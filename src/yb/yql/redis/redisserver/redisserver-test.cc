@@ -11,14 +11,14 @@
 // under the License.
 //
 
+#include <cpp_redis/cpp_redis>
+
 #include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <cpp_redis/cpp_redis>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -44,6 +44,7 @@ DECLARE_int32(redis_max_value_size);
 DECLARE_int32(redis_max_command_size);
 DECLARE_int32(rpc_max_message_size);
 DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_int32(consensus_rpc_timeout_ms);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
               "Value of redis_max_concurrent_commands for pipeline test");
@@ -350,6 +351,15 @@ void TestRedisService::SetUp() {
     FLAGS_rpc_max_message_size = FLAGS_redis_max_value_size * 4 - 1;
     FLAGS_redis_max_command_size = FLAGS_rpc_max_message_size - 2_KB;
     FLAGS_consensus_max_batch_size_bytes = FLAGS_rpc_max_message_size - 2_KB;
+  } else {
+#ifndef NDEBUG
+    flag_saver_.emplace();
+    FLAGS_redis_max_value_size = 32_MB;
+    FLAGS_rpc_max_message_size = FLAGS_redis_max_value_size * 4 - 1;
+    FLAGS_redis_max_command_size = FLAGS_rpc_max_message_size - 2_KB;
+    FLAGS_consensus_max_batch_size_bytes = FLAGS_rpc_max_message_size - 2_KB;
+    FLAGS_consensus_rpc_timeout_ms = 3000;
+#endif
   }
 
   RedisTableTestBase::SetUp();
