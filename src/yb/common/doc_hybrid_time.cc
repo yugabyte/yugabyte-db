@@ -36,7 +36,7 @@ namespace yb {
 
 // It does not really matter what write id we use here. We determine DocHybridTime validity
 // based on the HybridTime validity.
-const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalidHybridTime);
+const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalid);
 
 const DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
 const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);

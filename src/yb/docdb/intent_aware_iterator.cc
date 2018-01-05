@@ -53,7 +53,7 @@ KeyBytes GetIntentPrefixForKey(const SubDocKey& subdoc_key) {
 } // namespace
 
 // For locally committed transactions returns commit time if committed at specified time or
-// HybridTime::kMin otherwise. For other transactions returns HybridTime::kInvalidHybridTime.
+// HybridTime::kMin otherwise. For other transactions returns HybridTime::kInvalid.
 HybridTime TransactionStatusCache::GetLocalCommitTime(const TransactionId& transaction_id) {
   const HybridTime local_commit_time = txn_status_manager_->LocalCommitTime(transaction_id);
   return local_commit_time.is_valid()

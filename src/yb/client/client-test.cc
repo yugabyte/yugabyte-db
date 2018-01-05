@@ -1351,8 +1351,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   Synchronizer s;
-  YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
-  session->FlushAsync(&cb);
+  session->FlushAsync(s.AsStatusFunctor());
   session.reset();
   ASSERT_OK(s.Wait());
 
@@ -1361,10 +1360,10 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   ASSERT_EQ(1, session->CountBufferedOperations());
-  session->FlushAsync(&cb);
+  session->FlushAsync(s.AsStatusFunctor());
   ASSERT_EQ(0, session->CountBufferedOperations());
   session.reset();
-  ASSERT_TRUE(s.Wait().ok());
+  ASSERT_OK(s.Wait());
 }
 
 TEST_F(ClientTest, TestSessionClose) {
@@ -1374,10 +1373,7 @@ TEST_F(ClientTest, TestSessionClose) {
   // have a pending operation.
   ASSERT_TRUE(session->Close().IsIllegalState());
 
-  Synchronizer s;
-  YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
-  session->FlushAsync(&cb);
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(session->Flush());
 
   ASSERT_OK(session->Close());
 }
@@ -2148,18 +2144,17 @@ TEST_F(ClientTest, TestMasterLookupPermits) {
 
 // Define callback for deadlock simulation, as well as various helper methods.
 namespace {
-class DLSCallback : public YBStatusCallback {
- public:
-  explicit DLSCallback(Atomic32* i) : i(i) {
-  }
 
-  void Run(const Status& s) override {
+class DeadlockSimulationCallback {
+ public:
+  explicit DeadlockSimulationCallback(Atomic32* i) : i_(i) {}
+
+  void operator()(const Status& s) const {
     CHECK_OK(s);
-    NoBarrier_AtomicIncrement(i, 1);
-    delete this;
+    NoBarrier_AtomicIncrement(i_, 1);
   }
  private:
-  Atomic32* const i;
+  Atomic32* const i_;
 };
 
 // Returns col1 value of first row.
@@ -2271,8 +2266,8 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   NoBarrier_Store(&ctr2, 0);
   for (int i = 0; i < kNumSessions; ++i) {
     // The callbacks are freed after they are invoked.
-    fwd_sessions[i]->FlushAsync(new DLSCallback(&ctr1));
-    rev_sessions[i]->FlushAsync(new DLSCallback(&ctr2));
+    fwd_sessions[i]->FlushAsync(DeadlockSimulationCallback(&ctr1));
+    rev_sessions[i]->FlushAsync(DeadlockSimulationCallback(&ctr2));
   }
 
   // Spin while waiting for ops to complete.

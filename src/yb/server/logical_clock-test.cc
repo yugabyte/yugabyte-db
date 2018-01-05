@@ -43,7 +43,7 @@ namespace server {
 class LogicalClockTest : public YBTest {
  public:
   LogicalClockTest()
-      : clock_(LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)) {
+      : clock_(LogicalClock::CreateStartingAt(HybridTime::kInitial)) {
   }
 
  protected:

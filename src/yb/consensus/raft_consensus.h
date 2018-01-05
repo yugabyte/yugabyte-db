@@ -239,7 +239,8 @@ class RaftConsensus : public Consensus,
 
   CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
 
-  MicrosTime majority_replicated_ht_lease_expiration() const override;
+  MicrosTime MajorityReplicatedHtLeaseExpiration(
+      MicrosTime min_allowed, MonoTime deadline) const override;
 
  private:
   CHECKED_STATUS DoStartElection(

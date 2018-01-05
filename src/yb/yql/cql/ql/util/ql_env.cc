@@ -69,7 +69,6 @@ QLEnv::QLEnv(
       metadata_cache_(cache),
       session_(client->NewSession()),
       messenger_(messenger),
-      flush_done_cb_(this, &QLEnv::FlushAsyncDone),
       cql_rpcserver_env_(cql_rpcserver_env) {
   session_->SetTimeout(kSessionTimeout);
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
@@ -118,7 +117,7 @@ bool QLEnv::FlushAsync(Callback<void(const Status &)>* cb) {
   DCHECK(requested_callback_ == nullptr);
   requested_callback_ = cb;
   TRACE("Flush Async");
-  session_->FlushAsync(&flush_done_cb_);
+  session_->FlushAsync([this](const Status& status) { FlushAsyncDone(status); });
   return true;
 }
 

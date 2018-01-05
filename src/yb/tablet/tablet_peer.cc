@@ -184,8 +184,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                        tablet_->table_type(),
                                        std::bind(&Tablet::LostLeadership, tablet.get()));
 
-    tablet_->SetHybridTimeLeaseProvider([this] {
-        return consensus_->majority_replicated_ht_lease_expiration();
+    tablet_->SetHybridTimeLeaseProvider([this](MicrosTime min_allowed, MonoTime deadline) {
+        return consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
     });
 
     prepare_thread_ = std::make_unique<PrepareThread>(consensus_.get());
@@ -377,7 +377,8 @@ Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
   if (restart_read_ht.is_valid()) {
     auto restart_time = operation->state()->response()->mutable_restart_read_time();
     restart_time->set_read_ht(restart_read_ht.ToUint64());
-    restart_time->set_local_limit_ht(tablet_->SafeTimestampToRead().ToUint64());
+    restart_time->set_local_limit_ht(
+        tablet_->SafeHybridTimeToReadAt(RequireLease::kTrue).ToUint64());
     // Global limit is ignored by caller, so we don't set it.
     operation->state()->completion_callback()->OperationCompleted();
     return Status::OK();
@@ -742,7 +743,7 @@ consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
 }
 
 HybridTime TabletPeer::HtLeaseExpiration() const {
-  HybridTime result(consensus_->majority_replicated_ht_lease_expiration(), 0);
+  HybridTime result(consensus_->MajorityReplicatedHtLeaseExpiration(0, MonoTime::kMax), 0);
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 

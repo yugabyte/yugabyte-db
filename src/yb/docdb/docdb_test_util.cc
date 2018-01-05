@@ -59,7 +59,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
  public:
   HybridTime LocalCommitTime(const TransactionId &id) override {
     Fail();
-    return HybridTime::kInvalidHybridTime;
+    return HybridTime::kInvalid;
   }
 
   void RequestStatusAt(const StatusRequest& request) override {
@@ -423,7 +423,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 }
 
 HybridTime DocDBLoadGenerator::last_operation_ht() const {
-  CHECK_NE(last_operation_ht_, HybridTime::kInvalidHybridTime);
+  CHECK(last_operation_ht_.is_valid());
   return last_operation_ht_;
 }
 

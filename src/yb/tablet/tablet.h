@@ -412,9 +412,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetTotalSSTFileSizes() const;
 
-  HybridTime SafeTimestampToRead() const override;
-
-  void SetHybridTimeLeaseProvider(std::function<MicrosTime()> provider) {
+  void SetHybridTimeLeaseProvider(std::function<MicrosTime(MicrosTime, MonoTime)> provider) {
     ht_lease_provider_ = std::move(provider);
   }
 
@@ -613,9 +611,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // be flushed in RocksDB.
   std::shared_ptr<TabletFlushStats> flush_stats_;
 
-  std::function<MicrosTime()> ht_lease_provider_;
+  std::function<MicrosTime(MicrosTime, MonoTime)> ht_lease_provider_;
 
  private:
+  HybridTime DoGetSafeHybridTimeToReadAt(
+      RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
 
@@ -631,7 +632,8 @@ class ScopedReadOperation {
     rhs.tablet_ = nullptr;
   }
 
-  explicit ScopedReadOperation(AbstractTablet* tablet, const ReadHybridTime& read_time);
+  explicit ScopedReadOperation(
+      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
 
   ScopedReadOperation(const ScopedReadOperation&) = delete;
   void operator=(const ScopedReadOperation&) = delete;

@@ -74,7 +74,7 @@ class DocDBRocksDBUtil {
   CHECKED_STATUS PopulateRocksDBWriteBatch(
       const DocWriteBatch& dwb,
       rocksdb::WriteBatch *rocksdb_write_batch,
-      HybridTime hybrid_time = HybridTime::kInvalidHybridTime,
+      HybridTime hybrid_time = HybridTime::kInvalid,
       bool decode_dockey = true,
       bool increment_write_id = true) const;
 

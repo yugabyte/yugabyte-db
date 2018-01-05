@@ -176,7 +176,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
 }
 
 void InMemDocDbState::SetCaptureHybridTime(HybridTime hybrid_time) {
-  CHECK_NE(hybrid_time, HybridTime::kInvalidHybridTime);
+  CHECK(hybrid_time.is_valid());
   captured_at_ = hybrid_time;
 }
 
@@ -260,7 +260,7 @@ string InMemDocDbState::ToDebugString() const {
 }
 
 HybridTime InMemDocDbState::captured_at() const {
-  CHECK_NE(captured_at_, HybridTime::kInvalidHybridTime);
+  CHECK(captured_at_.is_valid());
   return captured_at_;
 }
 

@@ -40,6 +40,7 @@
 #include <utility>
 #include <mutex>
 
+#include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/client/client_fwd.h"
@@ -913,7 +914,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
-  void ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb);
+  void ReadAsync(std::shared_ptr<YBOperation> yb_op, boost::function<void(const Status&)> callback);
 
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
@@ -932,14 +933,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // This is thread safe.
   CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
-
-  // Similar to the above, except never blocks. Even in the flush modes that
-  // return immediately, 'cb' is triggered with the result. The callback may be
-  // called by a reactor thread, or in some cases may be called inline by the
-  // same thread which calls ApplyAsync(). 'cb' must remain valid until it called.
-  //
-  // TODO: not yet implemented.
-  void ApplyAsync(YBOperation* write_op, YBStatusCallback* cb);
 
   // Flush any pending writes.
   //
@@ -975,7 +968,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // For FlushAsync, 'cb' must remain valid until it is invoked.
   CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
-  void FlushAsync(YBStatusCallback* cb);
+  void FlushAsync(boost::function<void(const Status&)> callback);
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();

@@ -123,7 +123,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // then the callback will receive Status::OK. Otherwise, it will receive IOError,
   // and the caller must inspect the ErrorCollector to retrieve more detailed
   // information on which operations failed.
-  void FlushAsync(YBStatusCallback* cb);
+  void FlushAsync(boost::function<void(const Status&)> callback);
 
   MonoTime deadline() const {
     return deadline_;
@@ -219,7 +219,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
   // will be called exactly once (and the state changed to kFlushed).
-  YBStatusCallback* flush_callback_ = nullptr;
+  boost::function<void(const Status&)> flush_callback_;
 
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during SendRpcCb of AsyncRpc.

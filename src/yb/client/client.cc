@@ -1330,8 +1330,8 @@ Status YBSession::Flush() {
   return data_->Flush();
 }
 
-void YBSession::FlushAsync(YBStatusCallback* user_callback) {
-  data_->FlushAsync(user_callback);
+void YBSession::FlushAsync(boost::function<void(const Status&)> callback) {
+  data_->FlushAsync(std::move(callback));
 }
 
 bool YBSession::HasPendingOperations() const {
@@ -1340,15 +1340,15 @@ bool YBSession::HasPendingOperations() const {
 
 Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
   Synchronizer s;
-  YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
-  ReadAsync(yb_op, &ksmcb);
+  ReadAsync(std::move(yb_op), s.AsStatusFunctor());
   return s.Wait();
 }
 
-void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb) {
+void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op,
+                          boost::function<void(const Status&)> callback) {
   CHECK(yb_op->read_only());
-  CHECK_OK(Apply(yb_op));
-  FlushAsync(cb);
+  CHECK_OK(Apply(std::move(yb_op)));
+  FlushAsync(std::move(callback));
 }
 
 Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {

@@ -38,14 +38,15 @@
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace tablet {
 
 class MvccTest : public YBTest {
  public:
   MvccTest()
-      : clock_(
-          server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)),
+      : clock_(server::LogicalClock::CreateStartingAt(HybridTime::kInitial)),
         manager_(std::string(), clock_.get()) {
   }
 
@@ -80,23 +81,23 @@ TEST_F(MvccTest, Basic) {
   }
 }
 
-TEST_F(MvccTest, SafeTimestampToRead) {
+TEST_F(MvccTest, SafeHybridTimeToReadAt) {
   constexpr uint64_t kLease = 10;
   constexpr uint64_t kDelta = 10;
   auto limit = AddLogical(clock_->Now(), kLease);
   AdvanceClock(AddLogical(limit, kDelta));
-  ASSERT_EQ(limit, manager_.SafeTimestampToRead(limit));
+  ASSERT_EQ(limit, manager_.SafeHybridTimeToReadAt(limit));
   HybridTime ht1 = clock_->Now();
   manager_.AddPending(&ht1);
-  ASSERT_EQ(ht1.Decremented(), manager_.SafeTimestampToRead(HybridTime::kMax));
+  ASSERT_EQ(ht1.Decremented(), manager_.SafeHybridTimeToReadAt());
   HybridTime ht2;
   manager_.AddPending(&ht2);
-  ASSERT_EQ(ht1.Decremented(), manager_.SafeTimestampToRead(HybridTime::kMax));
+  ASSERT_EQ(ht1.Decremented(), manager_.SafeHybridTimeToReadAt());
   manager_.Replicated(ht1);
-  ASSERT_EQ(ht2.Decremented(), manager_.SafeTimestampToRead(HybridTime::kMax));
+  ASSERT_EQ(ht2.Decremented(), manager_.SafeHybridTimeToReadAt());
   manager_.Replicated(ht2);
   auto now = clock_->Now();
-  ASSERT_EQ(now, manager_.SafeTimestampToRead(now));
+  ASSERT_EQ(now, manager_.SafeHybridTimeToReadAt(now));
 }
 
 TEST_F(MvccTest, Abort) {
@@ -109,11 +110,11 @@ TEST_F(MvccTest, Abort) {
     manager_.Aborted(hts[i]);
   }
   for (size_t i = 0; i < hts.size(); i += 2) {
-    ASSERT_EQ(hts[i].Decremented(), manager_.SafeTimestampToRead(HybridTime::kMax));
+    ASSERT_EQ(hts[i].Decremented(), manager_.SafeHybridTimeToReadAt());
     manager_.Replicated(hts[i]);
   }
   auto now = clock_->Now();
-  ASSERT_EQ(now, manager_.SafeTimestampToRead(now));
+  ASSERT_EQ(now, manager_.SafeHybridTimeToReadAt(now));
 }
 
 TEST_F(MvccTest, Random) {
@@ -161,10 +162,10 @@ TEST_F(MvccTest, Random) {
     ops.back().second = AddLogical(ops.back().second, kTotalOperations);
     if (alive.empty()) {
       auto now = clock_->Now();
-      ASSERT_EQ(now, manager_.SafeTimestampToRead(now));
+      ASSERT_EQ(now, manager_.SafeHybridTimeToReadAt(now));
     } else {
       auto min = queue.begin()->first;
-      ASSERT_EQ(min.Decremented(), manager_.SafeTimestampToRead(HybridTime::kMax));
+      ASSERT_EQ(min.Decremented(), manager_.SafeHybridTimeToReadAt());
     }
   }
   LOG(INFO) << "Adds: " << counts[static_cast<size_t>(Op::kAdd)]
@@ -193,6 +194,48 @@ TEST_F(MvccTest, Random) {
   }
   auto end = std::chrono::steady_clock::now();
   LOG(INFO) << "Passed: " << yb::ToString(end - start);
+}
+
+TEST_F(MvccTest, WaitSafeTimestampToReadAt) {
+  constexpr uint64_t kLease = 10;
+  constexpr uint64_t kDelta = 10;
+  auto limit = AddLogical(clock_->Now(), kLease);
+  AdvanceClock(AddLogical(limit, kDelta));
+  HybridTime ht1 = clock_->Now();
+  manager_.AddPending(&ht1);
+  HybridTime ht2;
+  manager_.AddPending(&ht2);
+  std::atomic<bool> t1_done(false);
+  std::thread t1([this, ht2, &t1_done] {
+    manager_.SafeHybridTimeToReadAt(ht2.Decremented(), MonoTime::kMax, HybridTime::kMax);
+    t1_done = true;
+  });
+  std::atomic<bool> t2_done(false);
+  std::thread t2([this, ht2, &t2_done] {
+    manager_.SafeHybridTimeToReadAt(AddLogical(ht2, 1), MonoTime::kMax, HybridTime::kMax);
+    t2_done = true;
+  });
+  std::this_thread::sleep_for(100ms);
+  ASSERT_FALSE(t1_done.load());
+  ASSERT_FALSE(t2_done.load());
+
+  manager_.Replicated(ht1);
+  std::this_thread::sleep_for(100ms);
+  ASSERT_TRUE(t1_done.load());
+  ASSERT_FALSE(t2_done.load());
+
+  manager_.Replicated(ht2);
+  std::this_thread::sleep_for(100ms);
+  ASSERT_TRUE(t1_done.load());
+  ASSERT_TRUE(t2_done.load());
+
+  t1.join();
+  t2.join();
+
+  HybridTime ht3;
+  manager_.AddPending(&ht3);
+  ASSERT_FALSE(
+      manager_.SafeHybridTimeToReadAt(ht3, MonoTime::Now() + 100ms, HybridTime::kMax).is_valid());
 }
 
 } // namespace tablet

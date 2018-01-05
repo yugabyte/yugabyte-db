@@ -1171,8 +1171,9 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
       doc_ops, metrics_->write_lock_latency, *isolation_level, &shared_lock_manager_,
       data.keys_locked, &need_read_snapshot);
 
-  auto read_op = need_read_snapshot ? ScopedReadOperation(this, data.read_time())
-                                    : ScopedReadOperation();
+  auto read_op = need_read_snapshot
+      ? ScopedReadOperation(this, RequireLease::kTrue, data.read_time())
+      : ScopedReadOperation();
   auto real_read_time = need_read_snapshot ? read_op.read_time()
                                            : ReadHybridTime::SingleTime(clock_->Now());
 
@@ -1285,9 +1286,26 @@ void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
   iter_->GetIteratorStats(stats);
 }
 
-HybridTime Tablet::SafeTimestampToRead() const {
-  auto limit = ht_lease_provider_ ? HybridTime(ht_lease_provider_(), 0) : HybridTime::kMax;
-  return mvcc_.SafeTimestampToRead(limit);
+HybridTime Tablet::DoGetSafeHybridTimeToReadAt(
+    tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
+  HybridTime max_allowed;
+  if (require_lease && ht_lease_provider_) {
+    // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
+    // max_allowed >= min_allowed.
+    auto lease = ht_lease_provider_(min_allowed.GetPhysicalValueMicros() + 1, deadline);
+    if (!lease) {
+      return HybridTime::kInvalid;
+    }
+    max_allowed = HybridTime(lease, 0);
+  } else {
+    max_allowed = HybridTime::kMax;
+  }
+  if (min_allowed > max_allowed) {
+    LOG(DFATAL) << "Read request hybrid time after leader lease: " << min_allowed << ", "
+                << max_allowed;
+    return HybridTime::kInvalid;
+  }
+  return mvcc_.SafeHybridTimeToReadAt(min_allowed, deadline, max_allowed);
 }
 
 HybridTime Tablet::OldestReadPoint() const {
@@ -1386,10 +1404,10 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
 }
 
 ScopedReadOperation::ScopedReadOperation(
-    AbstractTablet* tablet, const ReadHybridTime& read_time)
+    AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time)
     : tablet_(tablet), read_time_(read_time) {
   if (!read_time_) {
-    read_time_ = ReadHybridTime::SingleTime(tablet->SafeTimestampToRead());
+    read_time_ = ReadHybridTime::SingleTime(tablet->SafeHybridTimeToReadAt(require_lease));
   }
 
   tablet_->RegisterReaderTimestamp(read_time_.read);

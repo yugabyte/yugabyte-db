@@ -50,7 +50,7 @@ class YQLVTableIterator : public common::QLRowwiseIteratorIf {
 
   void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
-  HybridTime RestartReadHt() override { return HybridTime::kInvalidHybridTime; }
+  HybridTime RestartReadHt() override { return HybridTime::kInvalid; }
 
   virtual ~YQLVTableIterator();
  private:

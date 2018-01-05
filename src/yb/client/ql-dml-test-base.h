@@ -42,8 +42,6 @@ using namespace std::chrono_literals;
 
 extern const client::YBTableName kTableName;
 
-Status FlushSession(YBSession *session);
-
 class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
  public:
   void SetUp() override;

@@ -171,7 +171,7 @@ class LinkedListTester {
               << ", log_errors=" << log_errors
               << ", latest_at_leader=" << latest_at_leader;
     return VerifyLinkedListRemote(
-        HybridTime::kInvalidHybridTime, expected, log_errors, latest_at_leader,
+        HybridTime::kInvalid, expected, log_errors, latest_at_leader,
         std::bind(&LinkedListTester::ReturnOk, this, _1), verified_count);
   }
 

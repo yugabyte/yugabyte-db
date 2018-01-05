@@ -481,7 +481,7 @@ HybridTime DocRowwiseIterator::RestartReadHt() {
   if (max_seen_ht.is_valid() && max_seen_ht > db_iter_->read_time().read) {
     return max_seen_ht;
   }
-  return HybridTime::kInvalidHybridTime;
+  return HybridTime::kInvalid;
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {

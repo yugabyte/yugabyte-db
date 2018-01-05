@@ -128,7 +128,7 @@ void Batcher::Abort(const Status& status) {
   if (flush_callback_) {
     l.unlock();
 
-    flush_callback_->Run(status);
+    flush_callback_(status);
   }
 }
 
@@ -189,7 +189,7 @@ void Batcher::CheckForFinishedFlush() {
     s = STATUS(IOError, "Some errors occurred");
   }
 
-  flush_callback_->Run(s);
+  flush_callback_(s);
 }
 
 MonoTime Batcher::ComputeDeadlineUnlocked() const {
@@ -204,12 +204,12 @@ MonoTime Batcher::ComputeDeadlineUnlocked() const {
   return ret;
 }
 
-void Batcher::FlushAsync(YBStatusCallback* cb) {
+void Batcher::FlushAsync(boost::function<void(const Status&)> callback) {
   {
     std::lock_guard<simple_spinlock> l(lock_);
     CHECK_EQ(state_, kGatheringOps);
     state_ = kFlushing;
-    flush_callback_ = cb;
+    flush_callback_ = std::move(callback);
     deadline_ = ComputeDeadlineUnlocked();
   }
 

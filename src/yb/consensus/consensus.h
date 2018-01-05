@@ -357,7 +357,13 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
 
   // Returns majority replicated ht lease, so we know that after leader change
   // operations would not be added with hybrid time below this lease.
-  virtual MicrosTime majority_replicated_ht_lease_expiration() const = 0;
+  //
+  // `min_allowed` - result should be greater or equal to `min_allowed`, otherwise
+  // it tries to wait until ht lease reaches this value or `deadline` happens.
+  //
+  // Returns 0 if timeout happened.
+  virtual MicrosTime MajorityReplicatedHtLeaseExpiration(
+      MicrosTime min_allowed, MonoTime deadline) const = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;

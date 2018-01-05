@@ -212,7 +212,7 @@ class OperationState {
 
   HybridTime hybrid_time() const {
     std::lock_guard<simple_spinlock> l(mutex_);
-    DCHECK(hybrid_time_ != HybridTime::kInvalidHybridTime);
+    DCHECK(hybrid_time_.is_valid());
     return hybrid_time_;
   }
 
@@ -223,7 +223,7 @@ class OperationState {
 
   bool has_hybrid_time() const {
     std::lock_guard<simple_spinlock> l(mutex_);
-    return hybrid_time_ != HybridTime::kInvalidHybridTime;
+    return hybrid_time_.is_valid();
   }
 
   consensus::OpId* mutable_op_id() {

@@ -933,10 +933,14 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  auto safe_ht_to_read = tablet->SafeTimestampToRead();
+  // safe_ht_to_read is used only for read restart, so if read_time is valid, then we would respond
+  // with "restart required".
+  HybridTime safe_ht_to_read;
   auto read_time = ReadHybridTime::FromReadTimePB(*req);
   bool allow_retry = !read_time;
+  tablet::RequireLease require_lease(req->consistency_level() == YBConsistencyLevel::STRONG);
   if (!read_time) {
+    safe_ht_to_read = tablet->SafeHybridTimeToReadAt(require_lease);
     // If the read time is not specified, then it is non transactional read.
     // So we should restart it in server in case of failure.
     read_time.read = safe_ht_to_read;
@@ -948,6 +952,14 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     } else {
       read_time.local_limit = read_time.read;
       read_time.global_limit = read_time.read;
+    }
+  } else {
+    safe_ht_to_read = tablet->SafeHybridTimeToReadAt(
+        require_lease, read_time.read, context.GetClientDeadline());
+    if (!safe_ht_to_read.is_valid()) { // Timed out
+      SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
+                           TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
     }
   }
 
@@ -998,7 +1010,8 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
                                                  HostPortPB* host_port_pb,
                                                  ReadResponsePB* resp,
                                                  rpc::RpcContext* context) {
-  tablet::ScopedReadOperation read_tx(tablet, read_time);
+  tablet::RequireLease require_lease(req->consistency_level() == YBConsistencyLevel::STRONG);
+  tablet::ScopedReadOperation read_tx(tablet, require_lease, read_time);
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
       for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
@@ -1378,7 +1391,7 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
     if (has_more_results) {
       resp->set_scanner_id(scanner_id);
     }
-    if (scan_hybrid_time != HybridTime::kInvalidHybridTime) {
+    if (scan_hybrid_time.is_valid()) {
       resp->set_snap_hybrid_time(scan_hybrid_time.ToUint64());
     }
   } else if (req->has_scanner_id()) {
@@ -1510,7 +1523,7 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
       return;
     }
     resp->set_scanner_id(scanner_id);
-    if (snap_hybrid_time != HybridTime::kInvalidHybridTime) {
+    if (snap_hybrid_time.is_valid()) {
       resp->set_snap_hybrid_time(snap_hybrid_time.ToUint64());
     }
   } else if (req->has_continue_request()) {

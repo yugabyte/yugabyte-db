@@ -37,6 +37,8 @@
 #include <future>
 #include <mutex>
 
+#include <boost/function.hpp>
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/countdown_latch.h"
@@ -77,6 +79,10 @@ class Synchronizer {
     // Note: this means the returned callback _must_ go out of scope before
     // its synchronizer.
     return Bind(&Synchronizer::StatusCB, Unretained(this));
+  }
+
+  boost::function<void(const Status&)> AsStatusFunctor() {
+    return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
   }
 
   CHECKED_STATUS Wait() {

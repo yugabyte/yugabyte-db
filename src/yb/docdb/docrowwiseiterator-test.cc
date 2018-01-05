@@ -620,7 +620,7 @@ namespace {
 class TransactionStatusManagerMock : public TransactionStatusManager {
  public:
   HybridTime LocalCommitTime(const TransactionId &id) override {
-    return HybridTime::kInvalidHybridTime;
+    return HybridTime::kInvalid;
   }
 
   void RequestStatusAt(const StatusRequest& request) override {

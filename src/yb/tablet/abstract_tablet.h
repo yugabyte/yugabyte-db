@@ -27,6 +27,8 @@ struct QLReadRequestResult {
   HybridTime restart_read_ht;
 };
 
+YB_STRONGLY_TYPED_BOOL(RequireLease);
+
 class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
@@ -56,7 +58,19 @@ class AbstractTablet {
 
   virtual void RegisterReaderTimestamp(HybridTime read_point) = 0;
   virtual void UnregisterReader(HybridTime read_point) = 0;
-  virtual HybridTime SafeTimestampToRead() const = 0;
+
+  // Returns safe timestamp to read.
+  // `require_lease` - whether this read requires ht leader lease.
+  // `min_allowed` - result should be greater or equal to `min_allowed`, otherwise
+  // it tries to wait until safe timestamp to read reaches this value or `deadline` happens.
+  //
+  // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
+  // because of timeout.
+  HybridTime SafeHybridTimeToReadAt(RequireLease require_lease = RequireLease::kTrue,
+                                 HybridTime min_allowed = HybridTime::kMin,
+                                 MonoTime deadline = MonoTime::kMax) const {
+    return DoGetSafeHybridTimeToReadAt(require_lease, min_allowed, deadline);
+  }
 
  protected:
   CHECKED_STATUS HandleQLReadRequest(
@@ -64,6 +78,10 @@ class AbstractTablet {
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContextOpt& txn_op_context,
       QLReadRequestResult* result);
+
+ private:
+  virtual HybridTime DoGetSafeHybridTimeToReadAt(
+      RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const = 0;
 };
 
 }  // namespace tablet

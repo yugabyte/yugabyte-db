@@ -2207,8 +2207,9 @@ Status RaftConsensus::CheckIsActiveLeaderAndHasLease() const {
   return state_->CheckIsActiveLeaderAndHasLease();
 }
 
-MicrosTime RaftConsensus::majority_replicated_ht_lease_expiration() const {
-  return state_->majority_replicated_ht_lease_expiration();
+MicrosTime RaftConsensus::MajorityReplicatedHtLeaseExpiration(
+    MicrosTime min_allowed, MonoTime deadline) const {
+  return state_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
 }
 
 std::string RaftConsensus::GetRequestVoteLogPrefixUnlocked() const {

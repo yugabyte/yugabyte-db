@@ -102,7 +102,7 @@ class ReplicaState {
     kShutDown
   };
 
-  typedef std::unique_lock<simple_spinlock> UniqueLock;
+  typedef std::unique_lock<std::mutex> UniqueLock;
 
   typedef std::map<int64_t, scoped_refptr<ConsensusRound> > IndexToRoundMap;
 
@@ -354,10 +354,7 @@ class ReplicaState {
       MonoTime lease_expiration, MicrosTime ht_lease_expiration);
 
   void SetMajorityReplicatedLeaseExpirationUnlocked(
-      const MajorityReplicatedData& majority_replicated_data) {
-    majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
-    majority_replicated_ht_lease_expiration_ = majority_replicated_data.ht_lease_expiration;
-  }
+      const MajorityReplicatedData& majority_replicated_data);
 
   // Checks two conditions:
   // - That the old leader definitely does not have a lease.
@@ -383,9 +380,8 @@ class ReplicaState {
 
   bool MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const;
 
-  MicrosTime majority_replicated_ht_lease_expiration() const {
-    return majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
-  }
+  MicrosTime MajorityReplicatedHtLeaseExpiration(
+      MicrosTime min_allowed, MonoTime deadline) const;
 
  private:
 
@@ -415,7 +411,8 @@ class ReplicaState {
   // The UUID of the local peer.
   const std::string peer_uuid_;
 
-  mutable simple_spinlock update_lock_;
+  mutable std::mutex update_lock_;
+  mutable std::condition_variable cond_;
 
   // Consensus metadata persistence object.
   gscoped_ptr<ConsensusMetadata> cmeta_;

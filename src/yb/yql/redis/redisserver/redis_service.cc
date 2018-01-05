@@ -356,7 +356,7 @@ class Block : public std::enable_shared_from_this<Block> {
       has_ok = op->Apply(session_.get()) || has_ok;
     }
     if (has_ok) {
-      session_->FlushAsync(new BlockCallback(shared_from_this()));
+      session_->FlushAsync(BlockCallback(shared_from_this()));
     } else {
       Processed();
     }
@@ -368,15 +368,14 @@ class Block : public std::enable_shared_from_this<Block> {
     return result;
   }
  private:
-  class BlockCallback : public YBStatusCallback {
+  class BlockCallback {
    public:
     explicit BlockCallback(std::shared_ptr<Block> block) : block_(std::move(block)) {}
 
-    void Run(const Status& status) override {
+    void operator()(const Status& status) {
       auto context = block_->context_;
       block_->Done(status);
       block_.reset();
-      delete this;
     }
    private:
     std::shared_ptr<Block> block_;

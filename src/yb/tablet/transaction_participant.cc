@@ -229,7 +229,7 @@ class RunningTransaction {
 
     HybridTime status_time = response.has_status_hybrid_time()
          ? HybridTime(response.status_hybrid_time())
-         : HybridTime::kInvalidHybridTime;
+         : HybridTime::kInvalid;
     return TransactionStatusResult{response.status(), status_time};
   }
 
@@ -255,7 +255,7 @@ class RunningTransaction {
   TransactionMetadata metadata_;
   rpc::Rpcs& rpcs_;
   TransactionParticipantContext& context_;
-  HybridTime local_commit_time_ = HybridTime::kInvalidHybridTime;
+  HybridTime local_commit_time_ = HybridTime::kInvalid;
 
   mutable TransactionStatus last_known_status_;
   mutable HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
@@ -307,7 +307,7 @@ class TransactionParticipant::Impl {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
-      return HybridTime::kInvalidHybridTime;
+      return HybridTime::kInvalid;
     }
     return it->local_commit_time();
   }

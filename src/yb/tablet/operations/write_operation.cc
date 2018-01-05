@@ -194,7 +194,7 @@ WriteOperationState::~WriteOperationState() {
 }
 
 void WriteOperationState::Reset() {
-  hybrid_time_ = HybridTime::kInvalidHybridTime;
+  hybrid_time_ = HybridTime::kInvalid;
 }
 
 void WriteOperationState::ResetRpcFields() {

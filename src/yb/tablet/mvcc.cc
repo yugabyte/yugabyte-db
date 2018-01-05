@@ -44,23 +44,30 @@ MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
 void MvccManager::Replicated(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << "Replicated(" << ht << ")";
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  CHECK(!queue_.empty());
-  CHECK_EQ(queue_.front(), ht);
-  PopFront(&lock);
-  last_replicated_ = ht;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    CHECK(!queue_.empty());
+    CHECK_EQ(queue_.front(), ht);
+    PopFront(&lock);
+    last_replicated_ = ht;
+  }
+  cond_.notify_all();
 }
 
 void MvccManager::Aborted(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << "Aborted(" << ht << ")";
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  CHECK(!queue_.empty());
-  if (queue_.front() == ht) {
-    PopFront(&lock);
-  } else {
-    aborted_.push(ht);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    CHECK(!queue_.empty());
+    if (queue_.front() == ht) {
+      PopFront(&lock);
+    } else {
+      aborted_.push(ht);
+      return;
+    }
   }
+  cond_.notify_all();
 }
 
 void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
@@ -97,15 +104,40 @@ void MvccManager::AddPending(HybridTime* ht) {
 void MvccManager::SetLastReplicated(HybridTime ht) {
   VLOG_WITH_PREFIX(1) << "SetLastReplicated(" << ht << ")";
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  last_replicated_ = ht;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_replicated_ = ht;
+  }
+  cond_.notify_all();
 }
 
-HybridTime MvccManager::SafeTimestampToRead(HybridTime limit) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  HybridTime result = !queue_.empty() ? queue_.front().Decremented() : clock_->Now();
-  result = std::min(result, limit);
-  result = std::max(result, last_replicated_); // Suitable to replica
+HybridTime MvccManager::SafeHybridTimeToReadAt(HybridTime min_allowed,
+                                            MonoTime deadline,
+                                            HybridTime max_allowed) const {
+  CHECK_LE(min_allowed, max_allowed);
+  std::unique_lock<std::mutex> lock(mutex_);
+  HybridTime result;
+  auto predicate = [this, &result, min_allowed, max_allowed] {
+    if (queue_.empty()) {
+      result = clock_->Now();
+      CHECK_GE(result, min_allowed);
+    } else {
+      result = queue_.front().Decremented();
+    }
+
+    result = std::min(result, max_allowed);
+    // This function could be invoked at a follower, so it has a very old max_allowed.
+    // In this case it is safe to read at last_replicated_ at least.
+    result = std::max(result, last_replicated_);
+    return result >= min_allowed;
+  };
+  // In the case of an empty queue, the safe hybrid time to read at is only limited by hybrid time
+  // max_allowed, which is by definition higher than min_allowed, so we would not get blocked.
+  if (deadline == MonoTime::kMax) {
+    cond_.wait(lock, predicate);
+  } else if (!cond_.wait_until(lock, deadline.ToSteadyTimePoint(), predicate)) {
+    return HybridTime::kInvalid;
+  }
   CHECK_GE(result, max_safe_time_returned_);
   max_safe_time_returned_ = result;
   VLOG_WITH_PREFIX(1) << "GetMaxSafeTimeToReadAt(), result = " << result;

@@ -367,7 +367,7 @@ class YBTransaction::Impl final {
 
     if (status != TransactionStatus::CREATED &&
         GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
-      HeartbeatDone(Status::OK(), HybridTime::kInvalidHybridTime, status, transaction);
+      HeartbeatDone(Status::OK(), HybridTime::kInvalid, status, transaction);
       return;
     }
 

@@ -22,13 +22,6 @@ namespace client {
 
 const client::YBTableName kTableName("my_keyspace", "ql_client_test_table");
 
-Status FlushSession(YBSession *session) {
-  Synchronizer s;
-  YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
-  session->FlushAsync(&cb);
-  return s.Wait();
-}
-
 void QLDmlTestBase::SetUp() {
   YBMiniClusterTestBase::SetUp();
 

@@ -225,10 +225,15 @@ class QLTransactionTest : public QLDmlTestBase {
   }
 
   void WriteData(const WriteOpType op_type = WriteOpType::INSERT) {
-    auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    auto tc = CreateTransaction();
     WriteRows(CreateSession(tc), 0, op_type);
     ASSERT_OK(tc->CommitFuture().get());
     LOG(INFO) << "Committed";
+  }
+
+  YBTransactionPtr CreateTransaction() {
+    return std::make_shared<YBTransaction>(
+        transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
   }
 
   void VerifyRows(const YBSessionPtr& session,
@@ -239,12 +244,7 @@ class QLTransactionTest : public QLDmlTestBase {
 
     std::vector<client::YBqlReadOpPtr> ops;
     for (size_t r = 0; r != kNumRows; ++r) {
-      auto op = table_.NewReadOp();
-      auto* const req = op->mutable_request();
-      QLAddInt32HashValue(req, KeyForTransactionAndIndex(transaction, r));
-      table_.AddColumns({column}, req);
-      ASSERT_OK(session->Apply(op));
-      ops.push_back(op);
+      ops.push_back(ReadRow(session, KeyForTransactionAndIndex(transaction, r), column));
     }
     ASSERT_OK(session->Flush());
     for (size_t r = 0; r != kNumRows; ++r) {
@@ -256,6 +256,17 @@ class QLTransactionTest : public QLDmlTestBase {
       ASSERT_EQ(rowblock->row(0).column(0).int32_value(),
                 ValueForTransactionAndIndex(transaction, r, op_type));
     }
+  }
+
+  YBqlReadOpPtr ReadRow(const YBSessionPtr& session,
+                        int32_t key,
+                        const std::string& column = kValueColumn) {
+    auto op = table_.NewReadOp();
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, key);
+    table_.AddColumns({column}, req);
+    EXPECT_OK(session->Apply(op));
+    return op;
   }
 
   void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT,
@@ -303,16 +314,14 @@ void QLTransactionTest::TestReadRestart(bool commit) {
 
   FLAGS_max_clock_skew_usec = 250000;
 
-  auto write_txn = std::make_shared<YBTransaction>(
-      transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+  auto write_txn = CreateTransaction();
   WriteRows(CreateSession(write_txn));
   if (commit) {
     ASSERT_OK(write_txn->CommitFuture().get());
   }
 
   server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto txn1 = std::make_shared<YBTransaction>(
-      transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+  auto txn1 = CreateTransaction();
   auto session = CreateSession(txn1);
   if (commit) {
     for (size_t r = 0; r != kNumRows; ++r) {
@@ -377,8 +386,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
 
   for (size_t i = 0; i != kTotalTransactions; ++i) {
     SCOPED_TRACE(Format("Transaction $0", i));
-    auto txn = std::make_shared<YBTransaction>(
-        transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+    auto txn = CreateTransaction();
     WriteRows(CreateSession(txn), i);
     ASSERT_OK(txn->CommitFuture().get());
     ASSERT_NO_FATALS(VerifyRows(CreateSession(), i));
@@ -404,8 +412,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   WriteData();
 
   server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
-                                              IsolationLevel::SNAPSHOT_ISOLATION);
+  auto txn1 = CreateTransaction();
   YBTransactionPtr txn2;
   auto session = CreateSession(txn1);
   for (bool retry : {false, true}) {
@@ -463,8 +470,7 @@ TEST_F(QLTransactionTest, Cleanup) {
 }
 
 TEST_F(QLTransactionTest, Heartbeat) {
-  auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
-                                            IsolationLevel::SNAPSHOT_ISOLATION);
+  auto tc = CreateTransaction();
   auto session = CreateSession(tc);
   WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
@@ -480,7 +486,7 @@ TEST_F(QLTransactionTest, Heartbeat) {
 TEST_F(QLTransactionTest, Expire) {
   google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
-  auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto tc = CreateTransaction();
   auto session = CreateSession(tc);
   WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
@@ -502,7 +508,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   std::vector<std::shared_ptr<YBTransaction>> transactions;
   constexpr size_t kTransactions = 20;
   for (size_t i = 0; i != kTransactions; ++i) {
-    auto tc = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    auto tc = CreateTransaction();
     auto session = CreateSession(tc);
     WriteRows(session, i);
     transactions.push_back(std::move(tc));
@@ -548,17 +554,14 @@ TEST_F(QLTransactionTest, ConflictResolution) {
 
   CountDownLatch latch(kTotalTransactions);
   for (size_t i = 0; i != kTotalTransactions; ++i) {
-    transactions.push_back(std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
-                                                           SNAPSHOT_ISOLATION));
+    transactions.push_back(CreateTransaction());
     auto session = CreateSession(transactions.back());
     sessions.push_back(session);
     ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
     for (size_t r = 0; r != kNumRows; ++r) {
       ASSERT_OK(WriteRow(sessions.back(), r, i));
     }
-    session->FlushAsync(MakeYBStatusFunctorCallback([&latch](const Status& status) {
-      latch.CountDown();
-    }));
+    session->FlushAsync([&latch](const Status& status) { latch.CountDown(); });
   }
   latch.Wait();
 
@@ -597,9 +600,7 @@ TEST_F(QLTransactionTest, ConflictResolution) {
 TEST_F(QLTransactionTest, SimpleWriteConflict) {
   google::FlagSaver flag_saver;
 
-  auto transaction = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(),
-                                                     SNAPSHOT_ISOLATION);
-
+  auto transaction = CreateTransaction();
   WriteRows(CreateSession(transaction));
   WriteRows(CreateSession());
 
@@ -633,7 +634,7 @@ TEST_F(QLTransactionTest, DISABLED_ResolveIntentsWriteReadWithinTransactionAndRo
 
   {
     // Start T1.
-    auto txn = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+    auto txn = CreateTransaction();
     auto session = CreateSession(txn);
 
     // T1: Update { 1 -> 11, 2 -> 12 }.
@@ -673,7 +674,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   }
 
   // Start T1.
-  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto txn1 = CreateTransaction();
   auto session1 = CreateSession(txn1);
 
   // T1: Update { 1 -> 11, 2 -> 12 }.
@@ -681,7 +682,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
   ASSERT_OK(UpdateRow(session1, 2, 12));
 
   // Start T2.
-  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto txn2 = CreateTransaction();
   auto session2 = CreateSession(txn2);
 
   // T2: Should read { 1 -> 1, 2 -> 2 }.
@@ -720,7 +721,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   }
 
   // Start T1.
-  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto txn1 = CreateTransaction();
 
   // T1: Update { 1 -> 11, 2 -> 12 }.
   {
@@ -737,7 +738,7 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   });
 
   // Start T2.
-  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+  auto txn2 = CreateTransaction();
 
   // T2: Should read { 1 -> 1, 2 -> 2 } even in case T1 is committed between reading k1 and k2.
   {
@@ -821,8 +822,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
     if (transactions_to_create &&
         (!active_transactions || RandomWithChance(kTransactionCreateChance))) {
       LOG(INFO) << "Create transaction";
-      auto txn =
-          std::make_shared<YBTransaction>(transaction_manager_.get_ptr(), SNAPSHOT_ISOLATION);
+      auto txn = CreateTransaction();
       {
         auto session = CreateSession(txn);
         // Insert using different keys to avoid conflicts.
@@ -877,6 +877,102 @@ TEST_F(QLTransactionTest, StatusEvolution) {
 
   for (auto& state : states) {
     ASSERT_EQ(state.commit_future.wait_for(NonTsanVsTsan(3s, 15s)), std::future_status::ready);
+  }
+}
+
+// Writing multiple keys concurrently, each key is increasing by 1 at each step.
+// At the same time concurrently execute several transactions that read all those keys.
+// Suppose two transactions have read values t1_i and t2_i respectively.
+// And t1_j > t2_j for some j, then we expect that t1_i >= t2_i for all i.
+//
+// Suppose we have 2 transactions, both reading k1 (from tablet1) and k2 (from tablet2).
+// ht1 - read time of first transaction, and ht2 - read time of second transaction.
+// Suppose ht1 <= ht2 for simplicity.
+// Old value of k1 is v1before, and after ht_k1 it has v1after.
+// Old value of k2 is v2before, and after ht_k2 it has v2after.
+// ht_k1 <= ht1, ht_k2 <= ht1.
+//
+// Suppose following sequence of read requests:
+// 1) The read request for the first transaction arrives at tablet1 when it has safe read
+//    time < ht1. But it is already replicating k1 (with ht_k1). Then it would read v1before for k1.
+// 2) The read request for the second transaction arrives at tablet2 when it has safe read
+//    time < ht2. But it is already replicating k2 (with ht_k2). So it reads v2before for k2.
+// 3) The remaining read request requests arrive after the appropriate operations have replicated.
+//    So we get v2after in the first transaction and v1after for the second.
+// The read result for the first transaction (v1before, v2after), for the second is is
+// (v1after, v2before).
+//
+// Such read is inconsistent.
+//
+// This test addresses this issue.
+TEST_F(QLTransactionTest, WaitRead) {
+  google::FlagSaver saver;
+
+  constexpr size_t kWriteThreads = 10;
+  constexpr size_t kCycles = 100;
+  constexpr size_t kConcurrentReads = 4;
+
+  FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
+
+  std::atomic<bool> stop(false);
+  std::vector<std::thread> threads;
+
+  for (size_t i = 0; i != kWriteThreads; ++i) {
+    threads.emplace_back([this, i, &stop] {
+      auto session = CreateSession();
+      int32_t value = 0;
+      while (!stop) {
+        WriteRow(session, i, ++value);
+      }
+    });
+  }
+
+  CountDownLatch latch(kConcurrentReads);
+
+  std::vector<std::vector<YBqlReadOpPtr>> reads(kConcurrentReads);
+  std::vector<std::shared_future<Status>> futures(kConcurrentReads);
+  // values[i] contains values read by i-th transaction.
+  std::vector<std::vector<int32_t>> values(kConcurrentReads);
+
+  for (size_t i = 0; i != kCycles; ++i) {
+    latch.Reset(kConcurrentReads);
+    for (size_t j = 0; j != kConcurrentReads; ++j) {
+      values[j].clear();
+      auto session = CreateSession(CreateTransaction());
+      ASSERT_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+      for (size_t key = 0; key != kWriteThreads; ++key) {
+        reads[j].push_back(ReadRow(session, key));
+      }
+      session->FlushAsync([&latch](const Status& status) {
+        ASSERT_OK(status);
+        latch.CountDown();
+      });
+    }
+    latch.Wait();
+    for (size_t j = 0; j != kConcurrentReads; ++j) {
+      values[j].clear();
+      for (auto& op : reads[j]) {
+        ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK)
+            << op->response().ShortDebugString();
+        auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+        if (rowblock->row_count() == 1) {
+          values[j].push_back(rowblock->row(0).column(0).int32_value());
+        } else {
+          values[j].push_back(0);
+        }
+      }
+    }
+    std::sort(values.begin(), values.end());
+    for (size_t j = 1; j != kConcurrentReads; ++j) {
+      for (size_t k = 0; k != values[j].size(); ++k) {
+        ASSERT_GE(values[j][k], values[j - 1][k]);
+      }
+    }
+  }
+
+  stop = true;
+  for (auto& thread : threads) {
+    thread.join();
   }
 }
 

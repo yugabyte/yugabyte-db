@@ -196,7 +196,7 @@ class TestRandomAccess : public YBTabletTest {
   // Random-read the given row, returning its current value.
   // If the row doesn't exist, returns "()".
   string GetRow(int key) {
-    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeTimestampToRead());
+    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeHybridTimeToReadAt());
     QLReadRequestPB req;
     auto* condition = req.mutable_where_expr()->mutable_condition();
     QLSetInt32Condition(condition, kFirstColumnId, QL_OP_EQUAL, key);

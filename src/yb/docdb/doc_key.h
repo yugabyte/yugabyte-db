@@ -205,7 +205,7 @@ inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
 // make the hybrid_time field optional while a SubDocKey is being constructed. If the hybrid_time
 // is not set, it is omitted from the encoded representation of a SubDocKey.
 //
-// Implementation note: we use HybridTime::kInvalidHybridTime to represent an omitted hybrid_time.
+// Implementation note: we use HybridTime::kInvalid to represent an omitted hybrid_time.
 // We rely on that being the default-constructed value of a HybridTime.
 //
 // TODO: this should be renamed to something more generic, e.g. Key or LogicalKey, to reflect that
@@ -279,7 +279,7 @@ class SubDocKey {
   void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key, HybridTime hybrid_time) {
     DCHECK(!has_hybrid_time());
     subkeys_.emplace_back(subdoc_key);
-    DCHECK_NE(HybridTime::kInvalidHybridTime, hybrid_time);
+    DCHECK(hybrid_time.is_valid());
     doc_ht_ = DocHybridTime(hybrid_time);
   }
 

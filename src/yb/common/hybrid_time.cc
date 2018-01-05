@@ -53,8 +53,8 @@ std::atomic<bool> pretty_to_string_mode_{false};
 
 const HybridTime HybridTime::kMin(kMinHybridTimeValue);
 const HybridTime HybridTime::kMax(kMaxHybridTimeValue);
-const HybridTime HybridTime::kInitialHybridTime(kInitialHybridTimeValue);
-const HybridTime HybridTime::kInvalidHybridTime(kInvalidHybridTimeValue);
+const HybridTime HybridTime::kInitial(kInitialHybridTimeValue);
+const HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
 
 bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v).ok();

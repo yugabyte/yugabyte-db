@@ -32,6 +32,7 @@
 #ifndef YB_TABLET_MVCC_H_
 #define YB_TABLET_MVCC_H_
 
+#include <condition_variable>
 #include <mutex>
 #include <deque>
 #include <queue>
@@ -61,7 +62,7 @@ class MvccManager {
   // In case of replica `ht` is already assigned, in case of leader we should assign ht by
   // by ourselves.
   // We pass ht as pointer here, because clock should be accessed with locked mutex, otherwise
-  // SafeTimestampToRead could return time greater than added.
+  // SafeHybridTimeToReadAt could return time greater than added.
   void AddPending(HybridTime* ht);
 
   // Notifies that operation with appropriate time was replicated.
@@ -71,9 +72,29 @@ class MvccManager {
   // Notifies that operation with appropriate time was aborted.
   void Aborted(HybridTime ht);
 
-  // Returns maximal allowed timestamp to read. I.e. no operations that was initiated after this
+  // Returns maximum allowed timestamp to read at. I.e. no operations that are initiated after this
   // call will receive hybrid time less than returned.
-  HybridTime SafeTimestampToRead(HybridTime limit) const;
+  //
+  // `min_allowed` - result should be greater than or equal to `min_allowed`, otherwise
+  // it tries to wait until safe hybrid time to read at reaches this value or `deadline` happens.
+  // Should be before now.
+  //
+  // `max_allowed` - result should be less than of equal to `max_allowed`, unless we have replicated
+  // records past it.
+  // Should be past `min_allowed`. Usually used to pass ht leader lease.
+  //
+  // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
+  // because of timeout.
+  HybridTime SafeHybridTimeToReadAt(
+      HybridTime min_allowed, MonoTime deadline, HybridTime max_allowed) const;
+
+  HybridTime SafeHybridTimeToReadAt(HybridTime limit) const {
+    return SafeHybridTimeToReadAt(HybridTime::kMin, MonoTime::kMax, limit);
+  }
+
+  HybridTime SafeHybridTimeToReadAt() const {
+    return SafeHybridTimeToReadAt(HybridTime::kMax);
+  }
 
   // Returns time of last replicated operation.
   HybridTime LastReplicatedHybridTime() const;
@@ -85,6 +106,7 @@ class MvccManager {
   std::string prefix_;
   server::ClockPtr clock_;
   mutable std::mutex mutex_;
+  mutable std::condition_variable cond_;
   // Queue of times of tracked operations. It is ordered.
   std::deque<HybridTime> queue_;
   // Priority queue of aborted operations. Required because we could abort operations from the

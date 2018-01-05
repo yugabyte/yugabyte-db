@@ -99,7 +99,7 @@ Status YBSessionData::Close(bool force) {
   return Status::OK();
 }
 
-void YBSessionData::FlushAsync(YBStatusCallback* callback) {
+void YBSessionData::FlushAsync(boost::function<void(const Status&)> callback) {
   CHECK_NE(flush_mode_, YBSession::AUTO_FLUSH_BACKGROUND) << "TODO: handle flush background mode";
 
   // Swap in a new batcher to start building the next batch.
@@ -116,9 +116,9 @@ void YBSessionData::FlushAsync(YBStatusCallback* callback) {
       std::lock_guard<simple_spinlock> l(lock_);
       flushed_batchers_.insert(old_batcher);
     }
-    old_batcher->FlushAsync(callback);
+    old_batcher->FlushAsync(std::move(callback));
   } else {
-    callback->Run(Status::OK());
+    callback(Status::OK());
   }
 }
 
@@ -145,8 +145,7 @@ Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
 
 Status YBSessionData::Flush() {
   Synchronizer s;
-  YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
-  FlushAsync(&ksmcb);
+  FlushAsync(s.AsStatusFunctor());
   return s.Wait();
 }
 

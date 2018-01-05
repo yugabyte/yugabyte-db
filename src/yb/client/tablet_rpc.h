@@ -135,7 +135,7 @@ CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);
 template <class Response>
 HybridTime GetPropagatedHybridTime(const Response& response) {
   return response.has_propagated_hybrid_time() ? HybridTime(response.propagated_hybrid_time())
-                                               : HybridTime::kInvalidHybridTime;
+                                               : HybridTime::kInvalid;
 }
 
 } // namespace internal

@@ -48,7 +48,8 @@ void SystemTablet::UnregisterReader(HybridTime read_point) {
   // NOOP.
 }
 
-HybridTime SystemTablet::SafeTimestampToRead() const {
+HybridTime SystemTablet::DoGetSafeHybridTimeToReadAt(
+    tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
   // HybridTime doesn't matter for SystemTablets.
   return HybridTime::kMax;
 }

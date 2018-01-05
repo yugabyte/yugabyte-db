@@ -196,7 +196,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     const shared_ptr<YBSession> session = NewSession();
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     const shared_ptr<YBqlReadOp> op = SelectRow(session, {"c1", "c2"}, 1, "a", 2, "b");
-    CHECK_OK(FlushSession(session.get()));
+    EXPECT_OK(session->Flush());
 
     // Expect 4, 'd' returned
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -220,7 +220,7 @@ TEST_F(QLDmlTest, TestInsertWrongSchema) {
   // The request created has schema version 0 by default
   const shared_ptr<YBqlWriteOp> op = InsertRow(session, 1, "a", 2, "b", 3, "c");
 
-  EXPECT_OK(FlushSession(session.get()));
+  EXPECT_OK(session->Flush());
   EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
 }
 
@@ -404,7 +404,7 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
     const shared_ptr<YBqlWriteOp> op1 = InsertRow(session, 1, "a", 2, "b", 3, "c");
     const shared_ptr<YBqlWriteOp> op2 = InsertRow(session, 1, "a", 2, "d", 4, "e");
 
-    CHECK_OK(FlushSession(session.get()));
+    CHECK_OK(session->Flush());
     EXPECT_EQ(op1->response().status(), QLResponsePB::YQL_STATUS_OK);
     EXPECT_EQ(op2->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -460,7 +460,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
     const shared_ptr<YBqlWriteOp> op1 = InsertRow(session, 1, "a", 2, "b", 3, "c");
     const shared_ptr<YBqlWriteOp> op2 = InsertRow(session, 1, "a", 2, "d", 4, "e");
 
-    CHECK_OK(FlushSession(session.get()));
+    CHECK_OK(session->Flush());
     EXPECT_EQ(op1->response().status(), QLResponsePB::YQL_STATUS_OK);
     EXPECT_EQ(op2->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -530,10 +530,7 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
     for (int32_t i = 0; i < 100; i++) {
       ops.push_back(InsertRow(session, 1, "a", 2 + i, "b", 3 + i, "c"));
     }
-    Synchronizer s;
-    YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
-    session->FlushAsync(&cb);
-    CHECK_OK(s.Wait());
+    EXPECT_OK(session->Flush());
     for (const auto op : ops) {
       EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     }

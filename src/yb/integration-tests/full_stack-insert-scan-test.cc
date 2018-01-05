@@ -415,9 +415,8 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   ++id;
   // Use synchronizer to keep 1 asynchronous batch flush maximum
   Synchronizer sync;
-  YBStatusMemberCallback<Synchronizer> cb(&sync, &Synchronizer::StatusCB);
   // Prime the synchronizer as if it was running a batch (for for-loop code)
-  cb.Run(Status::OK());
+  sync.StatusCB(Status::OK());
   // Maintain buffer for random string generation
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
@@ -434,7 +433,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
         LogSessionErrorsAndDie(session, s);
       }
       sync.Reset();
-      session->FlushAsync(&cb);
+      session->FlushAsync(sync.AsStatusFunctor());
     }
     ReportTenthDone(key, start, end, id, kNumInsertClients);
   }

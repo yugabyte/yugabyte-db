@@ -70,7 +70,7 @@ namespace {
 
 void InvokeAbortCallback(const TransactionAbortCallback& callback,
                          TransactionStatus status,
-                         HybridTime time = HybridTime::kInvalidHybridTime) {
+                         HybridTime time = HybridTime::kInvalid) {
   DCHECK((!time.is_valid()) || (status == TransactionStatus::COMMITTED))
       << "Status: " << TransactionStatus_Name(status) << ", time: " << time;
   callback(TransactionStatusResult{status, time});

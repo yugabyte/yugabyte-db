@@ -76,10 +76,10 @@ class HybridTime {
 
   // An initial transaction hybrid time, higher than min so that we can have
   // a hybrid time guaranteed to be lower than all generated hybrid times.
-  static const HybridTime kInitialHybridTime;
+  static const HybridTime kInitial;
 
   // An invalid transaction hybrid time -- HybridTime types initialize to this variable.
-  static const HybridTime kInvalidHybridTime;
+  static const HybridTime kInvalid;
 
   // The maximum hybrid time.
   static const HybridTime kMax;
@@ -189,6 +189,8 @@ class HybridTime {
   }
 
   inline bool is_valid() const { return v != kInvalidHybridTimeValue; }
+
+  explicit operator bool() const { return is_valid(); }
 
   void MakeAtLeast(const HybridTime& rhs) {
     v = is_valid() ? std::max(v, rhs.v) : rhs.v;

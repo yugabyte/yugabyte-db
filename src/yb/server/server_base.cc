@@ -134,7 +134,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
-    clock_ = LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime);
+    clock_ = LogicalClock::CreateStartingAt(HybridTime::kInitial);
   }
   if (FLAGS_use_test_clock) {
     clock_.reset(new TestClock(clock_));

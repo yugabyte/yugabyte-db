@@ -121,7 +121,7 @@ class BootstrapTest : public LogTestBase {
     TabletOptions tablet_options;
     BootstrapTabletData data = {
         meta,
-        scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)),
+        scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
         shared_ptr<MemTracker>(),
         nullptr /* metric_registry */,
         listener.get(),

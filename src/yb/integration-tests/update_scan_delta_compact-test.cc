@@ -155,7 +155,6 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   // to finish and then flushes the current one.
   Status WaitForLastBatchAndFlush(int64_t key,
                                   Synchronizer* last_s,
-                                  YBStatusCallback* last_s_cb,
                                   shared_ptr<YBSession> session);
 
   YBSchema schema_;
@@ -187,17 +186,16 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
 void UpdateScanDeltaCompactionTest::InsertBaseData() {
   shared_ptr<YBSession> session = CreateSession();
   Synchronizer last_s;
-  YBStatusMemberCallback<Synchronizer> last_s_cb(&last_s, &Synchronizer::StatusCB);
-  last_s_cb.Run(Status::OK());
+  last_s.StatusCB(Status::OK());
 
   LOG_TIMING(INFO, "Insert") {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
       auto insert = table_.NewInsertOp();
       MakeRow(key, 0, insert->mutable_request());
       ASSERT_OK(session->Apply(insert));
-      ASSERT_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
+      ASSERT_OK(WaitForLastBatchAndFlush(key, &last_s, session));
     }
-    ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, &last_s_cb, session));
+    ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, session));
     ASSERT_OK(last_s.Wait());
   }
 }
@@ -247,19 +245,17 @@ void UpdateScanDeltaCompactionTest::RunThreads() {
 void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
   shared_ptr<YBSession> session = CreateSession();
   Synchronizer last_s;
-  YBStatusMemberCallback<Synchronizer> last_s_cb(&last_s,
-                                                   &Synchronizer::StatusCB);
 
   for (int64_t iteration = 1; stop_latch->count() > 0; iteration++) {
-    last_s_cb.Run(Status::OK());
+    last_s.StatusCB(Status::OK());
     LOG_TIMING(INFO, "Update") {
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
         auto update = table_.NewUpdateOp();
         MakeRow(key, iteration, update->mutable_request());
         CHECK_OK(session->Apply(update));
-        CHECK_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
+        CHECK_OK(WaitForLastBatchAndFlush(key, &last_s, session));
       }
-      CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, &last_s_cb, session));
+      CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, session));
       CHECK_OK(last_s.Wait());
       last_s.Reset();
     }
@@ -308,12 +304,11 @@ void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
 
 Status UpdateScanDeltaCompactionTest::WaitForLastBatchAndFlush(int64_t key,
                                                                Synchronizer* last_s,
-                                                               YBStatusCallback* last_s_cb,
                                                                shared_ptr<YBSession> session) {
   if (key % kSessionBatchSize == 0) {
     RETURN_NOT_OK(last_s->Wait());
     last_s->Reset();
-    session->FlushAsync(last_s_cb);
+    session->FlushAsync(last_s->AsStatusFunctor());
   }
   return Status::OK();
 }

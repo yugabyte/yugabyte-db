@@ -61,7 +61,7 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
 
   CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op);
 
-  void FlushAsync(YBStatusCallback* callback);
+  void FlushAsync(boost::function<void(const Status&)> callback);
 
   CHECKED_STATUS Flush();
 

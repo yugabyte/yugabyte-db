@@ -121,7 +121,7 @@ class TabletHarness {
       metrics_registry_.reset(new MetricRegistry());
     }
 
-    clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime);
+    clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitial);
     TabletOptions tablet_options;
     tablet_.reset(new TabletClass(metadata,
                                   clock_,

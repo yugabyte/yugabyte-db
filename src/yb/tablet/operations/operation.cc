@@ -66,7 +66,7 @@ OperationState::~OperationState() {
 void OperationState::set_hybrid_time(const HybridTime& hybrid_time) {
   // make sure we set the hybrid_time only once
   std::lock_guard<simple_spinlock> l(mutex_);
-  DCHECK_EQ(hybrid_time_, HybridTime::kInvalidHybridTime);
+  DCHECK(!hybrid_time_.is_valid());
   hybrid_time_ = hybrid_time;
 }
 

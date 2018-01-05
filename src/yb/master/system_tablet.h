@@ -39,7 +39,6 @@ class SystemTablet : public tablet::AbstractTablet {
 
   void RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
-  HybridTime SafeTimestampToRead() const override;
 
   CHECKED_STATUS HandleRedisReadRequest(
       const ReadHybridTime& read_time,
@@ -58,6 +57,9 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TableName& GetTableName() const;
  private:
+  HybridTime DoGetSafeHybridTimeToReadAt(
+      tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+
   Schema schema_;
   std::unique_ptr<YQLVirtualTable> yql_virtual_table_;
   TabletId tablet_id_;

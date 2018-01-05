@@ -150,8 +150,6 @@ class QLEnv {
   // Messenger used to requeue the CQL call upon callback.
   std::weak_ptr<rpc::Messenger> messenger_;
 
-  client::YBStatusMemberCallback<QLEnv> flush_done_cb_;
-
   // Transient attributes.
   // The following attributes are reset implicitly for every execution.
 

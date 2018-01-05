@@ -107,7 +107,7 @@ ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
 }
 
 Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
 
   // Our last persisted term can be higher than the last persisted operation
   // (i.e. if we called an election) but reverse should never happen.
@@ -134,7 +134,11 @@ Status ReplicaState::LockForStart(UniqueLock* lock) const {
 }
 
 bool ReplicaState::IsLocked() const {
-  return update_lock_.is_locked();
+  if (update_lock_.try_lock()) {
+    update_lock_.unlock();
+    return false;
+  }
+  return true;
 }
 
 Status ReplicaState::LockForRead(UniqueLock* lock) const {
@@ -258,7 +262,7 @@ Status ReplicaState::LockForShutdown(UniqueLock* lock) {
 }
 
 Status ReplicaState::ShutdownUnlocked() {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   CHECK_EQ(state_, kShuttingDown);
   state_ = kShutDown;
   return Status::OK();
@@ -269,17 +273,17 @@ ConsensusStatePB ReplicaState::ConsensusStateUnlocked(ConsensusConfigType type) 
 }
 
 RaftPeerPB::Role ReplicaState::GetActiveRoleUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->active_role();
 }
 
 bool ReplicaState::IsConfigChangePendingUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->has_pending_config();
 }
 
 Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   if (IsConfigChangePendingUnlocked()) {
     return STATUS(IllegalState,
         Substitute("RaftConfig change currently pending. Only one is allowed at a time.\n"
@@ -291,7 +295,7 @@ Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
 }
 
 Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM),
                         "Invalid config to set as pending");
   CHECK(!cmeta_->has_pending_config())
@@ -303,7 +307,7 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
 }
 
 Status ReplicaState::ClearPendingConfigUnlocked() {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   if (!cmeta_->has_pending_config()) {
     LOG(WARNING) << "Attempt to clear a non-existent pending config."
                  << "Existing committed config: " << cmeta_->committed_config().ShortDebugString();
@@ -314,14 +318,14 @@ Status ReplicaState::ClearPendingConfigUnlocked() {
 }
 
 const RaftConfigPB& ReplicaState::GetPendingConfigUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   CHECK(IsConfigChangePendingUnlocked()) << "No pending config";
   return cmeta_->pending_config();
 }
 
 Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& committed_config) {
   TRACE_EVENT0("consensus", "ReplicaState::SetCommittedConfigUnlocked");
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   DCHECK(committed_config.IsInitialized());
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(committed_config, COMMITTED_QUORUM),
                         "Invalid config to set as committed");
@@ -345,17 +349,17 @@ Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& committed_co
 }
 
 const RaftConfigPB& ReplicaState::GetCommittedConfigUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->committed_config();
 }
 
 const RaftConfigPB& ReplicaState::GetActiveConfigUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->active_config();
 }
 
 bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
 
   *term_mismatch = false;
 
@@ -394,7 +398,7 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
 Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   TRACE_EVENT1("consensus", "ReplicaState::SetCurrentTermUnlocked",
                "term", new_term);
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   if (PREDICT_FALSE(new_term <= GetCurrentTermUnlocked())) {
     return STATUS(IllegalState,
         Substitute("Cannot change term to a term that is lower than or equal to the current one. "
@@ -412,37 +416,37 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
 }
 
 const int64_t ReplicaState::GetCurrentTermUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->current_term();
 }
 
 void ReplicaState::SetLeaderUuidUnlocked(const std::string& uuid) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   cmeta_->set_leader_uuid(uuid);
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
 }
 
 const string& ReplicaState::GetLeaderUuidUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->leader_uuid();
 }
 
 const bool ReplicaState::HasVotedCurrentTermUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return cmeta_->has_voted_for();
 }
 
 Status ReplicaState::SetVotedForCurrentTermUnlocked(const std::string& uuid) {
   TRACE_EVENT1("consensus", "ReplicaState::SetVotedForCurrentTermUnlocked",
                "uuid", uuid);
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   cmeta_->set_voted_for(uuid);
   CHECK_OK(cmeta_->Flush());
   return Status::OK();
 }
 
 const std::string& ReplicaState::GetVotedForCurrentTermUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   DCHECK(cmeta_->has_voted_for());
   return cmeta_->voted_for();
 }
@@ -460,7 +464,7 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
 }
 
 void ReplicaState::DumpPendingOperationsUnlocked() {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_operations_.size()
                                  << " pending operations.";
   for (const auto &operation : pending_operations_) {
@@ -493,7 +497,7 @@ Status ReplicaState::CancelPendingOperations() {
 }
 
 Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting all operations after (but not including): "
       << new_preceding_idx << ". Current State: " << ToStringUnlocked();
 
@@ -531,7 +535,7 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
 }
 
 Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& round) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
 
   auto op_type = round->replicate_msg()->op_type();
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -605,14 +609,14 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
 }
 
 scoped_refptr<ConsensusRound> ReplicaState::GetPendingOpByIndexOrNullUnlocked(int64_t index) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return FindPtrOrNull(pending_operations_, index);
 }
 
 Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
                                                       OpId* committed_index,
                                                       bool* committed_index_changed) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   DCHECK(majority_replicated.IsInitialized());
   DCHECK(last_committed_index_.IsInitialized());
   if (PREDICT_FALSE(state_ == kShuttingDown || state_ == kShutDown)) {
@@ -657,7 +661,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
 }
 
 void ReplicaState::SetLastCommittedIndexUnlocked(const OpId& committed_index) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   CHECK_GE(last_received_op_id_.index(), committed_index.index());
   last_committed_index_ = committed_index;
 }
@@ -716,7 +720,7 @@ Status ReplicaState::CheckOperationExist(const OpId& committed_index,
 
 Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
                                                    bool *committed_index_changed) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   if (committed_index_changed) {
     *committed_index_changed = false;
   }
@@ -761,7 +765,7 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
 
 Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator iter,
                                                     const OpId &committed_index) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Last triggered apply was: "
       <<  last_committed_index_.ShortDebugString()
       << " Starting to apply from log index: " << (*iter).first;
@@ -837,7 +841,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
 }
 
 const OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return last_committed_index_;
 }
 
@@ -852,7 +856,7 @@ bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
 }
 
 void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   auto* trace = Trace::CurrentTrace();
   DCHECK_LE(OpIdCompare(last_received_op_id_, op_id), 0)
       << "Previously received OpId: " << last_received_op_id_.ShortDebugString()
@@ -865,23 +869,23 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
 }
 
 const OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return last_received_op_id_;
 }
 
 const OpId& ReplicaState::GetLastReceivedOpIdCurLeaderUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return last_received_op_id_current_leader_;
 }
 
 OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return pending_operations_.empty()
       ? MinimumOpId() : (--pending_operations_.end())->second->id();
 }
 
 void ReplicaState::NewIdUnlocked(OpId* id) {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   id->set_term(GetCurrentTermUnlocked());
   id->set_index(next_index_++);
 }
@@ -889,7 +893,7 @@ void ReplicaState::NewIdUnlocked(OpId* id) {
 void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
   OpId previous = id;
   previous.set_index(previous.index() - 1);
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   CHECK_EQ(GetCurrentTermUnlocked(), id.term());
   CHECK_EQ(next_index_, id.index() + 1);
   next_index_ = id.index();
@@ -916,7 +920,7 @@ string ReplicaState::LogPrefix() {
 }
 
 string ReplicaState::LogPrefixUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return Substitute("T $0 P $1 [term $2 $3]: ",
                     options_.tablet_id,
                     peer_uuid_,
@@ -931,7 +935,7 @@ string ReplicaState::LogPrefixThreadSafe() const {
 }
 
 ReplicaState::State ReplicaState::state() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   return state_;
 }
 
@@ -947,7 +951,7 @@ string ReplicaState::ToString() const {
 }
 
 string ReplicaState::ToStringUnlocked() const {
-  DCHECK(update_lock_.is_locked());
+  DCHECK(IsLocked());
   string ret;
   SubstituteAndAppend(&ret, "Replica: $0, State: $1, Role: $2\n",
                       peer_uuid_, state_,
@@ -1110,6 +1114,35 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
   }
 
   return result;
+}
+
+MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
+    MicrosTime min_allowed, MonoTime deadline) const {
+  auto result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
+  if (result >= min_allowed) { // Fast path
+    return result;
+  }
+
+  // Slow path
+  UniqueLock l(update_lock_);
+  auto predicate = [this, &result, min_allowed] {
+    result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
+    return result >= min_allowed;
+  };
+  if (deadline.IsMax()) {
+    cond_.wait(l, predicate);
+  } else if (!cond_.wait_until(l, deadline.ToSteadyTimePoint(), predicate)) {
+    return 0;
+  }
+  return result;
+}
+
+void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
+    const MajorityReplicatedData& majority_replicated_data) {
+  majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
+  majority_replicated_ht_lease_expiration_ = majority_replicated_data.ht_lease_expiration;
+
+  cond_.notify_all();
 }
 
 }  // namespace consensus
