@@ -824,7 +824,7 @@ uint64_t Log::OnDiskSize() {
     ret += segment->file_size();
   }
 
-  on_disk_size_.store(ret, std::memory_order_acquire);
+  on_disk_size_.store(ret, std::memory_order_release);
   return ret;
 }
 

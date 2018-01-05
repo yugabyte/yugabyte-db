@@ -203,7 +203,7 @@ def parallel_run_test(test_descriptor_str):
             # Also mark this in test results.
             failed_without_output = True
 
-    yb_dist_tests.TestResult(
+    return yb_dist_tests.TestResult(
             exit_code=exit_code,
             test_descriptor=test_descriptor,
             elapsed_time_sec=elapsed_time_sec,
