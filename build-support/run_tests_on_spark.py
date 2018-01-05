@@ -53,6 +53,7 @@ sys.path.append(YB_PYTHONPATH_ENTRY)
 
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
+from yb.common_util import set_to_comma_sep_str  # noqa
 
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
@@ -107,7 +108,11 @@ ONE_SHOT_TESTS = set([
 
 HASH_COMMENT_RE = re.compile('#.*$')
 
-SPARK_TASK_MAX_FAILURES = 1000
+# Number of failures of any particular task before giving up on the job. The total number of
+# failures spread across different tasks will not cause the job to fail; a particular task has to
+# fail this number of attempts. Should be greater than or equal to 1. Number of allowed retries =
+# this value - 1.
+SPARK_TASK_MAX_FAILURES = 100
 
 verbose = False
 
@@ -164,29 +169,45 @@ def parallel_run_test(test_descriptor_str):
     os.environ['build_type'] = global_conf.build_type
 
     yb_dist_tests.wait_for_clock_sync()
-    start_time = time.time()
 
     # We could use "run_program" here, but it collects all the output in memory, which is not
     # ideal for a large amount of test log output. The "tee" part also makes the output visible in
     # the standard error of the Spark task as well, which is sometimes helpful for debugging.
-    exit_code = os.system(
+    def run_test():
+        start_time = time.time()
+        exit_code = os.system(
             ("bash -c 'set -o pipefail; \"{}\" {} 2>&1 | tee \"{}\"'").format(
                     global_conf.get_run_test_script_path(),
                     test_descriptor.args_for_run_test,
                     test_descriptor.error_output_path)) >> 8
-    # The ">> 8" is to get the exit code returned by os.system() in the high 8 bits of the result.
-    elapsed_time_sec = time.time() - start_time
+        # The ">> 8" is to get the exit code returned by os.system() in the high 8 bits of the
+        # result.
+        elapsed_time_sec = time.time() - start_time
+        logging.info("Test {} ran on {}, rc={}".format(
+            test_descriptor, socket.gethostname(), exit_code))
+        return exit_code, elapsed_time_sec
 
-    logging.info("Test {} ran on {}, rc={}".format(
-        test_descriptor, socket.gethostname(), exit_code))
+    exit_code, elapsed_time_sec = run_test()
     error_output_path = test_descriptor.error_output_path
-    if os.path.isfile(error_output_path) and os.path.getsize(error_output_path) == 0:
-        os.remove(error_output_path)
 
-    return yb_dist_tests.TestResult(
+    failed_without_output = False
+    if os.path.isfile(error_output_path) and os.path.getsize(error_output_path) == 0:
+        if exit_code == 0:
+            # Test succeeded, no error output.
+            os.remove(error_output_path)
+        else:
+            # Test failed without any output! Re-run with "set -x" to diagnose.
+            os.environ['YB_DEBUG_RUN_TEST'] = '1'
+            exit_code, elapsed_time_sec = run_test()
+            del os.environ['YB_DEBUG_RUN_TEST']
+            # Also mark this in test results.
+            failed_without_output = True
+
+    yb_dist_tests.TestResult(
             exit_code=exit_code,
             test_descriptor=test_descriptor,
-            elapsed_time_sec=elapsed_time_sec)
+            elapsed_time_sec=elapsed_time_sec,
+            failed_without_output=failed_without_output)
 
 
 def parallel_list_test_descriptors(rel_test_path):
@@ -364,9 +385,17 @@ def is_one_shot_test(rel_binary_path):
     return False
 
 
-def collect_cpp_tests(max_tests, cpp_test_program_re_str):
+def collect_cpp_tests(max_tests, cpp_test_program_filter, cpp_test_program_re_str):
+    """
+    Collect C++ test programs to run.
+    @param max_tests: maximum number of tests to run. Used in debugging.
+    @param cpp_test_program_filter: a collection of C++ test program names to be used as a filter
+    @param cpp_test_program_re_str: a regular expression string to be used as a filter for the set
+                                    of C++ test programs.
+    """
+
     global_conf = yb_dist_tests.global_conf
-    logging.info("Collecting the list of C++ tests")
+    logging.info("Collecting the list of C++ test programs")
     start_time_sec = time.time()
     ctest_cmd_result = command_util.run_program(
             ['/bin/bash',
@@ -396,6 +425,27 @@ def collect_cpp_tests(max_tests, cpp_test_program_re_str):
         logging.info("Filtered down to %d test programs using regular expression '%s'" %
                      (len(test_programs), cpp_test_program_re_str))
 
+    if cpp_test_program_filter:
+        cpp_test_program_filter = set(cpp_test_program_filter)
+        unfiltered_test_programs = test_programs
+
+        # test_program contains test paths relative to the root directory (including directory
+        # names), and cpp_test_program_filter contains basenames only.
+        test_programs = sorted(set([
+                test_program for test_program in test_programs
+                if os.path.basename(test_program) in cpp_test_program_filter
+            ]))
+
+        logging.info("Filtered down to %d test programs using the list from test conf file" %
+                     len(test_programs))
+        if unfiltered_test_programs and not test_programs:
+            # This means we've filtered the list of C++ test programs down to an empty set.
+            logging.info(
+                    ("NO MATCHING C++ TEST PROGRAMS FOUND! Test programs from conf file: {}, "
+                     "collected from ctest before filtering: {}").format(
+                         set_to_comma_sep_str(cpp_test_program_filter),
+                         set_to_comma_sep_str(unfiltered_test_programs)))
+
     if max_tests and len(test_programs) > max_tests:
         logging.info("Randomly selecting {} test programs out of {} possible".format(
                 max_tests, len(test_programs)))
@@ -418,8 +468,10 @@ def collect_cpp_tests(max_tests, cpp_test_program_re_str):
 
     # Use fewer "slices" (tasks) than there are test programs, in hope to get some batching.
     num_slices = (len(test_programs) + 1) / 2
-    all_test_descriptor_lists = spark_context.parallelize(
+    all_test_descriptor_lists = run_spark_action(
+        lambda: spark_context.parallelize(
             test_programs, numSlices=num_slices).map(parallel_list_test_descriptors).collect()
+    )
     elapsed_time_sec = time.time() - start_time_sec
     test_descriptor_strs += [
         test_descriptor_str
@@ -447,20 +499,33 @@ def fatal_error(msg):
 def collect_tests(args):
     cpp_test_descriptors = []
 
-    if args.cpp_test_program_regexp and args.cpp_test_program_list:
+    if args.cpp_test_program_regexp and args.test_conf:
         raise RuntimeException(
-            "--cpp_test_program_regexp and --cpp_test_program_list cannot both be specified "
-            "at the same time.")
+            "--cpp_test_program_regexp and --test_conf cannot both be specified at the same time.")
 
-    if args.cpp_test_program_list:
-        logging.info("Reading the list of C++ test programs to run from '{}'".format(
-            args.cpp_test_program_list))
-        with open(args.cpp_test_program_list) as test_prog_list_file:
-            args.cpp_test_program_regexp = '|'.join(
-                sorted(set([line.strip() for line in test_prog_list_file]) - set([''])))
+    test_conf = {}
+    if args.test_conf:
+        with open(args.test_conf) as test_conf_file:
+            test_conf = json.load(test_conf_file)
+        if args.run_cpp_tests and not test_conf['run_cpp_tests']:
+            logging.info("The test configuration file says that C++ tests should be skipped")
+            args.run_cpp_tests = False
+        if not test_conf['run_java_tests']:
+            logging.info("The test configuration file says that Java tests should be skipped")
+            args.run_java_tests = False
 
+    cpp_test_descriptors = []
     if args.run_cpp_tests:
-        cpp_test_descriptors = collect_cpp_tests(args.max_tests, args.cpp_test_program_regexp)
+        cpp_test_programs = test_conf.get('cpp_test_programs')
+        if args.cpp_test_program_regexp and cpp_test_programs:
+            logging.warning(
+                    ("Ignoring the C++ test program regular expression specified on the "
+                     "command line: {}").format(args.cpp_test_program_regexp))
+
+        cpp_test_descriptors = collect_cpp_tests(
+                args.max_tests,
+                cpp_test_programs,
+                args.cpp_test_program_regexp)
 
     java_test_descriptors = []
     yb_src_root = yb_dist_tests.global_conf.yb_src_root
@@ -510,6 +575,17 @@ def propagate_env_vars():
             propagated_env_vars[env_var_name] = env_var_value
 
 
+def run_spark_action(action):
+    import py4j
+    try:
+        results = action()
+    except py4j.protocol.Py4JJavaError:
+        logging.error("Spark job failed to run! Jenkins should probably restart this build.")
+        raise
+
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Run tests on Spark.')
@@ -546,9 +622,9 @@ def main():
                              'work even if neither --reports-dir or --write_report are specified.')
     parser.add_argument('--cpp_test_program_regexp',
                         help='A regular expression to filter C++ test program names on.')
-    parser.add_argument('--cpp_test_program_list',
-                        help='File name to read the list of C++ test progarms to run from, one '
-                             'per line.')
+    parser.add_argument('--test_conf',
+                        help='A file with a JSON configuration describing what tests to run, '
+                             'produced by dependency_graph.py')
     parser.add_argument('--num_repetitions', type=int, default=1,
                         help='Number of times to run each test.')
     parser.add_argument('--failed_test_list',
@@ -657,7 +733,6 @@ def main():
 
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
-    global_exit_code = None
     spark_succeeded = False
     if test_descriptors:
         logging.info("Running {} tasks on Spark".format(total_num_tests))
@@ -669,32 +744,14 @@ def main():
                 [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
                 numSlices=total_num_tests)
 
-        spark_succeeded = False
-        import py4j
-        try:
-            results = test_names_rdd.map(parallel_run_test).collect()
-            spark_succeeded = True
-        except py4j.protocol.Py4JJavaError:
-            traceback.print_exc()
-            # We use the value 69 because it is the value of the EX_UNAVAILABLE constant from the
-            # standard sysexits.h header, which contains an attempt to categorize exit codes. In
-            # this case the Spark cluster is probably unavailable.
-            global_exit_code = 69
-
-        if not spark_succeeded:
-            logging.error("Spark job failed to run! Jenkins should probably restart this build.")
-
+        results = run_spark_action(lambda: test_names_rdd.map(parallel_run_test).collect())
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
 
     test_exit_codes = set([result.exit_code for result in results])
 
-    if not global_exit_code:
-        if test_exit_codes == set([0]):
-            global_exit_code = 0
-        else:
-            global_exit_code = 1
+    global_exit_code = 0 if test_exit_codes == set([0]) else 1
 
     logging.info("Tests are done, set of exit codes: {}, will return exit code {}".format(
         sorted(test_exit_codes), global_exit_code))
@@ -702,7 +759,10 @@ def main():
     failed_test_desc_strs = []
     for result in results:
         if result.exit_code != 0:
-            logging.info("Test failed: {}".format(result.test_descriptor))
+            how_test_failed = ""
+            if result.failed_without_output:
+                how_test_failed = " without any output"
+            logging.info("Test failed{}: {}".format(how_test_failed, result.test_descriptor))
             failures_by_language[result.test_descriptor.language] += 1
             failed_test_desc_strs.append(result.test_descriptor.descriptor_str)
 

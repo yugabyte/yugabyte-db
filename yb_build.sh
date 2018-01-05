@@ -111,6 +111,8 @@ Options:
   --ninja
     Use the Ninja backend instead of Make for CMake. This provides faster build speed in case
     most part of the code is already built.
+  --make
+    Use the Make backend (as opposed to Ninja).
   --build-root
     The build root directory, e.g. build/debug-gcc-dynamic-enterprise. This is used in scripting
     and is checked against other parameters.
@@ -420,6 +422,9 @@ while [ $# -gt 0 ]; do
     ;;
     --ninja)
       export YB_USE_NINJA=1
+    ;;
+    --make)
+      unset YB_USE_NINJA
     ;;
     --build-root)
       predefined_build_root=$2

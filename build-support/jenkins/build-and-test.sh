@@ -161,7 +161,6 @@ readonly BUILD_TYPE
 
 set_cmake_build_type_and_compiler_type
 
-export YB_USE_NINJA=1
 set_build_root --no-readonly
 
 set_common_test_paths
@@ -175,7 +174,21 @@ run_python_tests
 YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 
+if is_jenkins && \
+   ! is_jenkins_master_build && \
+   [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && \
+   ! is_mac; then
+  log "Enabling running affected tests only as this seems to be a non-master Jenkins build"
+  YB_RUN_AFFECTED_TESTS_ONLY=1
+  # Use Make as we can only parse Make's build files to recover the dependency graph.
+  YB_USE_NINJA=0
+elif [[ ${YB_RUN_AFFECTED_TESTS_ONLY:-0} == "0" ]]; then
+  # OK to use Ninja if we don't care about the dependency graph.
+  YB_USE_NINJA=1
+fi
+
 export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
+log "YB_RUN_AFFECTED_TESTS_ONLY=$YB_RUN_AFFECTED_TESTS_ONLY"
 export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
 if [[ $YB_SKIP_BUILD == "1" ]]; then
   export NO_REBUILD_THIRDPARTY=1
@@ -332,6 +345,8 @@ fi
 # -------------------------------------------------------------------------------------------------
 # Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
 
+heading "Building C++ code"
+
 if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
 
   cd "$YB_SRC_ROOT"
@@ -410,9 +425,13 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   )
 fi
 
-# Save the current HEAD commit in case we build java below and add a new commit. This is primarily
-# so that we can still upload the release under the correct commit, from Jenkins, to then be picked
-# up from itest, from the snapshots bucket.
+# Save the current HEAD commit in case we build Java below and add a new commit. This is used for
+# the following purposes:
+# - So we can upload the release under the correct commit, from Jenkins, to then be picked up from
+#   itest, from the snapshots bucket.
+# - For picking up the changeset corresponding the the current diff being tested and detecting what
+#   tests to run in Phabricator builds. If we just diff with origin/master, we'll always pick up
+#   pom.xml changes we've just made, forcing us to always run Java tests.
 current_git_commit=$(git rev-parse HEAD)
 
 # -------------------------------------------------------------------------------------------------
@@ -470,7 +489,7 @@ fi
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       $build_type != "tsan" &&
       $build_type != "asan" ]]; then
-  log "Creating a distribution package"
+  heading "Creating a distribution package"
 
   package_path_file="$BUILD_ROOT/package_path.txt"
   rm -f "$package_path_file"
@@ -529,16 +548,18 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         extra_args+=( "--cpp" )
       fi
       if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
-        test_program_list_path="$BUILD_ROOT/affected_cxx_test_programs.txt"
+        test_conf_path="$BUILD_ROOT/test_conf.json"
+        # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
+        # of tests to run. Useful when testing this script.
         "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
             --build-root "$BUILD_ROOT" \
-            --git-diff origin/master \
-            --output-test-list "$test_program_list_path" \
+            --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+            --output-test-config "$test_conf_path" \
             affected
-        extra_args+=( "--cpp_test_program_list" "$test_program_list_path" )
-        unset test_program_list_path
+        extra_args+=( "--test_conf" "$test_conf_path" )
+        unset test_conf_path
       fi
-      set +u  # bacause extra_args can be empty
+      set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${extra_args[@]}"; then
         set -u
         EXIT_STATUS=1

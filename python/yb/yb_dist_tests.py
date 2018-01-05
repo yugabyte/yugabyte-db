@@ -148,7 +148,8 @@ TestResult = collections.namedtuple(
         'TestResult',
         ['test_descriptor',
          'exit_code',
-         'elapsed_time_sec'])
+         'elapsed_time_sec',
+         'failed_without_output'])
 
 ClockSyncCheckResult = collections.namedtuple(
         'ClockSyncCheckResult',

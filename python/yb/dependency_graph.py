@@ -5,6 +5,9 @@ Build a dependency graph of sources, object files, libraries, and binaries.  Com
 tests that might be affected by changes to the given set of source files.
 """
 
+from __future__ import print_function
+from six import iteritems
+
 import argparse
 import fnmatch
 import json
@@ -18,7 +21,9 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from yb.common_util import group_by, make_set, get_build_type_from_build_root  # nopep8
+from yb.common_util import group_by, make_set, get_build_type_from_build_root, \
+                           convert_to_non_ninja_build_root   # nopep8
+from yb.command_util import mkdir_p  # nopep8
 
 
 def make_extensions(exts_without_dot):
@@ -56,6 +61,17 @@ HOME_DIR = os.path.realpath(os.path.expanduser('~'))
 
 # This will match any node type (node types being sources/libraries/tests/etc.)
 NODE_TYPE_ANY = 'any'
+
+CATEGORY_DOES_NOT_AFFECT_TESTS = 'does_not_affect_tests'
+
+# File changes in any category other than these will cause all tests to be re-run.  Even though
+# changes to Python code affect the test framework, we can consider this Python code to be
+# reasonably tested already, by running doctests, this script, the packaging script, etc.  We can
+# remove "python" from this whitelist in the future.
+CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS = set(
+        ['java', 'c++', 'python', CATEGORY_DOES_NOT_AFFECT_TESTS,
+         # TODO: remove build_scripts from here (for testing only).
+         'build_scripts'])
 
 
 def is_object_file(path):
@@ -216,10 +232,19 @@ def is_abs_path(path):
 
 
 class Configuration:
+
     def __init__(self, args):
         self.args = args
         self.verbose = args.verbose
-        self.build_root = os.path.abspath(args.build_root)
+        self.build_root = os.path.realpath(args.build_root)
+
+        # We can't use Ninja build files for dependency tracking. We will need to also create a
+        # build directory with Make-compatible files. In practice, even this turns out not to be
+        # sufficient, as we still need depend.make files that only get generated when we perform
+        # the Make-based build, so in practice we just switch to using Make for Phabricator builds.
+        # However, keeping this logic as we might find a way to use Ninja builds for dependency
+        # tracking in the future.
+        self.build_root_make = convert_to_non_ninja_build_root(self.build_root)
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.yb_src_root = os.path.dirname(os.path.dirname(self.build_root))
         self.src_dir_path = os.path.join(self.yb_src_root, 'src')
@@ -248,7 +273,6 @@ class DependencyGraphBuilder:
         self.unresolvable_rel_paths = set()
         self.resolved_rel_paths = {}
         self.dep_graph = DependencyGraph(conf)
-        self.build_root = conf.build_root
         self.cmake_deps = {}
 
     def load_cmake_deps(self):
@@ -279,22 +303,35 @@ class DependencyGraphBuilder:
                     cmake_dep_set.add(cmake_dep)
 
         self.cmake_targets = set()
-        for cmake_target, cmake_target_deps in self.cmake_deps.iteritems():
+        for cmake_target, cmake_target_deps in iteritems(self.cmake_deps):
             self.cmake_targets.update(set([cmake_target] + list(cmake_target_deps)))
         logging.info("Found {} CMake targets in '{}'".format(
             len(self.cmake_targets), cmake_deps_path))
 
     def parse_link_and_depend_files(self):
         logging.info(
-                "Parsing link.txt and depend.make files from the build tree at {}".format(
-                    self.build_root))
-        for root, dirs, files in os.walk(self.build_root):
+                "Parsing link.txt and depend.make files from the build tree at '{}'".format(
+                    self.conf.build_root_make))
+        start_time = datetime.now()
+
+        num_parsed = 0
+        for root, dirs, files in os.walk(self.conf.build_root_make):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
                 if file_name == 'depend.make':
                     self.parse_depend_file(file_path)
+                    num_parsed += 1
                 elif file_name == 'link.txt':
                     self.parse_link_txt_file(file_path)
+                    num_parsed += 1
+            if num_parsed % 10 == 0:
+                print('.', end='', file=sys.stderr)
+                sys.stderr.flush()
+        print('', file=sys.stderr)
+        sys.stderr.flush()
+
+        logging.info("Parsed link.txt and depend.make files in %.2f seconds" %
+                     (datetime.now() - start_time).total_seconds())
 
     def find_proto_files(self):
         for src_subtree_root in [self.conf.src_dir_path, self.conf.ent_src_dir_path]:
@@ -323,15 +360,21 @@ class DependencyGraphBuilder:
         for cmake_target in self.cmake_targets:
             nodes = self.cmake_target_to_nodes.get(cmake_target)
             if not nodes:
+                # List some potentially related nodes before we crash.
+                for node in self.dep_graph.get_nodes():
+                    if cmake_target in node.path:
+                        logging.warning("Potentially matching node: {}".format(node))
+                logging.warning("Total number of nodes: {}".format(len(self.dep_graph.get_nodes())))
                 raise RuntimeError("Could not find file for CMake target '{}'".format(cmake_target))
+
             if len(nodes) > 1:
-                raise RuntimeError("Ambigous nodes found for CMake target '{}': {}".format(
+                raise RuntimeError("Ambiguous nodes found for CMake target '{}': {}".format(
                     cmake_target, nodes))
             self.cmake_target_to_node[cmake_target] = list(nodes)[0]
 
         # We're not adding nodes into our graph for CMake targets. Instead, we're finding files
         # that correspond to CMake targets, and add dependencies to those files.
-        for cmake_target, cmake_target_deps in self.cmake_deps.iteritems():
+        for cmake_target, cmake_target_deps in iteritems(self.cmake_deps):
             node = self.cmake_target_to_node[cmake_target]
             for cmake_target_dep in cmake_target_deps:
                 node.add_dependency(self.cmake_target_to_node[cmake_target_dep])
@@ -369,7 +412,7 @@ class DependencyGraphBuilder:
         if is_abs_path(rel_path):
             return rel_path
         if is_object_file(rel_path):
-            return os.path.join(self.build_root, rel_path)
+            return os.path.join(self.conf.build_root, rel_path)
         raise RuntimeError(
             "Don't know how to resolve relative path of a 'dependent': {}".format(
                 rel_path))
@@ -395,7 +438,7 @@ class DependencyGraphBuilder:
         if is_abs_path(rel_path):
             return self.find_node(rel_path, must_exist=True)
         candidates = []
-        for path, node in self.node_by_path.iteritems():
+        for path, node in iteritems(self.node_by_path):
             if path.endswith('/' + rel_path):
                 candidates.append(node)
         if not candidates:
@@ -405,6 +448,7 @@ class DependencyGraphBuilder:
         return candidates[0]
 
     def parse_link_txt_file(self, link_txt_path):
+        assert link_txt_path.startswith(self.conf.build_root_make + '/')
         with open(link_txt_path) as link_txt_file:
             link_command = link_txt_file.read().strip()
         link_args = link_command.split()
@@ -444,16 +488,21 @@ class DependencyGraphBuilder:
             output_node.add_dependency(self.dep_graph.find_or_create_node(input_node))
 
     def build(self):
-        compile_commands_path = os.path.join(self.conf.build_root, 'compile_commands.json')
+        compile_commands_path = os.path.join(self.conf.build_root_make, 'compile_commands.json')
         if not os.path.exists(compile_commands_path):
+
             # This is mostly useful during testing. We don't want to generate the list of compile
             # commands by default because it takes a while, so only generate it on demand.
             os.environ['CMAKE_EXPORT_COMPILE_COMMANDS'] = '1'
+            mkdir_p(self.conf.build_root_make)
+
+            os.environ['YB_USE_NINJA'] = '0'
             subprocess.check_call(
                     [os.path.join(self.conf.yb_src_root, 'yb_build.sh'),
                      self.conf.build_type,
                      '--cmake-only',
-                     '--no-rebuild-thirdparty'])
+                     '--no-rebuild-thirdparty',
+                     '--build-root', self.conf.build_root_make])
 
         logging.info("Loading compile commands from '{}'".format(compile_commands_path))
         with open(compile_commands_path) as commands_file:
@@ -473,6 +522,8 @@ class DependencyGraphBuilder:
 
 
 class DependencyGraph:
+
+    canonicalization_cache = {}
 
     def __init__(self, conf, json_data=None):
         """
@@ -503,7 +554,16 @@ class DependencyGraph:
         Finds a node with the given path or creates it if it does not exist.
         @param source_str a string description of how we came up with this node's path
         """
-        return self.find_node(path, must_exist=False, source_str=source_str)
+
+        canonical_path = self.canonicalization_cache.get(path)
+        if not canonical_path:
+            canonical_path = os.path.realpath(path)
+            if canonical_path.startswith(self.conf.build_root_make + '/'):
+                canonical_path = self.conf.build_root + '/' + \
+                                 canonical_path[len(self.conf.build_root_make) + 1:]
+            self.canonicalization_cache[path] = canonical_path
+
+        return self.find_node(canonical_path, must_exist=False, source_str=source_str)
 
     def init_from_json(self, json_nodes):
         id_to_node = {}
@@ -512,7 +572,7 @@ class DependencyGraph:
             node_id = node_json['id']
             id_to_node[node_id] = self.find_or_create_node(node_json['path'])
             id_to_dep_ids[node_id] = node_json['deps']
-        for node_id, dep_ids in id_to_dep_ids.iteritems():
+        for node_id, dep_ids in iteritems(id_to_dep_ids):
             node = id_to_node[node_id]
             for dep_id in dep_ids:
                 node.add_dependency(id_to_node[dep_id])
@@ -556,9 +616,14 @@ class DependencyGraph:
         return results
 
     def affected_basenames_by_basename_for_test(self, basename, node_type=NODE_TYPE_ANY):
+        nodes_for_basename = self.find_nodes_by_basename(basename)
+        if not nodes_for_basename:
+            self.dump_debug_info()
+            raise RuntimeError(
+                    "No nodes found for file name '{}' (total number of nodes: {})".format(
+                        basename, len(self.node_by_path)))
         return set([os.path.basename(node.path)
-                   for node in self.find_affected_nodes(
-                       self.find_nodes_by_basename(basename), node_type)])
+                    for node in self.find_affected_nodes(nodes_for_basename, node_type)])
 
     def save_as_json(self, output_path):
         """
@@ -579,7 +644,7 @@ class DependencyGraph:
                 return node_id
 
             is_first = True
-            for node_path, node in self.node_by_path.iteritems():
+            for node_path, node in iteritems(self.node_by_path):
                 node_json = dict(
                     id=get_node_id(node),
                     path=node_path,
@@ -600,6 +665,12 @@ class DependencyGraph:
 
     def get_nodes(self):
         return self.node_by_path.values()
+
+    def dump_debug_info(self):
+        logging.info("Dumping all graph nodes for debugging ({} nodes):".format(
+            len(self.node_by_path)))
+        for node in sorted(self.get_nodes(), key=lambda node: str(node)):
+            logging.info(node)
 
 
 class DependencyGraphTest(unittest.TestCase):
@@ -668,12 +739,6 @@ class DependencyGraphTest(unittest.TestCase):
 
         self.assert_unaffected_by(['yb-master'], 'tablet_server_main.cc')
 
-    def test_linked_list_test_util_header(self):
-        self.assert_affected_by([
-                'linked_list-test',
-                'linked_list-test.cc.o'
-            ], 'linked_list-test-util.h')
-
     def test_bulk_load_tool(self):
         self.assert_affected_exactly_by([
                 'yb-bulk_load',
@@ -691,6 +756,44 @@ def run_self_test(dep_graph):
     if result.errors or result.failures:
         logging.info("Self-test of the dependency graph traversal tool failed!")
         sys.exit(1)
+
+
+def get_file_category(rel_path):
+    """
+    Categorize file changes so that we can decide what tests to run.
+
+    @param rel_path: path relative to the source root (not to the build root)
+    """
+    basename = os.path.basename(rel_path)
+
+    if rel_path.startswith('bin/'):
+        # As of December 2017, there is nothing in the "bin" directory that is being used by tests.
+        # If that changes, this needs to be updated. Note that the "bin" directory here is the
+        # yugabyte/bin directory in the source tree, not the "bin" directory under the build
+        # directory, so it only has scripts and not yb-master / yb-tserver binaries.
+        return CATEGORY_DOES_NOT_AFFECT_TESTS
+
+    if rel_path == 'yb_build.sh':
+        # The main build script is being run anyway.
+        return CATEGORY_DOES_NOT_AFFECT_TESTS
+
+    if basename == 'CMakeLists.txt' or basename.endswith('.cmake'):
+        return 'cmake'
+
+    if rel_path.startswith('src/') or rel_path.startswith('ent/src/'):
+        return 'c++'
+
+    if rel_path.startswith('python/'):
+        return 'python'
+
+    # Top-level subdirectories that map one-to-one to categories.
+    for category_dir in ['java', 'thirdparty']:
+        if rel_path.startswith(category_dir + '/'):
+            return category_dir
+
+    if rel_path.startswith('build-support/'):
+        return 'build_scripts'
+    return 'other'
 
 
 def main():
@@ -725,9 +828,10 @@ def main():
     parser.add_argument('command',
                         choices=COMMANDS,
                         help='Command to perform')
-    parser.add_argument('--output-test-list',
-                        help='Output the resulting list of C++ tests to run to this file, one per '
-                             'line.')
+    parser.add_argument('--output-test-config',
+                        help='Output a "test configuration file", which is a JSON containing the '
+                             'resulting list of C++ tests to run to this file, a flag indicating '
+                             'wheter to run Java tests or not, etc.')
     parser.add_argument('--incomplete-build',
                         action='store_true',
                         help='Skip checking for file existence. Allows using the tool after '
@@ -782,6 +886,8 @@ def main():
         run_self_test(dep_graph)
         return
 
+    updated_categories = None
+    file_changes = []
     if args.git_diff:
         old_working_dir = os.getcwd()
         os.chdir(conf.yb_src_root)
@@ -794,6 +900,7 @@ def main():
             file_path = file_path.strip()
             if not file_path:
                 continue
+            file_changes.append(file_path)
             # It is important that we invoke os.path.realpath with the current directory set to
             # the git repository root.
             file_path = os.path.realpath(file_path)
@@ -810,6 +917,13 @@ def main():
             for basename in set([os.path.basename(file_path) for file_path in file_paths]):
                 logging.warning("Nodes for basename '{}': {}".format(
                     basename, dep_graph.find_nodes_by_basename(basename)))
+
+        file_changes_by_category = group_by(file_changes, get_file_category)
+        for category, changes in file_changes_by_category.items():
+            logging.info("File changes in category '{}':".format(category))
+            for change in sorted(changes):
+                logging.info("    {}".format(change))
+        updated_categories = set(file_changes_by_category.keys())
 
     elif conf.file_regex:
         logging.info("Using file name regex: {}".format(conf.file_regex))
@@ -829,19 +943,62 @@ def main():
     else:
         raise RuntimeError("Unimplemented command '{}'".format(command))
 
-    if args.output_test_list:
+    if args.output_test_config:
         test_basename_list = sorted(
                 [os.path.basename(node.path) for node in results if node.node_type == 'test'])
-        with open(args.output_test_list, 'w') as output_file:
-            output_file.write("\n".join(test_basename_list) + "\n")
+        affected_basenames = set([os.path.basename(node.path) for node in results])
+
+        # These are ALL tests, not just tests affected by the changes in question, used mostly
+        # for logging.
         all_test_programs = [node for node in dep_graph.get_nodes() if node.node_type == 'test']
         all_test_basenames = set([os.path.basename(node.path) for node in all_test_programs])
-        logging.info(
-                "Wrote a list of {} C++ test program names (out of {} possible, {}%) to {}".format(
-                    len(test_basename_list),
-                    len(all_test_basenames),
-                    int(100.0 * len(test_basename_list) / len(all_test_basenames)),
-                    args.output_test_list))
+
+        # A very conservative way to decide whether to run all tests. If there are changes in any
+        # categories (meaning the changeset is non-empty), and there are changes in categories other
+        # than C++ / Java / files known not to affect unit tests, we force re-running all tests.
+        unsafe_categories = updated_categories - CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS
+        run_all_tests = bool(unsafe_categories)
+
+        cpp_files_changed = 'c++' in updated_categories
+        java_files_changed = 'java' in updated_categories
+        yb_master_or_tserver_changed = bool(affected_basenames & set(['yb-master', 'yb-tserver']))
+
+        run_cpp_tests = run_all_tests or cpp_files_changed
+        run_java_tests = run_all_tests or java_files_changed or yb_master_or_tserver_changed
+
+        if run_all_tests:
+            logging.info(
+                    "All tests should be run based on file changes in these categories: {}".format(
+                        ', '.join(sorted(unsafe_categories))))
+        else:
+            if run_cpp_tests:
+                logging.info('Will run some C++ tests, some C++ files changed')
+            if run_java_tests:
+                logging.info('Will run all Java tests, ' +
+                             ' and '.join(
+                                 (['some Java files changed'] if java_files_changed else []) +
+                                 (['yb-{master,tserver} binaries changed']
+                                  if yb_master_or_tserver_changed else [])))
+
+        test_conf = dict(
+            run_cpp_tests=run_cpp_tests,
+            run_java_tests=run_java_tests,
+            file_changes_by_category=file_changes_by_category
+        )
+        if not run_all_tests:
+            test_conf['cpp_test_programs'] = test_basename_list
+            logging.info(
+                    "{} C++ test programs should be run (out of {} possible, {}%)".format(
+                        len(test_basename_list),
+                        len(all_test_basenames),
+                        "%.1f" % (100.0 * len(test_basename_list) / len(all_test_basenames))))
+            if len(test_basename_list) != len(all_test_basenames):
+                logging.info("The following C++ test programs will be run: {}".format(
+                    ", ".join(sorted(test_basename_list))))
+
+        with open(args.output_test_config, 'w') as output_file:
+            output_file.write(json.dumps(test_conf, indent=2) + "\n")
+        logging.info("Wrote a test configuration to {}".format(args.output_test_config))
     else:
         # For ad-hoc command-line use, mostly for testing and sanity-checking.
         for node in sorted(results, key=lambda node: [node.node_type, node.path]):

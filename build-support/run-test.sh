@@ -42,6 +42,11 @@
 
 set -euo pipefail
 
+if [[ ${YB_DEBUG_RUN_TEST:-} == "1" ]]; then
+  log "Running ${0##*/} with 'set -x' for debugging (perhaps it previously failed with no output)."
+  set -x
+fi
+
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 . "${BASH_SOURCE%/*}/common-test-env.sh"
 
