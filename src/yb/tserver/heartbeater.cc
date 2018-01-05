@@ -387,13 +387,15 @@ Status Heartbeater::Thread::TryHeartbeat() {
       MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::Now()) {
 
     // Get the total memory used.
-    rusage ru;
-    if (getrusage(RUSAGE_SELF, &ru) == -1) {
-      LOG(ERROR) << "Could not get the memory usage; getrusage() failed";
+    size_t mem_usage;
+    if (MallocExtension::instance()->GetNumericProperty(
+        "generic.current_allocated_bytes", &mem_usage)) {
+      req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t> (mem_usage));
+      VLOG(4) << "Total Memory Usage: " << mem_usage;
     } else {
-      req.mutable_metrics()->set_total_ram_usage(ru.ru_maxrss);
-      VLOG(4) << "Total Memory Usage: " << ru.ru_maxrss;
+      YB_LOG_EVERY_N(ERROR, 10) << "Getting memory usage from TCMalloc failed!";
     }
+
     // Get the Total SST file sizes and set it in the proto buf
     std::vector<scoped_refptr<yb::tablet::TabletPeer> > tablet_peers;
     uint64_t total_file_sizes = 0;
