@@ -73,24 +73,24 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   set_asan_tsan_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
   surefire_rel_tmp_dir=surefire$(date +%Y-%m-%d_%H_%M_%S)_${RANDOM}_$$
-  (
-    cd "$YB_SRC_ROOT/java"
-    set -x
-    # We specify tempDir to use a separate temporary directory for each test.
-    # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
-    mvn -Dtest="$test_class" \
-      --projects "$module_name" \
-      --settings "$YB_MVN_SETTINGS_PATH" \
-      -DbinDir="$BUILD_ROOT/bin" \
-      -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" \
-      -DtempDir="$surefire_rel_tmp_dir" \
-      -DskipAssembly \
-      -Dmaven.javadoc.skip \
-      -X \
-      surefire:test \
-      2>&1 | tee "$YB_TEST_LOG_ROOT_DIR/java/${module_name}__${test_class}.log"
-  )
-  exit
+
+  cd "$YB_SRC_ROOT/java"
+  set -x +e
+  # We specify tempDir to use a separate temporary directory for each test.
+  # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
+  mvn -Dtest="$test_class" \
+    --projects "$module_name" \
+    --settings "$YB_MVN_SETTINGS_PATH" \
+    -DbinDir="$BUILD_ROOT/bin" \
+    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" \
+    -DtempDir="$surefire_rel_tmp_dir" \
+    -DskipAssembly \
+    -Dmaven.javadoc.skip \
+    -X \
+    surefire:test \
+    2>&1 | tee "$YB_TEST_LOG_ROOT_DIR/java/${module_name}__${test_class}.log"
+  # Ignore the exit code from tee, only use the one from Maven.
+  exit ${PIPESTATUS[0]}
 fi
 
 TEST_PATH=${1:-}
