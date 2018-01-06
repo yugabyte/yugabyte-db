@@ -2,15 +2,19 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 
-#include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
-#include "yb/util/logging.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/catalog_manager.h"
+
 #include "yb/rpc/messenger.h"
 
 #include "yb/tserver/backup.proxy.h"
+
+#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace master {
