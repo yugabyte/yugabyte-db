@@ -38,8 +38,8 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/client/row_result.h"
-#include "yb/client/scanner-internal.h"
+#include "yb/client/table_handle.h"
+
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -58,21 +58,16 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
-using yb::client::YBRowResult;
 using yb::HostPort;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
-using yb::client::YBScanBatch;
 using yb::tablet::TabletStatusPB;
 using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
 using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
-using yb::tserver::NewScanRequestPB;
-using yb::tserver::ScanRequestPB;
-using yb::tserver::ScanResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
 using std::ostringstream;
@@ -262,51 +257,30 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   RETURN_NOT_OK(GetTabletSchema(tablet_id, &schema_pb));
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(schema_pb, &schema));
-  yb::client::YBSchema client_schema(schema);
 
-  ScanRequestPB req;
-  ScanResponsePB resp;
+  tserver::ReadRequestPB req;
+  tserver::ReadResponsePB resp;
 
-  NewScanRequestPB* new_req = req.mutable_new_scan_request();
-  RETURN_NOT_OK(SchemaToColumnPBs(
-      schema, new_req->mutable_projected_columns(), SCHEMA_PB_WITHOUT_IDS));
-  new_req->set_tablet_id(tablet_id);
-  new_req->set_cache_blocks(false);
-  new_req->set_order_mode(ORDERED);
+  req.set_tablet_id(tablet_id);
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK_PREPEND(ts_proxy_->Read(req, &resp, &rpc), "Read() failed");
 
-  vector<YBRowResult> rows;
-  while (true) {
-    RpcController rpc;
-    rpc.set_timeout(timeout_);
-    RETURN_NOT_OK_PREPEND(ts_proxy_->Scan(req, &resp, &rpc),
-                          "Scan() failed");
-
-    if (resp.has_error()) {
-      return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
-    }
-
-    rows.clear();
-    YBScanBatch::Data results;
-    RETURN_NOT_OK(results.Reset(&rpc,
-                                &schema,
-                                &client_schema,
-                                make_gscoped_ptr(resp.release_data())));
-    results.ExtractRows(&rows);
-    for (const YBRowResult& r : rows) {
-      std::cout << r.ToString() << std::endl;
-    }
-
-    // The first response has a scanner ID. We use this for all subsequent
-    // responses.
-    if (resp.has_scanner_id()) {
-      req.set_scanner_id(resp.scanner_id());
-      req.clear_new_scan_request();
-    }
-    req.set_call_seq_id(req.call_seq_id() + 1);
-    if (!resp.has_more_results()) {
-      break;
-    }
+  if (resp.has_error()) {
+    return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
   }
+
+  QLRowBlock row_block(schema);
+  Slice data;
+  RETURN_NOT_OK(rpc.GetSidecar(0, &data));
+  if (!data.empty()) {
+    RETURN_NOT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
+  }
+
+  for (const auto& row : row_block.rows()) {
+    std::cout << row.ToString() << std::endl;
+  }
+
   return Status::OK();
 }
 

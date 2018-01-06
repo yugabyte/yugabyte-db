@@ -47,7 +47,6 @@
 
 namespace yb {
 
-class ColumnRangePredicate;
 class ConstContiguousRow;
 class YBPartialRow;
 class PartitionSchemaPB;

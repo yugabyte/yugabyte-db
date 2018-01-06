@@ -38,7 +38,6 @@
 #include "yb/common/crc16.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/row_key-util.h"
-#include "yb/common/scan_predicate.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/hash/hash.h"

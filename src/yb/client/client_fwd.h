@@ -44,8 +44,6 @@ class YBRedisOp;
 class YBRedisReadOp;
 class YBRedisWriteOp;
 
-class YBScanner;
-
 class YBSession;
 typedef std::shared_ptr<YBSession> YBSessionPtr;
 

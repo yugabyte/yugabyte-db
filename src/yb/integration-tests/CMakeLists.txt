@@ -62,7 +62,7 @@ add_dependencies(integration-tests
   yb-master)
 
 # Tests
-set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS integration-tests yb_client yb_tools_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
 ADD_YB_TEST(registration-test RESOURCE_LOCK "master-web-port")
@@ -79,7 +79,6 @@ ADD_YB_TEST(cluster_trace-test)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports" RUN_SERIAL true)
-
 ADD_YB_TEST(master_sysnamespace-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_path_handlers-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_failover-itest RESOURCE_LOCK "master-rpc-ports")
@@ -101,9 +100,6 @@ ADD_YB_TEST(placement_info-itest)
 ADD_YB_TEST(kv_table-test RUN_SERIAL true)
 ADD_YB_TEST(kv_table_ts_failover-test RUN_SERIAL true)
 ADD_YB_TEST(stepdown_under_load-test RUN_SERIAL true)
-
-# Some tests have additional dependencies
-set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})
 ADD_YB_TEST(full_stack-insert-scan-test RUN_SERIAL true)
 ADD_YB_TEST(redis_table-test RUN_SERIAL true)
 ADD_YB_TEST(update_scan_delta_compact-test RUN_SERIAL true)

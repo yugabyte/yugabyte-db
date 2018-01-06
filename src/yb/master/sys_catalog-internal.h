@@ -30,7 +30,7 @@ class VisitorBase {
 
   virtual int entry_type() const = 0;
 
-  virtual CHECKED_STATUS Visit(const Slice* id, const Slice* data) = 0;
+  virtual CHECKED_STATUS Visit(Slice id, Slice data) = 0;
 
  protected:
 };
@@ -41,13 +41,13 @@ class Visitor : public VisitorBase {
   Visitor() {}
   virtual ~Visitor() = default;
 
-  virtual CHECKED_STATUS Visit(const Slice* id, const Slice* data) {
+  virtual CHECKED_STATUS Visit(Slice id, Slice data) {
     typename PersistentDataEntryClass::data_type metadata;
     RETURN_NOT_OK_PREPEND(
-        pb_util::ParseFromArray(&metadata, data->data(), data->size()),
-        "Unable to parse metadata field for item id: " + id->ToString());
+        pb_util::ParseFromArray(&metadata, data.data(), data.size()),
+        "Unable to parse metadata field for item id: " + id.ToBuffer());
 
-    return Visit(id->ToString(), metadata);
+    return Visit(id.ToBuffer(), metadata);
   }
 
   int entry_type() const { return PersistentDataEntryClass::type(); }

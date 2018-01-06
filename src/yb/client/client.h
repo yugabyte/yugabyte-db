@@ -44,9 +44,6 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/row_result.h"
-#include "yb/client/scan_batch.h"
-#include "yb/client/scan_predicate.h"
 #include "yb/client/schema.h"
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
@@ -408,7 +405,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Returns highest hybrid_time observed by the client.
   // The latest observed hybrid_time can be used to start a snapshot scan on a
   // table which is guaranteed to contain all data written or previously read by
-  // this client. See YBScanner for more details on hybrid_times.
+  // this client.
   uint64_t GetLatestObservedHybridTime() const;
 
   // Sets the latest observed hybrid_time, encoded in the HybridTime format.
@@ -445,7 +442,6 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   friend class YBClientBuilder;
   friend class YBNoOp;
-  friend class YBScanner;
   friend class YBTable;
   friend class YBTableAlterer;
   friend class YBTableCreator;
@@ -661,25 +657,6 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   YBqlReadOp* NewQLRead();
   YBqlReadOp* NewQLSelect();
-
-  // Create a new comparison predicate which can be used for scanners
-  // on this table.
-  //
-  // The type of 'value' must correspond to the type of the column to which
-  // the predicate is to be applied. For example, if the given column is
-  // any type of integer, the YBValue should also be an integer, with its
-  // value in the valid range for the column type. No attempt is made to cast
-  // between floating point and integer values, or numeric and string values.
-  //
-  // The caller owns the result until it is passed into YBScanner::AddConjunctPredicate().
-  // The returned predicate takes ownership of 'value'.
-  //
-  // In the case of an error (e.g. an invalid column name), a non-NULL value
-  // is still returned. The error will be returned when attempting to add this
-  // predicate to a YBScanner.
-  YBPredicate* NewComparisonPredicate(const Slice& col_name,
-                                      YBPredicate::ComparisonOp op,
-                                      YBValue* value);
 
   YBClient* client() const;
 
@@ -1037,200 +1014,6 @@ class YBNoOp {
   DISALLOW_COPY_AND_ASSIGN(YBNoOp);
 };
 
-// A single scanner. This class is not thread-safe, though different
-// scanners on different threads may share a single YBTable object.
-class YBScanner {
- public:
-  // Whether the rows should be returned in order. This affects the fault-tolerance properties
-  // of a scanner.
-  enum OrderMode {
-    // Rows will be returned in an arbitrary order determined by the tablet server.
-    // This is efficient, but unordered scans are not fault-tolerant and cannot be resumed
-    // in the case of tablet server failure.
-    //
-    // This is the default mode.
-    UNORDERED,
-    // Rows will be returned ordered by primary key. Sorting the rows imposes additional overhead
-    // on the tablet server, but means that scans are fault-tolerant and will be resumed at
-    // another tablet server in the case of failure.
-    ORDERED
-  };
-
-  // Default scanner timeout.
-  // This is set to 3x the default RPC timeout (see YBClientBuilder::default_rpc_timeout()).
-  enum { kScanTimeoutMillis = 15000 };
-
-  // Initialize the scanner. The given 'table' object must remain valid
-  // for the lifetime of this scanner object.
-  // TODO: should table be a const pointer?
-  explicit YBScanner(YBTable* table, const YBTransactionPtr& transaction = nullptr);
-  ~YBScanner();
-
-  // Set the projection used for this scanner by passing the column names to read.
-  //
-  // This overrides any previous call to SetProjectedColumns.
-  CHECKED_STATUS SetProjectedColumnNames(
-      const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
-
-  // Set the projection used for this scanner by passing the column indexes to read.
-  //
-  // This overrides any previous call to SetProjectedColumns/SetProjectedColumnIndexes.
-  CHECKED_STATUS SetProjectedColumnIndexes(const std::vector<int>& col_indexes) WARN_UNUSED_RESULT;
-
-  // DEPRECATED: See SetProjectedColumnNames
-  CHECKED_STATUS SetProjectedColumns(const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
-
-  // Add a predicate to this scanner.
-  //
-  // The predicates act as conjunctions -- i.e, they all must pass for
-  // a row to be returned.
-  //
-  // The Scanner takes ownership of 'pred', even if a bad Status is returned.
-  CHECKED_STATUS AddConjunctPredicate(YBPredicate* pred) WARN_UNUSED_RESULT;
-
-  // Add a lower bound (inclusive) primary key for the scan.
-  // If any bound is already added, this bound is intersected with that one.
-  //
-  // The scanner does not take ownership of 'key'; the caller may free it afterward.
-  CHECKED_STATUS AddLowerBound(const YBPartialRow& key);
-
-  // Like AddLowerBound(), but the encoded primary key is an opaque slice of data
-  // obtained elsewhere.
-  //
-  // DEPRECATED: use AddLowerBound
-  CHECKED_STATUS AddLowerBoundRaw(const Slice& key);
-
-  // Add an upper bound (exclusive) primary key for the scan.
-  // If any bound is already added, this bound is intersected with that one.
-  //
-  // The scanner makes a copy of 'key'; the caller may free it afterward.
-  CHECKED_STATUS AddExclusiveUpperBound(const YBPartialRow& key);
-
-  // Like AddExclusiveUpperBound(), but the encoded primary key is an opaque slice of data
-  // obtained elsewhere.
-  //
-  // DEPRECATED: use AddExclusiveUpperBound
-  CHECKED_STATUS AddExclusiveUpperBoundRaw(const Slice& key);
-
-  // Add a lower bound (inclusive) partition key for the scan.
-  //
-  // The scanner makes a copy of 'partition_key'; the caller may free it afterward.
-  //
-  // This method is unstable, and for internal use only.
-  CHECKED_STATUS AddLowerBoundPartitionKeyRaw(const Slice& partition_key);
-
-  // Add an upper bound (exclusive) partition key for the scan.
-  //
-  // The scanner makes a copy of 'partition_key'; the caller may free it afterward.
-  //
-  // This method is unstable, and for internal use only.
-  CHECKED_STATUS AddExclusiveUpperBoundPartitionKeyRaw(const Slice& partition_key);
-
-  // Set the block caching policy for this scanner. If true, scanned data blocks will be cached
-  // in memory and made available for future scans. Default is true.
-  CHECKED_STATUS SetCacheBlocks(bool cache_blocks);
-
-  // Begin scanning.
-  CHECKED_STATUS Open();
-
-  // Keeps the current remote scanner alive on the Tablet server for an additional
-  // time-to-live (set by a configuration flag on the tablet server).
-  // This is useful if the interval in between NextBatch() calls is big enough that the
-  // remote scanner might be garbage collected (default ttl is set to 60 secs.).
-  // This does not invalidate any previously fetched results.
-  // This returns a non-OK status if the scanner was already garbage collected or if
-  // the TabletServer was unreachable, for any reason.
-  //
-  // NOTE: A non-OK status returned by this method should not be taken as indication that
-  // the scan has failed. Subsequent calls to NextBatch() might still be successful,
-  // particularly if SetFaultTolerant() was called.
-  CHECKED_STATUS KeepAlive();
-
-  // Close the scanner.
-  // This releases resources on the server.
-  //
-  // This call does not block, and will not ever fail, even if the server
-  // cannot be contacted.
-  //
-  // NOTE: the scanner is reset to its initial state by this function.
-  // You'll have to re-add any projection, predicates, etc if you want
-  // to reuse this Scanner object.
-  void Close();
-
-  // Return true if there may be rows to be fetched from this scanner.
-  //
-  // Note: will be true provided there's at least one more tablet left to
-  // scan, even if that tablet has no data (we'll only know once we scan it).
-  // It will also be true after the initially opening the scanner before
-  // NextBatch is called for the first time.
-  bool HasMoreRows() const;
-
-  // Clears 'rows' and populates it with the next batch of rows from the tablet server.
-  // A call to NextBatch() invalidates all previously fetched results which might
-  // now be pointing to garbage memory.
-  //
-  // DEPRECATED: Use NextBatch(YBScanBatch*) instead.
-  CHECKED_STATUS NextBatch(std::vector<YBRowResult>* rows);
-
-  // Fetches the next batch of results for this scanner.
-  //
-  // A single YBScanBatch instance may be reused. Each subsequent call replaces the data
-  // from the previous call, and invalidates any YBScanBatch::RowPtr objects previously
-  // obtained from the batch.
-  CHECKED_STATUS NextBatch(YBScanBatch* batch);
-
-  // Get the YBTabletServer that is currently handling the scan.
-  // More concretely, this is the server that handled the most recent Open or NextBatch
-  // RPC made by the server.
-  CHECKED_STATUS GetCurrentServer(YBTabletServer** server);
-
-  // Set the hint for the size of the next batch in bytes.
-  // If setting to 0 before calling Open(), it means that the first call
-  // to the tablet server won't return data.
-  CHECKED_STATUS SetBatchSizeBytes(uint32_t batch_size);
-
-  // Sets the replica selection policy while scanning.
-  //
-  // TODO: kill this in favor of a consistency-level-based API
-  CHECKED_STATUS SetSelection(YBClient::ReplicaSelection selection) WARN_UNUSED_RESULT;
-
-  // DEPRECATED: use SetFaultTolerant.
-  CHECKED_STATUS SetOrderMode(OrderMode order_mode) WARN_UNUSED_RESULT;
-
-  // Scans are by default non fault-tolerant, and scans will fail if scanning an
-  // individual tablet fails (for example, if a tablet server crashes in the
-  // middle of a tablet scan).
-  //
-  // If this method is called, the scan will be resumed at another tablet server
-  // in the case of failure.
-  //
-  // Fault tolerant scans typically have lower throughput than non
-  // fault-tolerant scans. Fault tolerant scans use READ_AT_SNAPSHOT mode,
-  // if no snapshot hybrid_time is provided, the server will pick one.
-  CHECKED_STATUS SetFaultTolerant() WARN_UNUSED_RESULT;
-
-  // Sets the maximum time that Open() and NextBatch() are allowed to take.
-  CHECKED_STATUS SetTimeoutMillis(int millis);
-
-  // Returns the schema of the projection being scanned.
-  YBSchema GetProjectionSchema() const;
-
-  // Returns a string representation of this scan.
-  std::string ToString() const;
- private:
-  class Data;
-
-  FRIEND_TEST(ClientTest, TestScanCloseProxy);
-  FRIEND_TEST(ClientTest, TestScanFaultTolerance);
-  FRIEND_TEST(ClientTest, TestScanNoBlockCaching);
-  FRIEND_TEST(ClientTest, TestScanTimeout);
-
-  // Owned.
-  Data* data_;
-
-  DISALLOW_COPY_AND_ASSIGN(YBScanner);
-};
-
 // In-memory representation of a remote tablet server.
 class YBTabletServer {
  public:
@@ -1248,7 +1031,6 @@ class YBTabletServer {
   class Data;
 
   friend class YBClient;
-  friend class YBScanner;
 
   YBTabletServer();
 

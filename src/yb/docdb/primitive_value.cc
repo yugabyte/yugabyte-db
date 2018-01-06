@@ -1195,27 +1195,6 @@ SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
   return SortOrder::kAscending;
 }
 
-PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
-  switch (data_type) {
-    case DataType::INT64:
-      return PrimitiveValue(*reinterpret_cast<const int64_t*>(slice.data()));
-    case DataType::BINARY: FALLTHROUGH_INTENDED;
-    case DataType::STRING:
-      return PrimitiveValue(slice.ToString());
-    case DataType::INT32:
-      return PrimitiveValue::Int32(*reinterpret_cast<const int32_t*>(slice.data()));
-    case DataType::INT16:
-      return PrimitiveValue::Int32(*reinterpret_cast<const int16_t*>(slice.data()));
-    case DataType::INT8:
-      return PrimitiveValue::Int32(*reinterpret_cast<const int8_t*>(slice.data()));
-    case DataType::BOOL:
-      return PrimitiveValue(*slice.data() == 0 ? ValueType::kFalse: ValueType::kTrue);
-    default:
-      LOG(FATAL) << "Converting Kudu value of type " << DataType_Name(data_type)
-                 << " to docdb PrimitiveValue is currently not supported";
-    }
-}
-
 PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
                                              ColumnSchema::SortingType sorting_type) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);

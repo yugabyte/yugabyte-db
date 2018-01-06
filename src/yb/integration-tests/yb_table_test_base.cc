@@ -27,8 +27,6 @@ namespace yb {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBScanner;
-using client::YBScanBatch;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTableCreator;

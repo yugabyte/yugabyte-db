@@ -52,8 +52,11 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/row_result.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/ql_expr.h"
+
+#include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -65,6 +68,9 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/tablet/tablet.h"
+
+#include "yb/util/blocking_queue.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/random.h"
@@ -752,27 +758,18 @@ Status LinkedListTester::VerifyLinkedListLocal(const tablet::Tablet* tablet,
   const Schema* tablet_schema = tablet->schema();
   // Cannot use schemas with col indexes in a scan (assertions fire).
   Schema projection(tablet_schema->columns(), tablet_schema->num_key_columns());
-  gscoped_ptr<RowwiseIterator> iter;
-  RETURN_NOT_OK_PREPEND(tablet->NewRowIterator(projection, boost::none, &iter),
-                        "Cannot create new row iterator");
-  RETURN_NOT_OK_PREPEND(iter->Init(NULL), "Cannot initialize row iterator");
+  auto iter = tablet->NewRowIterator(projection, boost::none);
+  RETURN_NOT_OK_PREPEND(iter, "Cannot create new row iterator");
 
-  Arena arena(1024, 1024);
-  RowBlock block(projection, 100, &arena);
-  while (iter->HasNext()) {
-    RETURN_NOT_OK(iter->NextBlock(&block));
-    for (int i = 0; i < block.nrows(); i++) {
-      int64_t key;
-      int64_t link;
-      bool updated;
+  QLTableRow row;
+  while ((**iter).HasNext()) {
+    RETURN_NOT_OK((**iter).NextRow(&row));
+    QLValue key, link, updated;
+    RETURN_NOT_OK(row.GetValue(tablet_schema->column_id(0), &key));
+    RETURN_NOT_OK(row.GetValue(tablet_schema->column_id(1), &link));
+    RETURN_NOT_OK(row.GetValue(tablet_schema->column_id(3), &updated));
 
-      const RowBlockRow& row = block.row(i);
-      key = *tablet_schema->ExtractColumnFromRow<INT64>(row, 0);
-      link = *tablet_schema->ExtractColumnFromRow<INT64>(row, 1);
-      updated = *tablet_schema->ExtractColumnFromRow<BOOL>(row, 3);
-
-      verifier.RegisterResult(key, link, updated);
-    }
+    verifier.RegisterResult(key.int64_value(), link.int64_value(), updated.bool_value());
   }
 
   return verifier.VerifyData(verified_count, true);

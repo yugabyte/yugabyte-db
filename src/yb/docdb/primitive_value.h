@@ -177,9 +177,6 @@ class PrimitiveValue {
   // ColumnSchema::SortingType::kDescending gets converted to SortOrder::kDescending.
   static SortOrder SortOrderFromColumnSchemaSortingType(ColumnSchema::SortingType sorting_type);
 
-  // Construct a primitive value from a Slice containing a Kudu value.
-  static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
-
   // Construct a primitive value from a QLValuePB.
   static PrimitiveValue FromQLValuePB(const QLValuePB& value,
                                       ColumnSchema::SortingType sorting_type);

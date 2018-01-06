@@ -147,10 +147,14 @@ class TableHandle {
 typedef std::function<void(const TableHandle&, QLConditionPB*)> TableFilter;
 
 struct TableIteratorOptions {
+  TableIteratorOptions();
+
   YBConsistencyLevel consistency = YBConsistencyLevel::STRONG;
-  std::vector<std::string> columns;
+  boost::optional<std::vector<std::string>> columns;
   TableFilter filter;
   ReadHybridTime read_time;
+  std::string tablet;
+  std::function<void(const Status&)> error_handler;
 };
 
 class TableIterator : public std::iterator<
@@ -171,9 +175,14 @@ class TableIterator : public std::iterator<
 
   const QLRow& operator*() const;
 
+  const QLRow* operator->() const {
+    return &**this;
+  }
+
  private:
   void ExecuteOps();
   void Move();
+  void HandleError(const Status& status);
 
   const TableHandle* table_;
   std::vector<YBqlReadOpPtr> ops_;
@@ -182,6 +191,7 @@ class TableIterator : public std::iterator<
   boost::optional<QLRowBlock> current_block_;
   size_t row_index_;
   YBSessionPtr session_;
+  std::function<void(const Status&)> error_handler_;
 };
 
 inline bool operator==(const TableIterator& lhs, const TableIterator& rhs) {
@@ -199,7 +209,7 @@ class TableRange {
 
   explicit TableRange(const TableHandle& table, TableIteratorOptions options = {})
        : table_(&table), options_(std::move(options)) {
-    if (options_.columns.empty()) {
+    if (!options_.columns) {
       options_.columns = table.AllColumnNames();
     }
   }
@@ -219,23 +229,31 @@ class TableRange {
 
 YB_STRONGLY_TYPED_BOOL(Inclusive);
 
-class FilterBetween {
+template <class T>
+class FilterBetweenImpl {
  public:
-  FilterBetween(int32_t lower_bound, Inclusive lower_inclusive,
-                int32_t upper_bound, Inclusive upper_inclusive,
-                std::string column = "key")
+  FilterBetweenImpl(const T& lower_bound, Inclusive lower_inclusive,
+                    const T& upper_bound, Inclusive upper_inclusive,
+                    std::string column = "key")
       : lower_bound_(lower_bound), lower_inclusive_(lower_inclusive),
         upper_bound_(upper_bound), upper_inclusive_(upper_inclusive),
         column_(std::move(column)) {}
 
   void operator()(const TableHandle& table, QLConditionPB* condition) const;
  private:
-  int32_t lower_bound_;
+  T lower_bound_;
   Inclusive lower_inclusive_;
-  int32_t upper_bound_;
+  T upper_bound_;
   Inclusive upper_inclusive_;
   std::string column_;
 };
+
+template <class T>
+FilterBetweenImpl<T> FilterBetween(const T& lower_bound, Inclusive lower_inclusive,
+                                   const T& upper_bound, Inclusive upper_inclusive,
+                                   std::string column = "key") {
+  return FilterBetweenImpl<T>(lower_bound, lower_inclusive, upper_bound, upper_inclusive, column);
+}
 
 class FilterGreater {
  public:

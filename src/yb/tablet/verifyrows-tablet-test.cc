@@ -37,6 +37,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_protocol_util.h"
+
+#include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/local_tablet_writer.h"
@@ -74,12 +77,11 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     superclass::SetUp();
 
     // Warm up code cache with all the projections we'll be using.
-    gscoped_ptr<RowwiseIterator> iter;
-    CHECK_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none));
     const Schema* schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
-    CHECK_OK(tablet()->NewRowIterator(valcol_projection_, boost::none, &iter));
+    ASSERT_OK(tablet()->NewRowIterator(valcol_projection_, boost::none));
 
     ts_collector_.StartDumperThread();
   }
@@ -110,8 +112,6 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     LocalTabletWriter writer(this->tablet().get(), &this->client_schema_);
 
-    Arena tmp_arena(1024, 1024);
-    RowBlock block(schema_, 1, &tmp_arena);
     faststring update_buf;
 
     uint64_t updates_since_last_report = 0;
@@ -120,40 +120,26 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     YBPartialRow row(&client_schema_);
 
+    QLTableRow value_map;
+
     while (running_insert_count_.count() > 0) {
-      gscoped_ptr<RowwiseIterator> iter;
-      CHECK_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
-      ScanSpec scan_spec;
-      CHECK_OK(iter->Init(&scan_spec));
+      auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+      CHECK_OK(iter);
 
-      while (iter->HasNext() && running_insert_count_.count() > 0) {
-        tmp_arena.Reset();
-        CHECK_OK(iter->NextBlock(&block));
-        CHECK_EQ(block.nrows(), 1);
+      while ((**iter).HasNext() && running_insert_count_.count() > 0) {
+        CHECK_OK((**iter).NextRow(&value_map));
 
-        if (!block.selection_vector()->IsRowSelected(0)) {
-          // Don't try to update rows which aren't visible yet --
-          // this will crash, since the data in row_slice isn't even copied.
-          continue;
-        }
-
-        RowBlockRow rb_row = block.row(0);
         unsigned int seed = 1234;
         if (rand_r(&seed) % 10 == 7) {
           // Increment the "val"
-          const int32_t *old_val = schema.ExtractColumnFromRow<INT32>(rb_row, col_idx);
-          // Issue an update. In the NullableValue setup, many of the rows start with
-          // NULL here, so we have to check for it.
-          int32_t new_val;
-          if (old_val != nullptr) {
-            new_val = *old_val + 1;
-          } else {
-            new_val = 0;
-          }
+
+          QLValue value;
+          CHECK_OK(value_map.GetValue(schema.column_id(col_idx), &value));
+          int32_t new_val = value.int32_value() + 1;
 
           // Rebuild the key by extracting the cells from the row
           QLWriteRequestPB req;
-          setup_.BuildRowKeyFromExistingRow(&req, rb_row);
+          setup_.BuildRowKeyFromExistingRow(&req, value_map);
           QLAddInt32ColumnValue(&req, kFirstColumnId + col_idx, new_val);
           CHECK_OK(writer.Write(&req));
 
@@ -170,8 +156,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // This is meant to test that outstanding iterators don't end up
   // trying to reference already-freed memory.
   void SlowReaderThread(int tid) {
-    Arena arena(32*1024, 256*1024);
-    RowBlock block(schema_, 1, &arena);
+    QLTableRow row;
 
     uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
             / kNumInsertThreads;
@@ -179,13 +164,11 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     int max_iters = kNumInsertThreads * max_rows / 10;
 
     while (running_insert_count_.count() > 0) {
-      gscoped_ptr<RowwiseIterator> iter;
-      CHECK_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
-      ScanSpec scan_spec;
-      CHECK_OK(iter->Init(&scan_spec));
+      auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+      ASSERT_OK(iter);
 
-      for (int i = 0; i < max_iters && iter->HasNext(); i++) {
-        CHECK_OK(iter->NextBlock(&block));
+      for (int i = 0; i < max_iters && (**iter).HasNext(); i++) {
+        ASSERT_OK((**iter).NextRow(&row));
 
         if (running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(1))) {
           return;
@@ -203,29 +186,24 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   }
 
   uint64_t CountSum(const shared_ptr<TimeSeries> &scanned_ts) {
-    Arena arena(1024, 1024); // unused, just scanning ints
-
-    static const int kBufInts = 1024*1024 / 8;
-    RowBlock block(valcol_projection_, kBufInts, &arena);
-    ColumnBlock column = block.column_block(0);
-
     uint64_t count_since_report = 0;
 
     uint64_t sum = 0;
 
-    gscoped_ptr<RowwiseIterator> iter;
-    CHECK_OK(tablet()->NewRowIterator(valcol_projection_, boost::none, &iter));
-    ScanSpec scan_spec;
-    CHECK_OK(iter->Init(&scan_spec));
+    auto iter = tablet()->NewRowIterator(valcol_projection_, boost::none);
+    CHECK_OK(iter);
 
-    while (iter->HasNext()) {
-      arena.Reset();
-      CHECK_OK(iter->NextBlock(&block));
+    QLTableRow row;
+    while ((**iter).HasNext()) {
+      CHECK_OK((**iter).NextRow(&row));
 
-      for (size_t j = 0; j < block.nrows(); j++) {
-        sum += *reinterpret_cast<const int32_t *>(column.cell_ptr(j));
+      QLValue value;
+      CHECK_OK(row.GetValue(schema_.column_id(2), &value));
+      if (!value.IsNull()) {
+        CHECK(value.value().has_int32_value()) << "Row: " << row.ToString();
+        sum += value.int32_value();
       }
-      count_since_report += block.nrows();
+      count_since_report += 1;
 
       // Report metrics if enough time has passed
       if (count_since_report > 100) {

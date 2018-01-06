@@ -32,6 +32,7 @@
 #ifndef YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 #define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/basictypes.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/rpc/rpc_context.h"

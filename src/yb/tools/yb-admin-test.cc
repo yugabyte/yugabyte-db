@@ -38,6 +38,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
+#include "yb/master/master_defaults.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 

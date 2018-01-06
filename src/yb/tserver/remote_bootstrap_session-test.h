@@ -54,6 +54,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/util/crc.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"

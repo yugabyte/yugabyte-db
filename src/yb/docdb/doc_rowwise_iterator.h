@@ -19,10 +19,6 @@
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/common/encoded_key.h"
-#include "yb/common/iterator.h"
-#include "yb/common/rowblock.h"
-#include "yb/common/scan_spec.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_scanspec.h"
@@ -39,7 +35,7 @@ namespace docdb {
 
 class IntentAwareIterator;
 
-// An adapter between SQL-mapped-to-document-DB and Kudu's RowwiseIterator.
+// An SQL-mapped-to-document-DB iterator.
 class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const Schema &projection,
@@ -48,12 +44,23 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
                      rocksdb::DB *db,
                      const ReadHybridTime& read_time,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
+
+  DocRowwiseIterator(std::unique_ptr<Schema> projection,
+                     const Schema &schema,
+                     const TransactionOperationContextOpt& txn_op_context,
+                     rocksdb::DB *db,
+                     const ReadHybridTime& read_time,
+                     yb::util::PendingOperationCounter* pending_op_counter = nullptr)
+      : DocRowwiseIterator(*projection, schema, txn_op_context, db, read_time, pending_op_counter) {
+    projection_owner_ = std::move(projection);
+  }
+
   virtual ~DocRowwiseIterator();
 
-  CHECKED_STATUS Init(ScanSpec *spec) override;
+  CHECKED_STATUS Init() override;
 
-  // This must always be called before NextBlock or NextRow. The implementation actually finds the
-  // first row to scan, and NextBlock expects the RocksDB iterator to already be properly
+  // This must always be called before NextRow. The implementation actually finds the
+  // first row to scan, and NextRow expects the RocksDB iterator to already be properly
   // positioned.
   bool HasNext() const override;
 
@@ -64,20 +71,11 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
     return projection_;
   }
 
-  // This may return one row at a time in the initial implementation, even though Kudu's scanning
-  // interface supports returning multiple rows at a time.
-  CHECKED_STATUS NextBlock(RowBlock *dst) override;
-
-  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
-
   // Init QL read scan.
   CHECKED_STATUS Init(const common::QLScanSpec& spec) override;
 
   // Is the next row to read a row with a static column?
   bool IsNextStaticColumn() const override;
-
-  // Read next row into a value map using the specified projection.
-  CHECKED_STATUS NextRow(const Schema& projection, const QLTableRow::SharedPtr& table_row) override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
                                            QLResponsePB* response) const override;
@@ -95,10 +93,6 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
-
-  DocKey KuduToDocKey(const EncodedKey &encoded_key) {
-    return DocKey::FromKuduEncodedKey(encoded_key, schema_);
-  }
 
   // Get the non-key column values of a QL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<SubDocument>* values);
@@ -133,7 +127,13 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
   // ensures that the iterator will be positioned on the first kv-pair of the next row.
   CHECKED_STATUS EnsureIteratorPositionCorrect() const;
 
+  // Read next row into a value map using the specified projection.
+  CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;
+
   const Schema& projection_;
+  // Used to maintain ownership of projection_.
+  // Separate field is used since ownership could be optional.
+  std::unique_ptr<Schema> projection_owner_;
 
   // The schema for all columns, not just the columns we're scanning.
   const Schema& schema_;
@@ -170,7 +170,7 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
   mutable DocKey row_key_;
 
   // When HasNext constructs a row, row_ready_ is set to true.
-  // When NextBlock/NextRow consumes the row, this variable is set to false.
+  // When NextRow consumes the row, this variable is set to false.
   // It is initialized to false, to make sure first HasNext constructs a new row.
   mutable bool row_ready_;
 

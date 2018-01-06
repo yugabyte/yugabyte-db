@@ -37,6 +37,8 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/table_handle.h"
+
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -140,14 +142,15 @@ class MasterFailoverTest : public YBTest {
   // requires that the table and tablet exist both on the masters and
   // the tablet servers.
   Status OpenTableAndScanner(const YBTableName& table_name) {
-    shared_ptr<YBTable> table;
-    RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name, &table),
+    client::TableHandle table;
+    RETURN_NOT_OK_PREPEND(table.Open(table_name, client_.get()),
                           "Unable to open table " + table_name.ToString());
-    YBScanner scanner(table.get());
-    RETURN_NOT_OK_PREPEND(scanner.SetProjectedColumns(vector<string>()),
-                          "Unable to open an empty projection on " + table_name.ToString());
-    RETURN_NOT_OK_PREPEND(scanner.Open(),
-                          "Unable to open scanner on " + table_name.ToString());
+    client::TableRange range(table);
+    auto it = range.begin();
+    if (it != range.end()) {
+      ++it;
+    }
+
     return Status::OK();
   }
 

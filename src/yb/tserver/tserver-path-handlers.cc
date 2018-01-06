@@ -51,7 +51,6 @@
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/url-coding.h"
@@ -82,9 +81,6 @@ TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
 
 Status TabletServerPathHandlers::Register(Webserver* server) {
-  server->RegisterPathHandler(
-      "/scans", "Scans", std::bind(&TabletServerPathHandlers::HandleScansPage, this, _1, _2),
-      true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
       "/tablets", "Tablets", std::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
       true /* styled */, true /* is_on_nav_bar */, "fa fa-server");
@@ -395,98 +391,6 @@ void TabletServerPathHandlers::HandleConsensusStatusPage(const Webserver::WebReq
     return;
   }
   consensus->DumpStatusHtml(*output);
-}
-
-void TabletServerPathHandlers::HandleScansPage(const Webserver::WebRequest& req,
-                                               std::stringstream* output) {
-  *output << "<h1>Scans</h1>\n";
-  *output << "<table class='table table-striped'>\n";
-  *output << "<tr><th>Tablet id</th><th>Scanner id</th><th>Total time in-flight</th>"
-      "<th>Time since last update</th><th>Requestor</th><th>Iterator Stats</th>"
-      "<th>Pushed down key predicates</th><th>Other predicates</th></tr>\n";
-
-  vector<SharedScanner> scanners;
-  tserver_->scanner_manager()->ListScanners(&scanners);
-  for (const SharedScanner& scanner : scanners) {
-    *output << ScannerToHtml(*scanner);
-  }
-  *output << "</table>";
-}
-
-string TabletServerPathHandlers::ScannerToHtml(const Scanner& scanner) const {
-  std::stringstream html;
-  auto now = CoarseMonoClock::Now();
-  uint64_t time_in_flight_us = ToMicroseconds(now - scanner.start_time());
-  uint64_t time_since_last_access_us = ToMicroseconds(scanner.TimeSinceLastAccess(now));
-
-  html << Substitute("<tr><td>$0</td><td>$1</td><td>$2 us.</td><td>$3 us.</td><td>$4</td>",
-                     EscapeForHtmlToString(scanner.tablet_id()),  // $0
-                     EscapeForHtmlToString(scanner.id()),  // $1
-                     time_in_flight_us, time_since_last_access_us,  // $2, $3
-                     EscapeForHtmlToString(scanner.requestor_string()));  // $4
-
-
-  if (!scanner.IsInitialized()) {
-    html << "<td colspan=\"3\">&lt;not yet initialized&gt;</td></tr>";
-    return html.str();
-  }
-  const Schema* projection = &scanner.iter()->schema();
-
-  vector<IteratorStats> stats;
-  scanner.GetIteratorStats(&stats);
-  CHECK_EQ(stats.size(), projection->num_columns());
-  html << Substitute("<td>$0</td>", IteratorStatsToHtml(*projection, stats));
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!tserver_->tablet_manager()->LookupTablet(scanner.tablet_id(), &tablet_peer)) {
-    html << Substitute("<td colspan=\"2\"><b>Tablet $0 is no longer valid.</b></td></tr>\n",
-                       scanner.tablet_id());
-  } else {
-    string range_pred_str;
-    vector<string> other_preds;
-    const ScanSpec& spec = scanner.spec();
-    if (spec.lower_bound_key() || spec.exclusive_upper_bound_key()) {
-      range_pred_str = EncodedKey::RangeToString(spec.lower_bound_key(),
-                                                 spec.exclusive_upper_bound_key());
-    }
-    for (const ColumnRangePredicate& pred : scanner.spec().predicates()) {
-      other_preds.push_back(pred.ToString());
-    }
-    string other_pred_str = JoinStrings(other_preds, "\n");
-    html << Substitute("<td>$0</td><td>$1</td></tr>\n",
-                       EscapeForHtmlToString(range_pred_str),
-                       EscapeForHtmlToString(other_pred_str));
-  }
-  return html.str();
-}
-
-string TabletServerPathHandlers::IteratorStatsToHtml(const Schema& projection,
-                                                     const vector<IteratorStats>& stats) const {
-  std::stringstream html;
-  html << "<table>\n";
-  html << "<tr><th>Column</th>"
-       << "<th>Blocks read from disk</th>"
-       << "<th>Bytes read from disk</th>"
-       << "<th>Cells read from disk</th>"
-       << "</tr>\n";
-  for (size_t idx = 0; idx < stats.size(); idx++) {
-    // We use 'title' attributes so that if the user hovers over the value, they get a
-    // human-readable tooltip.
-    html << Substitute("<tr>"
-                       "<td>$0</td>"
-                       "<td title=\"$1\">$2</td>"
-                       "<td title=\"$3\">$4</td>"
-                       "<td title=\"$5\">$6</td>"
-                       "</tr>\n",
-                       EscapeForHtmlToString(projection.column(idx).name()),  // $0
-                       HumanReadableInt::ToString(stats[idx].data_blocks_read_from_disk),  // $1
-                       stats[idx].data_blocks_read_from_disk,  // $2
-                       HumanReadableNumBytes::ToString(stats[idx].bytes_read_from_disk),  // $3
-                       stats[idx].bytes_read_from_disk,  // $4
-                       HumanReadableInt::ToString(stats[idx].cells_read_from_disk),  // $5
-                       stats[idx].cells_read_from_disk);  // $6
-  }
-  html << "</table>\n";
-  return html.str();
 }
 
 void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest& req,

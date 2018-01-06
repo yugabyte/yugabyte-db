@@ -36,7 +36,6 @@
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
-#include "yb/client/row_result.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/strings/strcat.h"
@@ -67,8 +66,6 @@ namespace tablet {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBRowResult;
-using client::YBScanner;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
@@ -264,13 +261,8 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
 
 void UpdateScanDeltaCompactionTest::ScanRows(CountDownLatch* stop_latch) const {
   while (stop_latch->count() > 0) {
-    YBScanner scanner(table_.get());
     LOG_TIMING(INFO, "Scan") {
-      ASSERT_OK(scanner.Open());
-      client::YBScanBatch batch;
-      while (scanner.HasMoreRows()) {
-        ASSERT_OK(scanner.NextBatch(&batch));
-      }
+      boost::size(client::TableRange(table_));
     }
   }
 }

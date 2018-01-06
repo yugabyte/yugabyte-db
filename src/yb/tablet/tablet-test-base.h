@@ -45,7 +45,6 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/row.h"
-#include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -60,9 +59,6 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/gutil/strings/numbers.h"
-
-using std::unordered_set;
-using strings::Substitute;
 
 namespace yb {
 namespace tablet {
@@ -87,11 +83,6 @@ struct StringKeyTestSetup {
     QLAddStringHashValue(req, buf);
   }
 
-  // builds a row key from an existing row for updates
-  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowBlockRow& src_row) {
-    CHECK_OK(row->SetStringCopy(0, *reinterpret_cast<const Slice*>(src_row.cell_ptr(0))));
-  }
-
   void BuildRow(QLWriteRequestPB *req, int64_t key_idx, int32_t val = 0) {
     BuildRowKey(req, key_idx);
     QLAddInt32ColumnValue(req, kFirstColumnId + 1, key_idx);
@@ -106,8 +97,8 @@ struct StringKeyTestSetup {
     char buf[256];
     FormatKey(buf, sizeof(buf), key_idx);
 
-    return Substitute(
-      "(string key=$0, int32 key_idx=$1, int32 val=$2)",
+    return strings::Substitute(
+      "{ string_value: \"$0\" int32_value: $1 int32_value: $2 }",
       buf, key_idx, val);
   }
 
@@ -128,12 +119,6 @@ struct CompositeKeyTestSetup {
                   2);
   }
 
-  // builds a row key from an existing row for updates
-  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowBlockRow& src_row) {
-    CHECK_OK(row->SetStringCopy(0, *reinterpret_cast<const Slice*>(src_row.cell_ptr(0))));
-    CHECK_OK(row->SetInt32(1, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(1))));
-  }
-
   static void FormatKey(char *buf, size_t buf_size, int64_t key_idx) {
     snprintf(buf, buf_size, "hello %" PRId64, key_idx);
   }
@@ -141,7 +126,7 @@ struct CompositeKeyTestSetup {
   string FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
     char buf[256];
     FormatKey(buf, sizeof(buf), key_idx);
-    return Substitute(
+    return strings::Substitute(
       "(string key1=$0, int32 key2=$1, int32 val=$2, int32 val=$3)",
       buf, key_idx, key_idx, val);
   }
@@ -233,29 +218,29 @@ void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(YBPartialRow *row,
 
 template<>
 string IntKeyTestSetup<INT8>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
-  return Substitute(
-    "(int8 key=$0, int32 key_idx=$1, int32 val=$2)",
+  return strings::Substitute(
+    "{ int8_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
 string IntKeyTestSetup<INT16>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
-  return Substitute(
-    "(int16 key=$0, int32 key_idx=$1, int32 val=$2)",
+  return strings::Substitute(
+    "{ int16_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
 string IntKeyTestSetup<INT32>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
-  return Substitute(
-    "(int32 key=$0, int32 key_idx=$1, int32 val=$2)",
+  return strings::Substitute(
+    "{ int32_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
 string IntKeyTestSetup<INT64>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
-  return Substitute(
-    "(int64 key=$0, int32 key_idx=$1, int32 val=$2)",
+  return strings::Substitute(
+    "{ int64_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
@@ -288,13 +273,13 @@ struct NullableValueTestSetup {
 
   string FormatDebugRow(int64_t key_idx, int64_t val, bool updated) {
     if (!updated && ShouldInsertAsNull(key_idx)) {
-      return Substitute(
+      return strings::Substitute(
       "(int32 key=$0, int32 key_idx=$1, int32 val=NULL)",
         (int32_t)key_idx, key_idx);
     }
 
-    return Substitute(
-      "(int32 key=$0, int32 key_idx=$1, int32 val=$2)",
+    return strings::Substitute(
+      "{ int32_value: $0 int32_value: $1 int32_value: $2 }",
       (int32_t)key_idx, key_idx, val);
   }
 
@@ -394,15 +379,8 @@ class TabletTestBase : public YBTabletTest {
   }
 
   void VerifyTestRows(int64_t first_row, uint64_t expected_count) {
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none, &iter));
-    ScanSpec scan_spec;
-    ASSERT_OK(iter->Init(&scan_spec));
-    int batch_size = std::max(
-      (size_t)1, std::min((size_t)(expected_count / 10),
-                          4*1024*1024 / schema_.byte_size()));
-    Arena arena(32*1024, 256*1024);
-    RowBlock block(schema_, batch_size, &arena);
+    auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+    ASSERT_OK(iter);
 
     if (expected_count > INT_MAX) {
       LOG(INFO) << "Not checking rows for duplicates -- duplicates expected since "
@@ -415,26 +393,24 @@ class TabletTestBase : public YBTabletTest {
     std::vector<bool> seen_rows;
     seen_rows.resize(expected_count);
 
-    while (iter->HasNext()) {
-      ASSERT_OK_FAST(iter->NextBlock(&block));
+    QLTableRow row;
+    QLValue value;
+    while ((**iter).HasNext()) {
+      ASSERT_OK_FAST((**iter).NextRow(&row));
 
-      RowBlockRow rb_row = block.row(0);
       if (VLOG_IS_ON(2)) {
-        VLOG(2) << "Fetched batch of " << block.nrows() << "\n"
-            << "First row: " << schema_.DebugRow(rb_row);
+        VLOG(2) << "Fetched row: " << row.ToString();
       }
 
-      for (int i = 0; i < block.nrows(); i++) {
-        rb_row.Reset(&block, i);
-        int32_t key_idx = *schema_.ExtractColumnFromRow<INT32>(rb_row, 1);
-        if (key_idx >= first_row && key_idx < first_row + expected_count) {
-          size_t rel_idx = key_idx - first_row;
-          if (seen_rows[rel_idx]) {
-            FAIL() << "Saw row " << key_idx << " twice!\n"
-                   << "Row: " << schema_.DebugRow(rb_row);
-          }
-          seen_rows[rel_idx] = true;
+      ASSERT_OK(row.GetValue(schema_.column_id(1), &value));
+      int32_t key_idx = value.int32_value();
+      if (key_idx >= first_row && key_idx < first_row + expected_count) {
+        size_t rel_idx = key_idx - first_row;
+        if (seen_rows[rel_idx]) {
+          FAIL() << "Saw row " << key_idx << " twice!\n"
+                 << "Row: " << row.ToString();
         }
+        seen_rows[rel_idx] = true;
       }
     }
 
@@ -449,12 +425,10 @@ class TabletTestBase : public YBTabletTest {
   // into the given vector. This is only useful in tests which insert
   // a very small number of rows.
   CHECKED_STATUS IterateToStringList(vector<string> *out) {
-    gscoped_ptr<RowwiseIterator> iter;
     // TODO(dtxn) pass correct transaction ID if needed
-    RETURN_NOT_OK(this->tablet()->NewRowIterator(this->client_schema_, boost::none, &iter));
-    ScanSpec scan_spec;
-    RETURN_NOT_OK(iter->Init(&scan_spec));
-    return yb::tablet::IterateToStringList(iter.get(), out);
+    auto iter = this->tablet()->NewRowIterator(this->client_schema_, boost::none);
+    RETURN_NOT_OK(iter);
+    return yb::tablet::IterateToStringList(iter->get(), out);
   }
 
   // because some types are small we need to
@@ -474,7 +448,6 @@ class TabletTestBase : public YBTabletTest {
 
   Arena arena_;
 };
-
 
 } // namespace tablet
 } // namespace yb

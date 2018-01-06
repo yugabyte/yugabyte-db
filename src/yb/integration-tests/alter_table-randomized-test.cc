@@ -37,7 +37,9 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -118,7 +120,7 @@ struct RowState {
   vector<pair<string, int32_t>> cols;
 
   string ToString() const {
-    string ret = "(";
+    string ret = "{ ";
     typedef pair<string, int32_t> entry;
     bool first = true;
     for (const entry& e : cols) {
@@ -127,12 +129,12 @@ struct RowState {
       }
       first = false;
       if (e.second == kNullValue) {
-        SubstituteAndAppend(&ret, "int32 $0=$1", e.first, "NULL");
+        ret += "null";
       } else {
-        SubstituteAndAppend(&ret, "int32 $0=$1", e.first, e.second);
+        SubstituteAndAppend(&ret, "int32:$0", e.second);
       }
     }
-    ret.push_back(')');
+    ret += " }";
     return ret;
   }
 };
@@ -315,13 +317,8 @@ struct MirrorTable {
     // Add to the real table.
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
-    if (nullable) {
-      default_value = RowState::kNullValue;
-      table_alterer->AddColumn(name)->Type(INT32);
-    } else {
-      table_alterer->AddColumn(name)->Type(INT32)->NotNull()
-        ->Default(YBValue::FromInt(default_value));
-    }
+    default_value = RowState::kNullValue;
+    table_alterer->AddColumn(name)->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
 
     // Add to the mirror state.
@@ -349,9 +346,9 @@ struct MirrorTable {
     // First scan the real table
     vector<string> rows;
     {
-      shared_ptr<YBTable> table;
-      CHECK_OK(client_->OpenTable(kTableName, &table));
-      client::ScanTableToStrings(table.get(), &rows);
+      client::TableHandle table;
+      CHECK_OK(table.Open(kTableName, client_.get()));
+      client::ScanTableToStrings(table, &rows);
     }
     std::sort(rows.begin(), rows.end());
 

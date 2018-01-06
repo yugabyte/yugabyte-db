@@ -28,7 +28,7 @@ class DocExprExecutor : public QLExprExecutor {
 
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow::SharedPtrConst& table_row,
+                                    const QLTableRow& table_row,
                                     QLValue *result) override;
 
   // Evaluate aggregate functions for each row.

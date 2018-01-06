@@ -401,7 +401,6 @@ struct MetricUnit {
     kThreads,
     kTransactions,
     kUnits,
-    kScanners,
     kMaintenanceOperations,
     kBlocks,
     kLogBlockContainers,

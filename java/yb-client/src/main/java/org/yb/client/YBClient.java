@@ -821,16 +821,6 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Creates a new {@link YBScanner.YBScannerBuilder} for a particular table.
-   * @param table the name of the table you intend to scan.
-   * The string is assumed to use the platform's default charset.
-   * @return a new scanner builder for this table
-   */
-  public YBScanner.YBScannerBuilder newScannerBuilder(YBTable table) {
-    return new YBScanner.YBScannerBuilder(asyncClient, table);
-  }
-
-  /**
    * Analogous to {@link #shutdown()}.
    * @throws Exception if an error happens while closing the connections
    */

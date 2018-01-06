@@ -59,7 +59,6 @@ class MaintenanceManager;
 namespace tserver {
 
 class Heartbeater;
-class ScannerManager;
 class TabletServerPathHandlers;
 class TSTabletManager;
 
@@ -94,8 +93,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
-
-  ScannerManager* scanner_manager() override { return scanner_manager_.get(); }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -169,11 +166,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Manager for tablets which are available on this server.
   gscoped_ptr<TSTabletManager> tablet_manager_;
-
-  // Manager for open scanners from clients.
-  // This is always non-NULL. It is scoped only to minimize header
-  // dependencies.
-  gscoped_ptr<ScannerManager> scanner_manager_;
 
   // Thread responsible for heartbeating to the master.
   gscoped_ptr<Heartbeater> heartbeater_;

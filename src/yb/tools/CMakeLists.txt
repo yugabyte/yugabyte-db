@@ -136,6 +136,7 @@ target_link_libraries(yb-pbc-dump
 
 set(YB_TEST_LINK_LIBS
   ysck
+  yb_client
   yb_tools_util
   yb-generate_partitions
   integration-tests

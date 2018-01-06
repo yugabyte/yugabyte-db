@@ -1314,20 +1314,20 @@ CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumns
   return Status::OK();
 }
 
-CHECKED_STATUS PopulateRow(const QLTableRow::SharedPtr& table_row,
+CHECKED_STATUS PopulateRow(const QLTableRow& table_row,
                            const Schema& projection, size_t col_idx, QLRow* row) {
   for (size_t i = 0; i < projection.num_columns(); i++, col_idx++) {
-    RETURN_NOT_OK(table_row->GetValue(projection.column_id(i), row->mutable_column(col_idx)));
+    RETURN_NOT_OK(table_row.GetValue(projection.column_id(i), row->mutable_column(col_idx)));
   }
   return Status::OK();
 }
 
 // Join a static row with a non-static row.
 void JoinStaticRow(
-    const Schema& schema, const Schema& static_projection, const QLTableRow::SharedPtr& static_row,
-    const QLTableRow::SharedPtr& non_static_row) {
+    const Schema& schema, const Schema& static_projection, const QLTableRow& static_row,
+    QLTableRow* non_static_row) {
   // No need to join if static row is empty or the hash key is different.
-  if (static_row->IsEmpty()) {
+  if (static_row.IsEmpty()) {
     return;
   }
 
@@ -1344,7 +1344,7 @@ void JoinStaticRow(
 
   // Join the static columns in the static row into the non-static row.
   for (size_t i = 0; i < static_projection.num_columns(); i++) {
-    CHECK(non_static_row->CopyColumn(static_projection.column_id(i), static_row).ok());
+    CHECK_OK(non_static_row->CopyColumn(static_projection.column_id(i), static_row));
   }
 }
 
@@ -1433,7 +1433,7 @@ void QLWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *l
 Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                      Schema *param_static_projection,
                                      Schema *param_non_static_projection,
-                                     const QLTableRow::SharedPtr& table_row) {
+                                     QLTableRow* table_row) {
   Schema *static_projection = param_static_projection;
   Schema *non_static_projection = param_non_static_projection;
 
@@ -1462,7 +1462,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.doc_write_batch->rocksdb(), data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
-      RETURN_NOT_OK(iterator.NextRow(*static_projection, table_row));
+      RETURN_NOT_OK(iterator.NextRow(table_row));
     }
     data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
@@ -1472,7 +1472,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.doc_write_batch->rocksdb(), data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
-      RETURN_NOT_OK(iterator.NextRow(*non_static_projection, table_row));
+      RETURN_NOT_OK(iterator.NextRow(table_row));
     } else {
       // If no non-static column is found, the row does not exist and we should clear the static
       // columns in the map to indicate the row does not exist.
@@ -1488,13 +1488,13 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
                                               const DocOperationApplyData& data,
                                               bool* should_apply,
                                               std::unique_ptr<QLRowBlock>* rowblock,
-                                              const QLTableRow::SharedPtr& table_row) {
+                                              QLTableRow* table_row) {
   // Read column values.
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(ReadColumns(data, &static_projection, &non_static_projection, table_row));
 
   // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvalCondition(condition, table_row, should_apply));
+  RETURN_NOT_OK(EvalCondition(condition, *table_row, should_apply));
 
   // Populate the result set to return the "applied" status, and optionally the present column
   // values if the condition is not satisfied and the row does exist (value_map is not empty).
@@ -1510,8 +1510,8 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(*should_apply);
   if (!*should_apply && !table_row->IsEmpty()) {
-    RETURN_NOT_OK(PopulateRow(table_row, static_projection, 1 /* begin col_idx */, &row));
-    RETURN_NOT_OK(PopulateRow(table_row, non_static_projection,
+    RETURN_NOT_OK(PopulateRow(*table_row, static_projection, 1 /* begin col_idx */, &row));
+    RETURN_NOT_OK(PopulateRow(*table_row, non_static_projection,
                               1 + static_projection.num_columns(), &row));
   }
 
@@ -1520,15 +1520,15 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   bool should_apply = true;
-  QLTableRow::SharedPtr table_row = make_shared<QLTableRow>();
+  QLTableRow table_row;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        data,
                                        &should_apply,
                                        &rowblock_,
-                                       table_row));
+                                       &table_row));
   } else if (RequireReadForExpressions(request_)) {
-    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, table_row));
+    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &table_row));
   }
 
   if (should_apply) {
@@ -1717,10 +1717,10 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           // Iterate through rows and delete those that match the condition.
           // TODO We do not lock here, so other write transactions coming in might appear partially
           // applied if they happen in the middle of a ranged delete.
-          QLTableRow::SharedPtr row = make_shared<QLTableRow>();
+          QLTableRow row;
           while (iterator.HasNext()) {
-            row->Clear();
-            RETURN_NOT_OK(iterator.NextRow(projection, row));
+            row.Clear();
+            RETURN_NOT_OK(iterator.NextRow(&row));
 
             // Match the row with the where condition before deleting it.
             bool match = false;
@@ -1809,9 +1809,9 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
-  QLTableRow::SharedPtr static_row = make_shared<QLTableRow>();
-  QLTableRow::SharedPtr non_static_row = make_shared<QLTableRow>();
-  QLTableRow::SharedPtr selected_row = read_distinct_columns ? static_row : non_static_row;
+  QLTableRow static_row;
+  QLTableRow non_static_row;
+  QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
 
   // In case when we are continuing a select with a paging state, the static columns for the next
   // row to fetch are not included in the first iterator and we need to fetch them with a separate
@@ -1822,7 +1822,7 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
                                          req_read_time, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
     if (static_row_iter->HasNext()) {
-      RETURN_NOT_OK(static_row_iter->NextRow(static_projection, static_row));
+      RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
     }
   }
 
@@ -1839,8 +1839,8 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
       // If the next row is a row that contains a static column, read it if the select list contains
       // a static column. Otherwise, skip this row and continue to read the next row.
       if (read_static_columns) {
-        static_row->Clear();
-        RETURN_NOT_OK(iter->NextRow(static_projection, static_row));
+        static_row.Clear();
+        RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
 
         // If we are not selecting distinct columns (i.e. hash and static columns only), continue
         // to scan for the non-static (regular) row.
@@ -1863,13 +1863,13 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
       }
 
       // Read this regular row.
-      non_static_row->Clear();
-      RETURN_NOT_OK(iter->NextRow(non_static_projection, non_static_row));
+      non_static_row.Clear();
+      RETURN_NOT_OK(iter->NextRow(non_static_projection, &non_static_row));
 
       // If select list contains static columns and we have read a row that contains the static
       // columns for the same hash key, copy the static columns into this row.
       if (read_static_columns) {
-        JoinStaticRow(schema, static_projection, static_row, non_static_row);
+        JoinStaticRow(schema, static_projection, static_row, &non_static_row);
       }
     }
 
@@ -1902,7 +1902,7 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& table_row,
+CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow& table_row,
                                                   QLResultSet *resultset) {
   int column_count = request_.selected_exprs().size();
   QLRSRow *rsrow = resultset->AllocateRSRow(column_count);
@@ -1916,7 +1916,7 @@ CHECKED_STATUS QLReadOperation::PopulateResultSet(const QLTableRow::SharedPtr& t
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table_row) {
+CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
   if (aggr_result_.empty()) {
     int column_count = request_.selected_exprs().size();
     aggr_result_.resize(column_count);
@@ -1930,7 +1930,7 @@ CHECKED_STATUS QLReadOperation::EvalAggregate(const QLTableRow::SharedPtr& table
   return Status::OK();
 }
 
-CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow::SharedPtr& table_row,
+CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow& table_row,
                                                   QLResultSet *resultset) {
   int column_count = request_.selected_exprs().size();
   QLRSRow *rsrow = resultset->AllocateRSRow(column_count);

@@ -16,7 +16,7 @@ using yb::bfql::TSOpcode;
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
-                                           const QLTableRow::SharedPtrConst& table_row,
+                                           const QLTableRow& table_row,
                                            QLValue *result) {
   TSOpcode tsopcode = static_cast<TSOpcode>(tscall.opcode());
   switch (tsopcode) {
@@ -29,7 +29,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
     case TSOpcode::kTtl: {
       DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
       int64_t ttl_seconds = -1;
-      RETURN_NOT_OK(table_row->GetTTL(tscall.operands(0).column_id(), &ttl_seconds));
+      RETURN_NOT_OK(table_row.GetTTL(tscall.operands(0).column_id(), &ttl_seconds));
       if (ttl_seconds != -1) {
         result->set_int64_value(ttl_seconds);
       } else {
@@ -41,7 +41,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
     case TSOpcode::kWriteTime: {
       DCHECK_EQ(tscall.operands().size(), 1) << "WriteTime takes only one argument, a column";
       int64_t write_time = 0;
-      RETURN_NOT_OK(table_row->GetWriteTime(tscall.operands(0).column_id(), &write_time));
+      RETURN_NOT_OK(table_row.GetWriteTime(tscall.operands(0).column_id(), &write_time));
       result->set_int64_value(write_time);
       return Status::OK();
     }

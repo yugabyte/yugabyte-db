@@ -39,7 +39,10 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/schema.h"
+
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/join.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/util/stopwatch.h"

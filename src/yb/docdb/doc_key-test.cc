@@ -285,32 +285,6 @@ TEST(DocKeyTest, TestSubDocKeyComparison) {
   TestDocOrSubDocKeyComparison<SubDocKey>();
 }
 
-TEST(DocKeyTest, TestFromKuduKey) {
-  Schema schema({ ColumnSchema("number1", DataType::INT64),
-                  ColumnSchema("string1", DataType::STRING),
-                  ColumnSchema("number2", DataType::INT64),
-                  ColumnSchema("string2", DataType::STRING) }, 4);
-  EncodedKeyBuilder builder(&schema);
-
-  int64_t number1 = 123123123;
-  Slice string1("mystring1");
-  int64_t number2 = -100020003000;
-  Slice string2("mystring2");
-
-  builder.AddColumnKey(&number1);
-  builder.AddColumnKey(&string1);
-  builder.AddColumnKey(&number2);
-  builder.AddColumnKey(&string2);
-
-  auto encoded_key = unique_ptr<EncodedKey>(builder.BuildEncodedKey());
-  ASSERT_EQ("(123123123,mystring1,-100020003000,mystring2)",
-            encoded_key->Stringify(schema));
-
-  auto doc_key = DocKey::FromKuduEncodedKey(*encoded_key, schema);
-  ASSERT_EQ("DocKey([], [123123123, \"mystring1\", -100020003000, \"mystring2\"])",
-            doc_key.ToString());
-}
-
 TEST(DocKeyTest, TestSubDocKeyStartsWith) {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   auto subdoc_keys = GenRandomSubDocKeys(&rng, UseHash::kFalse, 1000);

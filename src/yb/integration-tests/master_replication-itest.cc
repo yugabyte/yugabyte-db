@@ -53,7 +53,6 @@ namespace master {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBScanner;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBTable;

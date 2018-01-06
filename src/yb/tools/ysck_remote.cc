@@ -112,9 +112,7 @@ class ChecksumStepper {
         server_uuid_(std::move(server_uuid)),
         options_(std::move(options)),
         reporter_callback_(std::move(callback)),
-        proxy_(std::move(proxy)),
-        call_seq_id_(0),
-        checksum_(0) {
+        proxy_(std::move(proxy)) {
     DCHECK(proxy_);
   }
 
@@ -123,7 +121,7 @@ class ChecksumStepper {
     if (!s.ok()) {
       reporter_callback_.Run(s, 0);
     } else {
-      SendRequest(kNewRequest);
+      SendRequest();
     }
   }
 
@@ -139,54 +137,16 @@ class ChecksumStepper {
     }
 
     DCHECK(resp_.has_checksum());
-    checksum_ = resp_.checksum();
 
-    // Report back with results.
-    if (!resp_.has_more_results()) {
-      reporter_callback_.Run(s, checksum_);
-      return; // Deletes 'this'.
-    }
-
-    // We're not done scanning yet. Fetch the next chunk.
-    if (resp_.has_scanner_id()) {
-      scanner_id_ = resp_.scanner_id();
-    }
-    SendRequest(kContinueRequest);
-    ignore_result(deleter.release()); // We have more work to do.
+    reporter_callback_.Run(s, resp_.checksum());
   }
 
  private:
-  enum RequestType {
-    kNewRequest,
-    kContinueRequest
-  };
-
-  void SendRequest(RequestType type) {
-    switch (type) {
-      case kNewRequest: {
-        req_.set_call_seq_id(call_seq_id_);
-        req_.mutable_new_request()->mutable_projected_columns()->CopyFrom(cols_);
-        req_.mutable_new_request()->set_tablet_id(tablet_id_);
-        req_.mutable_new_request()->set_cache_blocks(FLAGS_checksum_cache_blocks);
-        rpc_.set_timeout(GetDefaultTimeout());
-        break;
-      }
-      case kContinueRequest: {
-        req_.Clear();
-        resp_.Clear();
-        rpc_.Reset();
-
-        req_.set_call_seq_id(++call_seq_id_);
-        DCHECK(!scanner_id_.empty());
-        req_.mutable_continue_request()->set_scanner_id(scanner_id_);
-        req_.mutable_continue_request()->set_previous_checksum(checksum_);
-        break;
-      }
-      default:
-        LOG(FATAL) << "Unknown type";
-        break;
-    }
-    gscoped_ptr<ChecksumCallbackHandler> handler(new ChecksumCallbackHandler(this));
+  void SendRequest() {
+    req_.set_tablet_id(tablet_id_);
+    req_.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+    rpc_.set_timeout(GetDefaultTimeout());
+    auto handler = std::make_unique<ChecksumCallbackHandler>(this);
     rpc::ResponseCallback cb = std::bind(&ChecksumCallbackHandler::Run, handler.get());
     proxy_->ChecksumAsync(req_, &resp_, &rpc_, cb);
     ignore_result(handler.release());
@@ -201,9 +161,6 @@ class ChecksumStepper {
   const ReportResultCallback reporter_callback_;
   const shared_ptr<tserver::TabletServerServiceProxy> proxy_;
 
-  uint32_t call_seq_id_;
-  string scanner_id_;
-  uint64_t checksum_;
   tserver::ChecksumRequestPB req_;
   tserver::ChecksumResponsePB resp_;
   RpcController rpc_;

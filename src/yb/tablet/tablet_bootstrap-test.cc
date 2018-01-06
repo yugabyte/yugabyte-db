@@ -32,7 +32,6 @@
 
 #include <vector>
 
-#include "yb/common/iterator.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log-test-base.h"
@@ -159,11 +158,9 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    gscoped_ptr<RowwiseIterator> iter;
-    ASSERT_OK(tablet->NewRowIterator(schema_, boost::none, &iter));
-    ScanSpec scan_spec;
-    ASSERT_OK(iter->Init(&scan_spec));
-    ASSERT_OK(IterateToStringList(iter.get(), results));
+    auto iter = tablet->NewRowIterator(schema_, boost::none);
+    ASSERT_OK(iter);
+    ASSERT_OK(IterateToStringList(iter->get(), results));
     for (const string& result : *results) {
       VLOG(1) << result;
     }
@@ -299,7 +296,7 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
   IterateTabletRows(tablet.get(), &results);
   ASSERT_EQ(1, results.size());
 
-  ASSERT_EQ("(int32 key=1, int32 int_val=0, string string_val=this is a test insert)",
+  ASSERT_EQ("{ int32_value: 1 int32_value: 0 string_value: \"this is a test insert\" }",
             results[0]);
 }
 

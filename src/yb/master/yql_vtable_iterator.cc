@@ -21,7 +21,7 @@ YQLVTableIterator::YQLVTableIterator(std::unique_ptr<QLRowBlock> vtable)
       vtable_index_(0) {
 }
 
-Status YQLVTableIterator::Init(ScanSpec* spec) {
+Status YQLVTableIterator::Init() {
   return STATUS(NotSupported, "YQLVTableIterator::Init(ScanSpec*) not supported!");
 }
 
@@ -30,12 +30,7 @@ Status YQLVTableIterator::Init(const common::QLScanSpec& spec) {
   return Status::OK();
 }
 
-CHECKED_STATUS YQLVTableIterator::NextBlock(RowBlock *dst) {
-  return STATUS(NotSupported, "YQLVTableIterator::NextBlock(RowBlock*) not supported!");
-}
-
-CHECKED_STATUS YQLVTableIterator::NextRow(const Schema& projection,
-                                          const QLTableRow::SharedPtr& table_row) {
+Status YQLVTableIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
   if (vtable_index_ >= vtable_->row_count()) {
     return STATUS(NotFound, "No more rows left!");
   }
@@ -72,10 +67,6 @@ std::string YQLVTableIterator::ToString() const {
 
 const Schema& YQLVTableIterator::schema() const {
   return vtable_->schema();
-}
-
-void YQLVTableIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const {
-  // Not supported.
 }
 
 YQLVTableIterator::~YQLVTableIterator() {

@@ -128,45 +128,6 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
     return table;
   }
 
-  /**
-   * Counts the rows from the {@code scanner} until exhaustion. It doesn't require the scanner to
-   * be new, so it can be used to finish scanning a previously-started scan.
-   */
-  protected static int countRowsInScan(AsyncYBScanner scanner)
-      throws Exception {
-    final AtomicInteger counter = new AtomicInteger();
-
-    Callback<Object, RowResultIterator> cb = arg -> {
-      if (arg == null) return null;
-      counter.addAndGet(arg.getNumRows());
-      return null;
-    };
-
-    while (scanner.hasMoreRows()) {
-      Deferred<RowResultIterator> data = scanner.nextRows();
-      data.addCallbacks(cb, defaultErrorCB);
-      data.join(DEFAULT_SLEEP);
-    }
-
-    Deferred<RowResultIterator> closer = scanner.close();
-    closer.addCallbacks(cb, defaultErrorCB);
-    closer.join(DEFAULT_SLEEP);
-    return counter.get();
-  }
-
-  protected List<String> scanTableToStrings(YBTable table) throws Exception {
-    List<String> rowStrings = Lists.newArrayList();
-    YBScanner scanner = syncClient.newScannerBuilder(table).build();
-    while (scanner.hasMoreRows()) {
-      RowResultIterator rows = scanner.nextRows();
-      for (RowResult r : rows) {
-        rowStrings.add(r.rowToString());
-      }
-    }
-    Collections.sort(rowStrings);
-    return rowStrings;
-  }
-
   public static Schema getSchemaWithAllTypes() {
     List<ColumnSchema> columns =
         ImmutableList.of(

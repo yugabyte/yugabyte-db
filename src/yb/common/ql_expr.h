@@ -26,10 +26,13 @@ namespace yb {
 // we use the clauses in protobuf to evaluate, we will maintain the column values in QLValuePB
 // also to avoid conversion to and from QLValue.
 struct QLTableColumn {
- public:
   QLValuePB value;
   int64_t ttl_seconds;
   int64_t write_time;
+
+  std::string ToString() const {
+    return Format("{ value: $0 ttl_seconds: $1 write_time: $2 }", value, ttl_seconds, write_time);
+  }
 };
 
 class QLTableRow {
@@ -52,8 +55,8 @@ class QLTableRow {
   void Clear() { col_map_.clear(); }
 
   // Compare column value between two rows.
-  bool MatchColumn(ColumnIdRep col_id, const QLTableRow::SharedPtrConst& source) const;
-  bool MatchColumn(const ColumnId& col, const QLTableRow::SharedPtrConst& source) const {
+  bool MatchColumn(ColumnIdRep col_id, const QLTableRow& source) const;
+  bool MatchColumn(const ColumnId& col, const QLTableRow& source) const {
     return MatchColumn(col.rep(), source);
   }
 
@@ -67,8 +70,8 @@ class QLTableRow {
   }
 
   // Copy column-value from 'source' to the 'col_id' entry in the cached column-map.
-  CHECKED_STATUS CopyColumn(ColumnIdRep col_id, const QLTableRow::SharedPtrConst& source);
-  CHECKED_STATUS CopyColumn(const ColumnId& col, const QLTableRow::SharedPtrConst& source) {
+  CHECKED_STATUS CopyColumn(ColumnIdRep col_id, const QLTableRow& source);
+  CHECKED_STATUS CopyColumn(const ColumnId& col, const QLTableRow& source) {
     return CopyColumn(col.rep(), source);
   }
 
@@ -98,6 +101,12 @@ class QLTableRow {
     return col_map_.at(col.rep());
   }
 
+  std::string ToString() const {
+    return yb::ToString(col_map_);
+  }
+
+  std::string ToString(const Schema& schema) const;
+
  private:
   std::unordered_map<ColumnIdRep, QLTableColumn> col_map_;
 };
@@ -119,34 +128,34 @@ class QLExprExecutor {
 
   // Evaluate the given QLExpressionPB.
   CHECKED_STATUS EvalExpr(const QLExpressionPB& ql_expr,
-                          const QLTableRow::SharedPtrConst& table_row,
+                          const QLTableRow& table_row,
                           QLValue *result);
 
   // Read evaluated value from an expression. This is only useful for aggregate function.
   CHECKED_STATUS ReadExprValue(const QLExpressionPB& ql_expr,
-                               const QLTableRow::SharedPtrConst& table_row,
+                               const QLTableRow& table_row,
                                QLValue *result);
 
   // Evaluate call to regular builtin operator.
   virtual CHECKED_STATUS EvalBFCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow::SharedPtrConst& table_row,
+                                    const QLTableRow& table_row,
                                     QLValue *result);
 
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
-                                    const QLTableRow::SharedPtrConst& table_row,
+                                    const QLTableRow& table_row,
                                     QLValue *result);
 
   virtual CHECKED_STATUS ReadTSCallValue(const QLBCallPB& ql_expr,
-                                         const QLTableRow::SharedPtrConst& table_row,
+                                         const QLTableRow& table_row,
                                          QLValue *result);
 
   // Evaluate a boolean condition for the given row.
   virtual CHECKED_STATUS EvalCondition(const QLConditionPB& condition,
-                                       const QLTableRow::SharedPtrConst& table_row,
+                                       const QLTableRow& table_row,
                                        bool* result);
   virtual CHECKED_STATUS EvalCondition(const QLConditionPB& condition,
-                                       const QLTableRow::SharedPtrConst& table_row,
+                                       const QLTableRow& table_row,
                                        QLValue *result);
 };
 

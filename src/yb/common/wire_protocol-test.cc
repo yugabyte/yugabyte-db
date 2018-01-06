@@ -32,7 +32,6 @@
 
 #include <gtest/gtest.h>
 #include "yb/common/row.h"
-#include "yb/common/rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/util/status.h"
@@ -51,17 +50,6 @@ class WireProtocolTest : public YBTest {
               1) {
   }
 
-  void FillRowBlockWithTestRows(RowBlock* block) {
-    block->selection_vector()->SetAllTrue();
-
-    for (int i = 0; i < block->nrows(); i++) {
-      RowBlockRow row = block->row(i);
-      *reinterpret_cast<Slice*>(row.mutable_cell_ptr(0)) = Slice("hello world col1");
-      *reinterpret_cast<Slice*>(row.mutable_cell_ptr(1)) = Slice("hello world col2");
-      *reinterpret_cast<uint32_t*>(row.mutable_cell_ptr(2)) = i;
-      row.cell(2).set_null(false);
-    }
-  }
  protected:
   Schema schema_;
 };
@@ -194,99 +182,6 @@ TEST_F(WireProtocolTest, TestBadSchema_DuplicateColumnName) {
   Status s = ColumnPBsToSchema(pbs, &schema);
   ASSERT_EQ("Invalid argument: Duplicate column name: c0",
             s.ToString(/* no file/line */ false));
-}
-
-// Create a block of rows in columnar layout and ensure that it can be
-// converted to and from protobuf.
-TEST_F(WireProtocolTest, TestColumnarRowBlockToPB) {
-  Arena arena(1024, 1024 * 1024);
-  RowBlock block(schema_, 10, &arena);
-  FillRowBlockWithTestRows(&block);
-
-  // Convert to PB.
-  RowwiseRowBlockPB pb;
-  faststring direct, indirect;
-  SerializeRowBlock(block, &pb, nullptr, &direct, &indirect);
-  SCOPED_TRACE(pb.DebugString());
-  SCOPED_TRACE("Row data: " + direct.ToString());
-  SCOPED_TRACE("Indirect data: " + indirect.ToString());
-
-  // Convert back to a row, ensure that the resulting row is the same
-  // as the one we put in.
-  vector<const uint8_t*> row_ptrs;
-  Slice direct_sidecar = direct;
-  ASSERT_OK(ExtractRowsFromRowBlockPB(schema_, pb, indirect,
-                                             &direct_sidecar, &row_ptrs));
-  ASSERT_EQ(block.nrows(), row_ptrs.size());
-  for (int i = 0; i < block.nrows(); ++i) {
-    ConstContiguousRow row_roundtripped(&schema_, row_ptrs[i]);
-    EXPECT_EQ(schema_.DebugRow(block.row(i)),
-              schema_.DebugRow(row_roundtripped));
-  }
-}
-
-#ifdef NDEBUG
-TEST_F(WireProtocolTest, TestColumnarRowBlockToPBBenchmark) {
-  Arena arena(1024, 1024 * 1024);
-  const int kNumTrials = AllowSlowTests() ? 100 : 10;
-  RowBlock block(schema_, 10000 * kNumTrials, &arena);
-  FillRowBlockWithTestRows(&block);
-
-  RowwiseRowBlockPB pb;
-
-  LOG_TIMING(INFO, "Converting to PB") {
-    for (int i = 0; i < kNumTrials; i++) {
-      pb.Clear();
-      faststring direct, indirect;
-      SerializeRowBlock(block, &pb, NULL, &direct, &indirect);
-    }
-  }
-}
-#endif
-
-// Test that trying to extract rows from an invalid block correctly returns
-// Corruption statuses.
-TEST_F(WireProtocolTest, TestInvalidRowBlock) {
-  Schema schema({ ColumnSchema("col1", STRING) }, 1);
-  RowwiseRowBlockPB pb;
-  vector<const uint8_t*> row_ptrs;
-
-  // Too short to be valid data.
-  const char* shortstr = "x";
-  pb.set_num_rows(1);
-  Slice direct = shortstr;
-  Status s = ExtractRowsFromRowBlockPB(schema, pb, Slice(), &direct, &row_ptrs);
-  ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
-                      "Corruption: Row block has 1 bytes of data");
-
-  // Bad pointer into indirect data.
-  shortstr = "xxxxxxxxxxxxxxxx";
-  pb.set_num_rows(1);
-  direct = Slice(shortstr);
-  s = ExtractRowsFromRowBlockPB(schema, pb, Slice(), &direct, &row_ptrs);
-  ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
-                      "Corruption: Row #0 contained bad indirect slice");
-}
-
-// Test serializing a block which has a selection vector but no columns.
-// This is the sort of result that is returned from a scan with an empty
-// projection (a COUNT(*) query).
-TEST_F(WireProtocolTest, TestBlockWithNoColumns) {
-  Schema empty(std::vector<ColumnSchema>(), 0);
-  Arena arena(1024, 1024 * 1024);
-  RowBlock block(empty, 1000, &arena);
-  block.selection_vector()->SetAllTrue();
-  // Unselect 100 rows
-  for (int i = 0; i < 100; i++) {
-    block.selection_vector()->SetRowUnselected(i * 2);
-  }
-  ASSERT_EQ(900, block.selection_vector()->CountSelected());
-
-  // Convert it to protobuf, ensure that the results look right.
-  RowwiseRowBlockPB pb;
-  faststring direct, indirect;
-  SerializeRowBlock(block, &pb, nullptr, &direct, &indirect);
-  ASSERT_EQ(900, pb.num_rows());
 }
 
 TEST_F(WireProtocolTest, TestColumnDefaultValue) {

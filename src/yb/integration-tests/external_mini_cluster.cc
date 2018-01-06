@@ -43,6 +43,7 @@
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/mathlimits.h"
@@ -72,7 +73,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/size_literals.h"
 
-using namespace std::literals;  // NOLINT
+using namespace std::literals;
 
 using std::atomic;
 using std::lock_guard;

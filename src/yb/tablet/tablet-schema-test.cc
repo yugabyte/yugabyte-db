@@ -127,12 +127,9 @@ TEST_F(TestTabletSchema, TestRead) {
 
   InsertRows(0, kNumRows);
 
-  gscoped_ptr<RowwiseIterator> iter;
-  ASSERT_OK(tablet()->NewRowIterator(projection, boost::none, &iter));
-
-  Status s = iter->Init(nullptr);
-  ASSERT_TRUE(s.IsInvalidArgument());
-  ASSERT_STR_CONTAINS(s.message().ToString(),
+  auto iter = tablet()->NewRowIterator(projection, boost::none);
+  ASSERT_TRUE(!iter.ok() && iter.status().IsInvalidArgument());
+  ASSERT_STR_CONTAINS(iter.status().message().ToBuffer(),
                       "Some columns are not present in the current schema: c2, c3");
 }
 
@@ -231,8 +228,8 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   // Read and verify using the s2 schema
   keys.clear();
   for (int i = 1; i <= 4; ++i) {
-    keys.push_back(std::pair<string, string>(Substitute("key=$0", i),
-                                             Substitute("c1_renamed=$0", i)));
+    keys.push_back(std::pair<string, string>(Substitute("{ int32_value: $0", i),
+                                             Substitute("int32_value: $0 }", i)));
   }
   VerifyTabletRows(s2, keys);
 
@@ -244,7 +241,7 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
 
   // Read and verify using the s2 schema
   keys.clear();
-  keys.push_back(std::pair<string, string>("key=2", "c1_renamed=6"));
+  keys.push_back(std::pair<string, string>("{ int32_value: 2", "int32_value: 6 }"));
   VerifyTabletRows(s2, keys);
 }
 
@@ -257,7 +254,7 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
   MutateRow(/* key= */ 1, /* col_idx= */ 1, /* new_val= */ 2);
 
   keys.clear();
-  keys.push_back(std::pair<string, string>("key=1", "c1=2"));
+  keys.push_back(std::pair<string, string>("{ int32_value: 1", "int32_value: 2 }"));
   VerifyTabletRows(client_schema_, keys);
 
   // Switch schema to s2
@@ -271,7 +268,7 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
 
   // Verify that the new 'c1' have the default value
   keys.clear();
-  keys.push_back(std::pair<string, string>("key=1", "c1=NULL"));
+  keys.push_back(std::pair<string, string>("{ int32_value: 1", "null }"));
   VerifyTabletRows(s2, keys);
 }
 

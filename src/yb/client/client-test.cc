@@ -44,8 +44,6 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/row_result.h"
-#include "yb/client/scanner-internal.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/value.h"
 #include "yb/client/yb_op.h"
@@ -69,7 +67,6 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/metrics.h"
@@ -87,7 +84,6 @@ DECLARE_int32(log_inject_latency_ms_mean);
 DECLARE_int32(log_inject_latency_ms_stddev);
 DECLARE_int32(master_inject_latency_on_tablet_lookups_ms);
 DECLARE_int32(max_create_tablets_per_ts);
-DECLARE_int32(scanner_gc_check_interval_us);
 DECLARE_int32(scanner_inject_latency_on_each_batch_ms);
 DECLARE_int32(scanner_max_batch_size_bytes);
 DECLARE_int32(scanner_ttl_ms);
@@ -142,7 +138,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Reduce the TS<->Master heartbeat interval
     FLAGS_heartbeat_interval_ms = 10;
-    FLAGS_scanner_gc_check_interval_us = 50 * 1000; // 50 milliseconds.
 
     // Start minicluster and wait for tablet servers to connect to master.
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
@@ -266,21 +261,12 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTestScanWithoutPredicates() {
-    YBScanner scanner(client_table_.get());
-    ASSERT_OK(scanner.SetProjectedColumns({"key"}));
+    client::TableIteratorOptions options;
+    options.columns = std::vector<std::string>{"key"};
     LOG_TIMING(INFO, "Scanning with no predicates") {
-      ASSERT_OK(scanner.Open());
-
-      ASSERT_TRUE(scanner.HasMoreRows());
-      YBScanBatch batch;
       uint64_t sum = 0;
-      while (scanner.HasMoreRows()) {
-        ASSERT_OK(scanner.NextBatch(&batch));
-        for (const YBScanBatch::RowPtr& row : batch) {
-          int32_t value;
-          ASSERT_OK(row.GetInt32(0, &value));
-          sum += value;
-        }
+      for (const auto& row : client::TableRange(client_table_, options)) {
+        sum += row.column(0).int32_value();
       }
       // The sum should be the sum of the arithmetic series from
       // 0..FLAGS_test_scan_num_rows-1
@@ -291,30 +277,22 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTestScanWithStringPredicate() {
-    YBScanner scanner(client_table_.get());
-    ASSERT_OK(scanner.AddConjunctPredicate(
-        client_table_.table()->NewComparisonPredicate("string_val", YBPredicate::GREATER_EQUAL,
-            YBValue::CopyString("hello 2"))));
-    ASSERT_OK(scanner.AddConjunctPredicate(
-        client_table_.table()->NewComparisonPredicate("string_val", YBPredicate::LESS_EQUAL,
-            YBValue::CopyString("hello 3"))));
+    TableIteratorOptions options;
+    options.filter = FilterBetween("hello 2"s, Inclusive::kFalse,
+                                   "hello 3"s, Inclusive::kFalse,
+                                   "string_val");
 
+    bool found = false;
     LOG_TIMING(INFO, "Scanning with string predicate") {
-      ASSERT_OK(scanner.Open());
-
-      ASSERT_TRUE(scanner.HasMoreRows());
-      YBScanBatch batch;
-      while (scanner.HasMoreRows()) {
-        ASSERT_OK(scanner.NextBatch(&batch));
-        for (const YBScanBatch::RowPtr& row : batch) {
-          Slice s;
-          ASSERT_OK(row.GetString(2, &s));
-          if (!s.starts_with("hello 2") && !s.starts_with("hello 3")) {
-            FAIL() << row.ToString();
-          }
+      for (const auto& row : TableRange(client_table_, options)) {
+        found = true;
+        Slice slice(row.column(2).string_value());
+        if (!slice.starts_with("hello 2") && !slice.starts_with("hello 3")) {
+          FAIL() << row.ToString();
         }
       }
     }
+    ASSERT_TRUE(found);
   }
 
   void DoTestScanWithKeyPredicate() {
@@ -447,7 +425,7 @@ int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency
                         int32_t lower_bound, int32_t upper_bound) {
   TableIteratorOptions options;
   options.consistency = consistency;
-  options.columns = {"key"};
+  options.columns = std::vector<std::string>{"key"};
   options.filter = MakeFilter(lower_bound, upper_bound);
   return boost::size(TableRange(table, options));
 }
@@ -611,18 +589,9 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 }
 
 TEST_F(ClientTest, TestScanEmptyTable) {
-  YBScanner scanner(client_table_.get());
-  ASSERT_OK(scanner.SetProjectedColumns(vector<string>()));
-  ASSERT_OK(scanner.Open());
-
-  // There are two tablets in the table, both empty. Until we scan to
-  // the last tablet, HasMoreRows will return true (because it doesn't
-  // know whether there's data in subsequent tablets).
-  ASSERT_TRUE(scanner.HasMoreRows());
-  YBScanBatch batch;
-  ASSERT_OK(scanner.NextBatch(&batch));
-  ASSERT_EQ(0, batch.NumRows());
-  ASSERT_FALSE(scanner.HasMoreRows());
+  TableIteratorOptions options;
+  options.columns = std::vector<std::string>();
+  ASSERT_EQ(boost::size(TableRange(client_table_, options)), 0);
 }
 
 // Test scanning with an empty projection. This should yield an empty
@@ -630,34 +599,9 @@ TEST_F(ClientTest, TestScanEmptyTable) {
 // scans like this in order to implement COUNT(*).
 TEST_F(ClientTest, TestScanEmptyProjection) {
   ASSERT_NO_FATALS(InsertTestRows(client_table_, FLAGS_test_scan_num_rows));
-  YBScanner scanner(client_table_.get());
-  ASSERT_OK(scanner.SetProjectedColumns(vector<string>()));
-  ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 0);
-  LOG_TIMING(INFO, "Scanning with no projected columns") {
-    ASSERT_OK(scanner.Open());
-
-    ASSERT_TRUE(scanner.HasMoreRows());
-    YBScanBatch batch;
-    uint64_t count = 0;
-    while (scanner.HasMoreRows()) {
-      ASSERT_OK(scanner.NextBatch(&batch));
-      count += batch.NumRows();
-    }
-    ASSERT_EQ(FLAGS_test_scan_num_rows, count);
-  }
-}
-
-TEST_F(ClientTest, TestProjectInvalidColumn) {
-  YBScanner scanner(client_table_.get());
-  Status s = scanner.SetProjectedColumns({ "column-doesnt-exist" });
-  ASSERT_EQ("Not found: Column: \"column-doesnt-exist\" was not found in the table schema.",
-            s.ToString(/* no file/line */ false));
-
-  // Test trying to use a projection where a column is used multiple times.
-  // TODO: consider fixing this to support returning the column multiple
-  // times, even though it's not very useful.
-  s = scanner.SetProjectedColumns({ "key", "key" });
-  ASSERT_EQ("Invalid argument: Duplicate column name: key", s.ToString(/* no file/line */ false));
+  TableIteratorOptions options;
+  options.columns = std::vector<std::string>();
+  ASSERT_EQ(boost::size(TableRange(client_table_, options)), FLAGS_test_scan_num_rows);
 }
 
 // Test a scan where we have a predicate on a key column that is not
@@ -667,7 +611,7 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
 
   size_t nrows = 0;
   TableIteratorOptions options;
-  options.columns = {"key", "int_val"};
+  options.columns = std::vector<std::string>{"key", "int_val"};
   options.filter = MakeFilter(5, 10);
   for (const auto& row : TableRange(client_table_, options)) {
     int32_t key = row.column(0).int32_value();
@@ -687,7 +631,7 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
 
   size_t nrows = 0;
   TableIteratorOptions options;
-  options.columns = {"key", "int_val"};
+  options.columns = std::vector<std::string>{"key", "int_val"};
   options.filter = MakeFilter(10, 20, "int_val");
   TableRange range(client_table_, options);
   for (const auto& row : range) {
@@ -699,196 +643,6 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
   }
 
   ASSERT_EQ(nrows, 6);
-}
-
-// Test adding various sorts of invalid binary predicates.
-TEST_F(ClientTest, TestInvalidPredicates) {
-  YBScanner scanner(client_table_.get());
-
-  // Predicate on a column that does not exist.
-  Status s = scanner.AddConjunctPredicate(
-      client_table_->NewComparisonPredicate("this-does-not-exist",
-                                            YBPredicate::EQUAL, YBValue::FromInt(5)));
-  EXPECT_EQ("Not found: column not found: this-does-not-exist",
-            s.ToString(/* no file/line */ false));
-
-  // Int predicate on a string column.
-  s = scanner.AddConjunctPredicate(
-      client_table_->NewComparisonPredicate("string_val",
-                                            YBPredicate::EQUAL, YBValue::FromInt(5)));
-  EXPECT_EQ("Invalid argument: non-string value for string column string_val",
-            s.ToString(false));
-
-  // String predicate on an int column.
-  s = scanner.AddConjunctPredicate(
-      client_table_->NewComparisonPredicate("int_val",
-                                            YBPredicate::EQUAL, YBValue::CopyString("x")));
-  EXPECT_EQ("Invalid argument: non-int value for int column int_val",
-            s.ToString(false));
-
-  // Out-of-range int predicate on an int column.
-  s = scanner.AddConjunctPredicate(
-      client_table_->NewComparisonPredicate(
-          "int_val",
-          YBPredicate::EQUAL,
-          YBValue::FromInt(static_cast<int64_t>(MathLimits<int32_t>::kMax) + 10)));
-  EXPECT_EQ("Invalid argument: value 2147483657 out of range for "
-            "32-bit signed integer column 'int_val'", s.ToString(false));
-}
-
-
-// Check that the tserver proxy is reset on close, even for empty tables.
-TEST_F(ClientTest, TestScanCloseProxy) {
-  const YBTableName kEmptyTable("TestScanCloseProxy");
-  TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(kEmptyTable, 3, kNumTablets, &table));
-
-  {
-    // Open and close an empty scanner.
-    YBScanner scanner(table.get());
-    ASSERT_OK(scanner.Open());
-    scanner.Close();
-    CHECK_EQ(0, scanner.data_->proxy_.use_count()) << "Proxy was not reset!";
-  }
-
-  // Insert some test rows.
-  ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
-  {
-    // Open and close a scanner with rows.
-    YBScanner scanner(table.get());
-    ASSERT_OK(scanner.Open());
-    scanner.Close();
-    CHECK_EQ(0, scanner.data_->proxy_.use_count()) << "Proxy was not reset!";
-  }
-}
-
-namespace internal {
-
-static void ReadBatchToStrings(YBScanner* scanner, vector<string>* rows) {
-  YBScanBatch batch;
-  ASSERT_OK(scanner->NextBatch(&batch));
-  for (int i = 0; i < batch.NumRows(); i++) {
-    rows->push_back(batch.Row(i).ToString());
-  }
-}
-
-static void DoScanWithCallback(
-    YBTable* table, const vector<string>& expected_rows,
-    const std::function<Status(const string&)>& cb) {
-  // Initialize fault-tolerant snapshot scanner.
-  YBScanner scanner(table);
-  ASSERT_OK(scanner.SetFaultTolerant());
-  // Set a small batch size so it reads in multiple batches.
-  ASSERT_OK(scanner.SetBatchSizeBytes(1));
-
-  ASSERT_OK(scanner.Open());
-  vector<string> rows;
-
-  // Do a first scan to get us started.
-  {
-    LOG(INFO) << "Setting up scanner.";
-    ASSERT_TRUE(scanner.HasMoreRows());
-    ASSERT_NO_FATALS(ReadBatchToStrings(&scanner, &rows));
-    ASSERT_GT(rows.size(), 0);
-    ASSERT_TRUE(scanner.HasMoreRows());
-  }
-
-  // Call the callback on the tserver serving the scan.
-  LOG(INFO) << "Calling callback.";
-  {
-    YBTabletServer* kts_ptr;
-    ASSERT_OK(scanner.GetCurrentServer(&kts_ptr));
-    gscoped_ptr<YBTabletServer> kts(kts_ptr);
-    ASSERT_OK(cb(kts->uuid()));
-  }
-
-  // Check that we can still read the next batch.
-  LOG(INFO) << "Checking that we can still read the next batch.";
-  ASSERT_TRUE(scanner.HasMoreRows());
-  ASSERT_OK(scanner.SetBatchSizeBytes(1024*1024));
-  while (scanner.HasMoreRows()) {
-    ASSERT_NO_FATALS(ReadBatchToStrings(&scanner, &rows));
-  }
-  scanner.Close();
-
-  // Verify results from the scan.
-  LOG(INFO) << "Verifying results from scan.";
-  std::sort(rows.begin(), rows.end());
-
-  auto bad = 0;
-  for (int i = 0; i < rows.size(); i++) {
-    if (expected_rows[i] != rows[i]) {
-      if (++bad <= 10) {
-        EXPECT_EQ(expected_rows[i], rows[i]);
-      }
-    }
-  }
-  ASSERT_EQ(expected_rows.size(), rows.size());
-}
-
-}  // namespace internal
-
-// Test that ordered snapshot scans can be resumed in the case of different tablet server failures.
-TEST_F(ClientTest, TestScanFaultTolerance) {
-  // Create test table and insert test rows.
-  const YBTableName kScanTable("TestScanFaultTolerance");
-  TableHandle table;
-  ASSERT_NO_FATALS(CreateTable(kScanTable, 3, 1, &table));
-  ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
-
-  // Do an initial scan to determine the expected rows for later verification.
-  vector<string> expected_rows = ScanTableToStrings(table.get());
-  std::sort(expected_rows.begin(), expected_rows.end());
-
-  for (int with_flush = 0; with_flush <= 1; with_flush++) {
-    SCOPED_TRACE((with_flush == 1) ? "with flush" : "without flush");
-    // The second time through, flush to ensure that we test both against MRS and
-    // disk.
-    if (with_flush) {
-      string tablet_id = GetFirstTabletId(table.get());
-      for (int i = 0; i < 3; i++) {
-        scoped_refptr<TabletPeer> tablet_peer;
-        ASSERT_TRUE(cluster_->mini_tablet_server(i)->server()->tablet_manager()->LookupTablet(
-                tablet_id, &tablet_peer));
-        ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
-      }
-    }
-
-    // Test a few different recoverable server-side error conditions.
-    // Since these are recoverable, the scan will succeed when retried elsewhere.
-
-    // Restarting and waiting should result in a SCANNER_EXPIRED error.
-    LOG(INFO) << "Doing a scan while restarting a tserver and waiting for it to come up...";
-    ASSERT_NO_FATALS(internal::DoScanWithCallback(
-        table.get(), expected_rows,
-        std::bind(&ClientTest_TestScanFaultTolerance_Test::RestartTServerAndWait, this, _1)));
-
-    // Restarting and not waiting means the tserver is hopefully bootstrapping, leading to
-    // a TABLET_NOT_RUNNING error.
-    LOG(INFO) << "Doing a scan while restarting a tserver...";
-    ASSERT_NO_FATALS(internal::DoScanWithCallback(
-        table.get(), expected_rows,
-        std::bind(&ClientTest_TestScanFaultTolerance_Test::RestartTServerAsync, this, _1)));
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-      MiniTabletServer* ts = cluster_->mini_tablet_server(i);
-      ASSERT_OK(ts->WaitStarted());
-    }
-
-    // Killing the tserver should lead to an RPC timeout.
-    LOG(INFO) << "Doing a scan while killing a tserver...";
-    ASSERT_NO_FATALS(internal::DoScanWithCallback(
-        table.get(), expected_rows,
-        std::bind(&ClientTest_TestScanFaultTolerance_Test::KillTServer, this, _1)));
-
-    // Restart the server that we killed.
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-      MiniTabletServer* ts = cluster_->mini_tablet_server(i);
-      if (!ts->is_started()) {
-        ASSERT_OK(ts->Start());
-        ASSERT_OK(ts->WaitStarted());
-      }
-    }
-  }
 }
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
@@ -1040,203 +794,6 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     EXPECT_EQ(all_rows[14], rows.back());
   }
 
-}
-
-static void AssertScannersDisappear(const tserver::ScannerManager* manager) {
-  // The Close call is async, so we may have to loop a bit until we see it disappear.
-  // This loops for ~10sec. Typically it succeeds in only a few milliseconds.
-  int i = 0;
-  for (i = 0; i < 500; i++) {
-    if (manager->CountActiveScanners() == 0) {
-      LOG(INFO) << "Successfully saw scanner close on iteration " << i;
-      return;
-    }
-    // Sleep 2ms on first few times through, then longer on later iterations.
-    SleepFor(MonoDelta::FromMilliseconds(i < 10 ? 2 : 20));
-  }
-  FAIL() << "Waited too long for the scanner to close";
-}
-
-namespace {
-
-int64_t SumResults(const YBScanBatch& batch) {
-  int64_t sum = 0;
-  for (const YBScanBatch::RowPtr& row : batch) {
-    int32_t val;
-    CHECK_OK(row.GetInt32(0, &val));
-    sum += val;
-  }
-  return sum;
-}
-
-} // anonymous namespace
-
-TEST_F(ClientTest, TestScannerKeepAlive) {
-  google::FlagSaver saver;
-
-#ifndef __APPLE__
-  std::chrono::milliseconds kScannerTtl = 100ms;
-#else
-  // MAC OS X could just don't notify waiting socket that there is some data recieved for 100+ ms.
-  std::chrono::milliseconds kScannerTtl = 400ms;
-#endif
-
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, 1000));
-  // Set the scanner ttl really low
-  ANNOTATE_BENIGN_RACE(&FLAGS_scanner_ttl_ms, "Set at runtime, for tests.");
-  FLAGS_scanner_ttl_ms = kScannerTtl.count();
-
-  // Start a scan but don't get the whole data back
-  YBScanner scanner(client_table_.get());
-  // This will make sure we have to do multiple NextBatch calls to the second tablet.
-  ASSERT_OK(scanner.SetBatchSizeBytes(100));
-  ASSERT_OK(scanner.Open());
-
-  YBScanBatch batch;
-  int64_t sum = 0;
-
-  ASSERT_TRUE(scanner.HasMoreRows());
-  ASSERT_OK(scanner.NextBatch(&batch));
-
-  // We should get only 3 rows back (from the first tablet).
-  ASSERT_EQ(batch.NumRows(), 3);
-  sum += SumResults(batch);
-
-  ASSERT_TRUE(scanner.HasMoreRows());
-
-  // We're in between tablets but even if there isn't a live scanner the client should
-  // still return OK to the keep alive call.
-  ASSERT_OK(scanner.KeepAlive());
-
-  // Start scanning the second tablet, but break as soon as we have some data so that
-  // we have a live remote scanner on the second tablet.
-  while (scanner.HasMoreRows()) {
-    ASSERT_OK(scanner.NextBatch(&batch));
-    if (batch.NumRows() > 0) break;
-  }
-  sum += SumResults(batch);
-  ASSERT_TRUE(scanner.HasMoreRows());
-
-  // Now loop while keeping the scanner alive. Each time we loop we sleep 1/2 a scanner
-  // ttl interval (the garbage collector is running each 50 msecs too.).
-  for (int i = 0; i < 5; i++) {
-    std::this_thread::sleep_for(kScannerTtl / 2);
-    ASSERT_OK(scanner.KeepAlive());
-  }
-
-  // Get a second batch before sleeping/keeping alive some more. This is test for a bug
-  // where we would only actually perform a KeepAlive() rpc after the first request and
-  // not on subsequent ones.
-  while (scanner.HasMoreRows()) {
-    ASSERT_OK(scanner.NextBatch(&batch));
-    if (batch.NumRows() > 0) break;
-  }
-
-  ASSERT_TRUE(scanner.HasMoreRows());
-  for (int i = 0; i < 5; i++) {
-    std::this_thread::sleep_for(kScannerTtl / 2);
-    ASSERT_OK(scanner.KeepAlive());
-  }
-  sum += SumResults(batch);
-
-  // Loop to get the remaining rows.
-  while (scanner.HasMoreRows()) {
-    ASSERT_OK(scanner.NextBatch(&batch));
-    sum += SumResults(batch);
-  }
-  ASSERT_FALSE(scanner.HasMoreRows());
-  ASSERT_EQ(sum, 499500);
-}
-
-// Test cleanup of scanners on the server side when closed.
-TEST_F(ClientTest, TestCloseScanner) {
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, 10));
-
-  const tserver::ScannerManager* manager =
-    cluster_->mini_tablet_server(0)->server()->scanner_manager();
-  // Open the scanner, make sure it gets closed right away
-  {
-    SCOPED_TRACE("Implicit close");
-    YBScanner scanner(client_table_.get());
-    ASSERT_OK(scanner.Open());
-    ASSERT_EQ(0, manager->CountActiveScanners());
-    scanner.Close();
-    AssertScannersDisappear(manager);
-  }
-
-  // Open the scanner, make sure we see 1 registered scanner.
-  {
-    SCOPED_TRACE("Explicit close");
-    YBScanner scanner(client_table_.get());
-    ASSERT_OK(scanner.SetBatchSizeBytes(0)); // won't return data on open
-    ASSERT_OK(scanner.Open());
-    ASSERT_EQ(1, manager->CountActiveScanners());
-    scanner.Close();
-    AssertScannersDisappear(manager);
-  }
-
-  {
-    SCOPED_TRACE("Close when out of scope");
-    {
-      YBScanner scanner(client_table_.get());
-      ASSERT_OK(scanner.SetBatchSizeBytes(0));
-      ASSERT_OK(scanner.Open());
-      ASSERT_EQ(1, manager->CountActiveScanners());
-    }
-    // Above scanner went out of scope, so the destructor should close asynchronously.
-    AssertScannersDisappear(manager);
-  }
-}
-
-TEST_F(ClientTest, TestScanTimeout) {
-  // If we set the RPC timeout to be 0, we'll time out in the GetTableLocations
-  // code path and not even discover where the tablet is hosted.
-  {
-    client_->data_->default_rpc_timeout_ = MonoDelta::FromSeconds(0);
-    YBScanner scanner(client_table_.get());
-    Status s = scanner.Open();
-    EXPECT_TRUE(s.IsTimedOut()) << s.ToString();
-    EXPECT_FALSE(scanner.data_->remote_) << "should not have located any tablet";
-    client_->data_->default_rpc_timeout_ = MonoDelta::FromSeconds(5);
-  }
-
-  // Warm the cache so that the subsequent timeout occurs within the scan,
-  // not the lookup.
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, 10));
-
-  // The "overall operation" timed out; no replicas failed.
-  {
-    YBScanner scanner(client_table_.get());
-    ASSERT_OK(scanner.SetTimeoutMillis(0));
-    ASSERT_TRUE(scanner.Open().IsTimedOut());
-    YB_ASSERT_TRUE(scanner.data_->remote_) << "We should have located a tablet";;
-    ASSERT_EQ(0, scanner.data_->remote_->GetNumFailedReplicas());
-  }
-
-  // Insert some more rows so that the scan takes multiple batches, instead of
-  // fetching all the data on the 'Open()' call.
-  client_->data_->default_rpc_timeout_ = MonoDelta::FromSeconds(5);
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, 1000, 1));
-  {
-    google::FlagSaver saver;
-    FLAGS_scanner_max_batch_size_bytes = 100;
-    YBScanner scanner(client_table_.get());
-
-    // Set the single-RPC timeout low. Since we only have a single replica of this
-    // table, we'll ignore this timeout for the actual scan calls, and use the
-    // scanner timeout instead.
-    FLAGS_scanner_inject_latency_on_each_batch_ms = 50;
-    client_->data_->default_rpc_timeout_ = MonoDelta::FromMilliseconds(1);
-    ASSERT_OK(scanner.SetTimeoutMillis(5000));
-
-    // Should successfully scan.
-    ASSERT_OK(scanner.Open());
-    ASSERT_TRUE(scanner.HasMoreRows());
-    while (scanner.HasMoreRows()) {
-      YBScanBatch batch;
-      ASSERT_OK(scanner.NextBatch(&batch));
-    }
-  }
 }
 
 static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
@@ -1406,13 +963,10 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
   ASSERT_EQ(kNumRowsPerTablet, CountRowsFromClient(client_table2_));
 
   // Verify the data looks right.
-  vector<string> rows;
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   std::sort(rows.begin(), rows.end());
   ASSERT_EQ(kNumRowsPerTablet, rows.size());
-  ASSERT_EQ("(int32 key=0, int32 int_val=0, string string_val=hello world, "
-            "int32 non_null_with_default=12345)"
-            , rows[0]);
+  ASSERT_EQ("{ int32:0, int32:0, string:\"hello world\", null }", rows[0]);
 }
 
 // Test a batch where one of the inserted rows succeeds and duplicates succeed too.
@@ -1431,14 +985,11 @@ TEST_F(ClientTest, TestBatchWithDuplicates) {
   ASSERT_TRUE(s.ok());
 
   // Verify that the other row was successfully inserted
-  vector<string> rows;
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(2, rows.size());
   std::sort(rows.begin(), rows.end());
-  ASSERT_EQ("(int32 key=1, int32 int_val=1, string string_val=Attempted dup, "
-            "int32 non_null_with_default=12345)", rows[0]);
-  ASSERT_EQ("(int32 key=2, int32 int_val=1, string string_val=Should succeed, "
-            "int32 non_null_with_default=12345)", rows[1]);
+  ASSERT_EQ("{ int32:1, int32:1, string:\"Attempted dup\", null }", rows[0]);
+  ASSERT_EQ("{ int32:2, int32:1, string:\"Should succeed\", null }", rows[1]);
 }
 
 // Test flushing an empty batch (should be a no-op).
@@ -1504,8 +1055,7 @@ void ClientTest::DoApplyWithoutFlushTest(int sleep_micros) {
   session.reset(); // should not crash!
 
   // Should have no rows.
-  vector<string> rows;
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(0, rows.size());
 }
 
@@ -1568,60 +1118,56 @@ TEST_F(ClientTest, TestMutationsWork) {
 
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
   FlushSessionOrDie(session);
-  vector<string> rows;
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 key=1, int32 int_val=2, string string_val=original row, "
-            "int32 non_null_with_default=12345)", rows[0]);
+  ASSERT_EQ("{ int32:1, int32:2, string:\"original row\", null }", rows[0]);
   rows.clear();
 
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
   FlushSessionOrDie(session);
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
 }
 
 TEST_F(ClientTest, TestMutateDeletedRow) {
-  vector<string> rows;
   auto session = CreateSession();
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
   FlushSessionOrDie(session);
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
   FlushSessionOrDie(session);
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(0, rows.size());
 
   // Attempt update deleted row
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
   Status s = session->Flush();
   ASSERT_TRUE(s.ok());
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete deleted row
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
   s = session->Flush();
   ASSERT_TRUE(s.ok());
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
 }
 
 TEST_F(ClientTest, TestMutateNonexistentRow) {
-  vector<string> rows;
   auto session = CreateSession();
 
   // Attempt update nonexistent row
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
   Status s = session->Flush();
   ASSERT_TRUE(s.ok());
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete nonexistent row
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
   s = session->Flush();
   ASSERT_TRUE(s.ok());
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
 }
 
@@ -1714,8 +1260,7 @@ TEST_F(ClientTest, TestDeleteTable) {
 
   // Insert a few rows, and scan them back. This is to populate the MetaCache.
   ASSERT_NO_FATALS(InsertTestRows(client_table_, 10));
-  vector<string> rows;
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(10, rows.size());
 
   // Remove the table
@@ -1981,33 +1526,20 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
 namespace {
 
-void CheckCorrectness(YBScanner* scanner, int expected[], int nrows) {
-  ASSERT_OK(scanner->Open());
+void CheckCorrectness(const TableHandle& table, int expected[], int nrows) {
   int readrows = 0;
-  YBScanBatch batch;
-  if (nrows) {
-    ASSERT_TRUE(scanner->HasMoreRows());
-  } else {
-    ASSERT_FALSE(scanner->HasMoreRows());
-  }
 
-  while (scanner->HasMoreRows()) {
-    ASSERT_OK(scanner->NextBatch(&batch));
-    for (const YBScanBatch::RowPtr& r : batch) {
-      int32_t key;
-      int32_t val;
-      Slice strval;
-      ASSERT_OK(r.GetInt32(0, &key));
-      ASSERT_OK(r.GetInt32(1, &val));
-      ASSERT_OK(r.GetString(2, &strval));
-      ASSERT_NE(expected[key], -1) << "Deleted key found in table in table " << key;
-      ASSERT_EQ(expected[key], val) << "Incorrect int value for key " <<  key;
-      ASSERT_EQ(strval.size(), 0) << "Incorrect string value for key " << key;
-      ++readrows;
-    }
+  for (const auto& row : TableRange(table)) {
+    ASSERT_LE(readrows, nrows);
+    int32_t key = row.column(0).int32_value();
+    ASSERT_NE(key, -1) << "Deleted key found in table in table " << key;
+    ASSERT_EQ(expected[key], row.column(1).int32_value())
+        << "Incorrect int value for key " <<  key;
+    ASSERT_EQ(row.column(2).string_value(), "")
+        << "Incorrect string value for key " << key;
+    ++readrows;
   }
   ASSERT_EQ(readrows, nrows);
-  scanner->Close();
 }
 
 } // anonymous namespace
@@ -2017,7 +1549,6 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
   auto session = CreateSession();
   int row[FLAGS_test_scan_num_rows]; // -1 indicates empty
   int nrows;
-  YBScanner scanner(client_table_.get());
 
   // First half-fill
   for (int i = 0; i < FLAGS_test_scan_num_rows/2; ++i) {
@@ -2037,18 +1568,14 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
     if (i % 50 == 0) {
       LOG(INFO) << "Correctness test " << i;
       FlushSessionOrDie(session);
-      ASSERT_NO_FATALS(CheckCorrectness(&scanner, row, nrows));
+      ASSERT_NO_FATALS(CheckCorrectness(client_table_, row, nrows));
       LOG(INFO) << "...complete";
     }
 
     int change = rand_r(&seed) % FLAGS_test_scan_num_rows;
     // Insert if empty
     if (row[change] == -1) {
-      ASSERT_OK(ApplyInsertToSession(session.get(),
-                                            client_table_,
-                                            change,
-                                            change,
-                                            ""));
+      ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, change, change, ""));
       row[change] = change;
       ++nrows;
       VLOG(1) << "Insert " << change;
@@ -2056,15 +1583,10 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
       // Update or delete otherwise
       int update = rand_r(&seed) & 1;
       if (update) {
-        ASSERT_OK(ApplyUpdateToSession(session.get(),
-                                              client_table_,
-                                              change,
-                                              ++row[change]));
+        ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, change, ++row[change]));
         VLOG(1) << "Update " << change;
       } else {
-        ASSERT_OK(ApplyDeleteToSession(session.get(),
-                                              client_table_,
-                                              change));
+        ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, change));
         row[change] = -1;
         --nrows;
         VLOG(1) << "Delete " << change;
@@ -2074,7 +1596,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
   // And one more time for the last batch.
   FlushSessionOrDie(session);
-  ASSERT_NO_FATALS(CheckCorrectness(&scanner, row, nrows));
+  ASSERT_NO_FATALS(CheckCorrectness(client_table_, row, nrows));
 }
 
 // Test whether a batch can handle several mutations in a batch
@@ -2086,11 +1608,9 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, ""));
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
   FlushSessionOrDie(session);
-  vector<string> rows;
-  ScanTableToStrings(client_table_.get(), &rows);
+  auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 key=1, int32 int_val=2, string string_val=, "
-            "int32 non_null_with_default=12345)", rows[0]);
+  ASSERT_EQ("{ int32:1, int32:2, string:\"\", null }", rows[0]);
   rows.clear();
 
 
@@ -2099,10 +1619,9 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 2, 1, ""));
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 2));
   FlushSessionOrDie(session);
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 key=1, int32 int_val=2, string string_val=, "
-            "int32 non_null_with_default=12345)", rows[0]);
+  ASSERT_EQ("{ int32:1, int32:2, string:\"\", null }", rows[0]);
   rows.clear();
 
   // Test update/delete
@@ -2110,27 +1629,25 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 1));
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
   FlushSessionOrDie(session);
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
 
   // Test delete/insert (insert a row first)
   LOG(INFO) << "Inserting row for delete/insert test, key " << 1 << ".";
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, ""));
   FlushSessionOrDie(session);
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 key=1, int32 int_val=1, string string_val=, "
-            "int32 non_null_with_default=12345)", rows[0]);
+  ASSERT_EQ("{ int32:1, int32:1, string:\"\", null }", rows[0]);
   rows.clear();
   LOG(INFO) << "Testing delete/insert in same batch, key " << 1 << ".";
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 2, ""));
   FlushSessionOrDie(session);
-  ScanTableToStrings(client_table_.get(), &rows);
+  ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
-  ASSERT_EQ("(int32 key=1, int32 int_val=2, string string_val=, "
-            "int32 non_null_with_default=12345)", rows[0]);
-            rows.clear();
+  ASSERT_EQ("{ int32:1, int32:2, string:\"\", null }", rows[0]);
+  rows.clear();
 }
 
 // Tests that master permits are properly released after a whole bunch of
@@ -2158,45 +1675,22 @@ class DeadlockSimulationCallback {
 };
 
 // Returns col1 value of first row.
-int32_t ReadFirstRowKeyFirstCol(YBTable* tbl) {
-  YBScanner scanner(tbl);
+int32_t ReadFirstRowKeyFirstCol(const TableHandle& tbl) {
+  TableRange range(tbl);
 
-  CHECK_OK(scanner.Open());
-  YBScanBatch batch;
-  CHECK(scanner.HasMoreRows());
-  CHECK_OK(scanner.NextBatch(&batch));
-  YBRowResult row = batch.Row(0);
-  int32_t val;
-  CHECK_OK(row.GetInt32(1, &val));
-  return val;
+  auto it = range.begin();
+  EXPECT_NE(it, range.end());
+  return it->column(1).int32_value();
 }
 
 // Checks that all rows have value equal to expected, return number of rows.
-int CheckRowsEqual(YBTable* tbl, int32_t expected) {
-  YBScanner scanner(tbl);
-  CHECK_OK(scanner.Open());
-  YBScanBatch batch;
+int CheckRowsEqual(const TableHandle& tbl, int32_t expected) {
   int cnt = 0;
-  while (scanner.HasMoreRows()) {
-    CHECK_OK(scanner.NextBatch(&batch));
-    for (const YBScanBatch::RowPtr& row : batch) {
-      // Check that for every key:
-      // 1. Column 1 int32_t value == expected
-      // 2. Column 2 string value is empty
-      // 3. Column 3 int32_t value is default, 12345
-      int32_t key;
-      int32_t val;
-      Slice strval;
-      int32_t val2;
-      CHECK_OK(row.GetInt32(0, &key));
-      CHECK_OK(row.GetInt32(1, &val));
-      CHECK_OK(row.GetString(2, &strval));
-      CHECK_OK(row.GetInt32(3, &val2));
-      CHECK_EQ(expected, val) << "Incorrect int value for key " << key;
-      CHECK_EQ(strval.size(), 0) << "Incorrect string value for key " << key;
-      CHECK_EQ(12345, val2);
-      ++cnt;
-    }
+  for (const auto& row : TableRange(tbl)) {
+    EXPECT_EQ(row.column(1).int32_value(), expected);
+    EXPECT_EQ(row.column(2).string_value(), "");
+    EXPECT_EQ(row.column(3).int32_value(), 12345);
+    ++cnt;
   }
   return cnt;
 }
@@ -2283,14 +1777,14 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
     }
     SleepFor(MonoDelta::FromMilliseconds(100));
   } while (lctr1 != kNumSessions|| lctr2 != kNumSessions);
-  int32_t expected = ReadFirstRowKeyFirstCol(client_table_.get());
+  int32_t expected = ReadFirstRowKeyFirstCol(client_table_);
 
   // Check transaction from forward client.
-  fwd = CheckRowsEqual(client_table_.get(), expected);
+  fwd = CheckRowsEqual(client_table_, expected);
   ASSERT_EQ(fwd, kNumRows);
 
   // Check from reverse client side.
-  rev = CheckRowsEqual(rev_table.get(), expected);
+  rev = CheckRowsEqual(rev_table, expected);
   ASSERT_EQ(rev, kNumRows);
 }
 
@@ -2353,39 +1847,6 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
                       "replication factor 3. 1 tablet servers are alive");
 }
 
-TEST_F(ClientTest, TestClonePredicates) {
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, 2, 0));
-  gscoped_ptr<YBPredicate> predicate(client_table_->NewComparisonPredicate(
-      "key",
-      YBPredicate::EQUAL,
-      YBValue::FromInt(1)));
-
-  gscoped_ptr<YBScanner> scanner(new YBScanner(client_table_.get()));
-  ASSERT_OK(scanner->AddConjunctPredicate(predicate->Clone()));
-  ASSERT_OK(scanner->Open());
-
-  int count = 0;
-  YBScanBatch batch;
-  while (scanner->HasMoreRows()) {
-    ASSERT_OK(scanner->NextBatch(&batch));
-    count += batch.NumRows();
-  }
-
-  ASSERT_EQ(count, 1);
-
-  scanner.reset(new YBScanner(client_table_.get()));
-  ASSERT_OK(scanner->AddConjunctPredicate(predicate->Clone()));
-  ASSERT_OK(scanner->Open());
-
-  count = 0;
-  while (scanner->HasMoreRows()) {
-    ASSERT_OK(scanner->NextBatch(&batch));
-    count += batch.NumRows();
-  }
-
-  ASSERT_EQ(count, 1);
-}
-
 // Test that scanners will retry after receiving ERROR_SERVER_TOO_BUSY from an
 // overloaded tablet server. Regression test for KUDU-1079.
 TEST_F(ClientTest, TestServerTooBusyRetry) {
@@ -2422,38 +1883,6 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   for (const scoped_refptr<yb::Thread>& thread : threads) {
     thread->Join();
-  }
-}
-
-TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
-  // For the random() calls that take place during scan retries.
-  SeedRandom();
-
-  ASSERT_NO_FATALS(InsertTestRows(client_table_, FLAGS_test_scan_num_rows));
-
-  {
-    // Revert the latency injection flags at the end so the test exits faster.
-    google::FlagSaver saver;
-
-    // Restart, but inject latency so that startup is very slow.
-    FLAGS_log_inject_latency = true;
-    FLAGS_log_inject_latency_ms_mean = 1000;
-    FLAGS_log_inject_latency_ms_stddev = 0;
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-      MiniTabletServer* ts = cluster_->mini_tablet_server(i);
-      ASSERT_OK(ts->Restart());
-    }
-
-    // As the tservers are still starting up, the scan will retry until it
-    // times out. The actual error should be embedded in the returned status.
-    YBScanner scan(client_table_.get());
-    ASSERT_OK(scan.SetTimeoutMillis(1000));
-    Status s = scan.Open();
-    SCOPED_TRACE(s.ToString());
-    ASSERT_TRUE(s.IsTimedOut());
-    auto message = s.ToString(false);
-    ASSERT_STR_CONTAINS(message, "Illegal state (");
-    ASSERT_STR_CONTAINS(message, "): Tablet not RUNNING");
   }
 }
 

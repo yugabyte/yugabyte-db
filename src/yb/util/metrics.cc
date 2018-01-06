@@ -110,8 +110,6 @@ const char* MetricUnit::Name(Type unit) {
       return "transactions";
     case kUnits:
       return "units";
-    case kScanners:
-      return "scanners";
     case kMaintenanceOperations:
       return "operations";
     case kBlocks:

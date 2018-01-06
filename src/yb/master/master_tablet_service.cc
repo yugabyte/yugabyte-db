@@ -68,22 +68,10 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   HandleUnsupportedMethod("Write", resp, &context);
 }
 
-void MasterTabletServiceImpl::Scan(const tserver::ScanRequestPB* req,
-                                   tserver::ScanResponsePB* resp,
-                                   rpc::RpcContext context)  {
-  HandleUnsupportedMethod("Scan", resp, &context);
-}
-
 void MasterTabletServiceImpl::NoOp(const tserver::NoOpRequestPB* req,
                                    tserver::NoOpResponsePB* resp,
                                    rpc::RpcContext context)  {
   HandleUnsupportedMethod("NoOp", resp, &context);
-}
-
-void MasterTabletServiceImpl::ScannerKeepAlive(const tserver::ScannerKeepAliveRequestPB *req,
-                                               tserver::ScannerKeepAliveResponsePB *resp,
-                                               rpc::RpcContext context)  {
-  HandleUnsupportedMethod("ScannerKeepAlive", resp, &context);
 }
 
 void MasterTabletServiceImpl::ListTablets(const tserver::ListTabletsRequestPB* req,

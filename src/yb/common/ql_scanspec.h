@@ -73,7 +73,7 @@ class QLScanSpec {
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   // virtual to make the class polymorphic.
-  virtual CHECKED_STATUS Match(const QLTableRow::SharedPtr& table_row, bool* match) const;
+  virtual CHECKED_STATUS Match(const QLTableRow& table_row, bool* match) const;
 
   bool is_forward_scan() const {
     return is_forward_scan_;

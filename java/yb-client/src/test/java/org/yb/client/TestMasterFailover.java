@@ -63,10 +63,6 @@ public class TestMasterFailover extends BaseYBClientTest {
     }
     killMasterLeader();
 
-    // Test that we can open a previously created table after killing the leader master.
-    YBTable table = openTable(TABLE_NAME);
-    assertEquals(0, countRowsInScan(client.newScannerBuilder(table).build()));
-
     if (!waitForTServersAtMasterLeader()) {
       fail("Couldn't get all tablet servers heartbeating to new master leader.");
     }
@@ -74,13 +70,9 @@ public class TestMasterFailover extends BaseYBClientTest {
     // Test that we can create a new table when one of the masters is down.
     String newTableName = TABLE_NAME + "-afterLeaderIsDead";
     createTable(newTableName, basicSchema, new CreateTableOptions());
-    table = openTable(newTableName);
-    assertEquals(0, countRowsInScan(client.newScannerBuilder(table).build()));
 
     // Test that we can initialize a client when one of the masters specified in the
     // connection string is down.
     AsyncYBClient newClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
-    table = newClient.openTable(DEFAULT_KEYSPACE_NAME, newTableName).join(DEFAULT_SLEEP);
-    assertEquals(0, countRowsInScan(newClient.newScannerBuilder(table).build()));
   }
 }

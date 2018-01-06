@@ -39,7 +39,6 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
-#include "yb/client/row_result.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
@@ -79,8 +78,6 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
 using client::YBError;
-using client::YBRowResult;
-using client::YBScanner;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
@@ -340,8 +337,8 @@ TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 
   vector<string> rows = ScanToStrings();
   EXPECT_EQ(2, rows.size());
-  EXPECT_EQ("(int32 c0=0, int32 c1=0, int32 new=NULL)", rows[0]);
-  EXPECT_EQ("(int32 c0=16777216, int32 c1=1, int32 new=NULL)", rows[1]);
+  EXPECT_EQ("{ int32:0, int32:0, null }", rows[0]);
+  EXPECT_EQ("{ int32:16777216, int32:1, null }", rows[1]);
 }
 
 // Verify that, if a tablet server is down when an alter command is issued,
@@ -478,9 +475,9 @@ void AlterTableTest::UpdateRow(int32_t row_key,
 }
 
 std::vector<string> AlterTableTest::ScanToStrings() {
-  shared_ptr<YBTable> table;
-  EXPECT_OK(client_->OpenTable(kTableName, &table));
-  auto result = ScanTableToStrings(table.get());
+  client::TableHandle table;
+  EXPECT_OK(table.Open(kTableName, client_.get()));
+  auto result = ScanTableToStrings(table);
   std::sort(result.begin(), result.end());
   return result;
 }
@@ -489,47 +486,34 @@ std::vector<string> AlterTableTest::ScanToStrings() {
 // Note that the 'start_row' here is not a row key, but the pre-transformation row
 // key (InsertRows swaps endianness so that we random-write instead of sequential-write)
 void AlterTableTest::VerifyRows(int start_row, int num_rows, VerifyPattern pattern) {
-  shared_ptr<YBTable> table;
-  CHECK_OK(client_->OpenTable(kTableName, &table));
-  YBScanner scanner(table.get());
-  CHECK_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
-  CHECK_OK(scanner.Open());
+  client::TableHandle table;
+  ASSERT_OK(table.Open(kTableName, client_.get()));
 
   int verified = 0;
-  vector<YBRowResult> results;
-  while (scanner.HasMoreRows()) {
-    CHECK_OK(scanner.NextBatch(&results));
+  for (const auto& row : client::TableRange(table)) {
+    int32_t key = row.column(0).int32_value();
+    int32_t row_idx = bswap_32(key);
+    if (row_idx < start_row || row_idx >= start_row + num_rows) {
+      // Outside the range we're verifying
+      continue;
+    }
+    verified++;
 
-    for (const YBRowResult& row : results) {
-      int32_t key = 0;
-      CHECK_OK(row.GetInt32(0, &key));
-      int32_t row_idx = bswap_32(key);
-      if (row_idx < start_row || row_idx >= start_row + num_rows) {
-        // Outside the range we're verifying
+    switch (pattern) {
+      case C1_MATCHES_INDEX:
+        ASSERT_EQ(row_idx, row.column(1).int32_value());
+        break;
+      case C1_IS_DEADBEEF:
+        ASSERT_TRUE(row.column(1).IsNull());
+        break;
+      case C1_DOESNT_EXIST:
         continue;
-      }
-      verified++;
-
-      if (pattern == C1_DOESNT_EXIST) {
-        continue;
-      }
-
-      int32_t c1 = 0;
-      CHECK_OK(row.GetInt32(1, &c1));
-
-      switch (pattern) {
-        case C1_MATCHES_INDEX:
-          CHECK_EQ(row_idx, c1);
-          break;
-        case C1_IS_DEADBEEF:
-          CHECK_EQ(0xdeadbeef, c1);
-          break;
-        default:
-          LOG(FATAL);
-      }
+      default:
+        ASSERT_TRUE(false) << "Invalid pattern: " << pattern;
+        break;
     }
   }
-  CHECK_EQ(verified, num_rows);
+  ASSERT_EQ(verified, num_rows);
 }
 
 // Test inserting/updating some data, dropping a column, and adding a new one
@@ -548,8 +532,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
 
   LOG(INFO) << "Dropping and adding back c1";
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")
-            ->Alter());
+  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1", 0xdeadbeef));
 
@@ -601,8 +584,8 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
 
   auto rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=10001)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c2=10002)", rows[1]);
+  ASSERT_EQ("{ int32:0, int32:10001 }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, int32:10002 }", rows[1]);
 
   google::FlagSaver flag_saver;
   // Restart without flushing RocksDB
@@ -612,8 +595,8 @@ TEST_F(AlterTableTest, TestLogSchemaReplay) {
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=10001)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c2=10002)", rows[1]);
+  ASSERT_EQ("{ int32:0, int32:10001 }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, int32:10002 }", rows[1]);
 }
 
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
@@ -641,8 +624,8 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
 
   auto rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c1=10001, int32 c2=12345)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c1=10002, int32 c2=12345)", rows[1]);
+  ASSERT_EQ("{ int32:0, int32:10001, null }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, int32:10002, null }", rows[1]);
 
   LOG(INFO) << "Dropping c1";
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -650,8 +633,8 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c2=12345)", rows[1]);
+  ASSERT_EQ("{ int32:0, null }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, null }", rows[1]);
 
   // Test that restart doesn't fail when trying to replay updates or inserts
   // with the dropped column.
@@ -659,21 +642,21 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c2=12345)", rows[1]);
+  ASSERT_EQ("{ int32:0, null }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, null }", rows[1]);
 
   // Add back a column called 'c2', but should not materialize old data.
   ASSERT_OK(AddNewI32Column(kTableName, "c1", 20000));
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=12345, int32 c1=20000)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c2=12345, int32 c1=20000)", rows[1]);
+  ASSERT_EQ("{ int32:0, null, null }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, null, null }", rows[1]);
 
   ASSERT_NO_FATALS(RestartTabletServer());
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=12345, int32 c1=20000)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c2=12345, int32 c1=20000)", rows[1]);
+  ASSERT_EQ("{ int32:0, null, null }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, null, null }", rows[1]);
 }
 
 TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
@@ -692,8 +675,8 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=12345)", rows[0]);
-  ASSERT_EQ("(int32 c0=16777216, int32 c1=1, int32 c2=12345)", rows[1]);
+  ASSERT_EQ("{ int32:0, int32:0, null }", rows[0]);
+  ASSERT_EQ("{ int32:16777216, int32:1, null }", rows[1]);
 
   // Add a delta for c1.
   UpdateRow(0, { {"c1", 54321} });
@@ -705,7 +688,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
-  ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
+  ASSERT_EQ("{ int32:0, null }", rows[0]);
 }
 
 typedef std::vector<std::shared_ptr<client::YBqlOp>> Ops;
@@ -794,24 +777,26 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
 // Thread which loops reading data from the table.
 // No verification is performed.
 void AlterTableTest::ScannerThread() {
-  shared_ptr<YBTable> table;
-  CHECK_OK(client_->OpenTable(kTableName, &table));
+  client::TableHandle table;
+  ASSERT_OK(table.Open(kTableName, client_.get()));
   while (!stop_threads_.Load()) {
-    YBScanner scanner(table.get());
     int inserted_at_scanner_start = inserted_idx_.Load();
-    CHECK_OK(scanner.Open());
-    int count = 0;
-    client::YBScanBatch results;
-    while (scanner.HasMoreRows()) {
-      CHECK_OK(scanner.NextBatch(&results));
-      count += results.NumRows();
+    client::TableIteratorOptions options;
+    bool failed = false;
+    options.error_handler = [&failed](const Status& status) {
+      LOG(WARNING) << "Scan failed: " << status;
+      failed = true;
+    };
+    size_t count = boost::size(client::TableRange(table, options));
+    if (failed) {
+      continue;
     }
 
     LOG(INFO) << "Scanner saw " << count << " rows";
     // We may have gotten more rows than we expected, because inserts
     // kept going while we set up the scan. But, we should never get
     // fewer.
-    CHECK_GE(count, inserted_at_scanner_start)
+    ASSERT_GE(count, inserted_at_scanner_start)
       << "We didn't get as many rows as expected";
   }
 }

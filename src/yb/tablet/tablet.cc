@@ -51,10 +51,7 @@
 #include "yb/rocksdb/write_batch.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/generic_iterators.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/iterator.h"
-#include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
@@ -80,7 +77,6 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/key_value_iterator.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_retention_policy.h"
@@ -273,47 +269,6 @@ struct WriteOperationData {
   }
 };
 
-class Tablet::Iterator : public RowwiseIterator {
- public:
-  virtual ~Iterator();
-
-  CHECKED_STATUS Init(ScanSpec *spec) override;
-
-  bool HasNext() const override;
-
-  CHECKED_STATUS NextBlock(RowBlock *dst) override;
-
-  std::string ToString() const override;
-
-  const Schema &schema() const override {
-    return projection_;
-  }
-
-  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
-
- private:
-  friend class Tablet;
-
-  DISALLOW_COPY_AND_ASSIGN(Iterator);
-
-  Iterator(
-      const Tablet* tablet, const Schema& projection, HybridTime read_ht,
-      const OrderMode order, const boost::optional<TransactionId>& transaction_id);
-
-  const Tablet *tablet_;
-  Schema projection_;
-  HybridTime read_ht_;
-  const OrderMode order_;
-  const boost::optional<TransactionId> transaction_id_;
-  gscoped_ptr<RowwiseIterator> iter_;
-
-  // TODO: we could probably share an arena with the Scanner object inside the
-  // tserver, but piping it in would require changing a lot of call-sites.
-  Arena arena_;
-  RangePredicateEncoder encoder_;
-};
-
-
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
 Tablet::Tablet(
@@ -474,31 +429,31 @@ void Tablet::Shutdown() {
   state_ = kShutdown;
 }
 
-Status Tablet::GetMappedReadProjection(const Schema& projection,
-                                       Schema *mapped_projection) const {
-  const Schema* cur_schema = schema();
-  return cur_schema->GetMappedReadProjection(projection, mapped_projection);
-}
-
-Status Tablet::NewRowIterator(const Schema &projection,
-                              const boost::optional<TransactionId>& transaction_id,
-                              gscoped_ptr<RowwiseIterator> *iter) const {
-  return NewRowIterator(projection, HybridTime::kMax, Tablet::UNORDERED,
-                        transaction_id, iter);
-}
-
-Status Tablet::NewRowIterator(const Schema &projection,
-                              HybridTime read_ht,
-                              const OrderMode order,
-                              const boost::optional<TransactionId>& transaction_id,
-                              gscoped_ptr<RowwiseIterator> *iter) const {
-  CHECK_EQ(state_, kOpen);
-  if (metrics_) {
-    metrics_->scans_started->Increment();
+Result<std::unique_ptr<common::QLRowwiseIteratorIf>> Tablet::NewRowIterator(
+    const Schema &projection, const boost::optional<TransactionId>& transaction_id) const {
+  if (state_ != kOpen) {
+    return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
   }
-  VLOG(2) << "Created new Iterator at: " << read_ht;
-  iter->reset(new Iterator(this, projection, read_ht, order, transaction_id));
-  return Status::OK();
+
+  if (table_type_ != TableType::YQL_TABLE_TYPE) {
+    return STATUS_FORMAT(NotSupported, "Invalid table type: $0", table_type_);
+  }
+
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
+  VLOG(2) << "Created new Iterator on " << tablet_id();
+
+  auto mapped_projection = std::make_unique<Schema>();
+  RETURN_NOT_OK(schema()->GetMappedReadProjection(projection, mapped_projection.get()));
+
+  auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
+  auto read_time = ReadHybridTime::SingleTime(HybridTime::kMax);
+  auto result = std::make_unique<DocRowwiseIterator>(
+      std::move(mapped_projection), *schema(), txn_op_ctx, rocksdb_.get(), read_time,
+      &pending_op_counter_);
+  RETURN_NOT_OK(result->Init());
+  return std::move(result);
 }
 
 void Tablet::StartOperation(WriteOperationState* operation_state) {
@@ -1119,43 +1074,6 @@ void Tablet::DocDBDebugDump(vector<string> *lines) {
   yb::docdb::DocDBDebugDump(rocksdb_.get(), LOG_STRING(INFO, lines));
 }
 
-Status Tablet::CaptureConsistentIterators(
-    const Schema *projection,
-    HybridTime read_ht,
-    const ScanSpec *spec,
-    const boost::optional<TransactionId>& transaction_id,
-    vector<shared_ptr<RowwiseIterator> > *iters) const {
-
-  switch (table_type_) {
-    case TableType::YQL_TABLE_TYPE:
-      return QLCaptureConsistentIterators(projection, read_ht, spec, transaction_id, iters);
-    default:
-      LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
-  }
-  return STATUS(IllegalState, "This should never happen");
-}
-
-Status Tablet::QLCaptureConsistentIterators(
-    const Schema *projection,
-    HybridTime read_ht,
-    const ScanSpec *spec,
-    const boost::optional<TransactionId>& transaction_id,
-    vector<shared_ptr<RowwiseIterator> > *iters) const {
-  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
-  RETURN_NOT_OK(scoped_read_operation);
-
-  TransactionOperationContextOpt txn_op_ctx =
-      CreateTransactionOperationContext(transaction_id);
-  iters->clear();
-  auto read_time = ReadHybridTime::SingleTime(read_ht);
-  iters->push_back(std::make_shared<DocRowwiseIterator>(
-      *projection, *schema(), txn_op_ctx, rocksdb_.get(), read_time,
-      // We keep the pending operation counter incremented while the iterator exists so that
-      // RocksDB does not get deallocated while we're using it.
-      &pending_op_counter_));
-  return Status::OK();
-}
-
 namespace {
 
 Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch,
@@ -1231,84 +1149,17 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
   return Status::OK();
 }
 
-////////////////////////////////////////////////////////////
-// Tablet::Iterator
-////////////////////////////////////////////////////////////
-
-Tablet::Iterator::Iterator(const Tablet* tablet, const Schema& projection,
-                           HybridTime read_ht, const OrderMode order,
-                           const boost::optional<TransactionId>& transaction_id)
-    : tablet_(tablet),
-      projection_(projection),
-      read_ht_(read_ht),
-      order_(order),
-      transaction_id_(transaction_id),
-      arena_(256, 4096),
-      encoder_(&tablet_->key_schema(), &arena_) {}
-
-Tablet::Iterator::~Iterator() {}
-
-Status Tablet::Iterator::Init(ScanSpec *spec) {
-  DCHECK(iter_.get() == nullptr);
-
-  RETURN_NOT_OK(tablet_->GetMappedReadProjection(projection_, &projection_));
-
-  vector<shared_ptr<RowwiseIterator> > iters;
-  if (spec != nullptr) {
-    VLOG(3) << "Before encoding range preds: " << spec->ToString();
-    encoder_.EncodeRangePredicates(spec, true);
-    VLOG(3) << "After encoding range preds: " << spec->ToString();
-  }
-
-  RETURN_NOT_OK(tablet_->CaptureConsistentIterators(
-      &projection_, read_ht_, spec, transaction_id_, &iters));
-
-  switch (order_) {
-    case ORDERED:
-      iter_.reset(new MergeIterator(projection_, iters));
-      break;
-    case UNORDERED:
-    default:
-      iter_.reset(new UnionIterator(iters));
-      break;
-  }
-
-  RETURN_NOT_OK(iter_->Init(spec));
-  return Status::OK();
-}
-
-bool Tablet::Iterator::HasNext() const {
-  DCHECK(iter_.get() != nullptr) << "Not initialized!";
-  return iter_->HasNext();
-}
-
-Status Tablet::Iterator::NextBlock(RowBlock *dst) {
-  DCHECK(iter_.get() != nullptr) << "Not initialized!";
-  return iter_->NextBlock(dst);
-}
-
-string Tablet::Iterator::ToString() const {
-  string s;
-  s.append("tablet iterator: ");
-  if (iter_.get() == nullptr) {
-    s.append("NULL");
-  } else {
-    s.append(iter_->ToString());
-  }
-  return s;
-}
-
-void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
-  iter_->GetIteratorStats(stats);
-}
-
 HybridTime Tablet::DoGetSafeHybridTimeToReadAt(
     tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
   HybridTime max_allowed;
   if (require_lease && ht_lease_provider_) {
     // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
     // max_allowed >= min_allowed.
-    auto lease = ht_lease_provider_(min_allowed.GetPhysicalValueMicros() + 1, deadline);
+    auto min_allowed_lease = min_allowed.GetPhysicalValueMicros();
+    if (min_allowed.GetLogicalValue()) {
+      ++min_allowed_lease;
+    }
+    auto lease = ht_lease_provider_(min_allowed_lease, deadline);
     if (!lease) {
       return HybridTime::kInvalid;
     }

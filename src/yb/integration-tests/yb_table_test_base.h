@@ -52,7 +52,7 @@ namespace integration_tests {
 
 // This is a common base class from which SQLTableTest and RedisTableTest will inherit from.
 // In future some of the functionality may be migrated to sub-base classes when it becomes bigger.
-// i.e. scan related functions may be moved down because it is only supported for Kudu / SQL tables.
+// i.e. scan related functions may be moved down because it is only supported for SQL tables.
 class YBTableTestBase : public YBTest {
  protected:
   YBTableTestBase();

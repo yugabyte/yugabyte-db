@@ -17,8 +17,10 @@
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/rocksdb/memory_monitor.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
 
 DECLARE_int64(global_memstore_size_percentage);
 DECLARE_int64(global_memstore_size_mb_max);

@@ -34,7 +34,6 @@ using std::unique_ptr;
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBScanner;
 using client::YBTable;
 using std::shared_ptr;
 

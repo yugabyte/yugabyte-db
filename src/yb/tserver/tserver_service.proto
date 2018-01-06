@@ -42,9 +42,7 @@ import "yb/tablet/metadata.proto";
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
   rpc Read(ReadRequestPB) returns (ReadResponsePB);
-  rpc Scan(ScanRequestPB) returns (ScanResponsePB);
   rpc NoOp(NoOpRequestPB) returns (NoOpResponsePB);
-  rpc ScannerKeepAlive(ScannerKeepAliveRequestPB) returns (ScannerKeepAliveResponsePB);
   rpc ListTablets(ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetLogLocation(GetLogLocationRequestPB) returns (GetLogLocationResponsePB);
 
@@ -72,36 +70,21 @@ message GetLogLocationResponsePB {
 }
 
 message ChecksumRequestPB {
-  // Only one of 'new_request' or 'continue_request' should be specified.
-  optional NewScanRequestPB new_request = 1;
-  optional ContinueChecksumRequestPB continue_request = 2;
+  reserved 1, 2, 3, 4, 5;
 
-  // See documentation for ScanRequestPB for info about these fields.
-  optional uint32 call_seq_id = 3;
-  optional uint32 batch_size_bytes = 4;
-  optional bool close_scanner = 5;
-}
-
-message ContinueChecksumRequestPB {
-  // Scanner ID returned from a previous request.
-  required bytes scanner_id = 1;
-
-  // Checksum returned from a previous request.
-  required uint64 previous_checksum = 2;
+  optional bytes tablet_id = 6;
+  optional YBConsistencyLevel consistency_level = 7;
 }
 
 message ChecksumResponsePB {
+  reserved 3, 4, 5;
+
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
 
   // The (possibly partial) checksum of the tablet data.
   // This checksum is only complete if 'has_more_results' is false.
   optional uint64 checksum = 2;
-
-  // See documentation for ScanResponsePB for info about these fields.
-  optional bytes scanner_id = 3;
-  optional bool has_more_results = 4;
-  optional fixed64 snap_hybrid_time = 5;
 }
 
 message ListTabletsForTabletServerRequestPB {

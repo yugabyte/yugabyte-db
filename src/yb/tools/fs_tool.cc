@@ -41,7 +41,6 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/common/rowblock.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/log_reader.h"

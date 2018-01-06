@@ -24,10 +24,6 @@ tserver::TSTabletManager* MasterTabletServer::tablet_manager() {
   return nullptr;
 }
 
-tserver::ScannerManager* MasterTabletServer::scanner_manager() {
-  return nullptr;
-}
-
 server::Clock* MasterTabletServer::Clock() {
   return nullptr;
 }

@@ -144,8 +144,6 @@ set(TSERVER_SRCS
   remote_bootstrap_client.cc
   remote_bootstrap_service.cc
   remote_bootstrap_session.cc
-  scanner_metrics.cc
-  scanners.cc
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
@@ -189,13 +187,8 @@ target_link_libraries(yb-tserver
 # tserver_test_util
 #########################################
 
-set(TSERVER_TEST_UTIL_SRCS
-  tablet_server_test_util.cc
-)
-
-add_library(tserver_test_util ${TSERVER_TEST_UTIL_SRCS})
-target_link_libraries(tserver_test_util
-  tserver)
+add_library(tserver_test_util tablet_server-test-base.cc tablet_server_test_util.cc)
+target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util)
 
 #########################################
 # tserver tests
@@ -212,7 +205,6 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
 ADD_YB_TEST(remote_bootstrap_service-test)
 ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
-ADD_YB_TEST(scanners-test)
 ADD_YB_TEST(ts_tablet_manager-test)
 
 if(YB_ENT_CURRENT_SOURCE_DIR)

@@ -31,7 +31,6 @@ namespace itest {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBScanner;
 using client::YBTable;
 using integration_tests::YBTableTestBase;
 using std::shared_ptr;

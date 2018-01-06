@@ -78,18 +78,11 @@ ADD_YB_LIBRARY(ql_protocol_proto
   NONLINK_DEPS ${QL_PROTOCOL_PROTO_TGTS})
 
 set(COMMON_SRCS
-  encoded_key.cc
-  generic_iterators.cc
   id_mapping.cc
-  iterator_stats.cc
   key_encoder.cc
   partial_row.cc
   partition.cc
-  predicate_encoder.cc
-  rowblock.cc
   row_key-util.cc
-  scan_predicate.cc
-  scan_spec.cc
   schema.cc
   hybrid_time.cc
   doc_hybrid_time.cc
@@ -127,13 +120,9 @@ ADD_YB_LIBRARY(yb_common
 add_dependencies(yb_common yb_bfql)
 
 set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(encoded_key-test)
-ADD_YB_TEST(generic_iterators-test)
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
-ADD_YB_TEST(predicate-test)
-ADD_YB_TEST(predicate_encoder-test)
 ADD_YB_TEST(row_key-util-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)

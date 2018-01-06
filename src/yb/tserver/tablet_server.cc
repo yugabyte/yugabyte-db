@@ -46,7 +46,6 @@
 #include "yb/server/webserver.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tserver/heartbeater.h"
-#include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
@@ -109,7 +108,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       fail_heartbeats_for_tests_(false),
       opts_(opts),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
-      scanner_manager_(new ScannerManager(metric_entity())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
@@ -173,9 +171,6 @@ Status TabletServer::Init() {
 
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
-
-  RETURN_NOT_OK_PREPEND(scanner_manager_->StartRemovalThread(),
-                        "Could not start expired Scanner removal thread");
 
   initted_ = true;
   return Status::OK();
@@ -280,7 +275,6 @@ void TabletServer::Shutdown() {
       tablet_server_service_ = nullptr;
     }
     RpcAndWebServerBase::Shutdown();
-    scanner_manager_.reset();
     tablet_manager_->Shutdown();
   }
 

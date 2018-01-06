@@ -32,16 +32,16 @@
 #ifndef YB_TSERVER_TSERVER_PATH_HANDLERS_H
 #define YB_TSERVER_TSERVER_PATH_HANDLERS_H
 
-#include "yb/gutil/macros.h"
-#include "yb/server/webserver.h"
 #include <string>
 #include <sstream>
 #include <vector>
 
+#include "yb/gutil/macros.h"
+#include "yb/server/webserver.h"
+
 namespace yb {
 
 class Schema;
-struct IteratorStats;
 
 namespace consensus {
 class ConsensusStatePB;
@@ -50,7 +50,6 @@ class ConsensusStatePB;
 namespace tserver {
 
 class TabletServer;
-class Scanner;
 
 class TabletServerPathHandlers {
  public:
@@ -63,8 +62,6 @@ class TabletServerPathHandlers {
   CHECKED_STATUS Register(Webserver* server);
 
  private:
-  void HandleScansPage(const Webserver::WebRequest& req,
-                       std::stringstream* output);
   void HandleTabletsPage(const Webserver::WebRequest& req,
                          std::stringstream* output);
   void HandleTabletPage(const Webserver::WebRequest& req,
@@ -82,9 +79,6 @@ class TabletServerPathHandlers {
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
                                     std::stringstream* output);
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
-  std::string ScannerToHtml(const Scanner& scanner) const;
-  std::string IteratorStatsToHtml(const Schema& projection,
-                                  const std::vector<IteratorStats>& stats) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);
 

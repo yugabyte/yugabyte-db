@@ -38,7 +38,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/row_result.h"
+#include "yb/client/table_handle.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/tools/ysck_remote.h"
@@ -124,21 +125,11 @@ Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
                                         int expected_row_count) {
   std::shared_ptr<client::YBClient> client;
   client::YBClientBuilder builder;
-  RETURN_NOT_OK_PREPEND(cluster_->CreateClient(&builder,
-                                               &client),
-                        "Unable to connect to cluster");
-  std::shared_ptr<client::YBTable> table;
-  RETURN_NOT_OK_PREPEND(client->OpenTable(table_name, &table),
-                        "Unable to open table");
-  client::YBScanner scanner(table.get());
-  CHECK_OK(scanner.SetProjectedColumns(vector<string>()));
-  RETURN_NOT_OK_PREPEND(scanner.Open(), "Unable to open scanner");
-  int count = 0;
-  client::YBScanBatch batch;
-  while (scanner.HasMoreRows()) {
-    RETURN_NOT_OK_PREPEND(scanner.NextBatch(&batch), "Unable to read from scanner");
-    count += batch.NumRows();
-  }
+  RETURN_NOT_OK_PREPEND(cluster_->CreateClient(&builder, &client), "Unable to connect to cluster");
+
+  client::TableHandle table;
+  RETURN_NOT_OK_PREPEND(table.Open(table_name, client.get()), "Unable to open table");
+  size_t count = boost::size(client::TableRange(table));
 
   if (mode == AT_LEAST && count < expected_row_count) {
     return STATUS(Corruption, Substitute("row count $0 is not at least expected value $1",

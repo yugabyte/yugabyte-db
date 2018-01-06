@@ -24,7 +24,6 @@
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 
-#include "yb/common/encoded_key.h"
 #include "yb/common/schema.h"
 #include "yb/docdb/primitive_value.h"
 
@@ -157,11 +156,6 @@ class DocKey {
   bool operator >=(const DocKey& other) const {
     return CompareTo(other) >= 0;
   }
-
-  // Converts the given Kudu encoded key to a DocKey. It looks like Kudu's EncodedKey assumes all
-  // fields are non-null, so we have the same assumption here. In fact, there does not seem to
-  // even be a way to encode null fields in an EncodedKey.
-  static DocKey FromKuduEncodedKey(const EncodedKey& encoded_key, const Schema& schema);
 
   // Converts a redis string key to a doc key
   static DocKey FromRedisKey(uint16_t hash, const string& key);

@@ -13,7 +13,6 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
-#include "yb/common/iterator.h"
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_scanspec.h"
@@ -34,25 +33,6 @@ using yb::FormatRocksDBSliceAsStr;
 
 namespace yb {
 namespace docdb {
-
-namespace {
-
-CHECKED_STATUS ExpectValueType(ValueType expected_value_type,
-                               const ColumnSchema& column,
-                               const PrimitiveValue& actual_value) {
-  if (expected_value_type == actual_value.value_type()) {
-    return Status::OK();
-  } else {
-    return STATUS_FORMAT(Corruption,
-        "Expected an internal value type $0 for column $1 of physical SQL type $2, got $3",
-        expected_value_type,
-        column.name(),
-        column.type_info()->name(),
-        actual_value.value_type());
-  }
-}
-
-}  // namespace
 
 DocRowwiseIterator::DocRowwiseIterator(
     const Schema &projection,
@@ -80,32 +60,18 @@ DocRowwiseIterator::DocRowwiseIterator(
 DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
-Status DocRowwiseIterator::Init(ScanSpec *spec) {
-  // TODO(bogdan): refactor this after we completely move away from the old ScanSpec. For now, just
-  // default to not using bloom filters on scans for these codepaths.
+Status DocRowwiseIterator::Init() {
+  auto query_id = rocksdb::kDefaultQueryId;
+
   db_iter_ = CreateIntentAwareIterator(
       db_, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none /* user_key_for_filter */,
-      spec->query_id(), txn_op_context_, read_time_);
+      query_id, txn_op_context_, read_time_);
 
-  if (spec != nullptr && spec->lower_bound_key() != nullptr) {
-    row_key_ = KuduToDocKey(*spec->lower_bound_key());
-    // Need this seek, because SeekOutOfSubDoc seeks forward.
-    db_iter_->Seek(row_key_);
-    if (!spec->lower_bound_inclusive()) {
-      db_iter_->SeekOutOfSubDoc(SubDocKey(row_key_));
-    }
-  } else {
-    row_key_ = DocKey();
-    db_iter_->Seek(row_key_);
-  }
+  row_key_ = DocKey();
+  db_iter_->Seek(row_key_);
   row_ready_ = false;
+  has_bound_key_ = false;
 
-  if (spec != nullptr && spec->exclusive_upper_bound_key() != nullptr) {
-    has_bound_key_ = true;
-    bound_key_ = KuduToDocKey(*spec->exclusive_upper_bound_key());
-  } else {
-    has_bound_key_ = false;
-  }
   return Status::OK();
 }
 
@@ -174,7 +140,7 @@ Status DocRowwiseIterator::EnsureIteratorPositionCorrect() const {
 
 bool DocRowwiseIterator::HasNext() const {
   if (!status_.ok() || row_ready_) {
-    // If row is ready, then HasNext returns true. In case of error, NextBlock() / NextRow() will
+    // If row is ready, then HasNext returns true. In case of error, NextRow() will
     // eventually report the error. HasNext is unable to return an error status.
     return true;
   }
@@ -197,7 +163,7 @@ bool DocRowwiseIterator::HasNext() const {
       status_ = row_key_.DecodeFrom(&key_copy);
     }
     if (!status_.ok()) {
-      // Defer error reporting to NextBlock().
+      // Defer error reporting to NextRow().
       return true;
     }
 
@@ -215,7 +181,7 @@ bool DocRowwiseIterator::HasNext() const {
     status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
     if (!status_.ok()) {
-      // Defer error reporting to NextBlock().
+      // Defer error reporting to NextRow().
       return true;
     }
 
@@ -228,7 +194,7 @@ bool DocRowwiseIterator::HasNext() const {
       data.result = &full_row;
       status_ = GetSubDocument(db_iter_.get(), data);
       if (!status_.ok()) {
-        // Defer error reporting to NextBlock().
+        // Defer error reporting to NextRow().
         return true;
       }
     }
@@ -248,7 +214,7 @@ bool DocRowwiseIterator::HasNext() const {
     }
     status_ = EnsureIteratorPositionCorrect();
     if (!status_.ok()) {
-      // Defer error reporting to NextBlock().
+      // Defer error reporting to NextRow().
       return true;
     }
   }
@@ -262,116 +228,13 @@ string DocRowwiseIterator::ToString() const {
 
 namespace {
 
-// Convert from a PrimitiveValue read from RocksDB to a Kudu value in the given column of the
-// given RowBlockRow. The destination row's schema must match that of the projection.
-CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
-                                    const int column_index,
-                                    const PrimitiveValue& value,
-                                    RowBlockRow* dest_row) {
-  const ColumnSchema& col_schema = projection.column(column_index);
-  const DataType data_type = col_schema.type_info()->physical_type();
-  void* const dest_ptr = dest_row->cell(column_index).mutable_ptr();
-  Arena* const arena = dest_row->row_block()->arena();
-  switch (data_type) {
-    case DataType::BINARY: FALLTHROUGH_INTENDED;
-    case DataType::STRING: {
-      Slice cell_copy;
-      RETURN_NOT_OK(ExpectValueType(ValueType::kString, col_schema, value));
-      if (PREDICT_FALSE(!arena->RelocateSlice(value.GetStringAsSlice(), &cell_copy))) {
-        return STATUS(IOError, "out of memory");
-      }
-      // Kudu represents variable-size values as Slices pointing to memory allocated from an
-      // associated Arena.
-      *(reinterpret_cast<Slice*>(dest_ptr)) = cell_copy;
-      break;
-    }
-    case DataType::INT64: {
-      auto expected_type = col_schema.type_info()->type() == DataType::TIMESTAMP
-          ? ValueType::kTimestamp : ValueType::kInt64;
-      RETURN_NOT_OK(ExpectValueType(expected_type, col_schema, value));
-      // TODO: double-check that we can just assign the 64-bit integer here.
-      if (expected_type == ValueType::kInt64) {
-        *(reinterpret_cast<int64_t*>(dest_ptr)) = value.GetInt64();
-      } else {
-        *(reinterpret_cast<int64_t*>(dest_ptr)) = value.GetTimestamp().ToInt64();
-      }
-      break;
-    }
-    case DataType::INT32: {
-      // TODO: update these casts when all data types are supported in docdb
-      RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
-      *(reinterpret_cast<int32_t*>(dest_ptr)) = static_cast<int32_t>(value.GetInt32());
-      break;
-    }
-    case DataType::INT16: {
-      // TODO: update these casts when all data types are supported in docdb
-      RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
-      *(reinterpret_cast<int16_t*>(dest_ptr)) = static_cast<int16_t>(value.GetInt32());
-      break;
-    }
-    case DataType::INT8: {
-      // TODO: update these casts when all data types are supported in docdb
-      RETURN_NOT_OK(ExpectValueType(ValueType::kInt32, col_schema, value));
-      *(reinterpret_cast<int8_t*>(dest_ptr)) = static_cast<int8_t>(value.GetInt32());
-      break;
-    }
-    case DataType::BOOL: {
-      if (value.value_type() != ValueType::kTrue &&
-          value.value_type() != ValueType::kFalse) {
-        return STATUS_SUBSTITUTE(Corruption,
-                                 "Expected true/false, got $0", value.ToString());
-      }
-      *(reinterpret_cast<bool*>(dest_ptr)) = value.value_type() == ValueType::kTrue;
-      break;
-    }
-    case DataType::FLOAT: {
-      RETURN_NOT_OK(ExpectValueType(ValueType::kFloat, col_schema, value));
-      *(reinterpret_cast<float*>(dest_ptr)) = value.GetFloat();
-      break;
-    }
-    case DataType::DOUBLE: {
-      RETURN_NOT_OK(ExpectValueType(ValueType::kDouble, col_schema, value));
-      *(reinterpret_cast<double*>(dest_ptr)) = value.GetDouble();
-      break;
-    }
-    default:
-      return STATUS_SUBSTITUTE(IllegalState,
-                               "Unsupported column data type $0", data_type);
-  }
-        return Status::OK();
-}
-
-// Set primary key column values (hashed or range columns) in a Kudu row. The destination row's
-// schema must match that of the projection.
-CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
-    const size_t begin_index,
-    const size_t column_count,
-    const char* column_type,
-    const vector<PrimitiveValue>& values,
-    RowBlockRow* dst_row) {
-  if (values.size() != column_count) {
-    return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
-                             values.size(), column_type, column_count);
-  }
-  if (begin_index + column_count > projection.num_columns()) {
-    return STATUS_SUBSTITUTE(
-        Corruption,
-        "$0 primary key columns between positions $1 and $2 go beyond selected columns $3",
-        column_type, begin_index, begin_index + column_count - 1, projection.num_columns());
-  }
-  for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
-    RETURN_NOT_OK(PrimitiveValueToKudu(projection, j, values[i], dst_row));
-  }
-  return Status::OK();
-}
-
 // Set primary key column values (hashed or range columns) in a QL row value map.
 CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
                                            const size_t begin_index,
                                            const size_t column_count,
                                            const char* column_type,
                                            const vector<PrimitiveValue>& values,
-                                           const QLTableRow::SharedPtr& table_row) {
+                                           QLTableRow* table_row) {
   if (values.size() != column_count) {
     return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
                              values.size(), column_type, column_count);
@@ -392,86 +255,6 @@ CHECKED_STATUS SetQLPrimaryKeyColumnValues(const Schema& schema,
 
 } // namespace
 
-Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
-  // Verify the basic compatibility of the schema assumed by the row block provided to us to the
-  // projection schema we already have.
-  DCHECK_EQ(projection_.num_key_columns(), dst->schema().num_key_columns());
-  DCHECK_EQ(projection_.num_columns(), dst->schema().num_columns());
-
-  if (!status_.ok()) {
-    // An error happened in HasNext.
-    return status_;
-  }
-
-  if (PREDICT_FALSE(done_)) {
-    dst->Resize(0);
-    return STATUS(NotFound, "end of iter");
-  }
-
-  // Ensure row is ready to be read. HasNext() must be called before reading the first row, or
-  // again after the previous row has been read or skipped.
-  if (!row_ready_) {
-    return STATUS(InternalError, "next row has not be prepared for reading");
-  }
-
-  if (PREDICT_FALSE(dst->row_capacity() == 0)) {
-    return Status::OK();
-  }
-
-  dst->Resize(1);
-  dst->selection_vector()->SetAllTrue();
-  RowBlockRow dst_row(dst->row(0));
-
-  // Populate the key column values from the doc key. We require that when a projection selects
-  // either hash or range columns, all hash or range columns are selected.
-  if (projection_.num_hash_key_columns() > 0) {
-    CHECK_EQ(projection_.num_hash_key_columns(), schema_.num_hash_key_columns())
-        << "projection's hash column count does not match schema's";
-    RETURN_NOT_OK(SetKuduPrimaryKeyColumnValues(
-        projection_, 0, projection_.num_hash_key_columns(),
-        "hash", row_key_.hashed_group(), &dst_row));
-  }
-  if (projection_.num_range_key_columns() > 0) {
-    CHECK_EQ(projection_.num_range_key_columns(), schema_.num_range_key_columns())
-        << "projection's range column count does not match schema's";
-    RETURN_NOT_OK(SetKuduPrimaryKeyColumnValues(
-        projection_, projection_.num_hash_key_columns(), projection_.num_range_key_columns(),
-        "range", row_key_.range_group(), &dst_row));
-  }
-
-  for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
-    const SubDocument* value = row_.GetChild(PrimitiveValue(projection_.column_id(i)));
-    const bool is_null = value->value_type() == ValueType::kInvalidValueType;
-    const bool is_nullable = dst->column_block(i).is_nullable();
-    if (!is_null) {
-      RETURN_NOT_OK(PrimitiveValueToKudu(projection_, i, *value, &dst_row));
-    }
-    if (is_null && !is_nullable) {
-      // From D1319 (mikhail) to make some tests run with QL tables:
-      // We can't use dst->schema().column(i) here, because it might not provide the correct read
-      // default. Instead, we get the matching column's schema from the server-side schema that
-      // the iterator was created with.
-      int idx = schema_.find_column_by_id(projection_.column_id(i));
-      if (idx != Schema::kColumnNotFound && schema_.column(idx).has_read_default()) {
-        memcpy(dst_row.cell(i).mutable_ptr(), schema_.column(idx).read_default_value(),
-               schema_.column(idx).type_info()->size());
-      } else {
-        return STATUS_SUBSTITUTE(
-            IllegalState,
-            "Column #$0 in the projection ($1) is not nullable, but no data is found and no read "
-                "default provided by the schema",
-            i,
-            schema_.column(idx).ToString());
-      }
-    }
-    if (is_nullable) {
-      dst->column_block(i).SetCellIsNull(0, is_null);
-    }
-  }
-  row_ready_ = false;
-  return Status::OK();
-}
-
 void DocRowwiseIterator::SkipRow() {
   row_ready_ = false;
 }
@@ -488,8 +271,7 @@ bool DocRowwiseIterator::IsNextStaticColumn() const {
   return schema_.has_statics() && row_key_.range_group().empty();
 }
 
-Status DocRowwiseIterator::NextRow(const Schema& projection,
-                                   const QLTableRow::SharedPtr& table_row) {
+Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -530,14 +312,6 @@ Status DocRowwiseIterator::NextRow(const Schema& projection,
   }
   row_ready_ = false;
   return Status::OK();
-}
-
-void DocRowwiseIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const {
-  // A no-op implementation that adds new IteratorStats objects. This is an attempt to fix
-  // linked_list-test with the QL table type.
-  for (int i = 0; i < projection_.num_columns(); i++) {
-    stats->emplace_back();
-  }
 }
 
 CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {

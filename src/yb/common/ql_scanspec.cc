@@ -301,7 +301,7 @@ QLScanSpec::QLScanSpec(const QLConditionPB* condition,
 }
 
 // Evaluate the WHERE condition for the given row.
-CHECKED_STATUS QLScanSpec::Match(const QLTableRow::SharedPtr& table_row, bool* match) const {
+CHECKED_STATUS QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
   if (condition_ != nullptr) {
     return executor_->EvalCondition(*condition_, table_row, match);
   }

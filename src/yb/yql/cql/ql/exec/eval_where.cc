@@ -67,13 +67,14 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
                                          bool *no_results) {
   // If where clause restrictions guarantee no results can be found this will be set to true below.
   *no_results = false;
+  QLTableRow empty_row;
 
   // Setup the lower/upper bounds on the partition key -- if any
   for (const auto& op : partition_key_ops) {
     QLExpressionPB expr_pb;
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
     QLValue result;
-    RETURN_NOT_OK(EvalExpr(expr_pb, nullptr, &result));
+    RETURN_NOT_OK(EvalExpr(expr_pb, empty_row, &result));
     DCHECK(result.value().has_int64_value())
       << "Partition key operations are expected to return BIGINT";
     uint16_t hash_code = YBPartition::CqlToYBHashCode(result.int64_value());

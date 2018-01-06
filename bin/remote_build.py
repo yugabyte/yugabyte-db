@@ -37,16 +37,19 @@ def check_output_lines(args):
 
 
 def parse_name_status(lines):
-    files = []
+    files = ([], [])
     for line in lines:
         tokens = [x.strip() for x in line.split('\t')]
-        if len(tokens) == 0 or tokens[0] == 'D' or tokens[0] == '':
+        if len(tokens) == 0 or tokens[0] == '':
+            continue
+        if tokens[0] == 'D':
+            files[1].append(tokens[1])
             continue
         if tokens[0].startswith('R'):
             name = tokens[2]
         else:
             name = tokens[1]
-        files.append(name)
+        files[0].append(name)
     return files
 
 
@@ -60,7 +63,8 @@ def remote_communicate(args, remote_command):
 
 def check_remote_files(args, files):
     remote_command = "cd {0} && git diff --name-status".format(args.remote_path)
-    remote_changed = parse_name_status(check_output_lines(['ssh', args.host, remote_command]))
+    remote_changed, remote_deleted = \
+        parse_name_status(check_output_lines(['ssh', args.host, remote_command]))
     unexpected = []
     for changed in remote_changed:
         if changed not in files:
@@ -140,8 +144,9 @@ def main():
                 commit, remote_commit))
             sys.exit(1)
 
-    files = parse_name_status(check_output_lines(['git', 'diff', commit, '--name-status']))
-    print("Total files: {0}".format(len(files)))
+    files, del_files = \
+        parse_name_status(check_output_lines(['git', 'diff', commit, '--name-status']))
+    print("Total files: {0}, deleted files: {1}".format(len(files), len(del_files)))
 
     if files:
         # From this StackOverflow thread: https://goo.gl/xzhBUC
@@ -160,6 +165,13 @@ def main():
         proc.communicate()
         if proc.returncode != 0:
             sys.exit(proc.returncode)
+
+    if del_files:
+        remote_command = 'cd {0} && rm -f '.format(args.remote_path)
+        for file in del_files:
+            remote_command += shlex.quote(file)
+            remote_command += ' '
+        remote_communicate(args, remote_command)
 
     check_remote_files(args, files)
 

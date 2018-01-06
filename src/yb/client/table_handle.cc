@@ -160,13 +160,21 @@ void TableHandle::AddColumns(const std::vector<std::string>& columns, QLReadRequ
   }
 }
 
+TableIteratorOptions::TableIteratorOptions() {}
+
 TableIterator::TableIterator() : table_(nullptr) {}
 
+#define REPORT_AND_RETURN_IF_NOT_OK(expr) \
+  do { \
+    auto&& status = (expr); \
+    if (!status.ok()) { HandleError(MoveStatus(status)); return; } \
+  } while (false) \
+
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
-    : table_(table) {
+    : table_(table), error_handler_(options.error_handler) {
   auto client = (*table)->client();
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  CHECK_OK(client->GetTablets(table->name(), 0, &tablets));
+  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(table->name(), 0, &tablets));
   if (tablets.size() == 0) {
     table_ = nullptr;
     return;
@@ -174,10 +182,13 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
   ops_.reserve(tablets.size());
 
   session_ = client->NewSession();
-  CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
+  REPORT_AND_RETURN_IF_NOT_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
   session_->SetTimeout(60s);
 
   for (const auto& tablet : tablets) {
+    if (!options.tablet.empty() && options.tablet != tablet.tablet_id()) {
+      continue;
+    }
     auto op = table->NewReadOp();
     auto req = op->mutable_request();
     op->set_yb_consistency_level(options.consistency);
@@ -193,7 +204,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     if (options.read_time) {
       op->SetReadTime(options.read_time);
     }
-    table_->AddColumns(options.columns, req);
+    table_->AddColumns(*options.columns, req);
     ops_.push_back(std::move(op));
   }
 
@@ -205,15 +216,15 @@ void TableIterator::ExecuteOps() {
   constexpr size_t kMaxConcurrentOps = 5;
   const size_t new_executed_ops = std::min(ops_.size(), executed_ops_ + kMaxConcurrentOps);
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
-    CHECK_OK(session_->Apply(ops_[i]));
+    REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(ops_[i]));
   }
 
-  CHECK_OK(session_->Flush());
+  REPORT_AND_RETURN_IF_NOT_OK(session_->Flush());
 
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
     const auto& op = ops_[i];
     if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
-      LOG(FATAL) << "Error for " << op->ToString() << ": " << op->response().error_message();
+      HandleError(STATUS_FORMAT(RuntimeError, "Error for $0: $1", *op, op->response()));
     }
   }
 
@@ -247,18 +258,39 @@ void TableIterator::Move() {
       return;
     }
     auto next_block = ops_[ops_index_]->MakeRowBlock();
-    CHECK_OK(next_block);
+    REPORT_AND_RETURN_IF_NOT_OK(next_block);
     current_block_ = std::move(*next_block);
     row_index_ = 0;
   }
 }
 
-void FilterBetween::operator()(const TableHandle& table, QLConditionPB* condition) const {
+void TableIterator::HandleError(const Status& status) {
+  if (error_handler_) {
+    error_handler_(status);
+  } else {
+    LOG(FATAL) << "Failure: " << status;
+  }
+}
+
+template <>
+void FilterBetweenImpl<int32_t>::operator()(
+    const TableHandle& table, QLConditionPB* condition) const {
   condition->set_op(QL_OP_AND);
   table.AddInt32Condition(
       condition, column_, lower_inclusive_ ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN,
       lower_bound_);
   table.AddInt32Condition(
+      condition, column_, upper_inclusive_ ? QL_OP_LESS_THAN_EQUAL : QL_OP_LESS_THAN, upper_bound_);
+}
+
+template <>
+void FilterBetweenImpl<std::string>::operator()(
+    const TableHandle& table, QLConditionPB* condition) const {
+  condition->set_op(QL_OP_AND);
+  table.AddStringCondition(
+      condition, column_, lower_inclusive_ ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN,
+      lower_bound_);
+  table.AddStringCondition(
       condition, column_, upper_inclusive_ ? QL_OP_LESS_THAN_EQUAL : QL_OP_LESS_THAN, upper_bound_);
 }
 

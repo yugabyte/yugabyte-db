@@ -36,17 +36,9 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
              tserver::WriteResponsePB* resp,
              rpc::RpcContext context) override;
 
-  void Scan(const tserver::ScanRequestPB* req,
-            tserver::ScanResponsePB* resp,
-            rpc::RpcContext context) override;
-
   void NoOp(const tserver::NoOpRequestPB* req,
             tserver::NoOpResponsePB* resp,
             rpc::RpcContext context) override;
-
-  void ScannerKeepAlive(const tserver::ScannerKeepAliveRequestPB *req,
-                        tserver::ScannerKeepAliveResponsePB *resp,
-                        rpc::RpcContext context) override;
 
   void ListTablets(const tserver::ListTabletsRequestPB* req,
                    tserver::ListTabletsResponsePB* resp,

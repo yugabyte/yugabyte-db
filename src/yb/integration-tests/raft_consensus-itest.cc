@@ -59,6 +59,9 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
+
+#include "yb/rpc/messenger.h"
+
 #include "yb/server/server_base.pb.h"
 
 #include "yb/util/size_literals.h"
@@ -75,6 +78,7 @@ DEFINE_int64(client_num_batches_per_thread, 5,
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(ht_lease_duration_ms);
+DECLARE_int32(rpc_timeout);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(operation_memory_pressure_rejections);
@@ -1127,9 +1131,6 @@ void RaftConsensusITest::AssertNoTabletServersCrashed() {
 // being elected and never succeed in replicating their first operation.
 // For example, KUDU-783 reproduces from this test approximately 5% of the
 // time on a slow-test debug build.
-//
-// This test is still on Kudu tables, because it crashes significantly more frequently on QL:
-// https://yugabyte.atlassian.net/browse/ENG-444
 TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   int kCrashesToCause = 3;
   if (AllowSlowTests()) {

@@ -32,10 +32,7 @@
 
 #include "yb/client/yb_op.h"
 
-#include <assert.h>
-
 #include "yb/client/client.h"
-#include "yb/common/encoded_key.h"
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol.h"

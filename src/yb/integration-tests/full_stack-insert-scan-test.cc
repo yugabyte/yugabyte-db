@@ -42,7 +42,6 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
-#include "yb/client/row_result.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -99,8 +98,6 @@ namespace tablet {
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
-using client::YBRowResult;
-using client::YBScanner;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
@@ -447,16 +444,11 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
 void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
                                              const string& msg) {
-  YBScanner scanner(reader_table_.table().get());
-  ASSERT_OK(scanner.SetProjectedColumns(cols));
-  uint64_t nrows = 0;
+  client::TableIteratorOptions options;
+  options.columns = cols;
+  size_t nrows;
   LOG_TIMING(INFO, msg) {
-    ASSERT_OK(scanner.Open());
-    vector<YBRowResult> rows;
-    while (scanner.HasMoreRows()) {
-      ASSERT_OK(scanner.NextBatch(&rows));
-      nrows += rows.size();
-    }
+    nrows = boost::size(client::TableRange(reader_table_));
   }
   ASSERT_EQ(nrows, kNumRows);
 }

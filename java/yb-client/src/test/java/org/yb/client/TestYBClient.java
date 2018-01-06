@@ -39,7 +39,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.yb.Common.HostPortPB;
-import static org.yb.client.RowResult.timestampToString;
 
 import java.util.ArrayList;
 import java.util.List;

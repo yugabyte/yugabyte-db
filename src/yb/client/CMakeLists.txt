@@ -41,9 +41,6 @@ set(CLIENT_SRCS
   error-internal.cc
   in_flight_op.cc
   meta_cache.cc
-  scan_batch.cc
-  scan_predicate.cc
-  scanner-internal.cc
   session-internal.cc
   schema.cc
   table-internal.cc

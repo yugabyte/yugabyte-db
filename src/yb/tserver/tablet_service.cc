@@ -39,12 +39,14 @@
 
 #include <boost/scope_exit.hpp>
 
-#include "yb/common/iterator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/leader_lease.h"
+
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
@@ -63,7 +65,6 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
-#include "yb/tserver/scanners.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.pb.h"
@@ -73,6 +74,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/trace.h"
@@ -305,189 +307,41 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
   const bool include_trace_;
 };
 
-// Generic interface to handle scan results.
-class ScanResultCollector {
+// Checksums the scan result.
+class ScanResultChecksummer {
  public:
-  virtual ~ScanResultCollector() {}
-  virtual void HandleRowBlock(const Schema* client_projection_schema,
-                              const RowBlock& row_block) = 0;
+  ScanResultChecksummer() {}
 
-  // Returns number of times HandleRowBlock() was called.
-  virtual int BlocksProcessed() const = 0;
-
-  // Returns number of bytes which will be returned in the response.
-  virtual int64_t ResponseSize() const = 0;
-
-  // Returns the last processed row's primary key.
-  virtual const faststring& last_primary_key() const = 0;
-
-  // Return the number of rows actually returned to the client.
-  virtual int64_t NumRowsReturned() const = 0;
-};
-
-namespace {
-
-// Given a RowBlock, set last_primary_key to the primary key of the last selected row
-// in the RowBlock. If no row is selected, last_primary_key is not set.
-void SetLastRow(const RowBlock& row_block, faststring* last_primary_key) {
-  // Find the last selected row and save its encoded key.
-  const SelectionVector* sel = row_block.selection_vector();
-  if (sel->AnySelected()) {
-    for (int i = sel->nrows() - 1; i >= 0; i--) {
-      if (sel->IsRowSelected(i)) {
-        RowBlockRow last_row = row_block.row(i);
-        const Schema* schema = last_row.schema();
-        schema->EncodeComparableKey(last_row, last_primary_key);
-        break;
+  void HandleRow(const Schema& schema, const QLTableRow& row) {
+    QLValue value;
+    buffer_.clear();
+    for (uint32_t col_index = 0; col_index != schema.num_columns(); ++col_index) {
+      auto status = row.GetValue(schema.column_id(col_index), &value);
+      if (!status.ok()) {
+        LOG(WARNING) << "Column " << schema.column_id(col_index)
+                     << " not found in " << row.ToString();
+        continue;
+      }
+      buffer_.append(pointer_cast<const char*>(&col_index), sizeof(col_index));
+      if (schema.column(col_index).is_nullable()) {
+        uint8_t defined = value.IsNull() ? 0 : 1;
+        buffer_.append(pointer_cast<const char*>(&defined), sizeof(defined));
+      }
+      if (!value.IsNull()) {
+        value.value().AppendToString(&buffer_);
       }
     }
-  }
-}
-
-}  // namespace
-
-// Copies the scan result to the given row block PB and data buffers.
-//
-// This implementation is used in the common case where a client is running
-// a scan and the data needs to be returned to the client.
-//
-// (This is in contrast to some other ScanResultCollector implementation that
-// might do an aggregation or gather some other types of statistics via a
-// server-side scan and thus never need to return the actual data.)
-class ScanResultCopier : public ScanResultCollector {
- public:
-  ScanResultCopier(RowwiseRowBlockPB* rowblock_pb, faststring* rows_data, faststring* indirect_data)
-      : rowblock_pb_(DCHECK_NOTNULL(rowblock_pb)),
-        rows_data_(DCHECK_NOTNULL(rows_data)),
-        indirect_data_(DCHECK_NOTNULL(indirect_data)),
-        blocks_processed_(0),
-        num_rows_returned_(0) {
-  }
-
-  virtual void HandleRowBlock(const Schema* client_projection_schema,
-                              const RowBlock& row_block) override {
-    blocks_processed_++;
-    num_rows_returned_ += row_block.selection_vector()->CountSelected();
-    SerializeRowBlock(row_block, rowblock_pb_, client_projection_schema,
-                      rows_data_, indirect_data_);
-    SetLastRow(row_block, &last_primary_key_);
-  }
-
-  int BlocksProcessed() const override { return blocks_processed_; }
-
-  // Returns number of bytes buffered to return.
-  int64_t ResponseSize() const override {
-    return rows_data_->size() + indirect_data_->size();
-  }
-
-  const faststring& last_primary_key() const override {
-    return last_primary_key_;
-  }
-
-  int64_t NumRowsReturned() const override {
-    return num_rows_returned_;
-  }
-
- private:
-  RowwiseRowBlockPB* const rowblock_pb_;
-  faststring* const rows_data_;
-  faststring* const indirect_data_;
-  int blocks_processed_;
-  int64_t num_rows_returned_;
-  faststring last_primary_key_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScanResultCopier);
-};
-
-// Checksums the scan result.
-class ScanResultChecksummer : public ScanResultCollector {
- public:
-  ScanResultChecksummer()
-      : crc_(crc::GetCrc32cInstance()),
-        agg_checksum_(0),
-        blocks_processed_(0) {
-  }
-
-  virtual void HandleRowBlock(const Schema* client_projection_schema,
-                              const RowBlock& row_block) override {
-    blocks_processed_++;
-    if (!client_projection_schema) {
-      client_projection_schema = &row_block.schema();
-    }
-
-    size_t nrows = row_block.nrows();
-    for (size_t i = 0; i < nrows; i++) {
-      if (!row_block.selection_vector()->IsRowSelected(i)) continue;
-      uint32_t row_crc = CalcRowCrc32(*client_projection_schema, row_block.row(i));
-      agg_checksum_ += row_crc;
-    }
-    // Find the last selected row and save its encoded key.
-    SetLastRow(row_block, &encoded_last_row_);
-  }
-
-  int BlocksProcessed() const override { return blocks_processed_; }
-
-  // Returns a constant -- we only return checksum based on a time budget.
-  int64_t ResponseSize() const override { return sizeof(agg_checksum_); }
-
-  const faststring& last_primary_key() const override { return encoded_last_row_; }
-
-  int64_t NumRowsReturned() const override {
-    return 0;
+    crc_->Compute(buffer_.c_str(), buffer_.size(), &agg_checksum_, nullptr);
   }
 
   // Accessors for initializing / setting the checksum.
-  void set_agg_checksum(uint64_t value) { agg_checksum_ = value; }
   uint64_t agg_checksum() const { return agg_checksum_; }
 
  private:
-  // Calculates a CRC32C for the given row.
-  uint32_t CalcRowCrc32(const Schema& projection, const RowBlockRow& row) {
-    tmp_buf_.clear();
-
-    for (size_t j = 0; j < projection.num_columns(); j++) {
-      uint32_t col_index = static_cast<uint32_t>(j);  // For the CRC.
-      tmp_buf_.append(&col_index, sizeof(col_index));
-      ColumnBlockCell cell = row.cell(j);
-      if (cell.is_nullable()) {
-        uint8_t is_defined = cell.is_null() ? 0 : 1;
-        tmp_buf_.append(&is_defined, sizeof(is_defined));
-        if (!is_defined) continue;
-      }
-      if (cell.typeinfo()->physical_type() == BINARY) {
-        const Slice* data = reinterpret_cast<const Slice *>(cell.ptr());
-        tmp_buf_.append(data->data(), data->size());
-      } else {
-        tmp_buf_.append(cell.ptr(), cell.size());
-      }
-    }
-
-    uint64_t row_crc = 0;
-    crc_->Compute(tmp_buf_.data(), tmp_buf_.size(), &row_crc, nullptr);
-    return static_cast<uint32_t>(row_crc);  // CRC32 only uses the lower 32 bits.
-  }
-
-  faststring tmp_buf_;
-  crc::Crc* const crc_;
-  uint64_t agg_checksum_;
-  int blocks_processed_;
-  faststring encoded_last_row_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScanResultChecksummer);
+  crc::Crc* const crc_ = crc::GetCrc32cInstance();
+  uint64_t agg_checksum_ = 0;
+  std::string buffer_;
 };
-
-// Return the batch size to use for a given request, after clamping
-// the user-requested request within the server-side allowable range.
-// This is only a hint, really more of a threshold since returned bytes
-// may exceed this limit, but hopefully only by a little bit.
-static size_t GetMaxBatchSizeBytesHint(const ScanRequestPB* req) {
-  if (!req->has_batch_size_bytes()) {
-    return FLAGS_scanner_default_batch_size_bytes;
-  }
-
-  return std::min(req->batch_size_bytes(),
-                  implicit_cast<uint32_t>(FLAGS_scanner_max_batch_size_bytes));
-}
 
 TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
     : TabletServerServiceIf(server->MetricEnt()),
@@ -883,7 +737,13 @@ Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_pee
 bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
                                            ReadResponsePB* resp,
                                            rpc::RpcContext* context,
-                                           shared_ptr<tablet::AbstractTablet>* tablet) {
+                                           std::shared_ptr<tablet::AbstractTablet>* tablet) {
+  return DoGetTabletOrRespond(req, resp, context, tablet);
+}
+
+template <class Req, class Resp>
+bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
+                                             std::shared_ptr<tablet::AbstractTablet>* tablet) {
   scoped_refptr<TabletPeer> tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
                                  &tablet_peer)) {
@@ -1325,113 +1185,9 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
   context.RespondSuccess();
 }
 
-void TabletServiceImpl::ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
-                                         ScannerKeepAliveResponsePB *resp,
-                                         rpc::RpcContext context) {
-  if(!req->has_scanner_id()) {
-    context.RespondFailure(STATUS(InvalidArgument, "Scanner not specified"));
-    return;
-  }
-  SharedScanner scanner;
-  if (!server_->scanner_manager()->LookupScanner(req->scanner_id(), &scanner)) {
-    resp->mutable_error()->set_code(TabletServerErrorPB::SCANNER_EXPIRED);
-    StatusToPB(STATUS(NotFound, "Scanner not found", req->scanner_id()),
-               resp->mutable_error()->mutable_status());
-  } else {
-    scanner->UpdateAccessTime();
-  }
-  context.RespondSuccess();
-}
-
 void TabletServiceImpl::NoOp(const NoOpRequestPB *req,
                              NoOpResponsePB *resp,
                              rpc::RpcContext context) {
-  context.RespondSuccess();
-}
-
-void TabletServiceImpl::Scan(const ScanRequestPB* req,
-                             ScanResponsePB* resp,
-                             rpc::RpcContext context) {
-  TRACE_EVENT0("tserver", "TabletServiceImpl::Scan");
-  // Validate the request: user must pass a new_scan_request or
-  // a scanner ID, but not both.
-  if (PREDICT_FALSE(req->has_scanner_id() &&
-                    req->has_new_scan_request())) {
-    context.RespondFailure(STATUS(InvalidArgument,
-                                  "Must not pass both a scanner_id and new_scan_request"));
-    return;
-  }
-
-  size_t batch_size_bytes = GetMaxBatchSizeBytesHint(req);
-  faststring rows_data(batch_size_bytes * 11 / 10);
-  faststring indirect_data(batch_size_bytes * 11 / 10);
-  RowwiseRowBlockPB data;
-  ScanResultCopier collector(&data, &rows_data, &indirect_data);
-
-  bool has_more_results = false;
-  TabletServerErrorPB::Code error_code;
-  if (req->has_new_scan_request()) {
-    const NewScanRequestPB& scan_pb = req->new_scan_request();
-    scoped_refptr<TabletPeer> tablet_peer;
-    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), scan_pb.tablet_id(), resp, &context,
-                                   &tablet_peer)) {
-      return;
-    }
-    string scanner_id;
-    HybridTime scan_hybrid_time;
-    Status s = HandleNewScanRequest(tablet_peer.get(), req, &context,
-                                    &collector, &scanner_id, &scan_hybrid_time, &has_more_results,
-                                    &error_code);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
-      return;
-    }
-
-    // Only set the scanner id if we have more results.
-    if (has_more_results) {
-      resp->set_scanner_id(scanner_id);
-    }
-    if (scan_hybrid_time.is_valid()) {
-      resp->set_snap_hybrid_time(scan_hybrid_time.ToUint64());
-    }
-  } else if (req->has_scanner_id()) {
-    Status s = HandleContinueScanRequest(req, &collector, &has_more_results, &error_code);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
-      return;
-    }
-  } else {
-    context.RespondFailure(STATUS(InvalidArgument,
-                                  "Must pass either a scanner_id or new_scan_request"));
-    return;
-  }
-  resp->set_has_more_results(has_more_results);
-
-  DVLOG(2) << "Blocks processed: " << collector.BlocksProcessed();
-  if (collector.BlocksProcessed() > 0) {
-    resp->mutable_data()->CopyFrom(data);
-
-    // Add sidecar data to context and record the returned indices.
-    int rows_idx;
-    CHECK_OK(context.AddRpcSidecar(RefCntBuffer(rows_data), &rows_idx));
-    resp->mutable_data()->set_rows_sidecar(rows_idx);
-
-    // Add indirect data as a sidecar, if applicable.
-    if (indirect_data.size() > 0) {
-      int indirect_idx;
-      CHECK_OK(context.AddRpcSidecar(RefCntBuffer(indirect_data), &indirect_idx));
-      resp->mutable_data()->set_indirect_data_sidecar(indirect_idx);
-    }
-
-    // Set the last row found by the collector.
-    // We could have an empty batch if all the remaining rows are filtered by the predicate,
-    // in which case do not set the last row.
-    const faststring& last = collector.last_primary_key();
-    if (last.length() > 0) {
-      resp->set_last_primary_key(last.ToString());
-    }
-  }
-
   context.RespondSuccess();
 }
 
@@ -1481,68 +1237,44 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
   context.RespondSuccess();
 }
 
+namespace {
+
+Result<uint64_t> CalcChecksum(tablet::Tablet* tablet) {
+  const Schema& schema = tablet->metadata()->schema();
+  auto client_schema = schema.CopyWithoutColumnIds();
+  auto iter = tablet->NewRowIterator(client_schema, boost::none);
+  RETURN_NOT_OK(iter);
+
+  QLTableRow value_map;
+  ScanResultChecksummer collector;
+
+  while ((**iter).HasNext()) {
+    RETURN_NOT_OK((**iter).NextRow(&value_map));
+    collector.HandleRow(schema, value_map);
+  }
+
+  return collector.agg_checksum();
+}
+
+} // namespace
+
 void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
                                  ChecksumResponsePB* resp,
                                  rpc::RpcContext context) {
   VLOG(1) << "Full request: " << req->DebugString();
 
-  // Validate the request: user must pass a new_scan_request or
-  // a scanner ID, but not both.
-  if (PREDICT_FALSE(req->has_new_request() &&
-                    req->has_continue_request())) {
-    context.RespondFailure(STATUS(InvalidArgument,
-                                  "Must not pass both a scanner_id and new_scan_request"));
+  std::shared_ptr<tablet::AbstractTablet> abstract_tablet;
+  if (!DoGetTabletOrRespond(req, resp, &context, &abstract_tablet)) {
+    return;
+  }
+  auto checksum = CalcChecksum(down_cast<tablet::Tablet*>(abstract_tablet.get()));
+  if (!checksum.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), checksum.status(),
+                         TabletServerErrorPB::UNKNOWN_ERROR, &context);
     return;
   }
 
-  // Convert ChecksumRequestPB to a ScanRequestPB.
-  ScanRequestPB scan_req;
-  if (req->has_call_seq_id()) scan_req.set_call_seq_id(req->call_seq_id());
-  if (req->has_batch_size_bytes()) scan_req.set_batch_size_bytes(req->batch_size_bytes());
-  if (req->has_close_scanner()) scan_req.set_close_scanner(req->close_scanner());
-
-  ScanResultChecksummer collector;
-  bool has_more = false;
-  TabletServerErrorPB::Code error_code;
-  if (req->has_new_request()) {
-    scan_req.mutable_new_scan_request()->CopyFrom(req->new_request());
-    const NewScanRequestPB& new_req = req->new_request();
-    scoped_refptr<TabletPeer> tablet_peer;
-    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), new_req.tablet_id(), resp, &context,
-                                   &tablet_peer)) {
-      return;
-    }
-
-    string scanner_id;
-    HybridTime snap_hybrid_time;
-    Status s = HandleNewScanRequest(tablet_peer.get(), &scan_req, &context,
-                                    &collector, &scanner_id, &snap_hybrid_time, &has_more,
-                                    &error_code);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
-      return;
-    }
-    resp->set_scanner_id(scanner_id);
-    if (snap_hybrid_time.is_valid()) {
-      resp->set_snap_hybrid_time(snap_hybrid_time.ToUint64());
-    }
-  } else if (req->has_continue_request()) {
-    const ContinueChecksumRequestPB& continue_req = req->continue_request();
-    collector.set_agg_checksum(continue_req.previous_checksum());
-    scan_req.set_scanner_id(continue_req.scanner_id());
-    Status s = HandleContinueScanRequest(&scan_req, &collector, &has_more, &error_code);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s, error_code, &context);
-      return;
-    }
-  } else {
-    context.RespondFailure(STATUS(InvalidArgument,
-                                  "Must pass either new_request or continue_request"));
-    return;
-  }
-
-  resp->set_checksum(collector.agg_checksum());
-  resp->set_has_more_results(has_more);
+  resp->set_checksum(*checksum);
 
   context.RespondSuccess();
 }
@@ -1567,459 +1299,6 @@ void TabletServiceImpl::ImportData(const ImportDataRequestPB* req,
 }
 
 void TabletServiceImpl::Shutdown() {
-}
-
-// Extract a void* pointer suitable for use in a ColumnRangePredicate from the
-// user-specified protobuf field.
-// This validates that the pb_value has the correct length, copies the data into
-// 'arena', and sets *result to point to it.
-// Returns bad status if the user-specified value is the wrong length.
-static Status ExtractPredicateValue(const ColumnSchema& schema,
-                                    const string& pb_value,
-                                    Arena* arena,
-                                    const void** result) {
-  // Copy the data from the protobuf into the Arena.
-  uint8_t* data_copy = static_cast<uint8_t*>(arena->AllocateBytes(pb_value.size()));
-  memcpy(data_copy, &pb_value[0], pb_value.size());
-
-  // If the type is of variable length, then we need to return a pointer to a Slice
-  // element pointing to the string. Otherwise, just verify that the provided
-  // value was the right size.
-  if (schema.type_info()->physical_type() == BINARY) {
-    *result = arena->NewObject<Slice>(data_copy, pb_value.size());
-  } else {
-    // TODO: add test case for this invalid request
-    size_t expected_size = schema.type_info()->size();
-    if (pb_value.size() != expected_size) {
-      return STATUS(InvalidArgument,
-                    StringPrintf("Bad predicate on %s. Expected value size %zd, got %zd",
-                                 schema.ToString().c_str(), expected_size, pb_value.size()));
-    }
-    *result = data_copy;
-  }
-
-  return Status::OK();
-}
-
-static Status DecodeEncodedKeyRange(const NewScanRequestPB& scan_pb,
-                                    const Schema& tablet_schema,
-                                    const SharedScanner& scanner,
-                                    ScanSpec* spec) {
-  gscoped_ptr<EncodedKey> start, stop;
-  Inclusive start_inclusive = Inclusive::kTrue;
-  if (scan_pb.has_start_primary_key()) {
-    RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(
-        tablet_schema, scanner->arena(),
-        scan_pb.start_primary_key(), &start),
-        "Invalid scan start key");
-  }
-
-  if (scan_pb.has_stop_primary_key()) {
-    RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(
-        tablet_schema, scanner->arena(),
-        scan_pb.stop_primary_key(), &stop),
-        "Invalid scan stop key");
-  }
-
-  if (scan_pb.order_mode() == ORDERED && scan_pb.has_last_primary_key()) {
-    if (start) {
-      return STATUS(InvalidArgument, "Cannot specify both a start key and a last key");
-    }
-    // Set the start key to the last key from a previous scan result.
-    RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(tablet_schema, scanner->arena(),
-                                                          scan_pb.last_primary_key(), &start),
-                          "Failed to decode last primary key");
-    start_inclusive = Inclusive::kFalse;
-  }
-
-  if (start) {
-    spec->SetLowerBoundKey(start.get(), start_inclusive);
-    scanner->autorelease_pool()->Add(start.release());
-  }
-  if (stop) {
-    spec->SetExclusiveUpperBoundKey(stop.get());
-    scanner->autorelease_pool()->Add(stop.release());
-  }
-
-  return Status::OK();
-}
-
-static Status SetupScanSpec(const NewScanRequestPB& scan_pb,
-                            const Schema& tablet_schema,
-                            const Schema& projection,
-                            std::vector<ColumnSchema>* missing_cols,
-                            gscoped_ptr<ScanSpec>* spec,
-                            const SharedScanner& scanner) {
-  gscoped_ptr<ScanSpec> ret(new ScanSpec);
-  ret->set_cache_blocks(scan_pb.cache_blocks());
-
-  unordered_set<string> missing_col_names;
-
-  // First the column range predicates.
-  for (const ColumnRangePredicatePB& pred_pb : scan_pb.range_predicates()) {
-    if (!pred_pb.has_lower_bound() && !pred_pb.has_upper_bound()) {
-      return STATUS(InvalidArgument,
-                    string("Invalid predicate ") + pred_pb.ShortDebugString() +
-                    ": has no lower or upper bound.");
-    }
-    ColumnSchema col(ColumnSchemaFromPB(pred_pb.column()));
-    if (projection.find_column(col.name()) == -1 &&
-        !ContainsKey(missing_col_names, col.name())) {
-      missing_cols->push_back(col);
-      InsertOrDie(&missing_col_names, col.name());
-    }
-
-    const void* lower_bound = nullptr;
-    const void* upper_bound = nullptr;
-    if (pred_pb.has_lower_bound()) {
-      const void* val;
-      RETURN_NOT_OK(ExtractPredicateValue(col, pred_pb.lower_bound(),
-                                          scanner->arena(),
-                                          &val));
-      lower_bound = val;
-    } else {
-      lower_bound = nullptr;
-    }
-    if (pred_pb.has_upper_bound()) {
-      const void* val;
-      RETURN_NOT_OK(ExtractPredicateValue(col, pred_pb.upper_bound(),
-                                          scanner->arena(),
-                                          &val));
-      upper_bound = val;
-    } else {
-      upper_bound = nullptr;
-    }
-
-    ColumnRangePredicate pred(col, lower_bound, upper_bound);
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Parsed predicate " << pred.ToString() << " from " << scan_pb.ShortDebugString();
-    }
-    ret->AddPredicate(pred);
-  }
-
-  // When doing an ordered scan, we need to include the key columns to be able to encode
-  // the last row key for the scan response.
-  if (scan_pb.order_mode() == yb::ORDERED &&
-      projection.num_key_columns() != tablet_schema.num_key_columns()) {
-    for (int i = 0; i < tablet_schema.num_key_columns(); i++) {
-      const ColumnSchema &col = tablet_schema.column(i);
-      if (projection.find_column(col.name()) == -1 &&
-          !ContainsKey(missing_col_names, col.name())) {
-        missing_cols->push_back(col);
-        InsertOrDie(&missing_col_names, col.name());
-      }
-    }
-  }
-  // Then any encoded key range predicates.
-  RETURN_NOT_OK(DecodeEncodedKeyRange(scan_pb, tablet_schema, scanner, ret.get()));
-
-  spec->swap(ret);
-  return Status::OK();
-}
-
-namespace {
-
-Result<boost::optional<TransactionId>> GetTransactionId(const ScanRequestPB &req) {
-  boost::optional<TransactionId> txn_id;
-  if (req.has_transaction_id()) {
-    Result<TransactionId> txn_id_res = FullyDecodeTransactionId(req.transaction_id());
-    RETURN_NOT_OK(txn_id_res);
-    txn_id = *txn_id_res;
-  } else {
-    txn_id = boost::none;
-  }
-  return txn_id;
-}
-
-} // namespace
-
-// Start a new scan.
-Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
-                                               const ScanRequestPB* req,
-                                               const RpcContext* rpc_context,
-                                               ScanResultCollector* result_collector,
-                                               std::string* scanner_id,
-                                               HybridTime* snap_hybrid_time,
-                                               bool* has_more_results,
-                                               TabletServerErrorPB::Code* error_code) {
-  DCHECK(result_collector != nullptr);
-  DCHECK(error_code != nullptr);
-  DCHECK(req->has_new_scan_request());
-  VLOG(1) << "New scan request for " << tablet_peer->tablet_id()
-          << " leader_only: "  << req->leader_only();
-  if (req->leader_only()) {
-    RETURN_NOT_OK(CheckPeerIsLeaderAndReady(*tablet_peer, error_code));
-  }
-
-  const NewScanRequestPB& scan_pb = req->new_scan_request();
-  TRACE_EVENT1("tserver", "TabletServiceImpl::HandleNewScanRequest",
-               "tablet_id", scan_pb.tablet_id());
-
-  const Schema& tablet_schema = tablet_peer->tablet_metadata()->schema();
-
-  SharedScanner scanner;
-  server_->scanner_manager()->NewScanner(tablet_peer,
-                                         rpc_context->requestor_string(),
-                                         &scanner);
-
-  // If we early-exit out of this function, automatically unregister
-  // the scanner.
-  ScopedUnregisterScanner unreg_scanner(server_->scanner_manager(), scanner->id());
-
-  // Create the user's requested projection.
-  // TODO: add test cases for bad projections including 0 columns
-  Schema projection;
-  Status s = ColumnPBsToSchema(scan_pb.projected_columns(), &projection);
-  if (PREDICT_FALSE(!s.ok())) {
-    *error_code = TabletServerErrorPB::INVALID_SCHEMA;
-    return s;
-  }
-
-  if (projection.has_column_ids()) {
-    *error_code = TabletServerErrorPB::INVALID_SCHEMA;
-    return STATUS(InvalidArgument, "User requests should not have Column IDs");
-  }
-
-  gscoped_ptr<ScanSpec> spec;
-
-  // Missing columns will contain the columns that are not mentioned in the client
-  // projection but are actually needed for the scan, such as columns referred to by
-  // predicates or key columns (if this is an ORDERED scan).
-  std::vector<ColumnSchema> missing_cols;
-  s = SetupScanSpec(scan_pb, tablet_schema, projection, &missing_cols, &spec, scanner);
-  if (PREDICT_FALSE(!s.ok())) {
-    *error_code = TabletServerErrorPB::INVALID_SCAN_SPEC;
-    return s;
-  }
-
-  // Set the query_id from the request.
-  spec->set_query_id(reinterpret_cast<int64_t>(req));
-
-  // Store the original projection.
-  gscoped_ptr<Schema> orig_projection(new Schema(projection));
-  scanner->set_client_projection_schema(orig_projection.Pass());
-
-  // Build a new projection with the projection columns and the missing columns. Make
-  // sure to set whether the column is a key column appropriately.
-  SchemaBuilder projection_builder;
-  std::vector<ColumnSchema> projection_columns = projection.columns();
-  for (const ColumnSchema& col : missing_cols) {
-    projection_columns.push_back(col);
-  }
-  for (const ColumnSchema& col : projection_columns) {
-    CHECK_OK(projection_builder.AddColumn(col, tablet_schema.is_key_column(col.name())));
-  }
-  projection = projection_builder.BuildWithoutIds();
-
-  gscoped_ptr<RowwiseIterator> iter;
-  // Preset the error code for when creating the iterator on the tablet fails
-  TabletServerErrorPB::Code tmp_error_code = TabletServerErrorPB::MISMATCHED_SCHEMA;
-
-  shared_ptr<Tablet> tablet;
-  RETURN_NOT_OK(GetTabletRef(tablet_peer, &tablet, error_code));
-  {
-    TRACE("Creating iterator");
-    TRACE_EVENT0("tserver", "Create iterator");
-
-    Result<boost::optional<TransactionId>> txn_id = GetTransactionId(*req);
-    if (!txn_id.ok()) {
-      s = txn_id.status();
-    } else {
-      s = tablet->NewRowIterator(projection, *txn_id, &iter);
-    }
-    TRACE("Iterator created");
-  }
-
-  if (PREDICT_TRUE(s.ok())) {
-    TRACE_EVENT0("tserver", "iter->Init");
-    s = iter->Init(spec.get());
-  }
-
-  TRACE("Iterator init: $0", s.ToString());
-
-  if (PREDICT_FALSE(s.IsInvalidArgument())) {
-    // An invalid projection returns InvalidArgument above.
-    // TODO: would be nice if we threaded these more specific
-    // error codes throughout YB.
-    *error_code = tmp_error_code;
-    return s;
-  } else if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Error setting up scanner with request " << req->ShortDebugString();
-    *error_code = TabletServerErrorPB::UNKNOWN_ERROR;
-    return s;
-  }
-
-  *has_more_results = iter->HasNext();
-  TRACE("has_more: $0", *has_more_results);
-  if (!*has_more_results) {
-    // If there are no more rows, we can short circuit some work and respond immediately.
-    VLOG(1) << "No more rows, short-circuiting out without creating a server-side scanner.";
-    return Status::OK();
-  }
-
-  scanner->Init(iter.Pass(), spec.Pass());
-  unreg_scanner.Cancel();
-  *scanner_id = scanner->id();
-
-  VLOG(1) << "Started scanner " << scanner->id() << ": " << scanner->iter()->ToString();
-
-  size_t batch_size_bytes = GetMaxBatchSizeBytesHint(req);
-  if (batch_size_bytes > 0) {
-    TRACE("Continuing scan request");
-    // TODO: instead of copying the pb, instead split HandleContinueScanRequest
-    // and call the second half directly
-    ScanRequestPB continue_req(*req);
-    continue_req.set_scanner_id(scanner->id());
-    RETURN_NOT_OK(HandleContinueScanRequest(&continue_req, result_collector, has_more_results,
-                                            error_code));
-  } else {
-    // Increment the scanner call sequence ID. HandleContinueScanRequest handles
-    // this in the non-empty scan case.
-    scanner->IncrementCallSeqId();
-  }
-  return Status::OK();
-}
-
-// Continue an existing scan request.
-Status TabletServiceImpl::HandleContinueScanRequest(const ScanRequestPB* req,
-                                                    ScanResultCollector* result_collector,
-                                                    bool* has_more_results,
-                                                    TabletServerErrorPB::Code* error_code) {
-  DCHECK(req->has_scanner_id());
-  TRACE_EVENT1("tserver", "TabletServiceImpl::HandleContinueScanRequest",
-               "scanner_id", req->scanner_id());
-
-  size_t batch_size_bytes = GetMaxBatchSizeBytesHint(req);
-
-  // TODO: need some kind of concurrency control on these scanner objects
-  // in case multiple RPCs hit the same scanner at the same time. Probably
-  // just a trylock and fail the RPC if it contends.
-  SharedScanner scanner;
-  if (!server_->scanner_manager()->LookupScanner(req->scanner_id(), &scanner)) {
-    if (batch_size_bytes == 0 && req->close_scanner()) {
-      // A request to close a non-existent scanner.
-      return Status::OK();
-    } else {
-      *error_code = TabletServerErrorPB::SCANNER_EXPIRED;
-      return STATUS(NotFound, "Scanner not found");
-    }
-  }
-
-  // If we early-exit out of this function, automatically unregister the scanner.
-  ScopedUnregisterScanner unreg_scanner(server_->scanner_manager(), scanner->id());
-
-  VLOG(2) << "Found existing scanner " << scanner->id() << " for request: "
-          << req->ShortDebugString();
-  TRACE("Found scanner $0", scanner->id());
-
-  if (batch_size_bytes == 0 && req->close_scanner()) {
-    *has_more_results = false;
-    return Status::OK();
-  }
-
-  if (req->call_seq_id() != scanner->call_seq_id()) {
-    *error_code = TabletServerErrorPB::INVALID_SCAN_CALL_SEQ_ID;
-    return STATUS(InvalidArgument, "Invalid call sequence ID in scan request");
-  }
-  scanner->IncrementCallSeqId();
-  scanner->UpdateAccessTime();
-
-  RowwiseIterator* iter = scanner->iter();
-
-  // TODO: could size the RowBlock based on the user's requested batch size?
-  // If people had really large indirect objects, we would currently overshoot
-  // their requested batch size by a lot.
-  Arena arena(32 * 1024, 1 * 1024 * 1024);
-  RowBlock block(scanner->iter()->schema(),
-                 FLAGS_scanner_batch_size_rows, &arena);
-
-  // TODO: in the future, use the client timeout to set a budget. For now,
-  // just use a half second, which should be plenty to amortize call overhead.
-  const auto kBudget = 500ms;
-  auto deadline = CoarseMonoClock::Now() + kBudget;
-
-  int64_t rows_scanned = 0;
-  while (iter->HasNext()) {
-    if (PREDICT_FALSE(FLAGS_scanner_inject_latency_on_each_batch_ms > 0)) {
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_scanner_inject_latency_on_each_batch_ms));
-    }
-
-    Status s = iter->NextBlock(&block);
-    if (PREDICT_FALSE(!s.ok())) {
-      LOG(WARNING) << "Copying rows from internal iterator for request " << req->ShortDebugString();
-      *error_code = TabletServerErrorPB::UNKNOWN_ERROR;
-      return s;
-    }
-
-    if (PREDICT_TRUE(block.nrows() > 0)) {
-      // Count the number of rows scanned, regardless of predicates or deletions.
-      // The collector will separately count the number of rows actually returned to
-      // the client.
-      rows_scanned += block.nrows();
-      result_collector->HandleRowBlock(scanner->client_projection_schema(), block);
-    }
-
-    int64_t response_size = result_collector->ResponseSize();
-
-    if (VLOG_IS_ON(2)) {
-      // This may be fairly expensive if row block size is small
-      TRACE("Copied block (nrows=$0), new size=$1", block.nrows(), response_size);
-    }
-
-    // TODO: should check if RPC got cancelled, once we implement RPC cancellation.
-    auto now = CoarseMonoClock::Now();
-    if (PREDICT_FALSE(now >= deadline)) {
-      TRACE("Deadline expired - responding early");
-      break;
-    }
-
-    if (response_size >= batch_size_bytes) {
-      break;
-    }
-  }
-
-  // Update metrics based on this scan request.
-  scoped_refptr<TabletPeer> tablet_peer = scanner->tablet_peer();
-  shared_ptr<Tablet> tablet;
-  RETURN_NOT_OK(GetTabletRef(tablet_peer, &tablet, error_code));
-
-  // First, the number of rows/cells/bytes actually returned to the user.
-  tablet->metrics()->scanner_rows_returned->IncrementBy(
-      result_collector->NumRowsReturned());
-  tablet->metrics()->scanner_cells_returned->IncrementBy(
-      result_collector->NumRowsReturned() * scanner->client_projection_schema()->num_columns());
-  tablet->metrics()->scanner_bytes_returned->IncrementBy(
-      result_collector->ResponseSize());
-
-  // Then the number of rows/cells/bytes actually processed. Here we have to dig
-  // into the per-column iterator stats, sum them up, and then subtract out the
-  // total that we already reported in a previous scan.
-  vector<IteratorStats> stats_by_col;
-  scanner->GetIteratorStats(&stats_by_col);
-  IteratorStats total_stats;
-  for (const IteratorStats& stats : stats_by_col) {
-    total_stats.AddStats(stats);
-  }
-  IteratorStats delta_stats = total_stats;
-  delta_stats.SubtractStats(scanner->already_reported_stats());
-  scanner->set_already_reported_stats(total_stats);
-
-  tablet->metrics()->scanner_rows_scanned->IncrementBy(
-      rows_scanned);
-  tablet->metrics()->scanner_cells_scanned_from_disk->IncrementBy(
-      delta_stats.cells_read_from_disk);
-  tablet->metrics()->scanner_bytes_scanned_from_disk->IncrementBy(
-      delta_stats.bytes_read_from_disk);
-
-  scanner->UpdateAccessTime();
-  *has_more_results = !req->close_scanner() && iter->HasNext();
-  if (*has_more_results) {
-    unreg_scanner.Cancel();
-  } else {
-    VLOG(2) << "Scanner " << scanner->id() << " complete: removing...";
-  }
-
-  return Status::OK();
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(

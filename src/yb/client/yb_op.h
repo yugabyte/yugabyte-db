@@ -43,8 +43,6 @@
 
 namespace yb {
 
-class EncodedKey;
-
 class RedisWriteRequestPB;
 class RedisReadRequestPB;
 class RedisResponsePB;

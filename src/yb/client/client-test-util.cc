@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/stl_util.h"
@@ -74,47 +75,36 @@ void FlushSessionOrDie(const std::shared_ptr<YBSession>& session,
   }
 }
 
-void ScanTableToStrings(YBTable* table, vector<string>* row_strings) {
+void ScanTableToStrings(const TableHandle& table, std::vector<std::string>* row_strings) {
   row_strings->clear();
-  YBScanner scanner(table);
-  ASSERT_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
-  ASSERT_OK(scanner.SetTimeoutMillis(60000));
-  ScanToStrings(&scanner, row_strings);
-}
-
-std::vector<std::string> ScanTableToStrings(YBTable* table) {
-  YBScanner scanner(table);
-  EXPECT_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
-  EXPECT_OK(scanner.SetTimeoutMillis(60000));
-  return ScanToStrings(&scanner);
-}
-
-int64_t CountTableRows(YBTable* table) {
-  vector<string> rows;
-  client::ScanTableToStrings(table, &rows);
-  return rows.size();
-}
-
-void ScanToStrings(YBScanner* scanner, vector<string>* row_strings) {
-  ASSERT_OK(scanner->Open());
-  vector<YBRowResult> rows;
-  while (scanner->HasMoreRows()) {
-    ASSERT_OK(scanner->NextBatch(&rows));
-    for (const YBRowResult& row : rows) {
-      row_strings->push_back(row.ToString());
-    }
+  for (const auto& row : TableRange(table)) {
+    row_strings->push_back(row.ToString());
   }
 }
 
-std::vector<std::string> ScanToStrings(YBScanner* scanner) {
-  EXPECT_OK(scanner->Open());
-  YBScanBatch batch;
+std::vector<std::string> ScanTableToStrings(const TableHandle& table) {
   std::vector<std::string> result;
-  while (scanner->HasMoreRows()) {
-    EXPECT_OK(scanner->NextBatch(&batch));
-    for (const auto& row : batch) {
-      result.push_back(row.ToString());
-    }
+  ScanTableToStrings(table, &result);
+  return result;
+}
+
+int64_t CountTableRows(const TableHandle& table) {
+  std::vector<std::string> rows;
+  ScanTableToStrings(table, &rows);
+  return rows.size();
+}
+
+std::vector<std::string> ScanToStrings(const TableRange& range) {
+  std::vector<std::pair<int32_t, std::string>> rows;
+  for (const auto& row : range) {
+    rows.emplace_back(row.column(0).int32_value(), row.ToString());
+  }
+  std::sort(rows.begin(), rows.end(),
+            [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+  std::vector<std::string> result;
+  result.reserve(rows.size());
+  for (auto& row : rows) {
+    result.emplace_back(std::move(row.second));
   }
   return result;
 }

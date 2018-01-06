@@ -25,14 +25,10 @@ namespace master {
 class YQLVTableIterator : public common::QLRowwiseIteratorIf {
  public:
   explicit YQLVTableIterator(const std::unique_ptr<QLRowBlock> vtable);
-  CHECKED_STATUS Init(ScanSpec *spec) override;
+
+  CHECKED_STATUS Init() override;
 
   CHECKED_STATUS Init(const common::QLScanSpec& spec) override;
-
-  CHECKED_STATUS NextBlock(RowBlock *dst) override;
-
-  CHECKED_STATUS NextRow(const Schema& projection,
-                         const QLTableRow::SharedPtr& table_row) override;
 
   // Virtual table does not contain any static column.
   bool IsNextStaticColumn() const override { return false; }
@@ -48,12 +44,12 @@ class YQLVTableIterator : public common::QLRowwiseIteratorIf {
 
   const Schema &schema() const override;
 
-  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
-
   HybridTime RestartReadHt() override { return HybridTime::kInvalid; }
 
   virtual ~YQLVTableIterator();
  private:
+  CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;
+
   std::unique_ptr<QLRowBlock> vtable_;
   size_t vtable_index_;
 };

@@ -16,7 +16,6 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
-import org.yb.client.RowResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

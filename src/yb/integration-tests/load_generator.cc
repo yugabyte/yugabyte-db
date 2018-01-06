@@ -25,7 +25,6 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/rowblock.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -63,11 +62,7 @@ using yb::TableType;
 using yb::client::YBClient;
 using yb::client::YBError;
 using yb::client::YBNoOp;
-using yb::client::YBPredicate;
 using yb::client::YBSession;
-using yb::client::YBScanBatch;
-using yb::client::YBScanner;
-using yb::client::YBRowResult;
 using yb::client::YBTable;
 using yb::client::YBValue;
 
@@ -479,7 +474,7 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
 SingleThreadedScanner::SingleThreadedScanner(client::TableHandle* table) : table_(table) {}
 
 int64_t SingleThreadedScanner::CountRows() {
-  auto result = boost::size(client::TableRange(*table_, {}));
+  auto result = boost::size(client::TableRange(*table_));
 
   LOG(INFO) << " num read rows = " << result;
   return result;

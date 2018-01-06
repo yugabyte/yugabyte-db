@@ -167,13 +167,13 @@ class QLWriteOperation : public DocOperation, public DocExprExecutor {
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
                              Schema *static_projection,
                              Schema *non_static_projection,
-                             const QLTableRow::SharedPtr& table_row);
+                             QLTableRow* table_row);
 
   CHECKED_STATUS IsConditionSatisfied(const QLConditionPB& condition,
                                       const DocOperationApplyData& data,
                                       bool* should_apply,
                                       std::unique_ptr<QLRowBlock>* rowblock,
-                                      const QLTableRow::SharedPtr& table_row);
+                                      QLTableRow* table_row);
 
   CHECKED_STATUS DeleteRow(DocWriteBatch* doc_write_batch,
                            const DocPath row_path);
@@ -218,10 +218,10 @@ class QLReadOperation : public DocExprExecutor {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row, QLResultSet *result_set);
+  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
 
-  CHECKED_STATUS EvalAggregate(const QLTableRow::SharedPtr& table_row);
-  CHECKED_STATUS PopulateAggregate(const QLTableRow::SharedPtr& table_row, QLResultSet *resultset);
+  CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
+  CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
 
   QLResponsePB& response() { return response_; }
 

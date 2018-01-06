@@ -332,49 +332,6 @@ int DocKey::CompareTo(const DocKey& other) const {
   return CompareVectors(range_group_, other.range_group_);
 }
 
-DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &schema) {
-  DocKey new_doc_key;
-  std::string hash_key;
-  for (int i = 0; i < encoded_key.num_key_columns(); ++i) {
-    bool hash_column = i < schema.num_hash_key_columns();
-    auto& dest = hash_column ? new_doc_key.hashed_group_ : new_doc_key.range_group_;
-    const auto& type_info = *schema.column(i).type_info();
-    const void* const raw_key = encoded_key.raw_keys()[i];
-    switch (type_info.type()) {
-      case DataType::INT64:
-        dest.emplace_back(*reinterpret_cast<const int64_t*>(raw_key));
-        break;
-      case DataType::INT32: {
-          auto value = *reinterpret_cast<const int32_t*>(raw_key);
-          dest.emplace_back(PrimitiveValue::Int32(value));
-          if (hash_column) {
-            YBPartition::AppendIntToKey<int32_t, uint32_t>(value, &hash_key);
-          }
-        } break;
-      case DataType::INT16:
-        dest.emplace_back(
-            PrimitiveValue::Int32(*reinterpret_cast<const int16_t*>(raw_key)));
-        break;
-      case DataType::INT8:
-        dest.emplace_back(
-            PrimitiveValue::Int32(*reinterpret_cast<const int8_t*>(raw_key)));
-        break;
-      case DataType::STRING: FALLTHROUGH_INTENDED;
-      case DataType::BINARY:
-        dest.emplace_back(reinterpret_cast<const Slice*>(raw_key)->ToBuffer());
-        break;
-
-      default:
-        LOG(FATAL) << "Decoding kudu data type " << type_info.name() << " is not supported";
-    }
-  }
-  if (!hash_key.empty()) {
-    new_doc_key.hash_present_ = true;
-    new_doc_key.hash_ = YBPartition::HashColumnCompoundValue(hash_key);
-  }
-  return new_doc_key;
-}
-
 DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
   DocKey new_doc_key;
   new_doc_key.hash_present_ = true;

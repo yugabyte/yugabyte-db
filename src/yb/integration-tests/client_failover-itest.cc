@@ -36,6 +36,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/table_handle.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
@@ -137,9 +138,9 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                   &expected_index));
 
   // Open the scanner and count the rows.
-  shared_ptr<YBTable> table;
-  ASSERT_OK(client_->OpenTable(TestWorkload::kDefaultTableName, &table));
-  ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
+  client::TableHandle table;
+  ASSERT_OK(table.Open(TestWorkload::kDefaultTableName, client_.get()));
+  ASSERT_EQ(workload.rows_inserted(), CountTableRows(table));
   LOG(INFO) << "Number of rows: " << workload.rows_inserted()
             << ", batches: " << workload.batches_completed()
             << ", expected index: " << expected_index;
@@ -229,7 +230,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                   ++expected_index,
                                   &expected_index));
 
-  ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
+  ASSERT_EQ(workload.rows_inserted(), CountTableRows(table));
 
   // Rotate leaders among the replicas and verify the new leader is the designated one each time.
   for (const auto ts_map : active_ts_map) {

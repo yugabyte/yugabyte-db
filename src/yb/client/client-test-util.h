@@ -43,7 +43,10 @@ namespace yb {
 class Schema;
 
 namespace client {
+
+class TableRange;
 class YBSchema;
+
 
 // Log any pending errors in the given session, and then crash the current
 // process.
@@ -54,33 +57,15 @@ void LogSessionErrorsAndDie(const YBSessionPtr& session, const Status& s);
 void FlushSessionOrDie(const YBSessionPtr& session, const std::vector<YBqlOpPtr>& ops = {});
 
 // Scans in LEADER_ONLY mode, returning stringified rows in the given vector.
-void ScanTableToStrings(YBTable* table, std::vector<std::string>* row_strings);
+void ScanTableToStrings(const TableHandle& table, std::vector<std::string>* row_strings);
 
 // Scans in LEADER_ONLY mode, returning stringified rows.
-std::vector<std::string> ScanTableToStrings(YBTable* table);
+std::vector<std::string> ScanTableToStrings(const TableHandle& table);
 
 // Count the number of rows in the table in LEADER_ONLY mode.
-int64_t CountTableRows(YBTable* table);
+int64_t CountTableRows(const TableHandle& table);
 
-void ScanToStrings(YBScanner* scanner, std::vector<std::string>* row_strings);
-
-std::vector<std::string> ScanToStrings(YBScanner* scanner);
-
-template <class Range>
-std::vector<std::string> ScanToStrings(const Range& range) {
-  std::vector<std::pair<int32_t, std::string>> rows;
-  for (const auto& row : range) {
-    rows.emplace_back(row.column(0).int32_value(), row.ToString());
-  }
-  std::sort(rows.begin(), rows.end(),
-            [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
-  std::vector<std::string> result;
-  result.reserve(rows.size());
-  for (auto& row : rows) {
-    result.emplace_back(std::move(row.second));
-  }
-  return result;
-}
+std::vector<std::string> ScanToStrings(const TableRange& range);
 
 // Convert a yb::Schema to a yb::client::YBSchema.
 YBSchema YBSchemaFromSchema(const Schema& schema);

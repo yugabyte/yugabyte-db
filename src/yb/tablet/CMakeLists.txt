@@ -54,7 +54,6 @@ set(TABLET_SRCS
   maintenance_manager.cc
   mvcc.cc
   tablet_metadata.cc
-  key_value_iterator.cc
   tablet_retention_policy.cc
   prepare_thread.cc
   ${TABLET_SRCS_EXTENSIONS})
@@ -93,8 +92,9 @@ target_link_libraries(tablet
   yb_client)
 
 add_library(tablet_test_util
-            local_tablet_writer.cc)
-target_link_libraries(tablet_test_util tablet yb_common yb_util)
+            local_tablet_writer.cc
+            tablet-test-util.cc)
+target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)
 
 set(YB_TEST_LINK_LIBS tablet tablet_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)

@@ -49,8 +49,6 @@ struct ColumnId;
 class ColumnSchema;
 class faststring;
 class HostPort;
-class RowBlock;
-class RowBlockRow;
 class RowChangeList;
 class Schema;
 class Slice;
@@ -122,50 +120,6 @@ Status SchemaToColumnPBs(
   const Schema& schema,
   google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
   int flags = 0);
-
-// Encode the given row block into the provided protobuf and data buffers.
-//
-// All data (both direct and indirect) for each selected row in the RowBlock is
-// copied into the protobuf and faststrings.
-// The original data may be destroyed safely after this returns.
-//
-// This only converts those rows whose selection vector entry is true.
-// If 'client_projection_schema' is not NULL, then only columns specified in
-// 'client_projection_schema' will be projected to 'data_buf'.
-//
-// Requires that block.nrows() > 0
-void SerializeRowBlock(const RowBlock& block, RowwiseRowBlockPB* rowblock_pb,
-                       const Schema* client_projection_schema,
-                       faststring* data_buf, faststring* indirect_data);
-
-// Rewrites the data pointed-to by row data slice 'row_data_slice' by replacing
-// relative indirect data pointers with absolute ones in 'indirect_data_slice'.
-// At the time of this writing, this rewriting is only done for STRING types.
-//
-// Returns a bad Status if the provided data is invalid or corrupt.
-Status RewriteRowBlockPointers(const Schema& schema, const RowwiseRowBlockPB& rowblock_pb,
-                               const Slice& indirect_data_slice, Slice* row_data_slice);
-
-// Extract the rows stored in this protobuf, which must have exactly the
-// given Schema. This Schema may be obtained using ColumnPBsToSchema.
-//
-// Pointers are added to 'rows' for each of the extracted rows. These
-// pointers are suitable for constructing ConstContiguousRow objects.
-// TODO: would be nice to just return a vector<ConstContiguousRow>, but
-// they're not currently copyable, so this can't be done.
-//
-// Note that the returned rows refer to memory managed by 'rows_data' and
-// 'indirect_data'. This is also the reason that 'rows_data' is a non-const pointer
-// argument: the internal data is mutated in-place to restore the validity of
-// indirect data pointers, which are relative on the wire but must be absolute
-// while in-memory.
-//
-// Returns a bad Status if the provided data is invalid or corrupt.
-Status ExtractRowsFromRowBlockPB(const Schema& schema,
-                                 const RowwiseRowBlockPB& rowblock_pb,
-                                 const Slice& indirect_data,
-                                 Slice* rows_data,
-                                 std::vector<const uint8_t*>* rows);
 
 // Set 'leader_hostport' to the host/port of the leader server if one
 // can be found in 'entries'.

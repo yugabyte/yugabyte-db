@@ -58,7 +58,6 @@
 namespace yb {
 struct DecodedRowOperation;
 class ConstContiguousRow;
-class RowwiseRowBlockPB;
 
 namespace consensus {
 class Consensus;

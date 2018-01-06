@@ -48,8 +48,6 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/iterator.h"
-#include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_storage_interface.h"
@@ -88,7 +86,6 @@ namespace yb {
 class MemTracker;
 class MetricEntity;
 class RowChangeList;
-class UnionIterator;
 
 namespace log {
 class LogAnchorRegistry;
@@ -160,7 +157,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   class CompactionFaultHooks;
   class FlushCompactCommonHooks;
   class FlushFaultHooks;
-  class Iterator;
 
   // Create a new tablet.
   //
@@ -274,24 +270,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
-  CHECKED_STATUS NewRowIterator(
+  Result<std::unique_ptr<common::QLRowwiseIteratorIf>> NewRowIterator(
       const Schema &projection,
-      const boost::optional<TransactionId>& transaction_id,
-      gscoped_ptr<RowwiseIterator> *iter) const;
-
-  // Whether the iterator should return results in order.
-  enum OrderMode {
-    UNORDERED = 0,
-    ORDERED = 1
-  };
-
-  // Create a new row iterator for some historical snapshot.
-  CHECKED_STATUS NewRowIterator(
-      const Schema &projection,
-      HybridTime read_ht,
-      const OrderMode order,
-      const boost::optional<TransactionId>& transaction_id,
-      gscoped_ptr<RowwiseIterator> *iter) const;
+      const boost::optional<TransactionId>& transaction_id) const;
 
   // Makes RocksDB Flush.
   CHECKED_STATUS Flush(FlushMode mode);
@@ -424,35 +405,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS FlushUnlocked(FlushMode mode);
 
-  // Capture a set of iterators which, together, reflect all of the data in the tablet.
-  //
-  // These iterators are not true snapshot iterators, but they are safe against
-  // concurrent modification. They will include all data that was present at the time
-  // of creation, and potentially newer data.
-  //
-  // The returned iterators are not Init()ed.
-  // 'projection' must remain valid and unchanged for the lifetime of the returned iterators.
-  CHECKED_STATUS CaptureConsistentIterators(const Schema *projection,
-      HybridTime read_ht,
-      const ScanSpec *spec,
-      const boost::optional<TransactionId>& transaction_id,
-      vector<std::shared_ptr<RowwiseIterator> > *iters) const;
-
-  CHECKED_STATUS QLCaptureConsistentIterators(
-      const Schema *projection,
-      HybridTime read_ht,
-      const ScanSpec *spec,
-      const boost::optional<TransactionId>& transaction_id,
-      vector<std::shared_ptr<RowwiseIterator> > *iters) const;
-
   CHECKED_STATUS StartDocWriteOperation(
       const docdb::DocOperations &doc_ops,
       const WriteOperationData& data);
-
-  // Convert the specified read client schema (without IDs) to a server schema (with IDs)
-  // This method is used by NewRowIterator().
-  CHECKED_STATUS GetMappedReadProjection(const Schema& projection,
-      Schema *mapped_projection) const;
 
   CHECKED_STATUS OpenKeyValueTablet();
 

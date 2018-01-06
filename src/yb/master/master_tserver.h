@@ -28,8 +28,6 @@ class MasterTabletServer : public tserver::TabletServerIf {
   explicit MasterTabletServer(scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
 
-  tserver::ScannerManager* scanner_manager() override;
-
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
 

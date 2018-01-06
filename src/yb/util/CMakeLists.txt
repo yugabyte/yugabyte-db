@@ -302,7 +302,7 @@ target_link_libraries(protoc-gen-insertions gutil protobuf protoc ${YB_BASE_LIBS
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_util gutil ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_util gutil gmock ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)

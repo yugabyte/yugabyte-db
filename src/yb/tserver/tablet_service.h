@@ -38,13 +38,15 @@
 
 #include "yb/consensus/consensus.service.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
 
 namespace yb {
-class RowwiseIterator;
 class Schema;
 class Status;
 class HybridTime;
@@ -57,7 +59,6 @@ class OperationState;
 
 namespace tserver {
 
-class ScanResultCollector;
 class TabletPeerLookupIf;
 class TabletServer;
 
@@ -69,13 +70,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
-  void Scan(const ScanRequestPB* req, ScanResponsePB* resp, rpc::RpcContext context) override;
-
   void NoOp(const NoOpRequestPB* req, NoOpResponsePB* resp, rpc::RpcContext context) override;
-
-  void ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
-                        ScannerKeepAliveResponsePB *resp,
-                        rpc::RpcContext context) override;
 
   void ListTablets(const ListTabletsRequestPB* req,
                    ListTabletsResponsePB* resp,
@@ -117,20 +112,6 @@ class TabletServiceImpl : public TabletServerServiceIf {
   void Shutdown() override;
 
  private:
-  CHECKED_STATUS HandleNewScanRequest(tablet::TabletPeer* tablet_peer,
-                              const ScanRequestPB* req,
-                              const rpc::RpcContext* rpc_context,
-                              ScanResultCollector* result_collector,
-                              std::string* scanner_id,
-                              HybridTime* snap_hybrid_time,
-                              bool* has_more_results,
-                              TabletServerErrorPB::Code* error_code);
-
-  CHECKED_STATUS HandleContinueScanRequest(const ScanRequestPB* req,
-                                   ScanResultCollector* result_collector,
-                                   bool* has_more_results,
-                                   TabletServerErrorPB::Code* error_code);
-
   // Check if the tablet peer is the leader and is in ready state for servicing IOs.
   CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer,
                                            TabletServerErrorPB::Code* error_code);
@@ -140,6 +121,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   CHECKED_STATUS CheckPeerIsReady(const tablet::TabletPeer& tablet_peer,
                                   TabletServerErrorPB::Code* error_code);
+
+  template <class Req, class Resp>
+  bool DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
+                            std::shared_ptr<tablet::AbstractTablet>* tablet);
 
   virtual bool GetTabletOrRespond(const ReadRequestPB* req,
                                   ReadResponsePB* resp,

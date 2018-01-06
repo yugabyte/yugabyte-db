@@ -35,8 +35,11 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/table_handle.h"
+
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/test_workload.h"
@@ -59,7 +62,6 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBScanner;
 using client::YBTable;
 using client::YBTableName;
 
@@ -85,20 +87,6 @@ class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
   }
 
  protected:
-  void ScannerThread(YBClient* client, const CountDownLatch* go_latch, int32_t start_key) {
-    std::shared_ptr<YBTable> table;
-    CHECK_OK(client->OpenTable(TestWorkload::kDefaultTableName, &table));
-    vector<string> rows;
-
-    go_latch->Wait();
-
-    YBScanner scanner(table.get());
-    CHECK_OK(scanner.AddConjunctPredicate(table->NewComparisonPredicate(
-        "key", client::YBPredicate::GREATER_EQUAL,
-        client::YBValue::FromInt(start_key))));
-    ScanToStrings(&scanner, &rows);
-  }
-
   virtual bool multi_master() const {
     return false;
   }
@@ -121,54 +109,6 @@ TEST_F(ClientStressTest, TestLookupTimeouts) {
   work.Setup();
   work.Start();
   SleepFor(MonoDelta::FromMilliseconds(kSleepMillis));
-}
-
-// Regression test for KUDU-1104, a race in which multiple scanners racing to populate a
-// cold meta cache on a shared Client would crash.
-//
-// This test creates a table with a lot of tablets (so that we require many round-trips to
-// the master to populate the meta cache) and then starts a bunch of parallel threads which
-// scan starting at random points in the key space.
-TEST_F(ClientStressTest, TestStartScans) {
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i), "log_preallocate_segments", "0"));
-  }
-  TestWorkload work(cluster_.get());
-  work.set_num_tablets(40);
-  work.set_num_replicas(1);
-  work.Setup();
-
-  // We run the guts of the test several times -- it takes a while to build
-  // the 40 tablets above, but the actual scans are very fast since the table
-  // is empty.
-  for (int run = 1; run <= (AllowSlowTests() ? 10 : 2); run++) {
-    LOG(INFO) << "Starting run " << run;
-    YBClientBuilder builder;
-    std::shared_ptr<YBClient> client;
-    CHECK_OK(cluster_->CreateClient(&builder, &client));
-
-    CountDownLatch go_latch(1);
-    vector<scoped_refptr<Thread> > threads;
-    const int kNumThreads = 60;
-    Random rng(run);
-    for (int i = 0; i < kNumThreads; i++) {
-      int32_t start_key = rng.Next32();
-      scoped_refptr<yb::Thread> new_thread;
-      CHECK_OK(yb::Thread::Create(
-          "test", strings::Substitute("test-scanner-$0", i),
-          &ClientStressTest_TestStartScans_Test::ScannerThread, this,
-          client.get(), &go_latch, start_key,
-          &new_thread));
-      threads.push_back(new_thread);
-    }
-    SleepFor(MonoDelta::FromMilliseconds(50));
-
-    go_latch.CountDown();
-
-    for (const scoped_refptr<yb::Thread>& thr : threads) {
-      CHECK_OK(ThreadJoiner(thr.get()).Join());
-    }
-  }
 }
 
 // Override the base test to run in multi-master mode.
@@ -245,10 +185,6 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 // TODO(mbautin): switch this test to QL (RocksDB-backed) after we implement proper memory
 // tracking for RocksDB (https://yugabyte.atlassian.net/browse/ENG-442).
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
-  // TODO (tyusupov): remove DontVerifyClusterBeforeNextTearDown check once this test is switched
-  // to QL. Cluster check is disabled, because checksum checking is failing for Kudu tables here.
-  DontVerifyClusterBeforeNextTearDown();
-
   // Sanitized tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.
   const int64_t kMinRejections = RegularBuildVsSanitizers(100, 20);

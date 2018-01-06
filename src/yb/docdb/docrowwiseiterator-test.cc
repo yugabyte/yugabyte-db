@@ -124,45 +124,43 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
-
-  ScanSpec scan_spec;
-
-  Arena arena(32_KB, 1_MB);
+  QLTableRow row;
+  QLValue value;
 
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2000));
-    ASSERT_OK(iter.Init(&scan_spec));
-
-    RowBlock row_block(projection, 10, &arena);
+    ASSERT_OK(iter.Init());
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row1 = row_block.row(0);
-    ASSERT_FALSE(row_block.row(0).is_null(0));
-    ASSERT_EQ("row1_c", row1.get_field<DataType::STRING>(0));
-    ASSERT_FALSE(row_block.row(0).is_null(1));
-    ASSERT_EQ(10000, row1.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row_block.row(0).is_null(2));
-    ASSERT_EQ("row1_e", row1.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_c", value.string_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(10000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_e", value.string_value());
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    const auto &row2 = row_block.row(0);
+    ASSERT_OK(iter.NextRow(&row));
 
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
-    ASSERT_TRUE(row_block.row(0).is_null(0));
-    ASSERT_FALSE(row_block.row(0).is_null(1));
-    ASSERT_EQ(20000, row1.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row_block.row(0).is_null(2));
-    ASSERT_EQ("row2_e", row2.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(20000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_e", value.string_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -173,38 +171,40 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(5000));
-    ASSERT_OK(iter.Init(&scan_spec));
-    RowBlock row_block(projection, 10, &arena);
+    ASSERT_OK(iter.Init());
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
+    ASSERT_OK(iter.NextRow(&row));
 
     // This row is exactly the same as in the previous case. TODO: deduplicate.
-    const auto &row1 = row_block.row(0);
-    ASSERT_FALSE(row_block.row(0).is_null(0));
-    ASSERT_EQ("row1_c", row1.get_field<DataType::STRING>(0));
-    ASSERT_FALSE(row_block.row(0).is_null(1));
-    ASSERT_EQ(10000, row1.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row_block.row(0).is_null(2));
-    ASSERT_EQ("row1_e", row1.get_field<DataType::STRING>(2));
+
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_c", value.string_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(10000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_e", value.string_value());
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    const auto &row2 = row_block.row(0);
+    ASSERT_OK(iter.NextRow(&row));
 
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
-    ASSERT_TRUE(row_block.row(0).is_null(0));
-    ASSERT_FALSE(row_block.row(0).is_null(1));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
 
     // These two rows have different values compared to the previous case.
-    ASSERT_EQ(30000, row1.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row_block.row(0).is_null(2));
-    ASSERT_EQ("row2_e_prime", row2.get_field<DataType::STRING>(2));
+    ASSERT_EQ(30000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_e_prime", value.string_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -240,30 +240,27 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
 
-  ScanSpec scan_spec;
-
-  Arena arena(32_KB, 1_MB);
-
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2500));
-    ASSERT_OK(iter.Init(&scan_spec));
+    ASSERT_OK(iter.Init());
 
-    RowBlock row_block(projection, 10, &arena);
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows. Anyway in this specific test we only have one row matching criteria.
-    ASSERT_EQ(1, row_block.nrows());
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row2 = row_block.row(0);
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
 
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ(20000, row2.get_field<DataType::INT64>(1));
-    ASSERT_TRUE(row2.is_null(2));
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(20000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_TRUE(value.IsNull());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -300,38 +297,41 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
 
-  ScanSpec scan_spec;
-
-  Arena arena(32_KB, 1_MB);
-
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init(&scan_spec));
+    ASSERT_OK(iter.Init());
 
-    RowBlock row_block(projection, 10, &arena);
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
-
-    ASSERT_OK(iter.NextBlock(&row_block));
-    ASSERT_EQ(1, row_block.nrows());
-
-    const auto &row1 = row_block.row(0);
+    ASSERT_OK(iter.NextRow(&row));
 
     // ColumnId 30, 40 should be hidden whereas ColumnId 50 should be visible.
-    ASSERT_TRUE(row1.is_null(0));
-    ASSERT_TRUE(row1.is_null(1));
-    ASSERT_FALSE(row1.is_null(2));
-    ASSERT_EQ("row1_e", row1.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_e", value.string_value());
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    const auto &row2 = row_block.row(0);
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_TRUE(row2.is_null(2));
-    ASSERT_EQ(20000, row2.get_field<DataType::INT64>(1));
+    ASSERT_OK(iter.NextRow(&row));
+
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(20000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_TRUE(value.IsNull());
   }
 }
 
@@ -355,32 +355,30 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
   const Schema &schema = kSchemaForIteratorTests;
   const Schema &projection = kProjectionForIteratorTests;
 
-  ScanSpec scan_spec;
-
-  Arena arena(32_KB, 1_MB);
-
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init(&scan_spec));
+    ASSERT_OK(iter.Init());
 
-    RowBlock row_block(projection, 10, &arena);
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
     // Ensure calling HasNext() again doesn't mess up anything.
     ASSERT_TRUE(iter.HasNext());
-
-    ASSERT_OK(iter.NextBlock(&row_block));
-    ASSERT_EQ(1, row_block.nrows());
-
-    const auto &row1 = row_block.row(0);
+    ASSERT_OK(iter.NextRow(&row));
 
     // ColumnId 40 should be deleted whereas ColumnId 50 should be visible.
-    ASSERT_TRUE(row1.is_null(0));
-    ASSERT_TRUE(row1.is_null(1));
-    ASSERT_FALSE(row1.is_null(2));
-    ASSERT_EQ("row1_e", row1.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_e", value.string_value());
   }
 }
 
@@ -406,32 +404,37 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"},
       &projection));
-  ScanSpec scan_spec;
-  Arena arena(32_KB, 1_MB);
+
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init(&scan_spec));
+    ASSERT_OK(iter.Init());
 
-    RowBlock row_block(projection, 10, &arena);
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row1 = row_block.row(0);
-    ASSERT_TRUE(row1.is_null(0));
-    ASSERT_FALSE(row1.is_null(1));
-    ASSERT_EQ(10000, row1.get_field<DataType::INT64>(1));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(10000, value.int64_value());
 
     // Now find next row.
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row2 = row_block.row(0);
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ(20000, row2.get_field<DataType::INT64>(1));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(20000, value.int64_value());
+
     ASSERT_FALSE(iter.HasNext());
   }
 }
@@ -486,24 +489,25 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "e"}, &projection));
 
-  ScanSpec scan_spec;
-  Arena arena(32_KB, 1_MB);
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(), read_time);
-    ASSERT_OK(iter.Init(&scan_spec));
+    ASSERT_OK(iter.Init());
 
-    RowBlock row_block(projection, 10, &arena);
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
     // Ensure Idempotency.
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row2 = row_block.row(0);
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ("row2_e", row2.get_field<DataType::STRING>(1));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_e", value.string_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -544,31 +548,35 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   const Schema &schema = kSchemaForIteratorTests;
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"c", "d"}, &projection));
-  ScanSpec scan_spec;
-  Arena arena(32_KB, 1_MB);
+
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init(&scan_spec));
-    RowBlock row_block(projection, 10, &arena);
+    ASSERT_OK(iter.Init());
+
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
+    ASSERT_OK(iter.NextRow(&row));
 
-    ASSERT_OK(iter.NextBlock(&row_block));
-    const auto &row1 = row_block.row(0);
-    ASSERT_TRUE(row1.is_null(0));
-    ASSERT_TRUE(row1.is_null(1));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_TRUE(value.IsNull());
 
     ASSERT_TRUE(iter.HasNext());
+    ASSERT_OK(iter.NextRow(&row));
 
-    ASSERT_OK(iter.NextBlock(&row_block));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_c", value.string_value());
 
-    const auto &row2 = row_block.row(0);
-    ASSERT_FALSE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ("row2_c", row2.get_field<DataType::STRING>(0));
-    ASSERT_EQ(20000, row2.get_field<DataType::INT64>(1));
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(20000, value.int64_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -594,22 +602,24 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   Schema projection;
   ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames({"a", "b"},
       &projection, 2));
-  ScanSpec scan_spec;
-  Arena arena(32_KB, 1_MB);
+
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, rocksdb(),
         ReadHybridTime::FromMicros(2800));
-    ASSERT_OK(iter.Init(&scan_spec));
-    RowBlock row_block(projection, 10, &arena);
+    ASSERT_OK(iter.Init());
+
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
+    ASSERT_OK(iter.NextRow(&row));
 
-    ASSERT_OK(iter.NextBlock(&row_block));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_EQ("row1", value.string_value());
 
-    const auto &row1 = row_block.row(0);
-    ASSERT_EQ("row1", row1.get_field_no_nullcheck<DataType::STRING>(0));
-    ASSERT_EQ(11111, row1.get_field_no_nullcheck<DataType::INT64>(1));
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_EQ(11111, value.int64_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -764,42 +774,42 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
   const auto txn_context = TransactionOperationContext(
       GenerateTransactionId(), &txn_status_manager);
 
-  ScanSpec scan_spec;
-  Arena arena(32_KB, 1_MB);
-
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, rocksdb(), ReadHybridTime::FromMicros(2000));
-    ASSERT_OK(iter.Init(&scan_spec));
+    ASSERT_OK(iter.Init());
 
-    RowBlock row_block(projection, 10, &arena);
-
-    ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
-
-    const auto& row1 = row_block.row(0);
-    ASSERT_FALSE(row1.is_null(0));
-    ASSERT_EQ("row1_c", row1.get_field<DataType::STRING>(0));
-    ASSERT_FALSE(row1.is_null(1));
-    ASSERT_EQ(10000, row1.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row1.is_null(2));
-    ASSERT_EQ("row1_e", row1.get_field<DataType::STRING>(2));
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    const auto &row2 = row_block.row(0);
+    ASSERT_OK(iter.NextRow(&row));
 
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ(20000, row2.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row2.is_null(2));
-    ASSERT_EQ("row2_e", row2.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_c", value.string_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(10000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_e", value.string_value());
+
+    ASSERT_TRUE(iter.HasNext());
+    ASSERT_OK(iter.NextRow(&row));
+
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(20000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_e", value.string_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -810,35 +820,38 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, rocksdb(), ReadHybridTime::FromMicros(5000));
-    ASSERT_OK(iter.Init(&scan_spec));
-    RowBlock row_block(projection, 10, &arena);
+    ASSERT_OK(iter.Init());
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row1 = row_block.row(0);
-    ASSERT_FALSE(row1.is_null(0));
-    ASSERT_EQ("row1_c_t1", row1.get_field<DataType::STRING>(0));
-    ASSERT_FALSE(row1.is_null(1));
-    ASSERT_EQ(40000, row1.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row1.is_null(2));
-    ASSERT_EQ("row1_e_t1", row1.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_c_t1", value.string_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(40000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row1_e_t1", value.string_value());
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    const auto &row2 = row_block.row(0);
+    ASSERT_OK(iter.NextRow(&row));
 
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ(42000, row2.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row2.is_null(2));
-    ASSERT_EQ("row2_e_prime", row2.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(42000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_e_prime", value.string_value());
 
     ASSERT_FALSE(iter.HasNext());
   }
@@ -848,21 +861,24 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, rocksdb(), ReadHybridTime::FromMicros(6000));
-    ASSERT_OK(iter.Init(&scan_spec));
-    RowBlock row_block(projection, 10, &arena);
+    ASSERT_OK(iter.Init());
+
+    QLTableRow row;
+    QLValue value;
 
     ASSERT_TRUE(iter.HasNext());
-    ASSERT_OK(iter.NextBlock(&row_block));
-    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
-    // next rows.
-    ASSERT_EQ(1, row_block.nrows());
+    ASSERT_OK(iter.NextRow(&row));
 
-    const auto &row2 = row_block.row(0);
-    ASSERT_TRUE(row2.is_null(0));
-    ASSERT_FALSE(row2.is_null(1));
-    ASSERT_EQ(42000, row2.get_field<DataType::INT64>(1));
-    ASSERT_FALSE(row2.is_null(2));
-    ASSERT_EQ("row2_e_t2", row2.get_field<DataType::STRING>(2));
+    ASSERT_OK(row.GetValue(projection.column_id(0), &value));
+    ASSERT_TRUE(value.IsNull());
+
+    ASSERT_OK(row.GetValue(projection.column_id(1), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(42000, value.int64_value());
+
+    ASSERT_OK(row.GetValue(projection.column_id(2), &value));
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ("row2_e_t2", value.string_value());
 
     ASSERT_FALSE(iter.HasNext());
   }

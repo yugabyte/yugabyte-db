@@ -50,6 +50,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
+#include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/fs/fs_manager.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -58,10 +60,13 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tablet/operations/write_operation.h"
+
+#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::literals;
@@ -580,30 +585,25 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
   const int8_t tables_entry = visitor->entry_type();
   const int type_col_idx = schema_.find_column(kSysCatalogTableColType);
+  const int entry_id_col_idx = schema_.find_column(kSysCatalogTableColId);
+  const int metadata_col_idx = schema_.find_column(kSysCatalogTableColMetadata);
   CHECK(type_col_idx != Schema::kColumnNotFound);
 
-  ColumnRangePredicate pred_tables(schema_.column(type_col_idx), &tables_entry, &tables_entry);
-  ScanSpec spec;
-  spec.AddPredicate(pred_tables);
+  auto iter = tablet_peer_->tablet()->NewRowIterator(schema_, boost::none);
+  RETURN_NOT_OK(iter);
 
-  gscoped_ptr<RowwiseIterator> iter;
-  // TODO(dtxn) pass correct transaction ID if needed
-  RETURN_NOT_OK(tablet_peer_->tablet()->NewRowIterator(schema_, boost::none, &iter));
-  RETURN_NOT_OK(iter->Init(&spec));
-
-  Arena arena(32 * 1024, 256 * 1024);
-  RowBlock block(iter->schema(), 512, &arena);
-  while (iter->HasNext()) {
-    RETURN_NOT_OK(iter->NextBlock(&block));
-    for (size_t i = 0; i < block.nrows(); i++) {
-      if (!block.selection_vector()->IsRowSelected(i)) continue;
-
-      const Slice* id = schema_.ExtractColumnFromRow<BINARY>(
-          block.row(i), schema_.find_column(kSysCatalogTableColId));
-      const Slice* data = schema_.ExtractColumnFromRow<BINARY>(
-          block.row(i), schema_.find_column(kSysCatalogTableColMetadata));
-      RETURN_NOT_OK(visitor->Visit(id, data));
+  Arena arena(32_KB, 256_KB);
+  QLTableRow value_map;
+  QLValue entry_type, entry_id, metadata;
+  while ((**iter).HasNext()) {
+    RETURN_NOT_OK((**iter).NextRow(&value_map));
+    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
+    if (entry_type.int8_value() != tables_entry) {
+      continue;
     }
+    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(entry_id_col_idx), &entry_id));
+    RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(metadata_col_idx), &metadata));
+    RETURN_NOT_OK(visitor->Visit(entry_id.binary_value(), metadata.binary_value()));
   }
   return Status::OK();
 }

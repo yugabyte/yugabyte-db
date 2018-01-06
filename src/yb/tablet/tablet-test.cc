@@ -34,9 +34,9 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/iterator.h"
 #include "yb/common/row.h"
-#include "yb/common/scan_spec.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/tablet/local_tablet_writer.h"
@@ -139,14 +139,6 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
       ASSERT_OK_FAST(this->UpdateTestRow(&writer, i, i));
     }
   }
-
-  // Now iterate over the tablet and make sure the rows show up.
-  gscoped_ptr<RowwiseIterator> iter;
-  const Schema& schema = this->client_schema_;
-  ASSERT_OK(this->tablet()->NewRowIterator(schema, boost::none, &iter));
-  ScanSpec scan_spec;
-  ASSERT_OK(iter->Init(&scan_spec));
-  LOG(INFO) << "Created iter: " << iter->ToString();
 
   // Collect the expected rows.
   vector<string> rows;

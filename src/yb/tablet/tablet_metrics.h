@@ -51,15 +51,6 @@ namespace tablet {
 struct TabletMetrics {
   explicit TabletMetrics(const scoped_refptr<MetricEntity>& metric_entity);
 
-  // Operation rates
-  scoped_refptr<Counter> scanner_rows_returned;
-  scoped_refptr<Counter> scanner_cells_returned;
-  scoped_refptr<Counter> scanner_bytes_returned;
-  scoped_refptr<Counter> scanner_rows_scanned;
-  scoped_refptr<Counter> scanner_cells_scanned_from_disk;
-  scoped_refptr<Counter> scanner_bytes_scanned_from_disk;
-  scoped_refptr<Counter> scans_started;
-
   // Probe stats
   scoped_refptr<Histogram> commit_wait_duration;
   scoped_refptr<Histogram> snapshot_read_inflight_wait_duration;
