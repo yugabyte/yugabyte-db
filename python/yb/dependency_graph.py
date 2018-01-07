@@ -22,7 +22,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from yb.common_util import group_by, make_set, get_build_type_from_build_root, \
-                           convert_to_non_ninja_build_root   # nopep8
+                           convert_to_non_ninja_build_root, get_bool_env_var  # nopep8
 from yb.command_util import mkdir_p  # nopep8
 
 
@@ -957,28 +957,43 @@ def main():
         # categories (meaning the changeset is non-empty), and there are changes in categories other
         # than C++ / Java / files known not to affect unit tests, we force re-running all tests.
         unsafe_categories = updated_categories - CATEGORIES_NOT_CAUSING_RERUN_OF_ALL_TESTS
-        run_all_tests = bool(unsafe_categories)
+        user_said_all_tests = get_bool_env_var('YB_RUN_ALL_TESTS')
+        run_all_tests = bool(unsafe_categories) or user_said_all_tests
 
+        user_said_all_cpp_tests = get_bool_env_var('YB_RUN_ALL_CPP_TESTS')
+        user_said_all_java_tests = get_bool_env_var('YB_RUN_ALL_JAVA_TESTS')
         cpp_files_changed = 'c++' in updated_categories
         java_files_changed = 'java' in updated_categories
         yb_master_or_tserver_changed = bool(affected_basenames & set(['yb-master', 'yb-tserver']))
 
-        run_cpp_tests = run_all_tests or cpp_files_changed
-        run_java_tests = run_all_tests or java_files_changed or yb_master_or_tserver_changed
+        run_cpp_tests = run_all_tests or cpp_files_changed or user_said_all_cpp_tests
+        run_java_tests = (
+                run_all_tests or java_files_changed or yb_master_or_tserver_changed or
+                user_said_all_java_tests
+            )
 
         if run_all_tests:
-            logging.info(
+            if user_said_all_tests:
+                logging.info("User explicitly specified that all tests should be run")
+            else:
+                logging.info(
                     "All tests should be run based on file changes in these categories: {}".format(
                         ', '.join(sorted(unsafe_categories))))
         else:
             if run_cpp_tests:
-                logging.info('Will run some C++ tests, some C++ files changed')
+                if user_said_all_cpp_tests:
+                    logging.info("User explicitly specified that all C++ tests should be run")
+                else:
+                    logging.info('Will run some C++ tests, some C++ files changed')
             if run_java_tests:
-                logging.info('Will run all Java tests, ' +
-                             ' and '.join(
-                                 (['some Java files changed'] if java_files_changed else []) +
-                                 (['yb-{master,tserver} binaries changed']
-                                  if yb_master_or_tserver_changed else [])))
+                if user_said_all_java_tests:
+                    logging.info("User explicitly specified that all Java tests should be run")
+                else:
+                    logging.info('Will run all Java tests, ' +
+                                 ' and '.join(
+                                     (['some Java files changed'] if java_files_changed else []) +
+                                     (['yb-{master,tserver} binaries changed']
+                                      if yb_master_or_tserver_changed else [])))
 
         test_conf = dict(
             run_cpp_tests=run_cpp_tests,

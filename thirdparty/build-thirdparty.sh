@@ -334,6 +334,9 @@ F_REDIS_CLI=""
 
 if is_linux; then
   F_TSAN=1
+  if using_linuxbrew; then
+    log "Linuxbrew directory: $YB_LINUXBREW_DIR"
+  fi
 else
   F_TSAN=""
 fi

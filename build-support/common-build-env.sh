@@ -40,6 +40,9 @@ MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
 
 readonly YB_JENKINS_NFS_HOME_DIR=/n/jenkins
 
+# In our NFS environment, we keep Linuxbrew builds in this directory.
+readonly SHARED_LINUXBREW_BUILDS_DIR="$YB_JENKINS_NFS_HOME_DIR/linuxbrew"
+
 # We look for the list of distributed build worker nodes in this file. This gets populated by
 # a cronjob on buildmaster running under the jenkins user (as of 06/20/2017).
 readonly YB_BUILD_WORKERS_FILE=$YB_JENKINS_NFS_HOME_DIR/run/build-workers
@@ -55,11 +58,6 @@ readonly MIN_EFFECTIVE_NUM_BUILD_WORKERS=5
 readonly MAX_EFFECTIVE_NUM_BUILD_WORKERS=10
 
 readonly MVN_OUTPUT_FILTER_REGEX
-
-readonly YB_LINUXBREW_DIR_CANDIDATES=(
-  "$HOME/.linuxbrew-yb-build"
-  "$YB_JENKINS_NFS_HOME_DIR/.linuxbrew-yb-build"
-)
 
 # An even faster alternative to downloading a pre-built third-party dependency tarball from S3
 # or Google Storage: just use a pre-existing third-party build from NFS. This has to be maintained
@@ -950,7 +948,7 @@ find_compiler_by_type() {
 
 # Make pushd and popd quiet.
 # http://stackoverflow.com/questions/25288194/dont-display-pushd-popd-stack-accross-several-bash-scripts-quiet-pushd-popd
-pushd () {
+pushd() {
   local dir_name=$1
   if [[ ! -d $dir_name ]]; then
     fatal "Directory '$dir_name' does not exist"
@@ -958,7 +956,7 @@ pushd () {
   command pushd "$@" > /dev/null
 }
 
-popd () {
+popd() {
   command popd "$@" > /dev/null
 }
 
@@ -969,13 +967,38 @@ detect_linuxbrew() {
   if ! is_linux; then
     return
   fi
-  local d
-  for d in "${YB_LINUXBREW_DIR_CANDIDATES[@]}"; do
-    if [[ -d "$d" &&
-          -d "$d/bin" &&
-          -d "$d/lib" &&
-          -d "$d/include" ]]; then
-      export YB_LINUXBREW_DIR=$d
+  local candidates=(
+    "$HOME/.linuxbrew-yb-build"
+  )
+
+  local version_for_jenkins_file=$YB_SRC_ROOT/thirdparty/linuxbrew_version_for_jenkins.txt
+  if [[ -f $version_for_jenkins_file ]]; then
+    local version_for_jenkins=$( read_file_and_trim "$version_for_jenkins_file" )
+    preferred_linuxbrew_dir="$SHARED_LINUXBREW_BUILDS_DIR/linuxbrew_$version_for_jenkins"
+    if [[ -d $preferred_linuxbrew_dir ]]; then
+      if is_jenkins_user; then
+        # If we're running on Jenkins (or building something for consumption by Jenkins under the
+        # "jenkins" user), then the "Linuxbrew for Jenkins" directory takes precedence.
+        candidates=( "$preferred_linuxbrew_dir" "${candidates[@]}" )
+      else
+        # Otherwise, the user's local Linuxbrew build takes precedence.
+        candidates=( "${candidates[@]}" "$preferred_linuxbrew_dir" )
+      fi
+    elif is_jenkins; then
+      log "Warning: Linuxbrew directory referenced by '$version_for_jenkins_file' does not" \
+          "exist: '$preferred_linuxbrew_dir', will attempt to use other location."
+    fi
+  elif is_jenkins; then
+    log "Warning: '$version_for_jenkins_file' does not exist"
+  fi
+
+  local linuxbrew_dir
+  for linuxbrew_dir in "${candidates[@]}"; do
+    if [[ -d "$linuxbrew_dir" &&
+          -d "$linuxbrew_dir/bin" &&
+          -d "$linuxbrew_dir/lib" &&
+          -d "$linuxbrew_dir/include" ]]; then
+      export YB_LINUXBREW_DIR=$linuxbrew_dir
       YB_USING_LINUXBREW=true
       YB_LINUXBREW_LIB_DIR=$YB_LINUXBREW_DIR/lib
       break
@@ -1113,8 +1136,12 @@ is_running_on_gcp() {
   return "$is_running_on_gcp_exit_code"
 }
 
+is_jenkins_user() {
+  [[ $USER == "jenkins" ]]
+}
+
 is_jenkins() {
-  if [[ -n ${BUILD_ID:-} && -n ${JOB_NAME:-} && $USER == "jenkins" ]]; then
+  if [[ -n ${BUILD_ID:-} && -n ${JOB_NAME:-} ]] && is_jenkins_user; then
     return 0  # Yes, we're running on Jenkins.
   fi
   return 1  # Probably running locally.
@@ -1332,6 +1359,17 @@ activate_virtualenv() {
   pip install -r "$YB_SRC_ROOT/requirements.txt"
 }
 
+read_file_and_trim() {
+  expect_num_args 1 "$@"
+  local file_name=$1
+  if [[ -f $file_name ]]; then
+    cat "$file_name" | sed -e 's/^[[:space:]]*//; s/[[:space:]]*$//'
+  else
+    log "File '$file_name' does not exist"
+    return 1
+  fi
+}
+
 # In our internal environment we build third-party dependencies in separate directories on NFS
 # so that we can use them across many builds.
 find_shared_thirdparty_dir() {
@@ -1344,9 +1382,9 @@ find_shared_thirdparty_dir() {
     return
   fi
 
-  # Should be the same for CentOS and MacOS.
-  local version_content=$( cat thirdparty/version_for_jenkins.txt )
-  local version=$( echo "${version_content}" | sed -e 's/^[[:space:]]*//; s/[[:space:]]*$//' )
+  local version=$(
+    read_file_and_trim "$YB_SRC_ROOT/thirdparty/version_for_jenkins_${short_os_name}.txt"
+  )
   local thirdparty_dir_suffix="yugabyte-thirdparty-${version}/thirdparty"
   local existing_thirdparty_dir="${parent_dir_for_shared_thirdparty}/${thirdparty_dir_suffix}"
   if [[ -d $existing_thirdparty_dir ]]; then
@@ -1436,9 +1474,20 @@ remove_latest_symlink() {
   fi
 }
 
+detect_os() {
+  short_os_name="unknown_os"
+  if is_mac; then
+    short_os_name="mac"
+  elif is_linux; then
+    short_os_name="linux"
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
+
+detect_os
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )"

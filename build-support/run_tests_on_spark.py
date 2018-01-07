@@ -53,7 +53,7 @@ sys.path.append(YB_PYTHONPATH_ENTRY)
 
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
-from yb.common_util import set_to_comma_sep_str  # noqa
+from yb.common_util import set_to_comma_sep_str, get_bool_env_var  # noqa
 
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way

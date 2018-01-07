@@ -81,3 +81,11 @@ def convert_to_non_ninja_build_root(build_root):
     directory = os.path.dirname(build_root)
     basename = os.path.basename(build_root)
     return os.path.join(directory, NINJA_BUILD_ROOT_PART_RE.sub('', basename))
+
+
+def get_bool_env_var(env_var_name):
+    value = os.environ.get(env_var_name, None)
+    if value is None:
+        return False
+
+    return value.lower() in ['1', 't', 'true', 'y', 'yes']
