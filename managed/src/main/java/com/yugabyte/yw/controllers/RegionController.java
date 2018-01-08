@@ -46,8 +46,7 @@ public class RegionController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ complaint
-  protected static final int MULTI_AZ_MIN_ZONE_COUNT = 3;
-
+  
   /**
    * GET endpoint for listing regions
    * @return JSON response with region's
@@ -55,14 +54,9 @@ public class RegionController extends AuthenticatedController {
   public Result list(UUID customerUUID, UUID providerUUID) {
     List<Region> regionList = null;
 
-    boolean multiAZ = false;
-    if (request().getQueryString("isMultiAZ") != null) {
-      multiAZ = request().getQueryString("isMultiAZ").equals("true");
-    }
-
     try {
-      int azCountNeeded = multiAZ ? MULTI_AZ_MIN_ZONE_COUNT : 1;
-      regionList = Region.fetchValidRegions(customerUUID, providerUUID, azCountNeeded);
+      int minAZCountNeeded =  1;
+      regionList = Region.fetchValidRegions(customerUUID, providerUUID, minAZCountNeeded);
     } catch (Exception e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list regions");

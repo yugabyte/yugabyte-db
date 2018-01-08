@@ -103,9 +103,9 @@ export function getProviderListResponse(responsePayload) {
   };
 }
 
-export function getRegionList(providerUUID, isMultiAz) {
+export function getRegionList(providerUUID) {
   const baseUrl = getProviderEndpoint(providerUUID);
-  const request = axios.get(`${baseUrl}/regions?multiAZ=${isMultiAz}`);
+  const request = axios.get(`${baseUrl}/regions`);
   return {
     type: GET_REGION_LIST,
     payload: request

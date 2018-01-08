@@ -111,7 +111,6 @@ class UniverseForm extends Component {
     return {
       universeName: formValues.universeName,
       numNodes: this.state.numNodes,
-      isMultiAZ: this.state.azCheckState,
       provider: this.state.providerSelected,
       regionList: this.state.regionList,
       instanceType: this.state.instanceTypeSelected,
@@ -164,7 +163,6 @@ class UniverseForm extends Component {
       instanceType: currentState.instanceTypeSelected,
       ybSoftwareVersion: currentState.ybSoftwareVersion,
       replicationFactor: currentState.replicationFactor,
-      isMultiAZ: true,
       deviceInfo: currentState.deviceInfo,
       accessKeyCode: currentState.accessKeyCode,
       spotPrice: currentState.spotPrice
@@ -234,12 +232,10 @@ class UniverseForm extends Component {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
-      const isMultiAZ = userIntent && userIntent.isMultiAZ;
       if (userIntent && providerUUID) {
         const ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
         this.setState({
           providerSelected: providerUUID,
-          azCheckState: isMultiAZ,
           instanceTypeSelected: userIntent.instanceType,
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
@@ -253,7 +249,7 @@ class UniverseForm extends Component {
           spotPrice: userIntent.spotPrice
         });
       }
-      this.props.getRegionListItems(providerUUID, isMultiAZ);
+      this.props.getRegionListItems(providerUUID);
       this.props.getInstanceTypeListItems(providerUUID);
       if (primaryCluster.userIntent.providerType === "onprem") {
         this.props.fetchNodeInstanceList(providerUUID);

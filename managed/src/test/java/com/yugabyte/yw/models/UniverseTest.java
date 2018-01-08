@@ -257,7 +257,6 @@ public class UniverseTest extends FakeDBApplication {
 
     // Create userIntent
     UserIntent userIntent = new UserIntent();
-    userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
     userIntent.regionList = regionList;
     userIntent.instanceType = instanceType;
@@ -318,7 +317,6 @@ public class UniverseTest extends FakeDBApplication {
   public void testToJSONWithNullGFlags() {
     Universe u = createUniverse(defaultCustomer.getCustomerId());
     UserIntent userIntent = new UserIntent();
-    userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
     userIntent.masterGFlags = null;
@@ -349,7 +347,6 @@ public class UniverseTest extends FakeDBApplication {
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
     UserIntent userIntent = new UserIntent();
-    userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
     userIntent.regionList = new ArrayList<>();
 
@@ -404,7 +401,6 @@ public class UniverseTest extends FakeDBApplication {
     String instanceType = "c3.xlarge";
     // Create userIntent
     UserIntent userIntent = new UserIntent();
-    userIntent.isMultiAZ = true;
     userIntent.replicationFactor = 3;
     userIntent.regionList = regionList;
     userIntent.instanceType = instanceType;

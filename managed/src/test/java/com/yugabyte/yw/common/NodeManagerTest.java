@@ -379,7 +379,6 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.accessKeyCode = "demo-access";
       userIntent.regionList = new ArrayList<UUID>();
       userIntent.regionList.add(t.region.uuid);
-      userIntent.isMultiAZ = false;
       userIntent.providerType = t.cloudType;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
@@ -496,7 +495,6 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.accessKeyCode = "demo-access";
       userIntent.regionList = new ArrayList<UUID>();
       userIntent.regionList.add(t.region.uuid);
-      userIntent.isMultiAZ = false;
       userIntent.providerType = t.cloudType;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,

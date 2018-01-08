@@ -74,8 +74,8 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getRegionListItems: (provider, isMultiAZ) => {
-      dispatch(getRegionList(provider, isMultiAZ)).then((response) => {
+    getRegionListItems: (provider) => {
+      dispatch(getRegionList(provider)).then((response) => {
         dispatch(getRegionListResponse(response.payload));
       });
     },
