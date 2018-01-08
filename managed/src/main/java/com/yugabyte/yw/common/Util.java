@@ -5,12 +5,14 @@ import com.google.common.base.Functions;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -100,5 +102,24 @@ public class Util {
         "$1-$2-$3-$4-$5");
       return UUID.fromString(uuidWithHyphens);
     }
+  }
+  
+  /**
+   * Returns a map of nodes in the ToBeAdded state in the given nodeDetailsSet
+   * @param taskParams taskParams for the Create/Edit operation
+   * @return Map of AZUUID to number of desired nodes in the AZ
+   */
+  public static HashMap<UUID, Integer> toBeAddedAzUuidToNumNodes(UniverseDefinitionTaskParams taskParams) {
+    HashMap<UUID, Integer> toBeAddedazUUIDToNumNodes = new HashMap<>();
+    if (taskParams == null || taskParams.nodeDetailsSet.isEmpty()) {
+      return toBeAddedazUUIDToNumNodes;
+    }
+    for (NodeDetails currentNode: taskParams.nodeDetailsSet) {
+      if (currentNode.state == NodeDetails.NodeState.ToBeAdded) {
+        UUID currentAZUUID = currentNode.azUuid;
+        toBeAddedazUUIDToNumNodes.put(currentAZUUID, toBeAddedazUUIDToNumNodes.getOrDefault(currentAZUUID, 0) + 1);
+      }
+    }
+    return toBeAddedazUUIDToNumNodes;
   }
 }
