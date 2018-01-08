@@ -149,7 +149,12 @@ class UniverseForm extends Component {
 
   configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues} = this.props;
-    const universeTaskParams = _.clone(universeConfigTemplate.data, true);
+
+    let universeTaskParams = {};
+    if (isNonEmptyObject(universeConfigTemplate.data)) {
+      universeTaskParams = _.clone(universeConfigTemplate.data, true);
+    }
+
     if (isNonEmptyObject(currentUniverse.data)) {
       universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;

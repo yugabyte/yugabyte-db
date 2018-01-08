@@ -48,6 +48,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import play.libs.Json;
 
+import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
+
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -374,6 +376,46 @@ public class PlacementInfoUtil {
     LOG.info("Set of nodes after node configure:{}.", taskParams.nodeDetailsSet);
     ensureUniqueNodeNames(taskParams.nodeDetailsSet);
     LOG.info("Placement info:{}.", primaryCluster.placementInfo);
+  }
+
+  /**
+   * Method checks if enough nodes have been configured to satiate the userIntent for an OnPrem configuration
+   * @param taskParams
+   * @return True if provider type is not OnPrem or if enough nodes have been configured for intent, false otherwise
+   */
+  public static boolean checkIfNodeParamsValid(UniverseDefinitionTaskParams taskParams) {
+    if (taskParams.retrievePrimaryCluster().userIntent.providerType != CloudType.onprem) {
+      return true;
+    }
+    UserIntent userIntent = taskParams.retrievePrimaryCluster().userIntent;
+    String instanceType = userIntent.instanceType;
+    // If NodeDetailsSet is null, do a high level check whether number of nodes in given config is present
+    if (taskParams.nodeDetailsSet == null || taskParams.nodeDetailsSet.isEmpty()) {
+      int totalNodesConfiguredInRegionList = 0;
+      // Check if number of nodes in the user intent is greater than number of nodes configured for given instance type
+      for (UUID regionUUID: userIntent.regionList) {
+        for (AvailabilityZone az: Region.get(regionUUID).zones) {
+          totalNodesConfiguredInRegionList += NodeInstance.listByZone(az.uuid, instanceType).size();
+        }
+      }
+      if (totalNodesConfiguredInRegionList < userIntent.numNodes) {
+        LOG.error("Not enough nodes, required: {} nodes, configured: {} nodes", userIntent.numNodes, totalNodesConfiguredInRegionList);
+        return false;
+      }
+    } else {
+      // If NodeDetailsSet is non-empty verify that the node/az combo is valid
+      for (Map.Entry<UUID, Integer> entry : toBeAddedAzUuidToNumNodes(taskParams).entrySet()) {
+        UUID azUUID = entry.getKey();
+        int numNodesToBeAdded = entry.getValue().intValue();
+        if (numNodesToBeAdded > NodeInstance.listByZone(azUUID, instanceType).size()) {
+          LOG.error("Not enough nodes configured for given AZ/Instance type combo, " +
+            "required {} found {} in AZ {} for Instance type {}", numNodesToBeAdded, NodeInstance.listByZone(azUUID, instanceType).size(),
+            azUUID, instanceType);
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   public static void updatePlacementInfo(Collection<NodeDetails> nodes,

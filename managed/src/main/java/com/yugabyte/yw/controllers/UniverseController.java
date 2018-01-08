@@ -42,6 +42,7 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.checkIfNodeParamsValid;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
 
 
@@ -98,7 +99,11 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-      PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
+      if (checkIfNodeParamsValid(taskParams)) {
+        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
+      } else {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " + taskParams.retrievePrimaryCluster().userIntent.instanceType);
+      }
       return ApiResponse.success(taskParams);
     } catch (Exception e) {
       LOG.error("Unable to Configure Universe for Customer with ID {} Failed with message: {}.",
