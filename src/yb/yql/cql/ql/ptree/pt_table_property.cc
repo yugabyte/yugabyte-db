@@ -51,8 +51,7 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
                    const MCSharedPtr<MCString>& lhs,
                    const PTExpr::SharedPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
-      property_type_(PropertyType::kTableProperty) {
-}
+      property_type_(PropertyType::kTableProperty) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
@@ -60,6 +59,12 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  const PTOrderBy::Direction direction)
     : PTProperty(memctx, loc), name_(name), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}
+
+PTTableProperty::PTTableProperty(MemoryContext *memctx,
+                                 YBLocation::SharedPtr loc,
+                                 const PTQualifiedName::SharedPtr tname)
+    : PTProperty(memctx, loc), property_type_(PropertyType::kCoPartitionTable),
+      copartition_table_name_(tname) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc)
@@ -101,6 +106,41 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
 }
 
 CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
+
+  if (property_type_ == PropertyType::kCoPartitionTable) {
+    RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, OBJECT_TABLE));
+
+    bool is_system; // ignored
+    int num_key_cols, num_hash_key_cols;
+    MCVector<ColumnDesc> copartition_table_columns(sem_context->PTempMem());
+    RETURN_NOT_OK(sem_context->LookupTable(copartition_table_name_->ToTableName(),
+                                           copartition_table_name_->loc(), /* write_table = */ true,
+                                           &copartition_table_, &is_system,
+                                           &copartition_table_columns, &num_key_cols,
+                                           &num_hash_key_cols));
+    if (sem_context->current_create_table_stmt()->hash_columns().size() != num_hash_key_cols) {
+      return sem_context->Error(this, Substitute("The number of hash keys in the current table "
+                                "differ from the number of hash keys in '$0'.",
+                                copartition_table_name_->ToTableName().table_name()).c_str(),
+                                ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA);
+    }
+
+    int index = 0;
+    for (auto hash_col : sem_context->current_create_table_stmt()->hash_columns()) {
+      auto type = hash_col->ql_type();
+      auto base_type = copartition_table_columns[index].ql_type();
+      if (type != base_type) {
+        return sem_context->Error(this, Substitute("The hash key '$0' in the current table has a "
+                                  "different datatype from the corresponding hash key in '$1'",
+                                  hash_col->yb_name(),
+                                  copartition_table_name_->ToTableName().table_name()).c_str(),
+                                  ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA);
+      }
+      index++;
+    }
+
+    return Status::OK();
+  }
 
   // Verify we have a valid property name in the lhs.
   const auto& table_property_name = lhs_->c_str();
@@ -207,6 +247,9 @@ std::ostream& operator<<(ostream& os, const PropertyType& property_type) {
     case PropertyType::kTablePropertyMap:
       os << "kTablePropertyMap";
       break;
+    case PropertyType::kCoPartitionTable:
+      os << "kCoPartitionTable";
+      break;
   }
   return os;
 }
@@ -235,6 +278,10 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
         }
         RETURN_NOT_OK(tnode->Analyze(sem_context));
         table_properties.insert(table_property_name);
+        break;
+      }
+      case PropertyType ::kCoPartitionTable: {
+        RETURN_NOT_OK(tnode->Analyze(sem_context));
         break;
       }
       case PropertyType::kClusteringOrder: {
@@ -293,9 +340,14 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
 Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) const {
   // TODO: Also reject properties that cannot be changed during alter table (like clustering order)
 
-  // Clustering order not handled here.
+  // Clustering order and copartitioning not handled here.
   if (property_type_ == PropertyType::kClusteringOrder) {
     return Status::OK();
+  }
+
+  if(property_type_ == PropertyType::kCoPartitionTable) {
+    // TODO: This should be enabled once the YBase layer changes are finished
+    return STATUS(NotSupported, "Co-partitioning is not implemented yet");
   }
 
   string table_property_name;

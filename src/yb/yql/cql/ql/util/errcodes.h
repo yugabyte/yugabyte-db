@@ -97,6 +97,7 @@ enum class ErrorCode : int64_t {
   DUPLICATE_TYPE = -218,
   DUPLICATE_TYPE_FIELD = -219,
   ALTER_KEY_COLUMN = -220,
+  INCOMPATIBLE_COPARTITION_SCHEMA = -221,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

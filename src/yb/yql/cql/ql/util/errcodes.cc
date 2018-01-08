@@ -87,6 +87,7 @@ const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage
   { ErrorCode::INVALID_COUNTING_EXPR, "Counters can only be incremented or decremented" },
   { ErrorCode::DUPLICATE_TYPE, "Duplicate Type" },
   { ErrorCode::DUPLICATE_TYPE_FIELD, "Duplicate Type Field" },
+  { ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA, "Incompatible Copartition Schema" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

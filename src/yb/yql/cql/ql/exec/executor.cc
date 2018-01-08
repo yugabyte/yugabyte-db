@@ -261,7 +261,8 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   TableProperties table_properties;
-  if (!tnode->ToTableProperties(&table_properties).ok()) {
+  s = tnode->ToTableProperties(&table_properties);
+  if (!s.ok()) {
     return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
 

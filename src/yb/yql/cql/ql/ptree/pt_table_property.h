@@ -31,6 +31,7 @@ enum class PropertyType : int {
   kTableProperty = 0,
   kClusteringOrder,
   kTablePropertyMap,
+  kCoPartitionTable,
 };
 
 class PTTableProperty : public PTProperty {
@@ -73,6 +74,11 @@ class PTTableProperty : public PTProperty {
                   const MCSharedPtr<MCString>& name,
                   const PTOrderBy::Direction direction);
 
+  // Constructor for PropertyType::kCoPartitionTable
+  PTTableProperty(MemoryContext *memctx,
+                  YBLocation::SharedPtr loc,
+                  const PTQualifiedName::SharedPtr tname);
+
   PTTableProperty(MemoryContext *memctx,
                   YBLocation::SharedPtr loc);
 
@@ -104,6 +110,11 @@ class PTTableProperty : public PTProperty {
     return direction_;
   }
 
+  PTQualifiedName table_name() const {
+    DCHECK_EQ(property_type_, PropertyType::kCoPartitionTable);
+    return *copartition_table_name_;
+  }
+
  protected:
   bool IsValidProperty(const string& property_name) {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
@@ -112,6 +123,8 @@ class PTTableProperty : public PTProperty {
   MCSharedPtr<MCString> name_;
   PTOrderBy::Direction direction_;
   PropertyType property_type_;
+  PTQualifiedName::SharedPtr copartition_table_name_;
+  std::shared_ptr<client::YBTable> copartition_table_;
 
  private:
   CHECKED_STATUS AnalyzeSpeculativeRetry(const string &val);
