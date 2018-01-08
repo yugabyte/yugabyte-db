@@ -92,7 +92,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       UserIntent userIntent = new UserIntent();
       userIntent.universeName = univName;
       userIntent.replicationFactor = replFactor;
-      userIntent.isMultiAZ = true;
       userIntent.numNodes = numNodes;
       userIntent.provider = provider.code;
       userIntent.regionList = regionList;

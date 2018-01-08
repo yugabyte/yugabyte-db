@@ -138,7 +138,6 @@ public class ApiUtils {
     ui.provider = p.uuid.toString();
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
-    ui.isMultiAZ = true;
     return ui;
   }
 

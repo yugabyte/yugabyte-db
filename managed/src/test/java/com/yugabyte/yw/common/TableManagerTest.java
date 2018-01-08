@@ -86,7 +86,6 @@ public class TableManagerTest extends FakeDBApplication {
     userIntent.ybSoftwareVersion = "0.0.1";
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
-    userIntent.isMultiAZ = true;
     userIntent.regionList = getMockRegionUUIDs(3);
     uniParams.upsertPrimaryCluster(userIntent, null);
   }
