@@ -238,7 +238,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     userIntent.regionList = new ArrayList<UUID>();
     userIntent.regionList.add(r.uuid);
-    userIntent.isMultiAZ = false;
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();

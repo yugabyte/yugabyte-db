@@ -281,11 +281,6 @@ public class PlacementInfoUtil {
     return count;
   }
 
-  private static boolean isMultiAZSetup(UniverseDefinitionTaskParams taskParams) {
-    Cluster c = taskParams.retrievePrimaryCluster();
-    return c.userIntent.regionList.size() > 1 || getAzUuidToNumNodes(c.placementInfo).size() > 1;
-  }
-
   // Helper API to catch duplicated node names in the given set of nodes.
   public static void ensureUniqueNodeNames(Collection<NodeDetails> nodes) {
     boolean foundDups = false;
@@ -338,7 +333,6 @@ public class PlacementInfoUtil {
       // This is the first create attempt as there is no placement info, we choose a new placement.
       primaryCluster.placementInfo = getPlacementInfo(primaryCluster.userIntent);
       LOG.info("Placement created={}.", primaryCluster.placementInfo);
-      primaryCluster.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
       // Compute the node states that should be configured for this operation.
       configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG);
       return;
@@ -350,7 +344,6 @@ public class PlacementInfoUtil {
 
     LOG.info("Placement={}, nodes={}.", primaryCluster.placementInfo,
              taskParams.nodeDetailsSet.size());
-    primaryCluster.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
     ConfigureNodesMode mode;
     if (didAffinitizedLeadersChange(universe, taskParams)) {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;

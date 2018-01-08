@@ -66,12 +66,9 @@ public class RegionControllerTest extends FakeDBApplication {
     provider = ModelFactory.awsProvider(customer);
   }
 
-  private Result listRegions(UUID providerUUID, boolean multiAZ) {
+  private Result listRegions(UUID providerUUID) {
     String uri = "/api/customers/" + customer.uuid +
         "/providers/" + providerUUID + "/regions";
-    if (multiAZ) {
-      uri += "?isMultiAZ=true";
-    }
     return FakeApiHelper.doRequest("GET", uri);
   }
 
@@ -95,7 +92,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testListRegionsWithInvalidProviderUUID() {
-    Result result = listRegions(UUID.randomUUID(), false);
+    Result result = listRegions(UUID.randomUUID());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(0, json.size());
@@ -103,7 +100,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testListEmptyRegionsWithValidProviderUUID() {
-    Result result = listRegions(provider.uuid, false);
+    Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(0, json.size());
@@ -141,7 +138,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionWithoutZonesAndValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    Result result = listRegions(provider.uuid, false);
+    Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -153,7 +150,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListRegionsWithValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
-    Result result = listRegions(provider.uuid, false);
+    Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(1, json.size());
@@ -164,7 +161,7 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testListRegionsWithMultiAZOption() {
+  public void testListRegions() {
     Region r1 = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     Region r2 = Region.create(provider, "region-2", "PlacementRegion 2", "default-image");
     AvailabilityZone.create(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
@@ -172,14 +169,10 @@ public class RegionControllerTest extends FakeDBApplication {
     AvailabilityZone.create(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
     AvailabilityZone.create(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
     AvailabilityZone.create(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
-    Result result = listRegions(provider.uuid, true);
+    Result result = listRegions(provider.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertEquals(1, json.size());
-    assertEquals(json.get(0).path("uuid").asText(), r1.uuid.toString());
-    assertEquals(json.get(0).path("code").asText(), r1.code);
-    assertEquals(json.get(0).path("name").asText(), r1.name);
-    assertEquals(3, json.get(0).path("zones").size());
+    assertEquals(2, json.size());
   }
 
 

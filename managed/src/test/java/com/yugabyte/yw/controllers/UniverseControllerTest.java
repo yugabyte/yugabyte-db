@@ -226,7 +226,6 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode userIntentJson = primaryClusterJson.get("userIntent");
     assertNotNull(userIntentJson);
     assertThat(userIntentJson.get("replicationFactor").asInt(), allOf(notNullValue(), equalTo(3)));
-    assertThat(userIntentJson.get("isMultiAZ").asBoolean(), allOf(notNullValue(), equalTo(true)));
 
     JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsSet");
     assertNotNull(nodeDetailsMap);
@@ -284,7 +283,6 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "Single UserUniverse")
-      .put("isMultiAZ", false)
       .put("instanceType", "a-instance")
       .put("replicationFactor", 3)
       .put("numNodes", 3)
@@ -314,7 +312,6 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
       .put("universeName", "Single UserUniverse")
-      .put("isMultiAZ", false)
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
       .put("numNodes", 3)
@@ -362,7 +359,6 @@ public class UniverseControllerTest extends WithApplication {
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
-      .put("isMultiAZ", true)
       .put("universeName", u.name)
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
@@ -405,7 +401,6 @@ public class UniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
       .put("masterGFlags", "abcd")
-      .put("isMultiAZ", true)
       .put("universeName", u.name)
       .put("instanceType", i.getInstanceTypeCode())
       .put("replicationFactor", 3)
@@ -447,7 +442,6 @@ public class UniverseControllerTest extends WithApplication {
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson = Json.newObject()
-      .put("isMultiAZ", true)
       .put("universeName", u.name)
       .put("numNodes", 5)
       .put("instanceType", i.getInstanceTypeCode())

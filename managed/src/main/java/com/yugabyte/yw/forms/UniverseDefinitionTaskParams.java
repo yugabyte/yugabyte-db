@@ -142,9 +142,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Constraints.Min(1)
     public int replicationFactor = 3;
 
-    // Determines if this universe is a single or multi AZ deployment.
-    public Boolean isMultiAZ;
-
     // The list of regions that the user wants to place data replicas into.
     public List<UUID> regionList;
 
@@ -179,7 +176,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public String toString() {
-      return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type="
+      return "UserIntent " + "for universe=" + universeName + " type="
              + instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
              providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
              preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
@@ -192,7 +189,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.provider = provider;
       newUserIntent.providerType = providerType;
       newUserIntent.replicationFactor = replicationFactor;
-      newUserIntent.isMultiAZ = new Boolean(isMultiAZ);
       newUserIntent.regionList = new ArrayList<>(regionList);
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;

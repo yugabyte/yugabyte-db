@@ -146,7 +146,6 @@ public class CustomerTest extends FakeDBApplication {
     userIntent.provider = p.code;
     userIntent.regionList = new ArrayList<UUID>();
     userIntent.regionList.add(r.uuid);
-    userIntent.isMultiAZ = false;
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     c.addUniverseUUID(universe.universeUUID);
     c.save();
