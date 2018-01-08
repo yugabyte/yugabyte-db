@@ -8,7 +8,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(228);
+SELECT plan(229);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -22,11 +22,15 @@ CREATE TABLE partman_test.time_taptest_table (col1 int, col2 text default 'stuff
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.time_taptest_table INCLUDING ALL);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
+ALTER TABLE partman_test.time_taptest_table OWNER TO partman_owner;
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'daily');
 
 SELECT has_partition('partman_test', 'time_taptest_table', 'Check that time_taptest_table is natively partitioned');
 SELECT has_table('partman', 'template_partman_test_time_taptest_table', 'Check that default template table was created');
+SELECT table_owner_is ('partman', 'template_partman_test_time_taptest_table', 'partman_owner', 
+    'Check that template table ownership is set properly');
+
 -- Add inheritable stuff to template table
 ALTER TABLE partman.template_partman_test_time_taptest_table ADD PRIMARY KEY (col1);
 ALTER TABLE partman.template_partman_test_time_taptest_table ADD FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2);

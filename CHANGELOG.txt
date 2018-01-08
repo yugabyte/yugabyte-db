@@ -1,3 +1,8 @@
+3.1.1
+-- Fixed custom time intervals to work properly with native partitioning. (Github Issue #200)
+-- Fixed template table owner to be the same as the partitioned table owner when the template table is not manually set during native partition creation. Note this will not change any existing template table ownerships, it only affects newly created native partitions sets. (Github Issue #203)
+
+
 3.1.0
 -- Add support for index & foreign key inheritance in native partitioning for PostgreSQL 10. This is done using a template table that is automatically created in the same schema the pg_partman was installed to. The template table is based off the given parent and any indexes or foreign keys that you would like to be created on child tables can be created on this table. Note that the initial child tables created when create_parent() is called will not have these indexes or FKs unless you run reapply_indexes.py and/or reapply_foreign_keys.py after creating them on the template table. You can also have the initial child tables contain indexes/FKs if you premake the template table and provide it as a parameter to create_parent().
     -- Updated reapply_indexes.py and reapply_foreign_keys.py scripts to handle template table feature for native partitioning

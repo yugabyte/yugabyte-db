@@ -3,17 +3,23 @@ CREATE FUNCTION show_partition_name(p_parent_table text, p_value text, OUT parti
     AS $$
 DECLARE
 
-v_child_exists          text;
-v_control               text;
-v_control_type          text;
-v_datetime_string       text;
-v_epoch                 text;
-v_max_range             timestamptz;
-v_min_range             timestamptz;
-v_parent_schema         text;
-v_parent_tablename      text;
-v_partition_interval    text;
-v_type                  text;
+v_child_end_time                timestamptz;
+v_child_exists                  text;
+v_child_larger                  boolean := false;
+v_child_smaller                 boolean := false;
+v_child_start_time              timestamptz;
+v_control                       text;
+v_control_type                  text;
+v_datetime_string               text;
+v_epoch                         text;
+v_given_timestamp               timestamptz;
+v_max_range                     timestamptz;
+v_min_range                     timestamptz;
+v_parent_schema                 text;
+v_parent_tablename              text;
+v_partition_interval            text;
+v_row                           record;
+v_type                          text;
 
 BEGIN
 /*
@@ -52,30 +58,59 @@ partition_schema := v_parent_schema;
 
 SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
 
-IF ( (v_control_type = 'time') OR (v_control_type = 'id' AND v_epoch <> 'none') )
-     AND v_type <> 'time-custom' 
-THEN
-    CASE
-        WHEN v_partition_interval::interval = '15 mins' THEN
-            suffix_timestamp := date_trunc('hour', p_value::timestamptz) + 
-                '15min'::interval * floor(date_part('minute', p_value::timestamptz) / 15.0);
-        WHEN v_partition_interval::interval = '30 mins' THEN
-            suffix_timestamp := date_trunc('hour', p_value::timestamptz) + 
-                '30min'::interval * floor(date_part('minute', p_value::timestamptz) / 30.0);
-        WHEN v_partition_interval::interval = '1 hour' THEN
-            suffix_timestamp := date_trunc('hour', p_value::timestamptz);
-        WHEN v_partition_interval::interval = '1 day' THEN
-            suffix_timestamp := date_trunc('day', p_value::timestamptz);
-        WHEN v_partition_interval::interval = '1 week' THEN
-            suffix_timestamp := date_trunc('week', p_value::timestamptz);
-        WHEN v_partition_interval::interval = '1 month' THEN
-            suffix_timestamp := date_trunc('month', p_value::timestamptz);
-        WHEN v_partition_interval::interval = '3 months' THEN
-            suffix_timestamp := date_trunc('quarter', p_value::timestamptz);
-        WHEN v_partition_interval::interval = '1 year' THEN
-            suffix_timestamp := date_trunc('year', p_value::timestamptz);
-    END CASE;
-    partition_schema := v_parent_schema;
+IF ( (v_control_type = 'time') OR (v_control_type = 'id' AND v_epoch <> 'none') ) THEN
+
+    v_given_timestamp := p_value::timestamptz;
+    FOR v_row IN 
+        SELECT partition_schemaname ||'.'|| partition_tablename AS child_table FROM @extschema@.show_partitions(p_parent_table, 'DESC')
+    LOOP
+        SELECT child_start_time INTO v_child_start_time  
+            FROM @extschema@.show_partition_info(v_row.child_table, v_partition_interval, p_parent_table); 
+        -- Don't use child_end_time from above function to avoid edge cases around user supplied timestamps
+        v_child_end_time := v_child_start_time + v_partition_interval::interval;
+        IF v_given_timestamp >= v_child_end_time THEN
+            -- given value is higher than any existing child table. handled below.
+            v_child_larger := true;
+            EXIT;
+        END IF;
+        IF v_given_timestamp >= v_child_start_time THEN
+            -- found target child table
+            v_child_smaller := false;
+            suffix_timestamp := v_child_start_time;
+            EXIT;
+        END IF;
+        -- Should only get here if no matching child table was found. handled below.
+        v_child_smaller := true;
+    END LOOP;
+
+    IF v_child_start_time IS NULL OR v_child_end_time IS NULL THEN
+        -- This should never happen since there should never be a partition set without children.
+        -- Handling just in case so issues can be reported with context
+        RAISE EXCEPTION 'Unexpected code path encountered in show_partition_name(). Please report this issue to author with relevant partition config info.';
+    END IF;
+
+    IF v_child_larger THEN
+        LOOP
+            -- keep adding interval until found
+            v_child_start_time := v_child_start_time + v_partition_interval::interval;
+            v_child_end_time := v_child_end_time + v_partition_interval::interval;
+            IF v_given_timestamp >= v_child_start_time AND v_given_timestamp < v_child_end_time THEN
+                suffix_timestamp := v_child_start_time;
+                EXIT;
+            END IF;
+        END LOOP;
+    ELSIF v_child_smaller THEN
+        LOOP
+            -- keep subtracting interval until found
+            v_child_start_time := v_child_start_time - v_partition_interval::interval;
+            v_child_end_time := v_child_end_time - v_partition_interval::interval;
+            IF v_given_timestamp >= v_child_start_time AND v_given_timestamp < v_child_end_time THEN
+                suffix_timestamp := v_child_start_time;
+                EXIT;
+            END IF;
+        END LOOP;
+    END IF;
+
     partition_table := @extschema@.check_name_length(v_parent_tablename, to_char(suffix_timestamp, v_datetime_string), TRUE);
 
 ELSIF v_control_type = 'id' AND v_type <> 'time-custom' THEN
