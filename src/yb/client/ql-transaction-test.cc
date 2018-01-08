@@ -40,7 +40,7 @@ using namespace std::literals; // NOLINT
 
 DECLARE_uint64(transaction_timeout_usec);
 DECLARE_uint64(transaction_heartbeat_usec);
-DECLARE_uint64(transaction_table_default_num_tablets);
+DECLARE_uint64(transaction_table_num_tablets);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
@@ -132,7 +132,7 @@ class QLTransactionTest : public QLDmlTestBase {
 
     ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
 
-    FLAGS_transaction_table_default_num_tablets = 1;
+    FLAGS_transaction_table_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
     FLAGS_log_min_seconds_to_retain = 5;
     server::ClockPtr clock(
@@ -144,7 +144,7 @@ class QLTransactionTest : public QLDmlTestBase {
 
   shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
     auto session = std::make_shared<YBSession>(client_, transaction);
-    session->SetTimeout(NonTsanVsTsan(5s, 20s));
+    session->SetTimeout(NonTsanVsTsan(15s, 60s));
     return session;
   }
 
@@ -373,7 +373,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   google::FlagSaver saver;
 
   FLAGS_max_clock_skew_usec = 1000000;
-  FLAGS_transaction_table_default_num_tablets = 3;
+  FLAGS_transaction_table_num_tablets = 3;
   FLAGS_transaction_timeout_usec = FLAGS_max_clock_skew_usec * 1000;
 
   std::vector<server::TestClockDeltaChanger> delta_changers;

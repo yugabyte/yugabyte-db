@@ -66,7 +66,8 @@ bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
     if (err &&
         err->has_code() &&
         err->code() == ErrorStatusPB::ERROR_SERVER_TOO_BUSY) {
-      DelayedRetry(rpc, controller_status);
+      auto status = DelayedRetry(rpc, controller_status);
+      LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
       return true;
     }
   }
@@ -75,7 +76,7 @@ bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
   return false;
 }
 
-void RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
+Status RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   if (!why_status.ok() && (last_error_.ok() || last_error_.IsTimedOut())) {
     last_error_ = why_status;
   }
@@ -88,16 +89,19 @@ void RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
   while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kWaiting)) {
     if (expected_state == RpcRetrierState::kFinished) {
-      LOG(WARNING) << "Retry of finished command: " << rpc->ToString();
-      return;
+      auto result = STATUS_FORMAT(IllegalState, "Retry of finished command: $0", rpc);
+      LOG(WARNING) << result;
+      return result;
     }
     if (expected_state == RpcRetrierState::kWaiting) {
-      LOG(DFATAL) << "DelayedRetry of already waiting command: " << rpc->ToString();
-      return;
+      auto result = STATUS_FORMAT(IllegalState, "Retry of already waiting command: $0", rpc);
+      LOG(WARNING) << result;
+      return result;
     }
   }
   task_id_ = messenger_->ScheduleOnReactor(
       std::bind(&RpcRetrier::DoRetry, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
+  return Status::OK();
 }
 
 void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
@@ -110,8 +114,8 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   }
   task_id_ = -1;
   if (!run) {
-    rpc->SendRpcCb(STATUS_FORMAT(
-        Aborted, "$0 aborted: $1", rpc->ToString(), ToString(expected_state)));
+    rpc->Finished(STATUS_FORMAT(
+        Aborted, "$0 aborted: $1", rpc->ToString(), yb::rpc::ToString(expected_state)));
     return;
   }
   Status new_status = status;
@@ -134,7 +138,7 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
     controller_.Reset();
     rpc->SendRpc();
   } else {
-    rpc->SendRpcCb(new_status);
+    rpc->Finished(new_status);
   }
   expected_state = RpcRetrierState::kRunning;
   state_.compare_exchange_strong(expected_state, RpcRetrierState::kIdle);
@@ -165,6 +169,13 @@ void RpcRetrier::Abort() {
   }
 }
 
+std::string RpcRetrier::ToString() const {
+  return Format("{ task_id: $0 state: $1 deadline: $2 }",
+                task_id_.load(std::memory_order_acquire),
+                state_.load(std::memory_order_acquire),
+                deadline_);
+}
+
 Rpcs::Rpcs(std::mutex* mutex) {
   if (mutex) {
     mutex_ = mutex;
@@ -175,22 +186,29 @@ Rpcs::Rpcs(std::mutex* mutex) {
 }
 
 void Rpcs::Shutdown() {
-  auto calls_copy = ToVector(calls_, mutex_);
-  for (auto& call : calls_copy) {
+  std::vector<Calls::value_type> calls;
+  {
+    std::lock_guard<std::mutex> lock(*mutex_);
+    if (!shutdown_) {
+      shutdown_ = true;
+      calls.reserve(calls_.size());
+      calls.assign(calls_.begin(), calls_.end());
+    }
+  }
+  for (auto& call : calls) {
     CHECK(call);
     call->Abort();
   }
   auto deadline = std::chrono::steady_clock::now() + 15s;
   {
     std::unique_lock<std::mutex> lock(*mutex_);
-    // cond_.wait(lock, [this]{ return calls_.empty(); });
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
       if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
         break;
       }
     }
-    CHECK(calls_.empty());
+    CHECK(calls_.empty()) << "Calls: " << yb::ToString(calls_);
   }
 }
 
@@ -202,6 +220,10 @@ void Rpcs::Register(RpcCommandPtr call, Handle* handle) {
 
 Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
   std::lock_guard<std::mutex> lock(*mutex_);
+  if (shutdown_) {
+    call->Abort();
+    return InvalidHandle();
+  }
   calls_.push_back(std::move(call));
   return --calls_.end();
 }
@@ -209,7 +231,9 @@ Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
 void Rpcs::RegisterAndStart(RpcCommandPtr call, Handle* handle) {
   CHECK(*handle == calls_.end());
   Register(std::move(call), handle);
-  (***handle).SendRpc();
+  if (*handle != InvalidHandle()) {
+    (***handle).SendRpc();
+  }
 }
 
 RpcCommandPtr Rpcs::Unregister(Handle* handle) {
@@ -228,6 +252,9 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
 
 Rpcs::Handle Rpcs::Prepare() {
   std::lock_guard<std::mutex> lock(*mutex_);
+  if (shutdown_) {
+    return InvalidHandle();
+  }
   calls_.emplace_back();
   return --calls_.end();
 }

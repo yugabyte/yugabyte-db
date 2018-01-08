@@ -91,12 +91,12 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   std::string ToString() const override;
 
  private:
-  void SendRpcCb(const Status& status) override;
+  void Finished(const Status& status) override;
 
   // Invoked when a response comes back from a Master with address
   // 'node_addr'.
   //
-  // Invokes SendRpcCb if the response indicates that the specified
+  // Invokes Finished if the response indicates that the specified
   // master is a leader, or if responses have been received from all
   // of the Masters.
   void GetMasterRegistrationRpcCbForNode(

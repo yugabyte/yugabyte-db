@@ -222,7 +222,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   boost::function<void(const Status&)> flush_callback_;
 
   // All buffered or in-flight ops.
-  // Added to this set during apply, removed during SendRpcCb of AsyncRpc.
+  // Added to this set during apply, removed during Finished of AsyncRpc.
   std::unordered_set<InFlightOpPtr> ops_;
   InFlightOps ops_queue_;
 

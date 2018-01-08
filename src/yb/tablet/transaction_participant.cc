@@ -379,17 +379,19 @@ class TransactionParticipant::Impl {
         state.add_tablets(context_.tablet_id());
 
         auto handle = rpcs_.Prepare();
-        *handle = UpdateTransaction(
-            TransactionRpcDeadline(),
-            nullptr /* remote_tablet */,
-            client(),
-            &req,
-            [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
-              context_.UpdateClock(propagated_hybrid_time);
-              rpcs_.Unregister(handle);
-              LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
-            });
-        (**handle).SendRpc();
+        if (handle != rpcs_.InvalidHandle()) {
+          *handle = UpdateTransaction(
+              TransactionRpcDeadline(),
+              nullptr /* remote_tablet */,
+              client(),
+              &req,
+              [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
+                context_.UpdateClock(propagated_hybrid_time);
+                rpcs_.Unregister(handle);
+                LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
+              });
+          (**handle).SendRpc();
+        }
       }
     }
     return Status::OK();

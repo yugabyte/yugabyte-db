@@ -86,7 +86,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
   std::string ToString() const override;
 
  private:
-  virtual void SendRpcCb(const Status& status) override;
+  void Finished(const Status& status) override;
 
   std::function<void(const Status&)> user_cb_;
   Endpoint addr_;
@@ -101,7 +101,7 @@ void GetMasterRegistrationRpc::SendRpc() {
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
       req, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&GetMasterRegistrationRpc::SendRpcCb, this, Status::OK()));
+      std::bind(&GetMasterRegistrationRpc::Finished, this, Status::OK()));
 }
 
 string GetMasterRegistrationRpc::ToString() const {
@@ -109,7 +109,7 @@ string GetMasterRegistrationRpc::ToString() const {
       yb::ToString(addr_), num_attempts());
 }
 
-void GetMasterRegistrationRpc::SendRpcCb(const Status& status) {
+void GetMasterRegistrationRpc::Finished(const Status& status) {
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
     return;
@@ -188,14 +188,15 @@ void GetLeaderMasterRpc::SendRpc() {
   }
 }
 
-void GetLeaderMasterRpc::SendRpcCb(const Status& status) {
+void GetLeaderMasterRpc::Finished(const Status& status) {
   // If we've received replies from all of the nodes without finding
   // the leader, or if there were network errors talking to all of the
   // nodes the error is retriable and we can perform a delayed retry.
   if (status.IsNetworkError() || status.IsNotFound()) {
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
-    mutable_retrier()->DelayedRetry(this, Status::OK());
+    auto status = mutable_retrier()->DelayedRetry(this, Status::OK());
+    LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
     return;
   }
   {
@@ -226,7 +227,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
     std::lock_guard<simple_spinlock> lock(lock_);
     --pending_responses_;
     if (completed_) {
-      // If 'user_cb_' has been invoked (see SendRpcCb above), we can
+      // If 'user_cb_' has been invoked (see Finished above), we can
       // stop.
       return;
     }
@@ -237,7 +238,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
         // the leader: this way, we can handle the case where we've
         // received a reply from all of the nodes in the cluster (no
         // network or other errors encountered), but haven't found a
-        // leader (which means that SendRpcCb() above can perform a
+        // leader (which means that Finished() above can perform a
         // delayed retry).
         new_status = STATUS(NotFound, "no leader found: " + ToString());
       } else {
@@ -247,8 +248,8 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
     }
     if (!new_status.ok()) {
       if (pending_responses_ > 0) {
-        // Don't call SendRpcCb() on error unless we're the last
-        // outstanding response: calling SendRpcCb() will trigger
+        // Don't call Finished() on error unless we're the last
+        // outstanding response: calling Finished() will trigger
         // a delayed re-try, which don't need to do unless we've
         // been unable to find a leader so far.
         return;
@@ -263,7 +264,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
   if (new_status.ok()) {
     user_cb_.Run(new_status, leader_master_);
   } else {
-    SendRpcCb(new_status);
+    Finished(new_status);
   }
 }
 

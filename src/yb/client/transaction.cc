@@ -348,7 +348,7 @@ class YBTransaction::Impl final {
   }
 
   void LookupTabletDone(const YBTransactionPtr& transaction, const Status& status) {
-    VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << status.ToString();
+    VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << status;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);

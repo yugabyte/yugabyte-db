@@ -847,7 +847,7 @@ class GetTableSchemaRpc : public Rpc {
   virtual ~GetTableSchemaRpc();
 
  private:
-  void SendRpcCb(const Status& status) override;
+  void Finished(const Status& status) override;
 
   void ResetLeaderMasterAndRetry();
 
@@ -888,7 +888,7 @@ GetTableSchemaRpc::~GetTableSchemaRpc() {
 void GetTableSchemaRpc::SendRpc() {
   MonoTime now = MonoTime::Now();
   if (retrier().deadline().ComesBefore(now)) {
-    SendRpcCb(STATUS(TimedOut, "GetTableSchema timed out after deadline expired"));
+    Finished(STATUS(TimedOut, "GetTableSchema timed out after deadline expired"));
     return;
   }
 
@@ -902,7 +902,7 @@ void GetTableSchemaRpc::SendRpc() {
   table_name_.SetIntoTableIdentifierPB(req.mutable_table());
   client_->data_->master_proxy()->GetTableSchemaAsync(
       req, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&GetTableSchemaRpc::SendRpcCb, this, Status::OK()));
+      std::bind(&GetTableSchemaRpc::Finished, this, Status::OK()));
 }
 
 string GetTableSchemaRpc::ToString() const {
@@ -925,11 +925,12 @@ void GetTableSchemaRpc::NewLeaderMasterDeterminedCb(const Status& status) {
     SendRpc();
   } else {
     LOG(WARNING) << "Failed to determine new Master: " << status.ToString();
-    mutable_retrier()->DelayedRetry(this, status);
+    auto retry_status = mutable_retrier()->DelayedRetry(this, status);
+    LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
   }
 }
 
-void GetTableSchemaRpc::SendRpcCb(const Status& status) {
+void GetTableSchemaRpc::Finished(const Status& status) {
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
     return;

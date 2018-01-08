@@ -75,6 +75,12 @@ string UpdateTxnOperation::ToString() const {
 void UpdateTxnOperation::Finish(OperationResult result) {
   if (result == OperationResult::ABORTED) {
     LOG(INFO) << "Aborted: " << state()->request()->ShortDebugString();
+    TransactionCoordinator:: AbortedData data = {
+      mode(),
+      *state()->request(),
+      state()->op_id(),
+    };
+    transaction_coordinator().ProcessAborted(data);
   }
 }
 

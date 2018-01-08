@@ -176,14 +176,15 @@ void TabletInvoker::FailToNewReplica(const Status& reason) {
                  << " as failed. Replicas: " << tablet_->ReplicasAsString();
   }
 
-  retrier_->DelayedRetry(command_, reason);
+  auto status = retrier_->DelayedRetry(command_, reason);
+  LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
 }
 
 bool TabletInvoker::Done(Status* status) {
   TRACE_TO(trace_, "Done($0)", status->ToString(false));
   ADOPT_TRACE(trace_);
 
-  if (status->IsAborted()) {
+  if (status->IsAborted() || retrier_->finished()) {
     return true;
   }
 
@@ -230,7 +231,8 @@ bool TabletInvoker::Done(Status* status) {
     if (status->IsIllegalState() || TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
       FailToNewReplica(*status);
     } else {
-      retrier_->DelayedRetry(command_, *status);
+      auto retry_status = retrier_->DelayedRetry(command_, *status);
+      LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
     }
     return false;
   }
@@ -257,10 +259,12 @@ bool TabletInvoker::Done(Status* status) {
 }
 
 void TabletInvoker::InitialLookupTabletDone(const Status& status) {
+  VLOG(1) << "InitialLookupTabletDone(" << status << ")";
+
   if (status.ok()) {
     Execute(std::string());
   } else {
-    command_->SendRpcCb(status);
+    command_->Finished(status);
   }
 }
 
@@ -275,6 +279,8 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
 }
 
 void TabletInvoker::LookupTabletCb(const Status& status) {
+  VLOG(1) << "LookupTabletCb(" << status << ")";
+
   TRACE_TO(trace_, "LookupTabletCb($0)", status.ToString(false));
 
   // We should retry the RPC regardless of the outcome of the lookup, as
@@ -282,7 +288,7 @@ void TabletInvoker::LookupTabletCb(const Status& status) {
   // Unless we know that this status is persistent.
   // For instance if tablet was deleted, we would always receive "Not found".
   if (status.IsNotFound()) {
-    command_->SendRpcCb(status);
+    command_->Finished(status);
     return;
   }
 
@@ -290,7 +296,10 @@ void TabletInvoker::LookupTabletCb(const Status& status) {
   // but unnecessary the first time through. Seeing as leader failures are
   // rare, perhaps this doesn't matter.
   followers_.clear();
-  retrier_->DelayedRetry(command_, status);
+  auto retry_status = retrier_->DelayedRetry(command_, status);
+  if (!retry_status.ok()) {
+    command_->Finished(status);
+  }
 }
 
 Status ErrorStatus(const tserver::TabletServerErrorPB* error) {

@@ -165,7 +165,7 @@ class YBClient::Data {
 
   // Sets 'master_proxy_' from the address specified by
   // 'leader_master_hostport_'.  Called by
-  // GetLeaderMasterRpc::SendRpcCb() upon successful completion.
+  // GetLeaderMasterRpc::Finished() upon successful completion.
   //
   // See also: SetMasterServerProxyAsync.
   void LeaderMasterDetermined(const Status& status,

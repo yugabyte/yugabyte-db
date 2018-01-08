@@ -60,7 +60,7 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
  public:
   // Asynchronously sends the RPC to the remote end.
   //
-  // Subclasses should use SendRpcCb() below as the callback function.
+  // Subclasses should use Finished() below as the callback function.
   virtual void SendRpc() = 0;
 
   // Returns a string representation of the RPC.
@@ -68,7 +68,7 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
 
   // Callback for SendRpc(). If 'status' is not OK, something failed
   // before the RPC was sent.
-  virtual void SendRpcCb(const Status& status) = 0;
+  virtual void Finished(const Status& status) = 0;
 
   virtual void Abort() = 0;
 
@@ -113,7 +113,7 @@ class RpcRetrier {
   // deadline has already expired at the time that Retry() was called.
   //
   // Callers should ensure that 'rpc' remains alive.
-  void DelayedRetry(RpcCommand* rpc, const Status& why_status);
+  CHECKED_STATUS DelayedRetry(RpcCommand* rpc, const Status& why_status);
 
   RpcController* mutable_controller() { return &controller_; }
   const RpcController& controller() const { return controller_; }
@@ -128,6 +128,12 @@ class RpcRetrier {
 
   void Abort();
 
+  std::string ToString() const;
+
+  bool finished() const {
+    return state_.load(std::memory_order_acquire) == RpcRetrierState::kFinished;
+  }
+
  private:
   // Called when an RPC comes up for retrying. Actually sends the RPC.
   void DoRetry(RpcCommand* rpc, const Status& status);
@@ -139,7 +145,7 @@ class RpcRetrier {
   // delay) until this deadline is reached.
   //
   // May be uninitialized.
-  MonoTime deadline_;
+  const MonoTime deadline_;
 
   // Messenger to use when sending the RPC.
   std::shared_ptr<Messenger> messenger_;
@@ -217,6 +223,7 @@ class Rpcs {
   std::mutex* mutex_;
   std::condition_variable cond_;
   Calls calls_;
+  bool shutdown_ = false;
 };
 
 template <class T, class... Args>
@@ -255,9 +262,13 @@ class WrappedRpcFuture {
 
   template <class... Args>
   std::future<Result<Value>> operator()(Args&&... args) const {
-    auto handle = rpcs_->Prepare();
     auto promise = std::make_shared<std::promise<Result<Value>>>();
     auto future = promise->get_future();
+    auto handle = rpcs_->Prepare();
+    if (handle == rpcs_->InvalidHandle()) {
+      promise->set_value(STATUS(Aborted, "Rpcs aborted"));
+      return future;
+    }
     *handle = functor_(std::forward<Args>(args)...,
                        RpcFutureCallback<Value>(handle, rpcs_, promise));
     (**handle).SendRpc();

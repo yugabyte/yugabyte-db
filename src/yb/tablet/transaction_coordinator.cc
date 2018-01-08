@@ -102,11 +102,12 @@ class TransactionStateContext {
 class TransactionState {
  public:
   explicit TransactionState(TransactionStateContext* context,
-                             const TransactionId& id,
-                             HybridTime last_touch)
+                            const TransactionId& id,
+                            HybridTime last_touch,
+                            const std::string& log_prefix)
       : context_(*context),
         id_(id),
-        log_prefix_(Format("$0: ", to_string(id_))),
+        log_prefix_(Format("$0 $1: ", log_prefix, id_)),
         last_touch_(last_touch) {}
 
   // Id of transaction.
@@ -166,6 +167,15 @@ class TransactionState {
     }
 
     return status;
+  }
+
+  void ProcessAborted(const TransactionCoordinator::AbortedData& data) {
+    if (data.mode == ProcessingMode::LEADER) {
+      DCHECK(replicating_ == nullptr || !replicating_->op_id().IsInitialized() ||
+             consensus::OpIdEquals(replicating_->op_id(), data.op_id));
+      replicating_ = nullptr;
+      ProcessQueue();
+    }
   }
 
   // Clear all locks on this transaction.
@@ -232,7 +242,7 @@ class TransactionState {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request) {
     auto& state = *request->request();
-    VLOG(1) << "Handle: " << state.ShortDebugString();
+    VLOG_WITH_PREFIX(1) << "Handle: " << state.ShortDebugString();
     if (state.status() == TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS) {
       auto status = AppliedInOneOfInvolvedTablets(state);
       request->completion_callback()->CompleteWithStatus(status);
@@ -319,6 +329,14 @@ class TransactionState {
     Status status;
     if (state.status() == TransactionStatus::COMMITTED) {
       status = HandleCommit();
+    } else if (state.status() == TransactionStatus::PENDING) {
+      if (status_ != TransactionStatus::PENDING) {
+        status = STATUS_FORMAT(IllegalState,
+            "Transaction in wrong state during heartbeat: $0",
+            TransactionStatus_Name(status_));
+      } else {
+        status = Status::OK();
+      }
     } else {
       status = Status::OK();
     }
@@ -377,8 +395,8 @@ class TransactionState {
   CHECKED_STATUS AbortedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::ABORTED &&
         status_ != TransactionStatus::PENDING) {
-      LOG(DFATAL) << "Invalid status of aborted transaction: "
-                  << TransactionStatus_Name(status_);
+      LOG_WITH_PREFIX(DFATAL) << "Invalid status of aborted transaction: "
+                              << TransactionStatus_Name(status_);
     }
 
     status_ = TransactionStatus::ABORTED;
@@ -394,7 +412,7 @@ class TransactionState {
     CHECK_EQ(status_, TransactionStatus::PENDING);
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
-    VLOG(4) << "Commit time: " << commit_time_;
+    VLOG_WITH_PREFIX(4) << "Commit time: " << commit_time_;
     status_ = TransactionStatus::COMMITTED;
     unnotified_tablets_.insert(data.state.tablets().begin(), data.state.tablets().end());
     for (const auto& tablet : unnotified_tablets_) {
@@ -420,7 +438,7 @@ class TransactionState {
       Abort();
       return Status::OK();
     }
-    CHECK_EQ(status_, TransactionStatus::PENDING);
+    CHECK_EQ(status_, TransactionStatus::PENDING) << "Transaction id: " << id_;
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
@@ -477,7 +495,8 @@ struct PostponedLeaderActions {
 class TransactionCoordinator::Impl : public TransactionStateContext {
  public:
   Impl(TransactionCoordinatorContext* context, TransactionParticipant* transaction_participant)
-      : context_(*context), transaction_participant_(*transaction_participant) {
+      : context_(*context), transaction_participant_(*transaction_participant),
+        log_prefix_(context->tablet_id() + ": ") {
   }
 
   virtual ~Impl() {
@@ -582,15 +601,48 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
             result = ts.ProcessReplicated(data);
           });
       if (it->Completed()) {
-        VLOG(1) << Format("Erase: $0", *it);
+        VLOG_WITH_PREFIX(1) << Format("Erase: $0", *it);
         managed_transactions_.erase(it);
       }
       actions.Swap(&postponed_leader_actions_);
     }
     ExecutePostponedLeaderActions(&actions);
 
-    VLOG(1) << "Processed: " << data.mode << ", " << data.state.ShortDebugString();
+    VLOG_WITH_PREFIX(1) << "Processed: " << data.mode << ", " << data.state.ShortDebugString();
     return result;
+  }
+
+  void ProcessAborted(const AbortedData& data) {
+    auto id = FullyDecodeTransactionId(data.state.transaction_id());
+    if (!id.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Abort of transaction with bad id "
+                              << data.state.ShortDebugString() << ": " << id.status();
+      return;
+    }
+
+    PostponedLeaderActions actions;
+    {
+      std::lock_guard<std::mutex> lock(managed_mutex_);
+      postponed_leader_actions_.leader = data.mode == ProcessingMode::LEADER;
+      auto it = managed_transactions_.find(*id);
+      if (it == managed_transactions_.end()) {
+        LOG_WITH_PREFIX(WARNING) << "Aborted operation for unknown transaction: " << *id;
+        return;
+      }
+      managed_transactions_.modify(
+          it, [&](TransactionState& ts) {
+            ts.ProcessAborted(data);
+          });
+      if (it->Completed()) {
+        VLOG_WITH_PREFIX(1) << Format("Erase: $0", *it);
+        managed_transactions_.erase(it);
+      }
+      actions.Swap(&postponed_leader_actions_);
+    }
+    ExecutePostponedLeaderActions(&actions);
+
+    VLOG_WITH_PREFIX(1) << "Aborted, mode: " << yb::ToString(data.mode)
+                        << ", state: " << data.state.ShortDebugString();
   }
 
   void ClearLocks() {
@@ -629,10 +681,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         if (state.status() == TransactionStatus::CREATED) {
-          it = managed_transactions_.emplace(this, *id, context_.clock().Now()).first;
+          it = managed_transactions_.emplace(
+              this, *id, context_.clock().Now(), context_.tablet_id()).first;
         } else {
-          LOG(WARNING) << "Request to unknown transaction " << id << ": "
-                       << state.ShortDebugString();
+          LOG_WITH_PREFIX(WARNING) << "Request to unknown transaction " << id << ": "
+                                   << state.ShortDebugString();
           request->completion_callback()->CompleteWithStatus(
               STATUS(Expired, "Transaction expired"));
           return;
@@ -654,6 +707,11 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       return managed_transactions_.get<FirstEntryIndexTag>().begin()->first_entry_raft_index();
     }
     return std::numeric_limits<int64_t>::max();
+  }
+
+  // Returns logs prefix for this transaction.
+  const std::string& LogPrefix() {
+    return log_prefix_;
   }
 
  private:
@@ -699,19 +757,21 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         state.set_commit_hybrid_time(p.commit_time.ToUint64());
 
         auto handle = rpcs_.Prepare();
-        *handle = UpdateTransaction(
-            deadline,
-            nullptr /* remote_tablet */,
-            context_.client_future().get().get(),
-            &req,
-            [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
-              if (propagated_hybrid_time.is_valid()) {
-                context_.UpdateClock(propagated_hybrid_time);
-              }
-              rpcs_.Unregister(handle);
-              LOG_IF(WARNING, !status.ok()) << "Failed to send apply: " << status;
-            });
-        (**handle).SendRpc();
+        if (handle != rpcs_.InvalidHandle()) {
+          *handle = UpdateTransaction(
+              deadline,
+              nullptr /* remote_tablet */,
+              context_.client_future().get().get(),
+              &req,
+              [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
+                if (propagated_hybrid_time.is_valid()) {
+                  context_.UpdateClock(propagated_hybrid_time);
+                }
+                rpcs_.Unregister(handle);
+                LOG_IF(WARNING, !status.ok()) << "Failed to send apply: " << status;
+              });
+          (**handle).SendRpc();
+        }
       }
     }
 
@@ -726,8 +786,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     auto it = managed_transactions_.find(id);
     if (it == managed_transactions_.end()) {
       if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
-        it = managed_transactions_.emplace(this, id, hybrid_time).first;
-        LOG(INFO) << Format("Added: $0", *it);
+        it = managed_transactions_.emplace(this, id, hybrid_time, context_.tablet_id()).first;
+        LOG_WITH_PREFIX(INFO) << Format("Added: $0", *it);
       }
     }
     return it;
@@ -769,7 +829,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     {
       std::lock_guard<std::mutex> lock(managed_mutex_);
       if (!status.ok() || closing_) {
-        LOG(INFO) << "Poll stopped: " << status << ", " << this;
+        LOG_WITH_PREFIX(INFO) << "Poll stopped: " << status;
         poll_task_id_ = rpc::kUninitializedScheduledTaskId;
         cond_.notify_one();
         return;
@@ -801,6 +861,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   TransactionCoordinatorContext& context_;
   TransactionParticipant& transaction_participant_;
+  const std::string log_prefix_;
 
   std::mutex managed_mutex_;
   ManagedTransactions managed_transactions_;
@@ -826,6 +887,10 @@ TransactionCoordinator::~TransactionCoordinator() {
 
 Status TransactionCoordinator::ProcessReplicated(const ReplicatedData& data) {
   return impl_->ProcessReplicated(data);
+}
+
+void TransactionCoordinator::ProcessAborted(const AbortedData& data) {
+  impl_->ProcessAborted(data);
 }
 
 int64_t TransactionCoordinator::PrepareGC() {

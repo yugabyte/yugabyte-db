@@ -126,7 +126,7 @@ const YBTable* AsyncRpc::table() const {
   return ops_[0]->yb_op->table();
 }
 
-void AsyncRpc::SendRpcCb(const Status& status) {
+void AsyncRpc::Finished(const Status& status) {
   Status new_status = status;
   if (tablet_invoker_.Done(&new_status)) {
     ProcessResponseFromTserver(new_status);
@@ -339,7 +339,7 @@ void WriteRpc::CallRemoteMethod() {
 
   tablet_invoker_.proxy()->WriteAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
+      std::bind(&WriteRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
@@ -477,7 +477,7 @@ void ReadRpc::CallRemoteMethod() {
   ADOPT_TRACE(trace.get());
   tablet_invoker_.proxy()->ReadAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
-      std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
+      std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 

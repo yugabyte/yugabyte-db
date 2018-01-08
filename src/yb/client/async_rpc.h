@@ -71,7 +71,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   const InFlightOps& ops() const { return ops_; }
 
  protected:
-  void SendRpcCb(const Status& status) override;
+  void Finished(const Status& status) override;
 
   void SendRpcToTserver() override;
 

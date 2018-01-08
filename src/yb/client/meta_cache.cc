@@ -383,7 +383,7 @@ class LookupRpc : public Rpc {
   }
 
   template <class Response, class ApplyFunctor>
-  void DoSendRpcCb(const Status& status, const Response& resp, const ApplyFunctor& apply_functor);
+  void DoFinished(const Status& status, const Response& resp, const ApplyFunctor& apply_functor);
 
  private:
   virtual RemoteTabletPtr FastLookup() = 0;
@@ -456,15 +456,16 @@ void LookupRpc::SendRpc() {
   }
   if (!has_permit_) {
     // Couldn't get a permit, try again in a little while.
-    mutable_retrier()->DelayedRetry(this, STATUS(TimedOut,
-        "client has too many outstanding requests to the master"));
+    auto status = mutable_retrier()->DelayedRetry(this,
+        STATUS(TryAgain, "Client has too many outstanding requests to the master"));
+    LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
     return;
   }
 
   // See YBClient::Data::SyncLeaderMasterRpc().
   MonoTime now = MonoTime::Now();
   if (retrier().deadline().ComesBefore(now)) {
-    SendRpcCb(STATUS(TimedOut, "timed out after deadline expired"));
+    Finished(STATUS(TimedOut, "timed out after deadline expired"));
     return;
   }
   MonoTime rpc_deadline = now;
@@ -490,14 +491,15 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
     SendRpc();
   } else {
     LOG(WARNING) << "Failed to determine new Master: " << status.ToString();
-    mutable_retrier()->DelayedRetry(this, status);
+    auto retry_status = mutable_retrier()->DelayedRetry(this, status);
+    LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
   }
 }
 
 template <class Response, class ApplyFunctor>
-void LookupRpc::DoSendRpcCb(const Status& status,
-                            const Response& resp,
-                            const ApplyFunctor& apply_functor) {
+void LookupRpc::DoFinished(const Status& status,
+                           const Response& resp,
+                           const ApplyFunctor& apply_functor) {
   if (resp.has_error()) {
     LOG(INFO) << "Got resp error " << resp.error().code() << ", code=" << status.CodeAsString();
   }
@@ -629,12 +631,12 @@ class LookupByIdRpc : public LookupRpc {
 
     master_proxy()->GetTabletLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
-        std::bind(&LookupByIdRpc::SendRpcCb, this, Status::OK()));
+        std::bind(&LookupByIdRpc::Finished, this, Status::OK()));
   }
 
  private:
-  void SendRpcCb(const Status& status) override {
-    DoSendRpcCb(status, resp_, [this] {
+  void Finished(const Status& status) override {
+    DoFinished(status, resp_, [this] {
       return meta_cache()->ProcessTabletLocations(resp_.tablet_locations());
     });
   }
@@ -686,12 +688,12 @@ class LookupByKeyRpc : public LookupRpc {
     // some additional tablets.
     master_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
-        std::bind(&LookupByKeyRpc::SendRpcCb, this, Status::OK()));
+        std::bind(&LookupByKeyRpc::Finished, this, Status::OK()));
   }
 
  private:
-  void SendRpcCb(const Status& status) override {
-    DoSendRpcCb(status, resp_, [this] {
+  void Finished(const Status& status) override {
+    DoFinished(status, resp_, [this] {
       return meta_cache()->ProcessTabletLocations(resp_.tablet_locations());
     });
   }

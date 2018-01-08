@@ -53,7 +53,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
     invoker_.Execute(tablet_id());
   }
 
-  void SendRpcCb(const Status& status) override {
+  void Finished(const Status& status) override {
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
       auto retain_self = shared_from_this();
@@ -72,7 +72,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
   void SendRpcToTserver() override {
     InvokeAsync(invoker_.proxy().get(),
                 mutable_retrier()->mutable_controller(),
-                std::bind(&TransactionRpcBase::SendRpcCb, this, Status::OK()));
+                std::bind(&TransactionRpcBase::Finished, this, Status::OK()));
   }
 
   virtual void InvokeCallback(const Status& status) = 0;
@@ -111,7 +111,7 @@ class TransactionRpc : public TransactionRpcBase {
   }
 
   std::string ToString() const override {
-    return Format("$0: $1", Traits::kName, req_);
+    return Format("$0: $1, retrier: $2", Traits::kName, req_, retrier());
   }
 
   void InvokeCallback(const Status& status) override {

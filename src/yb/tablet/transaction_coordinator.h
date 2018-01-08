@@ -103,6 +103,15 @@ class TransactionCoordinator {
   // Process new transaction state.
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
+  struct AbortedData {
+    ProcessingMode mode;
+    const tserver::TransactionStatePB& state;
+    const consensus::OpId& op_id;
+  };
+
+  // Process transaction state replication aborted.
+  void ProcessAborted(const AbortedData& data);
+
   // Clears locks for transaction updates. Used when leader changes.
   void ClearLocks();
 
