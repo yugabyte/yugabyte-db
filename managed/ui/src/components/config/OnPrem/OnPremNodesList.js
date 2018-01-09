@@ -74,7 +74,7 @@ class OnPremNodesList extends Component {
     const getInstancesKeyedByZone = function(instances, region, zoneList) {
       if (isNonEmptyArray(instances[region])) {
         return instances[region].reduce(function (acc, val) {
-          if (isNonEmptyObject(val)) {
+          if (isNonEmptyObject(val) && isNonEmptyString(val.zone)) {
             const currentZone = val.zone.trim();
             const currentZoneUUID = zoneList[region][currentZone];
             acc[currentZoneUUID] = acc[currentZoneUUID] || [];
