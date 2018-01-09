@@ -99,11 +99,7 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
-      if (checkIfNodeParamsValid(taskParams)) {
-        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
-      } else {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Node/AZ combination for given instance type " + taskParams.retrievePrimaryCluster().userIntent.instanceType);
-      }
+      PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
       return ApiResponse.success(taskParams);
     } catch (Exception e) {
       LOG.error("Unable to Configure Universe for Customer with ID {} Failed with message: {}.",
