@@ -386,6 +386,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
   if (prev_tserver_metrics_submission_ +
       MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::Now()) {
 
+#ifdef TCMALLOC_ENABLED
     // Get the total memory used.
     size_t mem_usage;
     if (MallocExtension::instance()->GetNumericProperty(
@@ -395,6 +396,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     } else {
       YB_LOG_EVERY_N(ERROR, 10) << "Getting memory usage from TCMalloc failed!";
     }
+#endif
 
     // Get the Total SST file sizes and set it in the proto buf
     std::vector<scoped_refptr<yb::tablet::TabletPeer> > tablet_peers;
