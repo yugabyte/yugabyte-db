@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-
+import {isNonEmptyObject, isNonEmptyArray, isNonEmptyString} from 'utils/ObjectUtils';
 import { reset } from 'redux-form';
 import  OnPremNodesList from './OnPremNodesList';
 import {
@@ -87,9 +87,32 @@ const mapDispatchToProps = (dispatch, ownProps) => {
   };
 };
 
+const validate = values => {
+  const errors = {instances: {}};
+  if (isNonEmptyObject(values.instances)) {
+    Object.keys(values.instances).forEach(function (instanceRowKey) {
+      const instanceRowArray = values.instances[instanceRowKey];
+      errors.instances[instanceRowKey] = [];
+      if (isNonEmptyArray(instanceRowArray)) {
+        instanceRowArray.forEach(function(instanceRowItem, instanceRowIdx){
+          errors.instances[instanceRowKey][instanceRowIdx] = {};
+          if (isNonEmptyString(instanceRowItem.instanceTypeIPs)) {
+            instanceRowItem.instanceTypeIPs.split(",").forEach(function(ipItem){
+              if (!isNonEmptyString(ipItem)) {
+                errors.instances[instanceRowKey][instanceRowIdx] = {instanceTypeIPs: "Invalid IP Address"};
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+  return errors;
+};
+
 const addNodeForm = reduxForm({
   form: 'AddNodeForm',
-
+  validate
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(addNodeForm(OnPremNodesList));
