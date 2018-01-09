@@ -23,12 +23,14 @@ public class ServerInfo {
   private int port;
   // Note: Need not be set when there is no leader (eg., when all tablet servers are listed).
   private boolean isLeader;
+  private String state;
 
-  public ServerInfo(String uuid, String host, int port, boolean isLeader) {
+  public ServerInfo(String uuid, String host, int port, boolean isLeader, String state) {
     this.uuid = uuid;
     this.host = host;
     this.port = port;
     this.isLeader = isLeader;
+    this.state = state;
   }
 
   public String getHost() {
@@ -45,6 +47,10 @@ public class ServerInfo {
 
   public boolean isLeader() {
     return isLeader;
+  }
+
+  public String getState() {
+    return state;
   }
 
   // Converts a UUID to string in host byte-order, which is how UUIDs are shown in web server and

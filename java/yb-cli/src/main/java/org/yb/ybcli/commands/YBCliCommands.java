@@ -111,7 +111,7 @@ public class YBCliCommands implements CommandMarker {
     StringBuilder sb = new StringBuilder();
     sb.append("Got " + servers.size() + (isMaster ? " masters " : " tablet servers "));
     if (isMaster) {
-      sb.append("[(index) HostName Port UUID IsLeader]:\n");
+      sb.append("[(index) HostName Port UUID IsLeader State]:\n");
     } else {
       sb.append("[(index) HostName Port UUID]:\n");
     }
@@ -119,7 +119,8 @@ public class YBCliCommands implements CommandMarker {
     int idx = 1;
     for (ServerInfo server : servers) {
       sb.append("    (" + idx + ") " + server.getHost() + " " + server.getPort() +
-                " " + server.getUuid() + (isMaster ? " " + server.isLeader() : "") + "\n");
+                " " + server.getUuid() + (isMaster ? " " + server.isLeader() : "") +
+                (isMaster ? " " + server.getState() : "") + "\n");
       idx++;
     }
     sb.append("Time taken: " + elapsed + " ms.");

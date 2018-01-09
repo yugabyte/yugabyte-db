@@ -14,6 +14,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import org.yb.Common.HostPortPB;
 import org.yb.consensus.Metadata;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
@@ -27,7 +28,6 @@ import java.util.List;
 
 @InterfaceAudience.Private
 class ListMastersRequest extends YRpc<ListMastersResponse> {
-
   public ListMastersRequest(YBTable masterTable) {
     super(masterTable);
   }
@@ -50,20 +50,22 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
 
   @Override
   Pair<ListMastersResponse, Object> deserialize(CallResponse callResponse,
-                                                 String masterUUID) throws Exception {
+                                                String masterUUID) throws Exception {
     final Master.ListMastersResponsePB.Builder respBuilder =
       Master.ListMastersResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    List<ServerInfo> masters = null;
+    List<ServerInfo> masters = new ArrayList<ServerInfo>();
     boolean hasErr = respBuilder.hasError();
     if (!hasErr) {
-      masters = new ArrayList<ServerInfo>(respBuilder.getMastersCount());
       ServerInfo master = null;
+      HostPortPB rpc_addr = null;
       for (WireProtocol.ServerEntryPB entry : respBuilder.getMastersList()) {
+        rpc_addr = entry.hasRegistration() ? entry.getRegistration().getRpcAddresses(0) : null;
         master = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
-                                entry.getRegistration().getRpcAddresses(0).getHost(),
-                                entry.getRegistration().getRpcAddresses(0).getPort(),
-                                entry.getRole() == Metadata.RaftPeerPB.Role.LEADER);
+                                rpc_addr != null ? rpc_addr.getHost() : "UNKNOWN",
+                                rpc_addr != null ? rpc_addr.getPort() : 0,
+                                entry.getRole() == Metadata.RaftPeerPB.Role.LEADER,
+                                entry.hasError() ? entry.getError().getCode().name() : "ALIVE");
         masters.add(master);
       }
     }

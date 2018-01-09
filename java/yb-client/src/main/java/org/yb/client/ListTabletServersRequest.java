@@ -78,7 +78,7 @@ public class ListTabletServersRequest extends YRpc<ListTabletServersResponse> {
         server = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
                                 entry.getRegistration().getCommon().getRpcAddresses(0).getHost(),
                                 entry.getRegistration().getCommon().getRpcAddresses(0).getPort(),
-                                false); // Leader info is not present as its for all tservers.
+                                false, ""); // Leader info is not present as its for all tservers.
         servers.add(server);
       }
     }
