@@ -787,19 +787,27 @@ stmt:
     $$ = $1;
   }
   | SelectStmt {
-    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
     $$ = $1;
   }
   | InsertStmt {
-    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
     $$ = $1;
   }
   | DeleteStmt {
-    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
     $$ = $1;
   }
   | UpdateStmt {
-    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
     $$ = $1;
   }
   | inactive_stmt {

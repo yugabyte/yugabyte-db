@@ -91,7 +91,7 @@ TEST_F(QLTestParser, TestQLParser) {
   // Valid statement: SELECT.
   PARSE_VALID_STMT("SELECT * FROM human_resource;");
 
-  // Invalid statements. Currently, not all errors are reported, so this test list is limmited.
+  // Invalid statements. Currently, not all errors are reported, so this test list is limited.
   // Currently, we're reporting some scanning errors with error code (1).
   PARSE_INVALID_STMT("CREATE TABLE human_resource(id int;");
 
@@ -103,6 +103,11 @@ TEST_F(QLTestParser, TestQLParser) {
 
   // Invalid statement: INSERT with unterminated quoted string literal.
   PARSE_INVALID_STMT("INSERT INTO human_resource VALUES(7, 'Scott Tiger;");
+
+  // Invalid statement: INSERT/UPDATE/DELETE with declared but unsupported syntax.
+  PARSE_INVALID_STMT("INSERT INTO human_resource DEFAULT VALUES 1");
+  PARSE_INVALID_STMT("UPDATE human_resource SET salary = 1 WHERE id = 1 AND name= 'a' RETURNING 1");
+  PARSE_INVALID_STMT("DELETE from human_resource WHERE id = 1 AND name = 'Joe' RETURNING 1");
 
   // Valid statement: SELECT.
   PARSE_VALID_STMT("SELECT id, name FROM human_resource;");
@@ -162,6 +167,10 @@ TEST_F(QLTestParser, TestQLParser) {
   // Invalid statement: SELECT statement with ":" named bind marker: reserved keyword.
   PARSE_INVALID_STMT("SELECT * FROM t WHERE c1 = :true;");
   PARSE_INVALID_STMT("SELECT * FROM t WHERE c1 = :table;");
+
+  // Invalid statement: SELECT with declared but unsupported syntax.
+  PARSE_INVALID_STMT("SELECT * FROM t UNION SELECT * FROM t");
+  PARSE_INVALID_STMT("TABLE 1");
 
   // Invalid statement: CREATE with invalid prop value.
   PARSE_INVALID_STMT("CREATE TABLE human_resource"
