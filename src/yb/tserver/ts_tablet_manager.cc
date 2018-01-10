@@ -272,6 +272,17 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_metrics(std::move(metrics))
                .Build(&apply_pool_));
 
+  // This pool is shared by all replicas hosted by this server.
+  //
+  // Some submitted tasks use blocking IO, so we configure no upper bound on
+  // the maximum number of threads in each pool (otherwise the default value of
+  // "number of CPUs" may cause blocking tasks to starve other "fast" tasks).
+  // However, the effective upper bound is the number of replicas as each will
+  // submit its own tasks via a dedicated token.
+  CHECK_OK(ThreadPoolBuilder("raft")
+               .set_max_threads(std::numeric_limits<int>::max())
+               .Build(&raft_pool_));
+
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
   // Auto-compute size of block cache if asked to.
@@ -876,7 +887,8 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                                     scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     log,
-                                    tablet->GetMetricEntity());
+                                    tablet->GetMetricEntity(),
+                                    raft_pool());
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -952,6 +964,10 @@ void TSTabletManager::Shutdown() {
 
   // Shut down the apply pool.
   apply_pool_->Shutdown();
+
+  if (raft_pool_) {
+    raft_pool_->Shutdown();
+  }
 
   {
     std::lock_guard<rw_spinlock> l(lock_);

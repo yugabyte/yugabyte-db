@@ -111,6 +111,7 @@ class TabletPeerTest : public YBTabletTest,
     table_type_ = YQL_TABLE_TYPE;
 
     ASSERT_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
+    ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
     ASSERT_OK(builder.Build().MoveTo(&messenger_));
@@ -159,7 +160,8 @@ class TabletPeerTest : public YBTabletTest,
                                            clock(),
                                            messenger_,
                                            log,
-                                           metric_entity_));
+                                           metric_entity_,
+                                           raft_pool_.get()));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -272,6 +274,7 @@ class TabletPeerTest : public YBTabletTest,
   shared_ptr<Messenger> messenger_;
   scoped_refptr<TabletPeer> tablet_peer_;
   gscoped_ptr<ThreadPool> apply_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
   TableType table_type_;
 };
 

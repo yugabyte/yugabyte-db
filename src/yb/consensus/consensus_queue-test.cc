@@ -47,6 +47,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_int32(consensus_max_batch_size_bytes);
@@ -86,6 +87,7 @@ class ConsensusQueueTest : public YBTest {
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
 
+    ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     consensus_.reset(new TestRaftConsensusQueueIface());
     CloseAndReopenQueue();
     queue_->RegisterObserver(consensus_.get());
@@ -98,7 +100,8 @@ class ConsensusQueueTest : public YBTest {
                                       log_.get(),
                                       FakeRaftPeerPB(kLeaderUuid),
                                       kTestTablet,
-                                      clock_));
+                                      clock_,
+    raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
   }
 
   void TearDown() override {
@@ -208,6 +211,7 @@ class ConsensusQueueTest : public YBTest {
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   scoped_refptr<log::Log> log_;
+  std::unique_ptr<ThreadPool> raft_pool_;
   gscoped_ptr<PeerMessageQueue> queue_;
   scoped_refptr<log::LogAnchorRegistry> registry_;
   scoped_refptr<server::Clock> clock_;
@@ -419,7 +423,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
 
   // Since only the local log might have ACKed at this point,
   // the committed_index should be MinimumOpId().
-  queue_->observers_pool_->Wait();
+  queue_->raft_pool_observers_token_->Wait();
   ASSERT_OPID_EQ(queue_->GetCommittedIndexForTests(), MinimumOpId());
 
   // NOTE: We don't need to get operations from the queue. The queue
@@ -438,7 +442,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ASSERT_TRUE(more_pending);
 
   // Committed index should be the same
-  queue_->observers_pool_->Wait();
+  queue_->raft_pool_observers_token_->Wait();
   ASSERT_OPID_EQ(queue_->GetCommittedIndexForTests(), MinimumOpId());
 
   // Ack the first five operations for peer-2
@@ -447,7 +451,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ASSERT_TRUE(more_pending);
 
   // A majority has now replicated up to 0.5.
-  queue_->observers_pool_->Wait();
+  queue_->raft_pool_observers_token_->Wait();
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), MakeOpId(0, 5));
 
   // Ack all operations for peer-3
@@ -470,7 +474,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
 
   // Now that a majority of peers have replicated an operation in the queue's
   // term the committed index should advance.
-  queue_->observers_pool_->Wait();
+  queue_->raft_pool_observers_token_->Wait();
   ASSERT_OPID_EQ(queue_->GetMajorityReplicatedOpIdForTests(), MakeOpId(1, 10));
 }
 

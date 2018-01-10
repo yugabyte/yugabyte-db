@@ -69,7 +69,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -117,6 +117,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
       master_(master),
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
+  CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -127,6 +128,7 @@ void SysCatalogTable::Shutdown() {
     tablet_peer_->Shutdown();
   }
   apply_pool_->Shutdown();
+  raft_pool_->Shutdown();
 }
 
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
@@ -426,6 +428,7 @@ Status SysCatalogTable::GoIntoShellMode() {
 
   tablet_peer_.reset();
   apply_pool_.reset();
+  raft_pool_.reset();
 
   return Status::OK();
 }
@@ -478,7 +481,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      scoped_refptr<server::Clock>(master_->clock()),
                                                      master_->messenger(),
                                                      log,
-                                                     tablet->GetMetricEntity()),
+                                                     tablet->GetMetricEntity(),
+                                                     raft_pool()),
                         "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer_->Start(consensus_info),

@@ -91,6 +91,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   explicit RemoteBootstrapTest(TableType table_type)
     : YBTabletTest(GetSimpleTestSchema(), table_type) {
     CHECK_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
+    CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
   }
 
   virtual void SetUp() override {
@@ -154,7 +155,8 @@ class RemoteBootstrapTest : public YBTabletTest {
                                           clock(),
                                           *messenger,
                                           log,
-                                          metric_entity));
+                                          metric_entity,
+                                          raft_pool_.get()));
     consensus::ConsensusBootstrapInfo boot_info;
     CHECK_OK(tablet_peer_->Start(boot_info));
 
@@ -224,6 +226,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   MetricRegistry metric_registry_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   gscoped_ptr<ThreadPool> apply_pool_;
+  unique_ptr<ThreadPool> raft_pool_;
   scoped_refptr<TabletPeer> tablet_peer_;
   scoped_refptr<RemoteBootstrapSession> session_;
 };

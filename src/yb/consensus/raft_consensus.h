@@ -62,6 +62,7 @@ class Counter;
 class FailureDetector;
 class HostPort;
 class ThreadPool;
+class ThreadPoolToken;
 
 namespace server {
 class Clock;
@@ -96,14 +97,15 @@ class RaftConsensus : public Consensus,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    LostLeadershipListener lost_leadership_listener);
+    LostLeadershipListener lost_leadership_listener,
+    ThreadPool* raft_pool);
 
   RaftConsensus(const ConsensusOptions& options,
     gscoped_ptr<ConsensusMetadata> cmeta,
     gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
     gscoped_ptr<PeerMessageQueue> queue,
     gscoped_ptr<PeerManager> peer_manager,
-    gscoped_ptr<ThreadPool> thread_pool,
+    std::unique_ptr<ThreadPoolToken> raft_pool_token,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::string& peer_uuid,
     const scoped_refptr<server::Clock>& clock,
@@ -535,9 +537,9 @@ class RaftConsensus : public Consensus,
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
 
-  // Threadpool for constructing requests to peers, handling RPC callbacks,
+  // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
-  gscoped_ptr<ThreadPool> thread_pool_;
+  std::unique_ptr<ThreadPoolToken> raft_pool_token_;
 
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;

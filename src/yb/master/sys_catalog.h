@@ -133,6 +133,8 @@ class SysCatalogTable {
   static std::string schema_column_id();
   static std::string schema_column_metadata();
 
+  ThreadPool* raft_pool() const { return raft_pool_.get(); }
+
   const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
     return tablet_peer_;
   }
@@ -212,6 +214,9 @@ class SysCatalogTable {
   MetricRegistry* metric_registry_;
 
   gscoped_ptr<ThreadPool> apply_pool_;
+
+  // Thread pool for Raft-related operations
+  gscoped_ptr<ThreadPool> raft_pool_;
 
   scoped_refptr<tablet::TabletPeer> tablet_peer_;
 

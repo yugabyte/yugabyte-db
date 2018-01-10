@@ -148,6 +148,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Shut down all of the tablets, gracefully flushing before shutdown.
   void Shutdown();
 
+  ThreadPool* raft_pool() const { return raft_pool_.get(); }
+
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
   //
@@ -426,6 +428,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Thread pool for apply transactions, shared between all tablets.
   gscoped_ptr<ThreadPool> apply_pool_;
+
+  // Thread pool for Raft-related operations, shared between all tablets.
+  std::unique_ptr<ThreadPool> raft_pool_;
 
   // Used for scheduling flushes
   std::unique_ptr<BackgroundTask> background_task_;

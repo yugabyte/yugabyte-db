@@ -51,13 +51,13 @@ PeerManager::PeerManager(const std::string tablet_id,
                          const std::string local_uuid,
                          PeerProxyFactory* peer_proxy_factory,
                          PeerMessageQueue* queue,
-                         ThreadPool* request_thread_pool,
+                         ThreadPoolToken* raft_pool_token,
                          const scoped_refptr<log::Log>& log)
     : tablet_id_(tablet_id),
       local_uuid_(local_uuid),
       peer_proxy_factory_(peer_proxy_factory),
       queue_(queue),
-      thread_pool_(request_thread_pool),
+      raft_pool_token_(raft_pool_token),
       log_(log) {
 }
 
@@ -88,7 +88,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
                                       tablet_id_,
                                       local_uuid_,
                                       queue_,
-                                      thread_pool_,
+                                      raft_pool_token_,
                                       peer_proxy.Pass(),
                                       consensus_,
                                       &remote_peer));

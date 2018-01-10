@@ -90,7 +90,7 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                            const string& tablet_id,
                            const string& leader_uuid,
                            PeerMessageQueue* queue,
-                           ThreadPool* thread_pool,
+                           ThreadPoolToken* raft_pool_token,
                            gscoped_ptr<PeerProxy> proxy,
                            Consensus* consensus,
                            std::unique_ptr<Peer>* peer) {
@@ -100,7 +100,7 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                                           leader_uuid,
                                           proxy.Pass(),
                                           queue,
-                                          thread_pool,
+                                          raft_pool_token,
                                           consensus));
   RETURN_NOT_OK(new_peer->Init());
   peer->reset(new_peer.release());
@@ -109,7 +109,7 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
 
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, gscoped_ptr<PeerProxy> proxy,
-    PeerMessageQueue* queue, ThreadPool* thread_pool, Consensus* consensus)
+    PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
@@ -120,7 +120,7 @@ Peer::Peer(
       heartbeater_(
           peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
           std::bind(&Peer::SignalRequest, this, RequestTriggerMode::ALWAYS_SEND)),
-      thread_pool_(thread_pool),
+      raft_pool_token_(raft_pool_token),
       state_(kPeerCreated),
       consensus_(consensus) {}
 
@@ -172,7 +172,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     }
   }
 
-  auto status = thread_pool_->SubmitClosure(
+  auto status = raft_pool_token_->SubmitClosure(
       Bind(&Peer::SendNextRequest, Unretained(this), trigger_mode));
   if (!status.ok()) {
     sem_.Release();
@@ -314,7 +314,7 @@ void Peer::ProcessResponse() {
   // The queue's handling of the peer response may generate IO (reads against the WAL) and
   // SendNextRequest() may do the same thing. So we run the rest of the response handling logic on
   // our thread pool and not on the reactor thread.
-  Status s = thread_pool_->SubmitClosure(Bind(&Peer::DoProcessResponse, Unretained(this)));
+  Status s = raft_pool_token_->SubmitClosure(Bind(&Peer::DoProcessResponse, Unretained(this)));
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to process peer response: " << s.ToString()
         << ": " << response_.ShortDebugString();

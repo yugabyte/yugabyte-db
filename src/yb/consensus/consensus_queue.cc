@@ -99,6 +99,7 @@ namespace consensus {
 
 using log::AsyncLogReader;
 using log::Log;
+using std::unique_ptr;
 using rpc::Messenger;
 using util::to_underlying;
 using strings::Substitute;
@@ -134,16 +135,16 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
                                    const scoped_refptr<log::Log>& log,
                                    const RaftPeerPB& local_peer_pb,
                                    const string& tablet_id,
-                                   const server::ClockPtr& clock)
-    : local_peer_pb_(local_peer_pb),
+                                   const server::ClockPtr& clock,
+                                   unique_ptr<ThreadPoolToken> raft_pool_token)
+    : raft_pool_observers_token_(std::move(raft_pool_token)),
+      local_peer_pb_(local_peer_pb),
       tablet_id_(tablet_id),
       log_cache_(metric_entity, log, local_peer_pb.permanent_uuid(), tablet_id),
       metrics_(metric_entity),
       clock_(clock) {
   DCHECK(local_peer_pb_.has_permanent_uuid());
   DCHECK(local_peer_pb_.has_last_known_addr());
-  CHECK_OK(ThreadPoolBuilder("queue-observers-pool").set_min_threads(1)
-           .set_max_threads(1).Build(&observers_pool_));
 }
 
 void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
@@ -863,7 +864,7 @@ void PeerMessageQueue::ClearUnlocked() {
 }
 
 void PeerMessageQueue::Close() {
-  observers_pool_->Shutdown();
+  raft_pool_observers_token_->Shutdown();
   LockGuard lock(queue_lock_);
   ClearUnlocked();
 }
@@ -936,7 +937,7 @@ bool PeerMessageQueue::IsOpInLog(const OpId& desired_op) const {
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
     const MajorityReplicatedData& majority_replicated_data) {
-  WARN_NOT_OK(observers_pool_->SubmitClosure(
+  WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
       Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
            Unretained(this),
            majority_replicated_data)),
@@ -945,7 +946,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
 }
 
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
-  WARN_NOT_OK(observers_pool_->SubmitClosure(
+  WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
       Bind(&PeerMessageQueue::NotifyObserversOfTermChangeTask,
            Unretained(this), term)),
               LogPrefixUnlocked() + "Unable to notify RaftConsensus of term change.");
@@ -1000,7 +1001,7 @@ void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
 void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
                                                        int64_t term,
                                                        const string& reason) {
-  WARN_NOT_OK(observers_pool_->SubmitClosure(
+  WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
       Bind(&PeerMessageQueue::NotifyObserversOfFailedFollowerTask,
            Unretained(this), uuid, term, reason)),
               LogPrefixUnlocked() + "Unable to notify RaftConsensus of abandoned follower.");

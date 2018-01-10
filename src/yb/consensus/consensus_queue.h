@@ -62,7 +62,7 @@ template<class T>
 class AtomicGauge;
 class MemTracker;
 class MetricEntity;
-class ThreadPool;
+class ThreadPoolToken;
 
 namespace log {
 class Log;
@@ -162,7 +162,8 @@ class PeerMessageQueue {
                    const scoped_refptr<log::Log>& log,
                    const RaftPeerPB& local_peer_pb,
                    const std::string& tablet_id,
-                   const server::ClockPtr& clock);
+                   const server::ClockPtr& clock,
+                   std::unique_ptr<ThreadPoolToken> raft_pool_observers_token);
 
   // Initialize the queue.
   virtual void Init(const OpId& last_locally_replicated);
@@ -420,9 +421,8 @@ class PeerMessageQueue {
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
-  // The pool which executes observer notifications.
-  // TODO consider reusing a another pool.
-  gscoped_ptr<ThreadPool> observers_pool_;
+  // The pool token which executes observer notifications.
+  std::unique_ptr<ThreadPoolToken> raft_pool_observers_token_;
 
   // PB containing identifying information about the local peer.
   const RaftPeerPB local_peer_pb_;

@@ -51,12 +51,12 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
+#include "yb/tablet/prepare_thread.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
-#include "yb/tablet/prepare_thread.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -73,6 +73,7 @@ class UpdateTransactionResponsePB;
 
 class MaintenanceManager;
 class MaintenanceOp;
+class ThreadPool;
 
 namespace tablet {
 class LeaderOperationDriver;
@@ -106,7 +107,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
                                 const scoped_refptr<server::Clock> &clock,
                                 const std::shared_ptr<rpc::Messenger> &messenger,
                                 const scoped_refptr<log::Log> &log,
-                                const scoped_refptr<MetricEntity> &metric_entity);
+                                const scoped_refptr<MetricEntity> &metric_entity,
+                                ThreadPool* raft_pool);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers

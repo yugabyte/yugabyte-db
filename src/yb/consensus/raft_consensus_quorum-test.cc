@@ -58,6 +58,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/threadpool.h"
 
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_bool(enable_leader_failure_detection);
@@ -68,6 +69,7 @@ METRIC_DECLARE_entity(tablet);
   ASSERT_NO_FATALS(ReplicateSequenceOfMessages(__VA_ARGS__))
 
 using std::shared_ptr;
+using std::unique_ptr;
 
 namespace yb {
 
@@ -97,6 +99,7 @@ class RaftConsensusQuorumTest : public YBTest {
       schema_(GetSimpleTestSchema()) {
     options_.tablet_id = kTestTablet;
     FLAGS_enable_leader_failure_detection = false;
+    CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
   }
 
   // Builds an initial configuration of 'num' elements.
@@ -154,22 +157,23 @@ class RaftConsensusQuorumTest : public YBTest {
 
       RaftPeerPB local_peer_pb;
       CHECK_OK(GetRaftConfigMember(config_, peer_uuid, &local_peer_pb));
-      gscoped_ptr<PeerMessageQueue> queue(new PeerMessageQueue(metric_entity_,
-                                                               logs_[i],
-                                                               local_peer_pb,
-                                                               kTestTablet,
-                                                               clock_));
+      gscoped_ptr<PeerMessageQueue> queue(
+          new PeerMessageQueue(metric_entity_,
+                               logs_[i],
+                               local_peer_pb,
+                               kTestTablet,
+                               clock_,
+                               raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
 
-      gscoped_ptr<ThreadPool> thread_pool;
-      CHECK_OK(ThreadPoolBuilder(Substitute("$0-raft", options_.tablet_id.substr(0, 6)))
-               .Build(&thread_pool));
+      unique_ptr<ThreadPoolToken> pool_token(
+          raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT));
 
       gscoped_ptr<PeerManager> peer_manager(
           new PeerManager(options_.tablet_id,
                           config_.peers(i).permanent_uuid(),
                           proxy_factory,
                           queue.get(),
-                          thread_pool.get(),
+                          pool_token.get(),
                           logs_[i]));
 
       scoped_refptr<RaftConsensus> peer(
@@ -178,7 +182,7 @@ class RaftConsensusQuorumTest : public YBTest {
                             gscoped_ptr<PeerProxyFactory>(proxy_factory).Pass(),
                             queue.Pass(),
                             peer_manager.Pass(),
-                            thread_pool.Pass(),
+                            std::move(pool_token),
                             metric_entity_,
                             config_.peers(i).permanent_uuid(),
                             clock_,
@@ -536,6 +540,7 @@ class RaftConsensusQuorumTest : public YBTest {
   vector<shared_ptr<MemTracker> > parent_mem_trackers_;
   vector<FsManager*> fs_managers_;
   vector<scoped_refptr<Log> > logs_;
+  unique_ptr<ThreadPool> raft_pool_;
   gscoped_ptr<TestPeerMapManager> peers_;
   std::vector<std::unique_ptr<TestOperationFactory>> operation_factories_;
   scoped_refptr<server::Clock> clock_;

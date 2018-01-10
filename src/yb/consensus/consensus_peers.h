@@ -52,7 +52,7 @@
 
 namespace yb {
 class HostPort;
-class ThreadPool;
+class ThreadPoolToken;
 
 namespace log {
 class Log;
@@ -131,6 +131,15 @@ class Peer {
   // behavior.
   PeerProxy* GetPeerProxyForTests();
 
+  // Stop sending requests and periodic heartbeats.
+  //
+  // This does not block waiting on any current outstanding requests to finish.
+  // However, when they do finish, the results will be disregarded, so this
+  // is safe to call at any point.
+  //
+  // This method must be called before the Peer's associated ThreadPoolToken
+  // is destructed. Once this method returns, it is safe to destruct
+  // the ThreadPoolToken.
   void Close();
 
   void SetTermForTest(int term);
@@ -140,14 +149,14 @@ class Peer {
   // Creates a new remote peer and makes the queue track it.'
   //
   // Requests to this peer (which may end up doing IO to read non-cached log entries) are assembled
-  // on 'thread_pool'.  Response handling may also involve IO related to log-entry lookups and is
-  // also done on 'thread_pool'.
+  // on 'raft_pool_token'.  Response handling may also involve IO related to log-entry lookups
+  // and is also done on 'thread_pool'.
   static CHECKED_STATUS NewRemotePeer(
       const RaftPeerPB& peer_pb,
       const std::string& tablet_id,
       const std::string& leader_uuid,
       PeerMessageQueue* queue,
-      ThreadPool* thread_pool,
+      ThreadPoolToken* raft_pool_token,
       gscoped_ptr<PeerProxy> proxy,
       Consensus* consensus,
       std::unique_ptr<Peer>* peer);
@@ -155,16 +164,16 @@ class Peer {
  private:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        gscoped_ptr<PeerProxy> proxy, PeerMessageQueue* queue,
-       ThreadPool* thread_pool, Consensus* consensus);
+       ThreadPoolToken* raft_pool_token, Consensus* consensus);
 
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
   // Signals that a response was received from the peer.  This method is called from the reactor
-  // thread and calls DoProcessResponse() on thread_pool_ to do any work that requires IO or
+  // thread and calls DoProcessResponse() on raft_pool_token_ to do any work that requires IO or
   // lock-taking.
   void ProcessResponse();
 
-  // Run on 'thread_pool'. Does response handling that requires IO or may block.
+  // Run on 'raft_pool_token'. Does response handling that requires IO or may block.
   void DoProcessResponse();
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
@@ -219,7 +228,7 @@ class Peer {
   ResettableHeartbeater heartbeater_;
 
   // Thread pool used to construct requests to this peer.
-  ThreadPool* thread_pool_;
+  ThreadPoolToken* raft_pool_token_;
 
   enum State {
     kPeerCreated,

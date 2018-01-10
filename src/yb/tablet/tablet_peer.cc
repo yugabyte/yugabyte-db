@@ -149,7 +149,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const scoped_refptr<server::Clock> &clock,
                                   const shared_ptr<Messenger> &messenger,
                                   const scoped_refptr<Log> &log,
-                                  const scoped_refptr<MetricEntity> &metric_entity) {
+                                  const scoped_refptr<MetricEntity> &metric_entity,
+                                  ThreadPool* raft_pool) {
 
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -171,18 +172,20 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
                                           meta_->fs_manager()->uuid(), &cmeta_));
 
-    consensus_ = RaftConsensus::Create(options,
-                                       cmeta_.Pass(),
-                                       local_peer_pb_,
-                                       metric_entity,
-                                       clock_,
-                                       this,
-                                       messenger_,
-                                       log_.get(),
-                                       tablet_->mem_tracker(),
-                                       mark_dirty_clbk_,
-                                       tablet_->table_type(),
-                                       std::bind(&Tablet::LostLeadership, tablet.get()));
+    consensus_ = RaftConsensus::Create(
+        options,
+        cmeta_.Pass(),
+        local_peer_pb_,
+        metric_entity,
+        clock_,
+        this,
+        messenger_,
+        log_.get(),
+        tablet_->mem_tracker(),
+        mark_dirty_clbk_,
+        tablet_->table_type(),
+        std::bind(&Tablet::LostLeadership, tablet.get()),
+        raft_pool);
 
     tablet_->SetHybridTimeLeaseProvider([this](MicrosTime min_allowed, MonoTime deadline) {
         return consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
