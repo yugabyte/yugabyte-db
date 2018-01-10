@@ -79,13 +79,24 @@ class ReleaseUtil(object):
                         value_list[i], new_value))
                     value_list[i] = new_value
 
-    def create_distribution(self, distribution_dir):
+    def create_distribution(self, distribution_dir, prefix_dir=None):
         """This method would read the release_manifest and traverse through the
         build directory and copy necessary files/symlinks into the distribution_dir
         Args:
             distribution_dir (string): Directory to create the distribution
+            prefix_dir (string): Only add entries that have a manifest key prefixed with this
         """
+        if prefix_dir:
+            full_path_prefix_dir = os.path.join(distribution_dir, prefix_dir)
+            if os.path.exists(full_path_prefix_dir):
+                logging.info("Found data at {}, removing before adding to distribution.".format(
+                    full_path_prefix_dir))
+                # Ignore errors so that it recurses even if dir is not empty.
+                shutil.rmtree(full_path_prefix_dir, ignore_errors=True)
         for dir_from_manifest in self.release_manifest:
+            # If we're using a prefix_dir, skip all manifest keys not starting with this.
+            if prefix_dir is not None and not dir_from_manifest.startswith(prefix_dir):
+                continue
             current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
             if not os.path.exists(current_dest_dir):
                 os.makedirs(current_dest_dir)

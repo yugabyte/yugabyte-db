@@ -64,12 +64,14 @@ def main():
                         help='Save the newly built release path to a file with this name. '
                              'This allows to post-process / upload the newly generated release '
                              'in an enclosing script.')
+    parser.add_argument('--java_only', action="store_true",
+                        help="Only build the java part of the code. Does not generate an archive!")
     add_common_arguments(parser)
     args = parser.parse_args()
 
     init_env(args.verbose)
 
-    if not args.build_target and not args.build_archive:
+    if not args.build_target and not args.build_archive and not args.java_only:
         logging.info("Implying --build_archive (build package) because --build_target "
                      "(a custom directory to put YB distribution files into) is not specified.")
         args.build_archive = True
@@ -129,8 +131,8 @@ def main():
     if not build_type:
         build_type = 'release'
 
-    logging.info("Building YugaByte DB {} Edition: '{}' build".format(
-        build_edition.capitalize(), build_type))
+    logging.info("Building YugaByte DB {} Edition: '{}' build{}".format(
+        build_edition.capitalize(), build_type, " Java only" if args.java_only else ""))
 
     build_desc_path = os.path.join(tmp_dir, 'build_descriptor.yaml')
     build_cmd_list = [
@@ -138,18 +140,25 @@ def main():
         "--with-assembly",
         "--write-build-descriptor", build_desc_path,
         "--edition", build_edition,
-        # This will build the exact set of targets that are needed for the release.
-        "packaged_targets",
         build_type
     ]
+
     if build_root:
         # This will force yb_build.sh to use this build directory, and detect build type,
         # compiler type, edition, etc. based on that.
         build_cmd_list += ["--build-root", build_root]
-    if args.skip_build:
-        build_cmd_list += ["--skip-build"]
-    if args.build_args:
-        build_cmd_list += args.build_args.strip().split()
+
+    if args.java_only:
+        build_cmd_list += ["--java-only"]
+    else:
+        build_cmd_list += [
+            # This will build the exact set of targets that are needed for the release.
+            "packaged_targets"
+        ]
+        if args.skip_build:
+            build_cmd_list += ["--skip-build"]
+        if args.build_args:
+            build_cmd_list += args.build_args.strip().split()
 
     build_cmd_line = " ".join(build_cmd_list).strip()
     logging.info("Build command line: {}".format(build_cmd_line))
@@ -179,30 +188,34 @@ def main():
                                args.commit)
     release_util.rewrite_manifest(build_root)
 
-    system = platform.system().lower()
-    if system == "linux":
-        library_packager = LibraryPackager(
-            build_dir=build_root,
-            seed_executable_patterns=release_util.get_binary_path(),
-            dest_dir=yb_distribution_dir,
-            verbose_mode=args.verbose)
-    elif system == "darwin":
-        library_packager = MacLibraryPackager(
+    if not args.java_only:
+        system = platform.system().lower()
+        if system == "linux":
+            library_packager = LibraryPackager(
                 build_dir=build_root,
                 seed_executable_patterns=release_util.get_binary_path(),
                 dest_dir=yb_distribution_dir,
                 verbose_mode=args.verbose)
-    else:
-        raise RuntimeError("System {} not supported".format(system))
-    library_packager.package_binaries()
+        elif system == "darwin":
+            library_packager = MacLibraryPackager(
+                    build_dir=build_root,
+                    seed_executable_patterns=release_util.get_binary_path(),
+                    dest_dir=yb_distribution_dir,
+                    verbose_mode=args.verbose)
+        else:
+            raise RuntimeError("System {} not supported".format(system))
+        library_packager.package_binaries()
 
     release_util.update_manifest(yb_distribution_dir)
 
     logging.info("Generating release distribution")
 
     if os.path.exists(build_target) and os.listdir(build_target):
-        raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
-    release_util.create_distribution(build_target)
+        if args.java_only:
+            logging.info("Directory '{}' exists and is not empty, but we are using --java_only")
+        else:
+            raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
+    release_util.create_distribution(build_target, "java" if args.java_only else None)
 
     if args.build_archive:
         release_file = os.path.realpath(release_util.generate_release())
