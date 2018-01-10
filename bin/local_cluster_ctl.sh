@@ -273,6 +273,10 @@ start_master() {
     echo "Internal error: directory '$master_base_dir' does not exist" >&2
     exit 1
   fi
+  local master_flags=""
+  if [ "$shell_master" = false ]; then
+    master_flags="--master_addresses $master_addresses"
+  fi
   (
     echo "Starting master $master_index"
     set -x
@@ -281,7 +285,7 @@ start_master() {
       --fs_data_dirs "$master_base_dir/disk1,$master_base_dir/disk2" \
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
-      --master_addresses "$master_addresses" \
+      $master_flags \
       --webserver_interface 127.0.0.$master_index \
       --webserver_port $(( $master_http_port_base + $master_index )) \
       --rpc_bind_addresses 127.0.0.$master_index:$(( $master_rpc_port )) \
@@ -454,6 +458,7 @@ yb_num_shards_per_tserver=""
 tserver_db_block_cache_size_bytes=""
 replication_factor=""
 use_cassandra_authentication=false
+shell_master=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -491,7 +496,11 @@ while [ $# -gt 0 ]; do
       daemon_index_to_restart="$2"
       shift
     ;;
-    start|stop|status|add|start-master|add-tserver|destroy|restart|wipe-restart)
+    start-master)
+      set_cmd "$1"
+      shell_master=true
+    ;;
+    start|stop|status|add|add-tserver|destroy|restart|wipe-restart)
       set_cmd "$1"
     ;;
     *)
