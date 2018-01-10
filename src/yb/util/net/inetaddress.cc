@@ -25,7 +25,7 @@ namespace yb {
 InetAddress::InetAddress() {
 }
 
-InetAddress::InetAddress(const address& address)
+InetAddress::InetAddress(const boost::asio::ip::address& address)
     : boost_addr_(address) {
 }
 
@@ -52,7 +52,7 @@ CHECKED_STATUS ResolveInternal(const std::string& host,
 CHECKED_STATUS InetAddress::Resolve(const std::string& host, std::vector<InetAddress>* addresses) {
   // Try to see if we already have an IP address.
   boost::system::error_code ec;
-  address addr = address::from_string(host, ec);
+  boost::asio::ip::address addr = address::from_string(host, ec);
   if (ec.value()) {
     // Resolve the host if we don't have a valid IP addr notation string.
     tcp::resolver::iterator iter;

@@ -113,18 +113,17 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
         }
 
         // Use only the first rpc address.
+        InetAddress addr;
         const yb::HostPortPB& hostport_pb = ts_info.registration().common().rpc_addresses(0);
-        boost::system::error_code ec;
-        Endpoint addr(IpAddress::from_string(hostport_pb.host(), ec), hostport_pb.port());
-        if (ec) {
-          LOG(WARNING) << strings::Substitute("Couldn't parse host $0, error: $1",
-                                              hostport_pb.host(), ec.message());
+        if (PREDICT_FALSE(!addr.FromString(hostport_pb.host()).ok())) {
+          LOG(WARNING) << strings::Substitute("Couldn't parse host $0", hostport_pb.host());
           continue;
         }
 
         // Queue event for all clients to add a node.
         cqlserver_event_list->AddEvent(
-            BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode, addr));
+            BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
+                                     Endpoint(addr.address(), hostport_pb.port())));
       }
     }
 
