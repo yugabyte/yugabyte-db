@@ -1,6 +1,7 @@
 #!/bin/bash
 # Copyright (c) YugaByte, Inc.
 
-. ./common_itest
+YW_REPO="$( dirname "${BASH_SOURCE[0]}" )"
+. "$YW_REPO"/common_itest
 echo "Done installing cassandra-driver, running integration test now..."
-"$( dirname "${BASH_SOURCE[0]}" )"/src/itest/itest.py "$@"
+"$YW_REPO"/src/itest/itest.py "$@"
