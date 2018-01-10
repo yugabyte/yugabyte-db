@@ -13,20 +13,19 @@ import requests
 import json
 import glob
 from subprocess import check_output, CalledProcessError
-from ybops.utils import init_env, log_message, get_release_file, publish_release, \
-    generate_checksum, latest_release, download_release, docker_push_to_registry, \
-    ReleasePackage
+from ybops.utils import init_env, log_message, get_release_file, download_release, \
+    docker_push_to_registry, ReleasePackage, RELEASE_EDITION_ENTERPRISE
 from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET
 from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
   - Builds the React API and generates production files (js, css, etc)
   - Run sbt packaging command to package yugaware along with the react files
-  If we want to publish a docker image, then we just generate and publish
-  or else, we would do the following to generate a release file.
+  If we want to publish a docker image, then we just generate and publish to Docker Registry.
+  If we're not building docker, then we do the following:
   - Rename the package file to have the commit sha in it
-  - Generate checksum for the package
-  - Publish the package to s3
+  - Move the package file to the required destination
+  - A higher level user, such as itest, will upload all release packages to s3 release bucket
 
 """
 
@@ -35,7 +34,7 @@ release_types = ["docker", "file", "replicated"]
 parser.add_argument('--type', action='store', choices=release_types,
                    default="file", help='Provide a release type')
 parser.add_argument('--publish', action='store_true',
-                    help='Publish release to S3.')
+                    help='Publish release to Docker Registry.')
 parser.add_argument('--destination', help='Copy release to Destination folder.')
 parser.add_argument('--tag', help='Release tag name')
 parser.add_argument('--packages', nargs='+',  help='Comma separated release packages' +
@@ -63,8 +62,8 @@ try:
                 raise YBOpsRuntimeError("Required packages {} not specified".format(REQUIRED_PACKAGES))
         elif args.tag:
             log_message(logging.INFO, "Download packages based on the release tag")
-            packages = [p.get("package") for p in get_package_info(args.tag)
-                        if 'yugabyte-ce' not in p.get("package")]
+            packages = [p.get("package")
+                        for p in get_package_info(args.tag, RELEASE_EDITION_ENTERPRISE, "centos")]
         packages_folder = os.path.join(script_dir, "target", "docker", "packages")
 
         try:
@@ -190,9 +189,7 @@ try:
         shutil.copyfile(packaged_files[0], release_file)
         shutil.rmtree(mapDownloadPath, ignore_errors=True)
         if args.publish:
-            log_message(logging.INFO, "Publish the release to S3")
-            generate_checksum(release_file)
-            publish_release(script_dir, release_file)
+            raise YBOpsRuntimeError("Can only use --publish with docker.")
         elif args.destination:
             if not os.path.exists(args.destination):
                 raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
