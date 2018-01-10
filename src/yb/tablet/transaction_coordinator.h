@@ -87,7 +87,8 @@ typedef std::function<void(Result<TransactionStatusResult>)> TransactionAbortCal
 // Each tablet has separate transaction coordinator.
 class TransactionCoordinator {
  public:
-  TransactionCoordinator(TransactionCoordinatorContext* context,
+  TransactionCoordinator(const std::string& permanent_uuid,
+                         TransactionCoordinatorContext* context,
                          TransactionParticipant* transaction_participant);
   ~TransactionCoordinator();
 

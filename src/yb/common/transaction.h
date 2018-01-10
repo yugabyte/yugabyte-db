@@ -76,6 +76,7 @@ struct StatusRequest {
   const TransactionId* id;
   HybridTime read_ht;
   HybridTime global_limit_ht;
+  int64_t serial_no;
   TransactionStatusCallback callback;
 };
 
@@ -98,6 +99,10 @@ class TransactionStatusManager {
   // will be invoked with TryAgain result.
   // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
   virtual void RequestStatusAt(const StatusRequest& request) = 0;
+
+  // Registers new request assigning next serial no to it. So this serial no could be used
+  // to check whether one request happened before another one.
+  virtual int64_t RegisterRequest() = 0;
 
   virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
 

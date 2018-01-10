@@ -138,6 +138,10 @@ class RpcOperationCompletionCallback : public tablet::OperationCompletionCallbac
       : context_(std::move(context)), response_(response), clock_(clock) {}
 
   void OperationCompleted() override {
+    bool expected = false;
+    if (!responded_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+      return;
+    }
     if (clock_) {
       response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     }
@@ -157,6 +161,7 @@ class RpcOperationCompletionCallback : public tablet::OperationCompletionCallbac
   rpc::RpcContext context_;
   Response* const response_;
   server::ClockPtr clock_;
+  std::atomic<bool> responded_{false};
 };
 
 template<class Response>

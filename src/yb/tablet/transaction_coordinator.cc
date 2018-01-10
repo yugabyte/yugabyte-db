@@ -97,6 +97,11 @@ class TransactionStateContext {
   ~TransactionStateContext() {}
 };
 
+std::string BuildLogPrefix(const std::string& parent_log_prefix, const TransactionId& id) {
+  auto id_string = boost::uuids::to_string(id);
+  return parent_log_prefix.substr(0, parent_log_prefix.length() - 2) + "ID " + id_string + ": ";
+}
+
 // TransactionState keeps state of single transaction.
 // User of this class should guarantee that it does NOT invoke methods concurrently.
 class TransactionState {
@@ -104,10 +109,10 @@ class TransactionState {
   explicit TransactionState(TransactionStateContext* context,
                             const TransactionId& id,
                             HybridTime last_touch,
-                            const std::string& log_prefix)
+                            const std::string& parent_log_prefix)
       : context_(*context),
         id_(id),
-        log_prefix_(Format("$0 $1: ", log_prefix, id_)),
+        log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
         last_touch_(last_touch) {}
 
   // Id of transaction.
@@ -133,9 +138,10 @@ class TransactionState {
 
   // Returns debug string this representation of this class.
   std::string ToString() const {
-    return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 }",
+    return Format("{ id: $0 last_touch: $1 status: $2 unnotified_tablets: $3 replicating: $4 "
+                  " request_queue: $5 }",
                   to_string(id_), last_touch_, TransactionStatus_Name(status_),
-                  unnotified_tablets_);
+                  unnotified_tablets_, replicating_, request_queue_);
   }
 
   // Whether this transaction expired at specified time.
@@ -181,8 +187,9 @@ class TransactionState {
   // Clear all locks on this transaction.
   // Currently there is only one lock, but user of this function should not care about that.
   void ClearLocks() {
+    VLOG_WITH_PREFIX(1) << "ClearLocks";
     if (replicating_ != nullptr || !request_queue_.empty() || !abort_waiters_.empty()) {
-      auto status = STATUS(TryAgain, "Leader changed during abort");
+      auto status = STATUS(TryAgain, "Leader changed");
       if (replicating_ != nullptr) {
         replicating_->completion_callback()->CompleteWithStatus(status);
         replicating_ = nullptr;
@@ -276,7 +283,7 @@ class TransactionState {
   void Poll() const {
     if (status_ == TransactionStatus::COMMITTED) {
       DCHECK(!unnotified_tablets_.empty() ||
-             ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS));
+             ShouldBeInStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS)) << ToString();
       for (auto& tablet : unnotified_tablets_) {
         context_.NotifyApplying({tablet, id_, commit_time_});
       }
@@ -287,8 +294,22 @@ class TransactionState {
   // Checks whether we in specified status or going to be in this status when replication is
   // finished.
   bool ShouldBeInStatus(TransactionStatus status) const {
-    return status_ == status ||
-           (replicating_ && replicating_->request()->status() == status);
+    if (status_ == status) {
+      return true;
+    }
+    if (replicating_) {
+      if (replicating_->request()->status() == status) {
+        return true;
+      }
+
+      for (const auto& entry : request_queue_) {
+        if (entry->request()->status() == status) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   bool ShouldBeCommitted() const {
@@ -367,6 +388,8 @@ class TransactionState {
   }
 
   void SubmitUpdateStatus(TransactionStatus status) {
+    VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
+
     tserver::TransactionStatePB state;
     state.set_transaction_id(id_.begin(), id_.size());
     state.set_status(status);
@@ -494,9 +517,11 @@ struct PostponedLeaderActions {
 // Real implementation of transaction coordinator, as in PImpl idiom.
 class TransactionCoordinator::Impl : public TransactionStateContext {
  public:
-  Impl(TransactionCoordinatorContext* context, TransactionParticipant* transaction_participant)
+  Impl(const std::string& permanent_uuid,
+       TransactionCoordinatorContext* context,
+       TransactionParticipant* transaction_participant)
       : context_(*context), transaction_participant_(*transaction_participant),
-        log_prefix_(context->tablet_id() + ": ") {
+        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), permanent_uuid)) {
   }
 
   virtual ~Impl() {
@@ -682,7 +707,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       if (it == managed_transactions_.end()) {
         if (state.status() == TransactionStatus::CREATED) {
           it = managed_transactions_.emplace(
-              this, *id, context_.clock().Now(), context_.tablet_id()).first;
+              this, *id, context_.clock().Now(), log_prefix_).first;
         } else {
           LOG_WITH_PREFIX(WARNING) << "Request to unknown transaction " << id << ": "
                                    << state.ShortDebugString();
@@ -786,7 +811,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
     auto it = managed_transactions_.find(id);
     if (it == managed_transactions_.end()) {
       if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
-        it = managed_transactions_.emplace(this, id, hybrid_time, context_.tablet_id()).first;
+        it = managed_transactions_.emplace(this, id, hybrid_time, log_prefix_).first;
         LOG_WITH_PREFIX(INFO) << Format("Added: $0", *it);
       }
     }
@@ -807,6 +832,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       postponed_leader_actions_.updates.push_back(std::move(state));
       return true;
     } else {
+      VLOG_WITH_PREFIX(1) << "Submit update transaction on non leader";
       return false;
     }
   }
@@ -877,9 +903,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
   rpc::Rpcs rpcs_;
 };
 
-TransactionCoordinator::TransactionCoordinator(TransactionCoordinatorContext* context,
+TransactionCoordinator::TransactionCoordinator(const std::string& permanent_uuid,
+                                               TransactionCoordinatorContext* context,
                                                TransactionParticipant* transaction_participant)
-    : impl_(new Impl(context, transaction_participant)) {
+    : impl_(new Impl(permanent_uuid, context, transaction_participant)) {
 }
 
 TransactionCoordinator::~TransactionCoordinator() {

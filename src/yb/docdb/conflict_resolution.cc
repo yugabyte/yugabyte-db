@@ -54,7 +54,7 @@ CHECKED_STATUS MakeConflictStatus(const TransactionId& id, const char* reason) {
   return STATUS_FORMAT(TryAgain,
                        "Conflicts with $0 transaction: $1",
                        reason,
-                       Slice(id.data, id.size()).ToDebugHexString());
+                       FullyDecodeTransactionId(Slice(id.data, id.size())));
 }
 
 class ConflictResolver;
@@ -241,6 +241,8 @@ class ConflictResolver {
         &transaction.id,
         context_.GetHybridTime(),
         context_.GetHybridTime(),
+        0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
+           // So we cannot accept status with time >= read_ht and < global_limit_ht.
         [&transaction, &latch](Result<TransactionStatusResult> result) {
           if (result.ok()) {
             transaction.ProcessStatus(*result);

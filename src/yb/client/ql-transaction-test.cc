@@ -16,6 +16,7 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
+#include <boost/scope_exit.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
@@ -49,6 +50,7 @@ DECLARE_uint64(transaction_check_interval_usec);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
 DECLARE_bool(use_test_clock);
+DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
 
 namespace yb {
 namespace client {
@@ -111,6 +113,16 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
   });
   txn->reset();
   latch.Wait();
+}
+
+MUST_USE_RESULT std::vector<server::TestClockDeltaChanger> SkewClocks(
+    MiniCluster* cluster, std::chrono::milliseconds clock_skew) {
+  std::vector<server::TestClockDeltaChanger> delta_changers;
+  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+    auto* tserver = cluster->mini_tablet_server(i)->server();
+    delta_changers.emplace_back(i * clock_skew, down_cast<server::TestClock*>(tserver->clock()));
+  }
+  return delta_changers;
 }
 
 } // namespace
@@ -376,12 +388,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   FLAGS_transaction_table_num_tablets = 3;
   FLAGS_transaction_timeout_usec = FLAGS_max_clock_skew_usec * 1000;
 
-  std::vector<server::TestClockDeltaChanger> delta_changers;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    auto* tserver = cluster_->mini_tablet_server(i)->server();
-    delta_changers.emplace_back(i * kClockSkew, down_cast<server::TestClock*>(tserver->clock()));
-  }
-
+  auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
   constexpr size_t kTotalTransactions = 10;
 
   for (size_t i = 0; i != kTotalTransactions; ++i) {
@@ -758,6 +765,104 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
   CommitAndResetSync(&txn2);
 
   ASSERT_OK(cluster_->RestartSync());
+}
+
+// This test launches write thread, that writes increasing value to key using transaction.
+// Then it launches multiple read threads, each of them tries to read this key and
+// verifies that its value is at least the same like it was written before read was started.
+//
+// It is don't for multiple keys sequentially. So those keys are located on different tablets
+// and tablet servers, and we test different cases of clock skew.
+TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
+  const auto kClockSkew = 100ms;
+  constexpr auto kMinWrites = RegularBuildVsSanitizers(25, 1);
+  constexpr auto kMinReads = 10;
+  constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
+  google::FlagSaver saver;
+
+  FLAGS_transaction_delay_status_reply_usec_in_tests = 200000;
+  FLAGS_transaction_table_num_tablets = 3;
+  FLAGS_log_segment_size_bytes = 0;
+  FLAGS_max_clock_skew_usec = std::chrono::microseconds(kClockSkew).count() * 3;
+
+  auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
+
+
+  for (int32_t key = 0; key != 10; ++key) {
+    std::atomic<bool> stop(false);
+    std::atomic<int32_t> value(0);
+
+    std::thread write_thread([this, key, &stop, &value] {
+      auto session = CreateSession();
+      while (!stop) {
+        auto txn = CreateTransaction();
+        session->SetTransaction(txn);
+        WriteRow(session, key, value + 1);
+        auto status = txn->CommitFuture().get();
+        if (status.ok()) {
+          ++value;
+        }
+      }
+    });
+
+    std::vector<std::thread> read_threads;
+    std::array<std::atomic<size_t>, kConcurrentReads> reads;
+    for (auto& read : reads) {
+      read.store(0);
+    }
+
+    for (size_t i = 0; i != kConcurrentReads; ++i) {
+      read_threads.emplace_back([this, key, &stop, &value, &read = reads[i]] {
+        auto session = CreateSession();
+        bool ok = false;
+        BOOST_SCOPE_EXIT(&ok, &stop) {
+          if (!ok) {
+            stop = true;
+          }
+        } BOOST_SCOPE_EXIT_END;
+        while (!stop) {
+          auto value_before_start = value.load();
+          YBqlReadOpPtr op = ReadRow(session, key);
+          ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK)
+                        << op->response().ShortDebugString();
+          auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+          int32_t current_value;
+          if (rowblock->row_count() == 0) {
+            current_value = 0;
+          } else {
+            current_value = rowblock->row(0).column(0).int32_value();
+          }
+          ASSERT_GE(current_value, value_before_start);
+          ++read;
+        }
+        ok = true;
+      });
+    }
+
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (!stop && std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(100ms);
+    }
+
+    // Already failed
+    bool failed = stop.exchange(true);
+    write_thread.join();
+
+    for (auto& thread : read_threads) {
+      thread.join();
+    }
+
+    if (failed) {
+      break;
+    }
+
+    LOG(INFO) << "Writes: " << value.load() << ", reads: " << yb::ToString(reads);
+
+    EXPECT_GE(value.load(), kMinWrites);
+    for (auto& read : reads) {
+      EXPECT_GE(read.load(), kMinReads);
+    }
+  }
 }
 
 struct TransactionState {

@@ -33,12 +33,15 @@ struct ReadHybridTime {
   // Read time limit, that is used for global entries, for instance transactions.
   HybridTime global_limit;
 
+  // Serial no of request that uses this read hybrid time.
+  int64_t serial_no = 0;
+
   static ReadHybridTime Max() {
     return SingleTime(HybridTime::kMax);
   }
 
   static ReadHybridTime SingleTime(HybridTime value) {
-    return {value, value, value};
+    return {value, value, value, 0};
   }
 
   static ReadHybridTime FromMicros(MicrosTime micros) {
@@ -95,7 +98,8 @@ struct ReadHybridTime {
   }
 
   std::string ToString() const {
-    return Format("{ read: $0 local_limit: $1 global_limit: $2 }", read, local_limit, global_limit);
+    return Format("{ read: $0 local_limit: $1 global_limit: $2 serial_no: $3}",
+                  read, local_limit, global_limit, serial_no);
   }
 };
 

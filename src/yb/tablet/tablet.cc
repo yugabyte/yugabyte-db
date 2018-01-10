@@ -327,7 +327,9 @@ Tablet::Tablet(
   if (transaction_coordinator_context) { // TODO(dtxn) Create coordinator only for status tablets
     CHECK_NOTNULL(transaction_participant_context);
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
-        transaction_coordinator_context, transaction_participant_.get());
+        metadata->fs_manager()->uuid(),
+        transaction_coordinator_context,
+        transaction_participant_.get());
   }
 
   flush_stats_ = make_shared<TabletFlushStats>();

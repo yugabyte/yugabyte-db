@@ -71,6 +71,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return boost::none;
   }
 
+  int64_t RegisterRequest() override {
+    Fail();
+    return 0;
+  }
+
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
     Fail();
   }

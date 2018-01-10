@@ -799,12 +799,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   auto read_time = ReadHybridTime::FromReadTimePB(*req);
   bool allow_retry = !read_time;
   tablet::RequireLease require_lease(req->consistency_level() == YBConsistencyLevel::STRONG);
+  bool transactional = tablet->SchemaRef().table_properties().is_transactional();
   if (!read_time) {
     safe_ht_to_read = tablet->SafeHybridTimeToReadAt(require_lease);
     // If the read time is not specified, then it is non transactional read.
     // So we should restart it in server in case of failure.
     read_time.read = safe_ht_to_read;
-    if (tablet->SchemaRef().table_properties().is_transactional()) {
+    if (transactional) {
       read_time.local_limit = server_->Clock()->Now().AddMicroseconds(FLAGS_max_clock_skew_usec);
       read_time.global_limit = read_time.local_limit;
 
@@ -821,6 +822,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
                            TabletServerErrorPB::UNKNOWN_ERROR, &context);
       return;
     }
+  }
+
+  if (transactional) {
+    // Serial number is used for check whether this operation was initiated before
+    // transaction status request. So we should initialize it as soon as possible.
+    read_time.serial_no =
+        down_cast<tablet::Tablet*>(tablet.get())->transaction_participant()->RegisterRequest();
   }
 
   const auto& remote_address = context.remote_address();

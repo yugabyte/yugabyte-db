@@ -258,7 +258,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  std::string permanent_uuid() const;
+  const std::string& permanent_uuid() const;
 
   CHECKED_STATUS NewOperationDriver(std::unique_ptr<Operation> operation,
                                     consensus::DriverType type,

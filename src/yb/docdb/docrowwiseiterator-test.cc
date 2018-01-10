@@ -657,6 +657,10 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
   }
 
+  int64_t RegisterRequest() override {
+    return 0;
+  }
+
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;
 };

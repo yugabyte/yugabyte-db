@@ -77,12 +77,20 @@ class YBTransaction::Impl final {
   // This transaction is a restarted transaction, so we set it up with data from original one.
   void SetupRestart(Impl* other) {
     VLOG_WITH_PREFIX(1) << "Setup from " << other->ToString();
-    std::lock_guard<std::mutex> lock(mutex_);
-    DCHECK(!restarts_.empty());
-    other->local_limits_.swap(restarts_);
-    other->read_time_ = read_time_;
-    other->read_time_.read = restart_read_time_;
-    complete_.store(true, std::memory_order_release);
+    auto transaction = transaction_->shared_from_this();
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (complete_.load(std::memory_order_acquire)) {
+        LOG(DFATAL) << "Restart of completed transaction";
+        return;
+      }
+      DCHECK(!restarts_.empty());
+      other->local_limits_.swap(restarts_);
+      other->read_time_ = read_time_;
+      other->read_time_.read = restart_read_time_;
+      complete_.store(true, std::memory_order_release);
+    }
+    DoAbort(Status::OK(), transaction);
   }
 
   bool Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,

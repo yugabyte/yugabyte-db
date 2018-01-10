@@ -653,17 +653,19 @@ Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& ro
   return Status::OK();
 }
 
-string TabletPeer::permanent_uuid() const {
+const std::string& TabletPeer::permanent_uuid() const {
   if (cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
     return cached_permanent_uuid_;
   }
   std::lock_guard<simple_spinlock> lock(lock_);
-  if (tablet_ == nullptr)
-    return "";
+  if (tablet_ == nullptr) {
+    static std::string empty_string;
+    return empty_string;
+  }
 
   if (!cached_permanent_uuid_initialized_.load(std::memory_order_acquire)) {
     cached_permanent_uuid_ = tablet_->metadata()->fs_manager()->uuid();
-    cached_permanent_uuid_initialized_.store(std::memory_order_release);
+    cached_permanent_uuid_initialized_.store(true, std::memory_order_release);
   }
   return cached_permanent_uuid_;
 }

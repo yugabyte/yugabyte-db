@@ -95,6 +95,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void RequestStatusAt(const StatusRequest& request) override;
 
+  int64_t RegisterRequest() override;
+
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
