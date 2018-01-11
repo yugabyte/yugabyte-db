@@ -992,6 +992,30 @@ googleAnalytics = "UA-104956980-1"
 	url = "api/redis/tsrem/"
 
 [[menu.main]]
+  name = "ZADD"
+  weight = 2370
+  parent = "api-redis"
+  url = "api/redis/zadd/"
+
+[[menu.main]]
+  name = "ZCARD"
+  weight = 2380
+  parent = "api-redis"
+  url = "api/redis/zcard/"
+
+[[menu.main]]
+  name = "ZRANGEBYSCORE"
+  weight = 2390
+  parent = "api-redis"
+  url = "api/redis/zrangebyscore/"
+
+[[menu.main]]
+  name = "ZREM"
+  weight = 2391
+  parent = "api-redis"
+  url = "api/redis/zrem/"
+
+[[menu.main]]
 	name   = "Admin Reference"
 	weight = 2400
 	url = "admin/"

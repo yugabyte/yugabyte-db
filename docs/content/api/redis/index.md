@@ -15,7 +15,7 @@ DataType | Development Status |
 string | Supported |
 hash | Supported |
 set | Supported |
-sorted set | Not yet supported |
+sorted set | Supported |
 list | Not yet supported |
 time series | New datatype in YugaByte! |
 
@@ -60,3 +60,7 @@ Command | Description |
 [`TSGET`](tsget/) | Retrieve a time series entry|
 [`TSRANGEBYTIME`](tsrangebytime/) | Retrieve time series entries for a given time range|
 [`TSREM`](tsrem/) | Delete a time series entry|
+[`ZADD`](zadd/) | Add a sorted set entry|
+[`ZCARD`](zcard/) | Get cardinality of a sorted set|
+[`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given range|
+[`ZREM`](zrem/) | Delete a sorted set entry|
