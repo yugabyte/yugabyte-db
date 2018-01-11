@@ -38,6 +38,7 @@ namespace client {
 
 typedef std::function<void(const Status&)> Waiter;
 typedef std::function<void(const Status&)> CommitCallback;
+typedef std::function<void(const Result<ChildTransactionDataPB>&)> PrepareChildCallback;
 
 // When Batch plans to execute some operations in context of a transaction, it asks
 // that transaction to make some preparations. This struct contains results of those preparations.
@@ -55,12 +56,29 @@ struct TransactionPrepareData {
   const std::unordered_map<TabletId, HybridTime>* local_limits;
 };
 
+struct ChildTransactionData {
+  TransactionMetadata metadata;
+  ReadHybridTime read_time;
+  std::unordered_map<TabletId, HybridTime> local_limits;
+
+  static Result<ChildTransactionData> FromPB(const ChildTransactionDataPB& data);
+};
+
 // YBTransaction is a representation of a single transaction.
 // After YBTransaction is created, it could be used during construction of YBSession,
 // to indicate that this session will send commands related to this transaction.
 class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
  public:
   YBTransaction(TransactionManager* manager, IsolationLevel isolation);
+
+  // Creates "child" transaction.
+  // Child transaction shares same metadata as parent transaction, so all writes are done
+  // as part of parent transaction.
+  // But lifetime is controlled by parent transaction.
+  // I.e. only parent transaction could be committed or aborted, also only parent transaction
+  // sends heartbeats.
+  YBTransaction(TransactionManager* manager, ChildTransactionData data);
+
   ~YBTransaction();
 
   // This function is used to init metadata of Write/Read request.
@@ -89,6 +107,19 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time);
 
   YBTransactionPtr CreateRestartedTransaction();
+
+  // Prepares child data, so child transaction could be started in another server.
+  // Should be async because status tablet could be not ready yet.
+  void PrepareChild(PrepareChildCallback callback);
+
+  std::future<Result<ChildTransactionDataPB>> PrepareChildFuture();
+
+  // After we finish all child operations, we should finish child and send result to parent.
+  Result<ChildTransactionResultPB> FinishChild();
+
+  // Apply results from child to this parent transaction.
+  // `result` should be prepared with FinishChild of child transaction.
+  CHECKED_STATUS ApplyChildResult(const ChildTransactionResultPB& result);
 
   std::shared_future<TransactionMetadata> TEST_GetMetadata() const;
 

@@ -237,9 +237,9 @@ class QLTransactionTest : public QLDmlTestBase {
   }
 
   void WriteData(const WriteOpType op_type = WriteOpType::INSERT) {
-    auto tc = CreateTransaction();
-    WriteRows(CreateSession(tc), 0, op_type);
-    ASSERT_OK(tc->CommitFuture().get());
+    auto txn = CreateTransaction();
+    WriteRows(CreateSession(txn), 0, op_type);
+    ASSERT_OK(txn->CommitFuture().get());
     LOG(INFO) << "Committed";
   }
 
@@ -455,6 +455,71 @@ TEST_F(QLTransactionTest, WriteRestart) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+TEST_F(QLTransactionTest, Child) {
+  auto txn = CreateTransaction();
+  TransactionManager manager2(client_, clock_);
+  auto data_pb = txn->PrepareChildFuture().get();
+  ASSERT_OK(data_pb);
+  auto data = ChildTransactionData::FromPB(*data_pb);
+  ASSERT_OK(data);
+  auto txn2 = std::make_shared<YBTransaction>(&manager2, std::move(*data));
+
+  WriteRows(CreateSession(txn2), 0);
+  auto result = txn2->FinishChild();
+  ASSERT_OK(result);
+  ASSERT_OK(txn->ApplyChildResult(*result));
+
+  ASSERT_OK(txn->CommitFuture().get());
+
+  ASSERT_NO_FATALS(VerifyData());
+  ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, ChildReadRestart) {
+  google::FlagSaver saver;
+
+  FLAGS_max_clock_skew_usec = 250000;
+
+  {
+    auto write_txn = CreateTransaction();
+    WriteRows(CreateSession(write_txn));
+    ASSERT_OK(write_txn->CommitFuture().get());
+  }
+
+  server::TestClockDeltaChanger delta_changer(-100ms, clock_);
+  auto parent_txn = CreateTransaction();
+  TransactionManager manager2(client_, clock_);
+
+  auto data_pb = parent_txn->PrepareChildFuture().get();
+  ASSERT_OK(data_pb);
+  auto data = ChildTransactionData::FromPB(*data_pb);
+  ASSERT_OK(data);
+  auto child_txn = std::make_shared<YBTransaction>(&manager2, std::move(*data));
+
+  auto session = CreateSession(child_txn);
+  for (size_t r = 0; r != kNumRows; ++r) {
+    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+    ASSERT_NOK(row);
+    ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
+                  << "Bad row: " << row;
+  }
+
+  auto result = child_txn->FinishChild();
+  ASSERT_OK(result);
+  ASSERT_OK(parent_txn->ApplyChildResult(*result));
+
+  auto master2_txn = parent_txn->CreateRestartedTransaction();
+  session->SetTransaction(master2_txn);
+  for (size_t r = 0; r != kNumRows; ++r) {
+    auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+    ASSERT_OK(row);
+    ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
+  }
+  ASSERT_NO_FATALS(VerifyData());
+
+  ASSERT_OK(cluster_->RestartSync());
+}
+
 TEST_F(QLTransactionTest, InsertUpdate) {
   google::FlagSaver flag_saver;
 
@@ -477,12 +542,12 @@ TEST_F(QLTransactionTest, Cleanup) {
 }
 
 TEST_F(QLTransactionTest, Heartbeat) {
-  auto tc = CreateTransaction();
-  auto session = CreateSession(tc);
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
   WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
   CountDownLatch latch(1);
-  tc->Commit([&latch](const Status& status) {
+  txn->Commit([&latch](const Status& status) {
     EXPECT_OK(status);
     latch.CountDown();
   });
@@ -493,12 +558,12 @@ TEST_F(QLTransactionTest, Heartbeat) {
 TEST_F(QLTransactionTest, Expire) {
   google::FlagSaver flag_saver;
   SetDisableHeartbeatInTests(true);
-  auto tc = CreateTransaction();
-  auto session = CreateSession(tc);
+  auto txn = CreateTransaction();
+  auto session = CreateSession(txn);
   WriteRows(session);
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_timeout_usec * 2));
   CountDownLatch latch(1);
-  tc->Commit([&latch](const Status& status) {
+  txn->Commit([&latch](const Status& status) {
     EXPECT_TRUE(status.IsExpired()) << "Bad status: " << status.ToString();
     latch.CountDown();
   });
@@ -515,10 +580,10 @@ TEST_F(QLTransactionTest, PreserveLogs) {
   std::vector<std::shared_ptr<YBTransaction>> transactions;
   constexpr size_t kTransactions = 20;
   for (size_t i = 0; i != kTransactions; ++i) {
-    auto tc = CreateTransaction();
-    auto session = CreateSession(tc);
+    auto txn = CreateTransaction();
+    auto session = CreateSession(txn);
     WriteRows(session, i);
-    transactions.push_back(std::move(tc));
+    transactions.push_back(std::move(txn));
     std::this_thread::sleep_for(100ms);
   }
   LOG(INFO) << "Request clean";

@@ -140,15 +140,6 @@ message TabletServerErrorPB {
   required AppStatusPB status = 2;
 }
 
-// See ReadHybridTime for explation of this message.
-message ReadHybridTimePB {
-  optional fixed64 read_ht = 1;
-
-  optional fixed64 local_limit_ht = 2;
-
-  optional fixed64 global_limit_ht = 3;
-}
-
 // A batched set of insert/mutate requests.
 message WriteRequestPB {
   // TODO(proto3) reserved 2, 3;

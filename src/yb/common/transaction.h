@@ -143,7 +143,7 @@ struct TransactionMetadata {
 
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
-  void ToPB(TransactionMetadataPB* source) const;
+  void ToPB(TransactionMetadataPB* dest) const;
 };
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs);

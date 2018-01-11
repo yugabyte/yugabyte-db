@@ -16,14 +16,6 @@
 #include "yb/client/transaction.h"
 
 #include <unordered_set>
-#include "yb/rpc/rpc.h"
-#include "yb/rpc/scheduler.h"
-
-#include "yb/util/logging.h"
-#include "yb/util/random_util.h"
-#include "yb/util/result.h"
-
-#include "yb/common/transaction.h"
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
@@ -33,6 +25,16 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/transaction.h"
+
+#include "yb/rpc/rpc.h"
+#include "yb/rpc/scheduler.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using namespace std::placeholders;
 
@@ -45,25 +47,47 @@ DEFINE_uint64(max_clock_skew_usec, 50000,
 namespace yb {
 namespace client {
 
+namespace {
+
+TransactionMetadata CreateMetadata(TransactionManager* manager, IsolationLevel isolation) {
+  return {GenerateTransactionId(), isolation, TabletId(), RandomUniformInt<uint64_t>(),
+          manager->Now()};
+}
+
+YB_STRONGLY_TYPED_BOOL(Child);
+
+} // namespace
+
+Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
+  ChildTransactionData result;
+  auto metadata = TransactionMetadata::FromPB(data.metadata());
+  RETURN_NOT_OK(metadata);
+  result.metadata = std::move(*metadata);
+  result.read_time = ReadHybridTime::FromReadTimePB(data);
+  for (const auto& entry : data.local_limits()) {
+    result.local_limits.emplace(entry.first, HybridTime(entry.second));
+  }
+  return result;
+}
+
 class YBTransaction::Impl final {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, IsolationLevel isolation)
-      : manager_(manager),
-        transaction_(transaction),
-        metadata_{GenerateTransactionId(),
-                  isolation,
-                  TabletId(),
-                  RandomUniformInt<uint64_t>(),
-                  manager->Now()},
-        log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
-        heartbeat_handle_(manager->rpcs().InvalidHandle()),
-        commit_handle_(manager->rpcs().InvalidHandle()),
-        abort_handle_(manager->rpcs().InvalidHandle()) {
+      : Impl(manager, transaction, CreateMetadata(manager, isolation), Child::kFalse) {
     VLOG_WITH_PREFIX(1) << "Started, metadata: " << metadata_;
     read_time_.read = metadata_.start_time;
     read_time_.local_limit = read_time_.read.AddMicroseconds(FLAGS_max_clock_skew_usec);
     read_time_.global_limit = read_time_.local_limit;
-    restart_read_time_ = read_time_.read;
+    restart_read_ht_ = read_time_.read;
+  }
+
+  Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
+      : Impl(manager, transaction, std::move(data.metadata), Child::kTrue) {
+    VLOG_WITH_PREFIX(1) << "Started child, metadata: " << metadata_;
+    ready_ = true;
+    read_time_ = data.read_time;
+    restart_read_ht_ = read_time_.read;
+    local_limits_ = std::move(data.local_limits);
   }
 
   ~Impl() {
@@ -87,7 +111,7 @@ class YBTransaction::Impl final {
       DCHECK(!restarts_.empty());
       other->local_limits_.swap(restarts_);
       other->read_time_ = read_time_;
-      other->read_time_.read = restart_read_time_;
+      other->read_time_.read = restart_read_ht_;
       complete_.store(true, std::memory_order_release);
     }
     DoAbort(Status::OK(), transaction);
@@ -165,13 +189,18 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      if (complete_.load(std::memory_order_acquire)) {
-        auto status = error_;
-        lock.unlock();
-        if (status.ok()) {
-          status = STATUS(IllegalState, "Transaction already completed");
-        }
+      auto status = CheckIncomplete(&lock);
+      if (!status.ok()) {
         callback(status);
+        return;
+      }
+      if (child_) {
+        callback(STATUS(IllegalState, "Commit of child transaction is not allowed"));
+        return;
+      }
+      if (!restarts_.empty()) {
+        callback(STATUS(
+            IllegalState, "Commit of transaction that requires restart is not allowed"));
         return;
       }
       complete_.store(true, std::memory_order_release);
@@ -193,6 +222,10 @@ class YBTransaction::Impl final {
         LOG(DFATAL) << "Abort of committed transaction";
         return;
       }
+      if (child_) {
+        LOG(DFATAL) << "Abort of child transaction";
+        return;
+      }
       complete_.store(true, std::memory_order_release);
       if (!ready_) {
         RequestStatusTablet();
@@ -205,17 +238,12 @@ class YBTransaction::Impl final {
 
   void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time) {
     std::unique_lock<std::mutex> lock(mutex_);
-    restart_read_time_.MakeAtLeast(restart_time.read);
+    restart_read_ht_.MakeAtLeast(restart_time.read);
     // We should inherit per-tablet restart time limits from original transaction, doing it lazily.
     if (restarts_.empty()) {
       restarts_ = local_limits_;
     }
-    auto emplace_result = restarts_.emplace(tablet, restart_time.local_limit);
-    bool inserted = emplace_result.second;
-    if (!inserted) {
-      auto& existing_local_limit = emplace_result.first->second;
-      existing_local_limit = std::min(existing_local_limit, restart_time.local_limit);
-    }
+    StoreTabletReadRestart(tablet, restart_time.local_limit, &lock);
   }
 
   std::shared_future<TransactionMetadata> TEST_GetMetadata() {
@@ -237,6 +265,85 @@ class YBTransaction::Impl final {
     return metadata_future_;
   }
 
+  void PrepareChild(PrepareChildCallback callback) {
+    auto transaction = transaction_->shared_from_this();
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (complete_.load(std::memory_order_acquire)) {
+      callback(STATUS(IllegalState, "Transaction complete"));
+      return;
+    }
+    if (!restarts_.empty()) {
+      callback(STATUS(IllegalState, "Restart required"));
+      return;
+    }
+    if (!ready_) {
+      RequestStatusTablet();
+      waiters_.emplace_back(std::bind(
+          &Impl::DoPrepareChild, this, _1, transaction, std::move(callback), nullptr /* lock */));
+      return;
+    }
+
+    DoPrepareChild(Status::OK(), transaction, std::move(callback), &lock);
+  }
+
+  Result<ChildTransactionResultPB> FinishChild() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto status = CheckIncomplete(&lock);
+    if (!status.ok()) {
+      return status;
+    }
+    if (!child_) {
+      return STATUS(IllegalState, "Finish child of non child transaction");
+    }
+    complete_.store(true, std::memory_order_release);
+    ChildTransactionResultPB result;
+    auto& tablets = *result.mutable_tablets();
+    tablets.Reserve(tablets_.size());
+    for (const auto& tablet : tablets_) {
+      auto& out = *tablets.Add();
+      out.set_tablet_id(tablet.first);
+      tablet.second.ToPB(&out);
+    }
+    if (!restarts_.empty()) {
+      result.set_restart_read_ht(restart_read_ht_.ToUint64());
+      auto& restarts = *result.mutable_read_restarts();
+      for (const auto& restart : restarts_) {
+        typedef std::remove_reference<decltype(*restarts.begin())>::type PairType;
+        restarts.insert(PairType(restart.first, restart.second.ToUint64()));
+      }
+    } else {
+      result.set_restart_read_ht(HybridTime::kInvalid.ToUint64());
+    }
+    return result;
+  }
+
+  Status ApplyChildResult(const ChildTransactionResultPB& result) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto status = CheckIncomplete(&lock);
+    if (!status.ok()) {
+      return status;
+    }
+    if (child_) {
+      return STATUS(IllegalState, "Apply child result of child transaction");
+    }
+
+    for (const auto& tablet : result.tablets()) {
+      tablets_[tablet.tablet_id()].MergeFromPB(tablet);
+    }
+
+    HybridTime restart_read_ht(result.restart_read_ht());
+    if (restart_read_ht.is_valid()) {
+      restart_read_ht_.MakeAtLeast(restart_read_ht);
+      if (restarts_.empty()) {
+        restarts_ = local_limits_;
+      }
+      for (const auto& restart : result.read_restarts()) {
+        StoreTabletReadRestart(restart.first, HybridTime(restart.second), &lock);
+      }
+    }
+    return Status::OK();
+  }
+
   const std::string& LogPrefix() {
     return log_prefix_;
   }
@@ -250,6 +357,30 @@ class YBTransaction::Impl final {
   }
 
  private:
+  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionMetadata metadata,
+       Child child)
+      : manager_(manager),
+        transaction_(transaction),
+        metadata_(std::move(metadata)),
+        log_prefix_(Format("$0: ", to_string(metadata_.transaction_id))),
+        child_(child),
+        heartbeat_handle_(manager->rpcs().InvalidHandle()),
+        commit_handle_(manager->rpcs().InvalidHandle()),
+        abort_handle_(manager->rpcs().InvalidHandle()) {
+  }
+
+  CHECKED_STATUS CheckIncomplete(std::unique_lock<std::mutex>* lock) {
+    if (complete_.load(std::memory_order_acquire)) {
+      auto status = error_;
+      lock->unlock();
+      if (status.ok()) {
+        status = STATUS(IllegalState, "Transaction already completed");
+      }
+      return status;
+    }
+    return Status::OK();
+  }
+
   void DoCommit(const Status& status, const YBTransactionPtr& transaction) {
     VLOG_WITH_PREFIX(1) << Format("Commit, tablets: $0, status: $1", tablets_, status);
 
@@ -439,6 +570,40 @@ class YBTransaction::Impl final {
     }
   }
 
+  void DoPrepareChild(const Status& status,
+                      const YBTransactionPtr& transaction,
+                      PrepareChildCallback callback,
+                      std::lock_guard<std::mutex>* parent_lock) {
+    if (!status.ok()) {
+      callback(status);
+      return;
+    }
+
+    std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+    if (!parent_lock) {
+      lock.lock();
+    }
+    ChildTransactionDataPB result;
+    metadata_.ToPB(result.mutable_metadata());
+    read_time_.AddToPB(&result);
+    auto& local_limits = *result.mutable_local_limits();
+    for (const auto& entry : local_limits_) {
+      typedef std::remove_reference<decltype(*local_limits.begin())>::type PairType;
+      local_limits.insert(PairType(entry.first, entry.second.ToUint64()));
+    }
+    callback(result);
+  }
+
+  void StoreTabletReadRestart(const TabletId& tablet, HybridTime restart_ht,
+                              std::unique_lock<std::mutex>* lock) {
+    auto emplace_result = restarts_.emplace(tablet, restart_ht);
+    bool inserted = emplace_result.second;
+    if (!inserted) {
+      auto& existing_local_limit = emplace_result.first->second;
+      existing_local_limit = std::min(existing_local_limit, restart_ht);
+    }
+  }
+
   // Manager is created once per service.
   TransactionManager* const manager_;
 
@@ -454,6 +619,7 @@ class YBTransaction::Impl final {
   internal::RemoteTabletPtr status_tablet_holder_;
   std::atomic<bool> complete_{false};
   // Transaction is successfully initialized and ready to process intents.
+  const bool child_;
   bool ready_ = false;
   CommitCallback commit_callback_;
   Status error_;
@@ -463,6 +629,14 @@ class YBTransaction::Impl final {
 
   struct TabletState {
     bool has_parameters = false;
+
+    void ToPB(TransactionInvolvedTabletPB* out) const {
+      out->set_has_parameters(has_parameters);
+    }
+
+    void MergeFromPB(const TransactionInvolvedTabletPB& source) {
+      has_parameters = has_parameters || source.has_parameters();
+    }
 
     std::string ToString() const {
       return Format("{ has_parameters $0 }", has_parameters);
@@ -476,12 +650,12 @@ class YBTransaction::Impl final {
   std::vector<Waiter> waiters_;
   std::promise<TransactionMetadata> metadata_promise_;
   std::shared_future<TransactionMetadata> metadata_future_;
-  HybridTime restart_read_time_;
+  HybridTime restart_read_ht_;
   // Local limits for separate tablets, does not change during lifetime of transaction.
   // Times such that anything happening at that hybrid time or later is definitely after the
   // original request arrived and therefore does not have to be shown in results.
   std::unordered_map<TabletId, HybridTime> local_limits_;
-  // Restarts that happen during transaction lifetime. Used to initialize local_limits for
+  // Restarts that happen during transaction lifetime. Used to initialise local_limits for
   // restarted transaction.
   std::unordered_map<TabletId, HybridTime> restarts_;
 };
@@ -489,6 +663,10 @@ class YBTransaction::Impl final {
 YBTransaction::YBTransaction(TransactionManager* manager,
                              IsolationLevel isolation)
     : impl_(new Impl(manager, this, isolation)) {
+}
+
+YBTransaction::YBTransaction(TransactionManager* manager, ChildTransactionData data)
+    : impl_(new Impl(manager, this, std::move(data))) {
 }
 
 YBTransaction::~YBTransaction() {
@@ -514,7 +692,7 @@ const TransactionId& YBTransaction::id() const {
 }
 
 std::future<Status> YBTransaction::CommitFuture() {
-  return MakeFuture<Status>([this](auto callback) { impl_->Commit(callback); });
+  return MakeFuture<Status>([this](auto callback) { impl_->Commit(std::move(callback)); });
 }
 
 void YBTransaction::Abort() {
@@ -531,8 +709,26 @@ YBTransactionPtr YBTransaction::CreateRestartedTransaction() {
   return result;
 }
 
+void YBTransaction::PrepareChild(PrepareChildCallback callback) {
+  return impl_->PrepareChild(std::move(callback));
+}
+
+std::future<Result<ChildTransactionDataPB>> YBTransaction::PrepareChildFuture() {
+  return MakeFuture<Result<ChildTransactionDataPB>>([this](auto callback) {
+      impl_->PrepareChild(std::move(callback));
+  });
+}
+
+Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
+  return impl_->FinishChild();
+}
+
 std::shared_future<TransactionMetadata> YBTransaction::TEST_GetMetadata() const {
   return impl_->TEST_GetMetadata();
+}
+
+Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
+  return impl_->ApplyChildResult(result);
 }
 
 } // namespace client
