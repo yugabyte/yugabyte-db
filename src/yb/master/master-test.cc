@@ -102,6 +102,8 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
     TABLE_ENTRY(SystemSchema, Keyspaces), \
     TABLE_ENTRY(SystemSchema, Tables), \
     TABLE_ENTRY(SystemAuth, Roles), \
+    TABLE_ENTRY(SystemAuth, RolePermissions), \
+    TABLE_ENTRY(SystemAuth, ResourceRolePermissionsIndex)
     /**/
 
 namespace yb {

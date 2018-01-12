@@ -245,6 +245,13 @@ void QLEnv::Reset() {
   }
 }
 
+Status QLEnv::GrantPermission(const PermissionType& permission, const ResourceType& resource_type,
+                              const std::string& canonical_resource, const char* resource_name,
+                              const char* namespace_name, const std::string& role_name) {
+  return client_->GrantPermission(permission, resource_type, canonical_resource, resource_name,
+                                  namespace_name, role_name);
+}
+
 Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {
   return client_->CreateNamespace(keyspace_name);
 }

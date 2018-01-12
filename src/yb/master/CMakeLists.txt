@@ -61,6 +61,8 @@ set(MASTER_SRCS
   yql_vtable_iterator.cc
   util/yql_vtable_helpers.cc
   yql_auth_roles_vtable.cc
+  yql_auth_role_permissions_vtable.cc
+  yql_auth_resource_role_permissions_index.cc
   yql_aggregates_vtable.cc
   yql_columns_vtable.cc
   yql_empty_vtable.cc

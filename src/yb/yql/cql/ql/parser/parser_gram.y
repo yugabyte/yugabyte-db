@@ -63,6 +63,7 @@
 // The following code block goes into YACC generated *.hh header file.
 %code requires {
 #include <stdbool.h>
+#include "yb/common/common.pb.h"
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -75,6 +76,7 @@
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_grant.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
@@ -211,6 +213,9 @@ using namespace yb::ql;
 
                           // Drop.
                           DropStmt
+
+                          // Grant
+                          GrantStmt
 
                           // Select.
                           distinct_clause opt_all_clause
@@ -349,9 +354,8 @@ using namespace yb::ql;
                           opt_collate opt_class udt_name
 
 %type <PString>           // Identifier name.
-                          ColId
+                          ColId role_name permission permissions
                           alias_clause opt_alias_clause
-                          role_name
 
 // Precision for datatype FLOAT in declarations for columns or any other entities.
 %type <PInt64>            opt_float
@@ -431,7 +435,7 @@ using namespace yb::ql;
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
                           DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
-                          GrantStmt GrantRoleStmt ImportForeignSchemaStmt
+                          GrantRoleStmt ImportForeignSchemaStmt
                           ListenStmt LoadStmt LockStmt NotifyStmt ExplainableStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
@@ -556,7 +560,7 @@ using namespace yb::ql;
 // Declarations for ordinary keywords in alphabetical order.
 %token <KeywordType>      ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER  AGGREGATE ALL ALLOW
                           ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC ASSERTION
-                          ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION
+                          ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION AUTHORIZE
 
                           BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT BLOB BOOLEAN_P BOTH BY
 
@@ -570,8 +574,8 @@ using namespace yb::ql;
 
                           DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
                           DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P
-                          DELIMITER DELIMITERS DESC DICTIONARY DISABLE_P DISCARD DISTINCT DO
-                          DOCUMENT_P DOMAIN_P DOUBLE_P DROP
+                          DELIMITER DELIMITERS DESC DESCRIBE DICTIONARY DISABLE_P DISCARD
+                          DISTINCT DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
 
                           EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT
                           EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTENSION
@@ -591,14 +595,14 @@ using namespace yb::ql;
 
                           JOIN
 
-                          KEY KEYSPACE
+                          KEY KEYSPACE KEYSPACES
 
                           LABEL LANGUAGE LARGE_P LAST_P LATERAL_P LEADING LEAKPROOF LEAST LEFT
                           LEVEL LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
                           LOCK_P LOCKED LOGGED LOGIN
 
-                          MAP MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P
-                          MOVE
+                          MAP MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MODIFY
+                          MONTH_P MOVE
 
                           NAME_P NAMES NAN NATIONAL NATURAL NCHAR NEXT NO NONE NOT NOTHING NOTIFY
                           NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
@@ -606,15 +610,16 @@ using namespace yb::ql;
                           OBJECT_P OF OFF OFFSET OIDS ON ONLY OPERATOR OPTION OPTIONS OR ORDER
                           ORDINALITY OUT_P OUTER_P OVER OVERLAPS OVERLAY OWNED OWNER
 
-                          PARSER PARTIAL PARTITION PASSING PASSWORD PLACING PLANS POLICY POSITION
-                          PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY PRIOR PRIVILEGES
-                          PROCEDURAL PROCEDURE PROGRAM
+                          PARSER PARTIAL PARTITION PASSING PASSWORD PERMISSION PERMISSIONS PLACING
+                          PLANS POLICY POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED
+                          PRIMARY PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROGRAM
+
 
                           QUOTE
 
                           RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFRESH
                           REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA RESET
-                          RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+                          RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLES ROLLBACK ROLLUP
                           ROW ROWS RULE
 
                           SAVEPOINT SCHEMA SCHEME SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
@@ -803,6 +808,9 @@ stmt:
     $$ = $1;
   }
   | CreateRoleStmt {
+    $$ = $1;
+  }
+  | GrantStmt {
     $$ = $1;
   }
   | TruncateStmt {
@@ -4938,6 +4946,8 @@ unreserved_keyword:
   | PARTITION { $$ = $1; }
   | PASSING { $$ = $1; }
   | PASSWORD { $$ = $1; }
+  | PERMISSION { $$ = $1; }
+  | PERMISSIONS { $$ = $1; }
   | PLANS { $$ = $1; }
   | POLICY { $$ = $1; }
   | PRECEDING { $$ = $1; }
@@ -4970,6 +4980,7 @@ unreserved_keyword:
   | RETURNS { $$ = $1; }
   | REVOKE { $$ = $1; }
   | ROLE { $$ = $1; }
+  | ROLES { $$ = $1; }
   | ROLLBACK { $$ = $1; }
   | ROLLUP { $$ = $1; }
   | ROWS { $$ = $1; }
@@ -5168,6 +5179,7 @@ reserved_keyword:
   | AS { $$ = $1; }
   | ASC { $$ = $1; }
   | ASYMMETRIC { $$ = $1; }
+  | AUTHORIZE { $$ = $1; }
   | BOTH { $$ = $1; }
   | CASE { $$ = $1; }
   | CAST { $$ = $1; }
@@ -5185,6 +5197,7 @@ reserved_keyword:
   | DEFAULT { $$ = $1; }
   | DEFERRABLE { $$ = $1; }
   | DESC { $$ = $1; }
+  | DESCRIBE { $$ = $1; }
   | DISTINCT { $$ = $1; }
   | DO { $$ = $1; }
   | ELSE { $$ = $1; }
@@ -5204,11 +5217,13 @@ reserved_keyword:
   | INTERSECT { $$ = $1; }
   | INTO { $$ = $1; }
   | KEYSPACE { $$ = $1; }
+  | KEYSPACES { $$ = $1; }
   | LATERAL_P { $$ = $1; }
   | LEADING { $$ = $1; }
   | LIMIT { $$ = $1; }
   | LOCALTIME { $$ = $1; }
   | LOCALTIMESTAMP { $$ = $1; }
+  | MODIFY { $$ = $1; }
   | NAN { $$ = $1; }
   | NOT { $$ = $1; }
   | NULL_P { $$ = $1; }
@@ -5332,7 +5347,6 @@ inactive_stmt:
   | ExecuteStmt
   | ExplainStmt
   | FetchStmt
-  | GrantStmt
   | GrantRoleStmt
   | ImportForeignSchemaStmt
   | ListenStmt
@@ -5568,7 +5582,6 @@ DropUserStmt:
 inactive_schema_stmt:
   CreateSeqStmt
   | CreateTrigStmt
-  | GrantStmt
   | ViewStmt
 ;
 
@@ -7583,9 +7596,84 @@ opt_from_in:
  * GRANT and REVOKE statements
  *
  *****************************************************************************/
-
+/*
 GrantStmt:
   GRANT privileges ON privilege_target TO grantee_list opt_grant_grant_option {
+  }
+;
+*/
+
+GrantStmt:
+  GRANT permissions ON ALL KEYSPACES TO role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::ALL_KEYSPACES,
+                   /*keyspace_node*/ nullptr, role_node);
+  }
+  | GRANT permissions ON KEYSPACE ColId TO role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
+    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::KEYSPACE, keyspace_node, role_node);
+  }
+  | GRANT permissions ON TABLE qualified_name TO role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::TABLE, $5, role_node);
+  }
+  | GRANT permissions ON ALL ROLES TO role_name {
+    PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::ALL_ROLES,
+                   /*on_role_node*/ nullptr , role_node);
+  }
+  | GRANT permissions ON ROLE role_name TO role_name {
+    PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
+    PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
+    $$ = MAKE_NODE(@1, PTGrantPermission, $2, ResourceType::ROLE, on_role_node, to_role_node);
+  }
+;
+
+permissions:
+  ALL opt_permissions {
+    $$ = parser_->MakeString($1);
+  }
+  | permission opt_permission {
+    $$ = $1;
+  }
+;
+
+permission:
+  CREATE {
+    $$ = parser_->MakeString($1);
+  }
+  | ALTER {
+    $$ = parser_->MakeString($1);
+  }
+  | DROP {
+    $$ = parser_->MakeString($1);
+  }
+  | SELECT {
+    $$ = parser_->MakeString($1);
+  }
+  | MODIFY {
+    $$ = parser_->MakeString($1);
+  }
+  | AUTHORIZE {
+    $$ = parser_->MakeString($1);
+  }
+  | DESCRIBE {
+    $$ = parser_->MakeString($1);
+  }
+;
+
+opt_permissions:
+  /* EMPTY */ {
+  }
+  | PERMISSIONS {
+  }
+;
+
+opt_permission:
+  /* EMPTY */ {
+  }
+  | PERMISSION {
   }
 ;
 

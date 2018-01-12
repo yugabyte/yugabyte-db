@@ -48,6 +48,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 #include "yb/rpc/messenger.h"
+#include "yb/common/common.pb.h"
 
 using std::make_shared;
 using std::string;
@@ -746,13 +747,14 @@ class TestRoleLoader : public Visitor<PersistentRoleInfo> {
   vector<RoleInfo*> roles;
 };
 
-// Test the sys-catalog role basic operations (add, visit)
+// Test the sys-catalog role/permissions basic operations (add, visit, drop)
 TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
 
   unique_ptr<TestRoleLoader> loader(new TestRoleLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
+  // Set role information
   SysRoleEntryPB role_entry;
   role_entry.set_role("test_role");
   role_entry.set_can_login(false);
@@ -770,6 +772,38 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   }
 
   // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  // The first role is the default cassandra role
+  ASSERT_EQ(2, loader->roles.size());
+  ASSERT_TRUE(MetadatasEqual(rl.get(), loader->roles[1]));
+
+  // Adding permissions
+  SysRoleEntryPB* metadata;
+  rl->mutable_metadata()->StartMutation();
+  metadata = &rl->mutable_metadata()->mutable_dirty()->pb;
+  // Set permission information;
+  ResourcePermissionsPB* currentResource;
+  currentResource = metadata->add_resources();
+  currentResource->set_canonical_resource("data/keyspace1/table1");
+  currentResource->set_resource_name("table1");
+  currentResource->set_namespace_name("keyspace1");
+  currentResource->set_resource_type(ResourceType::TABLE);
+
+  currentResource->add_permissions(PermissionType::SELECT_PERMISSION);
+  currentResource->add_permissions(PermissionType::MODIFY_PERMISSION);
+  currentResource->add_permissions(PermissionType::AUTHORIZE_PERMISSION);
+
+  currentResource = metadata->add_resources();
+  currentResource->set_canonical_resource("roles/test_role");
+  currentResource->set_resource_type(ResourceType::ROLE);
+
+  currentResource->add_permissions(PermissionType::DROP_PERMISSION);
+
+  ASSERT_OK(sys_catalog->UpdateItem(rl.get()));
+  rl->mutable_metadata()->CommitMutation();
+
+  // Verify permissions
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   // The first role is the default cassandra role

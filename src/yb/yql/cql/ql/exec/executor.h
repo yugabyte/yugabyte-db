@@ -22,6 +22,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/common.pb.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
@@ -33,6 +34,7 @@
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_grant.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
@@ -104,6 +106,9 @@ class Executor : public QLExprExecutor {
 
   // Select statement.
   CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);
+
+  // Select statement.
+  CHECKED_STATUS ExecPTNode(const PTGrantPermission *tnode);
 
   // Insert statement.
   CHECKED_STATUS ExecPTNode(const PTInsertStmt *tnode);

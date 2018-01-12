@@ -32,7 +32,6 @@ namespace yb {
 namespace ql {
 class SemContext;
 
-
 YB_DEFINE_ENUM(TreeNodeOpcode,
                ((kNoOp, 0))
                (kTreeNode)
@@ -50,6 +49,7 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTDeleteStmt)
                (kPTUpdateStmt)
                (kPTCreateRole)
+               (kPTGrantPermission)
                (kPTStartTransaction)
                (kPTCommit)
 

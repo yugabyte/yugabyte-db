@@ -23,6 +23,7 @@
 #include "yb/yql/cql/ql/ptree/process_context.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/common/common.pb.h"
 
 namespace yb {
 namespace ql {
@@ -82,6 +83,16 @@ class ExecContext : public ProcessContextBase {
   // Use keyspace with the given name.
   CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
     return ql_env_->UseKeyspace(keyspace_name);
+  }
+
+  // Grant Permission with the given arguments
+  CHECKED_STATUS GrantPermission(const PermissionType& permission,
+                                 const ResourceType& resource_type,
+                                 const std::string& canonical_resource,
+                                 const char* resource_name, const char* namespace_name,
+                                 const std::string& role_name) {
+    return ql_env_->GrantPermission(permission, resource_type, canonical_resource,
+                                    resource_name, namespace_name, role_name);
   }
 
   std::string CurrentKeyspace() const {

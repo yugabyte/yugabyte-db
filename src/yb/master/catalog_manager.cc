@@ -88,6 +88,8 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/yql_auth_roles_vtable.h"
+#include "yb/master/yql_auth_role_permissions_vtable.h"
+#include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_columns_vtable.h"
 #include "yb/master/yql_empty_vtable.h"
 #include "yb/master/yql_keyspaces_vtable.h"
@@ -556,6 +558,16 @@ void CatalogManagerBgTasks::Shutdown() {
   }
 }
 
+const std::map<PermissionType, const char*>  RoleInfo::kPermissionMap = {
+    {PermissionType::ALTER_PERMISSION, "ALTER"},
+    {PermissionType::CREATE_PERMISSION, "CREATE"},
+    {PermissionType::DROP_PERMISSION, "DROP"},
+    {PermissionType::SELECT_PERMISSION, "SELECT"},
+    {PermissionType::MODIFY_PERMISSION, "MODIFY"},
+    {PermissionType::AUTHORIZE_PERMISSION, "AUTHORIZE"},
+    {PermissionType::DESCRIBE_PERMISSION, "DESCRIBE"}
+};
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     // Perform assignment processing.
@@ -934,6 +946,11 @@ Status CatalogManager::PrepareSystemTables() {
   // System auth tables
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolesVTable>(
       kSystemAuthRolesTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthRolePermissionsVTable>(
+      kSystemAuthRolePermissionsTableName, kSystemAuthNamespaceName, kSystemAuthNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAuthResourceRolePermissionsIndexVTable>(
+      kSystemAuthResourceRolePermissionsIndexTableName, kSystemAuthNamespaceName,
+      kSystemAuthNamespaceId)));
 
   return Status::OK();
 }
@@ -2903,6 +2920,128 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   return Status::OK();
 }
 
+
+Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
+                                       GrantPermissionResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
+  LOG(INFO) << "Grant Permission" << RequestorString(rpc) << ": " << req->DebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+  std::lock_guard<LockType> l_big(lock_);
+  TRACE("Acquired catalog manager lock");
+  Status s;
+  scoped_refptr<NamespaceInfo> ns;
+  scoped_refptr<TableInfo> tbl;
+
+  // Checking if resources exist
+  if (req->resource_type() == ResourceType::TABLE ||
+      req->resource_type() == ResourceType::KEYSPACE) {
+    if (!req->has_namespace_()) {
+      Status s = STATUS(InvalidArgument, "No Namespace given", req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    ns = FindPtrOrNull(namespace_names_map_, req->namespace_().name());
+    if (ns == nullptr) {
+      s = STATUS(NotFound, "Namespace name not found", req->namespace_().name());
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    }
+    if (req->resource_type() == ResourceType::TABLE) {
+      tbl = FindPtrOrNull(table_names_map_, {ns->id(), req->resource_name()});
+      if (tbl == nullptr) {
+        s = STATUS(NotFound, "The table does not exist", req->resource_name());
+        return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+      }
+    }
+  }
+
+  if (req->resource_type() == ResourceType::ROLE) {
+    scoped_refptr<RoleInfo> role;
+    role = FindPtrOrNull(roles_map_, req->resource_name());
+    if (role == nullptr) {
+      s = STATUS(NotFound,
+                 Substitute("The role $0 does not exists", req->role_name()));
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    }
+  }
+
+  scoped_refptr<RoleInfo> rp;
+  rp = FindPtrOrNull(roles_map_, req->role_name());
+  if (rp == nullptr) {
+    s = STATUS(InvalidArgument,
+               Substitute("Cannot grant permission to role $0 that has not been created yet",
+                          req->role_name()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+
+  SysRoleEntryPB* metadata;
+  rp->mutable_metadata()->StartMutation();
+  metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
+
+  ResourcePermissionsPB* currentResource = nullptr;
+  for (int i = 0; i < metadata->resources_size(); i++) {
+    ResourcePermissionsPB* resource = metadata->mutable_resources(i);
+    if (resource->canonical_resource() == req->canonical_resource()) {
+      currentResource = resource;
+      break;
+    }
+  }
+
+  if (currentResource == nullptr) {
+    currentResource = metadata->add_resources();
+
+    currentResource->set_canonical_resource(req->canonical_resource());
+    currentResource->set_resource_type(req->resource_type());
+    if (req->has_resource_name()) {
+      currentResource->set_resource_name(req->resource_name());
+    }
+    if (req->has_namespace_()) {
+      currentResource->set_namespace_name(req->namespace_().name());
+    }
+  }
+
+  if (req->permission() != PermissionType::ALL_PERMISSION) {
+    bool permission_found = false;
+    for (int i = 0; i < currentResource->permissions_size(); i++) {
+      const PermissionType& permission = currentResource->permissions(i);
+      if (permission == req->permission()) {
+        permission_found = true;
+        break;
+      }
+    }
+
+    if (!permission_found) {
+      currentResource->add_permissions(req->permission());
+    }
+  } else {
+    // TODO (Bristy) : Add different permissions for different resources based on role names.
+    currentResource->clear_permissions();
+    std::vector<PermissionType> all_permissions (7);
+    all_permissions = { PermissionType::ALTER_PERMISSION, PermissionType::DESCRIBE_PERMISSION,
+        PermissionType::CREATE_PERMISSION, PermissionType::MODIFY_PERMISSION,
+        PermissionType::DROP_PERMISSION, PermissionType::SELECT_PERMISSION,
+        PermissionType::AUTHORIZE_PERMISSION };
+
+    for (int i = 0 ; i < all_permissions.size(); i++) {
+      currentResource->add_permissions(all_permissions[i]);
+    }
+  }
+
+  s = sys_catalog_->UpdateItem(rp.get());
+  if (!s.ok()) {
+    s = s.CloneAndPrepend(Substitute(
+        "An error occurred while updating permissions in sys-catalog: $0", s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+  TRACE("Wrote Permission to sys-catalog");
+
+  rp->mutable_metadata()->CommitMutation();
+  LOG(INFO) << "Modified Permission for role" << rp->id();
+  return Status::OK();
+}
+
+
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
                                        rpc::RpcContext* rpc) {
@@ -3052,7 +3191,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
                                       ListNamespacesResponsePB* resp) {
 
-  RETURN_NOT_OK(CheckOnline());
+      RETURN_NOT_OK(CheckOnline());
 
   boost::shared_lock<LockType> l(lock_);
 

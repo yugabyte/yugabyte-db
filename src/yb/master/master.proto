@@ -349,7 +349,17 @@ message SysRoleEntryPB {
   optional bool is_superuser = 3;
   repeated bytes member_of = 4;
   optional bytes salted_hash = 5;
+  repeated ResourcePermissionsPB resources = 7;
 }
+
+message ResourcePermissionsPB {
+  optional string resource_name = 1;
+  optional string canonical_resource = 11;
+  optional string namespace_name = 12;
+  optional ResourceType resource_type = 2;
+  repeated PermissionType permissions = 13;
+}
+
 ////////////////////////////////////////////////////////////
 // RPCs
 ////////////////////////////////////////////////////////////
@@ -945,6 +955,20 @@ message DeleteNamespaceResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GrantPermissionRequestPB {
+  optional PermissionType permission = 1;
+  optional ResourceType resource_type = 2;
+  optional string canonical_resource = 3;
+  optional string resource_name = 4;
+  optional NamespaceIdentifierPB namespace = 5;
+  optional string role_name = 6;
+}
+
+message GrantPermissionResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
 message ListNamespacesRequestPB {
 }
 
@@ -1068,6 +1092,8 @@ service MasterService {
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+
+  rpc GrantPermission(GrantPermissionRequestPB) returns (GrantPermissionResponsePB);
 
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);

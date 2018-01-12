@@ -91,6 +91,27 @@ enum TableType {
   DEFAULT_TABLE_TYPE = 2;
 }
 
+// Used for Cassandra Roles and Permissions
+enum ResourceType {
+  ALL_KEYSPACES = 1;
+  KEYSPACE = 2;
+  TABLE = 3;
+  ALL_ROLES = 4;
+  ROLE = 5;
+}
+
+// Suffixed with PERMISSION, because Google does not allow same enum name CREATE
+enum PermissionType {
+  ALL_PERMISSION = 1;
+  ALTER_PERMISSION = 2;
+  CREATE_PERMISSION = 3;
+  DROP_PERMISSION = 4;
+  SELECT_PERMISSION = 5;
+  MODIFY_PERMISSION = 6;
+  AUTHORIZE_PERMISSION = 7;
+  DESCRIBE_PERMISSION = 8;
+}
+
 // The type used in column schemas, which may have type parameters (i.e. for collections)
 // If types have parameters, they are stored in the params field. Otherwise params is empty.
 // e.g. (using lower case of QLTypes and upper case for DataType):

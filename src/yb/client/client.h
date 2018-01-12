@@ -45,6 +45,8 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/common/entity_ids.h"
@@ -293,6 +295,12 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name);
 
+  // Grant permission with given arguments.
+  CHECKED_STATUS GrantPermission(const PermissionType& permission,
+                                 const ResourceType& resource_type,
+                                 const std::string& canonical_resource,
+                                 const char* resource_name, const char* namespace_name,
+                                 const std::string& role_name);
   // List all namespace names.
   // 'namespaces' is appended to only on success.
   CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces);

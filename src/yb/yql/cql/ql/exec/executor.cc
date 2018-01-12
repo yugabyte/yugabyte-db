@@ -20,6 +20,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/util/decimal.h"
+#include "yb/common/common.pb.h"
 
 namespace yb {
 namespace ql {
@@ -159,6 +160,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
 
     case TreeNodeOpcode::kPTDropStmt:
       return ExecPTNode(static_cast<const PTDropStmt *>(tnode));
+
+    case TreeNodeOpcode::kPTGrantPermission:
+      return ExecPTNode(static_cast<const PTGrantPermission *>(tnode));
 
     case TreeNodeOpcode::kPTSelectStmt:
       return ExecPTNode(static_cast<const PTSelectStmt *>(tnode));
@@ -484,6 +488,32 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     return exec_context_->Error(tnode->name(), s, error_code);
   }
 
+  return Status::OK();
+}
+
+
+Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
+  const string role_name = tnode->role_name()->QLName();
+  const string canonical_resource = tnode->canonical_resource();
+  const char* resource_name = tnode->resource_name();
+  const char* namespace_name = tnode->namespace_name();
+  ResourceType resource_type = tnode->resource_type();
+  PermissionType permission = tnode->permission();
+
+  Status s = exec_context_->GrantPermission(permission, resource_type, canonical_resource,
+                                            resource_name, namespace_name, role_name);
+
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
+    if (s.IsInvalidArgument()) {
+      error_code = ErrorCode::INVALID_ARGUMENTS;
+    }
+    if (s.IsNotFound()) {
+      error_code = ErrorCode::RESOURCE_NOT_FOUND;
+    }
+    return exec_context_->Error(tnode, s, error_code);
+  }
+  // TODO (Bristy) : Return proper result
   return Status::OK();
 }
 

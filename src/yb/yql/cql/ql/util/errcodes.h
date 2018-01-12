@@ -118,6 +118,8 @@ enum class ErrorCode : int64_t {
   INVALID_TYPE_DEFINITION = -312,
   RESTART_REQUIRED = -313,
   ROLE_NOT_FOUND = -314,
+  RESOURCE_NOT_FOUND = -315,
+
 };
 
 // Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.

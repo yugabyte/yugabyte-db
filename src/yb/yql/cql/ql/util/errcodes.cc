@@ -108,6 +108,7 @@ const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage
   { ErrorCode::INVALID_TYPE_DEFINITION, "Invalid Type Definition" },
   { ErrorCode::RESTART_REQUIRED, "Restart Required" },
   { ErrorCode::ROLE_NOT_FOUND, "Role Not Found"},
+  { ErrorCode::RESOURCE_NOT_FOUND, "Resource Not Found"},
 };
 
 ErrorCode GetErrorCode(const Status& s) {

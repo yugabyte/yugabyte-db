@@ -112,6 +112,8 @@ using yb::master::ListUDTypesRequestPB;
 using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
+using yb::master::GrantPermissionResponsePB;
+using yb::master::GrantPermissionRequestPB;
 using yb::master::MasterServiceProxy;
 using yb::master::ReplicationInfoPB;
 using yb::master::TabletLocationsPB;
@@ -453,6 +455,37 @@ Status YBClient::ListNamespaces(std::vector<std::string>* namespaces) {
   return Status::OK();
 }
 
+CHECKED_STATUS YBClient::GrantPermission(const PermissionType& permission,
+                                         const ResourceType& resource_type,
+                                         const std::string& canonical_resource,
+                                         const char* resource_name,
+                                         const char* namespace_name,
+                                         const std::string& role_name) {
+  // Setting up request.
+  GrantPermissionRequestPB req;
+  req.set_role_name(role_name);
+  req.set_canonical_resource(canonical_resource);
+  if (resource_name != nullptr) {
+    req.set_resource_name(resource_name);
+  }
+  if (namespace_name != nullptr) {
+    req.mutable_namespace_()->set_name(namespace_name);
+  }
+  req.set_resource_type(resource_type);
+  req.set_permission(permission);
+
+  GrantPermissionResponsePB resp;
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<GrantPermissionRequestPB, GrantPermissionResponsePB>(
+      deadline, this, req, &resp, nullptr, "GrantPermission", &MasterServiceProxy::GrantPermission);
+      RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status YBClient::NamespaceExists(const std::string& namespace_name, bool* exists) {
   CHECK_NOTNULL(exists);
 
@@ -529,6 +562,7 @@ CHECKED_STATUS YBClient::CreateRole(const std::string& role_name,
 
   return Status::OK();
 }
+
 CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
   // Setting up request.
   DeleteRoleRequestPB req;
@@ -545,7 +579,6 @@ CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
   }
   return Status::OK();
 }
-
 
 CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
                                       const std::string &type_name,

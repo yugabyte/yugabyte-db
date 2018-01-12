@@ -295,6 +295,11 @@ void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteNamespace);
 }
 
+void MasterServiceImpl::GrantPermission(const GrantPermissionRequestPB* req,
+                                       GrantPermissionResponsePB* resp, rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GrantPermission);
+}
+
 void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
                                        ListNamespacesResponsePB* resp,
                                        RpcContext rpc) {

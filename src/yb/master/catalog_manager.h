@@ -582,6 +582,16 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   explicit RoleInfo(const std::string& role) : role_(role) {}
   const std::string& id() const override { return role_; }
 
+  static const std::map<PermissionType, const char*>  kPermissionMap;
+
+  static const char* permissionName(PermissionType permission) {
+    auto iterator = kPermissionMap.find(permission);
+    if (iterator != kPermissionMap.end()) {
+      return iterator->second;
+    }
+    return nullptr;
+  }
+
  private:
   friend class RefCountedThreadSafe<RoleInfo>;
   ~RoleInfo() = default;
@@ -816,6 +826,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Grant Permission to a role
+  CHECKED_STATUS GrantPermission(const GrantPermissionRequestPB* req,
+                                 GrantPermissionResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
@@ -997,6 +1012,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class UDTypeLoader;
   friend class ClusterConfigLoader;
   friend class RoleLoader;
+
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
@@ -1343,6 +1359,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Role map: RoleName -> RoleInfo
   typedef std::unordered_map<RoleName, scoped_refptr<RoleInfo> > RoleInfoMap;
   RoleInfoMap roles_map_;
+
+  // TODO (Bristy) : Implement (resource) --> (role->permissions) map
 
   // Config information
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;

@@ -48,6 +48,9 @@ static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
 static const char* const kSystemAuthRolesTableName = "roles";
+static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
+static const char* const kSystemAuthResourceRolePermissionsIndexTableName =
+                  "resource_role_permissions_index";
 
 static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000000000";
 
@@ -56,7 +59,7 @@ static constexpr int kNumSystemNamespaces = 3;
 
 // Needs to be updated each time we add a new system table. Currently, this is only used for unit
 // tests which don't have access to the master object (for ex: unit tests which use ExternalMaster).
-static constexpr int kNumSystemTables = 13;
+static constexpr int kNumSystemTables = 15;
 
 constexpr uint16_t kMasterDefaultPort = 7100;
 constexpr uint16_t kMasterDefaultWebPort = 7000;

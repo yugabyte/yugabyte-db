@@ -39,7 +39,6 @@ typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
 
 using RoleName = std::string;
 
-
 }  // namespace yb
 
 #endif  // YB_COMMON_ENTITY_IDS_H
