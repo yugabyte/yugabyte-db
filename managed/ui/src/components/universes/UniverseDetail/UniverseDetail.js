@@ -149,17 +149,14 @@ class UniverseDetail extends Component {
       </Tab>
     ];
     const currentBreadCrumb = (
-      <div className="detail-label-small">
+      <div className="breadcumb-container">
         <Link to="/universes">
           <YBLabelWithIcon>
             Universes
           </YBLabelWithIcon>
         </Link>
-        <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
-          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
-            {currentUniverse.data.name}
-          </YBLabelWithIcon>
-        </Link>
+        <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
+        </YBLabelWithIcon>
       </div>
     );
 
@@ -168,16 +165,13 @@ class UniverseDetail extends Component {
         <Row>
           <Col lg={10} sm={8} xs={6}>
             {/* UNIVERSE NAME */}
-
-            {currentBreadCrumb}
             <div className="universe-detail-status-container">
+              {currentBreadCrumb}
               <h2>
                 { currentUniverse.data.name }
               </h2>
               <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} refreshUniverseData={this.getUniverseInfo}/>
             </div>
-
-
           </Col>
           <Col lg={2} sm={4}  xs={6} className="page-action-buttons">
 

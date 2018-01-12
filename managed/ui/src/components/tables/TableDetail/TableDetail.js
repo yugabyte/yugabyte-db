@@ -8,12 +8,13 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
 import './TableDetail.scss';
-import { ItemStatus } from '../../common/indicators';
 import { TableSchema, BulkImportContainer, DropTableContainer } from '../../tables';
 import { CustomerMetricsPanel } from '../../metrics';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+
+import { UniverseStatusContainer } from '../../universes';
 
 export default class TableDetail extends Component {
   static propTypes = {
@@ -88,40 +89,42 @@ export default class TableDetail extends Component {
     if (isValidObject(currentTableDetail.tableDetails)) {
       tableName = currentTableDetail.tableDetails.tableName;
     }
-    const universeUUID = this.props.universeUUID;
+
+    let universeState = <span/>;
+    if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentTableDetail.tableDetails)) {
+      const currentBreadCrumb = (
+        <div className="breadcumb-container">
+          <Link to="/universes">
+            <YBLabelWithIcon>
+              Universes
+            </YBLabelWithIcon>
+          </Link>
+          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
+          </YBLabelWithIcon>
+          <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
+            {currentUniverse.data.name}
+          </Link>
+          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
+          </YBLabelWithIcon>
+        </div>
+      );
+
+      universeState = (
+        <Col lg={10} sm={8} xs={6}>
+          {/* UNIVERSE NAME */}
+          <div className="universe-detail-status-container">
+          {currentBreadCrumb}
+            <h2>
+              { tableName }
+            </h2>
+            <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} refreshUniverseData={this.getUniverseInfo}/>
+          </div>
+        </Col>);
+    }
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">
-          <Col lg={10}>
-            <div className="detail-label-small">
-              <Link to="/universes">
-                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
-                  Universes
-                </YBLabelWithIcon>
-              </Link>
-              <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
-                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
-                  {currentUniverse.data.name}
-                </YBLabelWithIcon>
-              </Link>
-              <Link to={`/universes/${universeUUID}?tab=tables`}>
-                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
-                  Tables
-                </YBLabelWithIcon>
-              </Link>
-              <Link to={`/universes/${universeUUID}/tables/${currentTableDetail.tableUUID}`}>
-                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
-                  {tableName}
-                </YBLabelWithIcon>
-              </Link>
-            </div>
-            <div>
-              <h2>
-                { tableName }
-                <ItemStatus showLabelText={true} />
-              </h2>
-            </div>
-          </Col>
+          {universeState}
           <Col lg={2} className="page-action-buttons">
             <ButtonGroup className="universe-detail-btn-group">
               <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>

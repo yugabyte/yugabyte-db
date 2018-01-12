@@ -289,8 +289,6 @@ class GraphPanelHeader extends Component {
         className="graph-panel"
         header={
           <FlexContainer>
-
-            <h2 className="content-title">Metrics</h2>
             <FlexGrow power={1}>
               <div className="filter-container">
                 {universePicker}
