@@ -78,32 +78,6 @@ public class TestYBClient extends BaseYBClientTest {
     syncClient.waitForMasterLeader(TestUtils.adjustTimeoutForBuildType(10000));
   }
 
-  private Schema createManyStringsSchema() {
-    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(4);
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.STRING).key(true).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c1", Type.STRING).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c2", Type.STRING).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c3", Type.STRING).nullable(true).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c4", Type.STRING).nullable(true).build());
-    return new Schema(columns);
-  }
-
-  private Schema createSchemaWithBinaryColumns() {
-    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>();
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.BINARY).key(true).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c1", Type.STRING).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c2", Type.DOUBLE).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c3", Type.BINARY).nullable(true).build());
-    return new Schema(columns);
-  }
-
-  private Schema createSchemaWithTimestampColumns() {
-    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>();
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.TIMESTAMP).key(true).build());
-    columns.add(new ColumnSchema.ColumnSchemaBuilder("c1", Type.TIMESTAMP).nullable(true).build());
-    return new Schema(columns);
-  }
-
   /**
    * Test load balanced check.
    * @throws Exception
@@ -113,6 +87,23 @@ public class TestYBClient extends BaseYBClientTest {
     LOG.info("Starting testIsLoadBalanced");
     IsLoadBalancedResponse resp = syncClient.getIsLoadBalanced(0 /* numServers */);
     assertFalse(resp.hasError());
+  }
+
+  /**
+   * Test that we can create and destroy client objects (to catch leaking resources).
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testClientCreateDestroy() throws Exception {
+    LOG.info("Starting testClientCreateDestroy");
+    YBClient myClient = null;
+    for (int i = 0 ; i < 1000; i++) {
+      AsyncYBClient aClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
+                                .build();
+      myClient = new YBClient(aClient);
+      myClient.close();
+      myClient = null;
+    }
   }
 
   /**

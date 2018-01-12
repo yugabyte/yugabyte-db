@@ -1539,7 +1539,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   @Override
   public void close() throws Exception {
-    shutdown();
+    shutdown().join(defaultAdminOperationTimeoutMs);
   }
 
   /**
@@ -1560,11 +1560,11 @@ public class AsyncYBClient implements AutoCloseable {
    * to open a new AsyncYBClient if you want to retry those operations.
    * The Deferred doesn't actually hold any content.
    */
-  public void shutdown() {
+  public Deferred<ArrayList<Void>> shutdown() {
     checkIsClosed();
     closed = true;
 
-    // This is part of step 3.  We need to execute this in its own thread
+    // This is part of step 2.  We need to execute this in its own thread
     // because Netty gets stuck in an infinite loop if you try to shut it
     // down from within a thread of its own thread pool.  They don't want
     // to fix this so as a workaround we always shut Netty's thread pool
@@ -1579,7 +1579,7 @@ public class AsyncYBClient implements AutoCloseable {
       }
     }
 
-    // 3. Release all other resources.
+    // 2. Release all other resources.
     final class ReleaseResourcesCB implements Callback<ArrayList<Void>, ArrayList<Void>> {
       public ArrayList<Void> call(final ArrayList<Void> arg) {
         LOG.debug("Releasing all remaining resources");
@@ -1591,6 +1591,10 @@ public class AsyncYBClient implements AutoCloseable {
         return "release resources callback";
       }
     }
+
+    // 1. Terminate all connections and flush everything.
+    // Notice that we do not handle the errback, if there's an exception it will come straight out.
+    return disconnectEverything().addCallback(new ReleaseResourcesCB());
   }
 
   private void checkIsClosed() {
