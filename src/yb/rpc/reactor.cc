@@ -368,6 +368,11 @@ void Reactor::RegisterTimeout(ev::timer *watcher) {
 
 void Reactor::ScanIdleConnections() {
   DCHECK(IsCurrentThread());
+  if (connection_keepalive_time_ == CoarseMonoClock::Duration::zero()) {
+    VLOG(3) << "Skipping Idle connections check since connection_keepalive_time_ = 0";
+    return;
+  }
+
   // enforce TCP connection timeouts
   auto c = server_conns_.begin();
   auto c_end = server_conns_.end();

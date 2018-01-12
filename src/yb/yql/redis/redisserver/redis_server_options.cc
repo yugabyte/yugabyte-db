@@ -13,8 +13,14 @@
 
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
+
+DEFINE_int32(redis_rpc_keepalive_time_ms, 0,
+             "If an RPC connection from a client is idle for this amount of time, the server "
+             "will disconnect the client. Setting flag to 0 disables this clean up.");
+TAG_FLAG(redis_rpc_keepalive_time_ms, advanced);
 
 namespace yb {
 namespace redisserver {
@@ -22,6 +28,7 @@ namespace redisserver {
 RedisServerOptions::RedisServerOptions() {
   server_type = "tserver";
   rpc_opts.default_port = RedisServer::kDefaultPort;
+  rpc_opts.connection_keepalive_time_ms = FLAGS_redis_rpc_keepalive_time_ms;
   connection_context_factory = &std::make_unique<RedisConnectionContext>;
 }
 

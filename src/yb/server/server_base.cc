@@ -91,6 +91,7 @@ TAG_FLAG(generic_svc_queue_length, advanced);
 DEFINE_string(yb_test_name, "",
               "Specifies test name this daemon is running as part of.");
 
+using namespace std::literals;
 using std::shared_ptr;
 using std::string;
 using std::stringstream;
@@ -187,6 +188,7 @@ Status RpcServerBase::Init() {
 
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());
+  builder.set_connection_keepalive_time(options_.rpc_opts.connection_keepalive_time_ms * 1ms);
   builder.use_connection_context_factory(connection_context_factory_);
   RETURN_NOT_OK(builder.Build().MoveTo(&messenger_));
 

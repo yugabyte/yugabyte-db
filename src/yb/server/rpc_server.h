@@ -53,6 +53,7 @@ struct RpcServerOptions {
   uint16_t default_port;
   size_t queue_limit;
   size_t workers_limit;
+  int32_t connection_keepalive_time_ms;
 };
 
 class RpcServer {

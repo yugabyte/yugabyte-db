@@ -67,6 +67,7 @@ TAG_FLAG(rpc_server_allow_ephemeral_ports, unsafe);
 
 DEFINE_int32(rpc_queue_limit, 5000, "Queue limit for rpc server");
 DEFINE_int32(rpc_workers_limit, 128, "Workers limit for rpc server");
+DECLARE_int32(rpc_default_keepalive_time_ms);
 
 namespace yb {
 
@@ -74,7 +75,8 @@ RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
     default_port(0),
     queue_limit(FLAGS_rpc_queue_limit),
-    workers_limit(FLAGS_rpc_workers_limit) {
+    workers_limit(FLAGS_rpc_workers_limit),
+    connection_keepalive_time_ms(FLAGS_rpc_default_keepalive_time_ms) {
 }
 
 RpcServer::RpcServer(const std::string& name, RpcServerOptions opts)

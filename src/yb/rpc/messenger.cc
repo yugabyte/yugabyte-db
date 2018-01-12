@@ -78,7 +78,7 @@ using strings::Substitute;
 DECLARE_int32(num_connections_to_server);
 DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
              "If an RPC connection from a client is idle for this amount of time, the server "
-             "will disconnect the client.");
+             "will disconnect the client. Setting flag to 0 disables this clean up.");
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
 DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
