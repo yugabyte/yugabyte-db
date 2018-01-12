@@ -249,6 +249,13 @@ googleAnalytics = "UA-104956980-1"
 	weight = 571
 
 [[menu.main]]
+	name = "JanusGraph"
+	parent = "develop-ecosystem-integrations"
+	identifier = "develop-ecosystem-integrations-janusgraph"
+	url = "develop/ecosystem-integrations/janusgraph/"
+	weight = 572
+
+[[menu.main]]
 	name = "Real World Examples"
 	parent = "develop"
 	identifier = "develop-realworld-apps"
