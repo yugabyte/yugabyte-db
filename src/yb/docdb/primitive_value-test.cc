@@ -17,6 +17,7 @@
 #include <map>
 
 #include "yb/util/random.h"
+#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/bytes_formatter.h"
@@ -374,6 +375,68 @@ TEST(PrimitiveValueTest, TestMove) {
   ASSERT_OK(addr.FromString("1.2.3.4"));
   TestMove(PrimitiveValue(addr), 1000, 1000);
   TestMove(PrimitiveValue(HybridTime(1000)), 1000, 1000);
+}
+
+// Ensures that the serialized version of a primitive value compares the same way as the primitive
+// value.
+void ComparePrimitiveValues(const PrimitiveValue& v1, const PrimitiveValue& v2) {
+  LOG(INFO) << "Comparing primitive values: " << v1 << ", " << v2;
+  KeyBytes k1;
+  KeyBytes k2;
+  v1.AppendToKey(&k1);
+  v2.AppendToKey(&k2);
+  ASSERT_EQ(v1 < v2, k1 < k2);
+}
+
+TEST(PrimitiveValueTest, TestAllTypesComparisons) {
+  Random r(MonoTime::Now().ToUint64());
+  ComparePrimitiveValues(PrimitiveValue(RandomHumanReadableString(10, &r)),
+                         PrimitiveValue(RandomHumanReadableString(10, &r)));
+
+  ComparePrimitiveValues(PrimitiveValue(r.Next64()), PrimitiveValue(r.Next64()));
+
+  ComparePrimitiveValues(PrimitiveValue(Timestamp(r.Next64())),
+                         PrimitiveValue(Timestamp(r.Next64())));
+
+  InetAddress addr1;
+  InetAddress addr2;
+  ASSERT_OK(addr1.FromBytes(RandomHumanReadableString(4, &r)));
+  ASSERT_OK(addr2.FromBytes(RandomHumanReadableString(4, &r)));
+  ComparePrimitiveValues(PrimitiveValue(addr1), PrimitiveValue(addr2));
+
+  ComparePrimitiveValues(PrimitiveValue(Uuid(Uuid::Generate())),
+                         PrimitiveValue(Uuid(Uuid::Generate())));
+
+  ComparePrimitiveValues(PrimitiveValue(HybridTime::FromMicros(r.Next64())),
+                         PrimitiveValue(HybridTime::FromMicros(r.Next64())));
+
+  ComparePrimitiveValues(
+      PrimitiveValue(DocHybridTime(HybridTime::FromMicros(r.Next64()), r.Next32())),
+      PrimitiveValue(DocHybridTime(HybridTime::FromMicros(r.Next64()), r.Next32())));
+
+  ComparePrimitiveValues(
+      PrimitiveValue(ColumnId(r.Next32())),
+      PrimitiveValue(ColumnId(r.Next32())));
+
+  ComparePrimitiveValues(
+      PrimitiveValue::Double(r.NextDoubleFraction()),
+      PrimitiveValue::Double(r.NextDoubleFraction()));
+
+  ComparePrimitiveValues(
+      PrimitiveValue::Float(r.NextDoubleFraction()),
+      PrimitiveValue::Float(r.NextDoubleFraction()));
+
+  ComparePrimitiveValues(
+      PrimitiveValue::Decimal(std::to_string(r.NextDoubleFraction()), SortOrder::kAscending),
+      PrimitiveValue::Decimal(std::to_string(r.NextDoubleFraction()), SortOrder::kAscending));
+
+  ComparePrimitiveValues(
+      PrimitiveValue::VarInt(std::to_string(r.Next64()), SortOrder::kAscending),
+      PrimitiveValue::VarInt(std::to_string(r.Next64()), SortOrder::kAscending));
+
+  ComparePrimitiveValues(
+      PrimitiveValue::Int32(r.Next32()),
+      PrimitiveValue::Int32(r.Next32()));
 }
 
 }  // namespace docdb
