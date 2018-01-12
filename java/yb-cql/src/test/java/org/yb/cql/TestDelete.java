@@ -216,7 +216,9 @@ public class TestDelete extends BaseCQLTest {
 
       // Check Rows.
       Iterator<Row> rows = session.execute(select.bind(new Integer(4), "h4")).iterator();
-      assertFalse(rows.hasNext());
+      // Omer: Changed this to true. Cassandra actually returns the static column if it
+      // was not deleted
+      assertTrue(rows.hasNext());
 
       // Check that static column is not removed.
       rows = session.execute(static_select.bind(new Integer(4), "h4")).iterator();

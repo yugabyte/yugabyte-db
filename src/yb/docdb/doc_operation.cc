@@ -1339,6 +1339,15 @@ bool RequireRead(const QLWriteRequestPB& request, const Schema& schema) {
   return RequireReadForExpressions(request) || has_user_timestamp || is_range_operation;
 }
 
+// Append dummy entries in schema to table_row
+// TODO(omer): this should most probably be added somewhere else
+void AddProjection(const Schema& schema, QLTableRow* table_row) {
+  for (size_t i = 0; i < schema.num_columns(); i++) {
+    const auto& column_id = schema.column_id(i);
+    table_row->AllocColumn(column_id);
+  }
+}
+
 // Create projection schemas of static and non-static columns from a rowblock projection schema
 // (for read) and a WHERE / IF condition (for read / write). "schema" is the full table schema
 // and "rowblock_schema" is the selected columns from which we are splitting into static and
@@ -1383,15 +1392,22 @@ CHECKED_STATUS PopulateRow(const QLTableRow& table_row,
   return Status::OK();
 }
 
-// Join a static row with a non-static row.
-void JoinStaticRow(
+// Outer join a static row with a non-static row.
+// A join is successful if and only if for every hash key, the values in the static and the
+// non-static row are either non-NULL and the same, or one of them is NULL. Therefore we say that
+// a join is successful if the static row is empty, and in turn return true.
+// Copies the entries from the static row into the non-static one.
+bool JoinStaticRow(
     const Schema& schema, const Schema& static_projection, const QLTableRow& static_row,
     QLTableRow* non_static_row) {
-  // No need to join if static row is empty or the hash key is different.
+  // The join is successful if the static row is empty
   if (static_row.IsEmpty()) {
-    return;
+    return true;
   }
 
+  // Now we know that the static row is not empty. The non-static row cannot be empty, therefore
+  // we know that both the static row and the non-static one have non-NULL entries for all
+  // hash keys. Therefore if MatchColumn returns false, we know the join is unsuccessful.
   // TODO(neil)
   // - Need to assign TTL and WriteTime to their default values.
   // - Check if they should be compared and copied over. Most likely not needed as we don't allow
@@ -1399,7 +1415,7 @@ void JoinStaticRow(
   // - This copying function should be moved to QLTableRow class.
   for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
     if (!non_static_row->MatchColumn(schema.column_id(i), static_row)) {
-      return;
+      return false;
     }
   }
 
@@ -1407,7 +1423,38 @@ void JoinStaticRow(
   for (size_t i = 0; i < static_projection.num_columns(); i++) {
     CHECK_OK(non_static_row->CopyColumn(static_projection.column_id(i), static_row));
   }
+
+  return true;
 }
+
+// Join a non-static row with a static row.
+// Returns true if the two rows match
+bool JoinNonStaticRow(
+    const Schema& schema, const Schema& static_projection, const QLTableRow& non_static_row,
+    QLTableRow* static_row) {
+  bool join_successful = true;
+
+  for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
+    if (!static_row->MatchColumn(schema.column_id(i), non_static_row)) {
+      join_successful = false;
+      break;
+    }
+  }
+
+  if (!join_successful) {
+    static_row->Clear();
+    for (size_t i = 0; i < static_projection.num_columns(); i++) {
+      static_row->AllocColumn(static_projection.column_id(i));
+    }
+
+    for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
+      CHECK_OK(static_row->CopyColumn(schema.column_id(i), non_static_row));
+    }
+  }
+  return join_successful;
+}
+
+
 
 } // namespace
 
@@ -1870,6 +1917,7 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
+
   QLTableRow static_row;
   QLTableRow non_static_row;
   QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
@@ -1889,60 +1937,78 @@ Status QLReadOperation::Execute(const common::QLStorageIf& ql_storage,
 
   // Begin the normal fetch.
   int match_count = 0;
+  bool static_dealt_with = true;
   while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
+    const bool last_read_static = iter->IsNextStaticColumn();
+
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
     // because "<empty_range_components>" is empty and terminated by kGroupEnd which sorts before
     // all other ValueType characters in a non-empty range component.
     //   <hash_code><hash_components><empty_range_components><static_column_id> -> value;
     //   <hash_code><hash_components><range_components><non_static_column_id> -> value;
-    if (iter->IsNextStaticColumn()) {
+    if (last_read_static) {
+      static_row.Clear();
+      RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
+    } else { // Reading a regular row that contains non-static columns.
 
-      // If the next row is a row that contains a static column, read it if the select list contains
-      // a static column. Otherwise, skip this row and continue to read the next row.
-      if (read_static_columns) {
-        static_row.Clear();
-        RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
+      // Read this regular row.
+      // TODO(omer): this is quite inefficient if read_distinct_column. A better way to do this
+      // would be to only read the first non-static column for each hash key, and skip the rest
+      non_static_row.Clear();
+      RETURN_NOT_OK(iter->NextRow(non_static_projection, &non_static_row));
+    }
 
-        // If we are not selecting distinct columns (i.e. hash and static columns only), continue
-        // to scan for the non-static (regular) row.
-        if (!read_distinct_columns) {
+    // We have two possible cases: whether we use distinct or not
+    // If we use distinct, then in general we only need to add the static rows
+    // However, we might have to add non-static rows, if there is no static row corresponding to
+    // it. Of course, we add one entry per hash key in non-static row.
+    // If we do not use distinct, we are generally only adding non-static rows
+    // However, if there is no non-static row for the static row, we have to add it.
+    if (read_distinct_columns) {
+      bool join_successful = false;
+      if (!last_read_static) {
+        join_successful = JoinNonStaticRow(schema, static_projection, non_static_row, &static_row);
+      }
+
+      // If the join was not successful, it means that the non-static row we read has no
+      // corresponding static row, so we have to add it to the result
+      if (!join_successful) {
+        RETURN_NOT_OK(AddRowToResult(
+            spec, static_row, row_count_limit, resultset, &match_count));
+      }
+    } else {
+      if (last_read_static) {
+        // If the next row to be read is not static, deal with it later, as we do not know whether
+        // the non-static row corresponds to this static row; if the non-static row doesn't
+        // correspond to this static row, we will have to add it later, so set static_dealt_with to
+        // false
+        if (iter->HasNext() && !iter->IsNextStaticColumn()) {
+          static_dealt_with = false;
           continue;
         }
 
+        AddProjection(non_static_projection, &static_row);
+        RETURN_NOT_OK(AddRowToResult(
+            spec, static_row, row_count_limit, resultset, &match_count));
       } else {
-        iter->SkipRow();
-        continue;
-      }
-
-    } else { // Reading a regular row that contains non-static columns.
-
-      // If we are selecting distinct columns (which means hash and static columns only), skip this
-      // row and continue to read next row.
-      if (read_distinct_columns) {
-        iter->SkipRow();
-        continue;
-      }
-
-      // Read this regular row.
-      non_static_row.Clear();
-      RETURN_NOT_OK(iter->NextRow(non_static_projection, &non_static_row));
-
-      // If select list contains static columns and we have read a row that contains the static
-      // columns for the same hash key, copy the static columns into this row.
-      if (read_static_columns) {
-        JoinStaticRow(schema, static_projection, static_row, &non_static_row);
-      }
-    }
-
-    // Match the row with the where condition before adding to the row block.
-    bool match = false;
-    RETURN_NOT_OK(spec->Match(selected_row, &match));
-    if (match) {
-      match_count++;
-      if (request_.is_aggregate()) {
-        RETURN_NOT_OK(EvalAggregate(selected_row));
-      } else {
-        RETURN_NOT_OK(PopulateResultSet(selected_row, resultset));
+        // We also have to do the join if we are not reading any static columns, as Cassandra
+        // reports nulls for static rows with no corresponding non-static row
+        if (read_static_columns || !static_dealt_with) {
+          const bool join_successful = JoinStaticRow(schema,
+                                               static_projection,
+                                               static_row,
+                                               &non_static_row);
+          // Add the static row is the join was not successful and it is the first time we are
+          // dealing with this static row
+          if (!join_successful && !static_dealt_with) {
+            AddProjection(non_static_projection, &static_row);
+            RETURN_NOT_OK(AddRowToResult(
+                spec, static_row, row_count_limit, resultset, &match_count));
+          }
+        }
+        static_dealt_with = true;
+        RETURN_NOT_OK(AddRowToResult(
+            spec, non_static_row, row_count_limit, resultset, &match_count));
       }
     }
   }
@@ -2001,5 +2067,25 @@ CHECKED_STATUS QLReadOperation::PopulateAggregate(const QLTableRow& table_row,
   return Status::OK();
 }
 
+CHECKED_STATUS QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
+                                               const QLTableRow& row,
+                                               const size_t row_count_limit,
+                                               QLResultSet* resultset,
+                                               int* match_count) {
+  if (resultset->rsrow_count() < row_count_limit) {
+    bool match = false;
+    RETURN_NOT_OK(spec->Match(row, &match));
+    if (match) {
+      (*match_count)++;
+      if (request_.is_aggregate()) {
+        RETURN_NOT_OK(EvalAggregate(row));
+      } else {
+        RETURN_NOT_OK(PopulateResultSet(row, resultset));
+      }
+    }
+  }
+
+  return Status::OK();
+}
 }  // namespace docdb
 }  // namespace yb

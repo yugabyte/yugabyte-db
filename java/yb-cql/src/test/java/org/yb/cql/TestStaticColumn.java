@@ -152,7 +152,10 @@ public class TestStaticColumn extends BaseCQLTest {
     }
 
     // Test "all" rows. Static columns with hash key only will not show up.
+    // Omer: Cassandra will return the static rows too
     assertQuery("select * from t;",
+                "Row[6, h6, NULL, NULL, 60, s60, NULL, NULL]"+
+                "Row[5, h5, NULL, NULL, 50, s50, NULL, NULL]"+
                 "Row[1, h1, 1, r1, 13, s13, 1, c1]"+
                 "Row[1, h1, 2, r2, 13, s13, 2, c2]"+
                 "Row[1, h1, 3, r3, 13, s13, 3, c3]"+
@@ -161,7 +164,8 @@ public class TestStaticColumn extends BaseCQLTest {
                 "Row[3, h3, 3, r3, 33, s33, 3, c3]"+
                 "Row[2, h2, 1, r1, 23, s23, 1, c1]"+
                 "Row[2, h2, 2, r2, 23, s23, 2, c2]"+
-                "Row[2, h2, 3, r3, 23, s23, 3, c3]");
+                "Row[2, h2, 3, r3, 23, s23, 3, c3]"+
+                "Row[4, h4, NULL, NULL, 40, s40, NULL, NULL]");
 
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
@@ -231,7 +235,10 @@ public class TestStaticColumn extends BaseCQLTest {
     }
 
     // Test "all" rows. Static columns with hash key only will not show up.
+    // Omer: Cassandra will show those too
     assertQuery("select * from t;",
+                "Row[6, h6, NULL, NULL, 120, s120, NULL, NULL]"+
+                "Row[5, h5, NULL, NULL, 100, s100, NULL, NULL]"+
                 "Row[1, h1, 1, r1, 15, s15, 1, c1]"+
                 "Row[1, h1, 2, r2, 15, s15, 2, c2]"+
                 "Row[1, h1, 3, r3, 15, s15, 5, c5]"+
@@ -240,7 +247,8 @@ public class TestStaticColumn extends BaseCQLTest {
                 "Row[3, h3, 3, r3, 35, s35, 5, c5]"+
                 "Row[2, h2, 1, r1, 25, s25, 1, c1]"+
                 "Row[2, h2, 2, r2, 25, s25, 2, c2]"+
-                "Row[2, h2, 3, r3, 25, s25, 5, c5]");
+                "Row[2, h2, 3, r3, 25, s25, 5, c5]"+
+                "Row[4, h4, NULL, NULL, 80, s80, NULL, NULL]");
 
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
@@ -380,9 +388,11 @@ public class TestStaticColumn extends BaseCQLTest {
                     "values (2, 'h2', 3, {'e', 'f'}, {'e' : 1, 'f' : 1});");
 
     // Verify the static collection columns
+    // Omer: Cassandra also adds the static row to the result
     assertQuery("select * from t;",
                 "Row[1, h1, 1, r1, 2, [c, d], {c=1, d=1}, 1, c1]"+
-                "Row[1, h1, 2, r2, 2, [c, d], {c=1, d=1}, 2, c2]");
+                "Row[1, h1, 2, r2, 2, [c, d], {c=1, d=1}, 2, c2]"+
+                "Row[2, h2, NULL, NULL, 3, [e, f], {e=1, f=1}, NULL, NULL]");
     assertQuery("select distinct h1, h2, s1, s2, s3 from t;",
                 "Row[1, h1, 2, [c, d], {c=1, d=1}]"+
                 "Row[2, h2, 3, [e, f], {e=1, f=1}]");
@@ -482,5 +492,92 @@ public class TestStaticColumn extends BaseCQLTest {
       assertTrue(row.isNull(0));
     }
     LOG.info("Test End");
+  }
+
+  @Test
+  public void testSelectDistinctStatic() throws Exception {
+    LOG.info("Test Start");
+    session.execute("create table t (" +
+                    "h int, r int, s int static, c int, " +
+                    "primary key ((h), r));");
+
+    // Insert some rows, so that among all adjacent entries, we have all pairs between
+    // static and non-static (as issues could arise at these boundaries)
+    session.execute("insert into t (h, s) " +
+                    "values (1, 1);");
+    session.execute("insert into t (h, s) " +
+                    "values (2, 2);");
+    session.execute("insert into t (h, r, c) " +
+                    "values (3, 3, 3);");
+    session.execute("insert into t (h, r, c) " +
+                    "values (4, 4, 4);");
+    session.execute("insert into t (h, s) " +
+                    "values (5, 5);");
+    session.execute("insert into t (h, r, s, c) " +
+                    "values (6, 6, 5, 6);");
+    session.execute("insert into t (h, r, s, c) " +
+                    "values (6, 7, 6, 7);");
+
+    assertQuery("select * from t;",
+                "Row[5, NULL, 5, NULL]"+
+                "Row[1, NULL, 1, NULL]"+
+                "Row[6, 6, 6, 6]"+
+                "Row[6, 7, 6, 7]"+
+                "Row[4, 4, NULL, 4]"+
+                "Row[2, NULL, 2, NULL]"+
+                "Row[3, 3, NULL, 3]");
+
+    assertQuery("select h, s from t;",
+                "Row[5, 5]"+
+                "Row[1, 1]"+
+                "Row[6, 6]"+
+                "Row[6, 6]"+
+                "Row[4, NULL]"+
+                "Row[2, 2]"+
+                "Row[3, NULL]");
+
+    assertQuery("select h from t;",
+                "Row[5]"+
+                "Row[1]"+
+                "Row[6]"+
+                "Row[6]"+
+                "Row[4]"+
+                "Row[2]"+
+                "Row[3]");
+
+    assertQuery("select c from t;",
+                "Row[NULL]"+
+                "Row[NULL]"+
+                "Row[6]"+
+                "Row[7]"+
+                "Row[4]"+
+                "Row[NULL]"+
+                "Row[3]");
+
+    assertQuery("select distinct h, s from t;",
+                "Row[5, 5]"+
+                "Row[1, 1]"+
+                "Row[6, 6]"+
+                "Row[4, NULL]"+
+                "Row[2, 2]"+
+                "Row[3, NULL]");
+
+    assertQuery("select distinct h from t;",
+                "Row[5]"+
+                "Row[1]"+
+                "Row[6]"+
+                "Row[4]"+
+                "Row[2]"+
+                "Row[3]");
+
+    // Omer: Cassandra does not allow for this; probably the grammar has to be changed in order
+    // for this to return an error
+    assertQuery("select distinct s from t;",
+                "Row[5]"+
+                "Row[1]"+
+                "Row[6]"+
+                "Row[NULL]"+
+                "Row[2]"+
+                "Row[NULL]");
   }
 }

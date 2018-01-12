@@ -223,6 +223,12 @@ class QLReadOperation : public DocExprExecutor {
   CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
   CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
 
+  CHECKED_STATUS AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
+                                const QLTableRow& row,
+                                const size_t row_count_limit,
+                                QLResultSet* resultset,
+                                int* match_count);
+
   QLResponsePB& response() { return response_; }
 
  private:
