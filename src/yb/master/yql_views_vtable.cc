@@ -28,22 +28,23 @@ Schema YQLViewsVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn("base_table_id", QLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn("base_table_name", QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn("bloom_filter_fp_chance", QLType::Create(DataType::DOUBLE)));
-  // TODO: caching needs to be a frozen map.
-  CHECK_OK(builder.AddColumn("caching",
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      "caching",
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
   CHECK_OK(builder.AddColumn("cdc", QLType::Create(DataType::BOOL)));
   CHECK_OK(builder.AddColumn("comment", QLType::Create(DataType::STRING)));
-  // TODO: compaction needs to be a frozen map.
-  CHECK_OK(builder.AddColumn("compaction",
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
-  // TODO: compression needs to be a frozen map.
-  CHECK_OK(builder.AddColumn("compression",
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      "compaction",
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
+  CHECK_OK(builder.AddColumn(
+      "compression",
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
   CHECK_OK(builder.AddColumn("crc_check_chance", QLType::Create(DataType::DOUBLE)));
   CHECK_OK(builder.AddColumn("dclocal_read_repair_chance", QLType::Create(DataType::DOUBLE)));
   CHECK_OK(builder.AddColumn("default_time_to_live", QLType::Create(DataType::INT32)));
-  CHECK_OK(builder.AddColumn("extensions",
-                             QLType::CreateTypeMap(DataType::STRING, DataType::BINARY)));
+  CHECK_OK(builder.AddColumn(
+      "extensions",
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::BINARY))));
   CHECK_OK(builder.AddColumn("gc_grace_seconds", QLType::Create(DataType::INT32)));
   CHECK_OK(builder.AddColumn("id", QLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn("include_all_columns", QLType::Create(DataType::BOOL)));

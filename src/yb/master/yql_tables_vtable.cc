@@ -55,7 +55,7 @@ Status YQLTablesVTable::RetrieveData(const QLReadRequestPB& request,
     QLValuePB flags_elem;
     flags_elem.set_string_value("compound");
     QLValuePB flags_set;
-    *flags_set.mutable_set_value()->add_elems() = flags_elem;
+    *flags_set.mutable_frozen_value()->add_elems() = flags_elem;
     RETURN_NOT_OK(SetColumnValue(kFlags, flags_set, &row));
 
     // Create appropriate table uuid entry.
@@ -92,19 +92,25 @@ Schema YQLTablesVTable::CreateSchema() const {
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kTableName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kBloomFilterChance, QLType::Create(DataType::DOUBLE)));
-  CHECK_OK(builder.AddColumn(kCaching, QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      kCaching,
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
   CHECK_OK(builder.AddColumn(kCdc, QLType::Create(DataType::BOOL)));
   CHECK_OK(builder.AddColumn(kComment, QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kCompaction,
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
-  CHECK_OK(builder.AddColumn(kCompression,
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      kCompaction,
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
+  CHECK_OK(builder.AddColumn(
+      kCompression,
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
   CHECK_OK(builder.AddColumn(kCrcCheck, QLType::Create(DataType::DOUBLE)));
   CHECK_OK(builder.AddColumn(kLocalReadRepair, QLType::Create(DataType::DOUBLE)));
   CHECK_OK(builder.AddColumn(kDefaultTimeToLive, QLType::Create(DataType::INT32)));
-  CHECK_OK(builder.AddColumn(kExtensions,
-                             QLType::CreateTypeMap(DataType::STRING, DataType::BINARY)));
-  CHECK_OK(builder.AddColumn(kFlags, QLType::CreateTypeSet(DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      kExtensions,
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::BINARY))));
+  CHECK_OK(builder.AddColumn(
+      kFlags, QLType::CreateTypeFrozen(QLType::CreateTypeSet(DataType::STRING))));
   CHECK_OK(builder.AddColumn(kGcGraceSeconds, QLType::Create(DataType::INT32)));
   CHECK_OK(builder.AddColumn(kId, QLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn(kMaxIndexInterval, QLType::Create(DataType::INT32)));

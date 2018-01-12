@@ -51,9 +51,9 @@ Schema YQLKeyspacesVTable::CreateSchema() const {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn(kKeyspaceName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kDurableWrites, QLType::Create(DataType::BOOL)));
-  // TODO: replication needs to be a frozen map.
-  CHECK_OK(builder.AddColumn(kReplication,
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      kReplication,
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
   return builder.Build();
 }
 

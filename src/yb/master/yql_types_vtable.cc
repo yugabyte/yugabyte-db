@@ -43,7 +43,7 @@ Status QLTypesVTable::RetrieveData(const QLReadRequestPB& request,
 
     // Create appropriate field_names entry.
     QLValuePB field_names;
-    QLSeqValuePB *list_value = field_names.mutable_list_value();
+    QLSeqValuePB *list_value = field_names.mutable_frozen_value();
     for (int i = 0; i < type->field_names_size(); i++) {
       QLValuePB field_name;
       field_name.set_string_value(type->field_names(i));
@@ -53,7 +53,7 @@ Status QLTypesVTable::RetrieveData(const QLReadRequestPB& request,
 
     // Create appropriate field_types entry.
     QLValuePB field_types;
-    list_value = field_types.mutable_list_value();
+    list_value = field_types.mutable_frozen_value();
     for (int i = 0; i < type->field_types_size(); i++) {
       QLValuePB field_type;
       const string& field_type_name = QLType::FromQLTypePB(type->field_types(i))->ToString();
@@ -70,10 +70,10 @@ Schema QLTypesVTable::CreateSchema() const {
   SchemaBuilder builder;
   CHECK_OK(builder.AddHashKeyColumn("keyspace_name", QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("type_name", QLType::Create(DataType::STRING)));
-  // TODO: field_names should be a frozen list.
-  CHECK_OK(builder.AddColumn("field_names", QLType::CreateTypeList(DataType::STRING)));
-  // TODO: field_types should be a frozen list.
-  CHECK_OK(builder.AddColumn("field_types", QLType::CreateTypeList(DataType::STRING)));
+  CHECK_OK(builder.AddColumn("field_names",
+                             QLType::CreateTypeFrozen(QLType::CreateTypeList(DataType::STRING))));
+  CHECK_OK(builder.AddColumn("field_types",
+                             QLType::CreateTypeFrozen(QLType::CreateTypeList(DataType::STRING))));
   return builder.Build();
 }
 

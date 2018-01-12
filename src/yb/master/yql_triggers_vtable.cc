@@ -26,8 +26,9 @@ Schema YQLTriggersVTable::CreateSchema() const {
   CHECK_OK(builder.AddHashKeyColumn("keyspace_name", QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("table_name", QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn("trigger_name", QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn("options",
-                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
+  CHECK_OK(builder.AddColumn(
+      "options",
+      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
   return builder.Build();
 }
 

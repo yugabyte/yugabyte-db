@@ -50,18 +50,18 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
 
 QLValuePB GetReplicationValue(int replication_factor) {
   QLValuePB value_pb;
-  QLMapValuePB *map_value = value_pb.mutable_map_value();
+  QLSeqValuePB *map_value = value_pb.mutable_frozen_value();
 
   // replication strategy
-  QLValuePB *elem = map_value->add_keys();
+  QLValuePB *elem = map_value->add_elems(); // key
   elem->set_string_value("class");
-  elem = map_value->add_values();
+  elem = map_value->add_elems(); // value
   elem->set_string_value("org.apache.cassandra.locator.SimpleStrategy");
 
   // replication factor
-  elem = map_value->add_keys();
+  elem = map_value->add_elems(); // key
   elem->set_string_value("replication_factor");
-  elem = map_value->add_values();
+  elem = map_value->add_elems(); // value
   elem->set_string_value(std::to_string(replication_factor));
 
   return value_pb;
