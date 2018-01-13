@@ -111,30 +111,31 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    // Validate customer UUID
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      String errMsg = "Invalid Customer UUID: " + customerUUID;
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+
+    // Validate universe UUID and retrieve master addresses
+    Universe universe = Universe.get(universeUUID);
+    if (universe == null) {
+      String errMsg = "Invalid Universe UUID: " + universeUUID;
+      LOG.error(errMsg);
+      return ApiResponse.error(BAD_REQUEST, errMsg);
+    }
+    final String masterAddresses = universe.getMasterAddresses();
+    if (masterAddresses.isEmpty()) {
+      String errMsg = "Expected error. Masters are not currently queryable.";
+      LOG.warn(errMsg);
+      return ApiResponse.success(errMsg);
+    }
+
+    YBClient client = null;
     try {
-      // Validate customer UUID
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        String errMsg = "Invalid Customer UUID: " + customerUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-
-      // Validate universe UUID and retrieve master addresses
-      Universe universe = Universe.get(universeUUID);
-      if (universe == null) {
-        String errMsg = "Invalid Universe UUID: " + universeUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      final String masterAddresses = universe.getMasterAddresses();
-      if (masterAddresses.isEmpty()) {
-        String errMsg = "Expected error. Masters are not currently queryable.";
-        LOG.warn(errMsg);
-        return ok(errMsg);
-      }
-
-      YBClient client = ybService.getClient(masterAddresses);
+      client = ybService.getClient(masterAddresses);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
@@ -171,6 +172,8 @@ public class TablesController extends AuthenticatedController {
     } catch (Exception e) {
       LOG.error("Failed to get list of tables in universe " + universeUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
   }
 
@@ -248,8 +251,9 @@ public class TablesController extends AuthenticatedController {
    * @return json-serialized description of the table.
    */
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    YBClient client = null;
+    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
     try {
-
       // Validate customer UUID and universe UUID
       if (Customer.get(customerUUID) == null) {
         String errMsg = "Invalid Customer UUID: " + customerUUID;
@@ -258,15 +262,13 @@ public class TablesController extends AuthenticatedController {
       }
       Universe universe = Universe.get(universeUUID);
 
-      final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
       }
-      YBClient client = ybService.getClient(masterAddresses);
+      client = ybService.getClient(masterAddresses);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
-      ybService.closeClient(client, masterAddresses);
 
       return ok(Json.toJson(createFromResponse(universe, tableUUID, response)));
     } catch (IllegalArgumentException e) {
@@ -275,6 +277,8 @@ public class TablesController extends AuthenticatedController {
     } catch (Exception e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
   }
 

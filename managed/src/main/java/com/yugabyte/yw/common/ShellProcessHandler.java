@@ -13,7 +13,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +35,7 @@ public class ShellProcessHandler {
     @Inject
     play.Configuration appConfig;
 
+
     public ShellResponse run(List<String> command, Map<String, String> extraEnvVars) {
         ProcessBuilder pb = new ProcessBuilder(command);
         Map envVars = pb.environment();
@@ -47,9 +47,11 @@ public class ShellProcessHandler {
         ShellResponse response = new ShellResponse();
         response.code = -1;
 
+        File tempOutputFile = null;
+        File tempErrorFile = null;
         try {
-            File tempOutputFile = Files.createTempFile("shell_process_out", "tmp").toFile();
-            File tempErrorFile = Files.createTempFile("shell_process_err", "tmp").toFile();
+            tempOutputFile = File.createTempFile("shell_process_out", "tmp");
+            tempErrorFile = File.createTempFile("shell_process_err", "tmp");
             pb.redirectOutput(tempOutputFile);
             pb.redirectError(tempErrorFile);
             Process process = pb.start();
@@ -60,6 +62,13 @@ public class ShellProcessHandler {
         } catch (IOException | InterruptedException e) {
             LOG.error(e.getMessage());
             response.message = e.getMessage();
+        } finally {
+            if (tempOutputFile != null && tempOutputFile.exists()) {
+                tempOutputFile.delete();
+            }
+            if (tempErrorFile != null && tempErrorFile.exists()) {
+                tempErrorFile.delete();
+            }
         }
 
         return response;
@@ -77,6 +86,7 @@ public class ShellProcessHandler {
             }
         } finally {
             br.close();
+            inputStream.close();
         }
         return sb.toString().trim();
     }

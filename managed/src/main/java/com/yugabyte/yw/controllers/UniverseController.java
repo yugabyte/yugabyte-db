@@ -513,15 +513,18 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
 
+    final String hostPorts = universe.getMasterAddresses();
+    YBClient client = null;
     // Get and return Leader IP
     try {
-      String hostPorts = universe.getMasterAddresses();
-      YBClient client = ybService.getClient(hostPorts);
+      client = ybService.getClient(hostPorts);
       ObjectNode result = Json.newObject().put("privateIP", client.getLeaderMasterHostAndPort().getHostText());
       ybService.closeClient(client, hostPorts);
       return ApiResponse.success(result);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
+    } finally {
+      ybService.closeClient(client, hostPorts);
     }
   }
 
