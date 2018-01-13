@@ -21,11 +21,13 @@ import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.Row;
 
+import com.datastax.driver.core.UDTValue;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class TestAlterTable extends BaseCQLTest {
 
@@ -175,4 +177,56 @@ public class TestAlterTable extends BaseCQLTest {
     }
     assertFalse(selectRunnable.hasFailures());
   }
+
+  @Test
+  public void testAlterTableWithUDT() throws Exception {
+
+    // Creating Table and Type.
+    session.execute("CREATE TABLE alter_udt_test(h int primary key);");
+    session.execute("CREATE TYPE test_udt(a int, b text);");
+
+    // Inserting records with old schema.
+    session.execute("INSERT INTO alter_udt_test(h) VALUES(0);");
+
+    // Adding columns.
+    session.execute("ALTER TABLE alter_udt_test ADD v1 test_udt;");
+    session.execute("ALTER TABLE alter_udt_test ADD v2 int;");
+    session.execute("ALTER TABLE alter_udt_test ADD v3 test_udt;");
+
+    // Checking old row has null values for the new columns.
+    Row row = runSelect("SELECT * FROM alter_udt_test WHERE h = 0").next();
+    assertEquals(0, row.getInt("h"));
+    assertTrue(row.isNull("v1"));
+    assertTrue(row.isNull("v2"));
+    assertTrue(row.isNull("v3"));
+
+    // Inserting records with new schema.
+    session.execute("INSERT INTO alter_udt_test(h, v1, v2, v3) " +
+        "VALUES(1, {a : 1, b : 'foo'}, 21, {a : 2, b : 'bar'});");
+
+    // Checking new row.
+    row = runSelect("SELECT * FROM alter_udt_test WHERE h = 1").next();
+    assertEquals(1, row.getInt("h"));
+    UDTValue udt = row.getUDTValue("v1");
+    assertEquals(1, udt.getInt("a"));
+    assertEquals("foo", udt.getString("b"));
+    assertEquals(21, row.getInt("v2"));
+    udt = row.getUDTValue("v3");
+    assertEquals(2, udt.getInt("a"));
+    assertEquals("bar", udt.getString("b"));
+
+    // Drop an UDT column.
+    session.execute("ALTER TABLE alter_udt_test DROP v1;");
+
+    // Checking new row.
+    row = runSelect("SELECT * FROM alter_udt_test WHERE h = 1").next();
+    assertEquals(1, row.getInt("h"));
+    assertEquals(21, row.getInt("v2"));
+    udt = row.getUDTValue("v3");
+    assertEquals(2, udt.getInt("a"));
+    assertEquals("bar", udt.getString("b"));
+    // Ensure v1 is deleted.
+    assertFalse(row.getColumnDefinitions().contains("v1"));
+  }
+
 }

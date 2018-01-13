@@ -143,6 +143,10 @@ CHECKED_STATUS PTAlterColumnDefinition::Analyze(SemContext *sem_context) {
     RETURN_NOT_OK(sem_context->MapSymbol(*new_name_, this));
   }
 
+  if (datatype_ != nullptr) {
+    RETURN_NOT_OK(datatype_->Analyze(sem_context));
+  }
+
   PTAlterTable *table = sem_context->current_alter_table();
   RETURN_NOT_OK(table->AppendModColumn(sem_context, this));
 
