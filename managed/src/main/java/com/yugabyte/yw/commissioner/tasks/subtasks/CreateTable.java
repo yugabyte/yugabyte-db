@@ -91,13 +91,17 @@ public class CreateTable extends AbstractTaskBase {
           taskParams().universeUUID);
     }
 
-    YBClient client = ybService.getClient(masterAddresses);
-    if (StringUtils.isEmpty(taskParams().tableName)) {
-      taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
+    YBClient client = null;
+    try {
+      client = ybService.getClient(masterAddresses);
+      if (StringUtils.isEmpty(taskParams().tableName)) {
+        taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
+      }
+      YBTable table = client.createRedisTable(taskParams().tableName, taskParams().numTablets);
+      LOG.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
+    } finally {
+      ybService.closeClient(client, masterAddresses);
     }
-    YBTable table = client.createRedisTable(taskParams().tableName, taskParams().numTablets);
-    LOG.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
-    ybService.closeClient(client, masterAddresses);
   }
 
   @Override
