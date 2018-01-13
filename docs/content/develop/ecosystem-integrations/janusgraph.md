@@ -76,7 +76,7 @@ gremlin> g = graph.traversal()
 
 For reference, here is the graph data loaded by the Graph of the Gods. You can find a lot more useful information about this in the [JanusGraph getting started page](http://docs.janusgraph.org/latest/getting-started.html).
 
-![Graph of the Gods](images/develop/ecosystem-integrations/janusgraph/graph-of-the-gods-2.png)
+![Graph of the Gods](/images/develop/ecosystem-integrations/janusgraph/graph-of-the-gods-2.png)
 
 - Retrieve the Saturn vertex
 
