@@ -364,12 +364,6 @@ googleAnalytics = "UA-104956980-1"
 	weight = 700
 
 [[menu.main]]
-	name = "Troubleshoot"
-	parent = "manage"
-	url = "manage/troubleshoot/"
-	weight = 701
-
-[[menu.main]]
 	name = "Diagnostics Reporting"
 	parent = "manage"
 	url = "manage/diagnostics-reporting/"
@@ -411,6 +405,82 @@ googleAnalytics = "UA-104956980-1"
 	parent = "manage-ee"
 	url    = "manage/enterprise-edition/delete-universe/"
 	weight = 760
+
+[[menu.main]]
+	name   = "Troubleshoot"
+	identifier = "troubleshoot"
+	url    = "troubleshoot/"
+	weight = 800
+
+[[menu.main]]
+	name   = "Overview"
+	parent = "troubleshoot"
+	url    = "troubleshoot/overview/"
+	weight = 810
+
+[[menu.main]]
+	name   = "Common Issues"
+	parent = "troubleshoot"
+	identifier = "troubleshoot-common"
+	url    = "troubleshoot/common-issues/"
+	weight = 820
+
+[[menu.main]]
+	name   = "Cannot Connect to CQL"
+	parent = "troubleshoot-common"
+	url    = "troubleshoot/common-issues/connect-cql/"
+	weight = 822
+
+[[menu.main]]
+	name   = "Cannot Connect to Redis"
+	parent = "troubleshoot-common"
+	url    = "troubleshoot/common-issues/connect-redis/"
+	weight = 824
+
+#[[menu.main]]
+#	name   = "Troubleshoot Universe"
+#	parent = "troubleshoot"
+#	identifier = "troubleshoot-univ"
+#	url    = "troubleshoot/universe/"
+#	weight = 830
+
+[[menu.main]]
+	name   = "Troubleshoot Nodes"
+	identifier = "troubleshoot-nodes"
+	parent = "troubleshoot"
+	url    = "troubleshoot/nodes/"
+	weight = 840
+
+[[menu.main]]
+	name   = "Check Processes"
+	parent = "troubleshoot-nodes"
+	url    = "troubleshoot/nodes/check-processes/"
+	weight = 842
+
+[[menu.main]]
+	name   = "Inspect Logs"
+	parent = "troubleshoot-nodes"
+	url    = "troubleshoot/nodes/check-logs/"
+	weight = 844
+
+[[menu.main]]
+	name   = "System Stats"
+	parent = "troubleshoot-nodes"
+	url    = "troubleshoot/nodes/check-stats/"
+	weight = 846
+
+[[menu.main]]
+	name   = "Enterprise Edition"
+	identifier = "troubleshoot-ee"
+	parent = "troubleshoot"
+	url    = "troubleshoot/enterprise-edition/"
+	weight = 850
+
+[[menu.main]]
+	name   = "Troubleshoot Universes"
+	parent = "troubleshoot-ee"
+	url    = "troubleshoot/enterprise-edition/universes"
+	weight = 853
 
 [[menu.main]]
 	name   = "Architecture"

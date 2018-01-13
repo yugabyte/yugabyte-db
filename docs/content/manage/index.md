@@ -5,17 +5,6 @@ weight: 700
 
 <div>
 
-  <a class="section-link icon-offset" href="/manage/troubleshoot/">
-    <div class="icon">
-      <img src="/images/section_icons/manage/troubleshoot.png" aria-hidden="true" />
-    </div>
-    <div class="text">
-      Troubleshoot
-      <div class="caption">Troubleshoot installation and configuration issues.</div>
-    </div>
-  </a>
-
-
   <a class="section-link icon-offset" href="/manage/diagnostics-reporting/">
     <div class="icon">
       <img src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
