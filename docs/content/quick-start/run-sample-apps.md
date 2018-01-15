@@ -3,7 +3,7 @@ title: Run Sample Apps
 weight: 150
 ---
 
-After trying out [CQL](/quick-start/test-cql/) and [Redis](/quick-start/test-redis/) cli based commands on the local cluster, follow the instructions below to run some sample apps against the cluster as well as look at some of the configuration details of the cluster.
+After trying out [Cassandra](/quick-start/test-cassandra/) and [Redis](/quick-start/test-redis/) cli based commands on the local cluster, follow the instructions below to run some sample apps against the cluster as well as look at some of the configuration details of the cluster.
 
 We will show how to run a sample key-value workload against both the CQL service and the Redis service.
 
@@ -26,7 +26,7 @@ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
 ```
 
 
-## Running Key-Value Workload against CQL
+## Running Key-Value Workload against Cassandra API
 
 - Run the app.
 
@@ -103,10 +103,10 @@ Uptime: 15013 ms | maxWrittenKey: 6220 | maxGeneratedKey: 6225
 
 - Verify using cqlsh
 
-You can inspect the table created by the sample app using cqlsh. Connect to the local cluster [as before](quick-start/test-cql/). The sample app creates the `cassandrakeyvalue` table in the keyspace `ybdemo_keyspace`.
+You can inspect the table created by the sample app using cqlsh. Connect to the local cluster [as before](quick-start/test-cassandra/). The sample app creates the `cassandrakeyvalue` table in the keyspace `ybdemo_keyspace`.
 
 ```sql
-cqlsh> use ybdemo_keyspace ;
+cqlsh> use ybdemo_keyspace;
 cqlsh:ybdemo_keyspace> DESCRIBE cassandrakeyvalue;
 
 CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
@@ -133,7 +133,7 @@ cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 ```
 
 
-## Running Key-Value Workload against Redis
+## Running Key-Value Workload against Redis API
 
 - Run the app.
 

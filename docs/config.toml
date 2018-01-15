@@ -85,13 +85,13 @@ googleAnalytics = "UA-104956980-1"
 	weight = 120
 
 [[menu.main]]
-	name = "3. Test YugaByte CQL"
+	name = "3. Test Cassandra API"
 	parent = "quick-start"
-	url = "quick-start/test-cql/"
+	url = "quick-start/test-cassandra/"
 	weight = 130
 
 [[menu.main]]
-	name = "4. Test YugaByte Redis"
+	name = "4. Test Redis API"
 	parent = "quick-start"
 	url = "quick-start/test-redis/"
 	weight = 140
@@ -255,6 +255,13 @@ googleAnalytics = "UA-104956980-1"
 	url = "develop/ecosystem-integrations/janusgraph/"
 	weight = 572
 
+[[menu.main]]	
+	name = "KairosDB"
+	parent = "develop-ecosystem-integrations"
+	identifier = "develop-ecosystem-integrations-kairosdb"
+	url = "develop/ecosystem-integrations/kairosdb/"
+	weight = 573
+
 [[menu.main]]
 	name = "Real World Examples"
 	parent = "develop"
@@ -263,10 +270,10 @@ googleAnalytics = "UA-104956980-1"
 	weight = 580
 
 #[[menu.main]]
-#	name = "User Identity - Redis and CQL"
+#	name = "User Identity - Redis and Cassandra"
 #	parent = "develop-realworld-apps"
-#	identifier = "develop-realworld-apps-user-identity-redis-and-cql"
-#	url = "develop/realworld-apps/user-identity-redis-and-cql/"
+#	identifier = "develop-realworld-apps-user-identity-redis-and-cassandra"
+#	url = "develop/realworld-apps/user-identity-redis-and-cassandra/"
 #	weight = 581
 
 #[[menu.main]]
@@ -314,8 +321,8 @@ googleAnalytics = "UA-104956980-1"
 #[[menu.main]]
 #	name = "CQL"
 #	parent = "develop-port-existing-apps"
-#	identifier = "develop-port-existing-apps-cql"
-#	url = "develop/port-existing-apps-cql/"
+#	identifier = "develop-port-existing-apps-cassandra"
+#	url = "develop/port-existing-apps-cassandra/"
 #	weight = 581
 
 #[[menu.main]]
@@ -413,28 +420,28 @@ googleAnalytics = "UA-104956980-1"
 	weight = 800
 
 [[menu.main]]
-	name   = "Overview"
+	name   = "Troubleshooting Overview"
 	parent = "troubleshoot"
 	url    = "troubleshoot/overview/"
 	weight = 810
 
 [[menu.main]]
-	name   = "Common Issues"
+	name   = "Cluster Level Issues"
 	parent = "troubleshoot"
-	identifier = "troubleshoot-common"
-	url    = "troubleshoot/common-issues/"
+	identifier = "troubleshoot-cluster"
+	url    = "troubleshoot/cluster/"
 	weight = 820
 
 [[menu.main]]
-	name   = "Cannot Connect to CQL"
-	parent = "troubleshoot-common"
-	url    = "troubleshoot/common-issues/connect-cql/"
+	name   = "Cassandra Connection Issues"
+	parent = "troubleshoot-cluster"
+	url    = "troubleshoot/cluster/connect-cassandra/"
 	weight = 822
 
 [[menu.main]]
-	name   = "Cannot Connect to Redis"
-	parent = "troubleshoot-common"
-	url    = "troubleshoot/common-issues/connect-redis/"
+	name   = "Redis Connection Issues"
+	parent = "troubleshoot-cluster"
+	url    = "troubleshoot/cluster/connect-redis/"
 	weight = 824
 
 #[[menu.main]]
@@ -445,7 +452,7 @@ googleAnalytics = "UA-104956980-1"
 #	weight = 830
 
 [[menu.main]]
-	name   = "Troubleshoot Nodes"
+	name   = "Node Level Issues"
 	identifier = "troubleshoot-nodes"
 	parent = "troubleshoot"
 	url    = "troubleshoot/nodes/"
@@ -631,219 +638,219 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name = "Apache Cassandra"
 	weight = 1210
-	identifier = "api-cql"
+	identifier = "api-cassandra"
 	parent = "API"
-	url = "api/cql/"
+	url = "api/cassandra/"
 
 [[menu.main]]
 	name = "ALTER TABLE"
 	weight = 1220
-	parent = "api-cql"
-	url = "api/cql/ddl_alter_table/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_alter_table/"
 
 [[menu.main]]
 	name = "CREATE KEYSPACE"
 	weight = 1230
-	parent = "api-cql"
-	url = "api/cql/ddl_create_keyspace/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_create_keyspace/"
 
 [[menu.main]]
 	name = "CREATE TABLE"
 	weight = 1240
-	parent = "api-cql"
-	url = "api/cql/ddl_create_table/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_create_table/"
 
 [[menu.main]]
 	name = "CREATE TYPE"
 	weight = 1250
-	parent = "api-cql"
-	url = "api/cql/ddl_create_type/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_create_type/"
 
 [[menu.main]]
 	name = "DROP KEYSPACE"
 	weight = 1260
-	parent = "api-cql"
-	url = "api/cql/ddl_drop_keyspace/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_drop_keyspace/"
 
 [[menu.main]]
 	name = "DROP TABLE"
 	weight = 1270
-	parent = "api-cql"
-	url = "api/cql/ddl_drop_table/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_drop_table/"
 
 [[menu.main]]
 	name = "DROP TYPE"
 	weight = 1280
-	parent = "api-cql"
-	url = "api/cql/ddl_drop_type/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_drop_type/"
 
 [[menu.main]]
 	name = "USE"
 	weight = 1290
-	parent = "api-cql"
-	url = "api/cql/ddl_use/"
+	parent = "api-cassandra"
+	url = "api/cassandra/ddl_use/"
 
 [[menu.main]]
 	name = "INSERT"
 	weight = 1300
-	parent = "api-cql"
-	url = "api/cql/dml_insert/"
+	parent = "api-cassandra"
+	url = "api/cassandra/dml_insert/"
 
 [[menu.main]]
 	name = "SELECT"
 	weight = 1310
-	parent = "api-cql"
-	url = "api/cql/dml_select/"
+	parent = "api-cassandra"
+	url = "api/cassandra/dml_select/"
 
 [[menu.main]]
 	name = "UPDATE"
 	weight = 1320
-	parent = "api-cql"
-	url = "api/cql/dml_update/"
+	parent = "api-cassandra"
+	url = "api/cassandra/dml_update/"
 
 [[menu.main]]
 	name = "DELETE"
 	weight = 1330
-	parent = "api-cql"
-	url = "api/cql/dml_delete/"
+	parent = "api-cassandra"
+	url = "api/cassandra/dml_delete/"
 
 [[menu.main]]
 	name = "Simple Value"
 	weight = 1340
-	parent = "api-cql"
-	url = "api/cql/expr_simple/"
+	parent = "api-cassandra"
+	url = "api/cassandra/expr_simple/"
 
 [[menu.main]]
 	name = "Subscript"
 	weight = 1350
-	parent = "api-cql"
-	url = "api/cql/expr_subscript/"
+	parent = "api-cassandra"
+	url = "api/cassandra/expr_subscript/"
 
 [[menu.main]]
 	name = "Operator Call"
 	weight = 1360
-	parent = "api-cql"
-	url = "api/cql/expr_ocall/"
+	parent = "api-cassandra"
+	url = "api/cassandra/expr_ocall/"
 
 [[menu.main]]
 	name = "Function Call"
 	weight = 1370
-	parent = "api-cql"
-	url = "api/cql/expr_fcall/"
+	parent = "api-cassandra"
+	url = "api/cassandra/expr_fcall/"
 
 [[menu.main]]
 	name = "BIGINT"
 	weight = 1380
-	parent = "api-cql"
-	url = "api/cql/type_int/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_int/"
 
 [[menu.main]]
 	name = "BLOB"
 	weight = 1390
-	parent = "api-cql"
-	url = "api/cql/type_blob/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_blob/"
 
 [[menu.main]]
 	name = "BOOLEAN"
 	weight = 1400
-	parent = "api-cql"
-	url = "api/cql/type_bool/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_bool/"
 
 [[menu.main]]
 	name = "COUNTER"
 	weight = 1410
-	parent = "api-cql"
-	url = "api/cql/type_int/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_int/"
 
 [[menu.main]]
 	name = "DECIMAL"
 	weight = 1420
-	parent = "api-cql"
-	url = "api/cql/type_number/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_number/"
 
 [[menu.main]]
 	name = "DOUBLE"
 	weight = 1430
-	parent = "api-cql"
-	url = "api/cql/type_number/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_number/"
 
 [[menu.main]]
 	name = "FLOAT"
 	weight = 1440
-	parent = "api-cql"
-	url = "api/cql/type_number/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_number/"
 
 [[menu.main]]
 	name = "FROZEN"
 	weight = 1450
-	parent = "api-cql"
-	url = "api/cql/type_frozen/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_frozen/"
 
 [[menu.main]]
 	name = "INET"
 	weight = 1460
-	parent = "api-cql"
-	url = "api/cql/type_inet/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_inet/"
 
 [[menu.main]]
 	name = "INT"
 	weight = 1470
-	parent = "api-cql"
-	url = "api/cql/type_int/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_int/"
 
 [[menu.main]]
 	name = "LIST"
 	weight = 1480
-	parent = "api-cql"
-	url = "api/cql/type_collection/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_collection/"
 
 [[menu.main]]
 	name = "MAP"
 	weight = 1490
-	parent = "api-cql"
-	url = "api/cql/type_collection/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_collection/"
 
 [[menu.main]]
 	name = "SET"
 	weight = 1500
-	parent = "api-cql"
-	url = "api/cql/type_collection/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_collection/"
 
 [[menu.main]]
 	name = "SMALLINT"
 	weight = 1510
-	parent = "api-cql"
-	url = "api/cql/type_int/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_int/"
 
 [[menu.main]]
 	name = "TEXT"
 	weight = 1520
-	parent = "api-cql"
-	url = "api/cql/type_text/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_text/"
 
 [[menu.main]]
 	name = "TIMESTAMP"
 	weight = 1530
-	parent = "api-cql"
-	url = "api/cql/type_timestamp/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_timestamp/"
 
 [[menu.main]]
 	name = "TIMEUUID"
 	weight = 1540
-	parent = "api-cql"
-	url = "api/cql/type_uuid/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_uuid/"
 
 [[menu.main]]
 	name = "TINYINT"
 	weight = 1550
-	parent = "api-cql"
-	url = "api/cql/type_int/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_int/"
 
 [[menu.main]]
 	name = "UUID"
 	weight = 1560
-	parent = "api-cql"
-	url = "api/cql/type_uuid/"
+	parent = "api-cassandra"
+	url = "api/cassandra/type_uuid/"
 
 [[menu.main]]
 	name = "Redis"
@@ -1160,7 +1167,7 @@ googleAnalytics = "UA-104956980-1"
 [[menu.main]]
 	name   = "Apache Cassandra API"
 	parent = "faq"
-	url    = "faq/cql/"
+	url    = "faq/cassandra/"
 	weight = 2500
 
 [blackfriday]

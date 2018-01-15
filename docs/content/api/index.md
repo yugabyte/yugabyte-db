@@ -6,13 +6,13 @@ weight: 1200
 YugaByte DB is currently in a wire-compatible with Apache Cassandra and Redis APIs. PostgreSQL API is in the works.
 
 <div>
-  <a class="section-link icon-offset" href="cql/">
+  <a class="section-link icon-offset" href="cassandra/">
     <div class="icon">
       <img src="/images/section_icons/api/cql.png" aria-hidden="true" />
     </div>
     <div class="text">
-      Apache Cassandra Query Language (CQL)
-      <div class="caption">Complete reference for YugaByte's support for CQL.</div>
+      Apache Cassandra
+      <div class="caption">Complete reference for YugaByte's support for Apache Cassandra Query Language (CQL).</div>
     </div>
   </a>
 

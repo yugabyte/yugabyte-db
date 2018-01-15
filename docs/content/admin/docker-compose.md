@@ -58,10 +58,10 @@ docker-compose up -d
 
 Clients can now connect to YugaByte’s CQL service at http://localhost:9042 and to YugaByte’s Redis service at http://localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
-## Connect to YugaByte CQL and Redis services
+## Connect to YugaByte Cassandra and Redis API services
 
 ```sh
-# connect to cql service on port 9042 via cqlsh
+# connect to cassandra service on port 9042 via cqlsh
 docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
 ```
 

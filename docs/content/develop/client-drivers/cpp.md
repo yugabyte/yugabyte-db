@@ -6,7 +6,7 @@ title: Develop C++ Apps
   <li class="active">
     <a data-toggle="tab" href="#cql">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      CQL
+      Cassandra
     </a>
   </li>
   <li >
@@ -19,7 +19,7 @@ title: Develop C++ Apps
 
 <div class="tab-content">
   <div id="cql" class="tab-pane fade in active">
-    {{% includeMarkdown "/develop/client-drivers/cql/cpp.md" /%}}
+    {{% includeMarkdown "/develop/client-drivers/cassandra/cpp.md" /%}}
   </div>
   <div id="redis" class="tab-pane fade">
     {{% includeMarkdown "/develop/client-drivers/redis/cpp.md" /%}}

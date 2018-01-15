@@ -7,7 +7,7 @@ weight: 553
   <li class="active">
     <a data-toggle="tab" href="#cql">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      CQL
+      Cassandra
     </a>
   </li>
   <li >
@@ -20,7 +20,7 @@ weight: 553
 
 <div class="tab-content">
   <div id="cql" class="tab-pane fade in active">
-    {{% includeMarkdown "/develop/client-drivers/cql/nodejs.md" /%}}
+    {{% includeMarkdown "/develop/client-drivers/cassandra/nodejs.md" /%}}
   </div>
   <div id="redis" class="tab-pane fade">
     {{% includeMarkdown "/develop/client-drivers/redis/nodejs.md" /%}}

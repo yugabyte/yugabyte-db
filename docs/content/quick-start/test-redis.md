@@ -1,5 +1,5 @@
 ---
-title: Test YugaByte Redis
+title: Test YugaByte DB Redis API
 weight: 140
 ---
 

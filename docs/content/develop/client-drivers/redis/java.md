@@ -18,7 +18,7 @@ To build your Java application using the YugaByte Redis driver, add the followin
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL and Redis shell. If not, please follow these steps in the [quick start guide](/quick-start/test-cql/).
+- installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](/quick-start/test-redis/).
 - installed JDK version 1.8+ and maven 3.3+
 
 

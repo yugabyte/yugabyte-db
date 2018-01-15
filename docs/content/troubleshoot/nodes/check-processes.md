@@ -3,7 +3,7 @@ title: Check YugaByte DB Processes
 weight: 842
 ---
 
-## Are the YugaByte processes running?
+## 1. Are the YugaByte processes running?
 Connect to the local node where YugaByte DB is running. 
 - On the local setup this is your local machine (or a docker instance running on your local machine). 
 - On a multi-node cluster you may need to `ssh` into the machines where the YugaByte node(s) are running.
@@ -25,7 +25,7 @@ If the processes are not running you can start them with:
 
 Once the processes are running, if they are not accessible from your client machine this may be a network issue (see below).
 
-## Are the Master and TServer endpoints accessible?
+## 2. Are the yb-master and yb-tserver endpoints accessible?
 Generally the endpoints are: 
 
 |      Description |                       URL |

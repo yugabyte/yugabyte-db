@@ -6,7 +6,7 @@ title: Develop Scala Apps
   <li class="active">
     <a data-toggle="tab" href="#cql">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      CQL
+      Cassandra
     </a>
   </li>
   <li >
@@ -19,7 +19,7 @@ title: Develop Scala Apps
 
 <div class="tab-content">
   <div id="cql" class="tab-pane fade in active">
-    {{% includeMarkdown "/develop/client-drivers/cql/scala.md" /%}}
+    {{% includeMarkdown "/develop/client-drivers/cassandra/scala.md" /%}}
   </div>
   <div id="redis" class="tab-pane fade">
     {{% includeMarkdown "/develop/client-drivers/redis/scala.md" /%}}

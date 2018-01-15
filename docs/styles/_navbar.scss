@@ -117,6 +117,40 @@ a.anchor {
       text-align: center;
     }
 
+    .dropdown-row {
+      display: inline-block;
+      width: 880px;
+      padding: 0 0 5px 10px;
+    }
+
+    .dropdown-column {
+      float: left;
+      margin: 10px;
+      text-align: left;
+
+      h3 {
+        border-bottom: 1px solid $YB_ORANGE;
+        padding: 0 0 15px;
+        margin: 15px 16px 5px;
+        font-size: 16px;
+        font-weight: 500;
+        font-family: Montserrat, sans-serif;
+        color: $YB_VIOLET;
+
+        a {
+          display: none;
+        }
+      }
+
+      a {
+        margin: 0 -6px;
+        border-radius: 6px;
+        text-align: left;
+        border: none;
+        padding: 14px 16px 16px !important;
+      }
+    }
+
     a {
       cursor: pointer;
       display: inline-block;
@@ -130,6 +164,10 @@ a.anchor {
 
       &:hover {
         text-decoration: underline;
+      }
+
+      &[aria-expanded=true] {
+        color: $YB_ORANGE;
       }
 
       &.button {
@@ -166,7 +204,6 @@ a.anchor {
         display: block;
         padding: 14px 24px 16px;
         border: 0;
-        border-top: 1px solid #ddf;
         margin: 0 !important;
         font-weight: 300;
         color: #202951 !important;

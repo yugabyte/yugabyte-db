@@ -5,9 +5,9 @@ weight: 572
 
 In this tutorial, we are first going to setup JanusGraph to work with YugaByte DB as the underlying database. Then, using the Gremlin console, we are going to load some data and run some graph commands.
 
-## Prerequisites
+## 1. Start Local Cluster
 
-- Install YugaByte. You can [start a cluster on your local machine](/quick-start/install/) or [deploy a remote cluster](/deploy/multi-node-cluster/). Once installed, check that you are able to connect to YugaByte using `cqlsh` by doing the following.
+Start a cluster on your [local machine](/quick-start/install/). Check that you are able to connect to YugaByte DB using `cqlsh` by doing the following.
 
 ```sh
 $ cqlsh
@@ -22,7 +22,9 @@ cqlsh>
 ```
 
 
-- Download and unzip JanusGraph. You can do so from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial used the `0.2.0` version of JanusGraph.
+## 2. Download JanusGraph
+
+Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
 
 ```sh
 wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
@@ -31,7 +33,7 @@ cd janusgraph-0.2.0-hadoop2
 ```
 
 
-## Running JanusGraph with YugaByte DB
+## 3. Run JanusGraph with YugaByte DB
 
 - Start the Gremlin console by running `./bin/gremlin.sh`. You should see something like the following.
 
@@ -58,9 +60,9 @@ gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
 
 - Open the YugaByte DB UI to verify that the `janusgraph` keyspace and the necessary tables were created by opening the following URL in a web browser: `http://localhost:7000/` (replace `localhost` with the ip address of any master node in a remote depoyment). You should see the following.
 
-![List of keyspaces and tables when running JanusGraph on YugaByte](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
+![List of keyspaces and tables when running JanusGraph on YugaByte DB](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
 
-## Loading sample data
+## 4. Load Sample Data
 
 We are going to load the sample data that JanusGraph ships with - the Graph of the Gods. You can do this by running the following:
 
@@ -72,7 +74,7 @@ gremlin> g = graph.traversal()
 ```
 
 
-## Graph traversal examples
+## 5. Graph Traversal Examples
 
 For reference, here is the graph data loaded by the Graph of the Gods. You can find a lot more useful information about this in the [JanusGraph getting started page](http://docs.janusgraph.org/latest/getting-started.html).
 
@@ -122,7 +124,7 @@ gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 ```
 
 
-## Complex graph traversal examples
+## 6. Complex Graph Traversal Examples
 
 - Who are Pluto's cohabitants?
 
@@ -164,9 +166,9 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 ```
 
 
-## Global graph index examples
+## 7. lobal Graph Index Examples
 
-NOTE: Secondary indexes in YugaByte are coming soon. These queries will iterate over all vertices to find the result.
+NOTE: Secondary indexes in YugaByte DB are coming soon. These queries will iterate over all vertices to find the result.
 
 - Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 

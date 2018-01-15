@@ -13,7 +13,7 @@ npm install cassandra-driver
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB, created a universe and are able to interact with it using the CQL and Redis shell. If not, please follow these steps in the [quick start guide](/quick-start/test-cql/).
+- installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](/quick-start/test-cassandra/).
 - installed a recent version of `node`. If not, you can find install instructions [here](https://nodejs.org/en/download/).
 
 We will be using the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:

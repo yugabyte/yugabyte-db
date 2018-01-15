@@ -1,16 +1,16 @@
 ---
-title: Cannot connect to YugaByte DB CQL server
+title: Cannot Connect to Cassandra API Service
 weight: 822
 ---
 
-## Are YugaByte processes running?
+## 1. Are YugaByte processes running?
 
 First, ensure that the expected YugaByte DB processes on the current node.
 At a minimum, the tserver process needs to be running to be able to connect to this node with a CQL client or application.
 Additionally, depending on the setup, you might expect a master process to also be running on this node.
 Follow the instructions on the [Check Processes](/troubleshoot/nodes/check-processes/) page.
 
-## Is the YugaByte DB CQL server running?
+## 2. Is the YugaByte DB Cassandra server running?
 
 If the tserver process is running, make sure the YugaByte CQL server is enabled and listening on the CQL port (default `9042`).
 
@@ -32,7 +32,7 @@ If there is another process using this port you might need to stop that and rest
 Otherwise, if no process is listening but the tserver is running, check the value of the `--cql_proxy_bind_address` flag passed to the 
 tserver process.
 
-## Can the CQL shell connect locally?
+## 3. Can the CQL shell connect locally?
 
 Once on the machine where YugaByte DB is running, use `cqlsh` to connect to the local YugaByte DB instance.
 Depending on your installation, you may need to install `cqlsh`, otherwise you can find it in the YugaByte `bin` directory. 

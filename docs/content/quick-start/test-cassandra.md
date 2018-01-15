@@ -1,9 +1,9 @@
 ---
-title: Test YugaByte CQL
+title: Test YugaByte DB Cassandra API
 weight: 130
 ---
 
-After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte's CQL service.
+After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte DB's Cassandra API service.
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line. For ease of use, YugaByte DB ships with the 3.10 version of cqlsh in its bin directory.
 
@@ -32,13 +32,13 @@ After [creating a local cluster](/quick-start/create-local-cluster/), follow the
 
 <div class="tab-content">
   <div id="docker" class="tab-pane fade in active">
-    {{% includeMarkdown "/quick-start/docker/test-cql.md" /%}}
+    {{% includeMarkdown "/quick-start/docker/test-cassandra.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
-    {{% includeMarkdown "/quick-start/binary/test-cql.md" /%}}
+    {{% includeMarkdown "/quick-start/binary/test-cassandra.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade">
-    {{% includeMarkdown "/quick-start/binary/test-cql.md" /%}}
+    {{% includeMarkdown "/quick-start/binary/test-cassandra.md" /%}}
   </div> 
 </div>
 
