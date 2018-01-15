@@ -444,7 +444,7 @@ class Repairer {
           new WritableFileWriter(std::move(file), env_options));
       log::Writer log(std::move(file_writer), 0, false);
       std::string record;
-      edit_->EncodeTo(&record);
+      edit_->AppendEncodedTo(&record);
       status = log.AddRecord(record);
     }
 

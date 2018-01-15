@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_DB_VERSION_EDIT_H
-#define ROCKSDB_DB_VERSION_EDIT_H
+#ifndef YB_ROCKSDB_DB_VERSION_EDIT_H
+#define YB_ROCKSDB_DB_VERSION_EDIT_H
 
 #include <algorithm>
 #include <set>
@@ -247,7 +247,7 @@ class VersionEdit {
   }
 
   // return true on success.
-  bool EncodeTo(std::string* dst) const;
+  bool AppendEncodedTo(std::string* dst) const;
   Status DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& src);
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
@@ -290,4 +290,4 @@ class VersionEdit {
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_DB_VERSION_EDIT_H
+#endif  // YB_ROCKSDB_DB_VERSION_EDIT_H

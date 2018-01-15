@@ -21,7 +21,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef YB_ROCKSDB_TABLE_FORMAT_H
+#define YB_ROCKSDB_TABLE_FORMAT_H
+
 #include <stdint.h>
 #include <string>
 #include "yb/util/slice.h"
@@ -53,7 +55,7 @@ class BlockHandle {
   uint64_t size() const { return size_; }
   void set_size(uint64_t _size) { size_ = _size; }
 
-  void EncodeTo(std::string* dst) const;
+  void AppendEncodedTo(std::string* dst) const;
   Status DecodeFrom(Slice* input);
 
   // Return a string that contains the copy of handle.
@@ -102,11 +104,11 @@ class Footer {
   // In such case, the table magic number of such footer should be
   // initialized via @ReadFooterFromFile().
   // Use this when you plan to load Footer with DecodeFrom(). Never use this
-  // when you plan to EncodeTo.
+  // when you plan to AppendEncodedTo.
   Footer() : Footer(kInvalidTableMagicNumber, 0) {}
 
   // Use this constructor when you plan to write out the footer using
-  // EncodeTo(). Never use this constructor with DecodeFrom().
+  // AppendEncodedTo(). Never use this constructor with DecodeFrom().
   Footer(uint64_t table_magic_number, uint32_t version);
 
   // The version of the footer in this file
@@ -127,7 +129,7 @@ class Footer {
 
   uint64_t table_magic_number() const { return table_magic_number_; }
 
-  void EncodeTo(std::string* dst) const;
+  void AppendEncodedTo(std::string* dst) const;
 
   // Set the current footer based on the input slice.
   //
@@ -248,3 +250,5 @@ inline BlockHandle::BlockHandle(uint64_t _offset, uint64_t _size)
     : offset_(_offset), size_(_size) {}
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_TABLE_FORMAT_H

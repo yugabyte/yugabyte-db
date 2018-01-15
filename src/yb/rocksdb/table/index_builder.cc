@@ -55,7 +55,7 @@ void ShortenedIndexBuilder::AddIndexEntry(
   }
 
   std::string handle_encoding;
-  block_handle.EncodeTo(&handle_encoding);
+  block_handle.AppendEncodedTo(&handle_encoding);
   index_block_builder_.Add(*last_key_in_current_block, handle_encoding);
 }
 

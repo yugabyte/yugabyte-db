@@ -39,7 +39,7 @@ MetaIndexBuilder::MetaIndexBuilder()
 void MetaIndexBuilder::Add(const std::string& key,
                            const BlockHandle& handle) {
   std::string handle_encoding;
-  handle.EncodeTo(&handle_encoding);
+  handle.AppendEncodedTo(&handle_encoding);
   meta_block_handles_.insert({key, handle_encoding});
 }
 

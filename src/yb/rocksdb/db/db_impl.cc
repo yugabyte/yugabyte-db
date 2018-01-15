@@ -488,7 +488,7 @@ Status DBImpl::NewDB() {
         new WritableFileWriter(std::move(file), env_options));
     log::Writer log(std::move(file_writer), 0, false);
     std::string record;
-    new_db.EncodeTo(&record);
+    new_db.AppendEncodedTo(&record);
     s = log.AddRecord(record);
     if (s.ok()) {
       s = SyncManifest(env_, &db_options_, log.file());

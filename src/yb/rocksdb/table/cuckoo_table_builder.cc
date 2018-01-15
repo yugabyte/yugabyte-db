@@ -398,7 +398,7 @@ Status CuckooTableBuilder::Finish() {
   footer.set_metaindex_handle(meta_index_block_handle);
   footer.set_index_handle(BlockHandle::NullBlockHandle());
   std::string footer_encoding;
-  footer.EncodeTo(&footer_encoding);
+  footer.AppendEncodedTo(&footer_encoding);
   s = file_->Append(footer_encoding);
   return s;
 }

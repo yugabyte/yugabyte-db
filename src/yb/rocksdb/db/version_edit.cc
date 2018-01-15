@@ -134,7 +134,7 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
   return Status();
 }
 
-bool VersionEdit::EncodeTo(std::string* dst) const {
+bool VersionEdit::AppendEncodedTo(std::string* dst) const {
   VersionEditPB pb;
   auto result = EncodeTo(&pb);
   if (result) {

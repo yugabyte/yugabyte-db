@@ -52,7 +52,7 @@ const uint64_t kPlainTableMagicNumber = 0;
 #endif
 const uint32_t DefaultStackBufferSize = 5000;
 
-void BlockHandle::EncodeTo(std::string* dst) const {
+void BlockHandle::AppendEncodedTo(std::string* dst) const {
   // Sanity check that all fields have been set
   assert(offset_ != ~static_cast<uint64_t>(0));
   assert(size_ != ~static_cast<uint64_t>(0));
@@ -72,7 +72,7 @@ Status BlockHandle::DecodeFrom(Slice* input) {
 // Return a string that contains the copy of handle.
 std::string BlockHandle::ToString(bool hex) const {
   std::string handle_str;
-  EncodeTo(&handle_str);
+  AppendEncodedTo(&handle_str);
   if (hex) {
     std::string result;
     char buf[10];
@@ -118,14 +118,14 @@ inline uint64_t UpconvertLegacyFooterFormat(uint64_t magic_number) {
 //    <padding> to make the total size 2 * BlockHandle::kMaxEncodedLength + 1
 //    footer version (4 bytes)
 //    table_magic_number (8 bytes)
-void Footer::EncodeTo(std::string* dst) const {
+void Footer::AppendEncodedTo(std::string* dst) const {
   assert(HasInitializedTableMagicNumber());
   if (IsLegacyFooterFormat(table_magic_number())) {
     // has to be default checksum with legacy footer
     assert(checksum_ == kCRC32c);
     const size_t original_size = dst->size();
-    metaindex_handle_.EncodeTo(dst);
-    data_index_handle_.EncodeTo(dst);
+    metaindex_handle_.AppendEncodedTo(dst);
+    data_index_handle_.AppendEncodedTo(dst);
     dst->resize(original_size + 2 * BlockHandle::kMaxEncodedLength);  // Padding
     PutFixed32(dst, static_cast<uint32_t>(table_magic_number() & 0xffffffffu));
     PutFixed32(dst, static_cast<uint32_t>(table_magic_number() >> 32));
@@ -133,8 +133,8 @@ void Footer::EncodeTo(std::string* dst) const {
   } else {
     const size_t original_size = dst->size();
     dst->push_back(static_cast<char>(checksum_));
-    metaindex_handle_.EncodeTo(dst);
-    data_index_handle_.EncodeTo(dst);
+    metaindex_handle_.AppendEncodedTo(dst);
+    data_index_handle_.AppendEncodedTo(dst);
     dst->resize(original_size + kNewVersionsEncodedLength - 12);  // Padding
     PutFixed32(dst, version());
     PutFixed32(dst, static_cast<uint32_t>(table_magic_number() & 0xffffffffu));

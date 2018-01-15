@@ -228,7 +228,7 @@ class CompactionJobTest : public testing::Test {
     {
       log::Writer log(std::move(file_writer), 0, false);
       std::string record;
-      new_db.EncodeTo(&record);
+      new_db.AppendEncodedTo(&record);
       s = log.AddRecord(record);
     }
     ASSERT_OK(s);

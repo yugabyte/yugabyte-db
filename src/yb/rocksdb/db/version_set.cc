@@ -2263,7 +2263,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     if (s.ok()) {
       for (auto& e : batch_edits) {
         std::string record;
-        if (!e->EncodeTo(&record)) {
+        if (!e->AppendEncodedTo(&record)) {
           s = STATUS(Corruption,
               "Unable to Encode VersionEdit:" + e->DebugString(true));
           break;
@@ -3245,7 +3245,7 @@ namespace {
 
 CHECKED_STATUS AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer* log) {
   std::string record;
-  if (!edit.EncodeTo(&record)) {
+  if (!edit.AppendEncodedTo(&record)) {
     return STATUS(Corruption,
         "Unable to Encode VersionEdit:" + edit.DebugString(true));
   }

@@ -2256,7 +2256,7 @@ TEST_F(HarnessTest, FooterTests) {
     BlockHandle meta_index(10, 5), index(20, 15);
     footer.set_metaindex_handle(meta_index);
     footer.set_index_handle(index);
-    footer.EncodeTo(&encoded);
+    footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
     decoded_footer.DecodeFrom(&encoded_slice);
@@ -2276,7 +2276,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.set_metaindex_handle(meta_index);
     footer.set_index_handle(index);
     footer.set_checksum(kxxHash);
-    footer.EncodeTo(&encoded);
+    footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
     decoded_footer.DecodeFrom(&encoded_slice);
@@ -2297,7 +2297,7 @@ TEST_F(HarnessTest, FooterTests) {
     BlockHandle meta_index(10, 5), index(20, 15);
     footer.set_metaindex_handle(meta_index);
     footer.set_index_handle(index);
-    footer.EncodeTo(&encoded);
+    footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
     decoded_footer.DecodeFrom(&encoded_slice);
@@ -2317,7 +2317,7 @@ TEST_F(HarnessTest, FooterTests) {
     footer.set_metaindex_handle(meta_index);
     footer.set_index_handle(index);
     footer.set_checksum(kxxHash);
-    footer.EncodeTo(&encoded);
+    footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
     decoded_footer.DecodeFrom(&encoded_slice);
@@ -2337,7 +2337,7 @@ TEST_F(HarnessTest, FooterTests) {
     BlockHandle meta_index(10, 5), index(20, 15);
     footer.set_metaindex_handle(meta_index);
     footer.set_index_handle(index);
-    footer.EncodeTo(&encoded);
+    footer.AppendEncodedTo(&encoded);
     Footer decoded_footer;
     Slice encoded_slice(encoded);
     decoded_footer.DecodeFrom(&encoded_slice);

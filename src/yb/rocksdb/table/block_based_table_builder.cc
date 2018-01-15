@@ -779,7 +779,7 @@ Status BlockBasedTableBuilder::Finish() {
     footer.set_index_handle(data_index_block_handle);
     footer.set_checksum(r->table_options.checksum);
     std::string footer_encoding;
-    footer.EncodeTo(&footer_encoding);
+    footer.AppendEncodedTo(&footer_encoding);
     r->status = r->metadata_writer->writer->Append(footer_encoding);
     if (r->status.ok()) {
       r->metadata_writer->offset += footer_encoding.size();

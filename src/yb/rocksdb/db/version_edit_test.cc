@@ -33,7 +33,7 @@ namespace {
 void TestEncodeDecode(const VersionEdit &edit) {
   auto extractor = test::MakeBoundaryValuesExtractor();
   std::string encoded, encoded2;
-  edit.EncodeTo(&encoded);
+  edit.AppendEncodedTo(&encoded);
   VersionEdit parsed;
   Status s = parsed.DecodeFrom(extractor.get(), encoded);
   ASSERT_TRUE(s.ok()) << s.ToString();
@@ -42,7 +42,7 @@ void TestEncodeDecode(const VersionEdit &edit) {
   auto str2 = parsed.DebugString();
   ASSERT_EQ(str, str2);
 
-  parsed.EncodeTo(&encoded2);
+  parsed.AppendEncodedTo(&encoded2);
   ASSERT_EQ(encoded, encoded2);
 }
 
@@ -109,7 +109,7 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
 
   auto extractor = test::MakeBoundaryValuesExtractor();
   std::string encoded, encoded2;
-  edit.EncodeTo(&encoded);
+  edit.AppendEncodedTo(&encoded);
   VersionEdit parsed;
   Status s = parsed.DecodeFrom(extractor.get(), encoded);
   ASSERT_TRUE(s.ok()) << s.ToString();
@@ -141,7 +141,7 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 
   std::string encoded;
 
-  edit.EncodeTo(&encoded);
+  edit.AppendEncodedTo(&encoded);
 
   auto extractor = test::MakeBoundaryValuesExtractor();
   VersionEdit parsed;
@@ -168,7 +168,7 @@ TEST_F(VersionEditTest, NewFile4NotSupportedField) {
 
   std::string encoded;
 
-  edit.EncodeTo(&encoded);
+  edit.AppendEncodedTo(&encoded);
 
   auto extractor = test::MakeBoundaryValuesExtractor();
   VersionEdit parsed;
@@ -184,7 +184,7 @@ TEST_F(VersionEditTest, EncodeEmptyFile) {
                    FileMetaData::BoundaryValues(),
                    false);
   std::string buffer;
-  ASSERT_TRUE(!edit.EncodeTo(&buffer));
+  ASSERT_TRUE(!edit.AppendEncodedTo(&buffer));
 }
 
 TEST_F(VersionEditTest, ColumnFamilyTest) {

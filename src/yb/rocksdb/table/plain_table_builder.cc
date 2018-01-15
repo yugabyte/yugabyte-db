@@ -285,7 +285,7 @@ Status PlainTableBuilder::Finish() {
   footer.set_metaindex_handle(metaindex_block_handle);
   footer.set_index_handle(BlockHandle::NullBlockHandle());
   std::string footer_encoding;
-  footer.EncodeTo(&footer_encoding);
+  footer.AppendEncodedTo(&footer_encoding);
   s = file_->Append(footer_encoding);
   if (s.ok()) {
     offset_ += footer_encoding.size();
