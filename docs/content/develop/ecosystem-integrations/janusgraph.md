@@ -166,7 +166,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 ```
 
 
-## 7. lobal Graph Index Examples
+## 7. Global Graph Index Examples
 
 NOTE: Secondary indexes in YugaByte DB are coming soon. These queries will iterate over all vertices to find the result.
 

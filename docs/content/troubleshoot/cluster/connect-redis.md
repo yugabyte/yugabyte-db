@@ -1,5 +1,5 @@
 ---
-title: Cannot Connect to Cassandra API Service
+title: Cannot Connect to Redis API Service
 weight: 824
 ---
 
