@@ -40,7 +40,6 @@ public class TemplateManager extends DevopsBase {
   }
 
   public void createProvisionTemplate(AccessKey accessKey, boolean airGapInstall, boolean passwordlessSudoAccess) {
-
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
 
@@ -56,6 +55,8 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.vaultFile);
     commandArgs.add("--vault_password_file");
     commandArgs.add(keyInfo.vaultPasswordFile);
+    commandArgs.add("--private_key_file");
+    commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
     if (passwordlessSudoAccess) {
