@@ -151,7 +151,7 @@ class OnPremNodesList extends Component {
     const onPremProvider = providers.data.find((provider)=>provider.code === "onprem");
     if (isDefinedNotNull(onPremProvider)) {
       const onPremKey = accessKeys.data.find((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid);
-      if (isDefinedNotNull(onPremKey) && isNonEmptyString(onPremKey.keyInfo.provisionInstanceScript)) {
+      if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.airGapInstall) {
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
             You need to pre-provision your nodes, Please execute the following script

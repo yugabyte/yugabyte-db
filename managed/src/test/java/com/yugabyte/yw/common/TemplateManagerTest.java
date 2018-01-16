@@ -59,6 +59,7 @@ public class TemplateManagerTest extends FakeDBApplication {
     keyInfo.sshUser = "centos";
     keyInfo.vaultFile = "/path/to/vault";
     keyInfo.vaultPasswordFile = "/path/to/vaultpassword";
+    keyInfo.privateKey = "/path/to/pemfile";
     return AccessKey.create(testProvider.uuid, KEY_CODE, keyInfo);
   }
 
@@ -78,6 +79,8 @@ public class TemplateManagerTest extends FakeDBApplication {
     cmd.add(keyInfo.vaultFile);
     cmd.add("--vault_password_file");
     cmd.add(keyInfo.vaultPasswordFile);
+    cmd.add("--private_key_file");
+    cmd.add(keyInfo.privateKey);
     cmd.add("--local_package_path");
     cmd.add(YB_THIRDPARTY_VALUE);
     return cmd;
