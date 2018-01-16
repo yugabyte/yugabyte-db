@@ -39,12 +39,12 @@ public class TabletServerControllerTest {
   }
 
   @Test
-  public void testListTabletServersSuccess() throws Exception {
+  public void testListTabletServersSuccess() {
     when(mockResponse.getTabletServersCount()).thenReturn(2);
     List<ServerInfo> mockTabletSIs = new ArrayList<ServerInfo>();
-    ServerInfo si = new ServerInfo("UUID1", "abc", 1001, false);
+    ServerInfo si = new ServerInfo("UUID1", "abc", 1001, false, "ALIVE");
     mockTabletSIs.add(si);
-    si = new ServerInfo("UUID2", "abc", 2001, true);
+    si = new ServerInfo("UUID2", "abc", 2001, true, "ALIVE");
     mockTabletSIs.add(si);
     when(mockResponse.getTabletServersList()).thenReturn(mockTabletSIs);
     Result r = tabletController.list();
@@ -54,7 +54,7 @@ public class TabletServerControllerTest {
  }
 
   @Test
-  public void testListTabletServersFailure() throws Exception {
+  public void testListTabletServersFailure() {
     when(mockResponse.getTabletServersCount()).thenThrow(new RuntimeException("Unknown Error"));
     Result r = tabletController.list();
     assertEquals(500, r.status());
