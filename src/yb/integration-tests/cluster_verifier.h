@@ -34,6 +34,7 @@
 
 #include <string>
 
+#include "yb/common/common.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/tools/ysck.h"
 #include "yb/util/monotime.h"
@@ -87,7 +88,8 @@ class ClusterVerifier {
   // convergence.
   void CheckRowCount(const client::YBTableName& table_name,
                      ComparisonMode mode,
-                     int expected_row_count);
+                     int expected_row_count,
+                     YBConsistencyLevel consistency = YBConsistencyLevel::STRONG);
 
   // The same as above, but retries until a timeout elapses.
   void CheckRowCountWithRetries(const client::YBTableName& table_name,
@@ -102,7 +104,8 @@ class ClusterVerifier {
   // gtest assertions.
   CHECKED_STATUS DoCheckRowCount(const client::YBTableName& table_name,
                                  ComparisonMode mode,
-                                 int expected_row_count);
+                                 int expected_row_count,
+                                 YBConsistencyLevel consistency);
 
 
   MiniClusterBase* cluster_;

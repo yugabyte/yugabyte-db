@@ -116,20 +116,24 @@ Status ClusterVerifier::DoYsck() {
 
 void ClusterVerifier::CheckRowCount(const YBTableName& table_name,
                                     ComparisonMode mode,
-                                    int expected_row_count) {
-  ASSERT_OK(DoCheckRowCount(table_name, mode, expected_row_count));
+                                    int expected_row_count,
+                                    YBConsistencyLevel consistency) {
+  ASSERT_OK(DoCheckRowCount(table_name, mode, expected_row_count, consistency));
 }
 
 Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
                                         ComparisonMode mode,
-                                        int expected_row_count) {
+                                        int expected_row_count,
+                                        YBConsistencyLevel consistency) {
   std::shared_ptr<client::YBClient> client;
   client::YBClientBuilder builder;
   RETURN_NOT_OK_PREPEND(cluster_->CreateClient(&builder, &client), "Unable to connect to cluster");
 
   client::TableHandle table;
   RETURN_NOT_OK_PREPEND(table.Open(table_name, client.get()), "Unable to open table");
-  size_t count = boost::size(client::TableRange(table));
+  client::TableIteratorOptions options;
+  options.consistency = consistency;
+  size_t count = boost::size(client::TableRange(table, options));
 
   if (mode == AT_LEAST && count < expected_row_count) {
     return STATUS(Corruption, Substitute("row count $0 is not at least expected value $1",
@@ -149,7 +153,7 @@ void ClusterVerifier::CheckRowCountWithRetries(const YBTableName& table_name,
   deadline.AddDelta(timeout);
   Status s;
   while (true) {
-    s = DoCheckRowCount(table_name, mode, expected_row_count);
+    s = DoCheckRowCount(table_name, mode, expected_row_count, YBConsistencyLevel::STRONG);
     if (s.ok() || deadline.ComesBefore(MonoTime::Now())) break;
     LOG(WARNING) << "CheckRowCount() has not succeeded yet: " << s.ToString()
                  << "... will retry";
