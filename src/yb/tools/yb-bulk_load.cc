@@ -214,6 +214,10 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
       ql_valuepb->set_timestamp_value(ts->ToInt64());
       break;
     }
+    case DataType::BINARY: {
+      ql_valuepb->set_binary_value(column);
+      break;
+    }
     default:
       FATAL_INVALID_ENUM_VALUE(DataType, data_type);
   }
