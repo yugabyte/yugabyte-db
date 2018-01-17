@@ -41,7 +41,6 @@
 #include "yb/util/malloc.h"
 #include "yb/util/status.h"
 #include "yb/common/row.h"
-#include "yb/tablet/metadata.pb.h"
 
 namespace yb {
 
