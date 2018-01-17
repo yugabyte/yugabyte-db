@@ -242,10 +242,6 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
                            clock,
                            raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)));
 
-  gscoped_ptr<ThreadPool> thread_pool;
-  CHECK_OK(ThreadPoolBuilder(Substitute("$0-raft", options.tablet_id.substr(0, 6)))
-           .set_min_threads(1).Build(&thread_pool));
-
   DCHECK(local_peer_pb.has_permanent_uuid());
   const string& peer_uuid = local_peer_pb.permanent_uuid();
 

@@ -142,6 +142,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Shut down all of the tablets, gracefully flushing before shutdown.
   void Shutdown();
 
+  ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
@@ -419,6 +420,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Thread pool used to open the tablets async, whether bootstrap is required or not.
   gscoped_ptr<ThreadPool> open_tablet_pool_;
+
+  // Thread pool for preparing transactions, shared between all tablets.
+  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
 
   // Thread pool for apply transactions, shared between all tablets.
   gscoped_ptr<ThreadPool> apply_pool_;

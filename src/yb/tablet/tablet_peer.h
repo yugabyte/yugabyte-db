@@ -51,7 +51,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
-#include "yb/tablet/prepare_thread.h"
+#include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
 
@@ -113,7 +113,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
                                 const std::shared_ptr<rpc::Messenger> &messenger,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
-                                ThreadPool* raft_pool);
+                                ThreadPool* raft_pool,
+                                ThreadPool* tablet_prepare_pool);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -352,7 +353,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // during them in order to reject RPCs, etc.
   mutable simple_spinlock state_change_lock_;
 
-  std::unique_ptr<PrepareThread> prepare_thread_;
+  std::unique_ptr<Preparer> prepare_thread_;
 
   // Pool that executes apply tasks for transactions. This is a multi-threaded
   // pool, constructor-injected by either the Master (for system tables) or

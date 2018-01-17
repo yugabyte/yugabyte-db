@@ -157,7 +157,8 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
                                   const shared_ptr<Messenger> &messenger,
                                   const scoped_refptr<Log> &log,
                                   const scoped_refptr<MetricEntity> &metric_entity,
-                                  ThreadPool* raft_pool) {
+                                  ThreadPool* raft_pool,
+                                  ThreadPool* tablet_prepare_pool) {
 
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -225,7 +226,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
       }
     });
 
-    prepare_thread_ = std::make_unique<PrepareThread>(consensus_.get());
+    prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
   }
 
   RETURN_NOT_OK(prepare_thread_->Start());

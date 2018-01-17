@@ -55,7 +55,7 @@ set(TABLET_SRCS
   mvcc.cc
   tablet_metadata.cc
   tablet_retention_policy.cc
-  prepare_thread.cc
+  preparer.cc
   ${TABLET_SRCS_EXTENSIONS})
 
 PROTOBUF_GENERATE_CPP(

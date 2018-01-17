@@ -11,17 +11,19 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_PREPARE_THREAD_H
-#define YB_TABLET_PREPARE_THREAD_H
+#ifndef YB_TABLET_PREPARER_H
+#define YB_TABLET_PREPARER_H
 
 #include <gflags/gflags.h>
 
 #include "yb/util/status.h"
+#include "yb/util/threadpool.h"
 
 DECLARE_int32(max_group_replicate_batch_size);
 DECLARE_int32(prepare_queue_max_size);
 
 namespace yb {
+class ThreadPool;
 
 namespace consensus {
 class Consensus;
@@ -31,15 +33,16 @@ namespace tablet {
 
 class OperationDriver;
 
-class PrepareThreadImpl;
+class PreparerImpl;
 
 // This is a thread that invokes the "prepare" step on single-shard transactions and, for
 // leader-side transactions, submits them for replication to the consensus in batches. This is
 // useful because we have a "fat lock" in the consensus.
-class PrepareThread {
+// Preparer does not manage a thread but only submits to a token in a thread pool.
+class Preparer {
  public:
-  explicit PrepareThread(consensus::Consensus* consensus);
-  ~PrepareThread();
+  explicit Preparer(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool);
+  ~Preparer();
 
   CHECKED_STATUS Start();
   void Stop();
@@ -47,9 +50,9 @@ class PrepareThread {
   CHECKED_STATUS Submit(OperationDriver* txn_driver);
 
  private:
-  std::unique_ptr<PrepareThreadImpl> impl_;
+  std::unique_ptr<PreparerImpl> impl_;
 };
 
 };  // namespace tablet
 }  // namespace yb
-#endif  // YB_TABLET_PREPARE_THREAD_H
+#endif  // YB_TABLET_PREPARER_H

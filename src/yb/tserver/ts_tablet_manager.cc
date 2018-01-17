@@ -281,6 +281,9 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   CHECK_OK(ThreadPoolBuilder("raft")
                .set_max_threads(std::numeric_limits<int>::max())
                .Build(&raft_pool_));
+  CHECK_OK(ThreadPoolBuilder("prepare")
+               .set_max_threads(std::numeric_limits<int>::max())
+               .Build(&tablet_prepare_pool_));
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
@@ -886,7 +889,8 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                                     server_->messenger(),
                                     log,
                                     tablet->GetMetricEntity(),
-                                    raft_pool());
+                                    raft_pool(),
+                                    tablet_prepare_pool());
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -965,6 +969,9 @@ void TSTabletManager::Shutdown() {
 
   if (raft_pool_) {
     raft_pool_->Shutdown();
+  }
+  if (tablet_prepare_pool_) {
+    tablet_prepare_pool_->Shutdown();
   }
 
   {

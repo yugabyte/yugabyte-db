@@ -53,7 +53,7 @@ namespace tablet {
 class OperationOrderVerifier;
 class OperationTracker;
 class OperationDriver;
-class PrepareThread;
+class Preparer;
 
 // Base class for operation drivers.
 //
@@ -66,7 +66,7 @@ class PrepareThread;
 //      the operation is already "REPLICATING" (and thus we don't need to
 //      trigger replication ourself later on).
 //
-//  2 - ExecuteAsync() is called. This submits the operation driver to the PrepareThread
+//  2 - ExecuteAsync() is called. This submits the operation driver to the Preparer
 //      and returns immediately.
 //
 //  3 - PrepareAndStartTask() calls Prepare() and Start() on the operation.
@@ -75,7 +75,7 @@ class PrepareThread;
 //      also triggers consensus->Replicate() and changes the replication state to
 //      REPLICATING.
 //
-//      What happens in reality is more complicated, as PrepareThread tries to batch leader-side
+//      What happens in reality is more complicated, as Preparer tries to batch leader-side
 //      operations before submitting them to consensus.
 
 //      On the other hand, if we have already successfully replicated (e.g. we are the
@@ -117,7 +117,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   OperationDriver(OperationTracker* operation_tracker,
                   consensus::Consensus* consensus,
                   log::Log* log,
-                  PrepareThread* prepare_thread,
+                  Preparer* preparer,
                   ThreadPool* apply_pool,
                   OperationOrderVerifier* order_verifier,
                   TableType table_type_);
@@ -181,7 +181,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   // The task used to be submitted to the prepare threadpool to prepare and start the operation.
   // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for
-  // non-leader-side operations from PrepareThread, and for leader-side operations the handling
+  // non-leader-side operations from Preparer, and for leader-side operations the handling
   // is a bit more complicated due to batching.
   void PrepareAndStartTask();
 
@@ -248,7 +248,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   OperationTracker* const operation_tracker_;
   consensus::Consensus* const consensus_;
   log::Log* const log_;
-  PrepareThread* const prepare_thread_;
+  Preparer* const preparer_;
   ThreadPool* const apply_pool_;
   OperationOrderVerifier* const order_verifier_;
 
