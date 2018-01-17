@@ -95,7 +95,7 @@ class RedisWriteOperation : public DocOperation {
   CHECKED_STATUS ApplyAppend(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyDel(const DocOperationApplyData& data);
   CHECKED_STATUS ApplySetRange(const DocOperationApplyData& data);
-  CHECKED_STATUS ApplyIncr(const DocOperationApplyData& data, int64_t incr = 1);
+  CHECKED_STATUS ApplyIncr(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyPush(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyInsert(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyPop(const DocOperationApplyData& data);

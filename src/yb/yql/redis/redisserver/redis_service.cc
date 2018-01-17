@@ -134,6 +134,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((mset, MSet, -3, WRITE)) \
     ((hset, HSet, 4, WRITE)) \
     ((hmset, HMSet, -4, WRITE)) \
+    ((hincrby, HIncrBy, 4, WRITE)) \
     ((hdel, HDel, -3, WRITE)) \
     ((sadd, SAdd, -3, WRITE)) \
     ((srem, SRem, -3, WRITE)) \
@@ -149,6 +150,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((del, Del, 2, WRITE)) \
     ((setrange, SetRange, 4, WRITE)) \
     ((incr, Incr, 2, WRITE)) \
+    ((incrby, IncrBy, 3, WRITE)) \
     ((echo, Echo, 2, LOCAL)) \
     ((auth, Auth, -1, LOCAL)) \
     ((config, Config, -1, LOCAL)) \

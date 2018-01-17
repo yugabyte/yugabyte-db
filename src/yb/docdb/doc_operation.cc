@@ -27,6 +27,7 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/trace.h"
 
 DECLARE_bool(trace_docdb_calls);
@@ -715,8 +716,8 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         response_.set_code(RedisResponsePB_RedisStatusCode_OK);
         response_.set_int_response(return_value);
         break;
-      }
-      case REDIS_TYPE_STRING: {
+    }
+    case REDIS_TYPE_STRING: {
         return STATUS_SUBSTITUTE(InvalidCommand,
             "Redis data type $0 in SET command should not have subkeys", kv.type());
       }
@@ -942,60 +943,70 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
       Value(PrimitiveValue(value->value)), redis_query_id());
 }
 
-Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data, int64_t incr) {
+Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
   const RedisKeyValuePB& kv = request_.key_value();
+  const int64_t incr = request_.incr_request().increment_int();
 
-  auto value = GetValue(data);
-  RETURN_NOT_OK(value);
+  if (kv.type() != REDIS_TYPE_HASH && kv.type() != REDIS_TYPE_STRING) {
+    return STATUS_SUBSTITUTE(InvalidCommand,
+                             "Redis data type $0 not supported in Incr command", kv.type());
+  }
 
-  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
-      VerifySuccessIfMissing::kTrue)) {
+  auto container_type = GetValueType(data);
+  RETURN_NOT_OK(container_type);
+  if (!VerifyTypeAndSetCode(kv.type(), *container_type, &response_,
+                            VerifySuccessIfMissing::kTrue)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
 
-  int64_t old_value, new_value;
-  string message = "ERR value is not an integer or out of range";
+  int subkey = (kv.type() == REDIS_TYPE_HASH ? 0 : -1);
+  auto value = GetValue(data, subkey);
+  RETURN_NOT_OK(value);
 
-  if (value->type == REDIS_TYPE_NONE) {
-    // If no value is present, 0 is the default.
-    old_value = 0;
-  } else {
-    try {
-      old_value = std::stoll(value->value);
-      if (std::to_string(old_value) != value->value) {
-        // This can happen if there are leading or trailing spaces, which we should treat as error
-        // even though std::stoll would parse it as number.
-        response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-        response_.set_error_message(message);
-        return Status::OK();
-      }
-    } catch (std::invalid_argument e) {
-      response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-      response_.set_error_message(message);
-      return Status::OK();
-    } catch (std::out_of_range e) {
-      response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
-      response_.set_error_message(message);
-      return Status::OK();
-    }
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
+      VerifySuccessIfMissing::kTrue)) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response_.set_error_message(wrong_type_message);
+    return Status::OK();
   }
 
-  new_value = old_value + incr;
+  // If no value is present, 0 is the default.
+  int64_t old_value = 0, new_value;
+  if (value->type != REDIS_TYPE_NONE) {
+    auto old = util::CheckedStoll(value->value);
+    if (!old.ok()) {
+      // This can happen if there are leading or trailing spaces, or the value
+      // is out of range.
+      response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+      response_.set_error_message("ERR value is not an integer or out of range");
+      return Status::OK();
+    }
+    old_value = *old;
+  }
 
   if ((incr < 0 && old_value < 0 && incr < numeric_limits<int64_t>::min() - old_value) ||
       (incr > 0 && old_value > 0 && incr > numeric_limits<int64_t>::max() - old_value)) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
     response_.set_error_message("Increment would overflow");
     return Status::OK();
   }
 
+  new_value = old_value + incr;
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(new_value);
 
-  return data.doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(std::to_string(new_value))),
-      redis_query_id());
+  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+  PrimitiveValue new_pvalue = PrimitiveValue(std::to_string(new_value));
+  if (kv.type() == REDIS_TYPE_HASH) {
+    SubDocument kv_entries = SubDocument();
+    PrimitiveValue subkey_value;
+    RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(0), kv.type(), &subkey_value));
+    kv_entries.SetChild(subkey_value, SubDocument(new_pvalue));
+    return data.doc_write_batch->ExtendSubDocument(doc_path, kv_entries, redis_query_id());
+  } else {  // kv.type() == REDIS_TYPE_STRING
+    return data.doc_write_batch->SetPrimitive(doc_path, Value(new_pvalue), redis_query_id());
+  }
 }
 
 Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {

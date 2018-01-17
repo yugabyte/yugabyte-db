@@ -125,9 +125,16 @@ class TestRedisService : public RedisTableTestBase {
     DoRedisTestString(line, command, "OK");
   }
 
-  void DoRedisTestExpectError(int line, const std::vector<std::string>& command) {
+  void DoRedisTestExpectError(int line, const std::vector<std::string>& command,
+                              const std::string& error_prefix = "") {
     DoRedisTest(line, command, cpp_redis::reply::type::error,
-        [](const RedisReply& reply) {}
+        [line, error_prefix](const RedisReply& reply) {
+          if (!error_prefix.empty()) {
+            ASSERT_EQ(reply.error().find(error_prefix), 0) << "Error message has the wrong prefix "
+              << " expected : " << error_prefix << " got message " << reply.error()
+              << " Originator: " << __FILE__ << ":" << line;
+          }
+        }
     );
   }
 
@@ -137,8 +144,8 @@ class TestRedisService : public RedisTableTestBase {
   }
 
   void DoRedisTestInt(int line,
-      const std::vector<std::string>& command,
-      int expected) {
+                      const std::vector<std::string>& command,
+                      int64_t expected) {
     DoRedisTest(line, command, cpp_redis::reply::type::integer,
         [line, expected](const RedisReply& reply) {
           ASSERT_EQ(expected, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
@@ -1048,6 +1055,108 @@ TEST_F(TestRedisService, TestEmptyValue) {
   DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s1"}, "");
 
   SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestIncr) {
+  DoRedisTestOk(__LINE__, {"SET", "k1", "5"});
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "5");
+
+  DoRedisTestInt(__LINE__, {"INCR", "k1"}, 6);
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "6");
+
+  DoRedisTestInt(__LINE__, {"INCRBY", "k1", "4"}, 10);
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "10");
+
+  DoRedisTestInt(__LINE__, {"INCRBY", "k1", "-5"}, 5);
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "5");
+
+  DoRedisTestNull(__LINE__, {"GET", "kne1"});
+  DoRedisTestInt(__LINE__, {"INCR", "kne1"}, 1);
+  DoRedisTestBulkString(__LINE__, {"GET", "kne1"}, "1");
+
+  DoRedisTestNull(__LINE__, {"GET", "kne2"});
+  DoRedisTestInt(__LINE__, {"INCRBY", "kne2", "5"}, 5);
+  DoRedisTestBulkString(__LINE__, {"GET", "kne2"}, "5");
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HSET", "h1", "f1", "5"}, 1);
+  DoRedisTestBulkString(__LINE__, {"HGET", "h1", "f1"}, "5");
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HINCRBY", "h1", "f1", "1"}, 6);
+  DoRedisTestBulkString(__LINE__, {"HGET", "h1", "f1"}, "6");
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HINCRBY", "h1", "f1", "4"}, 10);
+  DoRedisTestBulkString(__LINE__, {"HGET", "h1", "f1"}, "10");
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HINCRBY", "h1", "f1", "-5"}, 5);
+  DoRedisTestBulkString(__LINE__, {"HGET", "h1", "f1"}, "5");
+
+  DoRedisTestInt(__LINE__, {"HINCRBY", "h1", "fne", "6"}, 6);
+  DoRedisTestBulkString(__LINE__, {"HGET", "h1", "fne"}, "6");
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HINCRBY", "hstr", "fstr", "5"}, 5);
+  DoRedisTestBulkString(__LINE__, {"HGET", "hstr", "fstr"}, "5");
+  SyncClient();
+
+  DoRedisTestNull(__LINE__, {"GET", "hne1"});
+  DoRedisTestInt(__LINE__, {"HINCRBY", "hne1", "fne", "6"}, 6);
+  DoRedisTestBulkString(__LINE__, {"HGET", "hne1", "fne"}, "6");
+
+  DoRedisTestInt(__LINE__, {"HINCRBY", "hne1", "fne", "-16"}, -10);
+  DoRedisTestBulkString(__LINE__, {"HGET", "hne1", "fne"}, "-10");
+
+  SyncClient();
+  LOG(INFO) << "Done with the test";
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestIncrCorner) {
+  DoRedisTestOk(__LINE__, {"SET", "kstr", "str"});
+  SyncClient();
+
+  DoRedisTestExpectError(__LINE__, {"INCR", "kstr"}, "ERR");
+  DoRedisTestBulkString(__LINE__, {"GET", "kstr"}, "str");
+  DoRedisTestExpectError(__LINE__, {"INCRBY", "kstr", "5"}, "ERR");
+  DoRedisTestBulkString(__LINE__, {"GET", "kstr"}, "str");
+  SyncClient();
+
+  DoRedisTestInt(__LINE__, {"HSET", "h1", "f1", "5"}, 1);
+  DoRedisTestInt(__LINE__, {"HSET", "h1", "fstr", "str"}, 1);
+  SyncClient();
+
+  // over 32 bit
+  DoRedisTestOk(__LINE__, {"SET", "novar", "17179869184"});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"INCR", "novar"}, 17179869185);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"INCRBY", "novar", "17179869183"}, 34359738368);
+  SyncClient();
+
+  // over 32 bit
+  DoRedisTestOk(__LINE__, {"SET", "novar64", "9223372036854775807"}); // 2 ** 63 - 1
+  SyncClient();
+  DoRedisTestExpectError(__LINE__, {"INCR", "novar64"}, "Increment would overflow");
+  SyncClient();
+
+  // INCRBY on a Hash type should fail.
+  DoRedisTestExpectError(__LINE__, {"INCRBY", "h1", "5"}, "WRONGTYPE");
+  SyncClient();
+  // HINCRBY should fail on a normal key.
+  DoRedisTestExpectError(__LINE__, {"HINCRBY", "kstr", "fstr", "5"}, "WRONGTYPE");
+  SyncClient();
+  // HINCRBY too many arguments.
+  DoRedisTestExpectError(__LINE__, {"HINCRBY", "h1", "f1", "5", "extra_arg"});
+  SyncClient();
+
+  DoRedisTestExpectError(__LINE__, {"HINCRBY", "h1", "fstr", "5"}, "ERR");
+  DoRedisTestBulkString(__LINE__, {"HGET", "h1", "fstr"}, "str");
+  SyncClient();
+
   VerifyCallbacks();
 }
 
