@@ -1074,6 +1074,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateTableInMemory(const CreateTableRequestPB& req,
                                      const Schema& schema,
                                      const PartitionSchema& partition_schema,
+                                     const bool is_copartitioned,
                                      const NamespaceId& namespace_id,
                                      const vector<Partition>& partitions,
                                      vector<TabletInfo*>* tablets,
@@ -1083,6 +1084,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                         const scoped_refptr<TableInfo>& table,
                                         std::vector<TabletInfo*>* tablets);
 
+  // Helper for creating copartitioned table
+  CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB req,
+                                          CreateTableResponsePB* resp,
+                                          rpc::RpcContext* rpc,
+                                          Schema schema,
+                                          NamespaceId namespace_id);
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_
   // WITHOUT holding 'lock_' to wait for consensus to start for
@@ -1213,6 +1220,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Start the background task to send the AlterTable() RPC to the leader for this
   // tablet.
   void SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tablet);
+
+  // Start the background task to send the CopartitionTable() RPC to the leader for this
+  // tablet.
+  void SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
+                                    const scoped_refptr<TableInfo>& table);
 
   // Send the "truncate table request" to all tablets of the specified table.
   void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table);

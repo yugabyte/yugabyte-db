@@ -64,6 +64,18 @@ message AlterSchemaResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message CopartitionTableRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+  optional bytes table_id = 2;
+  optional bytes tablet_id = 3;
+  optional string table_name = 4;
+}
+
+message CopartitionTableResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 // A create tablet request.
 message CreateTabletRequestPB {
   // UUID of server this request is addressed to.
@@ -152,4 +164,7 @@ service TabletServerAdminService {
 
   // Alter a tablet's schema.
   rpc AlterSchema(AlterSchemaRequestPB) returns (AlterSchemaResponsePB);
+
+  // Create a co-partitioned table in an existing tablet
+  rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);
 }

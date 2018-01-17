@@ -89,7 +89,8 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
 void CreateTabletForTesting(MiniMaster* mini_master,
                             const client::YBTableName& table_name,
                             const Schema& schema,
-                            string *tablet_id) {
+                            string* tablet_id,
+                            string* table_id = nullptr) {
   {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
@@ -138,6 +139,9 @@ void CreateTabletForTesting(MiniMaster* mini_master,
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     ASSERT_OK(mini_master->master()->catalog_manager()->GetTableSchema(&req, &resp));
     ASSERT_TRUE(resp.create_table_done());
+    if (table_id != nullptr) {
+      *table_id = resp.identifier().table_id();
+    }
   }
 
   GetTableLocationsResponsePB resp;

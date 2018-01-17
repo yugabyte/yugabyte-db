@@ -340,14 +340,14 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
 Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) const {
   // TODO: Also reject properties that cannot be changed during alter table (like clustering order)
 
-  // Clustering order and copartitioning not handled here.
+  // Clustering order not handled here.
   if (property_type_ == PropertyType::kClusteringOrder) {
     return Status::OK();
   }
 
-  if(property_type_ == PropertyType::kCoPartitionTable) {
-    // TODO: This should be enabled once the YBase layer changes are finished
-    return STATUS(NotSupported, "Co-partitioning is not implemented yet");
+  if (property_type_ == PropertyType::kCoPartitionTable) {
+    table_property->SetCopartitionTableId(copartition_table_id());
+    return Status::OK();
   }
 
   string table_property_name;

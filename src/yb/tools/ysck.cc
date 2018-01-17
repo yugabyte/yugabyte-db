@@ -179,7 +179,8 @@ Status Ysck::CheckTablesConsistency() {
 class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporter> {
  public:
   typedef std::pair<Status, uint64_t> ResultPair;
-  typedef std::unordered_map<std::string, ResultPair> ReplicaResultMap;
+  typedef std::vector<ResultPair> TableResults;
+  typedef std::unordered_map<std::string, TableResults> ReplicaResultMap;
   typedef std::unordered_map<std::string, ReplicaResultMap> TabletResultMap;
 
   // Initialize reporter with the number of replicas being queried.
@@ -193,9 +194,14 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
                     const Status& status,
                     uint64_t checksum) {
     std::lock_guard<simple_spinlock> guard(lock_);
-    unordered_map<string, ResultPair>& replica_results =
-        LookupOrInsert(&checksums_, tablet_id, unordered_map<string, ResultPair>());
-    InsertOrDie(&replica_results, replica_uuid, ResultPair(status, checksum));
+    unordered_map<string, TableResults>& replica_results =
+        LookupOrInsert(&checksums_, tablet_id, unordered_map<string, TableResults>());
+    if (replica_results.find(replica_uuid) == replica_results.end()) {
+      TableResults table_results(1, ResultPair(status, checksum));
+      replica_results[replica_uuid] = table_results;
+    } else {
+      replica_results[replica_uuid].push_back(ResultPair(status, checksum));
+    }
     responses_.CountDown();
   }
 
@@ -239,16 +245,16 @@ void TabletServerChecksumCallback(
     const scoped_refptr<ChecksumResultReporter>& reporter,
     const shared_ptr<YsckTabletServer>& tablet_server,
     const TabletQueue& queue,
-    const std::string& tablet_id,
+    const TabletId& tablet_id,
     const ChecksumOptions& options,
     const Status& status,
     uint64_t checksum) {
   reporter->ReportResult(tablet_id, tablet_server->uuid(), status, checksum);
 
-  std::pair<Schema, std::string> table_tablet;
+  std::pair<Schema, TabletId> table_tablet;
   if (queue->BlockingGet(&table_tablet)) {
     const Schema& table_schema = table_tablet.first;
-    const std::string& tablet_id = table_tablet.second;
+    const TabletId& tablet_id = table_tablet.second;
     ReportResultCallback callback = Bind(&TabletServerChecksumCallback,
                                          reporter,
                                          tablet_server,
@@ -268,7 +274,7 @@ Status Ysck::ChecksumData(const vector<string>& tables,
   // Copy options so that local modifications can be made and passed on.
   ChecksumOptions options = opts;
 
-  typedef unordered_map<shared_ptr<YsckTablet>, shared_ptr<YsckTable>> TabletTableMap;
+  typedef unordered_map<shared_ptr<YsckTablet>, std::vector<shared_ptr<YsckTable>>> TabletTableMap;
   TabletTableMap tablet_table_map;
 
   int num_tablet_replicas = 0;
@@ -286,7 +292,11 @@ Status Ysck::ChecksumData(const vector<string>& tables,
     for (const shared_ptr<YsckTablet>& tablet : table->tablets()) {
       VLOG(1) << "Tablet: " << tablet->id();
       if (!tablets_filter.empty() && !ContainsKey(tablets_filter, tablet->id())) continue;
-      InsertOrDie(&tablet_table_map, tablet, table);
+      if (tablet_table_map.find(tablet) == tablet_table_map.end()) {
+        tablet_table_map[tablet] = std::vector<shared_ptr<YsckTable>>(1, table);
+      } else {
+        tablet_table_map[tablet].push_back(table);
+      }
       num_tablet_replicas += tablet->replicas().size();
     }
   }
@@ -314,14 +324,15 @@ Status Ysck::ChecksumData(const vector<string>& tables,
   // Create a queue of checksum callbacks grouped by the tablet server.
   for (const TabletTableMap::value_type& entry : tablet_table_map) {
     const shared_ptr<YsckTablet>& tablet = entry.first;
-    const shared_ptr<YsckTable>& table = entry.second;
-    for (const shared_ptr<YsckTabletReplica>& replica : tablet->replicas()) {
-      const shared_ptr<YsckTabletServer>& ts =
-          FindOrDie(cluster_->tablet_servers(), replica->ts_uuid());
+    for (const shared_ptr<YsckTable>& table : entry.second) {
+      for (const shared_ptr<YsckTabletReplica>& replica : tablet->replicas()) {
+        const shared_ptr<YsckTabletServer>& ts =
+            FindOrDie(cluster_->tablet_servers(), replica->ts_uuid());
 
-      const TabletQueue& queue =
-          LookupOrInsertNewSharedPtr(&tablet_server_queues, ts, num_tablet_replicas);
-      CHECK_EQ(QUEUE_SUCCESS, queue->Put(make_pair(table->schema(), tablet->id())));
+        const TabletQueue& queue =
+            LookupOrInsertNewSharedPtr(&tablet_server_queues, ts, num_tablet_replicas);
+        CHECK_EQ(QUEUE_SUCCESS, queue->Put(make_pair(table->schema(), tablet->id())));
+      }
     }
   }
 
@@ -375,22 +386,23 @@ Status Ysck::ChecksumData(const vector<string>& tables,
           const string& replica_uuid = r.first;
 
           shared_ptr<YsckTabletServer> ts = FindOrDie(cluster_->tablet_servers(), replica_uuid);
-          const ChecksumResultReporter::ResultPair& result = r.second;
-          const Status& status = result.first;
-          uint64_t checksum = result.second;
-          string status_str = (status.ok()) ? Substitute("Checksum: $0", checksum)
-                                            : Substitute("Error: $0", status.ToString());
-          LOG(INFO) << Substitute("T $0 P $1 ($2): $3",
-                                  tablet->id(), ts->uuid(), ts->address(), status_str);
-          if (!status.ok()) {
-            num_errors++;
-          } else if (!seen_first_replica) {
-            seen_first_replica = true;
-            first_checksum = checksum;
-          } else if (checksum != first_checksum) {
-            num_mismatches++;
-            LOG(ERROR) << ">> Mismatch found in table " << table->name().ToString()
-                       << " tablet " << tablet->id();
+          for (const ChecksumResultReporter::ResultPair& result : r.second) {
+            const Status &status = result.first;
+            uint64_t checksum = result.second;
+            string status_str = (status.ok()) ? Substitute("Checksum: $0", checksum)
+                : Substitute("Error: $0", status.ToString());
+            LOG(INFO) << Substitute("T $0 P $1 ($2): $3",
+                                    tablet->id(), ts->uuid(), ts->address(), status_str);
+            if (!status.ok()) {
+              num_errors++;
+            } else if (!seen_first_replica) {
+              seen_first_replica = true;
+              first_checksum = checksum;
+            } else if (checksum != first_checksum) {
+              num_mismatches++;
+              LOG(ERROR) << ">> Mismatch found in table " << table->name().ToString()
+                         << " tablet " << tablet->id();
+            }
           }
           num_results++;
         }

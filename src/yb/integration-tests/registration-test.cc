@@ -99,6 +99,57 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_STR_CONTAINS(buf.ToString(), expected_uuid);
   }
 
+  void CheckTabletReports(bool co_partition = false) {
+    string tablet_id_1;
+    string tablet_id_2;
+    string table_id_1;
+
+    ASSERT_OK(cluster_->WaitForTabletServerCount(1));
+
+    MiniTabletServer* ts = cluster_->mini_tablet_server(0);
+    string ts_root = cluster_->GetTabletServerFsRoot(0);
+
+    // Add a tablet, make sure it reports itself.
+    CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table"),
+                           schema_, &tablet_id_1, &table_id_1);
+
+    TabletLocationsPB locs;
+    ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
+    ASSERT_EQ(1, locs.replicas_size());
+    LOG(INFO) << "Tablet successfully reported on " <<
+              locs.replicas(0).ts_info().permanent_uuid();
+
+    // Add another tablet, make sure it is reported via incremental.
+    Schema schema_copy = Schema(schema_);
+    if (co_partition) {
+      schema_copy.SetCopartitionTableId(table_id_1);
+    }
+
+    CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table2"),
+                           schema_copy, &tablet_id_2);
+
+    ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
+
+
+    if (co_partition) {
+      ASSERT_EQ(tablet_id_1, tablet_id_2);
+    }
+
+    // Shut down the whole system, bring it back up, and make sure the tablets
+    // are reported.
+    ts->Shutdown();
+    ASSERT_OK(cluster_->mini_master()->Restart());
+    ASSERT_OK(ts->Start());
+    ASSERT_OK(cluster_->WaitForTabletServerCount(1));
+
+    ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
+    ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
+
+    // TODO: KUDU-870: once the master supports detecting failed/lost replicas,
+    // we should add a test case here which removes or corrupts metadata, restarts
+    // the TS, and verifies that the master notices the issue.
+  }
+
  protected:
   Schema schema_;
 };
@@ -144,41 +195,11 @@ TEST_F(RegistrationTest, TestMultipleTS) {
 // to something more appropriate - doesn't seem worth having separate
 // whole test suites for registration, tablet reports, etc.
 TEST_F(RegistrationTest, TestTabletReports) {
-  string tablet_id_1;
-  string tablet_id_2;
+  CheckTabletReports();
+}
 
-  ASSERT_OK(cluster_->WaitForTabletServerCount(1));
-
-  MiniTabletServer* ts = cluster_->mini_tablet_server(0);
-  string ts_root = cluster_->GetTabletServerFsRoot(0);
-
-  // Add a tablet, make sure it reports itself.
-  CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table"),
-      schema_, &tablet_id_1);
-
-  TabletLocationsPB locs;
-  ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
-  ASSERT_EQ(1, locs.replicas_size());
-  LOG(INFO) << "Tablet successfully reported on " <<
-            locs.replicas(0).ts_info().permanent_uuid();
-
-  // Add another tablet, make sure it is reported via incremental.
-  CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table2"),
-      schema_, &tablet_id_2);
-  ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
-
-  // Shut down the whole system, bring it back up, and make sure the tablets
-  // are reported.
-  ts->Shutdown();
-  ASSERT_OK(cluster_->mini_master()->Restart());
-  ASSERT_OK(ts->Start());
-
-  ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
-  ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
-
-  // TODO: KUDU-870: once the master supports detecting failed/lost replicas,
-  // we should add a test case here which removes or corrupts metadata, restarts
-  // the TS, and verifies that the master notices the issue.
+TEST_F(RegistrationTest, TestCopartitionedTables) {
+  CheckTabletReports(true);
 }
 
 } // namespace yb

@@ -162,6 +162,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                            AlterSchemaResponsePB* resp,
                            rpc::RpcContext context) override;
 
+  virtual void CopartitionTable(const CopartitionTableRequestPB* req,
+                                CopartitionTableResponsePB* resp,
+                                rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 };

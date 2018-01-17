@@ -259,6 +259,8 @@ message SysTabletsEntryPB {
 
   // The table id for the tablet.
   required bytes table_id = 6;
+  // Table ids for all the tables on this tablet
+  repeated bytes table_ids = 8;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

@@ -525,6 +525,53 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 }
 
 // ============================================================================
+//  Class AsyncCopartitionTable.
+// ============================================================================
+AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
+                                             ThreadPool* callback_pool,
+                                             const scoped_refptr<TabletInfo>& tablet,
+                                             const scoped_refptr<TableInfo>& table)
+    : RetryingTSRpcTask(master,
+                        callback_pool,
+                        gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+                        table.get()),
+      tablet_(tablet), table_(table) {
+}
+
+string AsyncCopartitionTable::description() const {
+  return tablet_->ToString() + " handling copartition Table RPC for table " + table_->ToString();
+}
+
+TabletId AsyncCopartitionTable::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+TabletServerId AsyncCopartitionTable::permanent_uuid() const {
+  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+}
+
+// TODO(sagnik): modify this to fill al relevant fields for the AsyncCopartition request
+bool AsyncCopartitionTable::SendRequest(int attempt) {
+
+  tserver::CopartitionTableRequestPB req;
+  req.set_dest_uuid(permanent_uuid());
+  req.set_tablet_id(tablet_->tablet_id());
+  req.set_table_id(table_->id());
+  req.set_table_name(table_->name());
+
+  ts_admin_proxy_->CopartitionTableAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send copartition table request to " << permanent_uuid()
+          << " (attempt " << attempt << "):\n"
+          << req.DebugString();
+  return true;
+}
+
+// TODO(sagnik): modify this to handle the AsyncCopartition Response and retry fail as necessary
+void AsyncCopartitionTable::HandleResponse(int attempt) {
+  LOG(INFO) << "master can't handle server responses yet";
+}
+
+// ============================================================================
 //  Class AsyncTruncate.
 // ============================================================================
 AsyncTruncate::AsyncTruncate(Master *master,

@@ -165,6 +165,8 @@ message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
   optional bool is_transactional = 3 [default = false];
+  // The table id of the table that this table is co-partitioned with.
+  optional bytes copartition_table_id = 4;
 }
 
 message SchemaPB {

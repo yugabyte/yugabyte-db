@@ -294,13 +294,13 @@ class TabletLoader : public Visitor<PersistentTabletInfo> {
   explicit TabletLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
   Status Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) override {
+
     // Lookup the table
-    const TableId& table_id = metadata.table_id();
-    scoped_refptr<TableInfo> table(FindPtrOrNull(
-                                     catalog_manager_->table_ids_map_, table_id));
+    scoped_refptr<TableInfo> first_table(FindPtrOrNull(
+                                     catalog_manager_->table_ids_map_, metadata.table_id()));
 
     // Setup the tablet info
-    TabletInfo* tablet = new TabletInfo(table, tablet_id);
+    TabletInfo* tablet = new TabletInfo(first_table, tablet_id);
     auto l = tablet->LockForWrite();
     l->mutable_data()->pb.CopyFrom(metadata);
 
@@ -311,34 +311,56 @@ class TabletLoader : public Visitor<PersistentTabletInfo> {
           IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
     }
 
-    if (table == nullptr) {
-      // if the table is missing and the tablet is in "preparing" state
-      // may mean that the table was not created (maybe due to a failed write
-      // for the sys-tablets). The cleaner will remove
-      if (l->data().pb.state() == SysTabletsEntryPB::PREPARING) {
-        LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
-                     << " (probably a failed table creation: the tablet was not assigned)";
-        return Status::OK();
+    std::vector<TableId> table_ids;
+    for (int k = 0; k < metadata.table_ids_size(); ++k) {
+      table_ids.push_back(metadata.table_ids(k));
+    }
+
+    // This is for backwards compatibility: we want to ensure that the table_ids
+    // list contains the first table that created the tablet. If the table_ids field
+    // was empty, we "upgrade" the master to support this new invariant.
+    if (metadata.table_ids_size() == 0) {
+      l->mutable_data()->pb.add_table_ids(metadata.table_id());
+      Status s = catalog_manager_->sys_catalog_->UpdateItem(tablet);
+      if (PREDICT_FALSE(!s.ok())) {
+        return STATUS_FORMAT(
+            IllegalState, "An error occurred while inserting to sys-tablets: $0", s.ToString());
+      }
+      table_ids.push_back(metadata.table_id());
+    }
+
+    for (auto table_id : table_ids) {
+      scoped_refptr<TableInfo> table(FindPtrOrNull(catalog_manager_->table_ids_map_, table_id));
+
+      if (table == nullptr) {
+        // if the table is missing and the tablet is in "preparing" state
+        // may mean that the table was not created (maybe due to a failed write
+        // for the sys-tablets). The cleaner will remove
+        if (l->data().pb.state() == SysTabletsEntryPB::PREPARING) {
+          LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
+                       << " (probably a failed table creation: the tablet was not assigned)";
+          return Status::OK();
+        }
+
+        // if the tablet is not in a "preparing" state, something is wrong...
+        LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id;
+        LOG(ERROR) << "Metadata: " << metadata.DebugString();
+        return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
       }
 
-      // if the tablet is not in a "preparing" state, something is wrong...
-      LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id;
-      LOG(ERROR) << "Metadata: " << metadata.DebugString();
-      return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
+      // Add the tablet to the Table
+      if (!l->mutable_data()->is_deleted()) {
+        table->AddTablet(tablet);
+      }
     }
 
-    // Add the tablet to the Table
-    if (!l->mutable_data()->is_deleted()) {
-      table->AddTablet(tablet);
-    }
     l->Commit();
 
     // TODO(KUDU-1070): if we see a running tablet under a deleted table,
     // we should "roll forward" the deletion of the tablet here.
 
-    auto table_lock = table->LockForRead();
     LOG(INFO) << "Loaded metadata for tablet " << tablet_id
-              << " (table " << table->ToString() << ")";
+              << " (first table " << first_table->ToString() << ")";
     VLOG(2) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
 
     return Status::OK();
@@ -1046,8 +1068,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     req.set_name(table_name);
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
-    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
-                                      &tablets, nullptr, &table));
+    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, false, namespace_id,
+                                      partitions, &tablets, nullptr, &table));
     LOG(INFO) << "Inserted new table info into CatalogManager maps: "
               << namespace_name << "." << table_name;
 
@@ -1361,6 +1383,92 @@ Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
   return Status::OK();
 }
 
+Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
+                                                CreateTableResponsePB* resp,
+                                                rpc::RpcContext* rpc,
+                                                Schema schema,
+                                                NamespaceId namespace_id) {
+  scoped_refptr<TableInfo> parent_table_info;
+  Status s;
+  const char* const object_type = "table";
+  PartitionSchema partition_schema;
+  std::vector<Partition> partitions;
+
+  std::lock_guard<LockType> l(lock_);
+  TRACE("Acquired catalog manager lock");
+  parent_table_info = FindPtrOrNull(table_ids_map_,
+                                    schema.table_properties().CopartitionTableId());
+  if (parent_table_info == nullptr) {
+    s = STATUS(NotFound, "The table does not exist",
+               schema.table_properties().CopartitionTableId());
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  }
+
+  scoped_refptr<TableInfo> this_table_info;
+  std::vector<TabletInfo *> tablets;
+  std::vector<scoped_refptr<TabletInfo>> scoped_ref_tablets;
+  // Verify that the table does not exist.
+  this_table_info = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
+
+  if (this_table_info != nullptr) {
+    s = STATUS(AlreadyPresent, Substitute("Target $0 already exists", object_type),
+               this_table_info->id());
+    return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
+  }
+
+  RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true, namespace_id,
+                                        partitions, nullptr, resp, &this_table_info));
+
+
+  TRACE("Inserted new table info into CatalogManager maps");
+
+  // NOTE: the table is already locked for write at this point,
+  // since the CreateTableInfo function leave it in that state.
+  // It will get committed at the end of this function.
+  // Sanity check: the table should be in "preparing" state.
+  CHECK_EQ(SysTablesEntryPB::PREPARING, this_table_info->metadata().dirty().pb.state());
+  parent_table_info->GetAllTablets(&scoped_ref_tablets);
+  for (auto tablet : scoped_ref_tablets) {
+    tablets.push_back(tablet.get());
+    tablet->mutable_metadata()->StartMutation();
+    tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(this_table_info->id());
+  }
+
+  // Update Tablets about new table id to sys-tablets
+  s = sys_catalog_->UpdateItems(tablets);
+  if (PREDICT_FALSE(!s.ok())) {
+    return AbortTableCreation(this_table_info.get(), tablets, s.CloneAndPrepend(
+        Substitute("An error occurred while inserting to sys-tablets: $0", s.ToString())), resp);
+  }
+  TRACE("Wrote tablets to system table");
+
+  // Update the on-disk table state to "running".
+  this_table_info->AddTablets(tablets);
+  this_table_info->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
+  s = sys_catalog_->AddItem(this_table_info.get());
+  if (PREDICT_FALSE(!s.ok())) {
+    return AbortTableCreation(this_table_info.get(), tablets, s.CloneAndPrepend(
+        Substitute("An error occurred while inserting to sys-tablets: $0",
+                   s.ToString())), resp);
+  }
+  TRACE("Wrote table to system table");
+
+  // Commit the in-memory state.
+  this_table_info->mutable_metadata()->CommitMutation();
+
+  for (TabletInfo *tablet : tablets) {
+    tablet->mutable_metadata()->CommitMutation();
+  }
+
+  for (const auto& tablet : scoped_ref_tablets) {
+    SendCopartitionTabletRequest(tablet, this_table_info);
+  }
+
+  LOG(INFO) << "Successfully created " << object_type << " " << this_table_info->ToString()
+            << " per request from " << RequestorString(rpc);
+  return Status::OK();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -1421,6 +1529,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Create partitions.
   PartitionSchema partition_schema;
   vector<Partition> partitions;
+
+  if (schema.table_properties().HasCopartitionTableId()) {
+    return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
+  }
 
   if (req.table_type() == REDIS_TABLE_TYPE) {
     req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
@@ -1537,8 +1649,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
     }
 
-    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
-                                      &tablets, resp, &table));
+    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, false, namespace_id,
+                                      partitions, &tablets, resp, &table));
   }
   TRACE("Inserted new table and tablet info into CatalogManager maps");
 
@@ -1621,6 +1733,7 @@ Status CatalogManager::CreateTabletsFromTable(const vector<Partition>& partition
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
+                                           const bool is_copartitioned,
                                            const NamespaceId& namespace_id,
                                            const std::vector<Partition>& partitions,
                                            std::vector<TabletInfo*>* tablets,
@@ -1636,7 +1749,9 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   table_ids_map_[(*table)->id()] = *table;
   table_names_map_[{namespace_id, req.name()}] = *table;
 
-  RETURN_NOT_OK(CreateTabletsFromTable(partitions, *table, tablets));
+  if (!is_copartitioned) {
+    RETURN_NOT_OK(CreateTabletsFromTable(partitions, *table, tablets));
+  }
 
   if (resp != nullptr) {
     resp->set_table_id((*table)->id());
@@ -1725,6 +1840,9 @@ TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
   metadata->set_state(SysTabletsEntryPB::PREPARING);
   metadata->mutable_partition()->CopyFrom(partition);
   metadata->set_table_id(table->id());
+  // This is important: we are setting the first table id in the table_ids list
+  // to be the id of the original table that creates the tablet.
+  metadata->add_table_ids(table->id());
   return tablet;
 }
 
@@ -3850,6 +3968,13 @@ void CatalogManager::SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tab
   auto call = std::make_shared<AsyncAlterTable>(master_, worker_pool_.get(), tablet);
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send alter table request");
+}
+
+void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
+                                                  const scoped_refptr<TableInfo>& table) {
+  auto call = std::make_shared<AsyncCopartitionTable>(master_, worker_pool_.get(), tablet, table);
+  table->AddTask(call);
+  WARN_NOT_OK(call->Run(), "Failed to send copartition table request");
 }
 
 void CatalogManager::DeleteTabletReplicas(

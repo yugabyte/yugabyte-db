@@ -15,6 +15,7 @@
 #define YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
 
 #include "yb/common/schema.h"
+#include "yb/client/client.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.pb.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -113,6 +114,11 @@ class PTTableProperty : public PTProperty {
   PTQualifiedName table_name() const {
     DCHECK_EQ(property_type_, PropertyType::kCoPartitionTable);
     return *copartition_table_name_;
+  }
+
+  TableId copartition_table_id() const {
+    DCHECK_EQ(property_type_, PropertyType::kCoPartitionTable);
+    return copartition_table_->id();
   }
 
  protected:

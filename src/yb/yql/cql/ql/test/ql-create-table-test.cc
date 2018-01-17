@@ -288,10 +288,8 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithPartitionScemeOf) {
   // Create the devices tables.
   EXEC_VALID_STMT(CreateStmt(table1));
 
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table2),
-                                 "Co-partitioning is not implemented yet");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table3),
-                                 "Co-partitioning is not implemented yet");
+  EXEC_VALID_STMT(CreateStmt(table2));
+  EXEC_VALID_STMT(CreateStmt(table3));
   EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table4),
                                  "The number of hash keys in the current table "
                                      "differ from the number of hash keys in 'devices'");

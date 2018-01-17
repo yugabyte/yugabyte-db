@@ -325,6 +325,32 @@ class AsyncAlterTable : public RetryingTSRpcTask {
   tserver::AlterSchemaResponsePB resp_;
 };
 
+class AsyncCopartitionTable : public RetryingTSRpcTask {
+ public:
+  AsyncCopartitionTable(Master *master,
+                        ThreadPool* callback_pool,
+                        const scoped_refptr<TabletInfo>& tablet,
+                        const scoped_refptr<TableInfo>& table);
+
+  Type type() const override { return ASYNC_COPARTITION_TABLE; }
+
+  std::string type_name() const override { return "Copartition Table"; }
+
+  std::string description() const override;
+
+ private:
+  TabletId tablet_id() const override;
+
+  TabletServerId permanent_uuid() const;
+
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  scoped_refptr<TabletInfo> tablet_;
+  scoped_refptr<TableInfo> table_;
+  tserver::CopartitionTableResponsePB resp_;
+};
+
 // Send a Truncate() RPC request.
 class AsyncTruncate : public RetryingTSRpcTask {
  public:
