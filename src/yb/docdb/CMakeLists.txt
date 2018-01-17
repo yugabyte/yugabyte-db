@@ -44,6 +44,7 @@ set(DOCDB_SRCS
     intent_aware_iterator.cc
     intent.cc
     internal_doc_iterator.cc
+    jsonb.cc
     key_bytes.cc
     lock_batch.cc
     primitive_value.cc
@@ -85,6 +86,7 @@ ADD_YB_TEST(doc_kv_util-test)
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docrowwiseiterator-test)
+ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(shared_lock_manager-test)
