@@ -37,7 +37,7 @@ a {
 
 .article .wrapper {
   padding-top: 120px !important;
-  padding-bottom: 110px !important;
+  padding-bottom: 180px !important;
 }
 
 @media screen and (max-width: 799px) {
@@ -284,6 +284,7 @@ a {
 .pagination {
   width: 100%;
   margin-top: 50px;
+  margin-bottom: -40px;
 }
 .pagination a,
 .pagination a:hover {
