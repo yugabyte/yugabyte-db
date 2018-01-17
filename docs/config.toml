@@ -26,7 +26,7 @@ googleAnalytics = "UA-104956980-1"
 	custom_js  = []
 
 	# Syntax highlighting theme
-	highlight_css  = "stylesheets/highlight/hemisu.css"
+	highlight_css  = "css/highlight/hemisu.css"
 
 	[params.palette]
     	primary = "orange"
