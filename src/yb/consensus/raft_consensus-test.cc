@@ -47,7 +47,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/tablet/prepare_thread.h"
+#include "yb/tablet/preparer.h"
 
 DECLARE_bool(enable_leader_failure_detection);
 

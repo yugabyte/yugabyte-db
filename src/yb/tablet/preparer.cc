@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -21,9 +22,10 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/logging.h"
-#include "yb/tablet/prepare_thread.h"
+#include "yb/tablet/preparer.h"
 #include "yb/tablet/operations/operation_driver.h"
+#include "yb/util/logging.h"
+#include "yb/util/threadpool.h"
 
 DEFINE_int32(max_group_replicate_batch_size, 16,
              "Maximum number of operations to submit to consensus for replication in a batch.");
@@ -42,15 +44,18 @@ DEFINE_int32(prepare_queue_max_size, 100000,
 using std::vector;
 
 namespace yb {
+class ThreadPool;
+class ThreadPoolToken;
+
 namespace tablet {
 
 // ------------------------------------------------------------------------------------------------
-// PrepareThreadImpl
+// PreparerImpl
 
-class PrepareThreadImpl {
+class PreparerImpl {
  public:
-  explicit PrepareThreadImpl(consensus::Consensus* consensus);
-  ~PrepareThreadImpl();
+  explicit PreparerImpl(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool);
+  ~PreparerImpl();
   CHECKED_STATUS Start();
   void Stop();
 
@@ -63,101 +68,78 @@ class PrepareThreadImpl {
 
   consensus::Consensus* const consensus_;
 
-  // We set this to true to to tell the thread to shut down. No new tasks will be accepted, but
+  // We set this to true to tell the Run function to return. No new tasks will be accepted, but
   // existing tasks will still be processed.
   std::atomic<bool> stop_requested_{false};
+
+  // If true, a task is running for this tablet already.
+  // If false, no taska are running for this tablet,
+  // and we can submit a task to the thread pool token.
+  std::atomic<int> running_{0};
 
   // This is set to true immediately before the thread exits.
   std::atomic<bool> stopped_{false};
 
-  std::atomic<bool> processing_{false};
-
   boost::lockfree::queue<OperationDriver*> queue_;
-
-  std::mutex mtx_;
-  std::condition_variable cond_;
 
   // This mutex/condition combination is used in Stop() in case multiple threads are calling that
   // function concurrently. One of them will ask the prepare thread to stop and wait for it, and
-  // then will notify other threads that have called Stop(). Using a separate mutex adds a bit of
-  // complexity, but simplifies reasoning about lock ordering, because the PrepareThread mutex
-  // (mtx_) cannot be acquired while holding the ReplicaState (consensus) lock. With a separate
-  // stopping mutex, we have one fewer place where the main PrepareThread mutex can be acquired.
+  // then will notify other threads that have called Stop().
   std::mutex stop_mtx_;
   std::condition_variable stop_cond_;
 
   OperationDrivers leader_side_batch_;
 
+  std::unique_ptr<ThreadPoolToken> tablet_prepare_pool_token_;
+
   // A temporary buffer of rounds to replicate, used to reduce reallocation.
   consensus::ConsensusRounds rounds_to_replicate_;
-
-  // @return true if it is OK to block and wait for new items to be appended
-  bool can_block() {
-    return !processing_.load(std::memory_order_acquire) && queue_.empty();
-  }
 
   void Run();
   void ProcessItem(OperationDriver* item);
 
-  // @return true if at least one item was processed.
-  // @param lock This unique_lock of mtx_ is provided so that we can release it if we need to submit
-  //        a batch for replication. The reason is that ReplicateBatch acquires the Raft
-  //        ReplicaState lock, and we already submit entries to PrepareThread under that lock
-  //        in UpdateReplica. To avoid deadlock, we must never attempt to acquire the ReplicaState
-  //        lock while holding the PrepareThread lock.
-  bool ProcessAndClearLeaderSideBatch(std::unique_lock<std::mutex>* lock = nullptr);
+  void ProcessAndClearLeaderSideBatch();
 
   // A wrapper around ProcessAndClearLeaderSideBatch that assumes we are currently holding the
   // mutex.
 
   void ReplicateSubBatch(OperationDrivers::iterator begin,
-                         OperationDrivers::iterator end,
-                         std::unique_lock<std::mutex>* lock);
+                         OperationDrivers::iterator end);
 };
 
-PrepareThreadImpl::PrepareThreadImpl(consensus::Consensus* consensus)
+PreparerImpl::PreparerImpl(consensus::Consensus* consensus,
+                                     ThreadPool* tablet_prepare_pool)
     : consensus_(consensus),
-      queue_(FLAGS_prepare_queue_max_size) {
+      queue_(FLAGS_prepare_queue_max_size),
+      tablet_prepare_pool_token_(tablet_prepare_pool
+                                     ->NewToken(ThreadPool::ExecutionMode::SERIAL)) {
 }
 
-PrepareThreadImpl::~PrepareThreadImpl() {
+PreparerImpl::~PreparerImpl() {
   Stop();
 }
 
-Status PrepareThreadImpl::Start() {
-  return Thread::Create("prepare", "prepare", &PrepareThreadImpl::Run, this, &thread_);
+Status PreparerImpl::Start() {
+  return Status::OK();
 }
 
-void PrepareThreadImpl::Stop() {
-  // It is OK if multiple threads call this method at once. At worst, they will all notify the
-  // condition variable and wait.
+void PreparerImpl::Stop() {
   if (stopped_.load(std::memory_order_acquire)) {
     return;
   }
-
-  bool expected = false;
-  if (stop_requested_.compare_exchange_strong(expected, true, std::memory_order_release)) {
-    // We need this to unblock waiting for new operations to arrive. Since nothing has been added,
-    // we'll just go through the loop one more time and exit at the next iteration.
-    processing_.store(true, std::memory_order_release);
-    cond_.notify_one();
-
-    CHECK_OK(ThreadJoiner(thread_.get()).Join());
-
-    // Note: we are using a separate mutex for stopping, different from the main mutex mtx_.
+  stop_requested_ = true;
+  {
     std::unique_lock<std::mutex> stop_lock(stop_mtx_);
-    stopped_.store(true, std::memory_order_release);
-    stop_cond_.notify_all();
-  } else {
-    // Note (as above): stop_mtx_ is different from mtx_.
-    std::unique_lock<std::mutex> stop_lock(stop_mtx_);
-    stop_cond_.wait(stop_lock, [this] { return stopped_.load(std::memory_order_acquire); });
+    stop_cond_.wait(stop_lock, [this] {
+      return (!running_.load(std::memory_order_acquire) && queue_.empty());
+    });
   }
+  stopped_.store(true, std::memory_order_release);
 }
 
-Status PrepareThreadImpl::Submit(OperationDriver* operation_driver) {
+Status PreparerImpl::Submit(OperationDriver* operation_driver) {
   if (stop_requested_.load(std::memory_order_acquire)) {
-    return STATUS(IllegalState, "Prepare thread is shutting down");
+    return STATUS(IllegalState, "Tablet is shutting down");
   }
   if (!queue_.bounded_push(operation_driver)) {
     return STATUS_FORMAT(ServiceUnavailable,
@@ -165,80 +147,46 @@ Status PrepareThreadImpl::Submit(OperationDriver* operation_driver) {
                          FLAGS_prepare_queue_max_size);
   }
 
-  bool old_processing = false;
-  if (processing_.compare_exchange_strong(old_processing, true)) {
-    // processing_ was false and we switched it to true. That means we were in the section between
-    // processing_.store(false, ...) and processing_.store(true, ...) in Run at the time of
-    // the compare_exchange_strong above. In that case there are two options:
-    // - The item we've appended has already been processed at the time of the queue_.empty() check.
-    //   Then the inner loop will break into the the outer loop, where we'll wait for processing_ to
-    //   be true (a no-op) and immediately try to pop another item, which will fail if no other
-    //   items have been appended yet. In that case we'll simply reset processing_ to false and go
-    //   into another iteration of waiting.
-    // - The item we've appended has not yet been processed at that time. Then we'll immediately
-    //   store true into processing_ once again (a no-op since it's already true) and go into
-    //   another iteration of the inner loop, which will process the newly added item.
-    std::unique_lock<std::mutex> lock(mtx_);
-    cond_.notify_one();
+  int expected = 0;
+  if (!running_.compare_exchange_strong(expected, 1, std::memory_order_release)) {
+    // running_ was not 0, so we are not creating a task to process operations.
+    return Status::OK();
   }
-
-  // In case the compare-and-exchange fails above because processing_ is already true (and we
-  // don't update it or notify the condition), but then processing_ gets immediately changed to
-  // false as we enter the processing_.store(false, ...); ...; processing_.store(true, ...) section
-  // below, there are two options:
-  // - The processing thread has already processed the item we've just added, and the queue is
-  //   empty. Then the processing thread will exit the inner loop and wait on the condition, as
-  //   expected.
-  // - The processing thread has not yet processed the new item, and it is in the queue. Then it
-  //   will go for another iteration of the inner loop and process the new item.
-
-  return Status::OK();
+  // We flipped running_ from 0 to 1. The previously running thread could go back to doing another
+  // iteration, but in that case since we are submitting to a token of a thread pool, only one
+  // such thread will be running, the other will be in the queue.
+  return tablet_prepare_pool_token_->SubmitFunc(std::bind(&PreparerImpl::Run, this));
 }
 
-void PrepareThreadImpl::Run() {
+void PreparerImpl::Run() {
+  VLOG(1) << "Starting prepare task:" << this;
   for (;;) {
-    {
-      // Logic for waiting (most common) and stopping (happens once on tablet shutdown).
-      std::unique_lock<std::mutex> lock(mtx_);
-
-      if (can_block()) {
-        if (stop_requested_.load(std::memory_order_acquire)) {
-          ProcessAndClearLeaderSideBatch(&lock);
-          if (lock.owns_lock()) {
-            VLOG(1) << "Prepare thread's Run() function is exiting";
-
-            // This is the only place this function returns. If that ever changes, we'll need to
-            // move the cleanup logic above so that it gets executed on every return path.
-            return;
-          }
-          // We had to release our mutex before submitting some entries for replication. Go for one
-          // more iteration and come back here next time.
-        } else {
-          // If we end up processing at least one accumulated leader-side item here, we need to
-          // check the can_block() condition again. Otherwise, we don't need to re-check.
-          //
-          // Also, if we no longer own the lock as a result of ProcessAndClearLeaderSideBatch()
-          // having released it, we can't block now so we'll loop around.
-          if ((!ProcessAndClearLeaderSideBatch(&lock) || can_block()) && lock.owns_lock()) {
-            cond_.wait(lock, [this] { return processing_.load(std::memory_order_acquire); });
-          }
-        }
-      }
+    OperationDriver *item = nullptr;
+    while (queue_.pop(item)) {
+      ProcessItem(item);
     }
-
-    for (;;) {
-      OperationDriver* item = nullptr;
-      while (queue_.pop(item)) {
-        ProcessItem(item);
+    if (queue_.empty()) {
+      // Not processing and queue empty, return from task.
+      ProcessAndClearLeaderSideBatch();
+      std::unique_lock<std::mutex> stop_lock(stop_mtx_);
+      running_--;
+      if (!queue_.empty()) {
+        // Got more operations, stay in the loop.
+        running_++;
+        continue;
       }
-      processing_.store(false, std::memory_order_release);
-      if (queue_.empty()) break;
-      processing_.store(true, std::memory_order_release);
+      if (stop_requested_.load(std::memory_order_acquire)) {
+        VLOG(1) << "Prepare task's Run() function is returning because stop is requested.";
+        stop_cond_.notify_all();
+        return;
+      }
+      VLOG(1) << "Returning from prepare task after inactivity:" << this;
+      return;
     }
   }
 }
 
-void PrepareThreadImpl::ProcessItem(OperationDriver* item) {
+void PreparerImpl::ProcessItem(OperationDriver* item) {
   CHECK_NOTNULL(item);
 
   if (item->is_leader_side()) {
@@ -271,10 +219,9 @@ void PrepareThreadImpl::ProcessItem(OperationDriver* item) {
   }
 }
 
-bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mutex>* lock) {
-  DCHECK(!lock || lock->mutex() == &mtx_);
+void PreparerImpl::ProcessAndClearLeaderSideBatch() {
   if (leader_side_batch_.empty()) {
-    return false;
+    return;
   }
 
   VLOG(1) << "Preparing a batch of " << leader_side_batch_.size() << " leader-side operations";
@@ -295,7 +242,7 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mut
     if (PREDICT_TRUE(s.ok())) {
       replication_subbatch_end = ++iter;
     } else {
-      ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end, lock);
+      ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end);
 
       // Handle failure for this operation itself.
       operation_driver->HandleFailure(s);
@@ -306,17 +253,14 @@ bool PrepareThreadImpl::ProcessAndClearLeaderSideBatch(std::unique_lock<std::mut
   }
 
   // Replicate the remaining batch. No-op for an empty batch.
-  ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end, lock);
+  ReplicateSubBatch(replication_subbatch_begin, replication_subbatch_end);
 
   leader_side_batch_.clear();
-  return true;
 }
 
-void PrepareThreadImpl::ReplicateSubBatch(
+void PreparerImpl::ReplicateSubBatch(
     OperationDrivers::iterator batch_begin,
-    OperationDrivers::iterator batch_end,
-    std::unique_lock<std::mutex>* lock) {
-  DCHECK(!lock || lock->mutex() == &mtx_);
+    OperationDrivers::iterator batch_end) {
   DCHECK_GE(std::distance(batch_begin, batch_end), 0);
   if (batch_begin == batch_end) {
     return;
@@ -337,9 +281,6 @@ void PrepareThreadImpl::ReplicateSubBatch(
     rounds_to_replicate_.push_back((*batch_iter)->consensus_round());
   }
 
-  if (lock && lock->owns_lock()) {
-    lock->unlock();
-  }
   const Status s = consensus_->ReplicateBatch(rounds_to_replicate_);
   rounds_to_replicate_.clear();
 
@@ -356,26 +297,26 @@ void PrepareThreadImpl::ReplicateSubBatch(
 }
 
 // ------------------------------------------------------------------------------------------------
-// PrepareThread
+// Preparer
 
-PrepareThread::PrepareThread(consensus::Consensus* consensus)
-    : impl_(std::make_unique<PrepareThreadImpl>(consensus)) {
+Preparer::Preparer(consensus::Consensus* consensus, ThreadPool* tablet_prepare_thread)
+    : impl_(std::make_unique<PreparerImpl>(consensus, tablet_prepare_thread)) {
 }
 
-PrepareThread::~PrepareThread() = default;
+Preparer::~Preparer() = default;
 
-Status PrepareThread::Start() {
+Status Preparer::Start() {
   VLOG(1) << "Starting the prepare thread";
   return impl_->Start();
 }
 
-void PrepareThread::Stop() {
+void Preparer::Stop() {
   VLOG(1) << "Stopping the prepare thread";
   impl_->Stop();
   VLOG(1) << "The prepare thread has stopped";
 }
 
-Status PrepareThread::Submit(OperationDriver* operation_driver) {
+Status Preparer::Submit(OperationDriver* operation_driver) {
   return impl_->Submit(operation_driver);
 }
 

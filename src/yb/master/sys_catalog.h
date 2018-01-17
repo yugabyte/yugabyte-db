@@ -134,6 +134,7 @@ class SysCatalogTable {
   static std::string schema_column_metadata();
 
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
 
   const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
     return tablet_peer_;
@@ -217,6 +218,9 @@ class SysCatalogTable {
 
   // Thread pool for Raft-related operations
   gscoped_ptr<ThreadPool> raft_pool_;
+
+  // Thread pool for preparing transactions, shared between all tablets.
+  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
 
   scoped_refptr<tablet::TabletPeer> tablet_peer_;
 

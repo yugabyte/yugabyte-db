@@ -118,6 +118,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
       leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
   CHECK_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
+  CHECK_OK(ThreadPoolBuilder("prepare").set_min_threads(1).Build(&tablet_prepare_pool_));
 }
 
 SysCatalogTable::~SysCatalogTable() {
@@ -129,6 +130,7 @@ void SysCatalogTable::Shutdown() {
   }
   apply_pool_->Shutdown();
   raft_pool_->Shutdown();
+  tablet_prepare_pool_->Shutdown();
 }
 
 Status SysCatalogTable::ConvertConfigToMasterAddresses(
@@ -429,6 +431,7 @@ Status SysCatalogTable::GoIntoShellMode() {
   tablet_peer_.reset();
   apply_pool_.reset();
   raft_pool_.reset();
+  tablet_prepare_pool_.reset();
 
   return Status::OK();
 }
@@ -482,7 +485,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
                                                      master_->messenger(),
                                                      log,
                                                      tablet->GetMetricEntity(),
-                                                     raft_pool()),
+                                                     raft_pool(),
+                                                     tablet_prepare_pool()),
                         "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer_->Start(consensus_info),

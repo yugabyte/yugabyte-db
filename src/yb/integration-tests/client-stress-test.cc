@@ -56,7 +56,7 @@ METRIC_DECLARE_counter(follower_memory_pressure_rejections);
 
 using strings::Substitute;
 using std::vector;
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 namespace yb {
 
@@ -170,7 +170,7 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     //
     // Note that if this number is set too low, the test will fail in a CHECK in TestWorkload
     // after retries are exhausted when writing an entry. This happened e.g. when a substantial
-    // upfront memory overhead was introduced by adding a large lock-free queue in PrepareThread.
+    // upfront memory overhead was introduced by adding a large lock-free queue in Preparer.
     const int kMemLimitBytes = RegularBuildVsSanitizers(64_MB, 2_MB);
     ExternalMiniClusterOptions opts;
     opts.extra_tserver_flags.push_back(Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes));

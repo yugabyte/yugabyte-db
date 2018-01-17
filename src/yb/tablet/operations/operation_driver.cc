@@ -65,14 +65,14 @@ using server::Clock;
 OperationDriver::OperationDriver(OperationTracker *operation_tracker,
                                  Consensus* consensus,
                                  Log* log,
-                                 PrepareThread* prepare_thread,
+                                 Preparer* preparer,
                                  ThreadPool* apply_pool,
                                  OperationOrderVerifier* order_verifier,
                                  TableType table_type)
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       log_(log),
-      prepare_thread_(prepare_thread),
+      preparer_(preparer),
       apply_pool_(apply_pool),
       order_verifier_(order_verifier),
       trace_(new Trace()),
@@ -156,7 +156,7 @@ void OperationDriver::ExecuteAsync() {
   }
 
   if (s.ok()) {
-    s = prepare_thread_->Submit(this);
+    s = preparer_->Submit(this);
   }
 
   if (!s.ok()) {
@@ -234,7 +234,7 @@ Status OperationDriver::PrepareAndStart() {
       }
 
       // After the batching changes from 07/2017, It is the caller's responsibility to call
-      // Consensus::Replicate. See PrepareThread for details.
+      // Consensus::Replicate. See Preparer for details.
       return Status::OK();
     }
     case REPLICATING:
