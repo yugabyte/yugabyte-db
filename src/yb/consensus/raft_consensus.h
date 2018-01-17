@@ -48,6 +48,7 @@
 #include "yb/consensus/consensus_queue.h"
 
 #include "yb/util/failure_detector.h"
+#include "yb/util/opid.h"
 #include "yb/util/result.h"
 
 DECLARE_int32(leader_lease_duration_ms);
@@ -81,13 +82,14 @@ typedef std::function<void()> LostLeadershipListener;
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
 class RaftConsensus : public Consensus,
-                      public PeerMessageQueueObserver {
+                      public PeerMessageQueueObserver,
+                      public SafeOpIdWaiter {
  public:
   class ConsensusFaultHooks;
 
   static scoped_refptr<RaftConsensus> Create(
     const ConsensusOptions& options,
-    gscoped_ptr<ConsensusMetadata> cmeta,
+    std::unique_ptr<ConsensusMetadata> cmeta,
     const RaftPeerPB& local_peer_pb,
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
@@ -101,7 +103,7 @@ class RaftConsensus : public Consensus,
     ThreadPool* raft_pool);
 
   RaftConsensus(const ConsensusOptions& options,
-    gscoped_ptr<ConsensusMetadata> cmeta,
+    std::unique_ptr<ConsensusMetadata> cmeta,
     gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
     gscoped_ptr<PeerMessageQueue> queue,
     gscoped_ptr<PeerManager> peer_manager,
@@ -210,6 +212,12 @@ class RaftConsensus : public Consensus,
 
   CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
 
+  MicrosTime MajorityReplicatedHtLeaseExpiration(
+      MicrosTime min_allowed, MonoTime deadline) const override;
+
+  // The on-disk size of the consensus metadata.
+  uint64_t OnDiskSize() const;
+
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
@@ -240,9 +248,6 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) override;
 
   CHECKED_STATUS CheckIsActiveLeaderAndHasLease() const override;
-
-  MicrosTime MajorityReplicatedHtLeaseExpiration(
-      MicrosTime min_allowed, MonoTime deadline) const override;
 
  private:
   CHECKED_STATUS DoStartElection(
@@ -353,7 +358,7 @@ class RaftConsensus : public Consensus,
       LeaderRequest* deduped_req);
 
   // Returns the most recent OpId written to the Log.
-  OpId GetLatestOpIdFromLog();
+  yb::OpId GetLatestOpIdFromLog();
 
   // Begin a replica operation. If the type of message in 'msg' is not a type
   // that uses operations, delegates to StartConsensusOnlyRoundUnlocked().
@@ -536,6 +541,8 @@ class RaftConsensus : public Consensus,
 
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
+
+  yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id) override;
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.

@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <thread>
 
 #include <boost/thread/shared_mutex.hpp>
 #include "yb/common/wire_protocol.h"
@@ -56,6 +57,7 @@
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/opid.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
@@ -65,7 +67,8 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
-using yb::operator"" _MB;
+using namespace yb::size_literals;
+using namespace std::literals;
 
 // Log retention configuration.
 // -----------------------------
@@ -169,6 +172,7 @@ Status Log::AppendThread::Init() {
 
 void Log::AppendThread::RunThread() {
   bool shutting_down = false;
+
   while (PREDICT_TRUE(!shutting_down)) {
     std::vector<LogEntryBatch*> entry_batches;
     ElementDeleter d(&entry_batches);
@@ -187,6 +191,11 @@ void Log::AppendThread::RunThread() {
     if (PREDICT_FALSE(!log_->entry_queue()->BlockingDrainTo(&entry_batches,
                                                             wait_timeout_deadline))) {
       shutting_down = true;
+    }
+
+    auto sleep_duration = log_->sleep_duration_.load(std::memory_order_acquire);
+    if (sleep_duration.count() > 0) {
+      std::this_thread::sleep_for(sleep_duration);
     }
 
     if (log_->metrics_) {
@@ -480,18 +489,6 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
     return Status::OK();
   }
 
-  // We keep track of the last-written OpId here.
-  // This is needed to initialize Consensus on startup.
-  if (entry_batch->type_ == REPLICATE) {
-    // TODO Probably remove the code below as it looks suspicious: Tablet peer uses this
-    // as 'safe' anchor as it believes it in the log, when it actually isn't, i.e. this
-    // is not the last durable operation. Either move this to tablet peer (since we're
-    // using in flights anyway no need to scan for ids here) or actually delay doing this
-    // until fsync() has been done. See KUDU-527.
-    std::lock_guard<rw_spinlock> write_lock(last_entry_op_id_lock_);
-    last_entry_op_id_.CopyFrom(entry_batch->MaxReplicateOpId());
-  }
-
   // if the size of this entry overflows the current segment, get a new one
   if (allocation_state() == kAllocationNotStarted) {
     if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
@@ -519,6 +516,21 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
     SCOPED_WATCH_STACK(500);
 
     RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
+
+    // We keep track of the last-written OpId here.
+    // This is needed to initialize Consensus on startup.
+    if (entry_batch->type_ == REPLICATE) {
+      // TODO Probably remove the code below as it looks suspicious: Tablet peer uses this
+      // as 'safe' anchor as it believes it in the log, when it actually isn't, i.e. this
+      // is not the last durable operation. Either move this to tablet peer (since we're
+      // using in flights anyway no need to scan for ids here) or actually delay doing this
+      // until fsync() has been done. See KUDU-527.
+
+      auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
+      std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
+      last_entry_op_id_.store(new_op_id, std::memory_order_release);
+      last_entry_op_id_cond_.notify_all();
+    }
 
     // We don't update the last segment offset here anymore. This is done on the Sync() method to
     // guarantee that we only try to read what we have persisted in disk.
@@ -599,7 +611,7 @@ Status Log::Sync() {
   TRACE_EVENT0("log", "Sync");
   SCOPED_LATENCY_METRIC(metrics_, sync_latency);
 
-  if (!sync_disabled_ ) {
+  if (!sync_disabled_) {
     if (PREDICT_FALSE(FLAGS_log_inject_latency)) {
       Random r(GetCurrentTimeMicros());
       int sleep_ms = r.Normal(FLAGS_log_inject_latency_ms_mean,
@@ -630,7 +642,7 @@ Status Log::Sync() {
       periodic_sync_needed_.store(false);
       periodic_sync_unsynced_bytes_ = 0;
       LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
-            RETURN_NOT_OK(active_segment_->Sync());
+        RETURN_NOT_OK(active_segment_->Sync());
 
         if (log_hooks_) {
           RETURN_NOT_OK_PREPEND(log_hooks_->PostSyncIfFsyncEnabled(),
@@ -718,13 +730,35 @@ Status Log::WaitUntilAllFlushed() {
   return s.Wait();
 }
 
-void Log::GetLatestEntryOpId(consensus::OpId* op_id) const {
-  boost::shared_lock<rw_spinlock> read_lock(last_entry_op_id_lock_);
-  if (last_entry_op_id_.IsInitialized()) {
-    DCHECK_NOTNULL(op_id)->CopyFrom(last_entry_op_id_);
-  } else {
-    *op_id = consensus::MinimumOpId();
+yb::OpId Log::GetLatestEntryOpId() const {
+  return last_entry_op_id_.load(std::memory_order_acquire);
+}
+
+yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
+  if (all_op_ids_safe_) {
+    return min_allowed;
   }
+
+  auto result = last_entry_op_id_.load(std::memory_order_acquire);
+
+  if (result.index < min_allowed.index || result.term < min_allowed.term) {
+    auto start = CoarseMonoClock::Now();
+    std::unique_lock<std::mutex> lock(last_entry_op_id_mutex_);
+    for (;;) {
+      if (last_entry_op_id_cond_.wait_for(lock, 15s, [this, min_allowed, &result] {
+        result = last_entry_op_id_.load(std::memory_order_acquire);
+        return result.index >= min_allowed.index && result.term >= min_allowed.term;
+      })) {
+        break;
+      }
+      LOG(DFATAL) << "Long wait for safe op id: " << min_allowed
+                  << ", passed: " << (CoarseMonoClock::Now() - start);
+    }
+  }
+
+  DCHECK_GE(result.term, min_allowed.term)
+      << "result: " << result << ", min_allowed: " << min_allowed;
+  return result;
 }
 
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {

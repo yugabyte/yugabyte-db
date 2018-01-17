@@ -40,74 +40,8 @@
 namespace yb {
 namespace tablet {
 
+struct ReplayState;
 class WriteOperationState;
-
-typedef std::map<int64_t, std::unique_ptr<log::LogEntryPB>> OpIndexToEntryMap;
-
-// State kept during replay.
-struct ReplayState {
-  explicit ReplayState(const consensus::OpId& last_op_id);
-
-  // Return true if 'b' is allowed to immediately follow 'a' in the log.
-  static bool IsValidSequence(const consensus::OpId& a, const consensus::OpId& b);
-
-  // Return a Corruption status if 'id' seems to be out-of-sequence in the log.
-  Status CheckSequentialReplicateId(const consensus::ReplicateMsg& msg);
-
-  void UpdateCommittedOpId(const consensus::OpId& id);
-
-  void AddEntriesToStrings(const OpIndexToEntryMap& entries, vector<string>* strings) const;
-
-  void DumpReplayStateToStrings(vector<string>* strings)  const;
-
-  bool CanApply(int64_t index, log::LogEntryPB* entry);
-
-  template<class Handler>
-  void ApplyCommittedPendingReplicates(const Handler& handler) {
-    auto iter = pending_replicates.begin();
-    while (iter != pending_replicates.end() && CanApply(iter->first, iter->second.get())) {
-      std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second);
-      handler(entry.get());
-      iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
-      if (rocksdb_applied_index != -1) {
-        ++rocksdb_applied_index;
-      }
-      ++num_entries_applied_to_rocksdb;
-    }
-  }
-
-  // The last replicate message's ID.
-  consensus::OpId prev_op_id = consensus::MinimumOpId();
-
-  // The last operation known to be committed.  All other operations with lower IDs are also
-  // committed.
-  consensus::OpId committed_op_id = consensus::MinimumOpId();
-
-  // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
-  // safe to apply and delete from this map based on the commit index included into each REPLICATE
-  // message.
-  //
-  // The key in this map is the Raft index.
-  OpIndexToEntryMap pending_replicates;
-
-  // ----------------------------------------------------------------------------------------------
-  // State specific to RocksDB-backed tables
-
-  const consensus::OpId last_stored_op_id;
-
-  // Last index applied to RocksDB. This gets incremented as we apply more entries to RocksDB as
-  // part of bootstrap.
-  int64_t rocksdb_applied_index;
-
-  // Total number of log entries applied to RocksDB.
-  int64_t num_entries_applied_to_rocksdb = 0;
-
-  // If we encounter the last entry flushed to a RocksDB SSTable (as identified by the max
-  // persistent sequence number), we remember the hybrid time of that entry in this field.
-  // We guarantee that we'll either see that entry or a latter entry we know is committed into Raft
-  // during log replay. This is crucial for properly setting safe time at bootstrap.
-  HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
-};
 
 // Bootstraps an existing tablet by opening the metadata from disk, and rebuilding soft state by
 // playing log segments. A bootstrapped tablet can then be added to an existing consensus
@@ -138,7 +72,7 @@ class TabletBootstrap {
  protected:
   // Opens the tablet.
   // Sets '*has_blocks' to true if there was any data on disk for this tablet.
-  Status OpenTablet(bool* has_blocks);
+  CHECKED_STATUS OpenTablet(bool* has_blocks);
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir
   // and sets 'needs_recovery' to true, meaning that the previous recovery attempt should be retried
@@ -149,7 +83,7 @@ class TabletBootstrap {
   // is also returned as true in this case.
   //
   // If no log segments are found, 'needs_recovery' is set to false.
-  Status PrepareRecoveryDir(bool* needs_recovery);
+  CHECKED_STATUS PrepareRecoveryDir(bool* needs_recovery);
 
   // Opens the latest log segments for the Tablet that will allow to rebuild the tablet's soft
   // state. If there are existing log segments in the tablet's log directly they are moved to a
@@ -159,32 +93,32 @@ class TabletBootstrap {
   // If a "log-recovery" directory is already present, we will continue to replay from the
   // "log-recovery" directory. Tablet metadata is updated once replay has finished from the
   // "log-recovery" directory.
-  Status OpenLogReaderInRecoveryDir();
+  CHECKED_STATUS OpenLogReaderInRecoveryDir();
 
   // Opens a new log in the tablet's log directory.  The directory is expected to be clean.
-  Status OpenNewLog();
+  CHECKED_STATUS OpenNewLog();
 
   // Finishes bootstrap, setting 'rebuilt_log' and 'rebuilt_tablet'.
-  Status FinishBootstrap(const string& message,
-                         scoped_refptr<log::Log>* rebuilt_log,
-                         std::shared_ptr<TabletClass>* rebuilt_tablet);
+  CHECKED_STATUS FinishBootstrap(const std::string& message,
+                                 scoped_refptr<log::Log>* rebuilt_log,
+                                 std::shared_ptr<TabletClass>* rebuilt_tablet);
 
   // Plays the log segments into the tablet being built.  The process of playing the segments
   // generates a new log that can be continued later on when then tablet is rebuilt and starts
   // accepting writes from clients.
-  Status PlaySegments(consensus::ConsensusBootstrapInfo* results);
+  CHECKED_STATUS PlaySegments(consensus::ConsensusBootstrapInfo* results);
 
   void PlayWriteRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayUpdateTransactionRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayUpdateTransactionRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayChangeConfigRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayChangeConfigRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayNoOpRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayNoOpRequest(consensus::ReplicateMsg* replicate_msg);
 
-  Status PlayTruncateRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayTruncateRequest(consensus::ReplicateMsg* replicate_msg);
 
   void DumpReplayStateToLog(const ReplayState& state);
 
@@ -201,10 +135,10 @@ class TabletBootstrap {
 
   // Removes the recovery directory and all files contained therein.  Intended to be invoked after
   // log replay successfully completes.
-  Status RemoveRecoveryDir();
+  CHECKED_STATUS RemoveRecoveryDir();
 
   // Return a log prefix string in the standard "T xxx P yyy" format.
-  string LogPrefix() const;
+  std::string LogPrefix() const;
 
   BootstrapTabletData data_;
   scoped_refptr<TabletMetadata> meta_;
@@ -214,9 +148,9 @@ class TabletBootstrap {
   std::unique_ptr<TabletClass> tablet_;
   const scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<log::Log> log_;
-  gscoped_ptr<log::LogReader> log_reader_;
+  std::unique_ptr<log::LogReader> log_reader_;
 
-  gscoped_ptr<consensus::ConsensusMetadata> cmeta_;
+  std::unique_ptr<consensus::ConsensusMetadata> cmeta_;
   TabletOptions tablet_options_;
 
   // Statistics on the replay of entries in the log.

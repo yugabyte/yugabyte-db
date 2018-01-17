@@ -389,12 +389,11 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
       offset = entry.offset_in_segment + kEntryHeaderSize + 1;
       break;
   }
-  ASSERT_OK(CorruptLogFile(
-      env_.get(), log_->ActiveSegmentPathForTests(), type, offset));
+  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentPathForTests(), type, offset));
 
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
-  gscoped_ptr<LogReader> reader;
+  std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_.get(),
                             make_scoped_refptr(new LogIndex(log_->log_dir_)),
                             kTestTablet, tablet_wal_path_, nullptr, &reader));
@@ -457,7 +456,7 @@ TEST_F(LogTest, TestSegmentRollover) {
   ASSERT_FALSE(segments.back()->HasFooter());
   ASSERT_OK(log_->Close());
 
-  gscoped_ptr<LogReader> reader;
+  std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, tablet_wal_path_, NULL, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
@@ -787,14 +786,14 @@ TEST_F(LogTest, TestWriteManyBatches) {
     LOG(INFO) << "Starting to read log";
     uint32_t num_entries = 0;
 
-    vector<scoped_refptr<ReadableLogSegment> > segments;
-
-    gscoped_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, tablet_wal_path_, NULL,
+    std::unique_ptr<LogReader> reader;
+    ASSERT_OK(LogReader::Open(fs_manager_.get(), nullptr, kTestTablet, tablet_wal_path_, nullptr,
                               &reader));
+
+    std::vector<scoped_refptr<ReadableLogSegment> > segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
-    for (const scoped_refptr<ReadableLogSegment> entry : segments) {
+    for (const scoped_refptr<ReadableLogSegment>& entry : segments) {
       entries_.clear();
       ASSERT_OK(entry->ReadEntries(&entries_));
       num_entries += entries_.size();

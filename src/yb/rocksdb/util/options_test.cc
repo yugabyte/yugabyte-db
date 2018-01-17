@@ -1920,6 +1920,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, row_cache),
       BLACKLIST_ENTRY(DBOptions, wal_filter),
       BLACKLIST_ENTRY(DBOptions, boundary_extractor),
+      BLACKLIST_ENTRY(DBOptions, mem_table_flush_filter_factory),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

@@ -54,6 +54,7 @@ enum InfoLogLevel : unsigned char;
 class SstFileManager;
 class FilterPolicy;
 class Logger;
+class MemTable;
 class MergeOperator;
 class Snapshot;
 class TableFactory;
@@ -812,6 +813,8 @@ struct ColumnFamilyOptions {
   void Dump(Logger* log) const;
 };
 
+typedef std::function<bool(const MemTable&)> MemTableFilter;
+
 struct DBOptions {
   // Some functions that make it easier to optimize RocksDB
 
@@ -1307,6 +1310,9 @@ struct DBOptions {
 
   // Max file size for compaction. Supported only for level0 of universal style compactions.
   uint64_t max_file_size_for_compaction = std::numeric_limits<uint64_t>::max();
+
+  // Invoked after memtable switched.
+  std::shared_ptr<std::function<MemTableFilter()>> mem_table_flush_filter_factory;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

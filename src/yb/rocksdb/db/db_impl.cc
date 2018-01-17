@@ -1549,18 +1549,23 @@ Status DBImpl::FlushMemTableToOutputFile(
     ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
     bool* made_progress, JobContext* job_context, LogBuffer* log_buffer) {
   mutex_.AssertHeld();
-  assert(cfd->imm()->NumNotFlushed() != 0);
-  assert(cfd->imm()->IsFlushPending());
+  DCHECK_NE(cfd->imm()->NumNotFlushed(), 0);
+  DCHECK(cfd->imm()->IsFlushPending());
 
   SequenceNumber earliest_write_conflict_snapshot;
   std::vector<SequenceNumber> snapshot_seqs =
       snapshots_.GetAll(&earliest_write_conflict_snapshot);
 
+  MemTableFilter mem_table_flush_filter;
+  if (db_options_.mem_table_flush_filter_factory) {
+    mem_table_flush_filter = (*db_options_.mem_table_flush_filter_factory)();
+  }
+
   FlushJob flush_job(
       dbname_, cfd, db_options_, mutable_cf_options, env_options_,
       versions_.get(), &mutex_, &shutting_down_, snapshot_seqs,
-      earliest_write_conflict_snapshot, job_context, log_buffer,
-      directories_.GetDbDir(), directories_.GetDataDir(0U),
+      earliest_write_conflict_snapshot, mem_table_flush_filter,
+      job_context, log_buffer, directories_.GetDbDir(), directories_.GetDataDir(0U),
       GetCompressionFlush(*cfd->ioptions()), stats_, &event_logger_);
 
   FileMetaData file_meta;
@@ -4934,6 +4939,7 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   cfd->SetMemtable(new_mem);
   context->superversions_to_free_.push_back(InstallSuperVersionAndScheduleWork(
       cfd, new_superversion, mutable_cf_options));
+
   return s;
 }
 

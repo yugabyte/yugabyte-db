@@ -65,19 +65,19 @@ class LogReader {
   //
   // 'index' may be NULL, but if it is, ReadReplicatesInRange() may not be used.
   static CHECKED_STATUS Open(FsManager *fs_manager,
-                     const scoped_refptr<LogIndex>& index,
-                     const std::string& tablet_id,
-                     const std::string& tablet_wal_path,
-                     const scoped_refptr<MetricEntity>& metric_entity,
-                     gscoped_ptr<LogReader> *reader);
+                             const scoped_refptr<LogIndex>& index,
+                             const std::string& tablet_id,
+                             const std::string& tablet_wal_path,
+                             const scoped_refptr<MetricEntity>& metric_entity,
+                             std::unique_ptr<LogReader> *reader);
 
   // Opens a LogReader on a specific tablet log recovery directory, and sets
   // 'reader' to the newly created LogReader.
   static CHECKED_STATUS OpenFromRecoveryDir(FsManager *fs_manager,
-                                    const std::string& tablet_id,
-                                    const std::string& tablet_wal_path,
-                                    const scoped_refptr<MetricEntity>& metric_entity,
-                                    gscoped_ptr<LogReader> *reader);
+                                            const std::string& tablet_id,
+                                            const std::string& tablet_wal_path,
+                                            const scoped_refptr<MetricEntity>& metric_entity,
+                                            std::unique_ptr<LogReader> *reader);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.

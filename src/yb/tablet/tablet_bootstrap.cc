@@ -104,15 +104,72 @@ static string DebugInfo(const string& tablet_id,
 // ============================================================================
 //  Class ReplayState.
 // ============================================================================
+typedef std::map<int64_t, std::unique_ptr<log::LogEntryPB>> OpIndexToEntryMap;
+
+// State kept during replay.
+struct ReplayState {
+  explicit ReplayState(const consensus::OpId& last_op_id);
+
+  // Return true if 'b' is allowed to immediately follow 'a' in the log.
+  static bool IsValidSequence(const consensus::OpId& a, const consensus::OpId& b);
+
+  // Return a Corruption status if 'id' seems to be out-of-sequence in the log.
+  Status CheckSequentialReplicateId(const consensus::ReplicateMsg& msg);
+
+  void UpdateCommittedOpId(const consensus::OpId& id);
+
+  void AddEntriesToStrings(
+      const OpIndexToEntryMap& entries, std::vector<std::string>* strings) const;
+
+  void DumpReplayStateToStrings(std::vector<std::string>* strings)  const;
+
+  bool CanApply(log::LogEntryPB* entry);
+
+  template<class Handler>
+  void ApplyCommittedPendingReplicates(const Handler& handler) {
+    auto iter = pending_replicates.begin();
+    while (iter != pending_replicates.end() && CanApply(iter->second.get())) {
+      std::unique_ptr<log::LogEntryPB> entry = std::move(iter->second);
+      handler(entry.get());
+      iter = pending_replicates.erase(iter);  // erase and advance the iterator (C++11)
+      ++num_entries_applied_to_rocksdb;
+    }
+  }
+
+  // The last replicate message's ID.
+  consensus::OpId prev_op_id = consensus::MinimumOpId();
+
+  // The last operation known to be committed.  All other operations with lower IDs are also
+  // committed.
+  consensus::OpId committed_op_id = consensus::MinimumOpId();
+
+  // All REPLICATE entries that have not been applied to RocksDB yet. We decide what entries are
+  // safe to apply and delete from this map based on the commit index included into each REPLICATE
+  // message.
+  //
+  // The key in this map is the Raft index.
+  OpIndexToEntryMap pending_replicates;
+
+  // ----------------------------------------------------------------------------------------------
+  // State specific to RocksDB-backed tables
+
+  const consensus::OpId last_stored_op_id;
+
+  // Total number of log entries applied to RocksDB.
+  int64_t num_entries_applied_to_rocksdb = 0;
+
+  // If we encounter the last entry flushed to a RocksDB SSTable (as identified by the max
+  // persistent sequence number), we remember the hybrid time of that entry in this field.
+  // We guarantee that we'll either see that entry or a latter entry we know is committed into Raft
+  // during log replay. This is crucial for properly setting safe time at bootstrap.
+  HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
+};
+
 ReplayState::ReplayState(const OpId& last_op_id)
     : last_stored_op_id(last_op_id) {
   // If we know last flushed op id, then initialize committed_op_id with it.
   if (last_op_id.term() > yb::OpId::kUnknownTerm) {
     committed_op_id = last_op_id;
-    rocksdb_applied_index = -1;
-  } else {
-    // Fallback to old logic.
-    rocksdb_applied_index = last_op_id.index();
   }
 }
 
@@ -157,14 +214,14 @@ void ReplayState::UpdateCommittedOpId(const OpId& id) {
 }
 
 void ReplayState::AddEntriesToStrings(const OpIndexToEntryMap& entries,
-                                      vector<string>* strings) const {
+                                      std::vector<std::string>* strings) const {
   for (const OpIndexToEntryMap::value_type& map_entry : entries) {
     LogEntryPB* entry = DCHECK_NOTNULL(map_entry.second.get());
     strings->push_back(Substitute("   [$0] $1", map_entry.first, entry->ShortDebugString()));
   }
 }
 
-void ReplayState::DumpReplayStateToStrings(vector<string>* strings)  const {
+void ReplayState::DumpReplayStateToStrings(std::vector<std::string>* strings)  const {
   strings->push_back(Substitute(
       "ReplayState: "
       "Previous OpId: $0, "
@@ -185,10 +242,7 @@ void ReplayState::DumpReplayStateToStrings(vector<string>* strings)  const {
   }
 }
 
-bool ReplayState::CanApply(int64_t index, LogEntryPB* entry) {
-  if (rocksdb_applied_index != -1 && index != rocksdb_applied_index + 1) {
-    return false;
-  }
+bool ReplayState::CanApply(LogEntryPB* entry) {
   return consensus::OpIdCompare(entry->replicate().id(), committed_op_id) <= 0;
 }
 
@@ -617,12 +671,6 @@ void TabletBootstrap::DumpReplayStateToLog(const ReplayState& state) {
 }
 
 Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
-  // We initialize state->rocksdb_applied_index with MaxPersistentSequenceNumber(), and only apply
-  // a log entry with index equal to state->rocksdb_applied_index, before incrementing that
-  // variable. Together with the check based on state->committed_op_id, this ensures we apply
-  // all committed entries in the right order, even when the Raft index of entries we encounter in
-  // the log jumps back and the term gets increased due to leader changes and logical log
-  // "truncation".
   auto persistent_op_id = MinimumOpId();
   Result<yb::OpId> flushed_op_id = tablet_->MaxPersistentOpId();
   RETURN_NOT_OK(flushed_op_id);
@@ -691,20 +739,15 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // applied to RocksDB to be passed to the tablet as "orphaned replicates". This will make sure
     // we don't try to write to RocksDB with non-monotonic sequence ids, but still create
     // ConsensusRound instances for writes that have not been persisted into RocksDB.
-    if (e.first > state.rocksdb_applied_index) {
-      consensus_info->orphaned_replicates.emplace_back(e.second->release_replicate());
-    }
+    consensus_info->orphaned_replicates.emplace_back(e.second->release_replicate());
   }
-  LOG(INFO) << "rocksdb_applied_index=" << state.rocksdb_applied_index
-            << ", number of orphaned replicates=" << consensus_info->orphaned_replicates.size();
+  LOG(INFO) << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
+            << ", last id: " << state.prev_op_id << ", commited id: " << state.committed_op_id;
+  CHECK(state.prev_op_id.term() >= state.committed_op_id.term() &&
+        state.prev_op_id.index() >= state.committed_op_id.index())
+      << "Last: " << state.prev_op_id.ShortDebugString()
+      << ", committed: " << state.committed_op_id;
 
-  // Check that we could assign last replicated hybrid time, when there was applied records.
-  if (state.rocksdb_last_entry_hybrid_time == HybridTime::kMin && state.rocksdb_applied_index > 0) {
-    return STATUS(Corruption,
-                  "Even though RocksDB is not empty, we were not able to set last replicated "
-                  "hybrid time correctly on tablet bootstrap. Did we fail to keep at least one "
-                  "committed entry in the log?");
-  }
   tablet_->mvcc_manager()->SetLastReplicated(state.rocksdb_last_entry_hybrid_time);
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;

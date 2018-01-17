@@ -67,11 +67,11 @@ class RaftConsensusStateTest : public YBTest {
     peer->set_permanent_uuid(fs_manager_.uuid());
     peer->set_member_type(RaftPeerPB::VOTER);
 
-    gscoped_ptr<ConsensusMetadata> cmeta;
+    std::unique_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
                                         config_, kMinimumTerm, &cmeta));
-    state_.reset(new ReplicaState(ConsensusOptions(), fs_manager_.uuid(), cmeta.Pass(),
-                                  operation_factory_.get()));
+    state_.reset(new ReplicaState(ConsensusOptions(), fs_manager_.uuid(), std::move(cmeta),
+                                  operation_factory_.get(), nullptr /* safe_op_id_waiter */));
 
     // Start up the ReplicaState.
     ReplicaState::UniqueLock lock;

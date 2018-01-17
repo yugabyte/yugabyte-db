@@ -77,6 +77,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
                    std::atomic<bool>* shutting_down,
                    std::vector<SequenceNumber> existing_snapshots,
                    SequenceNumber earliest_write_conflict_snapshot,
+                   MemTableFilter mem_table_flush_filter,
                    JobContext* job_context, LogBuffer* log_buffer,
                    Directory* db_directory, Directory* output_file_directory,
                    CompressionType output_compression, Statistics* stats,
@@ -91,6 +92,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       shutting_down_(shutting_down),
       existing_snapshots_(std::move(existing_snapshots)),
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
+      mem_table_flush_filter_(std::move(mem_table_flush_filter)),
       job_context_(job_context),
       log_buffer_(log_buffer),
       db_directory_(db_directory),
@@ -138,7 +140,7 @@ Status FlushJob::Run(FileMetaData* file_meta) {
   // Save the contents of the earliest memtable as a new Table
   FileMetaData meta;
   autovector<MemTable*> mems;
-  cfd_->imm()->PickMemtablesToFlush(&mems);
+  cfd_->imm()->PickMemtablesToFlush(&mems, mem_table_flush_filter_);
   if (mems.empty()) {
     LOG_TO_BUFFER(log_buffer_, "[%s] Nothing in memtable to flush",
                 cfd_->GetName().c_str());

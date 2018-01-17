@@ -397,6 +397,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     ht_lease_provider_ = std::move(provider);
   }
 
+  void SetMemTableFlushFilterFactory(std::function<rocksdb::MemTableFilter()> factory) {
+    mem_table_flush_filter_factory_ = std::move(factory);
+  }
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -571,6 +575,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
  private:
   HybridTime DoGetSafeHybridTimeToReadAt(
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+
+  std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

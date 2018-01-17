@@ -162,7 +162,7 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
     FsManager* fs_manager,
     const RaftConfigPB& config,
     int64_t current_term) {
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   string tablet_id = kSysCatalogTabletId;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager,
                                                   tablet_id,
@@ -198,7 +198,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // 2. We always want to look up all node's UUIDs on start (via RPC).
   //    - TODO: Cache UUIDs. See KUDU-526.
   string tablet_id = metadata->tablet_id();
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(fs_manager, tablet_id, fs_manager->uuid(), &cmeta),
                         "Unable to load consensus metadata for tablet " + tablet_id);
 
@@ -423,7 +423,7 @@ Status SysCatalogTable::GoIntoShellMode() {
   RETURN_NOT_OK(tserver::DeleteTabletData(tablet_peer_->tablet_metadata(),
                                           tablet::TABLET_DATA_DELETED,
                                           master_->fs_manager()->uuid(),
-                                          boost::none));
+                                          yb::OpId()));
   RETURN_NOT_OK(tablet_peer_->tablet_metadata()->DeleteSuperBlock());
 
   tablet_peer_.reset();

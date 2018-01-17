@@ -491,7 +491,7 @@ Status TSTabletManager::CreateNewTablet(
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager_, tablet_id, fs_manager_->uuid(),
                                                   config, consensus::kMinimumTerm, &cmeta),
                         "Unable to create new ConsensusMeta for tablet " + tablet_id);
@@ -542,7 +542,7 @@ Status HandleReplacingStaleTablet(
     }
     case TABLET_DATA_TOMBSTONED: {
       RETURN_NOT_OK(old_tablet_peer->CheckShutdownOrNotStarted());
-      int64_t last_logged_term = meta->tombstone_last_logged_opid().term();
+      int64_t last_logged_term = meta->tombstone_last_logged_opid().term;
       RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id,
                                             uuid,
                                             leader_term,
@@ -758,17 +758,15 @@ Status TSTabletManager::DeleteTablet(
   scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
   tablet_peer->Shutdown();
 
-  boost::optional<OpId> opt_last_logged_opid;
+  yb::OpId last_logged_opid;
   if (tablet_peer->log()) {
-    OpId last_logged_opid;
-    tablet_peer->log()->GetLatestEntryOpId(&last_logged_opid);
-    opt_last_logged_opid = last_logged_opid;
+    last_logged_opid = tablet_peer->log()->GetLatestEntryOpId();
   }
 
   Status s = DeleteTabletData(meta,
                               delete_type,
                               fs_manager_->uuid(),
-                              opt_last_logged_opid,
+                              last_logged_opid,
                               this);
   if (PREDICT_FALSE(!s.ok())) {
     s = s.CloneAndPrepend(Substitute("Unable to delete on-disk data from tablet $0",
@@ -1188,7 +1186,7 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
   LOG(INFO) << kLogPrefix << "Tablet Manager startup: Rolling forward tablet deletion "
             << "of type " << TabletDataState_Name(data_state);
   // Passing no OpId will retain the last_logged_opid that was previously in the metadata.
-  RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), boost::none));
+  RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
 
   // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
   // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.
@@ -1371,7 +1369,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
 Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
                         TabletDataState data_state,
                         const string& uuid,
-                        const boost::optional<OpId>& last_logged_opid,
+                        const yb::OpId& last_logged_opid,
                         TSTabletManager* ts_manager) {
   const string& tablet_id = meta->tablet_id();
   const string kLogPrefix = LogPrefix(tablet_id, uuid);
@@ -1419,7 +1417,7 @@ void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
   Status delete_status = DeleteTabletData(meta,
                                           TABLET_DATA_TOMBSTONED,
                                           uuid,
-                                          boost::optional<OpId>(),
+                                          yb::OpId(),
                                           ts_manager);
 
   if (PREDICT_FALSE(FLAGS_sleep_after_tombstoning_tablet_secs > 0)) {

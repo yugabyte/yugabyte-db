@@ -54,6 +54,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/rocksdb/db/memtable.h"
+
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -164,17 +166,25 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     messenger_ = messenger;
     log_ = log;
 
+    tablet->SetMemTableFlushFilterFactory([log] {
+      auto index = log->GetLatestEntryOpId().index;
+      return [index] (const rocksdb::MemTable& memtable) {
+          return memtable.LastOpId().index <= index;
+      };
+    });
+
     ConsensusOptions options;
     options.tablet_id = meta_->tablet_id();
 
     TRACE("Creating consensus instance");
 
+    std::unique_ptr<ConsensusMetadata> cmeta;
     RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
-                                          meta_->fs_manager()->uuid(), &cmeta_));
+                                          meta_->fs_manager()->uuid(), &cmeta));
 
     consensus_ = RaftConsensus::Create(
         options,
-        cmeta_.Pass(),
+        std::move(cmeta),
         local_peer_pb_,
         metric_entity,
         clock_,
@@ -506,11 +516,7 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
-  {
-    OpId last_log_op;
-    log_->GetLatestEntryOpId(&last_log_op);
-    *min_index = last_log_op.index();
-  }
+  *min_index = log_->GetLatestEntryOpId().index;
 
   // If we never have written to the log, no need to proceed.
   if (*min_index == 0) {
@@ -673,6 +679,16 @@ const std::string& TabletPeer::permanent_uuid() const {
   return cached_permanent_uuid_;
 }
 
+consensus::Consensus* TabletPeer::consensus() const {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  return consensus_.get();
+}
+
+scoped_refptr<consensus::Consensus> TabletPeer::shared_consensus() const {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  return consensus_;
+}
+
 Status TabletPeer::NewOperationDriver(std::unique_ptr<Operation> operation,
                                       consensus::DriverType type,
                                       scoped_refptr<OperationDriver>* driver) {
@@ -712,8 +728,8 @@ void TabletPeer::UnregisterMaintenanceOps() {
 uint64_t TabletPeer::OnDiskSize() const {
   uint64_t ret = 0;
 
-  if (cmeta_) {
-    ret += cmeta_->on_disk_size();
+  if (consensus_) {
+    ret += consensus_->OnDiskSize();
   }
 
   if (tablet_) {

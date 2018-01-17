@@ -196,8 +196,7 @@ Status RemoteBootstrapSession::Init() {
                                    tablet_id));
 
   // Get the latest opid in the log at this point in time so we can re-anchor.
-  OpId last_logged_opid;
-  tablet_peer_->log()->GetLatestEntryOpId(&last_logged_opid);
+  auto last_logged_opid = tablet_peer_->log()->GetLatestEntryOpId();
 
   auto tablet = tablet_peer_->shared_tablet();
   if (PREDICT_FALSE(!tablet)) {
@@ -209,7 +208,7 @@ Status RemoteBootstrapSession::Init() {
   RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
                         Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
 
-  auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
+  auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
 
   // Clear any previous rocksdb files in the superblock. Each session should create a new list
@@ -239,7 +238,7 @@ Status RemoteBootstrapSession::Init() {
   // leader's log when remote bootstrap is slow. The remote controls when
   // this anchor is released by ending the remote bootstrap session.
   RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
-      last_logged_opid.index(), anchor_owner_token, &log_anchor_));
+      last_logged_opid.index, anchor_owner_token, &log_anchor_));
 
   return Status::OK();
 }

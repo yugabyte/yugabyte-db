@@ -74,19 +74,19 @@ class ConsensusMetadata {
   // Create a ConsensusMetadata object with provided initial state.
   // Encoded PB is flushed to disk before returning.
   static CHECKED_STATUS Create(FsManager* fs_manager,
-                       const std::string& tablet_id,
-                       const std::string& peer_uuid,
-                       const RaftConfigPB& config,
-                       int64_t current_term,
-                       gscoped_ptr<ConsensusMetadata>* cmeta);
+                               const std::string& tablet_id,
+                               const std::string& peer_uuid,
+                               const RaftConfigPB& config,
+                               int64_t current_term,
+                               std::unique_ptr<ConsensusMetadata>* cmeta);
 
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
   // Status codes if unable to read the file.
   static CHECKED_STATUS Load(FsManager* fs_manager,
-                     const std::string& tablet_id,
-                     const std::string& peer_uuid,
-                     gscoped_ptr<ConsensusMetadata>* cmeta);
+                             const std::string& tablet_id,
+                             const std::string& peer_uuid,
+                             std::unique_ptr<ConsensusMetadata>* cmeta);
 
   // Delete the ConsensusMetadata file associated with the given tablet from
   // disk.

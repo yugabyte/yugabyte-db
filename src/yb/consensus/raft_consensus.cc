@@ -218,7 +218,7 @@ static const char* const kTimerId = "election-timer";
 
 scoped_refptr<RaftConsensus> RaftConsensus::Create(
     const ConsensusOptions& options,
-    gscoped_ptr<ConsensusMetadata> cmeta,
+    std::unique_ptr<ConsensusMetadata> cmeta,
     const RaftPeerPB& local_peer_pb,
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
@@ -267,25 +267,25 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
                     log));
 
   return make_scoped_refptr(new RaftConsensus(
-                              options,
-                              cmeta.Pass(),
-                              rpc_factory.Pass(),
-                              queue.Pass(),
-                              peer_manager.Pass(),
-                              std::move(raft_pool_token),
-                              metric_entity,
-                              peer_uuid,
-                              clock,
-                              operation_factory,
-                              log,
-                              parent_mem_tracker,
-                              mark_dirty_clbk,
-                              table_type,
-                              std::move(lost_leadership_listener)));
+      options,
+      std::move(cmeta),
+      rpc_factory.Pass(),
+      queue.Pass(),
+      peer_manager.Pass(),
+      std::move(raft_pool_token),
+      metric_entity,
+      peer_uuid,
+      clock,
+      operation_factory,
+      log,
+      parent_mem_tracker,
+      mark_dirty_clbk,
+      table_type,
+      std::move(lost_leadership_listener)));
 }
 
 RaftConsensus::RaftConsensus(
-    const ConsensusOptions& options, gscoped_ptr<ConsensusMetadata> cmeta,
+    const ConsensusOptions& options, std::unique_ptr<ConsensusMetadata> cmeta,
     gscoped_ptr<PeerProxyFactory> proxy_factory,
     gscoped_ptr<PeerMessageQueue> queue, gscoped_ptr<PeerManager> peer_manager,
     unique_ptr<ThreadPoolToken> raft_pool_token,
@@ -323,8 +323,9 @@ RaftConsensus::RaftConsensus(
 
   state_.reset(new ReplicaState(options,
                                 peer_uuid,
-                                cmeta.Pass(),
-                                DCHECK_NOTNULL(operation_factory)));
+                                std::move(cmeta),
+                                DCHECK_NOTNULL(operation_factory),
+                                this));
 
   peer_manager_->SetConsensus(this);
 }
@@ -1847,7 +1848,8 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   }
 
   // Candidate must have last-logged OpId at least as large as our own to get our vote.
-  OpId local_last_logged_opid = GetLatestOpIdFromLog();
+  consensus::OpId local_last_logged_opid;
+  GetLatestOpIdFromLog().ToPB(&local_last_logged_opid);
   if (OpIdLessThan(request->candidate_status().last_received(), local_last_logged_opid)) {
     return RequestVoteRespondLastOpIdTooOld(local_last_logged_opid, request, response);
   }
@@ -2133,10 +2135,8 @@ RaftPeerPB::Role RaftConsensus::GetActiveRole() const {
   return state_->GetActiveRoleUnlocked();
 }
 
-OpId RaftConsensus::GetLatestOpIdFromLog() {
-  OpId id;
-  log_->GetLatestEntryOpId(&id);
-  return id;
+yb::OpId RaftConsensus::GetLatestOpIdFromLog() {
+  return log_->GetLatestEntryOpId();
 }
 
 Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateMsgPtr& msg) {
@@ -2826,6 +2826,14 @@ void RaftConsensus::RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg
                                             bool should_exists) {
   std::unique_ptr<OpId> op_id(replicate_msg->release_id());
   state_->CancelPendingOperation(*op_id, should_exists);
+}
+
+uint64_t RaftConsensus::OnDiskSize() const {
+  return state_->OnDiskSize();
+}
+
+yb::OpId RaftConsensus::WaitForSafeOpIdToApply(const yb::OpId& op_id) {
+  return log_->WaitForSafeOpIdToApply(op_id);
 }
 
 }  // namespace consensus

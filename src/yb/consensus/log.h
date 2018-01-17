@@ -50,6 +50,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/locks.h"
+#include "yb/util/opid.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
 
@@ -187,7 +188,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Gets the last-used OpId written to the log.  If no entry has ever been written to the log,
   // returns (0, 0)
-  void GetLatestEntryOpId(consensus::OpId* op_id) const;
+  yb::OpId GetLatestEntryOpId() const;
 
   // Runs the garbage collector on the set of previous segments. Segments that only refer to in-mem
   // state that has been flushed are candidates for garbage collection.
@@ -233,6 +234,19 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // This method is thread-safe.
   void SetSchemaForNextLogSegment(const Schema& schema, uint32_t version);
+
+  // Waits until specified op id is added to log.
+  // Returns current op id after waiting, which could be greater than or equal to specified op id.
+  // `op_id` should be already committed.
+  yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id);
+
+  void TEST_SetSleepDuration(const std::chrono::nanoseconds& duration) {
+    sleep_duration_.store(duration, std::memory_order_release);
+  }
+
+  void TEST_SetAllOpIdsSafe(bool value) {
+    all_op_ids_safe_ = value;
+  }
 
  private:
   friend class LogTest;
@@ -357,18 +371,18 @@ class Log : public RefCountedThreadSafe<Log> {
   LogState log_state_;
 
   // A reader for the previous segments that were not yet GC'd.
-  gscoped_ptr<LogReader> reader_;
+  std::unique_ptr<LogReader> reader_;
 
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
 
-  // Lock to protect last_entry_op_id_, which is constantly written but read occasionally by things
-  // like consensus and log GC.
-  mutable rw_spinlock last_entry_op_id_lock_;
+  // Lock for notification of last_entry_op_id_ changes.
+  mutable std::mutex last_entry_op_id_mutex_;
+  mutable std::condition_variable last_entry_op_id_cond_;
 
   // The last known OpId for a REPLICATE message appended to this log (any segment).
   // NOTE: this op is not necessarily durable.
-  consensus::OpId last_entry_op_id_;
+  std::atomic<yb::OpId> last_entry_op_id_{yb::OpId()};
 
   // A footer being prepared for the current segment.  When the segment is closed, it will be
   // written.
@@ -427,6 +441,12 @@ class Log : public RefCountedThreadSafe<Log> {
   std::atomic<uint64_t> on_disk_size_;
 
   std::shared_ptr<LogFaultHooks> log_hooks_;
+
+  // Used in tests delay writing log entries.
+  std::atomic<std::chrono::nanoseconds> sleep_duration_{std::chrono::nanoseconds(0)};
+
+  // Used in tests to declare all operations as safe.
+  bool all_op_ids_safe_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

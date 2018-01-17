@@ -110,8 +110,9 @@ class ReplicaState {
   using PackedRoleAndTerm = uint64;
 
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
-               gscoped_ptr<ConsensusMetadata> cmeta,
-               ReplicaOperationFactory* operation_factory);
+               std::unique_ptr<ConsensusMetadata> cmeta,
+               ReplicaOperationFactory* operation_factory,
+               SafeOpIdWaiter* safe_op_id_waiter);
 
   CHECKED_STATUS StartUnlocked(const OpId& last_in_wal);
 
@@ -383,6 +384,9 @@ class ReplicaState {
   MicrosTime MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, MonoTime deadline) const;
 
+  // The on-disk size of the consensus metadata.
+  uint64_t OnDiskSize() const;
+
  private:
 
   template <class Policy>
@@ -406,6 +410,9 @@ class ReplicaState {
   // held anyway, but read without the lock.
   void StoreRoleAndTerm(RaftPeerPB::Role role, int64_t term);
 
+  // Applies committed config change.
+  void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
+
   const ConsensusOptions options_;
 
   // The UUID of the local peer.
@@ -415,7 +422,7 @@ class ReplicaState {
   mutable std::condition_variable cond_;
 
   // Consensus metadata persistence object.
-  gscoped_ptr<ConsensusMetadata> cmeta_;
+  std::unique_ptr<ConsensusMetadata> cmeta_;
 
   // Active role and term. Stored as a separate atomic field for fast read-only access. This is
   // still only modified under the lock.
@@ -423,7 +430,7 @@ class ReplicaState {
 
   // Used by the LEADER. This is the index of the next operation generated
   // by this LEADER.
-  int64_t next_index_;
+  int64_t next_index_ = 0;
 
   // Index=>Round map that manages pending ops, i.e. operations for which we've
   // received a replicate message from the leader but have yet to be committed.
@@ -434,12 +441,15 @@ class ReplicaState {
   // this factory to start it.
   ReplicaOperationFactory* operation_factory_;
 
+  // Used to wait for safe op id during apply of committed entries.
+  SafeOpIdWaiter* safe_op_id_waiter_;
+
   // The id of the last received operation, which corresponds to the last entry
   // written to the local log. Operations whose id is lower than or equal to
   // this id do not need to be resent by the leader. This is not guaranteed to
   // be monotonically increasing due to the possibility for log truncation and
   // aborted operations when a leader change occurs.
-  OpId last_received_op_id_;
+  OpId last_received_op_id_ = MinimumOpId();
 
   // Same as last_received_op_id_ but only includes operations sent by the
   // current leader. The "term" in this op may not actually match the current
@@ -448,16 +458,16 @@ class ReplicaState {
   // As an implementation detail, this field is reset to MinumumOpId() every
   // time there is a term advancement on the local node, to simplify the logic
   // involved in resetting this every time a new node becomes leader.
-  OpId last_received_op_id_current_leader_;
+  OpId last_received_op_id_current_leader_ = MinimumOpId();
 
   // The id of the Apply that was last triggered when the last message from the leader
   // was received. Initialized to MinimumOpId().
-  OpId last_committed_index_;
+  OpId last_committed_index_ = MinimumOpId();
 
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
   OpId pending_election_opid_;
 
-  State state_;
+  State state_ = State::kInitialized;
 
   // When a follower becomes the leader, it uses this field to wait out the old leader's lease
   // before accepting writes or serving up-to-date reads. This is also used by candidates by

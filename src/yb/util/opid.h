@@ -42,6 +42,17 @@ struct OpId {
   }
 
   void UpdateIfGreater(const OpId& rhs);
+
+  template <class PB>
+  static OpId FromPB(const PB& pb) {
+    return OpId(pb.term(), pb.index());
+  }
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_term(term);
+    pb->set_index(index);
+  }
 };
 
 inline bool operator==(const OpId& lhs, const OpId& rhs) {

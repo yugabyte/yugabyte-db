@@ -371,6 +371,18 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
       make_shared<TabletRetentionPolicy>(this));
 
+  auto mem_table_flush_filter_factory = [this] {
+    if (mem_table_flush_filter_factory_) {
+      return mem_table_flush_filter_factory_();
+    }
+    return rocksdb::MemTableFilter();
+  };
+  // Extracting type of shared_ptr value.
+  typedef decltype(rocksdb_options.mem_table_flush_filter_factory)::element_type
+      MemTableFlushFilterFactoryType;
+  rocksdb_options.mem_table_flush_filter_factory =
+      std::make_shared<MemTableFlushFilterFactoryType>(mem_table_flush_filter_factory);
+
   const string db_dir = metadata()->rocksdb_dir();
   LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
 

@@ -139,7 +139,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     config.add_peers()->CopyFrom(config_peer);
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-    gscoped_ptr<ConsensusMetadata> cmeta;
+    std::unique_ptr<ConsensusMetadata> cmeta;
     CHECK_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
                                        tablet()->tablet_id(), fs_manager()->uuid(),
                                        config, consensus::kMinimumTerm, &cmeta));

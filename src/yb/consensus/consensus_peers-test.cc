@@ -122,10 +122,9 @@ class ConsensusPeersTest : public YBTest {
   }
 
   void CheckLastLogEntry(int term, int index) {
-    OpId id;
-    log_->GetLatestEntryOpId(&id);
-    ASSERT_EQ(id.term(), term);
-    ASSERT_EQ(id.index(), index);
+    auto id = log_->GetLatestEntryOpId();
+    ASSERT_EQ(id.term, term);
+    ASSERT_EQ(id.index, index);
   }
 
   void CheckLastRemoteEntry(DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int term, int index) {

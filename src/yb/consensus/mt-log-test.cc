@@ -169,7 +169,7 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   }
   ASSERT_OK(log_->Close());
 
-  gscoped_ptr<LogReader> reader;
+  std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             NULL, &reader));

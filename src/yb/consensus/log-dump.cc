@@ -177,12 +177,12 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
 
 Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   Env *env = Env::Default();
-  gscoped_ptr<LogReader> reader;
   FsManagerOpts fs_opts;
   fs_opts.read_only = true;
   FsManager fs_manager(env, fs_opts);
 
   RETURN_NOT_OK(fs_manager.Open());
+  std::unique_ptr<LogReader> reader;
   RETURN_NOT_OK(LogReader::Open(&fs_manager,
                                 scoped_refptr<LogIndex>(),
                                 tablet_id,

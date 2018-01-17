@@ -82,15 +82,15 @@ const int LogReader::kNoSizeLimit = -1;
 
 Status LogReader::Open(FsManager *fs_manager,
                        const scoped_refptr<LogIndex>& index,
-                       const string& tablet_id,
-                       const string& tablet_wal_path,
+                       const std::string& tablet_id,
+                       const std::string& tablet_wal_path,
                        const scoped_refptr<MetricEntity>& metric_entity,
-                       gscoped_ptr<LogReader> *reader) {
-  gscoped_ptr<LogReader> log_reader(new LogReader(fs_manager, index, tablet_id,
-                                                  metric_entity));
+                       std::unique_ptr<LogReader> *reader) {
+  std::unique_ptr<LogReader> log_reader(new LogReader(
+      fs_manager, index, tablet_id, metric_entity));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
-  reader->reset(log_reader.release());
+  *reader = std::move(log_reader);
   return Status::OK();
 }
 
@@ -98,17 +98,16 @@ Status LogReader::OpenFromRecoveryDir(FsManager *fs_manager,
                                       const string& tablet_id,
                                       const string& tablet_wal_path,
                                       const scoped_refptr<MetricEntity>& metric_entity,
-                                      gscoped_ptr<LogReader>* reader) {
-  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_wal_path);
+                                      std::unique_ptr<LogReader>* reader) {
+  const std::string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_wal_path);
 
   // When recovering, we don't want to have any log index -- since it isn't fsynced()
   // during writing, its contents are useless to us.
   scoped_refptr<LogIndex> index(nullptr);
-  gscoped_ptr<LogReader> log_reader(new LogReader(fs_manager, index, tablet_id,
-                                                  metric_entity));
+  std::unique_ptr<LogReader> log_reader(new LogReader(fs_manager, index, tablet_id, metric_entity));
   RETURN_NOT_OK_PREPEND(log_reader->Init(recovery_path),
                         "Unable to initialize log reader");
-  reader->reset(log_reader.release());
+  *reader = std::move(log_reader);
   return Status::OK();
 }
 

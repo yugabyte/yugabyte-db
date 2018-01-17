@@ -25,19 +25,24 @@
 
 #include "yb/consensus/consensus.pb.h"
 
+#include "yb/integration-tests/test_workload.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/random_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
+
 using namespace std::literals; // NOLINT
 
 DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
+DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
 namespace client {
@@ -104,12 +109,15 @@ class QLTabletTest : public QLDmlTestBase {
     return op;
   }
 
-  void CreateTable(const YBTableName& table_name, TableHandle* table) {
+  void CreateTable(const YBTableName& table_name, TableHandle* table, int num_tablets = 0) {
     YBSchemaBuilder builder;
     builder.AddColumn(kKey)->Type(INT32)->HashPrimaryKey()->NotNull();
     builder.AddColumn(kValue)->Type(INT32);
 
-    ASSERT_OK(table->Create(table_name, CalcNumTablets(3), client_.get(), &builder));
+    if (num_tablets == 0) {
+      num_tablets = CalcNumTablets(3);
+    }
+    ASSERT_OK(table->Create(table_name, num_tablets, client_.get(), &builder));
   }
 
   void FillTable(int begin, int end, TableHandle* table) {
@@ -446,6 +454,71 @@ TEST_F(QLTabletTest, LeaderLease) {
   auto status = session->Apply(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }
+
+// This test tries to catch situation when some entries were applied and flushed in RocksDB,
+// but is not present in persistent logs.
+//
+// If that happens than we would get situation that after restart some node has records
+// in RocksDB, but does not have log records for it. And would not be able to restore last
+// hybrid time, also this node would not be able to remotely bootstrap other nodes.
+//
+// So we just delay one of follower logs and write a random key.
+// Checking that flushed op id in RocksDB does not exceed last op id in logs.
+TEST_F(QLTabletTest, WaitFlush) {
+  google::FlagSaver saver;
+
+  constexpr int kNumTablets = 1; // Use single tablet to increase chance of bad scenario.
+  FLAGS_db_write_buffer_size = 10; // Use small memtable to induce background flush on each write.
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000);
+  workload.set_num_tablets(kNumTablets);
+  workload.set_num_write_threads(1);
+  workload.set_write_batch_size(1);
+  workload.set_payload_bytes(128);
+  workload.Setup();
+  workload.Start();
+
+  std::vector<tablet::TabletPeerPtr> peers;
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    std::vector<tablet::TabletPeerPtr> tserver_peers;
+    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&tserver_peers);
+    ASSERT_EQ(tserver_peers.size(), 1);
+    peers.push_back(tserver_peers.front());
+  }
+
+  bool leader_found = false;
+  while (!leader_found) {
+    for (size_t i = 0; i != peers.size(); ++i) {
+      if (peers[i]->LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY) {
+        peers[(i + 1) % peers.size()]->log()->TEST_SetSleepDuration(500ms);
+        leader_found = true;
+        break;
+      }
+    }
+  }
+
+  auto deadline = std::chrono::steady_clock::now() + 20s;
+  while (std::chrono::steady_clock::now() <= deadline) {
+    for (const auto& peer : peers) {
+      auto flushed_op_id = peer->tablet()->MaxPersistentOpId();
+      ASSERT_OK(flushed_op_id);
+      auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
+      ASSERT_LE(flushed_op_id->index, latest_entry_op_id.index);
+    }
+  }
+
+  for (const auto& peer : peers) {
+    auto flushed_op_id = peer->tablet()->MaxPersistentOpId();
+    ASSERT_OK(flushed_op_id);
+    ASSERT_GE(flushed_op_id->index, 100);
+  }
+
+  workload.StopAndJoin();
+}
+
 
 } // namespace client
 } // namespace yb

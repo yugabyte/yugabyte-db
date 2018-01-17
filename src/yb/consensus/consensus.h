@@ -59,6 +59,8 @@
 
 namespace yb {
 
+struct OpId;
+
 namespace log {
 class Log;
 }
@@ -627,6 +629,14 @@ class Consensus::ConsensusFaultHooks {
   virtual CHECKED_STATUS PreShutdown() { return Status::OK(); }
   virtual CHECKED_STATUS PostShutdown() { return Status::OK(); }
   virtual ~ConsensusFaultHooks() {}
+};
+
+class SafeOpIdWaiter {
+ public:
+  virtual yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id) = 0;
+
+ protected:
+  ~SafeOpIdWaiter() {}
 };
 
 } // namespace consensus

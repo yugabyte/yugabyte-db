@@ -62,6 +62,10 @@ using yb::consensus::StateChangeContext;
 
 namespace yb {
 
+namespace consensus {
+class RaftConsensus;
+}
+
 namespace log {
 class LogAnchorRegistry;
 }
@@ -150,18 +154,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
   // Used by consensus to create and start a new ReplicaOperation.
-  virtual CHECKED_STATUS StartReplicaOperation(
+  CHECKED_STATUS StartReplicaOperation(
       const scoped_refptr<consensus::ConsensusRound>& round) override;
 
-  consensus::Consensus* consensus() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return consensus_.get();
-  }
+  consensus::Consensus* consensus() const;
 
-  scoped_refptr<consensus::Consensus> shared_consensus() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return consensus_;
-  }
+  scoped_refptr<consensus::Consensus> shared_consensus() const;
 
   TabletClass* tablet() const {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -326,9 +324,6 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   const scoped_refptr<TabletMetadata> meta_;
 
-  // Cache the consensus meta information for this peer.
-  gscoped_ptr<consensus::ConsensusMetadata> cmeta_;
-
   const std::string tablet_id_;
 
   const consensus::RaftPeerPB local_peer_pb_;
@@ -340,7 +335,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   scoped_refptr<log::Log> log_;
   std::shared_ptr<TabletClass> tablet_;
   std::shared_ptr<rpc::Messenger> messenger_;
-  scoped_refptr<consensus::Consensus> consensus_;
+  scoped_refptr<consensus::RaftConsensus> consensus_;
   gscoped_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;
 

@@ -43,6 +43,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 #include "yb/util/tostring.h"
@@ -91,17 +92,14 @@ using yb::util::to_underlying;
 //////////////////////////////////////////////////
 
 ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
-                           gscoped_ptr<ConsensusMetadata> cmeta,
-                           ReplicaOperationFactory* operation_factory)
+                           std::unique_ptr<ConsensusMetadata> cmeta,
+                           ReplicaOperationFactory* operation_factory,
+                           SafeOpIdWaiter* safe_op_id_waiter)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
-      cmeta_(cmeta.Pass()),
-      next_index_(0),
+      cmeta_(std::move(cmeta)),
       operation_factory_(operation_factory),
-      last_received_op_id_(MinimumOpId()),
-      last_received_op_id_current_leader_(MinimumOpId()),
-      last_committed_index_(MinimumOpId()),
-      state_(kInitialized) {
+      safe_op_id_waiter_(safe_op_id_waiter) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
 }
@@ -780,6 +778,10 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
   }
 
   OpId prev_id = last_committed_index_;
+  yb::OpId max_allowed_op_id;
+  if (!safe_op_id_waiter_) {
+    max_allowed_op_id.index = std::numeric_limits<int64_t>::max();
+  }
 
   while (iter != end_iter) {
     scoped_refptr<ConsensusRound> round = (*iter).second; // Make a copy.
@@ -790,45 +792,22 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
       CHECK_OK(CheckOpInSequence(prev_id, current_id));
     }
 
+    auto type = round->replicate_msg()->op_type();
+
+    // For write operations we block rocksdb flush, until appropriate records are written to the
+    // log file. So we could apply them before adding to log.
+    if (type != OperationType::WRITE_OP &&
+        (current_id.index() > max_allowed_op_id.index ||
+         current_id.term() > max_allowed_op_id.term)) {
+      max_allowed_op_id = safe_op_id_waiter_->WaitForSafeOpIdToApply(yb::OpId::FromPB(current_id));
+      DCHECK_GE(max_allowed_op_id.index, current_id.index());
+      DCHECK_GE(max_allowed_op_id.term, current_id.term());
+    }
+
     pending_operations_.erase(iter++);
     // Set committed configuration.
-    if (PREDICT_FALSE(round->replicate_msg()->op_type() == CHANGE_CONFIG_OP)) {
-      DCHECK(round->replicate_msg()->change_config_record().has_old_config());
-      DCHECK(round->replicate_msg()->change_config_record().has_new_config());
-      RaftConfigPB old_config = round->replicate_msg()->change_config_record().old_config();
-      RaftConfigPB new_config = round->replicate_msg()->change_config_record().new_config();
-      DCHECK(old_config.has_opid_index());
-      DCHECK(!new_config.has_opid_index());
-
-      if (PREDICT_FALSE(FLAGS_inject_delay_commit_pre_voter_to_voter_secs)) {
-        bool is_transit_to_voter =
-          CountVotersInTransition(old_config) > CountVotersInTransition(new_config);
-        if (is_transit_to_voter) {
-          LOG_WITH_PREFIX_UNLOCKED(INFO) << "Commit skipped "
-              << " as inject_delay_commit_pre_voter_to_voter_secs flag is set to true.\n"
-              << "  Old config: { " << old_config.ShortDebugString() << " }.\n"
-              << "  New config: { " << new_config.ShortDebugString() << " }";
-          SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_commit_pre_voter_to_voter_secs));
-        }
-      }
-
-      new_config.set_opid_index(current_id.index());
-      // Check if the pending Raft config has an OpId less than the committed
-      // config. If so, this is a replay at startup in which the COMMIT
-      // messages were delayed.
-      const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
-      if (new_config.opid_index() > committed_config.opid_index()) {
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Committing config change with OpId "
-            << current_id << ". Old config: { " << old_config.ShortDebugString() << " }. "
-            << "New config: { " << new_config.ShortDebugString() << " }";
-        CHECK_OK(SetCommittedConfigUnlocked(new_config));
-      } else {
-        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Ignoring commit of config change with OpId "
-            << current_id << " because the committed config has OpId index "
-            << committed_config.opid_index() << ". The config change we are ignoring is: "
-            << "Old config: { " << old_config.ShortDebugString() << " }. "
-            << "New config: { " << new_config.ShortDebugString() << " }";
-      }
+    if (PREDICT_FALSE(type == OperationType::CHANGE_CONFIG_OP)) {
+      ApplyConfigChangeUnlocked(round);
     }
 
     prev_id.CopyFrom(round->id());
@@ -838,6 +817,47 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
   SetLastCommittedIndexUnlocked(committed_index);
 
   return Status::OK();
+}
+
+void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
+  DCHECK(round->replicate_msg()->change_config_record().has_old_config());
+  DCHECK(round->replicate_msg()->change_config_record().has_new_config());
+  RaftConfigPB old_config = round->replicate_msg()->change_config_record().old_config();
+  RaftConfigPB new_config = round->replicate_msg()->change_config_record().new_config();
+  DCHECK(old_config.has_opid_index());
+  DCHECK(!new_config.has_opid_index());
+
+  const OpId& current_id = round->id();
+
+  if (PREDICT_FALSE(FLAGS_inject_delay_commit_pre_voter_to_voter_secs)) {
+    bool is_transit_to_voter =
+      CountVotersInTransition(old_config) > CountVotersInTransition(new_config);
+    if (is_transit_to_voter) {
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Commit skipped "
+          << " as inject_delay_commit_pre_voter_to_voter_secs flag is set to true.\n"
+          << "  Old config: { " << old_config.ShortDebugString() << " }.\n"
+          << "  New config: { " << new_config.ShortDebugString() << " }";
+      SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_commit_pre_voter_to_voter_secs));
+    }
+  }
+
+  new_config.set_opid_index(current_id.index());
+  // Check if the pending Raft config has an OpId less than the committed
+  // config. If so, this is a replay at startup in which the COMMIT
+  // messages were delayed.
+  const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
+  if (new_config.opid_index() > committed_config.opid_index()) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Committing config change with OpId "
+        << current_id << ". Old config: { " << old_config.ShortDebugString() << " }. "
+        << "New config: { " << new_config.ShortDebugString() << " }";
+    CHECK_OK(SetCommittedConfigUnlocked(new_config));
+  } else {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Ignoring commit of config change with OpId "
+        << current_id << " because the committed config has OpId index "
+        << committed_config.opid_index() << ". The config change we are ignoring is: "
+        << "Old config: { " << old_config.ShortDebugString() << " }. "
+        << "New config: { " << new_config.ShortDebugString() << " }";
+  }
 }
 
 const OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
@@ -1147,6 +1167,10 @@ void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
   majority_replicated_ht_lease_expiration_ = majority_replicated_data.ht_lease_expiration;
 
   cond_.notify_all();
+}
+
+uint64_t ReplicaState::OnDiskSize() const {
+  return cmeta_->on_disk_size();
 }
 
 }  // namespace consensus

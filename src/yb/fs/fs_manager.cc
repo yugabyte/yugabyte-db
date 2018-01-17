@@ -459,7 +459,7 @@ Status FsManager::ListTabletIds(vector<string>* tablet_ids) {
   return Status::OK();
 }
 
-string FsManager::GetInstanceMetadataPath(const string& root) const {
+std::string FsManager::GetInstanceMetadataPath(const string& root) const {
   return JoinPathSegments(GetServerTypeDataPath(root, server_type_), kInstanceMetadataFileName);
 }
 
@@ -470,20 +470,20 @@ std::string FsManager::GetConsensusMetadataDir() const {
       kConsensusMetadataDirName);
 }
 
-string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,
-                                            const std::string& tablet_id) const {
+std::string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,
+                                                 const std::string& tablet_id) const {
   auto wal_root_dirs = GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No WAL directories specified";
   auto table_wal_dir = JoinPathSegments(wal_root_dirs[0], Substitute("table-$0", table_id));
   return JoinPathSegments(table_wal_dir, Substitute("tablet-$0", tablet_id));
 }
 
-string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) const {
+std::string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) const {
   return tablet_wal_path + kWalsRecoveryDirSuffix;
 }
 
-string FsManager::GetWalSegmentFileName(const string& tablet_wal_path,
-                                        uint64_t sequence_number) const {
+std::string FsManager::GetWalSegmentFileName(const string& tablet_wal_path,
+                                             uint64_t sequence_number) const {
   return JoinPathSegments(tablet_wal_path,
                           strings::Substitute("$0-$1",
                                               kWalFileNamePrefix,

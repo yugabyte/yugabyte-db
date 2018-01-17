@@ -102,21 +102,21 @@ void ConsensusMetadataTest::AssertValuesEqual(const ConsensusMetadata& cmeta,
 TEST_F(ConsensusMetadataTest, TestCreateLoad) {
   // Create the file.
   {
-    gscoped_ptr<ConsensusMetadata> cmeta;
+    std::unique_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
                                         config_, kInitialTerm, &cmeta));
     ASSERT_VALUES_EQUAL(*cmeta, kInvalidOpIdIndex, fs_manager_.uuid(), kInitialTerm);
   }
 
   // Load the file.
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta));
   ASSERT_VALUES_EQUAL(*cmeta, kInvalidOpIdIndex, fs_manager_.uuid(), kInitialTerm);
 }
 
 // Ensure that we get an error when loading a file that doesn't exist.
 TEST_F(ConsensusMetadataTest, TestFailedLoad) {
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   Status s = ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta);
   ASSERT_TRUE(s.IsNotFound()) << "Unexpected status: " << s.ToString();
   LOG(INFO) << "Expected failure: " << s.ToString();
@@ -125,7 +125,7 @@ TEST_F(ConsensusMetadataTest, TestFailedLoad) {
 // Check that changes are not written to disk until Flush() is called.
 TEST_F(ConsensusMetadataTest, TestFlush) {
   const int64_t kNewTerm = 4;
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
                                       config_, kInitialTerm, &cmeta));
   cmeta->set_current_term(kNewTerm);
@@ -134,7 +134,7 @@ TEST_F(ConsensusMetadataTest, TestFlush) {
   // objects in flight that point to the same file, but for a test this is fine
   // since it's read-only.
   {
-    gscoped_ptr<ConsensusMetadata> cmeta_read;
+    std::unique_ptr<ConsensusMetadata> cmeta_read;
     ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta_read));
     ASSERT_VALUES_EQUAL(*cmeta_read, kInvalidOpIdIndex, fs_manager_.uuid(), kInitialTerm);
   }
@@ -142,7 +142,7 @@ TEST_F(ConsensusMetadataTest, TestFlush) {
   ASSERT_OK(cmeta->Flush());
 
   {
-    gscoped_ptr<ConsensusMetadata> cmeta_read;
+    std::unique_ptr<ConsensusMetadata> cmeta_read;
     ASSERT_OK(ConsensusMetadata::Load(&fs_manager_, kTabletId, fs_manager_.uuid(), &cmeta_read));
     ASSERT_VALUES_EQUAL(*cmeta_read, kInvalidOpIdIndex, fs_manager_.uuid(), kNewTerm);
   }
@@ -167,7 +167,7 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
   RaftConfigPB config1 = BuildConfig(uuids); // We aren't a member of this config...
   config1.set_opid_index(1);
 
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid,
                                       config1, kInitialTerm, &cmeta));
 
@@ -212,7 +212,7 @@ TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
 
   RaftConfigPB committed_config = BuildConfig(uuids); // We aren't a member of this config...
   committed_config.set_opid_index(1);
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid,
                                       committed_config, kInitialTerm, &cmeta));
 
@@ -243,23 +243,27 @@ TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
   ASSERT_OK(VerifyConsensusState(new_committed_cstate, COMMITTED_QUORUM));
 }
 
+namespace {
+
 // Helper for TestMergeCommittedConsensusStatePB.
-static void AssertConsensusMergeExpected(const gscoped_ptr<ConsensusMetadata>& cmeta,
-                                         const ConsensusStatePB& cstate,
-                                         int64_t expected_term,
-                                         const string& expected_voted_for) {
+void AssertConsensusMergeExpected(const ConsensusMetadata& cmeta,
+                                  const ConsensusStatePB& cstate,
+                                  int64_t expected_term,
+                                  const string& expected_voted_for) {
   // See header docs for ConsensusMetadata::MergeCommittedConsensusStatePB() for
   // a "spec" of these assertions.
-  ASSERT_TRUE(!cmeta->has_pending_config());
-  ASSERT_EQ(cmeta->committed_config().ShortDebugString(), cstate.config().ShortDebugString());
-  ASSERT_EQ("", cmeta->leader_uuid());
-  ASSERT_EQ(expected_term, cmeta->current_term());
+  ASSERT_TRUE(!cmeta.has_pending_config());
+  ASSERT_EQ(cmeta.committed_config().ShortDebugString(), cstate.config().ShortDebugString());
+  ASSERT_EQ("", cmeta.leader_uuid());
+  ASSERT_EQ(expected_term, cmeta.current_term());
   if (expected_voted_for.empty()) {
-    ASSERT_FALSE(cmeta->has_voted_for());
+    ASSERT_FALSE(cmeta.has_voted_for());
   } else {
-    ASSERT_EQ(expected_voted_for, cmeta->voted_for());
+    ASSERT_EQ(expected_voted_for, cmeta.voted_for());
   }
 }
+
+} // namespace
 
 // Ensure that MergeCommittedConsensusStatePB() works as advertised.
 TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
@@ -267,7 +271,7 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
 
   RaftConfigPB committed_config = BuildConfig(uuids); // We aren't a member of this config...
   committed_config.set_opid_index(1);
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, "e",
                                       committed_config, 1, &cmeta));
 
@@ -282,20 +286,20 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
   remote_state.set_current_term(0);
   *remote_state.mutable_config() = BuildConfig({ "x", "y", "z" });
   cmeta->MergeCommittedConsensusStatePB(remote_state);
-  ASSERT_NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 1, "e"));
+  ASSERT_NO_FATALS(AssertConsensusMergeExpected(*cmeta, remote_state, 1, "e"));
 
   // Same as above because the merged term is the same as the cmeta term.
   remote_state.set_current_term(1);
   *remote_state.mutable_config() = BuildConfig({ "f", "g", "h" });
   cmeta->MergeCommittedConsensusStatePB(remote_state);
-  ASSERT_NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 1, "e"));
+  ASSERT_NO_FATALS(AssertConsensusMergeExpected(*cmeta, remote_state, 1, "e"));
 
   // Higher term, so wipe out the prior state.
   remote_state.set_current_term(2);
   *remote_state.mutable_config() = BuildConfig({ "i", "j", "k" });
   cmeta->set_pending_config(pending_config);
   cmeta->MergeCommittedConsensusStatePB(remote_state);
-  ASSERT_NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 2, ""));
+  ASSERT_NO_FATALS(AssertConsensusMergeExpected(*cmeta, remote_state, 2, ""));
 }
 
 } // namespace consensus

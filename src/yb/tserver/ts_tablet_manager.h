@@ -474,7 +474,7 @@ void LogAndTombstone(const scoped_refptr<tablet::TabletMetadata>& meta,
 Status DeleteTabletData(const scoped_refptr<tablet::TabletMetadata>& meta,
                         tablet::TabletDataState delete_type,
                         const std::string& uuid,
-                        const boost::optional<consensus::OpId>& last_logged_opid,
+                        const yb::OpId& last_logged_opid,
                         TSTabletManager* ts_manager = nullptr);
 
 // Return Status::IllegalState if leader_term < last_logged_term.

@@ -124,7 +124,7 @@ class RaftConsensusSpy : public RaftConsensus {
   typedef Callback<Status(const scoped_refptr<ConsensusRound>& round)> AppendCallback;
 
   RaftConsensusSpy(const ConsensusOptions& options,
-                   gscoped_ptr<ConsensusMetadata> cmeta,
+                   std::unique_ptr<ConsensusMetadata> cmeta,
                    gscoped_ptr<PeerProxyFactory> proxy_factory,
                    gscoped_ptr<PeerMessageQueue> queue,
                    gscoped_ptr<PeerManager> peer_manager,
@@ -138,7 +138,7 @@ class RaftConsensusSpy : public RaftConsensus {
                    const Callback<void(std::shared_ptr<consensus::StateChangeContext> context)>&
                      mark_dirty_clbk)
     : RaftConsensus(options,
-                    cmeta.Pass(),
+                    std::move(cmeta),
                     proxy_factory.Pass(),
                     queue.Pass(),
                     peer_manager.Pass(),
@@ -223,6 +223,8 @@ class RaftConsensusTest : public YBTest {
                        NULL,
                        &log_));
 
+    log_->TEST_SetAllOpIdsSafe(true);
+
     CHECK_OK(ThreadPoolBuilder("raft-pool").Build(&raft_pool_));
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
@@ -242,7 +244,7 @@ class RaftConsensusTest : public YBTest {
 
     string peer_uuid = config_.peers(num_peers - 1).permanent_uuid();
 
-    gscoped_ptr<ConsensusMetadata> cmeta;
+    std::unique_ptr<ConsensusMetadata> cmeta;
     CHECK_OK(ConsensusMetadata::Create(fs_manager_.get(), kTestTablet, peer_uuid,
                                        config_, initial_term, &cmeta));
 
@@ -250,7 +252,7 @@ class RaftConsensusTest : public YBTest {
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
 
     consensus_.reset(new RaftConsensusSpy(options_,
-                                          cmeta.Pass(),
+                                          std::move(cmeta),
                                           proxy_factory.Pass(),
                                           gscoped_ptr<PeerMessageQueue>(queue_),
                                           gscoped_ptr<PeerManager>(peer_manager_),

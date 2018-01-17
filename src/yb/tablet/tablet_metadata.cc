@@ -179,7 +179,7 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
 }
 
 Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
-                                        const boost::optional<consensus::OpId>& last_logged_opid) {
+                                        const yb::OpId& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
         delete_type == TABLET_DATA_TOMBSTONED)
       << "DeleteTabletData() called with unsupported delete_type on tablet "
@@ -195,7 +195,7 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
     std::lock_guard<LockType> l(data_lock_);
     tablet_data_state_ = delete_type;
     if (last_logged_opid) {
-      tombstone_last_logged_opid_ = *last_logged_opid;
+      tombstone_last_logged_opid_ = last_logged_opid;
     }
   }
 
@@ -272,10 +272,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
       rocksdb_dir_(rocksdb_dir),
       wal_dir_(wal_dir),
       partition_schema_(std::move(partition_schema)),
-      tablet_data_state_(tablet_data_state),
-      tombstone_last_logged_opid_(MinimumOpId()),
-      num_flush_pins_(0),
-      needs_flush_(false) {
+      tablet_data_state_(tablet_data_state) {
   CHECK(schema_->has_column_ids());
   CHECK_GT(schema_->num_key_columns(), 0);
 }
@@ -289,10 +286,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager, string tablet_id)
     : state_(kNotLoadedYet),
       tablet_id_(std::move(tablet_id)),
       fs_manager_(fs_manager),
-      schema_(nullptr),
-      tombstone_last_logged_opid_(MinimumOpId()),
-      num_flush_pins_(0),
-      needs_flush_(false) {}
+      schema_(nullptr) {}
 
 Status TabletMetadata::LoadFromDisk() {
   TRACE_EVENT1("tablet", "TabletMetadata::LoadFromDisk",
@@ -364,9 +358,9 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     AddOrphanedBlocksUnlocked(orphaned_blocks);
 
     if (superblock.has_tombstone_last_logged_opid()) {
-      tombstone_last_logged_opid_ = superblock.tombstone_last_logged_opid();
+      tombstone_last_logged_opid_ = yb::OpId::FromPB(superblock.tombstone_last_logged_opid());
     } else {
-      tombstone_last_logged_opid_ = MinimumOpId();
+      tombstone_last_logged_opid_ = OpId();
     }
   }
 
@@ -536,8 +530,8 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block) con
                         "Couldn't serialize schema into superblock");
 
   pb.set_tablet_data_state(tablet_data_state_);
-  if (!consensus::OpIdEquals(tombstone_last_logged_opid_, MinimumOpId())) {
-    *pb.mutable_tombstone_last_logged_opid() = tombstone_last_logged_opid_;
+  if (tombstone_last_logged_opid_) {
+    tombstone_last_logged_opid_.ToPB(pb.mutable_tombstone_last_logged_opid());
   }
 
   for (const BlockId& block_id : orphaned_blocks_) {

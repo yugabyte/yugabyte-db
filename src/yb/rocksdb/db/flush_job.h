@@ -20,6 +20,10 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
+#ifndef YB_ROCKSDB_DB_FLUSH_JOB_H
+#define YB_ROCKSDB_DB_FLUSH_JOB_H
+
 #pragma once
 
 #include <atomic>
@@ -73,6 +77,7 @@ class FlushJob {
            InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
            std::vector<SequenceNumber> existing_snapshots,
            SequenceNumber earliest_write_conflict_snapshot,
+           MemTableFilter mem_table_flush_filter,
            JobContext* job_context, LogBuffer* log_buffer,
            Directory* db_directory, Directory* output_file_directory,
            CompressionType output_compression, Statistics* stats,
@@ -99,6 +104,7 @@ class FlushJob {
   std::atomic<bool>* shutting_down_;
   std::vector<SequenceNumber> existing_snapshots_;
   SequenceNumber earliest_write_conflict_snapshot_;
+  MemTableFilter mem_table_flush_filter_;
   JobContext* job_context_;
   LogBuffer* log_buffer_;
   Directory* db_directory_;
@@ -110,3 +116,5 @@ class FlushJob {
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_FLUSH_JOB_H

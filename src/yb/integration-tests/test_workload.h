@@ -100,7 +100,7 @@ class TestWorkload {
   // Set the number of tablets for the table created by this workload.
   // The split points are evenly distributed through positive int32s.
   void set_num_tablets(int tablets) {
-    CHECK_GT(tablets, 1);
+    CHECK_GE(tablets, 1);
     num_tablets_ = tablets;
   }
 

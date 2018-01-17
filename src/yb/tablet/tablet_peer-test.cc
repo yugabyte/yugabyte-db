@@ -142,12 +142,13 @@ class TabletPeerTest : public YBTabletTest,
     config.add_peers()->CopyFrom(config_peer);
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-    gscoped_ptr<ConsensusMetadata> cmeta;
+    std::unique_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
                                         tablet()->tablet_id(),
                                         tablet()->metadata()->fs_manager()->uuid(),
                                         config,
-                                        consensus::kMinimumTerm, &cmeta));
+                                        consensus::kMinimumTerm,
+                                        &cmeta));
 
     scoped_refptr<Log> log;
     ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
@@ -250,12 +251,10 @@ class TabletPeerTest : public YBTabletTest,
   void AssertLogAnchorEarlierThanLogLatest() {
     int64_t earliest_index = -1;
     CHECK_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
-    OpId last_log_opid;
-    tablet_peer_->log_->GetLatestEntryOpId(&last_log_opid);
-    CHECK_LT(earliest_index, last_log_opid.index())
+    auto last_log_opid = tablet_peer_->log_->GetLatestEntryOpId();
+    CHECK_LT(earliest_index, last_log_opid.index)
       << "Expected valid log anchor, got earliest opid: " << earliest_index
-      << " (expected any value earlier than last log id: " << last_log_opid.ShortDebugString()
-      << ")";
+      << " (expected any value earlier than last log id: " << last_log_opid << ")";
   }
 
   int32_t EarliestNeededIndex() const {
@@ -374,9 +373,8 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
-  OpId id;
-  log->GetLatestEntryOpId(&id);
-  LOG(INFO) << "Before: " << id.ShortDebugString();
+  auto id = log->GetLatestEntryOpId();
+  LOG(INFO) << "Before: " << id;
 
   // We currently have no anchors and the last operation in the log is 0.3
   // Before the below was ExecuteDeletesAndRollLogs(1) but that was breaking

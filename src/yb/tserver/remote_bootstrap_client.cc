@@ -159,7 +159,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
   replace_tombstoned_tablet_ = true;
   meta_ = meta;
 
-  int64_t last_logged_term = meta->tombstone_last_logged_opid().term();
+  int64_t last_logged_term = meta->tombstone_last_logged_opid().term;
   if (last_logged_term > caller_term) {
     return STATUS(InvalidArgument,
         Substitute("Leader has term $0 but the last log entry written by the tombstoned replica "
@@ -168,7 +168,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
   }
 
   // Load the old consensus metadata, if it exists.
-  gscoped_ptr<ConsensusMetadata> cmeta;
+  std::unique_ptr<ConsensusMetadata> cmeta;
   Status s = ConsensusMetadata::Load(fs_manager_, tablet_id_,
                                      fs_manager_->uuid(), &cmeta);
   if (s.IsNotFound()) {
@@ -177,7 +177,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
     return Status::OK();
   }
   RETURN_NOT_OK(s);
-  cmeta_.swap(cmeta);
+  cmeta_ = std::move(cmeta);
   return Status::OK();
 }
 
@@ -259,7 +259,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     // misconfiguration causes us to attempt to bootstrap from an out-of-date
     // source peer, even after passing the term check from the caller in
     // SetTabletToReplace().
-    int64_t last_logged_term = meta_->tombstone_last_logged_opid().term();
+    int64_t last_logged_term = meta_->tombstone_last_logged_opid().term;
     if (last_logged_term > remote_committed_cstate_->current_term()) {
       return STATUS(InvalidArgument,
           Substitute("Tablet $0: Bootstrap source has term $1 but "
@@ -582,7 +582,7 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
 Status RemoteBootstrapClient::WriteConsensusMetadata() {
   // If we didn't find a previous consensus meta file, create one.
   if (!cmeta_) {
-    gscoped_ptr<ConsensusMetadata> cmeta;
+    std::unique_ptr<ConsensusMetadata> cmeta;
     return ConsensusMetadata::Create(fs_manager_, tablet_id_, fs_manager_->uuid(),
                                      remote_committed_cstate_->config(),
                                      remote_committed_cstate_->current_term(),
