@@ -1763,6 +1763,10 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 0);
   DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"DEL", "set1"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
   DoRedisTestInt(__LINE__, {"SADD", "set2", "val5", "val5", "val5"}, 1);
   DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 1);
 

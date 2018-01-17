@@ -546,14 +546,14 @@ Status IntentAwareIterator::FindLastWriteTime(
 
   if (iter_valid_) {
     bool only_lacks_ht = false;
-        RETURN_NOT_OK(key_bytes_without_ht.OnlyLacksHybridTimeFrom(iter_->key(), &only_lacks_ht));
+    RETURN_NOT_OK(key_bytes_without_ht.OnlyLacksHybridTimeFrom(iter_->key(), &only_lacks_ht));
     if (only_lacks_ht) {
       RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(iter_->key(), &doc_ht));
       if (doc_ht > *max_deleted_ts) {
         *max_deleted_ts = doc_ht;
         max_seen_ht_.MakeAtLeast(doc_ht.hybrid_time());
+        found_later_regular_result = true;
       }
-      found_later_regular_result = true;
       // TODO when we support TTL on non-leaf nodes, we need to take that into account here.
     }
   }
