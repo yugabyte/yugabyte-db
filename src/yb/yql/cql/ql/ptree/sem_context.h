@@ -263,6 +263,8 @@ class SemContext : public ProcessContext {
     current_table_ = table;
   }
 
+  void Reset();
+
  private:
   // Find symbol.
   SymbolEntry *SeekSymbol(const MCString& name);

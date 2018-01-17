@@ -241,7 +241,18 @@ class YBqlWriteOp : public YBqlOp {
 
   virtual void SetHashCode(uint16_t hash_code) override;
 
+  uint16_t GetHashCode() const;
+
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+
+  // Hash and equal functions to define a set of non-overlapped write operations.
+  struct Hash {
+    size_t operator() (const std::shared_ptr<YBqlWriteOp>& op) const;
+  };
+  struct Overlap {
+    bool operator() (const std::shared_ptr<YBqlWriteOp>& op1,
+                     const std::shared_ptr<YBqlWriteOp>& op2) const;
+  };
 
  protected:
   virtual Type type() const override {

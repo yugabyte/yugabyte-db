@@ -16,6 +16,7 @@ package com.yugabyte.sample.apps;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -383,24 +384,16 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   /**
-   *Method to print the description for the app.
-   * @param linePrefix : a prefix to be added to each line that is being printed.
-   * @param lineSuffix : a suffix to be added at the end of each line.
-   * @return the formatted description string.
+   * Returns the description of the app.
+   * @return the description splitted in lines.
    */
-  public String getWorkloadDescription(String linePrefix, String lineSuffix) {
-    return "";
-  }
+  public List<String> getWorkloadDescription() { return Collections.EMPTY_LIST; }
 
   /**
-   * Method to pretty print the example usage for the app.
-   * @param linePrefix
-   * @param lineSuffix
-   * @return
+   * Returns the example usage of the app.
+   * @return the example usage splitted in lines.
    */
-  public String getExampleUsageOptions(String linePrefix, String lineSuffix) {
-    return "";
-  }
+  public List<String> getExampleUsageOptions() { return Collections.EMPTY_LIST; }
 
 
   ////////////// The following methods framework/helper methods for subclasses. ////////////////////

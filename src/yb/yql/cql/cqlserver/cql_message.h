@@ -677,8 +677,10 @@ class ResultResponse : public CQLResponse {
       std::string column;
       Type type;
 
-      ColSpec(std::string column, const Type& type)
-          : keyspace(""), table(""), column(column), type(type) {}
+      ColSpec(const client::YBTableName& table_name, const std::string& column, const Type& type)
+          : keyspace(table_name.namespace_name()), table(table_name.table_name()),
+            column(column), type(type) {}
+      ColSpec(const std::string& column, const Type& type) : column(column), type(type) {}
     };
     int32_t col_count;
     std::vector<ColSpec> col_specs;
@@ -767,6 +769,7 @@ class PreparedResultResponse : public ResultResponse {
     PreparedMetadata();
     PreparedMetadata(
         const client::YBTableName& table_name, const std::vector<int64_t>& hash_col_indices,
+        const std::vector<client::YBTableName>& bind_table_names,
         const std::vector<ColumnSchema>& bind_variable_schemas);
   };
 

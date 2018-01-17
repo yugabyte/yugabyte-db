@@ -22,6 +22,8 @@
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
 #include "yb/client/callbacks.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 
 #include "yb/gutil/callback.h"
 
@@ -76,6 +78,12 @@ class QLEnv {
 
   // Abort the batched ops.
   virtual void AbortOps();
+
+  // Start a distributed transaction.
+  void StartTransaction(IsolationLevel isolation_level);
+
+  // Commit the current distributed transaction.
+  void CommitTransaction(client::CommitCallback callback);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(
       const client::YBTableName& table_name, bool *cache_used);
@@ -144,6 +152,12 @@ class QLEnv {
 
   // YBSession to apply operations.
   std::shared_ptr<client::YBSession> session_;
+
+  // Transaction manager to create distributed transactions.
+  std::unique_ptr<client::TransactionManager> transaction_manager_;
+
+  // Current distributed transaction if present.
+  std::shared_ptr<client::YBTransaction> transaction_;
 
   bool has_session_operations_ = false;
 

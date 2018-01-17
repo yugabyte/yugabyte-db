@@ -92,6 +92,9 @@ class ParseContext : public ProcessContext {
   // statement.
   MCSet<PTBindVar*, PTBindVar::SetCmp> bind_variables_;
 
+  // Ordinal position for the next bind variable for the statement to be parsed.
+  int64_t bind_pos_ = 0;
+
   //------------------------------------------------------------------------------------------------
   // We don't use istream (i.e. file) as input when parsing. In the future, if we also support file
   // as an SQL input, we need to define a constructor that takes a file as input and initializes

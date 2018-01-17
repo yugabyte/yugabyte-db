@@ -21,11 +21,6 @@
 namespace yb {
 namespace ql {
 
-using client::YBSchema;
-using client::YBColumnSchema;
-using client::YBTableName;
-using client::YBTable;
-
 //--------------------------------------------------------------------------------------------------
 
 PTAlterTable::PTAlterTable(MemoryContext *memctx,

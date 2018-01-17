@@ -28,11 +28,6 @@ namespace ql {
 
 using std::make_shared;
 
-using client::YBSchema;
-using client::YBTable;
-using client::YBTableType;
-using client::YBColumnSchema;
-
 //--------------------------------------------------------------------------------------------------
 
 PTValues::PTValues(MemoryContext *memctx,

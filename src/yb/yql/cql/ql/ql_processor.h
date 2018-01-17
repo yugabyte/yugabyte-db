@@ -47,6 +47,7 @@ class QLMetrics {
   scoped_refptr<yb::Histogram> ql_update_;
   scoped_refptr<yb::Histogram> ql_delete_;
   scoped_refptr<yb::Histogram> ql_others_;
+  scoped_refptr<yb::Histogram> ql_transaction_;
 
   scoped_refptr<yb::Histogram> ql_response_size_bytes_;
 };

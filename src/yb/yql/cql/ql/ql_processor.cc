@@ -37,25 +37,29 @@ METRIC_DEFINE_histogram(
     "Number of rounds to successfully parse a SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
-    "Time spent processing a Select stmt", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a Select stmt", 60000000LU, 2);
+    "Time spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a SELECT statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_InsertStmt,
-    "Time spent processing a Insert stmt", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a Insert stmt", 60000000LU, 2);
+    "Time spent processing an INSERT statement", yb::MetricUnit::kMicroseconds,
+    "Time spent processing an INSERT statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt,
-    "Time spent processing a Update stmt", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a Update stmt", 60000000LU, 2);
+    "Time spent processing an UPDATE statement", yb::MetricUnit::kMicroseconds,
+    "Time spent processing an UPDATE statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt,
-    "Time spent processing a Delete stmt", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a Delete stmt", 60000000LU, 2);
+    "Time spent processing a DELETE statement", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a DELETE statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_OtherStmts,
-    "Time spent processing any stmt other than Select/Insert/Update/Delete",
+    "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
     yb::MetricUnit::kMicroseconds,
-    "Time spent processing any stmt other than Select/Insert/Update/Delete", 60000000LU, 2);
+    "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_Transaction,
+    "Time spent processing a transaction", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a transaction", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ResponseSize,
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
@@ -101,6 +105,8 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt.Instantiate(metric_entity);
   ql_others_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_OtherStmts.Instantiate(metric_entity);
+  ql_transaction_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_Transaction.Instantiate(metric_entity);
 
   ql_response_size_bytes_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ResponseSize.Instantiate(metric_entity);

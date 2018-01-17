@@ -251,6 +251,14 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) {
   return entry->column_desc_;
 }
 
+void SemContext::Reset() {
+  symtab_.clear();
+  current_processing_id_ = SymbolEntry();
+  current_dml_stmt_ = nullptr;
+  current_table_ = nullptr;
+  sem_state_ = nullptr;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 bool SemContext::IsConvertible(const std::shared_ptr<QLType>& lhs_type,

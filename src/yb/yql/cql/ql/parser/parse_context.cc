@@ -68,16 +68,18 @@ size_t ParseContext::Read(char* buf, size_t max_size) {
 
 void ParseContext::GetBindVariables(MCVector<PTBindVar*> *vars) {
   vars->clear();
-  int64_t pos = 0;
   for (auto it = bind_variables_.cbegin(); it != bind_variables_.cend(); it++) {
     PTBindVar *var = *it;
     // Set the ordinal position of the bind variable in the statement also.
     if (var->is_unset_pos()) {
-      var->set_pos(pos);
+      var->set_pos(bind_pos_);
     }
-    pos++;
     vars->push_back(var);
+    bind_pos_++;
   }
+  // Once the current statement has copied the bind variables found in it, clear the bind vars
+  // before we process the next statement.
+  bind_variables_.clear();
 }
 
 }  // namespace ql

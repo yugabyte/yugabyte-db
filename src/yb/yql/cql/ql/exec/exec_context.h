@@ -41,6 +41,7 @@ class ExecContext : public ProcessContextBase {
               const ParseTree *parse_tree,
               const StatementParameters *params,
               QLEnv *ql_env);
+  ExecContext(const ExecContext& exec_context, const TreeNode *tnode);
   virtual ~ExecContext();
 
   // Get a table creator from YB client.
@@ -114,7 +115,7 @@ class ExecContext : public ProcessContextBase {
 
   // Returns the tree node of the statement being executed.
   const TreeNode* tnode() const {
-    return parse_tree_->root().get();
+    return tnode_;
   }
 
   // Access function for params.
@@ -188,6 +189,9 @@ class ExecContext : public ProcessContextBase {
   // Statement parse tree to execute.
   const ParseTree *parse_tree_;
 
+  // Tree node of the statement being executed.
+  const TreeNode* tnode_;
+
   // Statement parameters to execute with.
   const StatementParameters *params_;
 
@@ -207,8 +211,8 @@ class ExecContext : public ProcessContextBase {
   //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [4,5,6]).
   //  current_partition_index_ starts from 0 unless set in the paging state.
   std::unique_ptr<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
-  uint64_t partitions_count_;
-  uint64_t current_partition_index_;
+  uint64_t partitions_count_ = 0;
+  uint64_t current_partition_index_ = 0;
 };
 
 }  // namespace ql

@@ -14,7 +14,9 @@
 package com.yugabyte.sample.apps;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 
 import org.apache.log4j.Logger;
 
@@ -78,50 +80,24 @@ public class CassandraBatchKeyValue extends CassandraKeyValue {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Sample batch key-value app built on Cassandra. The app writes out 1M unique string");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("key in batches, each key with a string value. There are multiple readers and");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("writers that update these keys and read them indefinitely. Note that the batch");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("size and the number of reads and writes to perform can be specified as parameters.");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Sample batch key-value app built on Cassandra. The app writes out 1M unique string",
+      "key in batches, each key with a string value. There are multiple readers and",
+      "writers that update these keys and read them indefinitely. Note that the batch",
+      "size and the number of reads and writes to perform can be specified as parameters.");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("--num_unique_keys " + appConfig.numUniqueKeysToWrite);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_reads " + appConfig.numKeysToRead);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_writes " + appConfig.numKeysToWrite);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--value_size " + appConfig.valueSize);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_threads_read " + appConfig.numReaderThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_threads_write " + appConfig.numWriterThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--batch_size " + appConfig.cassandraBatchSize);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--table_ttl_seconds " + appConfig.tableTTLSeconds);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    return Arrays.asList(
+      "--num_unique_keys " + appConfig.numUniqueKeysToWrite,
+      "--num_reads " + appConfig.numKeysToRead,
+      "--num_writes " + appConfig.numKeysToWrite,
+      "--value_size " + appConfig.valueSize,
+      "--num_threads_read " + appConfig.numReaderThreads,
+      "--num_threads_write " + appConfig.numWriterThreads,
+      "--batch_size " + appConfig.cassandraBatchSize,
+      "--table_ttl_seconds " + appConfig.tableTTLSeconds);
   }
 }

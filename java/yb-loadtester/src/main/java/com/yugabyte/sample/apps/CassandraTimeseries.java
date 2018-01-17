@@ -367,59 +367,27 @@ public class CassandraTimeseries extends AppBase {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Sample timeseries/IoT app built on CQL. The app models 100 users, each of");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("whom own 5-10 devices. Each device emits 5-10 metrics per second. The data is");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("written into the 'ts_metrics_raw' table, which retains data for one day. Note that");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("the number of metrics written is a lot more than the number of metrics read as is");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("typical in such workloads, and the payload size for each write is 100 bytes. Every");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("read query fetches the last 1-3 hours of metrics for a user's device.");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Sample timeseries/IoT app built on CQL. The app models 100 users, each of",
+      "whom own 5-10 devices. Each device emits 5-10 metrics per second. The data is",
+      "written into the 'ts_metrics_raw' table, which retains data for one day. Note that",
+      "the number of metrics written is a lot more than the number of metrics read as is",
+      "typical in such workloads, and the payload size for each write is 100 bytes. Every",
+      "read query fetches the last 1-3 hours of metrics for a user's device.");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("--num_threads_read " + appConfig.numReaderThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_threads_write " + appConfig.numWriterThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_users " + num_users);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--min_nodes_per_user " + min_nodes_per_user);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--max_nodes_per_user " + max_nodes_per_user);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--min_metrics_count " + min_metrics_count);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--max_metrics_count " + max_metrics_count);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--data_emit_rate_millis " + data_emit_rate_millis);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--table_ttl_seconds " + appConfig.tableTTLSeconds);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    return Arrays.asList(
+      "--num_threads_read " + appConfig.numReaderThreads,
+      "--num_threads_write " + appConfig.numWriterThreads,
+      "--num_users " + num_users,
+      "--min_nodes_per_user " + min_nodes_per_user,
+      "--max_nodes_per_user " + max_nodes_per_user,
+      "--min_metrics_count " + min_metrics_count,
+      "--max_metrics_count " + max_metrics_count,
+      "--data_emit_rate_millis " + data_emit_rate_millis,
+      "--table_ttl_seconds " + appConfig.tableTTLSeconds);
   }
 }

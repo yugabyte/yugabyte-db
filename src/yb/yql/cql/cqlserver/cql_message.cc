@@ -1495,16 +1495,22 @@ PreparedResultResponse::PreparedMetadata::PreparedMetadata() {
 
 PreparedResultResponse::PreparedMetadata::PreparedMetadata(
     const client::YBTableName& table_name, const std::vector<int64_t>& hash_col_indices,
+    const vector<client::YBTableName>& bind_table_names,
     const vector<ColumnSchema>& bind_variable_schemas)
-    : flags(kHasGlobalTableSpec),
+    : flags(table_name.empty() ? 0 : kHasGlobalTableSpec),
       global_table_spec(table_name.namespace_name(), table_name.table_name()) {
   this->pk_indices.reserve(hash_col_indices.size());
   for (const size_t index : hash_col_indices) {
     this->pk_indices.emplace_back(static_cast<uint16_t>(index));
   }
   col_specs.reserve(bind_variable_schemas.size());
-  for (const auto var : bind_variable_schemas) {
-    col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type()));
+  for (int i = 0; i < bind_variable_schemas.size(); i++) {
+    const ColumnSchema& var = bind_variable_schemas[i];
+    if (flags & kHasGlobalTableSpec) {
+      col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type()));
+    } else {
+      col_specs.emplace_back(bind_table_names[i], var.name(), RowsMetadata::Type(var.type()));
+    }
   }
 }
 
@@ -1516,7 +1522,7 @@ PreparedResultResponse::PreparedResultResponse(
     const CQLRequest& request, const QueryId& query_id, const ql::PreparedResult& result)
     : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
       prepared_metadata_(result.table_name(), result.hash_col_indices(),
-                         result.bind_variable_schemas()),
+                         result.bind_table_names(), result.bind_variable_schemas()),
       rows_metadata_(!result.column_schemas().empty() ?
                      RowsMetadata(
                          result.table_name(), result.column_schemas(),

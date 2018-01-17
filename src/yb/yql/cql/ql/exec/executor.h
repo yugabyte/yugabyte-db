@@ -18,6 +18,7 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 #define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 
+#include "yb/client/yb_op.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/partial_row.h"
@@ -33,6 +34,7 @@
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
+#include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -81,16 +83,19 @@ class Executor : public QLExprExecutor {
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
 
-  // Creates a table (including index table for CREATE INDEX).
+  // Execute a list of statements.
+  CHECKED_STATUS ExecPTNode(const PTListNode *tnode);
+
+  // Create a table (including index table for CREATE INDEX).
   CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
 
-  // Alters a table.
+  // Alter a table.
   CHECKED_STATUS ExecPTNode(const PTAlterTable *tnode);
 
-  // Drops a table.
+  // Drop a table.
   CHECKED_STATUS ExecPTNode(const PTDropStmt *tnode);
 
-  // Creates a user-defined type;
+  // Create a user-defined type;
   CHECKED_STATUS ExecPTNode(const PTCreateType *tnode);
 
   // Select statement.
@@ -108,17 +113,29 @@ class Executor : public QLExprExecutor {
   // Truncate statement.
   CHECKED_STATUS ExecPTNode(const PTTruncateStmt *tnode);
 
-  // Creates a keyspace.
+  // Start a transaction.
+  CHECKED_STATUS ExecPTNode(const PTStartTransaction *tnode);
+
+  // Commit a transaction.
+  CHECKED_STATUS ExecPTNode(const PTCommit *tnode);
+
+  // Create a keyspace.
   CHECKED_STATUS ExecPTNode(const PTCreateKeyspace *tnode);
 
-  // Uses a keyspace.
+  // Use a keyspace.
   CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
 
   //------------------------------------------------------------------------------------------------
   // Result processing.
 
+  // Flush operations that have been applied.
+  bool FlushAsync();
+
   // Callback for FlushAsync.
   void FlushAsyncDone(const Status& s);
+
+  // Callback for Commit.
+  void CommitDone(const Status& s);
 
   // Process the status of executing a statement.
   CHECKED_STATUS ProcessStatementStatus(const ParseTree& parse_tree, const Status& s);
@@ -130,7 +147,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ProcessAsyncResults();
 
   // Append execution result.
-  CHECKED_STATUS AppendResult(const ExecutedResult::SharedPtr& result);
+  CHECKED_STATUS AppendResult(const RowsResult::SharedPtr& result);
 
   // Continue a multi-partition select (e.g. table scan or query with 'IN' condition on hash cols).
   CHECKED_STATUS FetchMoreRowsIfNeeded();
@@ -251,6 +268,9 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------
+  CHECKED_STATUS ApplyWriteOp(const TreeNode *tnode, const client::YBqlWriteOpPtr& op);
+
+  //------------------------------------------------------------------------------------------------
   // Environment (YBClient) for executing statements.
   QLEnv *ql_env_;
 
@@ -260,6 +280,11 @@ class Executor : public QLExprExecutor {
 
   // Execution context of the last statement being executed.
   ExecContext* exec_context_;
+
+  // Set of write operations that have been applied.
+  std::unordered_set<client::YBqlWriteOpPtr,
+                     client::YBqlWriteOp::Hash,
+                     client::YBqlWriteOp::Overlap> batched_write_ops_;
 
   // Execution result.
   ExecutedResult::SharedPtr result_;

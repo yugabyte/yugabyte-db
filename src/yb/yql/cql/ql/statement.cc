@@ -58,6 +58,9 @@ Status Statement::Prepare(
       case TreeNodeOpcode::kPTDeleteStmt:
         result->reset(new PreparedResult(static_cast<const PTDmlStmt&>(stmt)));
         break;
+      case TreeNodeOpcode::kPTListNode:
+        result->reset(new PreparedResult(static_cast<const PTListNode&>(stmt)));
+        break;
       default:
         break;
     }

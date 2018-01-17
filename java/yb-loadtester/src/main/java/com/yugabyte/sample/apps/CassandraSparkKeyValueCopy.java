@@ -14,6 +14,8 @@
 package com.yugabyte.sample.apps;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
 
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
@@ -136,35 +138,19 @@ public class CassandraSparkKeyValueCopy extends AppBase {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Simple Spark app that reads from an input table and writes to an output table.");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("It does no additional processing of the data, only tests reading/writing data.");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("Use num_threads_write option to set the number of Spark worker threads.");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("Input source an input_table which defaults to '" + DEFAULT_INPUT_TABLE_NAME + "'");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Simple Spark app that reads from an input table and writes to an output table.",
+      "It does no additional processing of the data, only tests reading/writing data.",
+      "Use num_threads_write option to set the number of Spark worker threads.",
+      "Input source an input_table which defaults to '" + DEFAULT_INPUT_TABLE_NAME + "'");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("--num_threads_write " + appConfig.numWriterThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--" + INPUT_TABLE_ARG_NAME + " " + DEFAULT_INPUT_TABLE_NAME);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--" + OUTPUT_TABLE_ARG_NAME + " " + DEFAULT_OUTPUT_TABLE_NAME);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    return Arrays.asList(
+      "--num_threads_write " + appConfig.numWriterThreads,
+      "--" + INPUT_TABLE_ARG_NAME + " " + DEFAULT_INPUT_TABLE_NAME,
+      "--" + OUTPUT_TABLE_ARG_NAME + " " + DEFAULT_OUTPUT_TABLE_NAME);
   }
 }

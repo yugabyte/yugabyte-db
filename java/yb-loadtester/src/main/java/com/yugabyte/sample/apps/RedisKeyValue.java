@@ -17,6 +17,8 @@ import org.apache.log4j.Logger;
 
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -81,41 +83,21 @@ public class RedisKeyValue extends AppBase {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Sample key-value app built on Redis. The app writes out 1M unique string keys each");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("with a string value. There are multiple readers and writers that update these keys");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("and read them indefinitely. Note that the number of reads and writes to perform");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("can be specified as a parameter.");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Sample key-value app built on Redis. The app writes out 1M unique string keys each",
+      "with a string value. There are multiple readers and writers that update these keys",
+      "and read them indefinitely. Note that the number of reads and writes to perform",
+      "can be specified as a parameter.");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("--num_unique_keys " + appConfig.numUniqueKeysToWrite);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_reads " + appConfig.numKeysToRead);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_writes " + appConfig.numKeysToWrite);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_threads_read " + appConfig.numReaderThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_threads_write " + appConfig.numWriterThreads);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    return Arrays.asList(
+      "--num_unique_keys " + appConfig.numUniqueKeysToWrite,
+      "--num_reads " + appConfig.numKeysToRead,
+      "--num_writes " + appConfig.numKeysToWrite,
+      "--num_threads_read " + appConfig.numReaderThreads,
+      "--num_threads_write " + appConfig.numWriterThreads);
   }
 }

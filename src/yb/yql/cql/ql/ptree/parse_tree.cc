@@ -57,23 +57,19 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
     return Status::OK();
   }
 
-  // Restrict statement list to single statement only and hoist the statement to the root node.
-  if (root_->opcode() == TreeNodeOpcode::kPTListNode) {
-    const auto lnode = std::static_pointer_cast<PTListNode>(root_);
-    switch (lnode->size()) {
-      case 0:
-        root_ = nullptr;
-        return Status::OK();
-      case 1:
-        root_ = lnode->node_list().front();
-        break;
-      default:
-        return sem_context->Error(root_, "Multi-statement list not supported yet",
-                                  ErrorCode::CQL_STATEMENT_INVALID);
-    }
+  DCHECK_EQ(root_->opcode(), TreeNodeOpcode::kPTListNode) << "statement list expected";
+  const auto lnode = std::static_pointer_cast<PTListNode>(root_);
+  switch (lnode->size()) {
+    case 0:
+      return sem_context->Error(lnode, "Unexpected empty statement list",
+                                ErrorCode::SQL_STATEMENT_INVALID);
+    case 1:
+      // Hoist the statement to the root node.
+      root_ = lnode->node_list().front();
+      return root_->Analyze(sem_context);
+    default:
+      return lnode->AnalyzeStatementBlock(sem_context);
   }
-
-  return root_->Analyze(sem_context);
 }
 
 void ParseTree::AddAnalyzedTable(const client::YBTableName& table_name) {

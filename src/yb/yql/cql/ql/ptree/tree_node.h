@@ -24,6 +24,7 @@
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/enums.h"
 #include "yb/util/status.h"
 #include "yb/util/memory/mc_types.h"
 
@@ -31,31 +32,33 @@ namespace yb {
 namespace ql {
 class SemContext;
 
-enum class TreeNodeOpcode {
-  kNoOp = 0,
-  kTreeNode,
-  kPTListNode,
-  kPTCreateKeyspace,
-  kPTUseKeyspace,
-  kPTCreateTable,
-  kPTAlterTable,
-  kPTCreateType,
-  kPTCreateIndex,
-  kPTTruncateStmt,
-  kPTDropStmt,
-  kPTSelectStmt,
-  kPTInsertStmt,
-  kPTDeleteStmt,
-  kPTUpdateStmt,
+YB_DEFINE_ENUM(TreeNodeOpcode,
+               ((kNoOp, 0))
+               (kTreeNode)
+               (kPTListNode)
+               (kPTCreateKeyspace)
+               (kPTUseKeyspace)
+               (kPTCreateTable)
+               (kPTAlterTable)
+               (kPTCreateType)
+               (kPTCreateIndex)
+               (kPTTruncateStmt)
+               (kPTDropStmt)
+               (kPTSelectStmt)
+               (kPTInsertStmt)
+               (kPTDeleteStmt)
+               (kPTUpdateStmt)
 
-  // Expressions.
-  kPTExpr,
-  kPTRef,
-  kPTSubscript,
-  kPTAllColumns,
-  kPTAssign,
-  kPTBindVar,
-};
+               (kPTStartTransaction)
+               (kPTCommit)
+
+               // Expressions.
+               (kPTExpr)
+               (kPTRef)
+               (kPTSubscript)
+               (kPTAllColumns)
+               (kPTAssign)
+               (kPTBindVar));
 
 // TreeNode base class.
 class TreeNode : public MCBase {

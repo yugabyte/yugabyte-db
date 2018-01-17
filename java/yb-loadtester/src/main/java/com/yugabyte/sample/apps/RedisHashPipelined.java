@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Vector;
 import java.util.concurrent.Callable;
 
 import org.apache.commons.math3.distribution.AbstractIntegerDistribution;
@@ -277,36 +278,19 @@ public class RedisHashPipelined extends RedisPipelinedKeyValue {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Sample redis hash-map based app built on RedisPipelined.");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList("Sample redis hash-map based app built on RedisPipelined.");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(super.getExampleUsageOptions(optsPrefix, optsSuffix));
-    sb.append(optsPrefix);
-    sb.append("--num_subkeys_per_key " + appConfig.numSubkeysPerKey);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_subkeys_per_write " + appConfig.numSubkeysPerWrite);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_subkeys_per_read " + appConfig.numSubkeysPerRead);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--key_freq_zipf_exponent " + appConfig.keyUpdateFreqZipfExponent);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--subkey_freq_zipf_exponent " + appConfig.subkeyUpdateFreqZipfExponent);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--subkey_value_size_zipf_exponent " + appConfig.valueSizeZipfExponent);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    Vector<String> usage = new Vector<String>(super.getExampleUsageOptions());
+    usage.add("--num_subkeys_per_key " + appConfig.numSubkeysPerKey);
+    usage.add("--num_subkeys_per_write " + appConfig.numSubkeysPerWrite);
+    usage.add("--num_subkeys_per_read " + appConfig.numSubkeysPerRead);
+    usage.add("--key_freq_zipf_exponent " + appConfig.keyUpdateFreqZipfExponent);
+    usage.add("--subkey_freq_zipf_exponent " + appConfig.subkeyUpdateFreqZipfExponent);
+    usage.add("--subkey_value_size_zipf_exponent " + appConfig.valueSizeZipfExponent);
+    return usage;
   }
 }

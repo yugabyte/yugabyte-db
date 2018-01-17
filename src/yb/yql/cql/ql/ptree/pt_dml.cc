@@ -25,12 +25,6 @@
 namespace yb {
 namespace ql {
 
-using client::YBSchema;
-using client::YBTable;
-using client::YBTableType;
-using client::YBTableName;
-using client::YBColumnSchema;
-
 const PTExpr::SharedPtr PTDmlStmt::kNullPointerRef = nullptr;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,

@@ -31,6 +31,7 @@ namespace ql {
 // This module is included by a few outside classes, so we cannot include ptree header files here.
 // Use forward declaration.
 class PTDmlStmt;
+class PTListNode;
 
 //------------------------------------------------------------------------------------------------
 // Result of preparing a statement. Only DML statement will return a prepared result that describes
@@ -44,18 +45,21 @@ class PreparedResult {
 
   // Constructors.
   explicit PreparedResult(const PTDmlStmt& stmt);
+  explicit PreparedResult(const PTListNode& stmt);
   virtual ~PreparedResult();
 
   // Accessors.
   const client::YBTableName& table_name() const { return table_name_; }
-  const std::vector<int64_t>& hash_col_indices() const { return hash_col_indices_; }
+  const std::vector<client::YBTableName>& bind_table_names() const { return bind_table_names_; }
   const std::vector<ColumnSchema>& bind_variable_schemas() const { return bind_variable_schemas_; }
+  const std::vector<int64_t>& hash_col_indices() const { return hash_col_indices_; }
   const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
 
  private:
   const client::YBTableName table_name_;
-  const std::vector<int64_t> hash_col_indices_;
-  const std::vector<ColumnSchema> bind_variable_schemas_;
+  std::vector<client::YBTableName> bind_table_names_;
+  std::vector<ColumnSchema> bind_variable_schemas_;
+  std::vector<int64_t> hash_col_indices_;
   std::shared_ptr<std::vector<ColumnSchema>> column_schemas_;
 };
 

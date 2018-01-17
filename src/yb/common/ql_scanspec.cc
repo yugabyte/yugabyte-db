@@ -203,7 +203,7 @@ QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
     auto& range = elem.second;
     const auto& other_range = other.ranges_.at(elem.first);
 
-    // Interact operation:
+    // Intersect operation:
     // - min_value = max(min_value, other_min_value)
     // - max_value = min(max_value, other_max_value)
     if (BothNotNull(range.min_value, other_range.min_value)) {

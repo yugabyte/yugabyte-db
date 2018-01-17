@@ -181,6 +181,63 @@ void YBqlWriteOp::SetHashCode(const uint16_t hash_code) {
   ql_write_request_->set_hash_code(hash_code);
 }
 
+uint16_t YBqlWriteOp::GetHashCode() const {
+  return ql_write_request_->hash_code();
+}
+
+size_t YBqlWriteOp::Hash::operator() (const shared_ptr<YBqlWriteOp>& op) const {
+  return op->GetHashCode();
+}
+
+namespace {
+
+bool WriteStaticColumns(const YBTable* table, const QLWriteRequestPB& request) {
+  const auto& schema = table->InternalSchema();
+  for (const auto& col : request.column_values()) {
+    auto column = schema.column_by_id(ColumnId(col.column_id()));
+    CHECK_OK(column);
+    if (column->is_static()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
+bool YBqlWriteOp::Overlap::operator() (const shared_ptr<YBqlWriteOp>& op1,
+                                       const shared_ptr<YBqlWriteOp>& op2) const {
+  // Check if two write ops overlap that they apply to the same hash/primary key in the same table.
+  // TODO: do more fine-grained checks to see if the columns they write overlap or not.
+  if (op1->table() != op2->table() && op1->table()->id() != op2->table()->id()) {
+    return false;
+  }
+  const QLWriteRequestPB& req1 = op1->request();
+  const QLWriteRequestPB& req2 = op2->request();
+  if (req1.hashed_column_values_size() != req2.hashed_column_values_size()) {
+    return false;
+  }
+  for (int i = 0; i < req1.hashed_column_values().size(); i++) {
+    DCHECK(req1.hashed_column_values()[i].has_value());
+    DCHECK(req2.hashed_column_values()[i].has_value());
+    if (req1.hashed_column_values()[i].value() != req2.hashed_column_values()[i].value())
+      return false;
+  }
+  if (WriteStaticColumns(op1->table(), req1) && WriteStaticColumns(op2->table(), req2)) {
+    return true;
+  }
+  if (req1.range_column_values_size() != req2.range_column_values_size()) {
+    return false;
+  }
+  for (int i = 0; i < req1.range_column_values().size(); i++) {
+    DCHECK(req1.range_column_values()[i].has_value());
+    DCHECK(req2.range_column_values()[i].has_value());
+    if (req1.range_column_values()[i].value() != req2.range_column_values()[i].value())
+      return false;
+  }
+  return true;
+}
+
 // YBqlReadOp -----------------------------------------------------------------
 
 YBqlReadOp::YBqlReadOp(const shared_ptr<YBTable>& table)

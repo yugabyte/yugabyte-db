@@ -65,6 +65,10 @@ class YBTableName {
   YBTableName(YBTableName&& name) : namespace_name_(std::move(name.namespace_name_)),
       table_name_(std::move(name.table_name_)) {}
 
+  bool empty() const {
+    return namespace_name_.empty() && table_name_.empty();
+  }
+
   bool has_namespace() const {
     return !namespace_name_.empty();
   }

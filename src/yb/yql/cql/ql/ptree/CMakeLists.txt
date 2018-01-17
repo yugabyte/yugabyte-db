@@ -14,6 +14,7 @@
 add_library(ql_ptree
             parse_tree.cc
             tree_node.cc
+            list_node.cc
             pt_type.cc
             pt_name.cc
             pt_property.cc
@@ -34,6 +35,7 @@ add_library(ql_ptree
             pt_insert.cc
             pt_delete.cc
             pt_update.cc
+            pt_transaction.cc
             pt_expr.cc
             pt_bcall.cc
             pt_option.cc

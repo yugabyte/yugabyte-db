@@ -24,11 +24,6 @@
 namespace yb {
 namespace ql {
 
-using client::YBSchema;
-using client::YBTable;
-using client::YBTableType;
-using client::YBColumnSchema;
-
 //--------------------------------------------------------------------------------------------------
 
 PTInsertStmt::PTInsertStmt(MemoryContext *memctx,

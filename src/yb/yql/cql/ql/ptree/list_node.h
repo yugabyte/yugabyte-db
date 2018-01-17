@@ -14,7 +14,7 @@
 //
 // List Node Declaration.
 //
-// This modules includes specifications for nodes that contain a list of tree node.
+// This modules includes specifications for nodes that contain a list of tree nodes.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
@@ -172,7 +172,11 @@ class TreeListNode : public TreeNode {
   MCList<MCSharedPtr<NodeType>> node_list_;
 };
 
-using PTListNode = TreeListNode<>;
+class PTListNode : public TreeListNode<> {
+ public:
+  // Run semantics analysis on a statement block.
+  CHECKED_STATUS AnalyzeStatementBlock(SemContext *sem_context);
+};
 
 }  // namespace ql
 }  // namespace yb

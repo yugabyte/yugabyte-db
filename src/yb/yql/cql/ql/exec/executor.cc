@@ -26,6 +26,7 @@ namespace ql {
 
 using std::string;
 using std::shared_ptr;
+using namespace std::placeholders;
 
 using client::YBColumnSpec;
 using client::YBSchema;
@@ -35,8 +36,9 @@ using client::YBTableCreator;
 using client::YBTableAlterer;
 using client::YBTableType;
 using client::YBTableName;
-using client::YBqlWriteOp;
 using client::YBqlReadOp;
+using client::YBqlWriteOp;
+using client::YBqlWriteOpPtr;
 using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
@@ -63,7 +65,7 @@ void Executor::ExecuteAsync(const string &ql_stmt, const ParseTree &parse_tree,
   if (PREDICT_FALSE(!s.ok())) {
     return StatementExecuted(s);
   }
-  if (!ql_env_->FlushAsync(&flush_async_cb_)) {
+  if (!FlushAsync()) {
     return StatementExecuted(Status::OK());
   }
 }
@@ -112,7 +114,7 @@ void Executor::ExecuteBatch(const std::string &ql_stmt, const ParseTree &parse_t
 
 void Executor::ApplyBatch() {
   // Invoke statement-executed callback when no async operation is pending.
-  if (!ql_env_->FlushAsync(&flush_async_cb_)) {
+  if (!FlushAsync()) {
     return StatementExecuted(Status::OK());
   }
 }
@@ -139,6 +141,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     return Status::OK();
   }
   switch (tnode->opcode()) {
+    case TreeNodeOpcode::kPTListNode:
+      return ExecPTNode(static_cast<const PTListNode *>(tnode));
+
     case TreeNodeOpcode::kPTCreateTable: FALLTHROUGH_INTENDED;
     case TreeNodeOpcode::kPTCreateIndex:
       return ExecPTNode(static_cast<const PTCreateTable *>(tnode));
@@ -164,6 +169,12 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTUpdateStmt:
       return ExecPTNode(static_cast<const PTUpdateStmt *>(tnode));
 
+    case TreeNodeOpcode::kPTStartTransaction:
+      return ExecPTNode(static_cast<const PTStartTransaction *>(tnode));
+
+    case TreeNodeOpcode::kPTCommit:
+      return ExecPTNode(static_cast<const PTCommit *>(tnode));
+
     case TreeNodeOpcode::kPTTruncateStmt:
       return ExecPTNode(static_cast<const PTTruncateStmt *>(tnode));
 
@@ -176,6 +187,17 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     default:
       return exec_context_->Error(ErrorCode::FEATURE_NOT_SUPPORTED);
   }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTListNode *tnode) {
+  for (TreeNode::SharedPtr dml : tnode->node_list()) {
+    exec_contexts_.emplace_back(exec_contexts_.front(), dml.get());
+    exec_context_ = &exec_contexts_.back();
+    RETURN_NOT_OK(ProcessStatementStatus(*exec_context_->parse_tree(), ExecTreeNode(dml.get())));
+  }
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -698,7 +720,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->Apply(insert_op);
+  return ApplyWriteOp(tnode, insert_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -742,7 +764,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->Apply(delete_op);
+  return ApplyWriteOp(tnode, delete_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -794,7 +816,21 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   }
 
   // Apply the operator.
-  return exec_context_->Apply(update_op);
+  return ApplyWriteOp(tnode, update_op);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTStartTransaction *tnode) {
+  ql_env_->StartTransaction(tnode->isolation_level());
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTCommit *tnode) {
+  // Commit happens after the write operations have been flushed and responded.
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -840,25 +876,85 @@ Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+
+bool Executor::FlushAsync() {
+  batched_write_ops_.clear();
+  return ql_env_->FlushAsync(&flush_async_cb_);
+}
+
 void Executor::FlushAsyncDone(const Status &s) {
   Status ss = s;
   if (ss.ok()) {
     ss = ProcessAsyncResults();
-    if (ss.ok() && exec_context_->tnode()->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+    if (ss.ok()) {
+      const TreeNode *last_stmt = exec_context_->tnode();
 
-      ql_env_->Reset();
-      ss = FetchMoreRowsIfNeeded();
-      if (ss.ok()) {
-        if (ql_env_->FlushAsync(&flush_async_cb_)) {
-          return;
-        } else {
-          // Evaluate aggregate functions if they are selected.
-          ss = AggregateResultSets();
+      if (last_stmt->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+
+        ql_env_->Reset();
+        ss = FetchMoreRowsIfNeeded();
+        if (ss.ok()) {
+          if (FlushAsync()) {
+            return;
+          } else {
+            // Evaluate aggregate functions if they are selected.
+            ss = AggregateResultSets();
+          }
         }
+      }
+
+      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
+      // but exclude the time to commit the transaction if any.
+      if (ql_metrics_ != nullptr) {
+        const MonoTime now = MonoTime::Now();
+        for (const auto& exec_context : exec_contexts_) {
+          const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
+          switch (exec_context.tnode()->opcode()) {
+            case TreeNodeOpcode::kPTSelectStmt:
+              ql_metrics_->ql_select_->Increment(delta_usec);
+              break;
+            case TreeNodeOpcode::kPTInsertStmt:
+              ql_metrics_->ql_insert_->Increment(delta_usec);
+              break;
+            case TreeNodeOpcode::kPTUpdateStmt:
+              ql_metrics_->ql_update_->Increment(delta_usec);
+              break;
+            case TreeNodeOpcode::kPTDeleteStmt:
+              ql_metrics_->ql_delete_->Increment(delta_usec);
+              break;
+            default:
+              break;
+          }
+        }
+      }
+
+      if (last_stmt->opcode() == TreeNodeOpcode::kPTCommit) {
+        ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
+        return;
       }
     }
   }
   StatementExecuted(ss);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ApplyWriteOp(const TreeNode *tnode, const YBqlWriteOpPtr& op) {
+  if (!batched_write_ops_.insert(op).second) {
+    // TODO: defer multiple writes of the same row by separating them into batches and executing
+    // them one after another.
+    return exec_context_->Error(tnode,
+                                "Multiple inserts, updates or deletes of the same row "
+                                "are not supported yet", ErrorCode::EXEC_ERROR);
+  }
+  return exec_context_->Apply(op);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void Executor::CommitDone(const Status &s) {
+  StatementExecuted(s);
 }
 
 Status Executor::ProcessStatementStatus(const ParseTree &parse_tree, const Status& s) {
@@ -901,10 +997,10 @@ Status Executor::ProcessOpResponse(client::YBqlOp* op, ExecContext* exec_context
 Status Executor::ProcessAsyncResults() {
   Status s, ss;
   for (auto& exec_context : exec_contexts_) {
-    if (exec_context.tnode() == nullptr) {
-      continue; // Skip empty statement.
-    }
     client::YBqlOp* op = exec_context.op().get();
+    if (op == nullptr) {
+      continue; // Skip empty op.
+    }
     ss = ql_env_->GetOpError(op);
     if (PREDICT_FALSE(!ss.ok())) {
       // YBOperation returns not-found error when the tablet is not found.
@@ -923,7 +1019,7 @@ Status Executor::ProcessAsyncResults() {
   return s;
 }
 
-Status Executor::AppendResult(const ExecutedResult::SharedPtr& result) {
+Status Executor::AppendResult(const RowsResult::SharedPtr& result) {
   if (result == nullptr) {
     return Status::OK();
   }
@@ -932,38 +1028,41 @@ Status Executor::AppendResult(const ExecutedResult::SharedPtr& result) {
     return Status::OK();
   }
   CHECK(result_->type() == ExecutedResult::Type::ROWS);
-  CHECK(result->type() == ExecutedResult::Type::ROWS);
-  return std::static_pointer_cast<RowsResult>(result_)->Append(
-      static_cast<const RowsResult&>(*result));
+  return std::static_pointer_cast<RowsResult>(result_)->Append(*result);
 }
 
 void Executor::StatementExecuted(const Status& s) {
   // Update metrics for all statements executed.
   if (s.ok() && ql_metrics_ != nullptr) {
+    const MonoTime now = MonoTime::Now();
     for (const auto& exec_context : exec_contexts_) {
       const TreeNode* tnode = exec_context.tnode();
       if (tnode != nullptr) {
-        MonoDelta delta = MonoTime::Now().GetDeltaSince(exec_context.start_time());
+        const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
 
-        ql_metrics_->time_to_execute_ql_query_->Increment(delta.ToMicroseconds());
+        ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
 
         switch (tnode->opcode()) {
-          case TreeNodeOpcode::kPTSelectStmt:
-            ql_metrics_->ql_select_->Increment(delta.ToMicroseconds());
-            break;
-          case TreeNodeOpcode::kPTInsertStmt:
-            ql_metrics_->ql_insert_->Increment(delta.ToMicroseconds());
-            break;
-          case TreeNodeOpcode::kPTUpdateStmt:
-            ql_metrics_->ql_update_->Increment(delta.ToMicroseconds());
-            break;
-          case TreeNodeOpcode::kPTDeleteStmt:
-            ql_metrics_->ql_delete_->Increment(delta.ToMicroseconds());
+          case TreeNodeOpcode::kPTSelectStmt: FALLTHROUGH_INTENDED;
+          case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
+          case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+          case TreeNodeOpcode::kPTDeleteStmt: FALLTHROUGH_INTENDED;
+          case TreeNodeOpcode::kPTListNode:
+            // The metrics for SELECT/INSERT/UPDATE/DELETE have been updated when the ops have
+            // been completed in FlushAsyncDone(). Exclude PTListNode also as we are interested
+            // in the metrics of its consistuent DMLs only.
             break;
           default:
-            ql_metrics_->ql_others_->Increment(delta.ToMicroseconds());
+            ql_metrics_->ql_others_->Increment(delta_usec);
+            break;
         }
       }
+    }
+
+    const TreeNode* last_tnode = exec_context_->tnode();
+    if (last_tnode != nullptr && last_tnode->opcode() == TreeNodeOpcode::kPTCommit) {
+      const MonoDelta delta = now - exec_contexts_.front().start_time();
+      ql_metrics_->ql_transaction_->Increment(delta.ToMicroseconds());
     }
   }
 
@@ -977,6 +1076,7 @@ void Executor::StatementExecuted(const Status& s) {
 void Executor::Reset() {
   exec_contexts_.clear();
   exec_context_ = nullptr;
+  batched_write_ops_.clear();
   result_ = nullptr;
   cb_.Reset();
 }

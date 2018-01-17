@@ -13,6 +13,7 @@
 
 package com.yugabyte.sample.apps;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.log4j.Logger;
@@ -83,14 +84,9 @@ public class CassandraHelloWorld extends AppBase {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("A very simple hello world app built on Cassandra. The app writes one employee row");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("into the 'Employee' table");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "A very simple hello world app built on Cassandra. The app writes one employee row",
+      "into the 'Employee' table");
   }
 }

@@ -130,20 +130,11 @@ public class CassandraUserId extends CassandraKeyValue {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Sample user id app built on Cassandra. The app writes out 1M unique user ids");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("each with a string password. There are multiple readers and writers that update");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("these user ids and passwords them indefinitely. Note that the number of reads and");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("writes to perform can be specified as a parameter.");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Sample user id app built on Cassandra. The app writes out 1M unique user ids",
+      "each with a string password. There are multiple readers and writers that update",
+      "these user ids and passwords them indefinitely. Note that the number of reads and",
+      "writes to perform can be specified as a parameter.");
   }
 }

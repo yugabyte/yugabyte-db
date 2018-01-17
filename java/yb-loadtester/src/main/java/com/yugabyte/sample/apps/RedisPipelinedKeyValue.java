@@ -20,7 +20,9 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import redis.clients.jedis.Response;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
+import java.util.Vector;
 import java.util.concurrent.Callable;
 import java.util.zip.Adler32;
 import java.util.zip.Checksum;
@@ -147,12 +149,9 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(super.getExampleUsageOptions(optsPrefix, optsSuffix));
-    sb.append(optsPrefix);
-    sb.append("--pipeline_length " + appConfig.redisPipelineLength);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    Vector<String> usage = new Vector<String>(super.getExampleUsageOptions());
+    usage.add("--pipeline_length " + appConfig.redisPipelineLength);
+    return usage;
   }
 }

@@ -47,6 +47,7 @@ public class CmdLineOpts {
     CassandraHelloWorld,
     CassandraKeyValue,
     CassandraBatchKeyValue,
+    CassandraTransactionalKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
     CassandraUserId,
@@ -514,9 +515,9 @@ public class CmdLineOpts {
         "chosen such that the expected mean is the value specified by --value_size. " +
         "If <= 0, all subkeys will have the value specified by --value_size");
     options.addOption(
-            "subkey_value_max_size", true,
-            "[RedisHashPipelined] If using zipf distribution to choose value sizes, " +
-            "specifies an upper bound on the value sizes.");
+        "subkey_value_max_size", true,
+        "[RedisHashPipelined] If using zipf distribution to choose value sizes, " +
+        "specifies an upper bound on the value sizes.");
 
     CommandLineParser parser = new BasicParser();
     CommandLine commandLine = null;
@@ -575,9 +576,14 @@ public class CmdLineOpts {
       }
       footer.append("\n");
 
-      String description = workload.getWorkloadDescription("\t\t", "\n");
+      List<String> description = workload.getWorkloadDescription();
       if (!description.isEmpty()) {
-        footer.append(description + "\n");
+        for (String line : description) {
+          footer.append("\t\t");
+          footer.append(line);
+          footer.append("\n");
+        }
+        footer.append("\n");
       }
       footer.append("\t\tUsage:\n");
       footer.append(optsPrefix);
@@ -587,7 +593,11 @@ public class CmdLineOpts {
       footer.append(optsPrefix + "--nodes 127.0.0.1:" + port);
 
       footer.append("\n\n\t\tOther options (with default values):\n");
-      footer.append(workload.getExampleUsageOptions(optsPrefix + "[ ", " ]\n"));
+      for (String line : workload.getExampleUsageOptions()) {
+        footer.append(optsPrefix + "[ ");
+        footer.append(line);
+        footer.append(" ]\n");
+      }
     }
     footer.append("\n");
     System.out.println(footer.toString());

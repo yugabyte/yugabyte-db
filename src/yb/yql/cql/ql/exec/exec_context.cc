@@ -27,11 +27,19 @@ ExecContext::ExecContext(const char *ql_stmt,
                          QLEnv *ql_env)
     : ProcessContextBase(ql_stmt, stmt_len),
       parse_tree_(parse_tree),
+      tnode_(parse_tree->root().get()),
       params_(params),
       start_time_(MonoTime::Now()),
-      ql_env_(ql_env),
-      partitions_count_(0),
-      current_partition_index_(0) {
+      ql_env_(ql_env) {
+}
+
+ExecContext::ExecContext(const ExecContext& exec_context, const TreeNode *tnode)
+    : ProcessContextBase(exec_context.stmt(), exec_context.stmt_len()),
+      parse_tree_(exec_context.parse_tree_),
+      tnode_(tnode),
+      params_(exec_context.params_),
+      start_time_(MonoTime::Now()),
+      ql_env_(exec_context.ql_env_) {
 }
 
 ExecContext::~ExecContext() {

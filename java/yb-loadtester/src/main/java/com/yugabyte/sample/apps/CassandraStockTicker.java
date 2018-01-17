@@ -305,47 +305,23 @@ public class CassandraStockTicker extends AppBase {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Sample stock ticker app built on CQL. The app models 10,000 stock tickers");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("each of which emits quote data every second. The raw data is written into the");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("'stock_ticker_raw' table, which retains data for one day. The 'stock_ticker_1min'");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("table models downsampled ticker data, is written to once a minute and retains data");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("for 60 days. Every read query gets the latest value of the stock symbol from the");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("'stock_ticker_raw' table.");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Sample stock ticker app built on CQL. The app models 10,000 stock tickers",
+      "each of which emits quote data every second. The raw data is written into the",
+      "'stock_ticker_raw' table, which retains data for one day. The 'stock_ticker_1min'",
+      "table models downsampled ticker data, is written to once a minute and retains data",
+      "for 60 days. Every read query gets the latest value of the stock symbol from the",
+      "'stock_ticker_raw' table.");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("--num_threads_read " + appConfig.numReaderThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_threads_write " + appConfig.numWriterThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--num_ticker_symbols " + num_ticker_symbols);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--data_emit_rate_millis " + data_emit_rate_millis);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--table_ttl_seconds " + appConfig.tableTTLSeconds);
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    return Arrays.asList(
+      "--num_threads_read " + appConfig.numReaderThreads,
+      "--num_threads_write " + appConfig.numWriterThreads,
+      "--num_ticker_symbols " + num_ticker_symbols,
+      "--data_emit_rate_millis " + data_emit_rate_millis,
+      "--table_ttl_seconds " + appConfig.tableTTLSeconds);
   }
 }

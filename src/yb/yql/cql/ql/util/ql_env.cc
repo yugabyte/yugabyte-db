@@ -18,10 +18,12 @@
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
+#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -33,12 +35,15 @@ using std::string;
 using std::shared_ptr;
 using std::weak_ptr;
 
+using client::CommitCallback;
+using client::TransactionManager;
 using client::YBClient;
 using client::YBError;
 using client::YBOperation;
 using client::YBSession;
 using client::YBStatusMemberCallback;
 using client::YBTable;
+using client::YBTransaction;
 using client::YBMetaDataCache;
 using client::YBTableCreator;
 using client::YBTableAlterer;
@@ -100,6 +105,26 @@ void QLEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
   DCHECK(cql_call == nullptr || current_call_ == nullptr)
       << this << " Tried updating current call. Current call is " << current_call_;
   current_call_ = std::move(cql_call);
+}
+
+void QLEnv::StartTransaction(const IsolationLevel isolation_level) {
+  if (transaction_manager_ == nullptr) {
+    server::ClockPtr clock(new server::HybridClock());
+    CHECK_OK(clock->Init());
+    transaction_manager_ = std::make_unique<TransactionManager>(client_, clock);
+  }
+  transaction_ = std::make_shared<YBTransaction>(transaction_manager_.get(), isolation_level);
+  session_->SetTransaction(transaction_);
+}
+
+void QLEnv::CommitTransaction(CommitCallback callback) {
+  if (!transaction_) {
+    LOG(DFATAL) << "No transaction to commit";
+    return;
+  }
+  shared_ptr<client::YBTransaction> transaction = std::move(transaction_);
+  transaction->Commit(std::move(callback));
+  session_->SetTransaction(nullptr);
 }
 
 CHECKED_STATUS QLEnv::Apply(std::shared_ptr<client::YBqlOp> op) {
@@ -208,10 +233,16 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 }
 
 void QLEnv::Reset() {
+  session_->Abort();
   has_session_operations_ = false;
   requested_callback_ = nullptr;
   flush_status_ = Status::OK();
   op_errors_.clear();
+  if (transaction_ != nullptr) {
+    shared_ptr<client::YBTransaction> transaction = std::move(transaction_);
+    transaction->Abort();
+    session_->SetTransaction(nullptr);
+  }
 }
 
 Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {

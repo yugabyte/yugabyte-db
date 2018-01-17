@@ -84,6 +84,7 @@
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
+#include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/gutil/macros.h"
 
 namespace yb {
@@ -221,6 +222,9 @@ using namespace yb::ql;
                           // Update.
                           UpdateStmt
                           set_target_list
+
+                          // Begin / end transaction.
+                          TransactionStmt
 
                           // Alter table.
                           AlterTableStmt
@@ -419,7 +423,7 @@ using namespace yb::ql;
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
                           RuleActionStmt RuleActionStmtOrEmpty RuleStmt
-                          SecLabelStmt TransactionStmt
+                          SecLabelStmt
                           UnlistenStmt VacuumStmt
                           VariableResetStmt VariableSetStmt VariableShowStmt
                           ViewStmt CheckPointStmt CreateConversionStmt
@@ -750,11 +754,21 @@ stmtblock:
 // The thrashing around here is to discard "empty" statements...
 stmtmulti:
   stmt {
-    $$ = MAKE_NODE(@1, PTListNode, $1);
+    if ($1 == nullptr) {
+      $$ = nullptr;
+    } else {
+      $$ = MAKE_NODE(@1, PTListNode, $1);
+    }
   }
   | stmtmulti ';' stmt {
-    $1->Append($3);
-    $$ = $1;
+    if ($3 == nullptr) {
+      $$ = $1;
+    } else if ($1 == nullptr) {
+      $$ = MAKE_NODE(@1, PTListNode, $3);
+    } else {
+      $1->Append($3);
+      $$ = $1;
+    }
   }
 ;
 
@@ -808,6 +822,9 @@ stmt:
     if ($1 != nullptr) {
       parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     }
+    $$ = $1;
+  }
+  | TransactionStmt {
     $$ = $1;
   }
   | inactive_stmt {
@@ -5331,7 +5348,6 @@ inactive_stmt:
   | RevokeRoleStmt
   | RuleStmt
   | SecLabelStmt
-  | TransactionStmt
   | UnlistenStmt
   | VacuumStmt
   | VariableResetStmt
@@ -8660,37 +8676,51 @@ UnlistenStmt:
 
 TransactionStmt:
   ABORT_P opt_transaction {
+    PARSER_UNSUPPORTED(@1);
   }
   | BEGIN_P opt_transaction transaction_mode_list_or_empty {
+    $$ = MAKE_NODE(@1, PTStartTransaction);
   }
   | START TRANSACTION transaction_mode_list_or_empty {
+    $$ = MAKE_NODE(@1, PTStartTransaction);
   }
   | COMMIT opt_transaction {
+    $$ = MAKE_NODE(@1, PTCommit);
   }
   | END_P opt_transaction {
+    $$ = MAKE_NODE(@1, PTCommit);
   }
   | ROLLBACK opt_transaction {
+    PARSER_UNSUPPORTED(@1);
   }
   | SAVEPOINT ColId {
+    PARSER_UNSUPPORTED(@1);
   }
   | RELEASE SAVEPOINT ColId {
+    PARSER_UNSUPPORTED(@1);
   }
   | RELEASE ColId {
+    PARSER_UNSUPPORTED(@1);
   }
   | ROLLBACK opt_transaction TO SAVEPOINT ColId {
+    PARSER_UNSUPPORTED(@1);
   }
   | ROLLBACK opt_transaction TO ColId {
+    PARSER_UNSUPPORTED(@1);
   }
   | PREPARE TRANSACTION Sconst {
+    PARSER_UNSUPPORTED(@1);
   }
   | COMMIT PREPARED Sconst {
+    PARSER_UNSUPPORTED(@1);
   }
   | ROLLBACK PREPARED Sconst {
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
 opt_transaction:
-  WORK                      {}
+  WORK                      { PARSER_UNSUPPORTED(@1); }
   | TRANSACTION             {}
   | /*EMPTY*/               {}
 ;
@@ -8719,7 +8749,7 @@ transaction_mode_list:
 ;
 
 transaction_mode_list_or_empty:
-  transaction_mode_list   { $$ = $1; }
+  transaction_mode_list   { PARSER_UNSUPPORTED(@1); }
   | /* EMPTY */ {
   }
 ;

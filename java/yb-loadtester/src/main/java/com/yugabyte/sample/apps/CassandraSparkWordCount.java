@@ -14,6 +14,7 @@
 package com.yugabyte.sample.apps;
 
 import java.util.Arrays;
+import java.util.List;
 
 import com.datastax.driver.core.Session;
 import com.yugabyte.sample.common.CmdLineOpts;
@@ -175,38 +176,20 @@ public class CassandraSparkWordCount extends AppBase {
   }
 
   @Override
-  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("Simple Spark word count app that reads from an input table or file to compute ");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("word count and saves results in an output table");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("Input source is either input_file or input_table. If none is given a sample ");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("Cassandra table " + defaultInputTableName + " is created and used as input");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getWorkloadDescription() {
+    return Arrays.asList(
+      "Simple Spark word count app that reads from an input table or file to compute ",
+      "word count and saves results in an output table",
+      "Input source is either input_file or input_table. If none is given a sample ",
+      "Cassandra table " + defaultInputTableName + " is created and used as input");
   }
 
   @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    StringBuilder sb = new StringBuilder();
-    sb.append(optsPrefix);
-    sb.append("--num_threads_write " + appConfig.numWriterThreads);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--wordcount_output_table " + defaultOutputTableName);
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--wordcount_input_file <path to input file>");
-    sb.append(optsSuffix);
-    sb.append(optsPrefix);
-    sb.append("--wordcount_input_table <table name>");
-    sb.append(optsSuffix);
-    return sb.toString();
+  public List<String> getExampleUsageOptions() {
+    return Arrays.asList(
+      "--num_threads_write " + appConfig.numWriterThreads,
+      "--wordcount_output_table " + defaultOutputTableName,
+      "--wordcount_input_file <path to input file>",
+      "--wordcount_input_table <table name>");
   }
 }

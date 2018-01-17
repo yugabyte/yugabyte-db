@@ -40,18 +40,25 @@ using client::YBOperation;
 using client::YBqlOp;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
+using client::YBTableName;
 
 //------------------------------------------------------------------------------------------------
 namespace {
 
 // Get bind column schemas for DML.
-vector<ColumnSchema> GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt) {
-  vector<ColumnSchema> bind_variable_schemas;
-  bind_variable_schemas.reserve(stmt.bind_variables().size());
-  for (const PTBindVar *var : stmt.bind_variables()) {
-    bind_variable_schemas.emplace_back(string(var->name()->c_str()), var->ql_type());
+void GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt,
+                                       vector<ColumnSchema>* schemas,
+                                       vector<YBTableName>* table_names = nullptr) {
+  schemas->reserve(schemas->size() + stmt.bind_variables().size());
+  if (table_names != nullptr) {
+    table_names->reserve(table_names->size() + stmt.bind_variables().size());
   }
-  return bind_variable_schemas;
+  for (const PTBindVar *var : stmt.bind_variables()) {
+    schemas->emplace_back(string(var->name()->c_str()), var->ql_type());
+    if (table_names != nullptr) {
+      table_names->emplace_back(stmt.table()->name());
+    }
+  }
 }
 
 shared_ptr<vector<ColumnSchema>> GetColumnSchemasFromOp(const YBqlOp& op, const PTDmlStmt *tnode) {
@@ -109,10 +116,30 @@ QLClient GetClientFromOp(const YBqlOp& op) {
 PreparedResult::PreparedResult(const PTDmlStmt& stmt)
     : table_name_(stmt.table()->name()),
       hash_col_indices_(stmt.hash_col_indices()),
-      bind_variable_schemas_(GetBindVariableSchemasFromDmlStmt(stmt)),
       column_schemas_(stmt.selected_schemas()) {
+  GetBindVariableSchemasFromDmlStmt(stmt, &bind_variable_schemas_);
   if (column_schemas_ == nullptr) {
     column_schemas_ = make_shared<vector<ColumnSchema>>();
+  }
+}
+
+PreparedResult::PreparedResult(const PTListNode& stmt)
+    : column_schemas_(make_shared<vector<ColumnSchema>>()) {
+  for (TreeNode::SharedPtr tnode : stmt.node_list()) {
+    switch (tnode->opcode()) {
+      case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTDeleteStmt: {
+        const auto& dml = static_cast<const PTDmlStmt&>(*tnode);
+        GetBindVariableSchemasFromDmlStmt(dml, &bind_variable_schemas_, &bind_table_names_);
+        if (hash_col_indices_.empty()) {
+          hash_col_indices_ = dml.hash_col_indices();
+        }
+        break;
+      }
+      default:
+        break;
+    }
   }
 }
 

@@ -31,7 +31,7 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
  * This workload writes and reads some random string keys from a CQL server. By default, this app
  * inserts a million keys, and reads/updates them indefinitely.
  */
-public class CassandraKeyValue extends AppBase {
+public class CassandraTransactionalKeyValue extends AppBase {
   private static final Logger LOG = Logger.getLogger(CassandraKeyValue.class);
 
   // Static initialization of this workload's config. These are good defaults for getting a decent
@@ -64,7 +64,7 @@ public class CassandraKeyValue extends AppBase {
   // Lock for initializing prepared statement objects.
   private static final Object prepareInitLock = new Object();
 
-  public CassandraKeyValue() {
+  public CassandraTransactionalKeyValue() {
     buffer = new byte[appConfig.valueSize];
   }
 
@@ -79,12 +79,8 @@ public class CassandraKeyValue extends AppBase {
   @Override
   public List<String> getCreateTableStatements() {
     String create_stmt = String.format(
-      "CREATE TABLE IF NOT EXISTS %s (k varchar, v blob, primary key (k))", getTableName());
-
-    if (appConfig.tableTTLSeconds > 0) {
-      create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
-    }
-    create_stmt += ";";
+        "CREATE TABLE IF NOT EXISTS %s (k varchar, v blob, primary key (k)) " +
+        "WITH transactions = { 'enabled' : true };", getTableName());
     return Arrays.asList(create_stmt);
   }
 
@@ -97,6 +93,8 @@ public class CassandraKeyValue extends AppBase {
           if (localReads) {
             LOG.debug("Doing local reads");
             preparedSelect.setConsistencyLevel(ConsistencyLevel.ONE);
+          } else {
+            preparedSelect.setConsistencyLevel(ConsistencyLevel.QUORUM);
           }
         }
       }
@@ -109,7 +107,8 @@ public class CassandraKeyValue extends AppBase {
   }
 
   private PreparedStatement getPreparedSelect()  {
-    return getPreparedSelect(String.format("SELECT k, v FROM %s WHERE k = ?;", getTableName()),
+    return getPreparedSelect(String.format("SELECT k, v, writetime(v) FROM %s WHERE k in :k;",
+                                           getTableName()),
                              appConfig.localReads);
   }
 
@@ -140,26 +139,42 @@ public class CassandraKeyValue extends AppBase {
     }
     // Do the read from Cassandra.
     // Bind the select statement.
-    BoundStatement select = getPreparedSelect().bind(key.asString());
+    BoundStatement select = getPreparedSelect().bind(Arrays.asList(key.asString() + "_1",
+                                                                   key.asString() + "_2"));
     ResultSet rs = getCassandraClient().execute(select);
     List<Row> rows = rs.all();
-    if (rows.size() != 1) {
-      // If TTL is enabled, turn off correctness validation.
-      if (appConfig.tableTTLSeconds <= 0) {
-        LOG.fatal("Read key: " + key.asString() + " expected 1 row in result, got " + rows.size());
-      }
+    if (rows.size() != 2) {
+      LOG.fatal("Read key: " + key.asString() + " expected 2 row in result, got " + rows.size());
       return 1;
     }
     if (appConfig.valueSize == 0) {
       ByteBuffer buf = rows.get(0).getBytes(1);
-      String value = new String(buf.array());
-      key.verify(value);
+      String value1 = new String(buf.array());
+      key.verify(value1);
+
+      buf = rows.get(1).getBytes(1);
+      String value2 = new String(buf.array());
+      if (!value1.equals(value2)) {
+       LOG.fatal("Value mismatch for key: " + key.toString() + ", " +
+                 value1 + " vs " + value2);
+      }
     } else {
       ByteBuffer value = rows.get(0).getBytes(1);
-      byte[] bytes = new byte[value.capacity()];
-      value.get(bytes);
-      verifyRandomValue(key, bytes);
+      byte[] bytes1 = new byte[value.capacity()];
+      value.get(bytes1);
+      verifyRandomValue(key, bytes1);
+
+      value = rows.get(1).getBytes(1);
+      byte[] bytes2 = new byte[value.capacity()];
+      if (!bytes1.equals(bytes2)) {
+        LOG.fatal("Value mismatch for key: " + key.toString());
+      }
     }
+    if (rows.get(0).getLong(2) != rows.get(1).getLong(2)) {
+      LOG.fatal("Writetime mismatch for key: " + key.toString() + ", " +
+                rows.get(0).getLong(2) + " vs " + rows.get(1).getLong(2));
+    }
+
     LOG.debug("Read key: " + key.toString());
     return 1;
   }
@@ -177,8 +192,13 @@ public class CassandraKeyValue extends AppBase {
   }
 
   protected PreparedStatement getPreparedInsert()  {
-    return getPreparedInsert(String.format("INSERT INTO %s (k, v) VALUES (?, ?);",
-                             getTableName()));
+    return getPreparedInsert(String.format(
+        "BEGIN TRANSACTION;" +
+        "INSERT INTO %s (k, v) VALUES (:k1, :v);" +
+        "INSERT INTO %s (k, v) VALUES (:k2, :v);" +
+        "END TRANSACTION;",
+        getTableName(),
+        getTableName()));
   }
 
   @Override
@@ -189,10 +209,18 @@ public class CassandraKeyValue extends AppBase {
       BoundStatement insert = null;
       if (appConfig.valueSize == 0) {
         String value = key.getValueStr();
-        insert = getPreparedInsert().bind(key.asString(), ByteBuffer.wrap(value.getBytes()));
+        insert = getPreparedInsert()
+                 .bind()
+                 .setString("k1", key.asString() + "_1")
+                 .setString("k2", key.asString() + "_2")
+                 .setBytes("v", ByteBuffer.wrap(value.getBytes()));
       } else {
         byte[] value = getRandomValue(key);
-        insert = getPreparedInsert().bind(key.asString(), ByteBuffer.wrap(value));
+        insert = getPreparedInsert()
+                 .bind()
+                 .setString("k1", key.asString() + "_1")
+                 .setString("k2", key.asString() + "_2")
+                 .setBytes("v", ByteBuffer.wrap(value));
       }
       ResultSet resultSet = getCassandraClient().execute(insert);
       LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
@@ -218,10 +246,11 @@ public class CassandraKeyValue extends AppBase {
   @Override
   public List<String> getWorkloadDescription() {
     return Arrays.asList(
-      "Sample key-value app built on Cassandra. The app writes out 1M unique string keys",
-      "each with a string value. There are multiple readers and writers that update these",
-      "keys and read them indefinitely. Note that the number of reads and writes to",
-      "perform can be specified as a parameter.");
+      "Sample key-value app with multi-row transaction built on Cassandra. The app writes",
+      "out 1M unique string keys in pairs, with each pair of keys with the same string",
+      "value written in a transaction. There are multiple readers and writers that update",
+      "these keys and read them in pair indefinitely. Note that the number of reads and ",
+      "writes to perform can be specified as a parameter.");
   }
 
   @Override
@@ -232,7 +261,6 @@ public class CassandraKeyValue extends AppBase {
       "--num_writes " + appConfig.numKeysToWrite,
       "--value_size " + appConfig.valueSize,
       "--num_threads_read " + appConfig.numReaderThreads,
-      "--num_threads_write " + appConfig.numWriterThreads,
-      "--table_ttl_seconds " + appConfig.tableTTLSeconds);
+      "--num_threads_write " + appConfig.numWriterThreads);
   }
 }
