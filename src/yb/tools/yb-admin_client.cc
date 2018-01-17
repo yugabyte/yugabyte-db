@@ -613,14 +613,19 @@ Status ClusterAdminClient::ListAllMasters() {
     return StatusFromPB(lresp.error().status());
   }
   if (!lresp.masters().empty()) {
-    std::cout << "\tMaster UUID\t\t  RPC Host/Port\t\tRole" << std::endl;
+    std::cout << "\tMaster UUID\t\t  RPC Host/Port\t   State \tRole" << std::endl;
   }
   for (int i = 0; i < lresp.masters_size(); i++) {
     if (lresp.masters(i).role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
-      std::cout << lresp.masters(i).instance_id().permanent_uuid() << "  "
-        << lresp.masters(i).registration().rpc_addresses(0).host() << "/"
-        << lresp.masters(i).registration().rpc_addresses(0).port() << "    "
-        << lresp.masters(i).role() << std::endl;
+      auto master_reg =
+          lresp.masters(i).has_registration() ? &lresp.masters(i).registration() : nullptr;
+      std::cout << (master_reg ? lresp.masters(i).instance_id().permanent_uuid() :
+                    "UNKNOWN_UUID\t\t\t") << "  "
+        << (master_reg ? master_reg->rpc_addresses(0).host() : "UNKNOWN") << "/"
+        << (master_reg ? master_reg->rpc_addresses(0).port() : 0) << "    "
+        << (lresp.masters(i).has_error() ?
+            AppStatusPB::ErrorCode_Name(lresp.masters(i).error().code()) : "ALIVE") << "    "
+        << RaftPeerPB::Role_Name(lresp.masters(i).role()) << std::endl;
     } else {
       std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
     }
