@@ -161,6 +161,21 @@ CHECKED_STATUS ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   return Status::OK();
 }
 
+
+CHECKED_STATUS ParseHIncrBy(YBRedisWriteOp *op, const RedisClientCommand& args) {
+  const auto& key = args[1];
+  const auto& subkey = args[2];
+  const auto& incr_by = ParseInt64(args[3], "INCR_BY");
+  RETURN_NOT_OK(incr_by);
+  op->mutable_request()->set_allocated_incr_request(new RedisIncrRequestPB());
+  op->mutable_request()->mutable_incr_request()->set_increment_int(*incr_by);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
+  op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(subkey.cdata(),
+                                                                              subkey.size());
+  return Status::OK();
+}
+
 CHECKED_STATUS ParseZAddOptions(SortedSetOptionsPB *options,
                                 const RedisClientCommand& args, int *idx) {
   // While we keep seeing flags, set the appropriate field in options and increment idx. When
@@ -400,7 +415,20 @@ CHECKED_STATUS ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args)
 CHECKED_STATUS ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   op->mutable_request()->set_allocated_incr_request(new RedisIncrRequestPB());
+  op->mutable_request()->mutable_incr_request()->set_increment_int(1);
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseIncrBy(YBRedisWriteOp* op, const RedisClientCommand& args) {
+  const auto& key = args[1];
+  const auto& incr_by = ParseInt64(args[2], "INCR_BY");
+  RETURN_NOT_OK(incr_by);
+  op->mutable_request()->set_allocated_incr_request(new RedisIncrRequestPB());
+  op->mutable_request()->mutable_incr_request()->set_increment_int(*incr_by);
+  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   return Status::OK();
 }
 
