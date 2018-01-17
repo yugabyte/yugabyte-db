@@ -1,5 +1,6 @@
 ---
 title: Manage YugaByte DB
+type: page
 weight: 700
 ---
 

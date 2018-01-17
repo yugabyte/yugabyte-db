@@ -1,5 +1,6 @@
 ---
 title: Develop Apps on YugaByte DB
+type: page
 weight: 540
 ---
 

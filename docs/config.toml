@@ -3,7 +3,6 @@
 baseurl = "https://docs.yugabyte.com"
 languageCode = "en-us"
 title = "YugaByte DB Docs"
-theme = "hugo-material-docs"
 metadataformat = "yaml"
 canonifyurls = true
 # Enable Google Analytics by entering your tracking id

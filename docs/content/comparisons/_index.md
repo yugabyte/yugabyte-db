@@ -1,5 +1,6 @@
 ---
 title: Comparisons
+type: page
 weight: 1070
 ---
 

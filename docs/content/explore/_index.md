@@ -1,5 +1,6 @@
 ---
 title: Explore Core Features
+type: page
 weight: 200
 ---
 

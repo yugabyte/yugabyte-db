@@ -1,5 +1,6 @@
 ---
 title: API Reference
+type: page
 weight: 1200
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Troubleshoot YugaByte DB
+type: page
 weight: 800
 ---
 

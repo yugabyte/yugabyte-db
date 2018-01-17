@@ -1,5 +1,6 @@
 ---
 title: Frequently Asked Questions
+type: page
 weight: 2460
 ---
 
