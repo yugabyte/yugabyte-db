@@ -714,6 +714,12 @@ googleAnalytics = "UA-104956980-1"
 	url = "api/cassandra/dml_delete/"
 
 [[menu.main]]
+	name = "TRUNCATE"
+	weight = 1335
+	parent = "api-cassandra"
+	url = "api/cassandra/dml_truncate/"
+
+[[menu.main]]
 	name = "Simple Value"
 	weight = 1340
 	parent = "api-cassandra"
@@ -893,6 +899,18 @@ googleAnalytics = "UA-104956980-1"
 	weight = 2060
 	parent = "api-redis"
 	url = "api/redis/exists/"
+
+[[menu.main]]
+	name = "FLUSHALL"
+	weight = 2064
+	parent = "api-redis"
+	url = "api/redis/flushall/"
+
+[[menu.main]]
+	name = "FLUSHDB"
+	weight = 2065
+	parent = "api-redis"
+	url = "api/redis/flushdb/"
 
 [[menu.main]]
 	name = "GET"

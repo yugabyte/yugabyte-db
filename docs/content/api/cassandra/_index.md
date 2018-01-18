@@ -38,7 +38,7 @@ Statement | Description |
 [`SELECT`](dml_select) | Select rows from a table.
 [`UPDATE`](dml_update) | Update rows in a table.
 [`DELETE`](dml_delete) | Delete specific rows from a table.
-`TRUNCATE` | Not yet supported.
+[`TRUNCATE`](dml_truncate) | Remove all rows from a table.
 
 ## Expressions
 An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expression can be used in the following components.

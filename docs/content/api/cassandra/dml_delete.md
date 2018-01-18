@@ -102,5 +102,6 @@ cqlsh:example> SELECT * FROM employees;
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
+[`TRUNCATE`](../dml_truncate)
 [`Expression`](..#expressions)
 [Other CQL Statements](..)

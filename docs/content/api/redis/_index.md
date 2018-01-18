@@ -27,9 +27,11 @@ Command | Description |
 [`APPEND`](append/) | Append data to end of string |
 [`AUTH`](auth/) | Not supported. Accepted without processing |
 [`CONFIG`](config/) | Not supported. Accepted without processing |
-[`DEL`](del/) | Delete keys from database |
+[`DEL`](del/) | Delete keys from a database |
 [`ECHO`](echo/) | Output messages |
 [`EXISTS`](exists/) | Check if the keys are present |
+[`FLUSHALL`](flushall/) | Delete all keys from all databases |
+[`FLUSHDB`](flushdb/) | Delete all keys from a database |
 [`GET`](get/) | Read string value |
 [`GETRANGE`](getrange/) | Read substring |
 [`GETSET`](getset/) | Atomically read and write a string |

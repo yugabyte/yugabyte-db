@@ -136,7 +136,7 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name
 
 [`CREATE TABLE`](../ddl_create_table)
 [`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
 [`UPDATE`](../dml_update)
+[`DELETE`](../dml_delete)
 [`Expression`](..#expressions)
 [Other CQL Statements](..)
