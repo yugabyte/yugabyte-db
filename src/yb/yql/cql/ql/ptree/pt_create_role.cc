@@ -153,8 +153,7 @@ CHECKED_STATUS PTCreateRole::Analyze(SemContext* sem_context) {
 void PTCreateRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
 
   MCString sem_output("\tRole ", sem_context->PTempMem());
-  sem_output = sem_output + " role_name  " + role_name() + " salted_hash =  ";
-  sem_output.append(salted_hash());
+  sem_output = sem_output + " role_name  " + role_name() + " salted_hash =  " + *salted_hash_;
   sem_output = sem_output + " login = " + (login() ? "true" : "false");
   sem_output = sem_output + " superuser = " + (superuser() ? "true" : "false");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
