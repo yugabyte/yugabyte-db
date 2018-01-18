@@ -464,11 +464,9 @@ Status SchemaBuilder::AddColumn(const string& name,
                                 bool is_hash_key,
                                 bool is_static,
                                 bool is_counter,
-                                ColumnSchema::SortingType sorting_type,
-                                const void *read_default,
-                                const void *write_default) {
+                                ColumnSchema::SortingType sorting_type) {
   return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter,
-                                sorting_type, read_default, write_default), false);
+                                sorting_type), false);
 }
 
 Status SchemaBuilder::RemoveColumn(const string& name) {

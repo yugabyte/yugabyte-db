@@ -78,13 +78,6 @@ YBColumnSpec* YBColumnSpec::SetSortingType(ColumnSchema::SortingType sorting_typ
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::Default(YBValue* v) {
-  data_->has_default = true;
-  delete data_->default_val;
-  data_->default_val = v;
-  return this;
-}
-
 YBColumnSpec* YBColumnSpec::PrimaryKey() {
   NotNull();
   data_->primary_key = true;
@@ -119,11 +112,6 @@ YBColumnSpec* YBColumnSpec::Counter() {
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::RemoveDefault() {
-  data_->remove_default = true;
-  return this;
-}
-
 YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   data_->has_rename_to = true;
   data_->rename_to = new_name;
@@ -139,10 +127,6 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
     return STATUS(NotSupported, "cannot rename a column during CreateTable",
                                 data_->name);
   }
-  if (data_->remove_default) {
-    return STATUS(NotSupported, "cannot remove default during CreateTable",
-                                data_->name);
-  }
 
   if (!data_->has_type) {
     return STATUS(InvalidArgument, "no type provided for column", data_->name);
@@ -150,15 +134,8 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
   bool nullable = data_->has_nullable ? data_->nullable : true;
 
-  void* default_val = nullptr;
-  // TODO: distinguish between DEFAULT NULL and no default?
-  if (data_->has_default) {
-    RETURN_NOT_OK(data_->default_val->data_->CheckTypeAndGetPointer(
-                      data_->name, data_->type, &default_val));
-  }
-
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
-                        data_->static_column, data_->is_counter, data_->sorting_type, default_val);
+                        data_->static_column, data_->is_counter, data_->sorting_type);
 
   return Status::OK();
 }
@@ -341,10 +318,9 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_hash_key,
                                bool is_static,
                                bool is_counter,
-                               ColumnSchema::SortingType sorting_type,
-                               const void* default_value) {
-  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, sorting_type,
-                          default_value, default_value);
+                               ColumnSchema::SortingType sorting_type) {
+  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter,
+                          sorting_type);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other)
@@ -376,9 +352,7 @@ void YBColumnSchema::CopyFrom(const YBColumnSchema& other) {
 }
 
 bool YBColumnSchema::Equals(const YBColumnSchema& other) const {
-  return this == &other ||
-    col_ == other.col_ ||
-    (col_ != nullptr && col_->Equals(*other.col_, true));
+  return this == &other || col_ == other.col_ || (col_ != nullptr && col_->Equals(*other.col_));
 }
 
 const std::string& YBColumnSchema::name() const {
@@ -479,8 +453,7 @@ const TableProperties& YBSchema::table_properties() const {
 YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
   return YBColumnSchema(col.name(), col.type(), col.is_nullable(), col.is_hash_key(),
-                        col.is_static(), col.is_counter(), col.sorting_type(),
-                        col.read_default_value());
+                        col.is_static(), col.is_counter(), col.sorting_type());
 }
 
 YBColumnSchema YBSchema::ColumnById(int32_t column_id) const {

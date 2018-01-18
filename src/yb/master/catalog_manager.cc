@@ -2147,12 +2147,6 @@ CHECKED_STATUS ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         }
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
 
-        // can't accept a NOT NULL column without read default
-        if (!new_col.is_nullable() && !new_col.has_read_default()) {
-          return STATUS(InvalidArgument,
-              Substitute("column `$0`: NOT NULL columns must have a default", new_col.name()));
-        }
-
         RETURN_NOT_OK(builder.AddColumn(new_col, false));
         break;
       }

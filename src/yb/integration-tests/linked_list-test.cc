@@ -133,8 +133,7 @@ class LinkedListTester {
     b.AddColumn(kKeyColumnName)->Type(INT64)->NotNull()->HashPrimaryKey();
     b.AddColumn(kLinkColumnName)->Type(INT64)->NotNull();
     b.AddColumn(kInsertTsColumnName)->Type(INT64)->NotNull();
-    b.AddColumn(kUpdatedColumnName)->Type(BOOL)->NotNull()
-        ->Default(client::YBValue::FromBool(false));
+    b.AddColumn(kUpdatedColumnName)->Type(BOOL)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 

@@ -202,19 +202,15 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   Status AddNewI32Column(const YBTableName& table_name,
-                         const string& column_name,
-                         int32_t default_value) {
-    return AddNewI32Column(table_name, column_name, default_value,
-                           MonoDelta::FromSeconds(60));
+                         const string& column_name) {
+    return AddNewI32Column(table_name, column_name, MonoDelta::FromSeconds(60));
   }
 
   Status AddNewI32Column(const YBTableName& table_name,
                          const string& column_name,
-                         int32_t default_value,
                          const MonoDelta& timeout) {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
-    table_alterer->AddColumn(column_name)->Type(INT32)->
-      NotNull()->Default(YBValue::FromInt(default_value));
+    table_alterer->AddColumn(column_name)->Type(INT32)->NotNull();
     return table_alterer->timeout(timeout)->Alter();
   }
 
@@ -278,7 +274,7 @@ const YBTableName AlterTableTest::kTableName("my_keyspace", "fake-table");
 // TODO: create and verify multiple tablets when the client will support that.
 TEST_F(AlterTableTest, TestTabletReports) {
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
-  ASSERT_OK(AddNewI32Column(kTableName, "new-i32", 0));
+  ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
   ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->schema_version());
 }
 
@@ -287,35 +283,9 @@ TEST_F(AlterTableTest, TestAddExistingColumn) {
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
 
   {
-    Status s = AddNewI32Column(kTableName, "c1", 0);
+    Status s = AddNewI32Column(kTableName, "c1");
     ASSERT_TRUE(s.IsAlreadyPresent());
     ASSERT_STR_CONTAINS(s.ToString(), "The column already exists: c1");
-  }
-
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
-}
-
-// Verify that adding a NOT NULL column without defaults will return an error.
-//
-// This doesn't use the YBClient because it's trying to make an invalid request.
-// Our APIs for the client are designed such that it's impossible to send such
-// a request.
-TEST_F(AlterTableTest, TestAddNotNullableColumnWithoutDefaults) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
-
-  {
-    AlterTableRequestPB req;
-    kTableName.SetIntoTableIdentifierPB(req.mutable_table());
-
-    AlterTableRequestPB::Step *step = req.add_alter_schema_steps();
-    step->set_type(AlterTableRequestPB::ADD_COLUMN);
-    ColumnSchemaToPB(ColumnSchema("c2", INT32),
-                     step->mutable_add_column()->mutable_schema());
-    AlterTableResponsePB resp;
-    Status s = cluster_->mini_master()->master()->catalog_manager()->AlterTable(
-      &req, &resp, nullptr);
-    ASSERT_TRUE(s.IsInvalidArgument());
-    ASSERT_STR_CONTAINS(s.ToString(), "column `c2`: NOT NULL columns must have a default");
   }
 
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
@@ -350,8 +320,7 @@ TEST_F(AlterTableTest, TestAlterOnTSRestart) {
 
   // Send the Alter request
   {
-    Status s = AddNewI32Column(kTableName, "new-32", 10,
-                               MonoDelta::FromMilliseconds(500));
+    Status s = AddNewI32Column(kTableName, "new-32", MonoDelta::FromMilliseconds(500));
     ASSERT_TRUE(s.IsTimedOut());
   }
 
@@ -379,8 +348,7 @@ TEST_F(AlterTableTest, TestShutdownWithPendingTasks) {
 
   // Send the Alter request
   {
-    Status s = AddNewI32Column(kTableName, "new-i32", 10,
-                               MonoDelta::FromMilliseconds(500));
+    Status s = AddNewI32Column(kTableName, "new-i32", MonoDelta::FromMilliseconds(500));
     ASSERT_TRUE(s.IsTimedOut());
   }
 }
@@ -398,8 +366,7 @@ TEST_F(AlterTableTest, TestRestartTSDuringAlter) {
 
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
 
-  Status s = AddNewI32Column(kTableName, "new-i32", 10,
-                             MonoDelta::FromMilliseconds(1));
+  Status s = AddNewI32Column(kTableName, "new-i32", MonoDelta::FromMilliseconds(1));
   ASSERT_TRUE(s.IsTimedOut());
 
   // Restart the TS while alter is running
@@ -414,7 +381,7 @@ TEST_F(AlterTableTest, TestRestartTSDuringAlter) {
 }
 
 TEST_F(AlterTableTest, TestGetSchemaAfterAlterTable) {
-  ASSERT_OK(AddNewI32Column(kTableName, "new-i32", 10));
+  ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
 
   YBSchema s;
   PartitionSchema partition_schema;
@@ -534,7 +501,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
-  ASSERT_OK(AddNewI32Column(kTableName, "c1", 0xdeadbeef));
+  ASSERT_OK(AddNewI32Column(kTableName, "c1"));
 
   LOG(INFO) << "Verifying that the new default shows up";
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
@@ -567,7 +534,7 @@ TEST_F(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
 // This tests the scenario where the log entries immediately after last RocksDB flush are for a
 // different schema than the one that was last flushed to the superblock.
 TEST_F(AlterTableTest, TestLogSchemaReplay) {
-  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
+  ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 2);
   UpdateRow(1, { {"c1", 0} });
 
@@ -607,14 +574,14 @@ TEST_F(AlterTableTest, TestRenameTableAndAdd) {
   ASSERT_OK(table_alterer->RenameTo(new_name)
             ->Alter());
 
-  ASSERT_OK(AddNewI32Column(new_name, "new", 0xdeadbeef));
+  ASSERT_OK(AddNewI32Column(new_name, "new"));
 }
 
 // Test restarting a tablet server several times after various
 // schema changes.
 // This is a regression test for KUDU-462.
 TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
-  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
+  ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertRows(1, 1);
@@ -646,7 +613,7 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("{ int32:16777216, null }", rows[1]);
 
   // Add back a column called 'c2', but should not materialize old data.
-  ASSERT_OK(AddNewI32Column(kTableName, "c1", 20000));
+  ASSERT_OK(AddNewI32Column(kTableName, "c1"));
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("{ int32:0, null, null }", rows[0]);
@@ -666,7 +633,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   vector<string> rows;
 
-  ASSERT_OK(AddNewI32Column(kTableName, "c2", 12345));
+  ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
   ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   InsertRows(1, 1);
@@ -827,7 +794,7 @@ TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
       SleepFor(MonoDelta::FromSeconds(3));
     }
 
-    ASSERT_OK(AddNewI32Column(kTableName, strings::Substitute("c$0", i), i));
+    ASSERT_OK(AddNewI32Column(kTableName, strings::Substitute("c$0", i)));
   }
 
   stop_threads_.Store(true);
@@ -847,7 +814,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
 
   // Add a column, and immediately try to insert a row including that
   // new column.
-  ASSERT_OK(AddNewI32Column(kSplitTableName, "new-i32", 10));
+  ASSERT_OK(AddNewI32Column(kSplitTableName, "new-i32"));
   client::TableHandle table;
   ASSERT_OK(table.Open(kSplitTableName, client_.get()));
   auto insert = table.NewInsertOp();
@@ -874,7 +841,6 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
 TEST_F(AlterTableTest, TestMultipleAlters) {
   YBTableName kSplitTableName("my_keyspace", "split-table");
   const size_t kNumNewCols = 10;
-  const int32_t kDefaultValue = 10;
 
   // Create a new table with 10 tablets.
   //
@@ -886,8 +852,7 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
   for (int i = 0; i < kNumNewCols; i++) {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
-      ->Type(INT32)->NotNull()
-      ->Default(YBValue::FromInt(kDefaultValue));
+                 ->Type(INT32)->NotNull();
     ASSERT_OK(table_alterer->wait(false)->Alter());
   }
 
@@ -912,7 +877,7 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
-  ASSERT_OK(AddNewI32Column(kTableName, "c1", 0xdeadbeef));
+  ASSERT_OK(AddNewI32Column(kTableName, "c1"));
 
   bool alter_in_progress;
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress));

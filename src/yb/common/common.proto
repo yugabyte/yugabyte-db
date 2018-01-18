@@ -136,8 +136,8 @@ message ColumnSchemaPB {
   optional bool is_static = 7 [default = false];
   optional bool is_counter = 8 [default = false];
   optional uint32 sorting_type = 9 [default = 0];
-  optional bytes read_default_value = 10;
-  optional bytes write_default_value = 11;
+  // Reserved for deprecated read_default_value and write_default_value fields.
+  reserved 10, 11;
 }
 
 message TablePropertiesPB {

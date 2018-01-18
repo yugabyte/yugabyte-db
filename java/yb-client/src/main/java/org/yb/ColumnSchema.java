@@ -51,7 +51,6 @@ public class ColumnSchema {
   private final boolean key;
   private final boolean hashKey;
   private final boolean nullable;
-  private final Object defaultValue;
   private final SortOrder sortOrder;
 
   public enum SortOrder {
@@ -80,7 +79,7 @@ public class ColumnSchema {
   };
 
   private ColumnSchema(Integer id, String name, QLType yqlType, boolean key, boolean hashKey,
-                       boolean nullable, Object defaultValue, SortOrder sortOrder) {
+                       boolean nullable, SortOrder sortOrder) {
     this.id = id;
     this.name = name;
     this.type = yqlType.toType();
@@ -88,7 +87,6 @@ public class ColumnSchema {
     this.key = key;
     this.hashKey = hashKey;
     this.nullable = nullable;
-    this.defaultValue = defaultValue;
     this.sortOrder = sortOrder;
   }
 
@@ -154,14 +152,6 @@ public class ColumnSchema {
     return nullable;
   }
 
-  /**
-   * The Java object representation of the default value that's read
-   * @return the default read value
-   */
-  public Object getDefaultValue() {
-    return defaultValue;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -200,7 +190,6 @@ public class ColumnSchema {
     private boolean key = false;
     private boolean hashKey = false;
     private boolean nullable = false;
-    private Object defaultValue = null;
     private SortOrder sortOrder = SortOrder.NONE;
 
     /**
@@ -280,22 +269,11 @@ public class ColumnSchema {
     }
 
     /**
-     * Sets the default value that will be read from the column. Null by default.
-     * @param defaultValue a Java object representation of the default value that's read
-     * @return this instance
-     */
-    public ColumnSchemaBuilder defaultValue(Object defaultValue) {
-      this.defaultValue = defaultValue;
-      return this;
-    }
-
-    /**
      * Builds a {@link ColumnSchema} using the passed parameters.
      * @return a new {@link ColumnSchema}
      */
     public ColumnSchema build() {
-      return new ColumnSchema(id, name, yqlType,
-                              key, hashKey, nullable, defaultValue, sortOrder);
+      return new ColumnSchema(id, name, yqlType, key, hashKey, nullable, sortOrder);
     }
   }
 }

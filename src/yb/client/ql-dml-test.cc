@@ -214,7 +214,7 @@ TEST_F(QLDmlTest, TestInsertWrongSchema) {
 
   // Move to schema version 1 by altering table
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  table_alterer->AddColumn("c3")->Type(INT32)->NotNull()->Default(YBValue::FromInt(0));
+  table_alterer->AddColumn("c3")->Type(INT32)->NotNull();
   EXPECT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60))->Alter());
 
   // The request created has schema version 0 by default

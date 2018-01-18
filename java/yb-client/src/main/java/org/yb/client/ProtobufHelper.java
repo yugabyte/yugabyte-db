@@ -106,8 +106,6 @@ public class ProtobufHelper {
     if (column.getSortOrder() != ColumnSchema.SortOrder.NONE) {
       schemaBuilder.setSortingType(column.getSortOrder().getValue());
     }
-    if (column.getDefaultValue() != null) schemaBuilder.setReadDefaultValue
-        (UnsafeByteOperations.unsafeWrap(objectToWireFormat(column, column.getDefaultValue())));
     return schemaBuilder.build();
   }
 
@@ -126,8 +124,6 @@ public class ProtobufHelper {
       }
       columnIds.add(id);
       Type type = Type.getTypeForDataType(columnPb.getType().getMain());
-      Object defaultValue = columnPb.hasReadDefaultValue() ? byteStringToObject(type,
-          columnPb.getReadDefaultValue()) : null;
       ColumnSchema.SortOrder sortOrder =
           ColumnSchema.SortOrder.findFromValue(columnPb.getSortingType());
       ColumnSchema column = new ColumnSchema.ColumnSchemaBuilder(columnPb.getName(), type)
@@ -135,7 +131,6 @@ public class ProtobufHelper {
           .rangeKey(columnPb.getIsKey(), sortOrder)
           .hashKey(columnPb.getIsHashKey())
           .nullable(columnPb.getIsNullable())
-          .defaultValue(defaultValue)
           .build();
       columns.add(column);
     }

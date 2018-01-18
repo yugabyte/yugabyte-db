@@ -189,11 +189,6 @@ class ColumnSchema {
   // type: column type (e.g. UINT8, INT32, STRING, MAP<INT32, STRING> ...)
   // is_nullable: true if a row value can be null
   // is_hash_key: true if a column's hash value can be used for partitioning.
-  // read_default: default value used on read if the column was not present before alter.
-  //    The value will be copied and released on ColumnSchema destruction.
-  // write_default: default value added to the row if the column value was
-  //    not specified on insert.
-  //    The value will be copied and released on ColumnSchema destruction.
   //
   // Example:
   //   ColumnSchema col_a("a", UINT32)
@@ -208,23 +203,14 @@ class ColumnSchema {
                bool is_hash_key = false,
                bool is_static = false,
                bool is_counter = false,
-               SortingType sorting_type = SortingType::kNotSpecified,
-               const void* read_default = nullptr,
-               const void* write_default = nullptr)
+               SortingType sorting_type = SortingType::kNotSpecified)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
         is_hash_key_(is_hash_key),
         is_static_(is_static),
         is_counter_(is_counter),
-        sorting_type_(sorting_type),
-        read_default_(read_default ? new Variant(type->main(), read_default) : nullptr) {
-    if (write_default == read_default) {
-      write_default_ = read_default_;
-    } else if (write_default != NULL) {
-      DCHECK(read_default != NULL) << "Must have a read default";
-      write_default_.reset(new Variant(type->main(), write_default));
-    }
+        sorting_type_(sorting_type) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -234,11 +220,9 @@ class ColumnSchema {
                bool is_hash_key = false,
                bool is_static = false,
                bool is_counter = false,
-               SortingType sorting_type = SortingType::kNotSpecified,
-               const void* read_default = nullptr,
-               const void* write_default = nullptr)
+               SortingType sorting_type = SortingType::kNotSpecified)
       : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     sorting_type, read_default, write_default) { }
+                     sorting_type) { }
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -296,44 +280,6 @@ class ColumnSchema {
   // For example, "STRING NOT NULL".
   string TypeToString() const;
 
-  // Returns true if the column has a read default value
-  bool has_read_default() const {
-    return read_default_ != NULL;
-  }
-
-  // Returns a pointer the default value associated with the column
-  // or NULL if there is no default value. You may check has_read_default() first.
-  // The returned value will be valid until the ColumnSchema will be destroyed.
-  //
-  // Example:
-  //    const uint32_t *vu32 = static_cast<const uint32_t *>(col_schema.read_default_value());
-  //    const Slice *vstr = static_cast<const Slice *>(col_schema.read_default_value());
-  const void *read_default_value() const {
-    if (read_default_ != NULL) {
-      return read_default_->value();
-    }
-    return NULL;
-  }
-
-  // Returns true if the column has a write default value
-  bool has_write_default() const {
-    return write_default_ != NULL;
-  }
-
-  // Returns a pointer the default value associated with the column
-  // or NULL if there is no default value. You may check has_write_default() first.
-  // The returned value will be valid until the ColumnSchema will be destroyed.
-  //
-  // Example:
-  //    const uint32_t *vu32 = static_cast<const uint32_t *>(col_schema.write_default_value());
-  //    const Slice *vstr = static_cast<const Slice *>(col_schema.write_default_value());
-  const void *write_default_value() const {
-    if (write_default_ != NULL) {
-      return write_default_->value();
-    }
-    return NULL;
-  }
-
   bool EqualsType(const ColumnSchema &other) const {
     return is_nullable_ == other.is_nullable_ &&
            is_hash_key_ == other.is_hash_key_ &&
@@ -341,27 +287,8 @@ class ColumnSchema {
            type_info()->type() == other.type_info()->type();
   }
 
-  bool Equals(const ColumnSchema &other, bool check_defaults) const {
-    if (!EqualsType(other) || this->name_ != other.name_)
-      return false;
-
-    // For Key comparison checking the defaults doesn't make sense,
-    // since we don't support them, for server vs user schema this comparison
-    // will always fail, since the user does not specify the defaults.
-    if (check_defaults) {
-      if (read_default_ == NULL && other.read_default_ != NULL)
-        return false;
-
-      if (write_default_ == NULL && other.write_default_ != NULL)
-        return false;
-
-      if (read_default_ != NULL && !read_default_->Equals(other.read_default_.get()))
-        return false;
-
-      if (write_default_ != NULL && !write_default_->Equals(other.write_default_.get()))
-        return false;
-    }
-    return true;
+  bool Equals(const ColumnSchema &other) const {
+    return EqualsType(other) && this->name_ == other.name_;
   }
 
   int Compare(const void *lhs, const void *rhs) const {
@@ -413,9 +340,6 @@ class ColumnSchema {
   bool is_static_;
   bool is_counter_;
   SortingType sorting_type_;
-  // use shared_ptr since the ColumnSchema is always copied around.
-  std::shared_ptr<Variant> read_default_;
-  std::shared_ptr<Variant> write_default_;
 };
 
 class ContiguousRow;
@@ -925,9 +849,8 @@ class Schema {
     if (this->table_properties_ != other.table_properties_) return false;
     if (this->cols_.size() != other.cols_.size()) return false;
 
-    const bool have_column_ids = other.has_column_ids() && has_column_ids();
     for (size_t i = 0; i < other.cols_.size(); i++) {
-      if (!this->cols_[i].Equals(other.cols_[i], have_column_ids)) return false;
+      if (!this->cols_[i].Equals(other.cols_[i])) return false;
     }
 
     return true;
@@ -1006,13 +929,9 @@ class Schema {
           RETURN_NOT_OK(projector->ProjectBaseColumn(proj_idx, base_idx));
         }
       } else {
-        bool has_default = col_schema.has_read_default() || col_schema.has_write_default();
-        if (!has_default && !col_schema.is_nullable()) {
+        if (!col_schema.is_nullable()) {
           RETURN_NOT_OK(projector->ProjectExtraColumn(proj_idx));
         }
-
-        // Column missing from the Base Schema, use the default value of the projection
-        RETURN_NOT_OK(projector->ProjectDefaultColumn(proj_idx));
       }
       proj_idx++;
     }
@@ -1152,7 +1071,7 @@ class SchemaBuilder {
 
   CHECKED_STATUS AddColumn(const string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, false, false, false, false,
-                     ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
+                     ColumnSchema::SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1162,7 +1081,7 @@ class SchemaBuilder {
 
   CHECKED_STATUS AddNullableColumn(const string& name, const std::shared_ptr<QLType>& type) {
     return AddColumn(name, type, true, false, false, false,
-                     ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
+                     ColumnSchema::SortingType::kNotSpecified);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1176,9 +1095,7 @@ class SchemaBuilder {
                            bool is_hash_key,
                            bool is_static,
                            bool is_counter,
-                           yb::ColumnSchema::SortingType sorting_type,
-                           const void *read_default,
-                           const void *write_default);
+                           yb::ColumnSchema::SortingType sorting_type);
 
   // convenience function for adding columns with simple (non-parametric) data types
   CHECKED_STATUS AddColumn(const string& name,
@@ -1187,11 +1104,9 @@ class SchemaBuilder {
                            bool is_hash_key,
                            bool is_static,
                            bool is_counter,
-                           yb::ColumnSchema::SortingType sorting_type,
-                           const void *read_default,
-                           const void *write_default) {
+                           yb::ColumnSchema::SortingType sorting_type) {
     return AddColumn(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     sorting_type, read_default, write_default);
+                     sorting_type);
   }
 
   CHECKED_STATUS RemoveColumn(const string& name);

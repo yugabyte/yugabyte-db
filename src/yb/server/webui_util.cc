@@ -49,27 +49,14 @@ namespace yb {
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output) {
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr>"
-          << "<th>Column</th><th>ID</th><th>Type</th>"
-          << "<th>Read default</th><th>Write default</th>"
-          << "</tr>\n";
+  *output << "<tr><th>Column</th><th>ID</th><th>Type</th></tr>\n";
 
   for (int i = 0; i < schema.num_columns(); i++) {
     const ColumnSchema& col = schema.column(i);
-    string read_default = "-";
-    if (col.has_read_default()) {
-      read_default = col.Stringify(col.read_default_value());
-    }
-    string write_default = "-";
-    if (col.has_write_default()) {
-      write_default = col.Stringify(col.write_default_value());
-    }
-    *output << Substitute("<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+    *output << Substitute("<tr><th>$0</th><td>$1</td><td>$2</td></tr>\n",
                           EscapeForHtmlToString(col.name()),
                           schema.column_id(i),
-                          col.TypeToString(),
-                          EscapeForHtmlToString(read_default),
-                          EscapeForHtmlToString(write_default));
+                          col.TypeToString());
   }
   *output << "</table>\n";
 }

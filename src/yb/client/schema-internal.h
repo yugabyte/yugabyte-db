@@ -52,15 +52,11 @@ class YBColumnSpec::Data {
         primary_key(false),
         hash_primary_key(false),
         static_column(false),
-        has_default(false),
-        default_val(NULL),
         is_counter(false),
-        remove_default(false),
         has_rename_to(false) {
   }
 
   ~Data() {
-    delete default_val;
   }
 
   const std::string name;
@@ -81,13 +77,7 @@ class YBColumnSpec::Data {
 
   bool static_column;
 
-  bool has_default;
-  YBValue* default_val; // Owned.
-
   bool is_counter;
-
-  // For ALTER
-  bool remove_default;
 
   // For ALTER
   bool has_rename_to;

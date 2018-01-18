@@ -292,55 +292,14 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
-  if (col_schema.has_read_default()) {
-    if (col_schema.type_info()->physical_type() == BINARY) {
-      const Slice *read_slice = static_cast<const Slice *>(col_schema.read_default_value());
-      pb->set_read_default_value(read_slice->data(), read_slice->size());
-    } else {
-      const void *read_value = col_schema.read_default_value();
-      pb->set_read_default_value(read_value, col_schema.type_info()->size());
-    }
-  }
-  if (col_schema.has_write_default()) {
-    if (col_schema.type_info()->physical_type() == BINARY) {
-      const Slice *write_slice = static_cast<const Slice *>(col_schema.write_default_value());
-      pb->set_write_default_value(write_slice->data(), write_slice->size());
-    } else {
-      const void *write_value = col_schema.write_default_value();
-      pb->set_write_default_value(write_value, col_schema.type_info()->size());
-    }
-  }
 }
 
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
-  const void *write_default_ptr = nullptr;
-  const void *read_default_ptr = nullptr;
-  Slice write_default;
-  Slice read_default;
-  const TypeInfo* typeinfo = GetTypeInfo(pb.type().main());
-  if (pb.has_read_default_value()) {
-    read_default = Slice(pb.read_default_value());
-    if (typeinfo->physical_type() == BINARY) {
-      read_default_ptr = &read_default;
-    } else {
-      read_default_ptr = read_default.data();
-    }
-  }
-  if (pb.has_write_default_value()) {
-    write_default = Slice(pb.write_default_value());
-    if (typeinfo->physical_type() == BINARY) {
-      write_default_ptr = &write_default;
-    } else {
-      write_default_ptr = write_default.data();
-    }
-  }
-
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(),
-                      ColumnSchema::SortingType(pb.sorting_type()),
-                      read_default_ptr, write_default_ptr);
+                      ColumnSchema::SortingType(pb.sorting_type()));
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(

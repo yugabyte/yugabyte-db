@@ -103,10 +103,7 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
         // any operation other than rename.
         if (s.spec->data_->has_type ||
             s.spec->data_->has_nullable ||
-            s.spec->data_->primary_key ||
-            s.spec->data_->has_default ||
-            s.spec->data_->default_val ||
-            s.spec->data_->remove_default) {
+            s.spec->data_->primary_key) {
           return STATUS(NotSupported, "cannot support AlterColumn of this type",
                                       s.spec->data_->name);
         }

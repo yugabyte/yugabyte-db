@@ -160,8 +160,7 @@ class YBColumnSchema {
                  bool is_hash_key = false,
                  bool is_static = false,
                  bool is_counter = false,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
-                 const void* default_value = nullptr);
+                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -179,8 +178,6 @@ class YBColumnSchema {
   bool is_static() const;
   bool is_counter() const;
   yb::ColumnSchema::SortingType sorting_type() const;
-
-  // TODO: Expose default column value and attributes?
 
  private:
   friend class YBColumnSpec;
@@ -203,17 +200,6 @@ class YBColumnSchema {
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
 class YBColumnSpec {
  public:
-  // Set the default value for this column.
-  //
-  // When adding a new column to a table, this default value will be used to
-  // fill the new column in all existing rows.
-  //
-  // When a user inserts data, if the user does not specify any value for
-  // this column, the default will also be used.
-  //
-  // The YBColumnSpec takes ownership over 'value'.
-  YBColumnSpec* Default(YBValue* value);
-
   // Operations only relevant for Create Table
   // ------------------------------------------------------------
 
@@ -261,12 +247,8 @@ class YBColumnSpec {
   // Identify this column as counter.
   YBColumnSpec* Counter();
 
-    // Operations only relevant for Alter Table
+  // Operations only relevant for Alter Table
   // ------------------------------------------------------------
-
-  // Remove the default value for this column. Without a default, clients must
-  // always specify a value for this column when inserting data.
-  YBColumnSpec* RemoveDefault();
 
   // Rename this column.
   YBColumnSpec* RenameTo(const std::string& new_name);
@@ -295,14 +277,14 @@ class YBColumnSpec {
 // SQL:
 //   CREATE TABLE t (
 //     my_key int not null primary key,
-//     a float default 1.5
+//     a float
 //   );
 //
 // is represented as:
 //
 //   YBSchemaBuilder t;
 //   t.AddColumn("my_key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-//   t.AddColumn("a")->Type(YBColumnSchema::FLOAT)->Default(YBValue::FromFloat(1.5));
+//   t.AddColumn("a")->Type(YBColumnSchema::FLOAT);
 //   YBSchema schema;
 //   t.Build(&schema);
 class YBSchemaBuilder {

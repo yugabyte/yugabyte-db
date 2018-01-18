@@ -130,26 +130,6 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
   ASSERT_EQ(vector<int>({ 0, 1 }), key_columns);
 }
 
-TEST(ClientUnitTest, TestSchemaBuilder_DefaultValues) {
-  YBSchema s;
-  YBSchemaBuilder b;
-  b.AddColumn("a")->Type(INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("b")->Type(INT32)->NotNull()
-    ->Default(YBValue::FromInt(12345));
-  ASSERT_EQ("OK", b.Build(&s).ToString());
-}
-
-TEST(ClientUnitTest, TestSchemaBuilder_DefaultValueString) {
-  YBSchema s;
-  YBSchemaBuilder b;
-  b.AddColumn("a")->Type(INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("b")->Type(STRING)->NotNull()
-    ->Default(YBValue::CopyString("abc"));
-  b.AddColumn("c")->Type(BINARY)->NotNull()
-    ->Default(YBValue::CopyString("def"));
-  ASSERT_EQ("OK", b.Build(&s).ToString());
-}
-
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
   YBSchema s;
   YBSchemaBuilder b;

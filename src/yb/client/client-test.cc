@@ -126,8 +126,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
     b.AddColumn("int_val")->Type(INT32)->NotNull();
     b.AddColumn("string_val")->Type(STRING)->Nullable();
-    b.AddColumn("non_null_with_default")->Type(INT32)->NotNull()
-        ->Default(YBValue::FromInt(12345));
+    b.AddColumn("non_null_with_default")->Type(INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
@@ -1194,15 +1193,6 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(), "No alter steps provided");
-  }
-
-  // test that adding a non-nullable column with no default value throws an error
-  {
-    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("key")->Type(INT32)->NotNull();
-    Status s = table_alterer->Alter();
-    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(), "column `key`: NOT NULL columns must have a default");
   }
 
   // test that remove key should throws an error

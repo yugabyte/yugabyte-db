@@ -143,8 +143,6 @@ inline CHECKED_STATUS CopyRow(const RowType1 &src_row, RowType2 *dst_row, ArenaT
 //  - columns that are present in the "base schema"
 //  - columns that are present in the "base schema" but with different types.
 //    In this case an adapter should be used (e.g. INT8 to INT64, INT8 to STRING, ...)
-//  - columns that are not present in the "base schema".
-//    In this case the default value of the projection column will be used.
 //
 // Example:
 //  RowProjector projector.
@@ -171,7 +169,6 @@ class RowProjector {
     projection_ = projection;
     base_cols_mapping_.clear();
     adapter_cols_mapping_.clear();
-    projection_defaults_.clear();
     is_identity_ = base_schema->Equals(*projection);
     return Init();
   }
@@ -180,7 +177,6 @@ class RowProjector {
   // Indirected data is copied into the provided dst arena.
   //
   // Use this method only on the read-path.
-  // The col_schema.read_default_value() will be used.
   template<class RowType1, class RowType2, class ArenaType>
   CHECKED_STATUS ProjectRowForRead(
       const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
@@ -191,7 +187,6 @@ class RowProjector {
   // Indirected data is copied into the provided dst arena.
   //
   // Use this method only on the write-path.
-  // The col_schema.write_default_value() will be used.
   template<class RowType1, class RowType2, class ArenaType>
   CHECKED_STATUS ProjectRowForWrite(const RowType1& src_row, RowType2 *dst_row,
                             ArenaType *dst_arena) const {
@@ -211,12 +206,6 @@ class RowProjector {
   // first: is the projection column index, second: is the base_schema  index
   const vector<ProjectionIdxMapping>& adapter_cols_mapping() const { return adapter_cols_mapping_; }
 
-  // Returns the projection indexes of the columns to add with a default value.
-  //
-  // These are columns which are present in 'projection_' but not in 'base_schema',
-  // and for which 'projection' has a default.
-  const vector<size_t>& projection_defaults() const { return projection_defaults_; }
-
  private:
   friend class Schema;
 
@@ -230,16 +219,10 @@ class RowProjector {
     return Status::OK();
   }
 
-  CHECKED_STATUS ProjectDefaultColumn(size_t proj_col_idx) {
-    projection_defaults_.push_back(proj_col_idx);
-    return Status::OK();
-  }
-
   CHECKED_STATUS ProjectExtraColumn(size_t proj_col_idx) {
     return STATUS(InvalidArgument,
       "The column '" + projection_->column(proj_col_idx).name() +
-      "' does not exist in the projection, and it does not have a "
-      "default value or a nullable type");
+      "' does not exist in the projection, and it does not have a nullable type");
   }
 
  private:
@@ -261,23 +244,12 @@ class RowProjector {
     // TODO: Copy Adapted base Data
     DCHECK(adapter_cols_mapping_.size() == 0) << "Value Adapter not supported yet";
 
-    // Fill with Defaults
-    for (auto proj_idx : projection_defaults_) {
-      const ColumnSchema& col_proj = projection_->column(proj_idx);
-      const void *vdefault = FOR_READ ? col_proj.read_default_value() :
-                                        col_proj.write_default_value();
-      SimpleConstCell src_cell(&col_proj, vdefault);
-      typename RowType2::Cell dst_cell = dst_row->cell(proj_idx);
-      RETURN_NOT_OK(CopyCell(src_cell, &dst_cell, dst_arena));
-    }
-
     return Status::OK();
   }
 
  private:
   vector<ProjectionIdxMapping> base_cols_mapping_;
   vector<ProjectionIdxMapping> adapter_cols_mapping_;
-  vector<size_t> projection_defaults_;
 
   const Schema* base_schema_;
   const Schema* projection_;
