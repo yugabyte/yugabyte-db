@@ -50,13 +50,16 @@ DECLARE_int32(rpc_max_message_size);
 namespace yb {
 namespace tserver {
 
+using std::shared_ptr;
+using std::vector;
+using std::string;
+
 using consensus::MinimumOpId;
 using consensus::OpId;
 using consensus::RaftPeerPB;
 using fs::ReadableBlock;
 using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
-using std::shared_ptr;
 using strings::Substitute;
 using tablet::TabletMetadata;
 using tablet::TabletPeer;
@@ -206,7 +209,7 @@ Status RemoteBootstrapSession::Init() {
   MonoTime now = MonoTime::Now();
   auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
   RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
-                        Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
+                        Substitute("Unable to create checkpoints directory $0", checkpoints_dir));
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
@@ -216,6 +219,8 @@ Status RemoteBootstrapSession::Init() {
   tablet_superblock_.clear_rocksdb_files();
   RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
                                          tablet_superblock_.mutable_rocksdb_files()));
+
+  RETURN_NOT_OK(InitSnapshotFiles());
 
   // Get the current segments from the log, including the active segment.
   // The Log doesn't add the active segment to the log reader's list until
@@ -240,6 +245,12 @@ Status RemoteBootstrapSession::Init() {
   RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
       last_logged_opid.index, anchor_owner_token, &log_anchor_));
 
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::InitSnapshotFiles() {
+  // Snapshots are not supported in the community edition.
+  tablet_superblock_.clear_snapshot_files();
   return Status::OK();
 }
 
@@ -371,16 +382,24 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno,
   return Status::OK();
 }
 
-Status RemoteBootstrapSession::GetFilePiece(const std::string file_name,
+Status RemoteBootstrapSession::GetRocksDBFilePiece(const std::string file_name,
+                                                   uint64_t offset, int64_t client_maxlen,
+                                                   std::string* data, int64_t* log_file_size,
+                                                   RemoteBootstrapErrorPB::Code* error_code) {
+  return GetFilePiece(
+      checkpoint_dir_, file_name, offset, client_maxlen, data, log_file_size, error_code);
+}
+
+Status RemoteBootstrapSession::GetFilePiece(const std::string path,
+                                            const std::string file_name,
                                             uint64_t offset, int64_t client_maxlen,
                                             std::string* data, int64_t* block_file_size,
                                             RemoteBootstrapErrorPB::Code* error_code) {
-
-  auto file_path = JoinPathSegments(checkpoint_dir_, file_name);
+  auto file_path = JoinPathSegments(path, file_name);
   if (!fs_manager_->env()->FileExists(file_path)) {
     *error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
-    return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in checkpoint directory $1",
-                                       file_name, checkpoint_dir_));
+    return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in directory $1",
+                                       file_name, path));
   }
 
   gscoped_ptr<RandomAccessFile> readable_file;

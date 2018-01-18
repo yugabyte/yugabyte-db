@@ -109,6 +109,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // tablet superblock and list of WAL segments.
   CHECKED_STATUS Init();
 
+  // Add snapshot files to tablet superblock.
+  // Snapshots are not supported in the community edition.
+  virtual CHECKED_STATUS InitSnapshotFiles();
+
   // Return ID of tablet corresponding to this session.
   const std::string& tablet_id() const;
 
@@ -123,26 +127,28 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // On error, Status is set to a non-OK value and error_code is filled in.
   //
   // This method is thread-safe.
-  CHECKED_STATUS GetBlockPiece(const BlockId& block_id,
-                       uint64_t offset, int64_t client_maxlen,
-                       std::string* data, int64_t* block_file_size,
-                       RemoteBootstrapErrorPB::Code* error_code);
+  CHECKED_STATUS GetBlockPiece(
+      const BlockId& block_id, uint64_t offset, int64_t client_maxlen,
+      std::string* data, int64_t* block_file_size, RemoteBootstrapErrorPB::Code* error_code);
 
   // Get a piece of a log segment.
   // The behavior and params are very similar to GetBlockPiece(), but this one
   // is only for sending WAL segment files.
-  CHECKED_STATUS GetLogSegmentPiece(uint64_t segment_seqno,
-                            uint64_t offset, int64_t client_maxlen,
-                            std::string* data, int64_t* log_file_size,
-                            RemoteBootstrapErrorPB::Code* error_code);
+  CHECKED_STATUS GetLogSegmentPiece(
+      uint64_t segment_seqno, uint64_t offset, int64_t client_maxlen,
+      std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
 
-  // Get a piece of a rocksdb checkpoint file.
+  // Get a piece of a RocksDB checkpoint file.
+  CHECKED_STATUS GetRocksDBFilePiece(
+      const std::string file_name, uint64_t offset, int64_t client_maxlen,
+      std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
+
+  // Get a piece of a RocksDB file.
   // The behavior and params are very similar to GetBlockPiece(), but this one
   // is only for sending rocksdb files.
-  CHECKED_STATUS GetFilePiece(const std::string file_name,
-                      uint64_t offset, int64_t client_maxlen,
-                      std::string* data, int64_t* log_file_size,
-                      RemoteBootstrapErrorPB::Code* error_code);
+  CHECKED_STATUS GetFilePiece(
+      const std::string path, const std::string file_name, uint64_t offset, int64_t client_maxlen,
+      std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
 
   const tablet::TabletSuperBlockPB& tablet_superblock() const { return tablet_superblock_; }
 
@@ -162,16 +168,17 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Change the peer's role to VOTER.
   CHECKED_STATUS ChangeRole();
 
- private:
+ protected:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
 
   FRIEND_TEST(RemoteBootstrapRocksDBTest, TestCheckpointDirectory);
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields);
+  FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields);
 
   typedef std::unordered_map<BlockId, ImmutableReadableBlockInfo*, BlockIdHash> BlockMap;
   typedef std::unordered_map<uint64_t, ImmutableRandomAccessFileInfo*> LogMap;
 
-  ~RemoteBootstrapSession();
+  virtual ~RemoteBootstrapSession();
 
   // Open the block and add it to the block map.
   CHECKED_STATUS OpenBlockUnlocked(const BlockId& block_id);
@@ -224,6 +231,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Directory where the checkpoint files are stored for this session (only for rocksdb).
   std::string checkpoint_dir_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };
 

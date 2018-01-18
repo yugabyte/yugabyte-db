@@ -391,6 +391,14 @@ Status FsManager::CreateDirIfMissing(const string& path, bool* created) {
   return env_util::CreateDirIfMissing(env_, path, created);
 }
 
+Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* created) {
+  RETURN_NOT_OK_PREPEND(CreateDirIfMissing(path, created),
+                        Substitute("Failed to create directory $0", path));
+  RETURN_NOT_OK_PREPEND(env_->SyncDir(DirName(path)),
+                        Substitute("Failed to sync root directory $0", DirName(path)));
+  return Status::OK();
+}
+
 const string& FsManager::uuid() const {
   return CHECK_NOTNULL(metadata_.get())->uuid();
 }

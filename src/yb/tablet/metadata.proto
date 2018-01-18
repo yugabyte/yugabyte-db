@@ -122,6 +122,9 @@ message TabletSuperBlockPB {
   // List of RocksDB SST files.
   repeated RocksDBFilePB rocksdb_files = 17;
 
+  // List of Snapshot files.
+  repeated SnapshotFilePB snapshot_files = 20;
+
   // For tablets that have been tombstoned, stores the last OpId stored in the
   // WAL before tombstoning.
   // Only relevant for TOMBSTONED tablets.
@@ -137,6 +140,17 @@ message RocksDBFilePB {
 
   // Required.
   optional uint64 size_bytes = 2;
+}
+
+message SnapshotFilePB {
+  // Required. File name (no path).
+  optional string name = 1;
+
+  // Required. Snapshot id.
+  optional bytes snapshot_id = 2;
+
+  // Required.
+  optional uint64 size_bytes = 3;
 }
 
 // The enum of tablet states.

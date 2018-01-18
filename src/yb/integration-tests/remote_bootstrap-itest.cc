@@ -81,7 +81,7 @@ using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tserver::ListTabletsResponsePB;
-using yb::tserver::RemoteBootstrapClient;
+using yb::tserver::YB_EDITION_NS_PREFIX RemoteBootstrapClient;
 using std::string;
 using std::unordered_map;
 using std::vector;

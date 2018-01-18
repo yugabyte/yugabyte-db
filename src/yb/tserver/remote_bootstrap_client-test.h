@@ -54,6 +54,7 @@ using tablet::TabletMetadata;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapClientTest : public RemoteBootstrapTest {
+  typedef YB_EDITION_NS_PREFIX RemoteBootstrapClient RemoteBootstrapClientClass;
  public:
   explicit RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : RemoteBootstrapTest(table_type) {}
@@ -67,10 +68,10 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0)));
     ASSERT_OK(rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build().MoveTo(&messenger_));
-    client_.reset(new RemoteBootstrapClient(GetTabletId(),
-                                            fs_manager_.get(),
-                                            messenger_,
-                                            fs_manager_->uuid()));
+    client_.reset(new RemoteBootstrapClientClass(GetTabletId(),
+                                                 fs_manager_.get(),
+                                                 messenger_,
+                                                 fs_manager_->uuid()));
     ASSERT_OK(GetRaftConfigLeader(tablet_peer_->consensus()
         ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
 
@@ -84,7 +85,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
   gscoped_ptr<FsManager> fs_manager_;
   shared_ptr<rpc::Messenger> messenger_;
-  gscoped_ptr<RemoteBootstrapClient> client_;
+  gscoped_ptr<RemoteBootstrapClientClass> client_;
   scoped_refptr<TabletMetadata> meta_;
   RaftPeerPB leader_;
 };

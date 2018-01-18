@@ -192,9 +192,9 @@ class RemoteBootstrapTest : public YBTabletTest {
     ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
   }
 
-  void InitSession() {
-    session_.reset(new RemoteBootstrapSession(tablet_peer_.get(), "TestSession", "FakeUUID",
-                   fs_manager()));
+  virtual void InitSession() {
+    session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
+        tablet_peer_.get(), "TestSession", "FakeUUID", fs_manager()));
     CHECK_OK(session_->Init());
   }
 
@@ -228,7 +228,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   gscoped_ptr<ThreadPool> apply_pool_;
   unique_ptr<ThreadPool> raft_pool_;
   scoped_refptr<TabletPeer> tablet_peer_;
-  scoped_refptr<RemoteBootstrapSession> session_;
+  scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
 };
 
 }  // namespace tserver

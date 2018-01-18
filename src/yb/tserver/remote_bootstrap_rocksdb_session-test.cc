@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "remote_bootstrap_session-test.h"
+#include "yb/tserver/remote_bootstrap_session-test.h"
 
 namespace yb {
 namespace tserver {
@@ -32,9 +32,9 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
 TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
   string checkpoint_dir;
   {
-    scoped_refptr<RemoteBootstrapSession>
-      temp_session(new RemoteBootstrapSession(tablet_peer_.get(), "TestTempSession", "FakeUUID",
-                                              fs_manager()));
+    scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession>
+        temp_session(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
+            tablet_peer_.get(), "TestTempSession", "FakeUUID", fs_manager()));
     CHECK_OK(temp_session->Init());
     checkpoint_dir = temp_session->checkpoint_dir_;
     ASSERT_FALSE(checkpoint_dir.empty());
@@ -45,8 +45,7 @@ TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
     vector<string> rocksdb_files;
     ASSERT_OK(env_->GetChildren(checkpoint_dir, &rocksdb_files));
     // Ignore "." and ".." entries.
-    ASSERT_TRUE(rocksdb_files.size() > 2);
-
+    ASSERT_GT(rocksdb_files.size(), 2);
   }
   // Verify that destructor deleted the checkpoint directory.
   ASSERT_FALSE(env_->FileExists(checkpoint_dir));
@@ -79,8 +78,8 @@ TEST_F(RemoteBootstrapRocksDBTest, TestNonExistentRocksDBFile) {
   string data;
   int64_t total_data_length = 0;
   RemoteBootstrapErrorPB::Code error_code;
-  auto status = session_->GetFilePiece("SomeNonExistentFile", 0, 0, &data, &total_data_length,
-                                       &error_code);
+  auto status = session_->GetRocksDBFilePiece("SomeNonExistentFile", 0, 0, &data,
+                                              &total_data_length, &error_code);
   ASSERT_TRUE(status.IsNotFound());
 }
 

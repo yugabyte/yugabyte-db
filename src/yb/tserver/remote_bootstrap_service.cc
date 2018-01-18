@@ -46,7 +46,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/map-util.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/crc.h"
@@ -152,15 +151,15 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Unable to find specified tablet: $0", tablet_id));
 
-  scoped_refptr<RemoteBootstrapSession> session;
+  scoped_refptr<RemoteBootstrapSessionClass> session;
   {
     boost::lock_guard<simple_spinlock> l(sessions_lock_);
     if (!FindCopy(sessions_, session_id, &session)) {
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
-      session.reset(new RemoteBootstrapSession(tablet_peer, session_id,
-                                               requestor_uuid, fs_manager_));
+      session.reset(new RemoteBootstrapSessionClass(tablet_peer, session_id,
+                                                    requestor_uuid, fs_manager_));
       RPC_RETURN_NOT_OK(session->Init(),
                         RemoteBootstrapErrorPB::UNKNOWN_ERROR,
                         Substitute("Error initializing remote bootstrap session for tablet $0",
@@ -197,7 +196,7 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
   const string& session_id = req->session_id();
 
   // Look up and validate remote bootstrap session.
-  scoped_refptr<RemoteBootstrapSession> session;
+  scoped_refptr<RemoteBootstrapSessionClass> session;
   boost::lock_guard<simple_spinlock> l(sessions_lock_);
   RemoteBootstrapErrorPB::Code app_error;
   Status status = FindSessionUnlocked(session_id, &app_error, &session);
@@ -218,12 +217,56 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
   }
 }
 
+Status RemoteBootstrapServiceImpl::GetDataFilePiece(
+    const DataIdPB& data_id,
+    const scoped_refptr<RemoteBootstrapSessionClass>& session,
+    uint64_t offset,
+    int64_t client_maxlen,
+    string* data,
+    int64_t* total_data_length,
+    RemoteBootstrapErrorPB::Code* error_code) {
+  switch (data_id.type()) {
+    case DataIdPB::BLOCK: {
+      // Fetching a data block chunk.
+      const BlockId& block_id = BlockId::FromPB(data_id.block_id());
+      RETURN_NOT_OK_PREPEND(session->GetBlockPiece(
+                                block_id, offset, client_maxlen,
+                                data, total_data_length, error_code),
+                            "Unable to get piece of data block");
+      break;
+    }
+    case DataIdPB::LOG_SEGMENT: {
+      // Fetching a log segment chunk.
+      const uint64_t segment_seqno = data_id.wal_segment_seqno();
+      RETURN_NOT_OK_PREPEND(session->GetLogSegmentPiece(
+                                segment_seqno, offset, client_maxlen,
+                                data, total_data_length, error_code),
+                            "Unable to get piece of log segment");
+      break;
+    }
+    case DataIdPB::ROCKSDB_FILE: {
+      // Fetching a RocksDB file chunk.
+      const string file_name = data_id.file_name();
+      RETURN_NOT_OK_PREPEND(session->GetRocksDBFilePiece(
+                                file_name, offset, client_maxlen,
+                                data, total_data_length, error_code),
+                            "Unable to get piece of RocksDB file");
+      break;
+    }
+    default:
+      *error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
+      return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
+  }
+
+  return Status::OK();
+}
+
 void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
                                            rpc::RpcContext context) {
   const string& session_id = req->session_id();
   // Look up and validate remote bootstrap session.
-  scoped_refptr<RemoteBootstrapSession> session;
+  scoped_refptr<RemoteBootstrapSessionClass> session;
   {
     boost::lock_guard<simple_spinlock> l(sessions_lock_);
     RemoteBootstrapErrorPB::Code app_error;
@@ -245,28 +288,9 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   DataChunkPB* data_chunk = resp->mutable_chunk();
   string* data = data_chunk->mutable_data();
   int64_t total_data_length = 0;
-  if (data_id.type() == DataIdPB::BLOCK) {
-    // Fetching a data block chunk.
-    const BlockId& block_id = BlockId::FromPB(data_id.block_id());
-    RPC_RETURN_NOT_OK(session->GetBlockPiece(block_id, offset, client_maxlen,
-                                             data, &total_data_length, &error_code),
-                      error_code, "Unable to get piece of data block");
-  } else if (data_id.type() == DataIdPB::LOG_SEGMENT) {
-    // Fetching a log segment chunk.
-    uint64_t segment_seqno = data_id.wal_segment_seqno();
-    RPC_RETURN_NOT_OK(session->GetLogSegmentPiece(segment_seqno, offset, client_maxlen,
-                                                  data, &total_data_length, &error_code),
-                      error_code, "Unable to get piece of log segment");
-  } else if (data_id.type() == DataIdPB::ROCKSDB_FILE) {
-    auto file_name = data_id.file_name();
-    RPC_RETURN_NOT_OK(session->GetFilePiece(file_name, offset, client_maxlen, data,
-                                            &total_data_length, &error_code),
-                      error_code, "Unable to get piece of RocksDB file");
-  } else {
-    auto msg = Substitute("Invalid request type $0", data_id.type());
-    RPC_RETURN_APP_ERROR(RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST, msg,
-                         STATUS(InvalidArgument, msg));
-  }
+  RPC_RETURN_NOT_OK(GetDataFilePiece(data_id, session, offset, client_maxlen, data,
+                                     &total_data_length, &error_code),
+                    error_code, "Unable to get piece of data file");
 
   data_chunk->set_total_data_length(total_data_length);
   data_chunk->set_offset(offset);
@@ -313,7 +337,7 @@ void RemoteBootstrapServiceImpl::Shutdown() {
 Status RemoteBootstrapServiceImpl::FindSessionUnlocked(
         const string& session_id,
         RemoteBootstrapErrorPB::Code* app_error,
-        scoped_refptr<RemoteBootstrapSession>* session) const {
+        scoped_refptr<RemoteBootstrapSessionClass>* session) const {
   if (!FindCopy(sessions_, session_id, session)) {
     *app_error = RemoteBootstrapErrorPB::NO_SESSION;
     return STATUS(NotFound,
@@ -325,7 +349,7 @@ Status RemoteBootstrapServiceImpl::FindSessionUnlocked(
 Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
         const DataIdPB& data_id,
         RemoteBootstrapErrorPB::Code* app_error,
-        const scoped_refptr<RemoteBootstrapSession>& session) const {
+        const scoped_refptr<RemoteBootstrapSessionClass>& session) const {
   int num_set = data_id.has_block_id() + data_id.has_wal_segment_seqno() +
       data_id.has_file_name();
   if (PREDICT_FALSE(num_set == 0 || num_set > 1)) {
@@ -356,10 +380,17 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
             data_id.ShortDebugString());
       }
       return Status::OK();
+    case DataIdPB::SNAPSHOT_FILE:
+      return ValidateSnapshotFetchRequestDataId(data_id);
     case DataIdPB::UNKNOWN:
       return STATUS(InvalidArgument, "Type UNKNOWN not supported", data_id.ShortDebugString());
   }
   LOG(FATAL) << "Invalid data id type: " << data_id.type();
+}
+
+Status RemoteBootstrapServiceImpl::ValidateSnapshotFetchRequestDataId(
+    const DataIdPB& data_id) const {
+  return STATUS(InvalidArgument, "Type SNAPSHOT_FILE not supported", data_id.ShortDebugString());
 }
 
 void RemoteBootstrapServiceImpl::ResetSessionExpirationUnlocked(const std::string& session_id) {
@@ -372,7 +403,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
         const std::string& session_id,
         bool session_succeeded,
         RemoteBootstrapErrorPB::Code* app_error) {
-  scoped_refptr<RemoteBootstrapSession> session;
+  scoped_refptr<RemoteBootstrapSessionClass> session;
   RETURN_NOT_OK(FindSessionUnlocked(session_id, app_error, &session));
 
   if (session_succeeded || session->Succeeded()) {

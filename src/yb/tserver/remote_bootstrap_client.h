@@ -90,7 +90,7 @@ class RemoteBootstrapClient {
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC
-  ~RemoteBootstrapClient();
+  virtual ~RemoteBootstrapClient();
 
   // Pass in the existing metadata for a tombstoned tablet, which will be
   // replaced if validation checks pass in Start().
@@ -118,18 +118,18 @@ class RemoteBootstrapClient {
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.
-  CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener);
+  virtual CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener);
 
   // After downloading all files successfully, write out the completed
   // replacement superblock.
-  CHECKED_STATUS Finish();
+  virtual CHECKED_STATUS Finish();
 
   // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
   // request was propagated.
   CHECKED_STATUS VerifyRemoteBootstrapSucceeded(
       const scoped_refptr<consensus::Consensus>& shared_consensus);
 
- private:
+ protected:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles);
 
@@ -219,6 +219,7 @@ class RemoteBootstrapClient {
   // EndRemoteBootstrapSessionRequestPB request.
   bool succeeded_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };
 

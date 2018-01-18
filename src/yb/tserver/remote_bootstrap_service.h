@@ -37,6 +37,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_bootstrap.service.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
@@ -54,7 +55,6 @@ class ReadableLogSegment;
 
 namespace tserver {
 
-class RemoteBootstrapSession;
 class TabletPeerLookupIf;
 
 class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
@@ -81,27 +81,39 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
   virtual void Shutdown() override;
 
+ protected:
+  typedef YB_EDITION_NS_PREFIX RemoteBootstrapSession RemoteBootstrapSessionClass;
+
+  virtual CHECKED_STATUS GetDataFilePiece(
+      const DataIdPB& data_id, const scoped_refptr<RemoteBootstrapSessionClass>& session,
+      uint64_t offset, int64_t client_maxlen,
+      std::string* data, int64_t* total_data_length, RemoteBootstrapErrorPB::Code* error_code);
+
+  virtual CHECKED_STATUS ValidateSnapshotFetchRequestDataId(const DataIdPB& data_id) const;
+
  private:
-  typedef std::unordered_map<std::string, scoped_refptr<RemoteBootstrapSession> > SessionMap;
+  typedef std::unordered_map<std::string, scoped_refptr<RemoteBootstrapSessionClass>> SessionMap;
   typedef std::unordered_map<std::string, MonoTime> MonoTimeMap;
 
   // Look up session in session map.
-  CHECKED_STATUS FindSessionUnlocked(const std::string& session_id,
-                             RemoteBootstrapErrorPB::Code* app_error,
-                             scoped_refptr<RemoteBootstrapSession>* session) const;
+  CHECKED_STATUS FindSessionUnlocked(
+      const std::string& session_id,
+      RemoteBootstrapErrorPB::Code* app_error,
+      scoped_refptr<RemoteBootstrapSessionClass>* session) const;
 
   // Validate the data identifier in a FetchData request.
-  CHECKED_STATUS ValidateFetchRequestDataId(const DataIdPB& data_id,
-                                    RemoteBootstrapErrorPB::Code* app_error,
-                                    const scoped_refptr<RemoteBootstrapSession>& session) const;
+  CHECKED_STATUS ValidateFetchRequestDataId(
+      const DataIdPB& data_id,
+      RemoteBootstrapErrorPB::Code* app_error,
+      const scoped_refptr<RemoteBootstrapSessionClass>& session) const;
 
   // Take note of session activity; Re-update the session timeout deadline.
   void ResetSessionExpirationUnlocked(const std::string& session_id);
 
   // Destroy the specified remote bootstrap session.
   CHECKED_STATUS DoEndRemoteBootstrapSessionUnlocked(const std::string& session_id,
-                                             bool session_suceeded,
-                                             RemoteBootstrapErrorPB::Code* app_error);
+                                                     bool session_suceeded,
+                                                     RemoteBootstrapErrorPB::Code* app_error);
 
   // The timeout thread periodically checks whether sessions are expired and
   // removes them from the map.

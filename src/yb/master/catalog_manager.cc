@@ -227,7 +227,7 @@ using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
 using tserver::LogAndTombstone;
-using tserver::RemoteBootstrapClient;
+using tserver::YB_EDITION_NS_PREFIX RemoteBootstrapClient;
 using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 using yb::util::kBcryptHashSize;

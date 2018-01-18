@@ -211,6 +211,8 @@ class FsManager {
 
   CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);
 
+  CHECKED_STATUS CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
+
   fs::BlockManager* block_manager() {
     return block_manager_.get();
   }

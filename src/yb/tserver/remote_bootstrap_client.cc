@@ -232,6 +232,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   }
   LOG(INFO) << "RocksDB files: " << files;
 
+  string snapshot_files;
+  for (const auto& file : resp.superblock().snapshot_files()) {
+    snapshot_files += "Snapshot: " + file.snapshot_id() + " Name: " + file.name() +
+        " -- size: " + std::to_string(file.size_bytes()) + ", ";
+  }
+  LOG(INFO) << "Snapshot files: " << snapshot_files;
+
   session_id_ = resp.session_id();
   LOG(INFO) << "Began remote bootstrap session " << session_id_;
 

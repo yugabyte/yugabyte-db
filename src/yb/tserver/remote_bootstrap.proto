@@ -156,6 +156,7 @@ message DataIdPB {
     BLOCK = 1;
     LOG_SEGMENT = 2;
     ROCKSDB_FILE = 3;
+    SNAPSHOT_FILE = 4;
   }
 
   // Indicator whether it's a block or log segment id.
@@ -165,6 +166,7 @@ message DataIdPB {
   optional BlockIdPB block_id = 2;          // To fetch a block.
   optional uint64 wal_segment_seqno = 3;    // To fetch a log segment.
   optional string file_name = 4;            // To fetch a RocksDB file.
+  optional bytes snapshot_id = 5;           // To fetch a Snapshot file.
 }
 
 message FetchDataRequestPB {

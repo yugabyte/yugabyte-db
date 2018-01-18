@@ -213,7 +213,6 @@ using tablet::TabletPeer;
 using tablet::TabletPeerClass;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
-using tserver::RemoteBootstrapClient;
 
 // Only called from the background task to ensure it's synchronized
 void TSTabletManager::MaybeFlushTablet() {
@@ -611,8 +610,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   LOG(INFO) << init_msg;
   TRACE(init_msg);
 
-  gscoped_ptr<RemoteBootstrapClient> rb_client(
-      new RemoteBootstrapClient(tablet_id, fs_manager_, server_->messenger(), fs_manager_->uuid()));
+  gscoped_ptr<YB_EDITION_NS_PREFIX RemoteBootstrapClient> rb_client(
+      new YB_EDITION_NS_PREFIX RemoteBootstrapClient(
+          tablet_id, fs_manager_, server_->messenger(), fs_manager_->uuid()));
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {
