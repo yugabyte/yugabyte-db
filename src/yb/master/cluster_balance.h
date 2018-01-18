@@ -28,7 +28,11 @@
 #include "yb/util/random.h"
 #include "yb/master/cluster_balance_util.h"
 
+DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
+DECLARE_int32(load_balancer_max_over_replicated_tablets);
+DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(load_balancer_max_concurrent_moves);
+DECLARE_int32(load_balancer_max_concurrent_removals);
 
 namespace yb {
 namespace master {
@@ -93,33 +97,27 @@ class ClusterLoadBalancer {
     // Whether to limit the number of tablets being spun up on the cluster at any given time.
     bool kAllowLimitStartingTablets = true;
 
-    // Max number of tablets being started across the cluster, if we enable limiting this.
-    int kMaxStartingTablets = 3;
+    // Max number of tablets being remote bootstrapped across the cluster, if we enable limiting
+    // this.
+    int kMaxTabletRemoteBootstraps = FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps;
 
     // Whether to limit the number of tablets that have more peers than configured at any given
     // time.
     bool kAllowLimitOverReplicatedTablets = true;
 
     // Max number of running tablet replicas that are over the configured limit.
-    int kMaxOverReplicatedTablets = 3;
+    int kMaxOverReplicatedTablets = FLAGS_load_balancer_max_over_replicated_tablets;
 
     // Max number of over-replicated tablet peer removals to do in any one run of the load balancer.
-    int kMaxConcurrentRemovals = FLAGS_load_balancer_max_concurrent_moves;
+    int kMaxConcurrentRemovals = FLAGS_load_balancer_max_concurrent_removals;
 
     // Max number of tablet peer replicas to add in any one run of the load balancer.
-    int kMaxConcurrentAdds = FLAGS_load_balancer_max_concurrent_moves;
+    int kMaxConcurrentAdds = FLAGS_load_balancer_max_concurrent_adds;
 
     // Max number of tablet leaders on tablet servers to move in any one run of the load balancer.
     int kMaxConcurrentLeaderMoves = FLAGS_load_balancer_max_concurrent_moves;
 
-    // TODO(bogdan): actually use these...
     // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
-
-    // Max number of tablets being started for any one given TS.
-    int kMaxStartingTabletsPerTS = 1;
-
-    // Max number of tablets being bootstrapped from any one given TS.
-    int kMaxBootstrappingTabletsPerLeaderTS = 1;
   };
 
   // The knobs we use for tweaking the flow of the algorithm.
@@ -150,7 +148,8 @@ class ClusterLoadBalancer {
   // Should skip load-balancing of this table?
   virtual bool SkipLoadBalancing(const TableInfo& table) const;
 
-  // Increment the provided variables by the number of pending tasks that were found.
+  // Increment the provided variables by the number of pending tasks that were found. Do not call
+  // more than once for the same table because it also modifies the internal state.
   virtual void CountPendingTasks(const TableId& table_uuid,
                                  int* pending_add_replica_tasks,
                                  int* pending_remove_replica_tasks,

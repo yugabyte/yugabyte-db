@@ -37,9 +37,28 @@ DEFINE_int32(leader_balance_unresponsive_timeout_ms,
                  "tablet server before considering it unresponsive. Unresponsive servers are "
                  "excluded from leader balancing.");
 
+DEFINE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps,
+             2,
+             "Maximum number of tablets being remote bootstrapped across the cluster.");
+
+DEFINE_int32(load_balancer_max_over_replicated_tablets,
+             1,
+             "Maximum number of running tablet replicas that are allowed to be over the configured "
+             "replication factor.");
+
+DEFINE_int32(load_balancer_max_concurrent_adds,
+             1,
+             "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
+
+DEFINE_int32(load_balancer_max_concurrent_removals,
+             1,
+             "Maximum number of over-replicated tablet peer removals to do in any one run of the "
+             "load balancer.");
+
 DEFINE_int32(load_balancer_max_concurrent_moves,
              1,
-             "Maximum number of concurrent LeaderMoves/Adds/Removals.");
+             "Maximum number of tablet leaders on tablet servers to move in any one run of the "
+             "load balancer.");
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -355,10 +374,11 @@ bool ClusterLoadBalancer::HandleAddIfWrongPlacement(
 bool ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   if (options_.kAllowLimitStartingTablets &&
-      get_total_starting_tablets() >= options_.kMaxStartingTablets) {
+      get_total_starting_tablets() >= options_.kMaxTabletRemoteBootstraps) {
     LOG(INFO) << Substitute(
-        "Cannot add replicas. Currently starting $0 tablets, when our max allowed is $1",
-        get_total_starting_tablets(), options_.kMaxStartingTablets);
+        "Cannot add replicas. Currently remote bootstrapping $0 tablets, "
+        "when our max allowed is $1",
+        get_total_starting_tablets(), options_.kMaxTabletRemoteBootstraps);
     return false;
   }
 
@@ -807,6 +827,7 @@ void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,
   *pending_add_replica_tasks += state_->pending_add_replica_tasks_[table_uuid].size();
   *pending_remove_replica_tasks += state_->pending_remove_replica_tasks_[table_uuid].size();
   *pending_stepdown_leader_tasks += state_->pending_stepdown_leader_tasks_[table_uuid].size();
+  state_->total_starting_ += *pending_add_replica_tasks;
 }
 
 void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,

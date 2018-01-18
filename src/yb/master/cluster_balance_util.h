@@ -36,8 +36,6 @@ DECLARE_int32(leader_balance_threshold);
 
 DECLARE_int32(leader_balance_unresponsive_timeout_ms);
 
-DECLARE_int32(load_balancer_max_concurrent_moves);
-
 namespace yb {
 namespace master {
 
