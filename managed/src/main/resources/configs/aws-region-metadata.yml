@@ -14,6 +14,11 @@ us-east-1:
   latitude: 37.478397
   longitude: -76.453077
   ybImage: ami-7b03b46d
+us-east-2:
+  name: US East (Ohio)
+  latitude: 40.367474
+  longitude: -82.996216
+  ybImage: ami-e0eac385
 eu-west-1:
   name: EU (Ireland)
   latitude: 53.412910
