@@ -176,10 +176,11 @@ def parallel_run_test(test_descriptor_str):
     def run_test():
         start_time = time.time()
         exit_code = os.system(
-            ("bash -c 'set -o pipefail; \"{}\" {} 2>&1 | tee \"{}\"'").format(
+            "bash -c 'set -o pipefail; \"{}\" {} 2>&1 | tee \"{}\"; {}'".format(
                     global_conf.get_run_test_script_path(),
                     test_descriptor.args_for_run_test,
-                    test_descriptor.error_output_path)) >> 8
+                    test_descriptor.error_output_path,
+                    'exit ${PIPESTATUS[0]}')) >> 8
         # The ">> 8" is to get the exit code returned by os.system() in the high 8 bits of the
         # result.
         elapsed_time_sec = time.time() - start_time
@@ -403,17 +404,14 @@ def collect_cpp_tests(max_tests, cpp_test_program_filter, cpp_test_program_re_st
              'cd "{}" && YB_LIST_CTEST_TESTS_ONLY=1 ctest -j8 --verbose'.format(
                 global_conf.build_root)])
     test_programs = []
-    test_descriptor_strs = []
 
     for line in ctest_cmd_result.stdout.split("\n"):
         re_match = CTEST_TEST_PROGRAM_RE.match(line)
         if re_match:
             rel_ctest_prog_path = os.path.relpath(re_match.group(1), global_conf.build_root)
-            if is_one_shot_test(rel_ctest_prog_path):
-                test_descriptor_strs.append(rel_ctest_prog_path)
-            else:
-                test_programs.append(rel_ctest_prog_path)
+            test_programs.append(rel_ctest_prog_path)
 
+    test_programs = sorted(set(test_programs))
     elapsed_time_sec = time.time() - start_time_sec
     logging.info("Collected %d test programs in %.2f sec" % (
         len(test_programs), elapsed_time_sec))
@@ -456,13 +454,32 @@ def collect_cpp_tests(max_tests, cpp_test_program_filter, cpp_test_program_re_st
         logging.info("Found no test programs")
         return []
 
-    logging.info("Collecting gtest tests for {} test programs".format(len(test_programs)))
+    fine_granularity_gtest_programs = []
+    one_shot_test_programs = []
+    for test_program in test_programs:
+        if is_one_shot_test(test_program):
+            one_shot_test_programs.append(test_program)
+        else:
+            fine_granularity_gtest_programs.append(test_program)
+
+    logging.info(("Found {} gtest test programs where tests will be run separately, "
+                  "{} test programs to be run on one shot").format(
+                    len(fine_granularity_gtest_programs),
+                    len(one_shot_test_programs)))
+
+    test_programs = fine_granularity_gtest_programs
+    logging.info(
+        "Collecting gtest tests for {} test programs where tests will be run separately".format(
+            len(test_programs)))
 
     start_time_sec = time.time()
-    if len(test_programs) <= 3:
-        app_name_details = ['test programs: [{}]'.format(', '.join(test_programs))]
+
+    all_test_programs = fine_granularity_gtest_programs + one_shot_test_programs
+    if len(all_test_programs) <= 5:
+        app_name_details = ['test programs: [{}]'.format(', '.join(all_test_programs))]
     else:
-        app_name_details = ['{} test programs'.format(len(test_programs))]
+        app_name_details = ['{} test programs'.format(len(all_test_programs))]
+
     init_spark_context(app_name_details)
     set_global_conf_for_spark_jobs()
 
@@ -473,7 +490,7 @@ def collect_cpp_tests(max_tests, cpp_test_program_filter, cpp_test_program_re_st
             test_programs, numSlices=num_slices).map(parallel_list_test_descriptors).collect()
     )
     elapsed_time_sec = time.time() - start_time_sec
-    test_descriptor_strs += [
+    test_descriptor_strs = one_shot_test_programs + [
         test_descriptor_str
         for test_descriptor_str_list in all_test_descriptor_lists
         for test_descriptor_str in test_descriptor_str_list]

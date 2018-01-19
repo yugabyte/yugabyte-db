@@ -87,10 +87,8 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     -DskipAssembly \
     -Dmaven.javadoc.skip \
     -X \
-    surefire:test \
-    2>&1 | tee "$YB_TEST_LOG_ROOT_DIR/java/${module_name}__${test_class}.log"
-  # Ignore the exit code from tee, only use the one from Maven.
-  exit ${PIPESTATUS[0]}
+    surefire:test
+  exit
 fi
 
 TEST_PATH=${1:-}

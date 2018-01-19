@@ -995,6 +995,11 @@ def main():
                                      (['yb-{master,tserver} binaries changed']
                                       if yb_master_or_tserver_changed else [])))
 
+        if run_cpp_tests and not test_basename_list:
+            logging.info('There are no C++ test programs affected by the changes, '
+                         'will skip running C++ tests.')
+            run_cpp_tests = False
+
         test_conf = dict(
             run_cpp_tests=run_cpp_tests,
             run_java_tests=run_java_tests,

@@ -1492,8 +1492,16 @@ detect_os
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
 set_yb_src_root "$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )"
 
+if [[ $YB_SRC_ROOT == */ ]]; then
+  fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
+fi
+
 # Parent directory for build directories of all build types.
-YB_BUILD_PARENT_DIR=$YB_SRC_ROOT/build
+if [[ ${YB_USE_EXTERNAL_BUILD_ROOT:-} == "1" ]]; then
+  YB_BUILD_PARENT_DIR=${YB_SRC_ROOT}__build
+else
+  YB_BUILD_PARENT_DIR=$YB_SRC_ROOT/build
+fi
 
 if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
   fatal "Could not determine YB source directory from '$BASH_SOURCE':" \

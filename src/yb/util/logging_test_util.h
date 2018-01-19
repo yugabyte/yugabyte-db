@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#ifndef YB_LOGGING_TEST_UTIL_H
-#define YB_LOGGING_TEST_UTIL_H
+#ifndef YB_UTIL_LOGGING_TEST_UTIL_H
+#define YB_UTIL_LOGGING_TEST_UTIL_H
 
 #include <glog/logging.h>
 #include <string>
@@ -72,4 +72,4 @@ struct ScopedRegisterSink {
 
 } // namespace yb
 
-#endif
+#endif  // YB_UTIL_LOGGING_TEST_UTIL_H
