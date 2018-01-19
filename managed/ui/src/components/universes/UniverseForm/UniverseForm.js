@@ -40,6 +40,11 @@ const initialState = {
   gettingSuggestedSpotPrice: false
 };
 
+const DEFAULT_INSTANCE_TYPE_MAP = {
+  'aws': 'm3.medium',
+  'gcp': 'n1-standard-1'
+};
+
 class UniverseForm extends Component {
   static propTypes = {
     type: PropTypes.oneOf(['Edit', 'Create']).isRequired
@@ -453,7 +458,7 @@ class UniverseForm extends Component {
         return {name: tserverFlag.name, value: tserverFlag.value};
       });
     });
-    
+
     return submitPayload;
   }
 
@@ -481,11 +486,16 @@ class UniverseForm extends Component {
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
       && isNonEmptyArray(nextProps.cloud.instanceTypes.data) && this.state.providerSelected
       && nextProps.type !== "Edit") {
-      let instanceTypeSelected = instanceTypes.data[0].instanceTypeCode;
-      if (this.getCurrentProvider(this.state.providerSelected).code === "aws") {
-        instanceTypeSelected = "m3.medium";
-      } else if (this.getCurrentProvider(this.state.providerSelected).code === "gcp") {
-        instanceTypeSelected = "n1-standard-1";
+      let instanceTypeSelected = null;
+      const currentProviderCode = this.getCurrentProvider(this.state.providerSelected).code;
+      instanceTypeSelected = DEFAULT_INSTANCE_TYPE_MAP[currentProviderCode];
+      // If we have the default instance type in the cloud instance types then we
+      // use it, otherwise we pick the first one in the list and use it.
+      const hasInstanceType = instanceTypes.data.find( (it) => {
+        return it.providerCode === currentProviderCode && it.instanceTypeCode === instanceTypeSelected;
+      });
+      if (!hasInstanceType) {
+        instanceTypeSelected = instanceTypes.data[0].instanceTypeCode;
       }
       this.setState({instanceTypeSelected: instanceTypeSelected});
       this.setDeviceInfo(instanceTypeSelected, instanceTypes.data);
