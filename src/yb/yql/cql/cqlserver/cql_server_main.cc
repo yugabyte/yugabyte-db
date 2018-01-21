@@ -22,6 +22,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
+#include "yb/util/main_util.h"
 
 using yb::cqlserver::CQLServer;
 
@@ -47,8 +48,7 @@ static int CQLServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  // TODO: update this to a valid server type if we ever use this!
-  InitYBOrDie("");
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("cqlserver"));
   InitGoogleLoggingSafe(argv[0]);
 
   CQLServerOptions cql_server_options;
@@ -59,7 +59,7 @@ static int CQLServerMain(int argc, char** argv) {
   boost::asio::io_service io;
   CQLServer server(cql_server_options, &io, nullptr);
   LOG(INFO) << "Starting CQL server...";
-  CHECK_OK(server.Start());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
   LOG(INFO) << "CQL server successfully started.";
 
   // Should continue running forever, unless there is some error.

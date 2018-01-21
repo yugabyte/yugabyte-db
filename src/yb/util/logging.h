@@ -15,6 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
 // The following only applies to changes made to this file as part of YugaByte development.
 //
 // Portions Copyright (c) YugaByte, Inc.
@@ -28,18 +40,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+
 #ifndef YB_UTIL_LOGGING_H
 #define YB_UTIL_LOGGING_H
 
@@ -162,9 +163,6 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 #define LOG_IF_EVERY_N(severity, condition, n) \
   GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_IF_EVERY_N is deprecated. Please use YB_LOG_IF_EVERY_N.")
 
-
-
-
 namespace yb {
 
 // glog doesn't allow multiple invocations of InitGoogleLogging. This method conditionally
@@ -179,6 +177,11 @@ void InitGoogleLoggingSafe(const char* arg);
 //
 // These properties make it attractive for us in libraries.
 void InitGoogleLoggingSafeBasic(const char* arg);
+
+// Check if Google Logging has been initialized. Can be used e.g. to determine whether to print
+// something to stderr or log it. The implementation takes the logging mutex, so should not be used
+// in hot codepaths.
+bool IsLoggingInitialized();
 
 // Demotes stderr logging to ERROR or higher and registers 'cb' as the
 // recipient for all log events.

@@ -46,6 +46,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
+#include "yb/util/main_util.h"
 
 using yb::redisserver::RedisServer;
 using yb::redisserver::RedisServerOptions;
@@ -85,15 +86,15 @@ static int TabletServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  InitYBOrDie(TabletServerOptions::kServerType);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType));
   InitGoogleLoggingSafe(argv[0]);
 
   TabletServerOptions tablet_server_options;
   YB_EDITION_NS_PREFIX TabletServer server(tablet_server_options);
   LOG(INFO) << "Initializing tablet server...";
-  CHECK_OK(server.Init());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
   LOG(INFO) << "Starting tablet server...";
-  CHECK_OK(server.Start());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
   LOG(INFO) << "Tablet server successfully started.";
 
   std::unique_ptr<CallHome> call_home;
@@ -115,7 +116,7 @@ static int TabletServerMain(int argc, char** argv) {
              : tablet_server_options.dump_info_path + "-redis");
     redis_server.reset(new RedisServer(redis_server_options, &server));
     LOG(INFO) << "Starting redis server...";
-    CHECK_OK(redis_server->Start());
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(redis_server->Start());
     LOG(INFO) << "Redis server successfully started.";
   }
 
@@ -134,7 +135,7 @@ static int TabletServerMain(int argc, char** argv) {
     boost::asio::io_service io;
     cql_server.reset(new CQLServer(cql_server_options, &io, &server));
     LOG(INFO) << "Starting CQL server...";
-    CHECK_OK(cql_server->Start());
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(cql_server->Start());
     LOG(INFO) << "CQL server successfully started.";
 
     // Should run forever unless there are some errors.

@@ -20,6 +20,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
+#include "yb/util/main_util.h"
 
 using yb::redisserver::RedisServer;
 
@@ -37,8 +38,7 @@ static int RedisServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  // TODO: update this to a valid server type if we ever use this!
-  InitYBOrDie("");
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("redisserver"));
   InitGoogleLoggingSafe(argv[0]);
 
   RedisServerOptions opts;
@@ -46,7 +46,7 @@ static int RedisServerMain(int argc, char** argv) {
   opts.master_addresses_flag = FLAGS_master_addresses;
   RedisServer server(opts, nullptr /* tserver */);
   LOG(INFO) << "Starting redis server...";
-  CHECK_OK(server.Start());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
 
   LOG(INFO) << "Redis server successfully started.";
   while (true) {

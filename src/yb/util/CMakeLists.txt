@@ -211,6 +211,7 @@ set(UTIL_SRCS
   port_picker.cc
   uuid.cc
   fast_varint.cc
+  main_util.cc
   )
 
 if(NOT APPLE)

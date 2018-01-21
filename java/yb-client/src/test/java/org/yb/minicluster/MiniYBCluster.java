@@ -176,6 +176,14 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
     commonFlags.add("--memory_limit_hard_bytes=" + DAEMON_MEMORY_LIMIT_HARD_BYTES);
+
+    // YB_TEST_INVOCATION_ID is a special environment variable that we use to force-kill all
+    // processes even if MiniYBCluster fails to kill them.
+    String testInvocationId = System.getenv("YB_TEST_INVOCATION_ID");
+    if (testInvocationId != null) {
+      commonFlags.add("--metric_node_name=" + testInvocationId);
+    }
+
     return commonFlags;
   }
 

@@ -168,17 +168,19 @@ Status VersionInfo::ReadVersionDataFromFile() {
   return Status::OK();
 }
 
-void VersionInfo::Init() {
-  std::call_once(init_once_, InitOrDie);
+Status VersionInfo::Init() {
+  Status status;
+  std::call_once(init_once_, InitInternal, &status);
+  return status;
 }
 
 VersionInfoPB* VersionInfo::GetVersionData() {
-  std::call_once(init_once_, InitOrDie);
+  CHECK_OK(Init());
   return version_data_.load(std::memory_order_acquire);
 }
 
-void VersionInfo::InitOrDie() {
-  CHECK_OK(ReadVersionDataFromFile());
+void VersionInfo::InitInternal(Status* status_dest) {
+  *status_dest = ReadVersionDataFromFile();
 }
 
 } // namespace yb

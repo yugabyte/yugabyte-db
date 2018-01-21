@@ -40,6 +40,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
+#include "yb/util/main_util.h"
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -70,16 +71,16 @@ static int MasterMain(int argc, char** argv) {
     return 1;
   }
 
-  InitYBOrDie(MasterOptions::kServerType);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType));
   InitGoogleLoggingSafe(argv[0]);
 
   MasterOptions opts;
   YB_EDITION_NS_PREFIX Master server(opts);
   LOG(INFO) << "Initializing master server...";
-  CHECK_OK(server.Init());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
 
   LOG(INFO) << "Starting Master server...";
-  CHECK_OK(server.Start());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Start());
 
   LOG(INFO) << "Master server successfully started.";
 
@@ -92,7 +93,6 @@ static int MasterMain(int argc, char** argv) {
   while (true) {
     SleepFor(MonoDelta::FromSeconds(60));
   }
-
   return 0;
 }
 

@@ -59,6 +59,11 @@ fi
 # Create group-writable files by default. Useful in an NFS environment.
 umask 0002
 
+# This will be part of the command line of all mini-cluster daemons, so we can later kill any
+# of them that remain.
+timestamp=$( get_timestamp_for_filenames )
+export YB_TEST_INVOCATION_ID=${timestamp}_${RANDOM}_${RANDOM}_$$
+
 if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   # This is a Java test.
   # Arguments: <maven_module_name> <package_and_class>
@@ -72,7 +77,10 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   set_mvn_parameters
   set_asan_tsan_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
-  surefire_rel_tmp_dir=surefire$(date +%Y-%m-%d_%H_%M_%S)_${RANDOM}_$$
+  # This can't include $YB_TEST_INVOCATION_ID -- previously, when we did that, it looked like some
+  # Maven processes were killed, although it is not clear why, because they should already complete
+  # by the time we start looking for $YB_TEST_INVOCATION_ID in test names and killing processes.
+  surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
   cd "$YB_SRC_ROOT/java"
   set -x +e
@@ -88,7 +96,16 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     -Dmaven.javadoc.skip \
     -X \
     surefire:test
-  exit
+
+  exit_code=$?
+  for pid in $( pgrep -f "$YB_TEST_INVOCATION_ID" ); do
+    log "Found pid $pid from this test suite (YB_TEST_INVOCATION_ID=$YB_TEST_INVOCATION_ID)," \
+        "killing it with SIGKILL and setting exit code to 1."
+    ps -p "$pid" -f
+    kill -9 "$pid"
+    exit_code=1
+  done
+  exit $exit_code
 fi
 
 TEST_PATH=${1:-}

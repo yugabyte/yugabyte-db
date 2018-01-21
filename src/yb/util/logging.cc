@@ -67,7 +67,7 @@ DEFINE_string(log_filename, "",
     "full path is <log_dir>/<log_filename>.[INFO|WARN|ERROR|FATAL]");
 TAG_FLAG(log_filename, stable);
 
-#define PROJ_NAME "yb"
+const char* kProjName = "yb";
 
 bool logging_initialized = false;
 
@@ -188,7 +188,7 @@ void InitGoogleLoggingSafe(const char* arg) {
     // Verify that a log file can be created in log_dir by creating a tmp file.
     stringstream ss;
     random_generator uuid_generator;
-    ss << FLAGS_log_dir << "/" << PROJ_NAME "_test_log." << uuid_generator();
+    ss << FLAGS_log_dir << "/" << kProjName << "_test_log." << uuid_generator();
     const string file_name = ss.str();
     ofstream test_file(file_name.c_str());
     if (!test_file.is_open()) {
@@ -236,6 +236,11 @@ void InitGoogleLoggingSafeBasic(const char* arg) {
   // Sink logging: off.
   initial_stderr_severity = google::INFO;
   logging_initialized = true;
+}
+
+bool IsLoggingInitialized() {
+  SpinLockHolder l(&logging_mutex);
+  return logging_initialized;
 }
 
 void RegisterLoggingCallback(const LoggingCallback& cb) {

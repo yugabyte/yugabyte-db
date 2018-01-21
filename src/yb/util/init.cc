@@ -80,8 +80,14 @@ Status SetupLogDir(const std::string& server_type) {
     std::vector<std::string> data_paths = strings::Split(
         FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
     // Need at least one entry as we're picking the first one to drop the logs into.
-    CHECK(data_paths.size() >= 1) << "Flag fs_data_dirs needs at least 1 path in csv format!";
-    bool created;
+    if (data_paths.size() < 1) {
+      return STATUS(
+          InvalidArgument,
+          "Cannot initialize logging. Flag fs_data_dirs (a comma-separated list of data "
+          "directories) must contain at least one data directory.");
+    }
+
+    bool created = false;
     std::string out_dir;
     SetupRootDir(Env::Default(), data_paths[0], server_type, &out_dir, &created);
     // Create the actual log dir.
@@ -95,10 +101,10 @@ Status SetupLogDir(const std::string& server_type) {
   return Status::OK();
 }
 
-void InitYBOrDie(const std::string& server_type) {
-  CHECK_OK(CheckCPUFlags());
-  CHECK_OK(SetupLogDir(server_type));
-  VersionInfo::Init();
+Status InitYB(const std::string &server_type) {
+  RETURN_NOT_OK(CheckCPUFlags());
+  RETURN_NOT_OK(SetupLogDir(server_type));
+  return VersionInfo::Init();
 }
 
 } // namespace yb

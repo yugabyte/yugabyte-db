@@ -324,7 +324,9 @@ ADD_YB_TEST(utilities/transactions/optimistic_transaction_test)
 ADD_YB_TEST(utilities/ttl/ttl_test)
 ADD_YB_TEST(utilities/write_batch_with_index/write_batch_with_index_test)
 
-target_link_libraries(sst_dump_test rocksdb_tools)
+if(NOT NO_TESTS)
+  target_link_libraries(sst_dump_test rocksdb_tools)
+endif()
 
 if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
 ADD_YB_TEST(db/auto_roll_logger_test)
@@ -364,5 +366,8 @@ ADD_YB_TEST(utilities/checkpoint/checkpoint_test)
 ADD_YB_TEST(utilities/memory/memory_test)
 ADD_YB_TEST(utilities/transactions/transaction_test)
 
-target_link_libraries(reduce_levels_test rocksdb_tools)
+if(NOT NO_TESTS)
+  target_link_libraries(reduce_levels_test rocksdb_tools)
+endif()
+
 endif()

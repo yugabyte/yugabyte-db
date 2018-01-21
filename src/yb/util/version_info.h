@@ -56,15 +56,18 @@ class VersionInfo {
   static void GetVersionInfoPB(VersionInfoPB* pb);
 
   // Init version data.
-  static void Init();
+  static CHECKED_STATUS Init();
+
  private:
   // Get the git hash for this build. If the working directory was dirty when
   // YB was built, also appends "-dirty".
   static std::string GetGitHash();
 
   static VersionInfoPB* GetVersionData();
-  static Status ReadVersionDataFromFile();
-  static void InitOrDie();
+  static CHECKED_STATUS ReadVersionDataFromFile();
+
+  // Performs the initialization and stores its status into the given variable.
+  static void InitInternal(Status* status);
 
   // Use this for lazy initialization.
   static std::once_flag init_once_;

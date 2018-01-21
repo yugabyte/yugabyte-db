@@ -41,14 +41,14 @@ extern const char* kTopLevelDataDirName;
 
 // Return a NotSupported Status if the current CPU does not support the CPU flags
 // required for YB.
-Status CheckCPUFlags();
+CHECKED_STATUS CheckCPUFlags();
 
 // Returns an IllegalState Status if we cannot create the dir structure for logging.
-Status SetupLogDir(const std::string& server_type);
+CHECKED_STATUS SetupLogDir(const std::string& server_type);
 
 // Initialize YB, checking that the platform we are running on is supported, etc.
 // Issues a FATAL log message if we fail to init.
-void InitYBOrDie(const std::string& server_type);
+CHECKED_STATUS InitYB(const std::string &server_type);
 
 } // namespace yb
 #endif /* YB_UTIL_INIT_H */
