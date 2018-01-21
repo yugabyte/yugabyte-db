@@ -466,8 +466,8 @@ the result of that to determine if the test succeeded or failed. So these:
 
 are similar to these:
 
-    SELECT ok(   ultimate_answer() =  42, 'Meaning of Life' );
-    SELECT isnt( foo()             <> '', 'Got some foo'    );
+    SELECT ok( ultimate_answer() =  42, 'Meaning of Life' );
+    SELECT ok( foo() <> '', 'Got some foo' );
 
 (Mnemonic: "This is that." "This isn't that.")
 
