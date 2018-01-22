@@ -182,6 +182,8 @@ void ResetTableProperties(TableProperties* tp) {
   tp->raw_value_size = 0;
   tp->num_data_blocks = 0;
   tp->num_entries = 0;
+  tp->num_filter_blocks = 0;
+  tp->num_data_index_blocks = 0;
 }
 
 void ParseTablePropertiesString(std::string tp_string, TableProperties* tp) {
@@ -192,6 +194,7 @@ void ParseTablePropertiesString(std::string tp_string, TableProperties* tp) {
 
   sscanf(tp_string.c_str(),
          "# data blocks %" SCNu64
+         " # data index blocks %" SCNu64
          " # filter blocks %" SCNu64
          " # entries %" SCNu64
          " raw key size %" SCNu64
@@ -199,26 +202,23 @@ void ParseTablePropertiesString(std::string tp_string, TableProperties* tp) {
          " raw value size %" SCNu64
          " raw average value size %lf "
          " data blocks total size %" SCNu64
-         " data index block size %" SCNu64
+         " data index size %" SCNu64
          " filter blocks total size %" SCNu64
          " filter index block size %" SCNu64,
-         &tp->num_data_blocks, &tp->num_filter_blocks, &tp->num_entries, &tp->raw_key_size,
-         &dummy_double, &tp->raw_value_size, &dummy_double, &tp->data_size, &tp->data_index_size,
-         &tp->filter_size, &tp->filter_index_size);
+         &tp->num_data_blocks, &tp->num_data_index_blocks, &tp->num_filter_blocks, &tp->num_entries,
+         &tp->raw_key_size, &dummy_double, &tp->raw_value_size, &dummy_double, &tp->data_size,
+         &tp->data_index_size, &tp->filter_size, &tp->filter_index_size);
 }
 
-void VerifySimilar(uint64_t a, uint64_t b, double bias) {
-  ASSERT_EQ(a == 0U, b == 0U);
+void VerifySimilar(uint64_t a, uint64_t b, double bias, const std::string& label) {
+  ASSERT_EQ(a == 0U, b == 0U) << " " << label << ": " << a << " vs " << b;
   if (a == 0) {
     return;
   }
-  double dbl_a = static_cast<double>(a);
-  double dbl_b = static_cast<double>(b);
-  if (dbl_a > dbl_b) {
-    ASSERT_LT(static_cast<double>(dbl_a - dbl_b) / (dbl_a + dbl_b), bias);
-  } else {
-    ASSERT_LT(static_cast<double>(dbl_b - dbl_a) / (dbl_a + dbl_b), bias);
-  }
+  const double dbl_a = static_cast<double>(a);
+  const double dbl_b = static_cast<double>(b);
+  ASSERT_LT(fabs(dbl_a - dbl_b) / (dbl_a + dbl_b), bias)
+      << " " << label << ": " << a << " vs " << b;
 }
 
 void VerifyTableProperties(const TableProperties& base_tp,
@@ -227,12 +227,14 @@ void VerifyTableProperties(const TableProperties& base_tp,
                            double index_size_bias = 0.1,
                            double data_size_bias = 0.1,
                            double num_data_blocks_bias = 0.05) {
-  VerifySimilar(base_tp.data_size, new_tp.data_size, data_size_bias);
-  VerifySimilar(base_tp.data_index_size, new_tp.data_index_size, index_size_bias);
-  VerifySimilar(base_tp.filter_size, new_tp.filter_size, filter_size_bias);
-  VerifySimilar(base_tp.filter_index_size, new_tp.filter_index_size, index_size_bias);
-  VerifySimilar(base_tp.num_data_blocks, new_tp.num_data_blocks,
-                num_data_blocks_bias);
+  VerifySimilar(base_tp.data_size, new_tp.data_size, data_size_bias, "data_size");
+  VerifySimilar(
+      base_tp.data_index_size, new_tp.data_index_size, index_size_bias, "data_index_size");
+  VerifySimilar(base_tp.filter_size, new_tp.filter_size, filter_size_bias, "filter_size");
+  VerifySimilar(
+      base_tp.filter_index_size, new_tp.filter_index_size, index_size_bias, "filter_index_size");
+  VerifySimilar(
+      base_tp.num_data_blocks, new_tp.num_data_blocks, num_data_blocks_bias, "num_data_blocks");
   ASSERT_EQ(base_tp.raw_key_size, new_tp.raw_key_size);
   ASSERT_EQ(base_tp.raw_value_size, new_tp.raw_value_size);
   ASSERT_EQ(base_tp.num_entries, new_tp.num_entries);
@@ -244,7 +246,7 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
                                 const int kBloomBitsPerKey,
                                 const size_t kBlockSize) {
   const int kKeyCount = kTableCount * kKeysPerTable;
-  const int kAvgSuccessorSize = kKeySize / 5;
+  const int kAvgSuccessorSize = kKeySize / 6;
   const int kEncodingSavePerKey = kKeySize / 4;
   expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size = kKeyCount * kValueSize;
@@ -452,6 +454,8 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
       sum_tp.raw_value_size += level_tps[level].raw_value_size;
       sum_tp.num_data_blocks += level_tps[level].num_data_blocks;
       sum_tp.num_entries += level_tps[level].num_entries;
+      sum_tp.num_filter_blocks += level_tps[level].num_filter_blocks;
+      sum_tp.num_data_index_blocks += level_tps[level].num_data_index_blocks;
     }
     db_->GetProperty(DB::Properties::kAggregatedTableProperties, &tp_string);
     ParseTablePropertiesString(tp_string, &tp);
@@ -464,6 +468,7 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
     ASSERT_EQ(sum_tp.num_data_blocks, tp.num_data_blocks);
     ASSERT_EQ(sum_tp.num_entries, tp.num_entries);
     ASSERT_EQ(sum_tp.num_filter_blocks, tp.num_filter_blocks);
+    ASSERT_EQ(sum_tp.num_data_index_blocks, tp.num_data_index_blocks);
     if (table > 3) {
       GetExpectedTableProperties(&expected_tp, kKeySize, kValueSize,
                                  kKeysPerTable, table, kBloomBitsPerKey,

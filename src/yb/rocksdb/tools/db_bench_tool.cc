@@ -796,8 +796,11 @@ DEFINE_bool(use_plain_table, false, "if use plain table "
             "instead of block-based table format");
 DEFINE_bool(use_cuckoo_table, false, "if use cuckoo table format");
 DEFINE_double(cuckoo_hash_ratio, 0.9, "Hash ratio for Cuckoo SST table.");
+DEFINE_bool(use_binary_search, false, "if use kBinarySearch "
+            "instead of kMultiLevelBinarySearch. "
+            "This is valid if only we use BlockTable");
 DEFINE_bool(use_hash_search, false, "if use kHashSearch "
-            "instead of kBinarySearch. "
+            "instead of kMultiLevelBinarySearch. "
             "This is valid if only we use BlockTable");
 DEFINE_bool(use_block_based_filter, false, "if use kBlockBasedFilter "
             "instead of kFullFilter for filter block. "
@@ -2515,9 +2518,11 @@ class Benchmark {
               "prefix_size not assigned when enable use_hash_search \n");
           exit(1);
         }
-        block_based_options.index_type = BlockBasedTableOptions::kHashSearch;
+        block_based_options.index_type = IndexType::kHashSearch;
+      } else if (FLAGS_use_binary_search) {
+        block_based_options.index_type = IndexType::kBinarySearch;
       } else {
-        block_based_options.index_type = BlockBasedTableOptions::kBinarySearch;
+        block_based_options.index_type = IndexType::kMultiLevelBinarySearch;
       }
       if (cache_ == nullptr) {
         block_based_options.no_block_cache = true;

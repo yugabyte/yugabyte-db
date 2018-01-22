@@ -110,6 +110,7 @@ PlainTableBuilder::PlainTableBuilder(
   properties_.num_data_blocks = 1;
   // Fill it later if store_index_in_file_ == true
   properties_.data_index_size = 0;
+  properties_.num_data_index_blocks = 0;
   properties_.filter_index_size = 0;
   properties_.num_filter_blocks = 0;
   properties_.filter_size = 0;
@@ -231,6 +232,7 @@ Status PlainTableBuilder::Finish() {
     finish_result = index_builder_->Finish();
 
     properties_.data_index_size = finish_result.size();
+    properties_.num_data_index_blocks = 1;
     s = WriteBlock(finish_result, file_, &offset_, &index_block_handle);
 
     if (!s.ok()) {

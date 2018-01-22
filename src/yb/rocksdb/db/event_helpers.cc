@@ -69,6 +69,7 @@ void EventHelpers::LogAndNotifyTableFileCreation(
             << "num_data_blocks" << info.table_properties.num_data_blocks
             << "num_entries" << info.table_properties.num_entries
             << "num_filter_blocks" << info.table_properties.num_filter_blocks
+            << "num_data_index_blocks" << info.table_properties.num_data_index_blocks
             << "filter_policy_name" <<
                 info.table_properties.filter_policy_name;
 

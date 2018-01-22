@@ -37,6 +37,7 @@
 #include "yb/rocksdb/table/table_properties_internal.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
 
@@ -78,6 +79,8 @@ enum class PrefetchFilter {
   YES,
   NO
 };
+
+YB_DEFINE_ENUM(BlockType, (kData)(kIndex));
 
 // BloomFilterAwareFileFilter should only be used when scanning within the same hashed components of
 // the key and it should be used together with DocDbAwareFilterPolicy which only takes into account
@@ -178,7 +181,8 @@ class BlockBasedTable : public TableReader {
 
   // input_iter: if it is not null, update this one and return it as Iterator
   InternalIterator* NewDataBlockIterator(
-      const ReadOptions& ro, const Slice& index_value, BlockIter* input_iter = nullptr);
+      const ReadOptions& ro, const Slice& index_value, BlockType block_type,
+      BlockIter* input_iter = nullptr);
 
   const ImmutableCFOptions& ioptions();
 
@@ -197,6 +201,7 @@ class BlockBasedTable : public TableReader {
   Rep* rep_;
 
   class BlockEntryIteratorState;
+  class IndexIteratorHolder;
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
   Status GetFixedSizeFilterBlockHandle(const Slice& filter_key,
@@ -220,7 +225,10 @@ class BlockBasedTable : public TableReader {
 
   // Get the iterator from the index reader.
   // If input_iter is not set, return new Iterator
-  // If input_iter is set, update it and return it as Iterator
+  // If input_iter is set, update it and return:
+  //  - newly created data index iterator in case it was created (if we use multi-level data index,
+  //    input_iter is an iterator of the top level index, but not the whole index iterator).
+  //  - nullptr if input_iter is a data index iterator and no new iterators were created.
   //
   // Note: ErrorIterator with Status::Incomplete shall be returned if all the
   // following conditions are met:
@@ -238,8 +246,9 @@ class BlockBasedTable : public TableReader {
   static Status GetDataBlockFromCache(
       const Slice& block_cache_key, const Slice& compressed_block_cache_key,
       Cache* block_cache, Cache* block_cache_compressed, Statistics* statistics,
-      const ReadOptions& read_options,
-      BlockBasedTable::CachableEntry<Block>* block, uint32_t format_version);
+      const ReadOptions& read_options, BlockBasedTable::CachableEntry<Block>* block,
+      uint32_t format_version, BlockType block_type);
+
   // Put a raw block (maybe compressed) to the corresponding block caches.
   // This method will perform decompression against raw_block if needed and then
   // populate the block caches.
@@ -288,9 +297,9 @@ class BlockBasedTable : public TableReader {
   // instance. Used for both data and metadata files.
   static void SetupCacheKeyPrefix(Rep* rep, FileReaderWithCachePrefix* reader_with_cache_prefix);
 
-  explicit BlockBasedTable(Rep* rep)
-      : rep_(rep) {
-  }
+  FileReaderWithCachePrefix* GetBlockReader(BlockType block_type);
+
+  explicit BlockBasedTable(Rep* rep) : rep_(rep) {}
 
   // Helper functions for DumpTable()
   Status DumpIndexBlock(WritableFile* out_file);

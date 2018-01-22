@@ -16,8 +16,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_TABLE_PROPERTIES_H
-#define ROCKSDB_INCLUDE_ROCKSDB_TABLE_PROPERTIES_H
+#ifndef YB_ROCKSDB_TABLE_PROPERTIES_H
+#define YB_ROCKSDB_TABLE_PROPERTIES_H
 
 #pragma once
 
@@ -68,6 +68,8 @@ struct TableProperties {
   uint64_t num_entries = 0;
   // the number of filter blocks
   uint64_t num_filter_blocks = 0;
+  // the number of data index blocks
+  uint64_t num_data_index_blocks = 0;
   // format version, reserved for backward compatibility
   uint64_t format_version = 0;
   // If 0, key is variable length. Otherwise number of bytes for each key.
@@ -102,6 +104,7 @@ struct TablePropertiesNames {
   static const std::string kNumDataBlocks;
   static const std::string kNumEntries;
   static const std::string kNumFilterBlocks;
+  static const std::string kNumDataIndexBlocks;
   static const std::string kFormatVersion;
   static const std::string kFixedKeyLen;
   static const std::string kFilterPolicy;
@@ -190,4 +193,4 @@ extern uint64_t GetDeletedKeys(const UserCollectedProperties& props);
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_TABLE_PROPERTIES_H
+#endif // YB_ROCKSDB_TABLE_PROPERTIES_H

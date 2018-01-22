@@ -621,7 +621,7 @@ ColumnFamilyOptions* ColumnFamilyOptions::OptimizeForPointLookup(
     uint64_t block_cache_size_mb) {
   prefix_extractor.reset(NewNoopTransform());
   BlockBasedTableOptions block_based_options;
-  block_based_options.index_type = BlockBasedTableOptions::kHashSearch;
+  block_based_options.index_type = IndexType::kHashSearch;
   block_based_options.filter_policy.reset(NewBloomFilterPolicy(10));
   block_based_options.block_cache =
       NewLRUCache(static_cast<size_t>(block_cache_size_mb * 1024 * 1024));

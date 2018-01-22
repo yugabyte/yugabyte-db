@@ -24,8 +24,10 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
-#include "yb/util/logging.h"
+
+using namespace yb::size_literals;
 
 DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
@@ -53,8 +55,17 @@ DEFINE_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024
 DEFINE_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
-DEFINE_int64(db_block_size_bytes, 32 * 1024,
-             "Size of RocksDB block (in bytes).");
+DEFINE_int64(db_block_size_bytes, 32_KB,
+             "Size of RocksDB data block (in bytes).");
+
+DEFINE_int64(db_filter_block_size_bytes, 64_KB,
+             "Size of RocksDB filter block (in bytes).");
+
+DEFINE_int64(db_index_block_size_bytes, 32_KB,
+             "Size of RocksDB index block (in bytes).");
+
+DEFINE_int64(db_min_keys_per_index_block, 100,
+             "Minimum number of keys per index block.");
 
 DEFINE_int64(db_write_buffer_size, -1,
              "Size of RocksDB write buffer (in bytes). -1 to use default.");
@@ -64,6 +75,10 @@ DEFINE_bool(use_docdb_aware_bloom_filter, true,
 DEFINE_int32(max_nexts_to_avoid_seek, 8,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
+// TODO(mli) - switch to true once it is safe (necessary installations are upgraded to a build which
+// supports multi-level index). Also update other places in tests where it is set to true
+// explicitly.
+DEFINE_bool(use_multi_level_index, false, "Whether to use multi-level data index.");
 
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
 
@@ -352,11 +367,20 @@ void InitRocksDBOptions(
     table_options.cache_index_and_filter_blocks = false;
   }
   table_options.block_size = FLAGS_db_block_size_bytes;
+  table_options.filter_block_size = FLAGS_db_filter_block_size_bytes;
+  table_options.index_block_size = FLAGS_db_index_block_size_bytes;
+  table_options.min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
 
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
     table_options.filter_policy.reset(new DocDbAwareFilterPolicy(
         table_options.filter_block_size * 8, options->info_log.get()));
+  }
+
+  if (FLAGS_use_multi_level_index) {
+    table_options.index_type = rocksdb::IndexType::kMultiLevelBinarySearch;
+  } else {
+    table_options.index_type = rocksdb::IndexType::kBinarySearch;
   }
 
   options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));

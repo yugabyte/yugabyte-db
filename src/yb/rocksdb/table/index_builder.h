@@ -14,17 +14,23 @@
 #ifndef YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 #define YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 
+#include <list>
+
+#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_builder.h"
+#include "yb/rocksdb/table/format.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
 
-class BlockHandle;
+using yb::Result;
 
 // The interface for building index.
 // Instruction for adding a new concrete IndexBuilder:
 //  1. Create a subclass instantiated from IndexBuilder.
-//  2. Add a new entry associated with that subclass in TableOptions::IndexType.
+//  2. Add a new entry associated with that subclass in IndexType.
 //  3. Add a create function for the new subclass in CreateIndexBuilder.
 // Note: we can devise more advanced design to simplify the process for adding
 // new subclass, which will, on the other hand, increase the code complexity and
@@ -35,10 +41,10 @@ class IndexBuilder {
  public:
   // Create a index builder based on its type.
   static IndexBuilder* CreateIndexBuilder(
-      BlockBasedTableOptions::IndexType index_type,
+      IndexType index_type,
       const Comparator* comparator,
       const SliceTransform* prefix_extractor,
-      const int index_block_restart_interval);
+      const BlockBasedTableOptions& table_opt);
 
   // Index builder will construct a set of blocks which contain:
   //  1. One primary index block.
@@ -77,12 +83,34 @@ class IndexBuilder {
   // REQUIRES: Finish() has not yet been called.
   virtual CHECKED_STATUS Finish(IndexBlocks* index_blocks) = 0;
 
+  // Whether it is time to flush the current index block. Overridden in MultiLevelIndexBuilder.
+  // While true is returned the caller should keep calling FlushNextBlock(IndexBlocks*,
+  // const BlockHandle&) with handle of the block written with the result of the last call to
+  // FlushNextBlock and keep writing flushed blocks.
+  virtual bool ShouldFlush() const { return false; }
+
+  // This method can be overridden to build the n-th level index in
+  // MultiLevelIndexBuilder.
+  //
+  // Returns true when it actually flushed entries into index_blocks.
+  // Returns false when everything was already flushed by previous call to FlushNextBlock.
+  virtual Result<bool> FlushNextBlock(
+      IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle) {
+    RETURN_NOT_OK(Finish(index_blocks));
+    return true;
+  }
+
   // Get the estimated size for index block.
   virtual size_t EstimatedSize() const = 0;
+
+  // Number of levels for index.
+  virtual int NumLevels() const = 0;
 
  protected:
   const Comparator* comparator_;
 };
+
+YB_STRONGLY_TYPED_BOOL(ShortenKeys);
 
 // This index builder builds space-efficient index block.
 //
@@ -105,11 +133,23 @@ class ShortenedIndexBuilder : public IndexBuilder {
       const Slice* first_key_in_next_block,
       const BlockHandle& block_handle) override;
 
+  void AddIndexEntry(
+      std::string* last_key_in_current_block,
+      const Slice* first_key_in_next_block,
+      const std::string& block_handle_encoded,
+      ShortenKeys shorten_keys);
+
   CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return index_block_builder_.CurrentSizeEstimate();
   }
+
+  int NumLevels() const override { return 1; }
+
+  void Reset() { index_block_builder_.Reset(); }
+
+  const BlockBuilder& GetIndexBlockBuilder() { return index_block_builder_; }
 
  private:
   BlockBuilder index_block_builder_;
@@ -162,6 +202,8 @@ class HashIndexBuilder : public IndexBuilder {
         prefix_meta_block_.size();
   }
 
+  int NumLevels() const override { return 1; }
+
  private:
   void FlushPendingPrefix();
 
@@ -181,6 +223,95 @@ class HashIndexBuilder : public IndexBuilder {
   std::string pending_entry_prefix_;
 
   uint64_t current_restart_index_ = 0;
+};
+
+class MultiLevelIndexBuilder : public IndexBuilder {
+ public:
+  MultiLevelIndexBuilder(const Comparator* comparator, const BlockBasedTableOptions& table_opt);
+
+  void AddIndexEntry(
+      std::string* last_key_in_current_block,
+      const Slice* first_key_in_next_block,
+      const BlockHandle& block_handle) override {
+    AddIndexEntry(
+        last_key_in_current_block, first_key_in_next_block, block_handle, ShortenKeys::kTrue);
+  }
+
+  void AddIndexEntry(
+      std::string* last_key_in_current_block,
+      const Slice* first_key_in_next_block,
+      const BlockHandle& block_handle,
+      ShortenKeys shorten_keys);
+
+  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override {
+    return STATUS(NotSupported, "Finishing as single block is not supported by multi-level index.");
+  }
+
+  bool ShouldFlush() const override;
+
+  Result<bool> FlushNextBlock(
+      IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle) override;
+
+  size_t EstimatedSize() const override;
+
+  int NumLevels() const override;
+
+ private:
+  struct IndexBlockInfo;
+
+  void EnsureCurrentLevelIndexBuilderCreated();
+  CHECKED_STATUS FlushCurrentLevel(IndexBlocks* index_blocks);
+  void AddToNextLevelIfReady(
+      IndexBlockInfo* block_info, const BlockHandle& block_handle);
+
+  const BlockBasedTableOptions& table_opt_;
+
+  // Builder for an index block at the current level.
+  std::unique_ptr<ShortenedIndexBuilder> current_level_index_block_builder_;
+
+  // Already flushed index block builder, which can only be deleted after the corresponding block is
+  // written, because it holds flushed data referenced by a slice returned from FlushNextBlock.
+  std::unique_ptr<ShortenedIndexBuilder> finished_index_block_builder_;
+
+  // Builder for index blocks at higher levels.
+  std::unique_ptr<MultiLevelIndexBuilder> next_level_index_builder_;
+  std::unique_ptr<FlushBlockPolicy> flush_policy_;
+
+  // Whether we've started flushing index blocks, i.e. the FlushNextBlock method has been already
+  // called.
+  bool flushing_indexes_ = false;
+
+  // Size of index blocks at the current level.
+  size_t current_level_size_ = 0;
+
+  struct IndexBlockInfo {
+    // Whether the index block is ready for processing, other fields are only correct when
+    // is_ready is true.
+    bool is_ready = false;
+    // Last key in the index block.
+    std::string last_key;
+    // Whether there are keys for the next block at the same level.
+    bool has_next_block = false;
+    // First key for the next index block at the same level (only correct if has_next_block is
+    // true).
+    std::string next_block_first_key;
+
+    bool IsReadyAndLast() const { return is_ready && !has_next_block; }
+  };
+
+  // A complete current level index block once it is ready for flush.
+  IndexBlockInfo current_level_block_;
+  struct {
+    // A complete current level index block once it is ready to add to next level index.
+    IndexBlockInfo block_to_add;
+    // Handle of the last index block flushed at a higher level.
+    BlockHandle last_flushed_block_;
+    // If an index block from a higher level was flushed during the previous call to
+    // FlushNextBlock().
+    bool just_flushed = false;
+  } next_level_;
+  // Buffer for block handle encoding.
+  std::string block_handle_encoding_;
 };
 
 } // namespace rocksdb

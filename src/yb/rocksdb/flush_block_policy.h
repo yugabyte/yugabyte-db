@@ -17,8 +17,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_FLUSH_BLOCK_POLICY_H
-#define ROCKSDB_INCLUDE_ROCKSDB_FLUSH_BLOCK_POLICY_H
+#ifndef YB_ROCKSDB_FLUSH_BLOCK_POLICY_H
+#define YB_ROCKSDB_FLUSH_BLOCK_POLICY_H
 
 #pragma once
 
@@ -73,8 +73,12 @@ class FlushBlockBySizePolicyFactory : public FlushBlockPolicyFactory {
   virtual FlushBlockPolicy* NewFlushBlockPolicy(
       const BlockBasedTableOptions& table_options,
       const BlockBuilder& data_block_builder) const override;
+
+  static std::unique_ptr<FlushBlockPolicy> NewFlushBlockPolicy(
+      const uint64_t size, const int deviation, const size_t min_keys_per_block,
+      const BlockBuilder& data_block_builder);
 };
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_FLUSH_BLOCK_POLICY_H
+#endif // YB_ROCKSDB_FLUSH_BLOCK_POLICY_H

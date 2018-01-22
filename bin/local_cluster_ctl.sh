@@ -561,6 +561,7 @@ if [[ -n "$tserver_db_block_cache_size_bytes" ]]; then
   tserver_optional_params+=" --db_block_cache_size_bytes $tserver_db_block_cache_size_bytes"
 fi
 tserver_optional_params+=" --use_cassandra_authentication=$use_cassandra_authentication"
+tserver_optional_params+=" --use_multi_level_index"
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"

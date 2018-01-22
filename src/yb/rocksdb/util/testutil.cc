@@ -144,8 +144,7 @@ const SliceTransform* RandomSliceTransform(Random* rnd, int pre_defined) {
 BlockBasedTableOptions RandomBlockBasedTableOptions(Random* rnd) {
   BlockBasedTableOptions opt;
   opt.cache_index_and_filter_blocks = rnd->Uniform(2);
-  opt.index_type = rnd->Uniform(2) ? BlockBasedTableOptions::kBinarySearch
-                                   : BlockBasedTableOptions::kHashSearch;
+  opt.index_type = static_cast<IndexType>(rnd->Uniform(kElementsInIndexType));
   opt.hash_index_allow_collision = rnd->Uniform(2);
   opt.checksum = static_cast<ChecksumType>(rnd->Uniform(3));
   opt.block_size = rnd->Uniform(10000000);

@@ -69,7 +69,6 @@ namespace rocksdb {
 extern const char kHashIndexPrefixesBlock[];
 extern const char kHashIndexPrefixesMetadataBlock[];
 
-typedef BlockBasedTableOptions::IndexType IndexType;
 typedef FilterPolicy::FilterType FilterType;
 
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
@@ -200,9 +199,10 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
     : public IntTblPropCollector {
  public:
   explicit BlockBasedTablePropertiesCollector(
-      BlockBasedTableOptions::IndexType index_type, bool whole_key_filtering,
-      bool prefix_filtering)
-      : index_type_(index_type),
+      BlockBasedTableBuilder::Rep* rep, IndexType index_type,
+      bool whole_key_filtering, bool prefix_filtering)
+      : rep_(rep),
+        index_type_(index_type),
         whole_key_filtering_(whole_key_filtering),
         prefix_filtering_(prefix_filtering) {}
 
@@ -213,16 +213,7 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
     return Status::OK();
   }
 
-  Status Finish(UserCollectedProperties* properties) override {
-    std::string val;
-    PutFixed32(&val, static_cast<uint32_t>(index_type_));
-    properties->insert({BlockBasedTablePropertyNames::kIndexType, val});
-    properties->insert({BlockBasedTablePropertyNames::kWholeKeyFiltering,
-                        whole_key_filtering_ ? kPropTrue : kPropFalse});
-    properties->insert({BlockBasedTablePropertyNames::kPrefixFiltering,
-                        prefix_filtering_ ? kPropTrue : kPropFalse});
-    return Status::OK();
-  }
+  Status Finish(UserCollectedProperties* properties) override;
 
   // The name of the properties collector can be used for debugging purpose.
   const char* Name() const override {
@@ -235,7 +226,8 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
   }
 
  private:
-  BlockBasedTableOptions::IndexType index_type_;
+  BlockBasedTableBuilder::Rep* rep_;
+  IndexType index_type_;
   bool whole_key_filtering_;
   bool prefix_filtering_;
 };
@@ -287,6 +279,8 @@ struct BlockBasedTableBuilder::Rep {
   InternalKeySliceTransform internal_prefix_transform;
   const FilterPolicy::KeyTransformer* const filter_key_transformer;
   std::unique_ptr<IndexBuilder> data_index_builder;
+  IndexBuilder::IndexBlocks data_index_blocks;
+  BlockHandle last_index_block_handle;
   std::unique_ptr<IndexBuilder> filter_index_builder;
 
   std::string last_key;
@@ -314,53 +308,82 @@ struct BlockBasedTableBuilder::Rep {
       WritableFileWriter* data_file,
       const CompressionType _compression_type,
       const CompressionOptions& _compression_opts,
-      const bool skip_filters)
-      : ioptions(_ioptions),
-        table_options(table_opt),
-        internal_comparator(icomparator),
-        filter_type(GetFilterType(table_options)),
-        filter_block_builder(skip_filters ? nullptr : CreateFilterBlockBuilder(
-            _ioptions, table_options, filter_type)),
-        data_block_builder(table_options.block_restart_interval,
-                   table_options.use_delta_encoding),
-        internal_prefix_transform(_ioptions.prefix_extractor),
-        filter_key_transformer(table_opt.filter_policy ?
-            table_opt.filter_policy->GetKeyTransformer() : nullptr),
-        data_index_builder(
-            IndexBuilder::CreateIndexBuilder(
-                table_options.index_type, &internal_comparator, &internal_prefix_transform,
-                table_options.index_block_restart_interval)),
-        filter_index_builder(
-            // Prefix_extractor is not used by binary search index which we use for bloom filter
-            // blocks indexing.
-            IndexBuilder::CreateIndexBuilder(
-                BlockBasedTableOptions::kBinarySearch, BytewiseComparator(),
-                nullptr /* prefix_extractor */, table_options.index_block_restart_interval)),
-        compression_type(_compression_type),
-        compression_opts(_compression_opts),
-        flush_block_policy(
-            table_options.flush_block_policy_factory->NewFlushBlockPolicy(
-                table_options, data_block_builder)) {
-    metadata_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
-    metadata_writer->writer = metadata_file;
-    if (data_file != nullptr) {
-      data_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
-      data_writer->writer = data_file;
-    } else {
-      data_writer = metadata_writer;
-    }
-    for (auto& collector_factories : int_tbl_prop_collector_factories) {
-      table_properties_collectors.emplace_back(
-          collector_factories->CreateIntTblPropCollector(column_family_id));
-    }
-    table_properties_collectors.emplace_back(
-        new BlockBasedTablePropertiesCollector(
-            table_options.index_type, table_options.whole_key_filtering,
-            _ioptions.prefix_extractor != nullptr));
-  }
+      const bool skip_filters);
 
   bool is_split_sst() const { return data_writer != metadata_writer; }
 };
+
+Status BlockBasedTableBuilder::BlockBasedTablePropertiesCollector::Finish(
+    UserCollectedProperties* properties) {
+  std::string val;
+  PutFixed32(&val, static_cast<uint32_t>(index_type_));
+  properties->emplace(BlockBasedTablePropertyNames::kIndexType, val);
+  properties->emplace(
+      BlockBasedTablePropertyNames::kWholeKeyFiltering,
+      ToBlockBasedTablePropertyValue(whole_key_filtering_));
+  properties->emplace(
+      BlockBasedTablePropertyNames::kPrefixFiltering,
+      ToBlockBasedTablePropertyValue(prefix_filtering_));
+  val.clear();
+  PutFixed32(&val, rep_->data_index_builder->NumLevels());
+  properties->emplace(BlockBasedTablePropertyNames::kNumIndexLevels, val);
+  return Status::OK();
+}
+
+BlockBasedTableBuilder::Rep::Rep(
+    const ImmutableCFOptions& _ioptions,
+    const BlockBasedTableOptions& table_opt,
+    const InternalKeyComparator& icomparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* metadata_file,
+    WritableFileWriter* data_file,
+    const CompressionType _compression_type,
+    const CompressionOptions& _compression_opts,
+    const bool skip_filters)
+    : ioptions(_ioptions),
+      table_options(table_opt),
+      internal_comparator(icomparator),
+      filter_type(GetFilterType(table_options)),
+      filter_block_builder(skip_filters ? nullptr : CreateFilterBlockBuilder(
+          _ioptions, table_options, filter_type)),
+      data_block_builder(table_options.block_restart_interval,
+                 table_options.use_delta_encoding),
+      internal_prefix_transform(_ioptions.prefix_extractor),
+      filter_key_transformer(table_opt.filter_policy ?
+          table_opt.filter_policy->GetKeyTransformer() : nullptr),
+      data_index_builder(
+          IndexBuilder::CreateIndexBuilder(
+              table_options.index_type, &internal_comparator, &internal_prefix_transform,
+              table_options)),
+      filter_index_builder(
+          // Prefix_extractor is not used by binary search index which we use for bloom filter
+          // blocks indexing.
+          IndexBuilder::CreateIndexBuilder(
+              IndexType::kBinarySearch, BytewiseComparator(),
+              nullptr /* prefix_extractor */, table_options)),
+      compression_type(_compression_type),
+      compression_opts(_compression_opts),
+      flush_block_policy(
+          table_options.flush_block_policy_factory->NewFlushBlockPolicy(
+              table_options, data_block_builder)) {
+  metadata_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
+  metadata_writer->writer = metadata_file;
+  if (data_file != nullptr) {
+    data_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
+    data_writer->writer = data_file;
+  } else {
+    data_writer = metadata_writer;
+  }
+  for (auto& collector_factories : int_tbl_prop_collector_factories) {
+    table_properties_collectors.emplace_back(
+        collector_factories->CreateIntTblPropCollector(column_family_id));
+  }
+  table_properties_collectors.emplace_back(
+      new BlockBasedTablePropertiesCollector(
+          this, table_options.index_type, table_options.whole_key_filtering,
+          _ioptions.prefix_extractor != nullptr));
+}
 
 BlockBasedTableBuilder::BlockBasedTableBuilder(
     const ImmutableCFOptions& ioptions,
@@ -485,6 +508,20 @@ void BlockBasedTableBuilder::FlushDataBlock(const Slice& next_block_first_key) {
   r->data_index_builder->AddIndexEntry(&r->last_key,
       next_block_first_key.empty() ? nullptr : &next_block_first_key,
       r->data_pending_handle);
+  while (r->data_index_builder->ShouldFlush()) {
+    auto result = r->data_index_builder->FlushNextBlock(
+        &r->data_index_blocks, r->last_index_block_handle);
+    if (!result.ok()) {
+      r->status = result.status();
+      return;
+    }
+    DCHECK(result.get());
+    WriteBlock(
+        r->data_index_blocks.index_block_contents, &r->last_index_block_handle,
+        r->metadata_writer.get());
+    if (!ok()) return;
+    ++r->props.num_data_index_blocks;
+  }
 }
 
 void BlockBasedTableBuilder::FlushFilterBlock(const Slice& next_block_first_key) {
@@ -661,11 +698,11 @@ Status BlockBasedTableBuilder::Finish() {
   assert(!r->closed);
   r->closed = true;
 
-  BlockHandle meta_index_block_handle, data_index_block_handle;
-  IndexBuilder::IndexBlocks index_blocks;
-  auto s = r->data_index_builder->Finish(&index_blocks);
-  if (!s.ok()) {
-    return s;
+  auto index_finish_result = r->data_index_builder->FlushNextBlock(
+      &r->data_index_blocks, r->last_index_block_handle);
+  RETURN_NOT_OK(index_finish_result);
+  if (index_finish_result.get()) {
+    ++r->props.num_data_index_blocks;
   }
 
   // Write meta blocks and metaindex block with the following order.
@@ -675,7 +712,7 @@ Status BlockBasedTableBuilder::Finish() {
   //    4. [metaindex block]
   // write meta blocks
   MetaIndexBuilder meta_index_builder;
-  for (const auto& item : index_blocks.meta_blocks) {
+  for (const auto& item : r->data_index_blocks.meta_blocks) {
     BlockHandle block_handle;
     WriteBlock(item.second, &block_handle, r->metadata_writer.get());
     meta_index_builder.Add(item.first, block_handle);
@@ -708,10 +745,7 @@ Status BlockBasedTableBuilder::Finish() {
         // Flush the fixed-size bloom filter index and add its offset under the corresponding
         // key to meta index.
         IndexBuilder::IndexBlocks filter_index_blocks;
-        s = r->filter_index_builder->Finish(&filter_index_blocks);
-        if (!s.ok()) {
-          return s;
-        }
+        RETURN_NOT_OK(r->filter_index_builder->Finish(&filter_index_blocks));
         BlockHandle filter_index_block_handle;
         WriteBlock(filter_index_blocks.index_block_contents, &filter_index_block_handle,
             r->metadata_writer.get());
@@ -750,13 +784,19 @@ Status BlockBasedTableBuilder::Finish() {
     }  // end of properties block writing
   }    // meta blocks
 
-  // Write index block
+  BlockHandle meta_index_block_handle;
+  // Write meta index and index block.
   if (ok()) {
-    // flush the meta index block
-    WriteRawBlock(meta_index_builder.Finish(), kNoCompression,
-        &meta_index_block_handle, r->metadata_writer.get());
-    WriteBlock(index_blocks.index_block_contents, &data_index_block_handle,
+    // Flush the meta index block.
+    WriteRawBlock(
+        meta_index_builder.Finish(), kNoCompression, &meta_index_block_handle,
         r->metadata_writer.get());
+    // Flush index block if not already flushed.
+    if (index_finish_result.get()) {
+      WriteBlock(
+          r->data_index_blocks.index_block_contents, &r->last_index_block_handle,
+          r->metadata_writer.get());
+    }
   }
 
   // Write footer
@@ -776,7 +816,7 @@ Status BlockBasedTableBuilder::Finish() {
             : kBlockBasedTableMagicNumber,
         r->table_options.format_version);
     footer.set_metaindex_handle(meta_index_block_handle);
-    footer.set_index_handle(data_index_block_handle);
+    footer.set_index_handle(r->last_index_block_handle);
     footer.set_checksum(r->table_options.checksum);
     std::string footer_encoding;
     footer.AppendEncodedTo(&footer_encoding);

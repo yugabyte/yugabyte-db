@@ -347,12 +347,12 @@ Options DBTestBase::CurrentOptions(
       break;
     }
     case kBlockBasedTableWithPrefixHashIndex: {
-      table_options.index_type = BlockBasedTableOptions::kHashSearch;
+      table_options.index_type = IndexType::kHashSearch;
       options.prefix_extractor.reset(NewFixedPrefixTransform(1));
       break;
     }
     case kBlockBasedTableWithWholeKeyHashIndex: {
-      table_options.index_type = BlockBasedTableOptions::kHashSearch;
+      table_options.index_type = IndexType::kHashSearch;
       options.prefix_extractor.reset(NewNoopTransform());
       break;
     }

@@ -77,9 +77,13 @@ void BlockBuilder::Reset() {
 }
 
 size_t BlockBuilder::CurrentSizeEstimate() const {
-  return (buffer_.size() +                        // Raw data buffer
-          restarts_.size() * sizeof(uint32_t) +   // Restart array
-          sizeof(uint32_t));                      // Restart array length
+  size_t size = buffer_.size(); // Raw data buffer.
+  if (!finished_) {
+    // Restarts haven't been flushed to buffer yet.
+    size += restarts_.size() * sizeof(uint32_t) +    // Restart array.
+            sizeof(uint32_t);                        // Restart array length.
+  }
+  return size;
 }
 
 size_t BlockBuilder::EstimateSizeAfterKV(const Slice& key, const Slice& value)
@@ -95,6 +99,10 @@ size_t BlockBuilder::EstimateSizeAfterKV(const Slice& key, const Slice& value)
   estimate += VarintLength(value.size()); // varint for value length.
 
   return estimate;
+}
+
+size_t BlockBuilder::NumKeys() const {
+  return restarts_.size() * block_restart_interval_ + counter_;
 }
 
 Slice BlockBuilder::Finish() {

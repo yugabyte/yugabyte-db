@@ -95,6 +95,10 @@ extern const char kHashIndexPrefixesMetadataBlock[];
 extern const char kPropTrue[];
 extern const char kPropFalse[];
 
+inline const char* ToBlockBasedTablePropertyValue(bool value) {
+  return value ? kPropTrue : kPropFalse;
+}
+
 }  // namespace rocksdb
 
 #endif  // YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H

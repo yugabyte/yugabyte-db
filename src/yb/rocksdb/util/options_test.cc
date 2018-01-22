@@ -486,13 +486,13 @@ TEST_F(OptionsTest, GetBlockBasedTableOptionsFromString) {
   ASSERT_OK(GetBlockBasedTableOptionsFromString(table_opt,
             "cache_index_and_filter_blocks=1;index_type=kHashSearch;"
             "checksum=kxxHash;hash_index_allow_collision=1;no_block_cache=1;"
-            "block_cache=1M;block_cache_compressed=1k;block_size=1024;"
-            "block_size_deviation=8;block_restart_interval=4;"
-            "filter_policy=bloomfilter:4:true;whole_key_filtering=1;"
+            "block_cache=1M;block_cache_compressed=1k;block_size=1024;filter_block_size=4096;"
+            "block_size_deviation=8;block_restart_interval=4;index_block_size=16384;"
+            "min_keys_per_index_block=16;filter_policy=bloomfilter:4:true;whole_key_filtering=1;"
             "skip_table_builder_flush=1",
             &new_opt));
   ASSERT_TRUE(new_opt.cache_index_and_filter_blocks);
-  ASSERT_EQ(new_opt.index_type, BlockBasedTableOptions::kHashSearch);
+  ASSERT_EQ(new_opt.index_type, IndexType::kHashSearch);
   ASSERT_EQ(new_opt.checksum, ChecksumType::kxxHash);
   ASSERT_TRUE(new_opt.hash_index_allow_collision);
   ASSERT_TRUE(new_opt.no_block_cache);
@@ -501,8 +501,11 @@ TEST_F(OptionsTest, GetBlockBasedTableOptionsFromString) {
   ASSERT_TRUE(new_opt.block_cache_compressed != nullptr);
   ASSERT_EQ(new_opt.block_cache_compressed->GetCapacity(), 1024UL);
   ASSERT_EQ(new_opt.block_size, 1024UL);
+  ASSERT_EQ(new_opt.filter_block_size, 4096UL);
   ASSERT_EQ(new_opt.block_size_deviation, 8);
   ASSERT_EQ(new_opt.block_restart_interval, 4);
+  ASSERT_EQ(new_opt.index_block_size, 16384UL);
+  ASSERT_EQ(new_opt.min_keys_per_index_block, 16);
   ASSERT_TRUE(new_opt.filter_policy != nullptr);
   ASSERT_TRUE(new_opt.skip_table_builder_flush);
 
@@ -1618,7 +1621,7 @@ Status GetFromString(BlockBasedTableOptions* source, BlockBasedTableOptions* des
       "checksum=kxxHash;hash_index_allow_collision=1;no_block_cache=1;"
       "block_cache=1M;block_cache_compressed=1k;block_size=1024;filter_block_size=16384;"
       "block_size_deviation=8;block_restart_interval=4; "
-      "index_block_restart_interval=4;"
+      "index_block_restart_interval=4;index_block_size=16384;min_keys_per_index_block=16;"
       "filter_policy=bloomfilter:4:true;whole_key_filtering=1;"
       "skip_table_builder_flush=1;format_version=1;"
       "hash_index_allow_collision=false;";

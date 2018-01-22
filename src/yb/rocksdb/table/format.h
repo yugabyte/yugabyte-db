@@ -43,6 +43,8 @@ const int kMagicNumberLengthByte = 8;
 // BlockHandle is a pointer to the extent of a file that stores a data
 // block or a meta block.
 class BlockHandle {
+  constexpr static uint64_t kUint64FieldNotSet = ~static_cast<uint64_t>(0);
+
  public:
   BlockHandle();
   BlockHandle(uint64_t offset, uint64_t size);
@@ -61,10 +63,16 @@ class BlockHandle {
   // Return a string that contains the copy of handle.
   std::string ToString(bool hex = true) const;
 
+  std::string ToDebugString() const;
+
   // if the block handle's offset and size are both "0", we will view it
   // as a null block handle that points to no where.
   bool IsNull() const {
     return offset_ == 0 && size_ == 0;
+  }
+
+  bool IsSet() const {
+    return offset_ != kUint64FieldNotSet && size_ != kUint64FieldNotSet;
   }
 
   static const BlockHandle& NullBlockHandle() {
@@ -241,10 +249,7 @@ extern Status UncompressBlockContents(const char* data, size_t n,
 
 // Implementation details follow.  Clients should ignore,
 
-inline BlockHandle::BlockHandle()
-    : BlockHandle(~static_cast<uint64_t>(0),
-                  ~static_cast<uint64_t>(0)) {
-}
+inline BlockHandle::BlockHandle() : BlockHandle(kUint64FieldNotSet, kUint64FieldNotSet) {}
 
 inline BlockHandle::BlockHandle(uint64_t _offset, uint64_t _size)
     : offset_(_offset), size_(_size) {}

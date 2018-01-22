@@ -41,6 +41,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/status.h"
+#include "yb/util/size_literals.h"
 
 namespace rocksdb {
 
@@ -56,12 +57,27 @@ struct EnvOptions;
 struct Options;
 
 using std::unique_ptr;
+using namespace yb::size_literals;
 
 enum ChecksumType : char {
   kNoChecksum = 0x0,  // not yet supported. Will fail
   kCRC32c = 0x1,
   kxxHash = 0x2,
 };
+
+YB_DEFINE_ENUM(IndexType,
+  // A space efficient index block that is optimized for binary-search-based index.
+  (kBinarySearch)
+
+  // The hash index, if enabled, will do the hash lookup when `Options.prefix_extractor` is
+  // provided.
+  (kHashSearch)
+
+  // Index is partitioned into blocks based on size according to TableOptions::index_block_size
+  // and TableOptions::min_keys_per_index_block. To guarantee that index blocks fit required size,
+  // index could have multiple levels. All levels are binary-search-based indexes.
+  (kMultiLevelBinarySearch)
+);
 
 // For advanced user only
 struct BlockBasedTableOptions {
@@ -81,18 +97,7 @@ struct BlockBasedTableOptions {
   // Note: Fixed-size bloom filter data blocks are never pre-loaded.
   bool cache_index_and_filter_blocks = false;
 
-  // The index type that will be used for this table.
-  enum IndexType : char {
-    // A space efficient index block that is optimized for
-    // binary-search-based index.
-    kBinarySearch,
-
-    // The hash index, if enabled, will do the hash lookup when
-    // `Options.prefix_extractor` is provided.
-    kHashSearch,
-  };
-
-  IndexType index_type = kBinarySearch;
+  IndexType index_type = IndexType::kMultiLevelBinarySearch;
 
   // Influence the behavior when kHashSearch is used.
   // if false, stores a precise prefix to block range mapping
@@ -145,6 +150,13 @@ struct BlockBasedTableOptions {
   // Same as block_restart_interval but used for the index block.
   int index_block_restart_interval = 1;
 
+  // Index block size for sharded index. Applied to data index when kMultiLevelBinarySearch is used.
+  size_t index_block_size = 4_KB;
+
+  // For kMultiLevelBinarySearch: minimum number of keys to put in index block. This constraint is
+  // used to avoid too many index levels in case we have large keys.
+  size_t min_keys_per_index_block = 64;
+
   // Use delta encoding to compress keys in blocks.
   // Iterator::PinData() requires this option to be disabled.
   //
@@ -193,8 +205,10 @@ struct BlockBasedTableOptions {
 
 // Table Properties that are specific to block-based table properties.
 struct BlockBasedTablePropertyNames {
-  // value of this propertis is a fixed int32 number.
+  // value of this property is a fixed int32 number.
   static const char kIndexType[];
+  // number of index levels for multi-level index, int32.
+  static const char kNumIndexLevels[];
   // value is "1" for true and "0" for false.
   static const char kWholeKeyFiltering[];
   // value is "1" for true and "0" for false.

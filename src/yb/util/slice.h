@@ -173,6 +173,8 @@ class Slice {
   // Compare two slices and returns the offset of the first byte where they differ.
   size_t difference_offset(const Slice& b) const;
 
+  void CopyToBuffer(std::string* buffer) const;
+
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
 
@@ -323,6 +325,14 @@ template <typename T>
 struct SliceMap {
   typedef std::map<Slice, T, Slice::Comparator> type;
 };
+
+// Can be used with source implicitly convertible to Slice, for example std::string.
+inline void CopyToBuffer(const Slice& source, std::string* dest) {
+  // operator= or assign(const std::string&) will shrink the capacity on at least CentOS gcc
+  // build, so we have to use assign(const char*, size_t) to preserve buffer capacity and avoid
+  // unnecessary memory reallocations.
+  source.CopyToBuffer(dest);
+}
 
 }  // namespace yb
 

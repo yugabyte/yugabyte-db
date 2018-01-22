@@ -20,10 +20,8 @@
 
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/flush_block_policy.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/table/block_builder.h"
-
-#include <cassert>
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -36,9 +34,11 @@ class FlushBlockBySizePolicy : public FlushBlockPolicy {
   //                               reaches the configured
   FlushBlockBySizePolicy(const uint64_t block_size,
                          const uint64_t block_size_deviation,
+                         const size_t min_keys_per_block,
                          const BlockBuilder& data_block_builder) :
       block_size_(block_size),
       block_size_deviation_(block_size_deviation),
+      min_keys_per_block_(min_keys_per_block),
       data_block_builder_(data_block_builder) {
   }
 
@@ -51,12 +51,14 @@ class FlushBlockBySizePolicy : public FlushBlockPolicy {
 
     auto curr_size = data_block_builder_.CurrentSizeEstimate();
 
-    // Do flush if one of the below two conditions is true:
+    // Do flush if one of the below two conditions is true and we already have the required minimum
+    // number of keys in block:
     // 1) if the current estimated size already exceeds the block size,
     // 2) block_size_deviation is set and the estimated size after appending
     // the kv will exceed the block size and the current size is under the
     // the deviation.
-    return curr_size >= block_size_ || BlockAlmostFull(key, value);
+    return (curr_size >= block_size_ || BlockAlmostFull(key, value))
+        && data_block_builder_.NumKeys() >= min_keys_per_block_;
   }
 
  private:
@@ -73,6 +75,7 @@ class FlushBlockBySizePolicy : public FlushBlockPolicy {
 
   const uint64_t block_size_;
   const uint64_t block_size_deviation_;
+  const size_t min_keys_per_block_;
   const BlockBuilder& data_block_builder_;
 };
 
@@ -80,8 +83,15 @@ FlushBlockPolicy* FlushBlockBySizePolicyFactory::NewFlushBlockPolicy(
     const BlockBasedTableOptions& table_options,
     const BlockBuilder& data_block_builder) const {
   return new FlushBlockBySizePolicy(
-      table_options.block_size, table_options.block_size_deviation,
+      table_options.block_size, table_options.block_size_deviation, 1 /* min_keys_per_block */,
       data_block_builder);
+}
+
+std::unique_ptr<FlushBlockPolicy> FlushBlockBySizePolicyFactory::NewFlushBlockPolicy(
+    const uint64_t size, const int deviation, const size_t min_keys_per_block,
+    const BlockBuilder& data_block_builder) {
+  return std::make_unique<FlushBlockBySizePolicy>(
+      size, deviation, min_keys_per_block, data_block_builder);
 }
 
 }  // namespace rocksdb

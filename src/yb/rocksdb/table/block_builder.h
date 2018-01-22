@@ -21,7 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef YB_ROCKSDB_TABLE_BLOCK_BUILDER_H
+#define YB_ROCKSDB_TABLE_BLOCK_BUILDER_H
 
 #include <stdint.h>
 #include <vector>
@@ -56,6 +57,8 @@ class BlockBuilder {
   // Returns an estimated block size after appending key and value.
   size_t EstimateSizeAfterKV(const Slice& key, const Slice& value) const;
 
+  size_t NumKeys() const;
+
   // Return true iff no entries have been added since the last Reset()
   bool empty() const {
     return buffer_.empty();
@@ -73,3 +76,5 @@ class BlockBuilder {
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_TABLE_BLOCK_BUILDER_H

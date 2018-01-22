@@ -362,8 +362,8 @@ TEST_F(CorruptionTest, TableFileIndexData) {
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
   dbi->TEST_FlushMemTable();
 
-  // corrupt an index block of an entire file
-  Corrupt(kTableFile, -2000, 500);
+  // Corrupt top level index block of an entire file.
+  Corrupt(kTableFile, -1000, 500);
   Reopen();
   // one full file should be readable, since only one was corrupted
   // the other file should be fully non-readable, since index was corrupted

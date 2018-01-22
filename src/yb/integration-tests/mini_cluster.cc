@@ -66,6 +66,7 @@ DECLARE_int32(ts_admin_svc_num_threads);
 DECLARE_int32(ts_consensus_svc_num_threads);
 DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
+DECLARE_bool(use_multi_level_index);
 
 namespace yb {
 
@@ -142,6 +143,8 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
 
   FLAGS_replication_factor = num_masters_initial_;
   FLAGS_memstore_size_mb = 16;
+
+  FLAGS_use_multi_level_index = true;
 
   // start the masters
   RETURN_NOT_OK_PREPEND(StartMasters(),

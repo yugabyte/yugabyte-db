@@ -83,6 +83,7 @@ void PropertyBlockBuilder::AddTableProperty(const TableProperties& props) {
   Add(TablePropertiesNames::kNumEntries, props.num_entries);
   Add(TablePropertiesNames::kNumDataBlocks, props.num_data_blocks);
   Add(TablePropertiesNames::kNumFilterBlocks, props.num_filter_blocks);
+  Add(TablePropertiesNames::kNumDataIndexBlocks, props.num_data_index_blocks);
   Add(TablePropertiesNames::kFilterSize, props.filter_size);
   Add(TablePropertiesNames::kFormatVersion, props.format_version);
   Add(TablePropertiesNames::kFixedKeyLen, props.fixed_key_len);
@@ -185,6 +186,7 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
       {TablePropertiesNames::kNumDataBlocks, &new_table_properties->num_data_blocks},
       {TablePropertiesNames::kNumEntries, &new_table_properties->num_entries},
       {TablePropertiesNames::kNumFilterBlocks, &new_table_properties->num_filter_blocks},
+      {TablePropertiesNames::kNumDataIndexBlocks, &new_table_properties->num_data_index_blocks},
       {TablePropertiesNames::kFormatVersion, &new_table_properties->format_version},
       {TablePropertiesNames::kFixedKeyLen, &new_table_properties->fixed_key_len}, };
 

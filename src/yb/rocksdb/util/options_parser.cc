@@ -571,9 +571,8 @@ bool AreEqualOptions(
               *reinterpret_cast<const ChecksumType*>(offset2));
     case OptionType::kBlockBasedTableIndexType:
       return (
-          *reinterpret_cast<const BlockBasedTableOptions::IndexType*>(
-              offset1) ==
-          *reinterpret_cast<const BlockBasedTableOptions::IndexType*>(offset2));
+          *reinterpret_cast<const IndexType*>(offset1) ==
+          *reinterpret_cast<const IndexType*>(offset2));
     case OptionType::kWALRecoveryMode:
       return (*reinterpret_cast<const WALRecoveryMode*>(offset1) ==
               *reinterpret_cast<const WALRecoveryMode*>(offset2));

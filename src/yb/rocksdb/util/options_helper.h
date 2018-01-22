@@ -18,8 +18,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_UTIL_OPTIONS_HELPER_H
-#define ROCKSDB_UTIL_OPTIONS_HELPER_H
+#ifndef YB_ROCKSDB_UTIL_OPTIONS_HELPER_H
+#define YB_ROCKSDB_UTIL_OPTIONS_HELPER_H
 
 #pragma once
 
@@ -549,6 +549,12 @@ static std::unordered_map<std::string,
     {"index_block_restart_interval",
      {offsetof(struct BlockBasedTableOptions, index_block_restart_interval),
       OptionType::kInt, OptionVerificationType::kNormal}},
+    {"index_block_size",
+     {offsetof(struct BlockBasedTableOptions, index_block_size), OptionType::kSizeT,
+      OptionVerificationType::kNormal}},
+    {"min_keys_per_index_block",
+     {offsetof(struct BlockBasedTableOptions, min_keys_per_index_block), OptionType::kSizeT,
+      OptionVerificationType::kNormal}},
     {"filter_policy",
      {offsetof(struct BlockBasedTableOptions, filter_policy),
       OptionType::kFilterPolicy, OptionVerificationType::kByName}},
@@ -598,10 +604,11 @@ static std::unordered_map<std::string, CompressionType>
         {"kLZ4HCCompression", kLZ4HCCompression},
         {"kZSTDNotFinalCompression", kZSTDNotFinalCompression}};
 
-static std::unordered_map<std::string, BlockBasedTableOptions::IndexType>
+static std::unordered_map<std::string, IndexType>
     block_base_table_index_type_string_map = {
-        {"kBinarySearch", BlockBasedTableOptions::IndexType::kBinarySearch},
-        {"kHashSearch", BlockBasedTableOptions::IndexType::kHashSearch}};
+        {"kBinarySearch", IndexType::kBinarySearch},
+        {"kHashSearch", IndexType::kHashSearch},
+        {"kMultiLevelBinarySearch", IndexType::kMultiLevelBinarySearch}};
 
 static std::unordered_map<std::string, EncodingType> encoding_type_string_map =
     {{"kPlain", kPlain}, {"kPrefix", kPrefix}};
@@ -642,4 +649,4 @@ static std::unordered_map<std::string, InfoLogLevel> info_log_level_string_map =
 
 #endif  // !ROCKSDB_LITE
 
-#endif // ROCKSDB_UTIL_OPTIONS_HELPER_H
+#endif // YB_ROCKSDB_UTIL_OPTIONS_HELPER_H

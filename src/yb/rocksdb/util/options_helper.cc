@@ -369,9 +369,9 @@ bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
           checksum_type_string_map, value,
           reinterpret_cast<ChecksumType*>(opt_address));
     case OptionType::kBlockBasedTableIndexType:
-      return ParseEnum<BlockBasedTableOptions::IndexType>(
+      return ParseEnum<IndexType>(
           block_base_table_index_type_string_map, value,
-          reinterpret_cast<BlockBasedTableOptions::IndexType*>(opt_address));
+          reinterpret_cast<IndexType*>(opt_address));
     case OptionType::kEncodingType:
       return ParseEnum<EncodingType>(
           encoding_type_string_map, value,
@@ -509,10 +509,9 @@ bool SerializeSingleOptionHelper(const char* opt_address,
           checksum_type_string_map,
           *reinterpret_cast<const ChecksumType*>(opt_address), value);
     case OptionType::kBlockBasedTableIndexType:
-      return SerializeEnum<BlockBasedTableOptions::IndexType>(
+      return SerializeEnum<IndexType>(
           block_base_table_index_type_string_map,
-          *reinterpret_cast<const BlockBasedTableOptions::IndexType*>(
-              opt_address),
+          *reinterpret_cast<const IndexType*>(opt_address),
           value);
     case OptionType::kFlushBlockPolicyFactory: {
       const auto* ptr =

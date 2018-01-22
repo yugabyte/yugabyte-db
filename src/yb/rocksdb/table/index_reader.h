@@ -17,10 +17,16 @@
 #include <stddef.h>
 
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/table/block.h"
+#include "yb/rocksdb/table/block_based_table_internal.h"
+#include "yb/rocksdb/table/two_level_iterator.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
 
 namespace rocksdb {
 
+using yb::Result;
+
+class BlockBasedTable;
 class BlockHandle;
 class BlockIter;
 class Comparator;
@@ -39,8 +45,12 @@ class IndexReader {
   virtual ~IndexReader() {}
 
   // Create an iterator for index access.
-  // An iter is passed in, if it is not null, update this one and return it
-  // If it is null, create a new Iterator
+  // If not null iter is passed in, implementation was able to update it and it should be used by
+  // caller as an index iterator, then nullptr is returned.
+  // Otherwise, new iterator is created and returned.
+  //
+  // For multi-level index, top level index block iterator is passed and updated instead of the
+  // whole index iterator, but return semantic is the same - the whole index iterator is returned.
   virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
                                         bool total_order_seek = true) = 0;
 
@@ -71,7 +81,8 @@ class BinarySearchIndexReader : public IndexReader {
       const Comparator* comparator, std::unique_ptr<IndexReader>* index_reader);
 
   InternalIterator* NewIterator(BlockIter* iter = nullptr, bool dont_care = true) override {
-    return index_block_->NewIterator(comparator_, iter, true);
+    auto new_iter = index_block_->NewIterator(comparator_, iter, true);
+    return iter ? nullptr : new_iter;
   }
 
   size_t size() const override {
@@ -112,7 +123,8 @@ class HashIndexReader : public IndexReader {
       bool hash_index_allow_collision);
 
   InternalIterator* NewIterator(BlockIter* iter = nullptr, bool total_order_seek = true) override {
-    return index_block_->NewIterator(comparator_, iter, total_order_seek);
+    auto new_iter = index_block_->NewIterator(comparator_, iter, total_order_seek);
+    return iter ? nullptr : new_iter;
   }
 
   size_t size() const override {
@@ -144,6 +156,47 @@ class HashIndexReader : public IndexReader {
 
   std::unique_ptr<Block> index_block_;
   BlockContents prefixes_contents_;
+};
+
+// Index that allows binary search lookup in a multi-level index structure.
+class MultiLevelIndexReader : public IndexReader {
+ public:
+
+  // Read the top level index from the file and create an instance for `MultiLevelIndexReader`.
+  static Result<std::unique_ptr<MultiLevelIndexReader>> Create(
+      BlockBasedTable* table, RandomAccessFileReader* file, const Footer& footer, int num_levels,
+      const BlockHandle& top_level_index_handle, Env* env, const Comparator* comparator,
+      std::unique_ptr<TwoLevelIteratorState> state);
+
+  MultiLevelIndexReader(
+      BlockBasedTable* table, const Comparator* comparator, int num_levels,
+      std::unique_ptr<Block> top_level_index_block,
+      std::unique_ptr<TwoLevelIteratorState> state)
+      : IndexReader(comparator),
+        num_levels_(num_levels),
+        top_level_index_block_(std::move(top_level_index_block)),
+        state_(std::move(state)) {
+    DCHECK_ONLY_NOTNULL(top_level_index_block_.get());
+  }
+
+  ~MultiLevelIndexReader() {}
+
+ private:
+  InternalIterator* NewIterator(BlockIter* iter, bool) override;
+
+  size_t size() const override { return top_level_index_block_->size(); }
+
+  size_t usable_size() const override {
+    return top_level_index_block_->usable_size();
+  }
+
+  size_t ApproximateMemoryUsage() const override {
+    return top_level_index_block_->ApproximateMemoryUsage();
+  }
+
+  const int num_levels_;
+  const std::unique_ptr<Block> top_level_index_block_;
+  std::unique_ptr<TwoLevelIteratorState> state_;
 };
 
 } // namespace rocksdb

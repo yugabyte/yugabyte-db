@@ -119,6 +119,7 @@ DECLARE_string(vmodule);
 DECLARE_int32(replication_factor);
 DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
+DECLARE_bool(use_multi_level_index);
 
 DEFINE_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
@@ -162,7 +163,8 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
     : opts_(opts), add_new_master_at_(-1) {
   // These "extra mini cluster options" are added in the end of the command line.
   const auto common_extra_flags = {
-      "--enable_tracing=true"s,
+      "--enable_tracing"s,
+      "--use_multi_level_index"s,
       Substitute("--memory_limit_hard_bytes=$0", kDefaultMemoryLimitHardBytes)
   };
   for (auto* extra_flags : {&opts_.extra_master_flags, &opts_.extra_tserver_flags}) {

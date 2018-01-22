@@ -36,6 +36,7 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/string_util.h"
 #include "yb/rocksdb/util/xxhash.h"
+#include "yb/util/format.h"
 
 namespace rocksdb {
 
@@ -52,10 +53,12 @@ const uint64_t kPlainTableMagicNumber = 0;
 #endif
 const uint32_t DefaultStackBufferSize = 5000;
 
+using yb::Format;
+
 void BlockHandle::AppendEncodedTo(std::string* dst) const {
   // Sanity check that all fields have been set
-  assert(offset_ != ~static_cast<uint64_t>(0));
-  assert(size_ != ~static_cast<uint64_t>(0));
+  DCHECK_NE(offset_, kUint64FieldNotSet);
+  DCHECK_NE(size_, kUint64FieldNotSet);
   PutVarint64(dst, offset_);
   PutVarint64(dst, size_);
 }
@@ -85,6 +88,10 @@ std::string BlockHandle::ToString(bool hex) const {
   } else {
     return handle_str;
   }
+}
+
+std::string BlockHandle::ToDebugString() const {
+  return Format("BlockHandle { offset: $0 size: $1 }", offset_, size_);
 }
 
 const BlockHandle BlockHandle::kNullBlockHandle(0, 0);

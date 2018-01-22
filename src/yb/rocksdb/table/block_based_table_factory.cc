@@ -105,7 +105,7 @@ TableBuilder* BlockBasedTableFactory::NewTableBuilder(
 Status BlockBasedTableFactory::SanitizeOptions(
     const DBOptions& db_opts,
     const ColumnFamilyOptions& cf_opts) const {
-  if (table_options_.index_type == BlockBasedTableOptions::kHashSearch &&
+  if (table_options_.index_type == IndexType::kHashSearch &&
       cf_opts.prefix_extractor == nullptr) {
     return STATUS(InvalidArgument, "Hash index is specified for block-based "
         "table, but prefix_extractor is not given");
@@ -137,7 +137,7 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
            table_options_.cache_index_and_filter_blocks);
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  index_type: %d\n",
-           table_options_.index_type);
+           yb::util::to_underlying(table_options_.index_type));
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  hash_index_allow_collision: %d\n",
            table_options_.hash_index_allow_collision);
@@ -208,6 +208,8 @@ TableFactory* NewBlockBasedTableFactory(
 
 const char BlockBasedTablePropertyNames::kIndexType[] =
     "rocksdb.block.based.table.index.type";
+const char BlockBasedTablePropertyNames::kNumIndexLevels[] =
+    "rocksdb.block.based.table.index.num.levels";
 const char BlockBasedTablePropertyNames::kWholeKeyFiltering[] =
     "rocksdb.block.based.table.whole.key.filtering";
 const char BlockBasedTablePropertyNames::kPrefixFiltering[] =

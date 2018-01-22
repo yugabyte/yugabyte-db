@@ -5093,7 +5093,7 @@ TEST_F(DBTest, BlockBasedTablePrefixIndexTest) {
   // create a DB with block prefix index
   BlockBasedTableOptions table_options;
   Options options = CurrentOptions();
-  table_options.index_type = BlockBasedTableOptions::kHashSearch;
+  table_options.index_type = IndexType::kHashSearch;
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   options.prefix_extractor.reset(NewFixedPrefixTransform(1));
 
@@ -5105,7 +5105,7 @@ TEST_F(DBTest, BlockBasedTablePrefixIndexTest) {
 
   // Reopen it without prefix extractor, make sure everything still works.
   // RocksDB should just fall back to the binary index.
-  table_options.index_type = BlockBasedTableOptions::kBinarySearch;
+  table_options.index_type = IndexType::kBinarySearch;
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   options.prefix_extractor.reset();
 
@@ -5287,7 +5287,7 @@ TEST_F(DBTest, TableOptionsSanitizeTest) {
   // Test for check of prefix_extractor when hash index is used for
   // block-based table
   BlockBasedTableOptions to;
-  to.index_type = BlockBasedTableOptions::kHashSearch;
+  to.index_type = IndexType::kHashSearch;
   options = CurrentOptions();
   options.create_if_missing = true;
   options.table_factory.reset(NewBlockBasedTableFactory(to));

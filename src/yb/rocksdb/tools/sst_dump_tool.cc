@@ -260,10 +260,8 @@ Status SstFileReader::SetTableOptionsByMagicNumber(
     auto& props = table_properties_->user_collected_properties;
     auto pos = props.find(BlockBasedTablePropertyNames::kIndexType);
     if (pos != props.end()) {
-      auto index_type_on_file = static_cast<BlockBasedTableOptions::IndexType>(
-          DecodeFixed32(pos->second.c_str()));
-      if (index_type_on_file ==
-          BlockBasedTableOptions::IndexType::kHashSearch) {
+      auto index_type_on_file = static_cast<IndexType>(DecodeFixed32(pos->second.c_str()));
+      if (index_type_on_file == IndexType::kHashSearch) {
         options_.prefix_extractor.reset(NewNoopTransform());
       }
     }

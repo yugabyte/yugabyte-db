@@ -45,6 +45,10 @@ Status Slice::check_size(size_t expected_size) const {
   return Status::OK();
 }
 
+void Slice::CopyToBuffer(std::string* buffer) const {
+  buffer->assign(cdata(), size());
+}
+
 // Return a string that contains the copy of the referenced data.
 std::string Slice::ToBuffer() const {
   return std::string(reinterpret_cast<const char *>(data_), size_);

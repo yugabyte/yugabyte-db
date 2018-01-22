@@ -33,20 +33,20 @@ const uint32_t TablePropertiesCollectorFactory::Context::kUnknownColumnFamily =
 
 namespace {
   void AppendProperty(
-      std::string& props,
+      std::string* props,
       const std::string& key,
       const std::string& value,
       const std::string& prop_delim,
       const std::string& kv_delim) {
-    props.append(key);
-    props.append(kv_delim);
-    props.append(value);
-    props.append(prop_delim);
+    props->append(key);
+    props->append(kv_delim);
+    props->append(value);
+    props->append(prop_delim);
   }
 
   template <class TValue>
   void AppendProperty(
-      std::string& props,
+      std::string* props,
       const std::string& key,
       const TValue& value,
       const std::string& prop_delim,
@@ -55,7 +55,7 @@ namespace {
         props, key, ToString(value), prop_delim, kv_delim
     );
   }
-}
+} // namespace
 
 std::string TableProperties::ToString(
     const std::string& prop_delim,
@@ -64,31 +64,34 @@ std::string TableProperties::ToString(
   result.reserve(1024);
 
   // Basic Info
-  AppendProperty(result, "# data blocks", num_data_blocks, prop_delim,
+  AppendProperty(&result, "# data blocks", num_data_blocks, prop_delim,
                  kv_delim);
-  AppendProperty(result, "# filter blocks", num_filter_blocks, prop_delim,
+  AppendProperty(&result, "# data index blocks", num_data_index_blocks, prop_delim,
       kv_delim);
-  AppendProperty(result, "# entries", num_entries, prop_delim, kv_delim);
+  AppendProperty(&result, "# filter blocks", num_filter_blocks, prop_delim,
+      kv_delim);
+  AppendProperty(&result, "# entries", num_entries, prop_delim, kv_delim);
 
-  AppendProperty(result, "raw key size", raw_key_size, prop_delim, kv_delim);
-  AppendProperty(result, "raw average key size",
+  AppendProperty(&result, "raw key size", raw_key_size, prop_delim, kv_delim);
+  AppendProperty(&result, "raw average key size",
                  num_entries != 0 ? 1.0 * raw_key_size / num_entries : 0.0,
                  prop_delim, kv_delim);
-  AppendProperty(result, "raw value size", raw_value_size, prop_delim,
+  AppendProperty(&result, "raw value size", raw_value_size, prop_delim,
                  kv_delim);
-  AppendProperty(result, "raw average value size",
+  AppendProperty(&result, "raw average value size",
                  num_entries != 0 ? 1.0 * raw_value_size / num_entries : 0.0,
                  prop_delim, kv_delim);
 
-  AppendProperty(result, "data blocks total size", data_size, prop_delim, kv_delim);
-  AppendProperty(result, "data index block size", data_index_size, prop_delim, kv_delim);
-  AppendProperty(result, "filter blocks total size", filter_size, prop_delim, kv_delim);
-  AppendProperty(result, "filter index block size", filter_index_size, prop_delim, kv_delim);
-  AppendProperty(result, "(estimated) table size",
-                 data_size + data_index_size + filter_size, prop_delim, kv_delim);
+  AppendProperty(&result, "data blocks total size", data_size, prop_delim, kv_delim);
+  AppendProperty(&result, "data index size", data_index_size, prop_delim, kv_delim);
+  AppendProperty(&result, "filter blocks total size", filter_size, prop_delim, kv_delim);
+  AppendProperty(&result, "filter index block size", filter_index_size, prop_delim, kv_delim);
+  AppendProperty(
+      &result, "(estimated) table size", data_size + data_index_size + filter_size, prop_delim,
+      kv_delim);
 
   AppendProperty(
-      result, "filter policy name",
+      &result, "filter policy name",
       filter_policy_name.empty() ? std::string("N/A") : filter_policy_name,
       prop_delim, kv_delim);
 
@@ -103,6 +106,8 @@ void TableProperties::Add(const TableProperties& tp) {
   raw_key_size += tp.raw_key_size;
   raw_value_size += tp.raw_value_size;
   num_data_blocks += tp.num_data_blocks;
+  num_filter_blocks += tp.num_filter_blocks;
+  num_data_index_blocks += tp.num_data_index_blocks;
   num_entries += tp.num_entries;
 }
 
@@ -124,6 +129,8 @@ const std::string TablePropertiesNames::kNumEntries =
     "rocksdb.num.entries";
 const std::string TablePropertiesNames::kNumFilterBlocks =
     "rocksdb.num.filter.blocks";
+const std::string TablePropertiesNames::kNumDataIndexBlocks =
+    "rocksdb.num.data.index.blocks";
 const std::string TablePropertiesNames::kFilterPolicy =
     "rocksdb.filter.policy";
 const std::string TablePropertiesNames::kFormatVersion =

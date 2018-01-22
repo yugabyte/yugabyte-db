@@ -751,7 +751,7 @@ ColumnFamilyOptions OptimizeOptionsForDataColumnFamily(
     ColumnFamilyOptions options, std::shared_ptr<Cache> block_cache) {
   options.prefix_extractor.reset(NewNoopTransform());
   BlockBasedTableOptions block_based_options;
-  block_based_options.index_type = BlockBasedTableOptions::kHashSearch;
+  block_based_options.index_type = IndexType::kHashSearch;
   block_based_options.block_cache = block_cache;
   options.table_factory.reset(NewBlockBasedTableFactory(block_based_options));
   return options;
