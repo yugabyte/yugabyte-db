@@ -472,8 +472,8 @@ using namespace yb::ql;
                           join_outer join_qual
                           overlay_placing substr_from substr_for
                           opt_binary opt_oids copy_delimiter
-                          fetch_args offset_clause select_offset_value
-                          select_offset_value2 opt_select_fetch_first_value
+                          fetch_args select_offset_value
+                          opt_select_fetch_first_value
                           SeqOptElem
                           generic_set set_rest set_rest_more generic_reset reset_rest
                           SetResetClause FunctionSetResetClause
@@ -2211,15 +2211,6 @@ select_limit:
   limit_clause {
     $$ = $1;
   }
-  | limit_clause offset_clause {
-    PARSER_UNSUPPORTED(@2);
-  }
-  | offset_clause limit_clause {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | offset_clause {
-    PARSER_UNSUPPORTED(@1);
-  }
 ;
 
 opt_select_limit:
@@ -2241,16 +2232,6 @@ limit_clause:
   }
   // SQL:2008 syntax
   | FETCH first_or_next opt_select_fetch_first_value row_or_rows ONLY {
-    $$ = nullptr;
-  }
-;
-
-offset_clause:
-  OFFSET select_offset_value {
-    $$ = nullptr;
-  }
-  // SQL:2008 syntax.
-  | OFFSET select_offset_value2 row_or_rows {
     $$ = nullptr;
   }
 ;
@@ -2281,13 +2262,6 @@ opt_select_fetch_first_value:
   | SignedIconst {
   }
   | '(' a_expr ')' {
-  }
-;
-
-// Again, the trailing ROW/ROWS in this case prevent the full expression
-// syntax.  c_expr is the best we can do.
-select_offset_value2:
-  c_expr {
   }
 ;
 
@@ -4950,6 +4924,7 @@ unreserved_keyword:
   | OBJECT_P { $$ = $1; }
   | OF { $$ = $1; }
   | OFF { $$ = $1; }
+  | OFFSET { $$ = $1; }
   | OIDS { $$ = $1; }
   | OPERATOR { $$ = $1; }
   | OPTION { $$ = $1; }
@@ -5237,7 +5212,6 @@ reserved_keyword:
   | NAN { $$ = $1; }
   | NOT { $$ = $1; }
   | NULL_P { $$ = $1; }
-  | OFFSET { $$ = $1; }
   | ON { $$ = $1; }
   | ONLY { $$ = $1; }
   | OR { $$ = $1; }
