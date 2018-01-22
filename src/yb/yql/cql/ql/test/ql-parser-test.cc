@@ -101,6 +101,10 @@ TEST_F(QLTestParser, TestQLParser) {
   // Invalid statement: INSERT.
   PARSE_INVALID_STMT("INSERT INTO human_resource VALUES(7, \"Scott Tiger\";");
 
+  // Invalid statement: INSERT with LIKE.
+  PARSE_INVALID_STMT("INSERT INTO human_resource (id, name) values (1, 'Joe') IF id LIKE 4");
+  PARSE_INVALID_STMT("INSERT INTO human_resource (id, name) values (1, 'Joe') IF id NOT LIKE 4");
+
   // Invalid statement: INSERT with unterminated quoted string literal.
   PARSE_INVALID_STMT("INSERT INTO human_resource VALUES(7, 'Scott Tiger;");
 

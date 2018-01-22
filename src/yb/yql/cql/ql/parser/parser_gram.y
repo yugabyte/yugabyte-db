@@ -3140,10 +3140,10 @@ a_expr:
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_NOT_EQUAL, $1, $3);
   }
   | a_expr LIKE a_expr {
-    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_LIKE, $1, $3);
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr NOT_LA LIKE a_expr                                  %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_NOT_LIKE, $1, $4);
+    PARSER_CQL_INVALID(@3);
   }
 
   // Relations that have 3 operands.
