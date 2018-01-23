@@ -17,6 +17,7 @@
 
 #include <cstdlib>
 
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -32,6 +33,11 @@ namespace yb {
 
 // Log the given status.
 void LogOrPrintStatus(const Status& status);
+
+template<class T>
+void LogOrPrintStatus(const Result<T>& result) {
+  LogOrPrintStatus(result.status());
+}
 
 } // namespace yb
 

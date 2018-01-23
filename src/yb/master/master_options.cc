@@ -38,8 +38,12 @@
 #include "yb/master/master.h"
 #include "yb/util/flag_tags.h"
 
+#include "yb/gutil/strings/join.h"
+
 using std::make_shared;
 using std::vector;
+
+using namespace std::literals;
 
 namespace yb {
 namespace master {
@@ -52,6 +56,10 @@ DEFINE_string(master_addresses, "",
     "b) allow for a master to be restarted gracefully and get its peer list from the "
     "local cmeta file of the last committed config, if local instance file is present.");
 TAG_FLAG(master_addresses, experimental);
+DEFINE_uint64(master_replication_factor, 0,
+    "Number of master replicas. By default it is detected based on master_addresses option, but "
+    "could be specified explicitly together with passing one or more master service domain name and"
+    " port through master_addresses for masters auto-discovery when running on Kubernetes.");
 
 // NOTE: This flag is deprecated.
 DEFINE_bool(create_cluster, false,
@@ -68,10 +76,9 @@ MasterOptions::MasterOptions(server::ServerBaseOptions::addresses_shared_ptr mas
   SetMasterAddresses(master_addresses);
 }
 
-MasterOptions::MasterOptions() {
-  server_type = kServerType;
-  rpc_opts.default_port = kMasterDefaultPort;
-  master_addresses_flag = FLAGS_master_addresses;
+Result<MasterOptions> MasterOptions::CreateMasterOptions() {
+  const auto resolve_period = 1s;
+
   vector<HostPort> master_addresses = std::vector<HostPort>();
   if (!FLAGS_master_addresses.empty()) {
     Status s = HostPort::ParseStrings(FLAGS_master_addresses,
@@ -82,14 +89,44 @@ MasterOptions::MasterOptions() {
                  << FLAGS_master_addresses << "'): " << s.ToString();
     }
   }
-  SetMasterAddresses(make_shared<vector<HostPort>>(std::move(master_addresses)));
-}
 
-MasterOptions::MasterOptions(const MasterOptions& other) {
-  SetMasterAddresses(other.GetMasterAddresses());
-  server_type = other.server_type;
-  is_shell_mode_.Store(other.IsShellMode());
-  rpc_opts.default_port = other.rpc_opts.default_port;
+  std::string master_addresses_flag;
+  if (FLAGS_master_replication_factor > 0) {
+    vector<Endpoint> addrs;
+    for (;;) {
+      addrs.clear();
+      for (auto hp : master_addresses) {
+        auto s = hp.ResolveAddresses(&addrs);
+        if (!s.ok()) {
+          LOG(WARNING) << s;
+        }
+      }
+      if (addrs.size() >= FLAGS_master_replication_factor) {
+        break;
+      }
+      std::this_thread::sleep_for(resolve_period);
+    }
+    if (addrs.size() > FLAGS_master_replication_factor) {
+      return STATUS_FORMAT(
+          ConfigurationError, "Expected $0 master endpoints, but got: $1",
+          FLAGS_master_replication_factor, ToString(addrs));
+    }
+    LOG(INFO) << Format("Resolved master addresses: $0", ToString(addrs));
+    master_addresses.clear();
+    vector<string> master_addr_strings;
+    for (auto addr : addrs) {
+      auto hp = HostPort(addr);
+      master_addresses.emplace_back(hp);
+      master_addr_strings.emplace_back(hp.ToString());
+    }
+    master_addresses_flag = JoinStrings(master_addr_strings, ",");
+  } else {
+    master_addresses_flag = FLAGS_master_addresses;
+  }
+
+  MasterOptions opts(make_shared<vector<HostPort>>(std::move(master_addresses)));
+  opts.master_addresses_flag = master_addresses_flag;
+  return opts;
 }
 
 } // namespace master

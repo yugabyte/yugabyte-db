@@ -36,6 +36,7 @@
 
 #include "yb/server/server_base_options.h"
 #include "yb/util/atomic.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace master {
@@ -45,13 +46,16 @@ namespace master {
 // the list of options and corresponding flags.
 class MasterOptions : public server::ServerBaseOptions {
  public:
-  MasterOptions();
+  static Result<MasterOptions> CreateMasterOptions();
 
-  // To be used for testing
   explicit MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses);
 
   // Need copy constructor as AtomicBool doesnt allow default copy.
-  explicit MasterOptions(const MasterOptions& other);
+  MasterOptions(const MasterOptions& other)
+      : server::ServerBaseOptions(other), is_shell_mode_(other.IsShellMode()) {}
+
+  MasterOptions(MasterOptions&& other)
+      : server::ServerBaseOptions(other), is_shell_mode_(other.IsShellMode()) {}
 
   // Checks if the master_addresses flags has any peer masters provided.
   // Used to detect 'shell' master startup.
@@ -64,7 +68,7 @@ class MasterOptions : public server::ServerBaseOptions {
 
   static const char* kServerType;
 
- protected:
+ private:
   // Set during startup of a new master which is not part of any cluster yet - master_addresses is
   // not set and there is no local instance file.
   AtomicBool is_shell_mode_{false};

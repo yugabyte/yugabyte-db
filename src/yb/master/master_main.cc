@@ -74,8 +74,9 @@ static int MasterMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType));
   InitGoogleLoggingSafe(argv[0]);
 
-  MasterOptions opts;
-  YB_EDITION_NS_PREFIX Master server(opts);
+  auto opts_result = MasterOptions::CreateMasterOptions();
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
+  YB_EDITION_NS_PREFIX Master server(*opts_result);
   LOG(INFO) << "Initializing master server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
 
