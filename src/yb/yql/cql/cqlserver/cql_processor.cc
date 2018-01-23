@@ -58,10 +58,10 @@ METRIC_DEFINE_histogram(
     "RPC requests",
     60000000LU, 2);
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace cqlserver {
-
-DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
 
 const unordered_map<string, vector<string>> kSupportedOptions = {
   {CQLMessage::kCQLVersionOption, {"3.0.0" /* minimum */, "3.4.2" /* current */} },
@@ -475,6 +475,7 @@ CQLResponse* CQLProcessor::ProcessResult(Status s, const ExecutedResult::SharedP
                 return new ErrorResponse(*request_, ErrorResponse::Code::BAD_CREDENTIALS,
                     "Invalid password for " + params.username);
               } else {
+                call_->ql_session()->set_current_role_name(params.username);
                 return new AuthSuccessResponse(*request_, "" /* this does not matter" */);
               }
             }

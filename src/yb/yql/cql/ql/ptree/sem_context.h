@@ -180,6 +180,10 @@ class SemContext : public ProcessContext {
     return ql_env_->CurrentKeyspace();
   }
 
+  std::string CurrentRoleName() const {
+    return ql_env_->CurrentRoleName();
+  }
+
   // Access function to cache_used.
   bool cache_used() const { return cache_used_; }
 

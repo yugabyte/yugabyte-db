@@ -42,6 +42,7 @@ const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage
   { ErrorCode::FAILURE, "Internal Failure" },
   { ErrorCode::SERVER_ERROR, "Server Error" },
   { ErrorCode::STALE_METADATA, "Stale Metadata" },
+  { ErrorCode::UNAUTHORIZED, "Unauthorized"},
 
   //------------------------------------------------------------------------------------------------
   // Limitation related errors [-1, -50).

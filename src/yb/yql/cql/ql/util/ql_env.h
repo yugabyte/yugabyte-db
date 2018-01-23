@@ -118,6 +118,11 @@ class QLEnv {
   }
   // Role related methods
 
+  virtual std::string CurrentRoleName() const {
+    return (current_call_ != nullptr) ?
+        current_cql_call()->ql_session()->current_role_name() : kUndefinedRoleName;
+  }
+
   // Create role with the given arguments
   CHECKED_STATUS CreateRole(const std::string& role_name,
                             const std::string&  salted_hash,

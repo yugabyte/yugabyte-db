@@ -12,10 +12,15 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
+
+DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
 namespace master {
@@ -47,6 +52,7 @@ do {                                                                            
 class TestQLPermission : public QLTestBase {
  public:
   TestQLPermission() : QLTestBase() {
+    FLAGS_use_cassandra_authentication = true;
   }
 
   // Helper Functions
@@ -184,8 +190,10 @@ TEST_F(TestQLPermission, TestGrantAll) {
   QLRow& roles_row = row_block->row(1);
   CheckRowContents(roles_row, canonical_resource_roles, permissions_roles, role_name);
   CheckRowContents(keyspaces_row, canonical_resource_keyspaces, permissions_keyspaces, role_name);
-}
 
+  FLAGS_use_cassandra_authentication = false;
+  EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
+}
 
 TEST_F(TestQLPermission, TestGrantKeyspace) {
   // Init the simulated cluster.
@@ -220,12 +228,14 @@ TEST_F(TestQLPermission, TestGrantKeyspace) {
   // Grant All permissions
   const string role_name_2 = "test_role_2";
   CreateRole(processor, role_name_2);
-  const string grant_stmt_4 = GrantKeyspace("ALL",  keyspace1, role_name_2);
+  const string grant_stmt5 = GrantKeyspace("ALL",  keyspace1, role_name_2);
   std::vector<string> permissions_2 =
       { "ALTER", "AUTHORIZE", "CREATE", "DESCRIBE", "DROP", "MODIFY", "SELECT" };
-  CheckPermission(processor, grant_stmt_4, canonical_resource, permissions_2, role_name_2);
+  CheckPermission(processor, grant_stmt5, canonical_resource, permissions_2, role_name_2);
 
-
+  FLAGS_use_cassandra_authentication = false;
+  EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
+  EXEC_INVALID_STMT_MSG(grant_stmt4, "Unauthorized");
 }
 
 TEST_F(TestQLPermission, TestGrantRole) {
@@ -250,6 +260,8 @@ TEST_F(TestQLPermission, TestGrantRole) {
   const string grant_stmt2 = GrantRole("DROP", role_name_3, role_name);
   EXEC_INVALID_STMT_MSG(grant_stmt2, "Resource Not Found");
 
+  FLAGS_use_cassandra_authentication = false;
+  EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
 }
 
 TEST_F(TestQLPermission, TestGrantTable) {
@@ -278,11 +290,16 @@ TEST_F(TestQLPermission, TestGrantTable) {
   // Table absent
   const string grant_stmt3 = GrantTable("SELECT", "keyspace1.table2", role_name);
   EXEC_INVALID_STMT_MSG(grant_stmt3, "Resource Not Found");
+
+  FLAGS_use_cassandra_authentication = false;
+  EXEC_INVALID_STMT_MSG(grant_stmt, "Unauthorized");
+  EXEC_INVALID_STMT_MSG(grant_stmt2, "Unauthorized");
 }
 
 class TestQLRole : public QLTestBase {
  public:
   TestQLRole() : QLTestBase() {
+    FLAGS_use_cassandra_authentication = true;
   }
 
   inline const string CreateStmt(string params) {
@@ -461,6 +478,11 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   EXEC_INVALID_STMT_MSG(CreateStmt(role14), "Feature Not Supported");
   // Multiple role_options
   EXEC_INVALID_STMT_MSG(CreateStmt(role15), "Feature Not Supported");
+
+  // Flag Test:
+  FLAGS_use_cassandra_authentication = false;;
+  EXEC_INVALID_STMT_MSG(CreateStmt(role4), "Unauthorized");  // Valid, but unauthorized
+  EXEC_INVALID_STMT_MSG(CreateStmt(role9), "Unauthorized");  // Invalid and unauthorized
 }
 
 TEST_F(TestQLRole, TestQLDropRoleSimple) {
@@ -494,6 +516,9 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   EXEC_VALID_STMT(DropIfExistsStmt(role1));   // Check if exists
   EXEC_VALID_STMT(DropIfExistsStmt(role2));   // Check if exists
   EXEC_VALID_STMT(DropIfExistsStmt(role3));   // Check if exists
+
+  FLAGS_use_cassandra_authentication = false;
+  EXEC_INVALID_STMT_MSG(DropStmt(role1), "Unauthorized");
 }
 
 } // namespace ql

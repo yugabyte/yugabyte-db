@@ -20,6 +20,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/crypt.h"
 
+DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
 
 namespace yb {
 namespace ql {
@@ -90,10 +91,10 @@ PTCreateRole::~PTCreateRole() {
 
 CHECKED_STATUS PTCreateRole::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
+  RETURN_NOT_AUTH(sem_context);
+
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
-
-
   if (roleOptions_!= nullptr) {
     RETURN_NOT_OK(roleOptions_->Analyze(sem_context));
 
