@@ -30,6 +30,7 @@ namespace yb {
 namespace ql {
 
 static const char* const kUndefinedKeyspace = ""; // Must be empty string.
+static const char* const kUndefinedRoleName = ""; // Must be empty string.
 
 class QLSession {
  public:
@@ -38,7 +39,8 @@ class QLSession {
   typedef std::shared_ptr<const QLSession> SharedPtrConst;
 
   // Constructors.
-  QLSession() : current_keyspace_(kUndefinedKeyspace) { }
+  QLSession() : current_keyspace_(kUndefinedKeyspace), current_role_name_(kUndefinedRoleName ) { }
+
   virtual ~QLSession() { }
 
   // Access functions for current keyspace. It can be accessed by mutiple calls in parallel so
@@ -52,12 +54,27 @@ class QLSession {
     current_keyspace_ = keyspace;
   }
 
+  // Access functions for current role_name. It can be accessed by mutiple calls in parallel so
+  // they need to be thread-safe for shared reads / exclusive writes.
+  std::string current_role_name() const {
+    boost::shared_lock<boost::shared_mutex> l(current_role_name_mutex_);
+    return current_role_name_;
+  }
+
+  void set_current_role_name(const std::string& role_name) {
+    boost::lock_guard<boost::shared_mutex> l(current_role_name_mutex_);
+    current_role_name_ = role_name;
+  }
+
  private:
   // Mutex to protect access to current_keyspace_.
   mutable boost::shared_mutex current_keyspace_mutex_;
-
+  mutable boost::shared_mutex current_role_name_mutex_;
   // Current keyspace.
   std::string current_keyspace_;
+  // TODO (Bristy) : After Login has been done, test this.
+  std::string current_role_name_;
+
 };
 
 }  // namespace ql

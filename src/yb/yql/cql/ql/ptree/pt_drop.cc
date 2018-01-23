@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -36,6 +38,10 @@ PTDropStmt::~PTDropStmt() {
 }
 
 CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
+  if (drop_type_ == OBJECT_ROLE) {
+    RETURN_NOT_AUTH(sem_context);
+  }
+
   if (names_->size() > 1) {
     return sem_context->Error(names_, "Only one object name is allowed in a drop statement",
                               ErrorCode::CQL_STATEMENT_INVALID);

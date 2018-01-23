@@ -19,6 +19,8 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/gutil/strings/substitute.h"
 
+DECLARE_bool(use_cassandra_authentication);
+
 namespace yb {
 namespace ql {
 
@@ -58,6 +60,8 @@ PTGrantPermission::~PTGrantPermission() {
 
 CHECKED_STATUS PTGrantPermission::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
+  RETURN_NOT_AUTH(sem_context);
+
   // We check for the existence of the resource in the catalog manager as
   // this should be a rare occurence.
   // TODO (Bristy): Should we use a cache for these checks ?

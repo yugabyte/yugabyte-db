@@ -27,6 +27,14 @@
 
 #include "yb/util/status.h"
 
+// Return the given status if it is not OK.
+#define RETURN_NOT_AUTH(s)  do { \
+  if (!FLAGS_use_cassandra_authentication) {                                                      \
+    return s->Error(this, "You have to be logged in and not anonymous to perform this request",   \
+                    ErrorCode::UNAUTHORIZED);                                                     \
+  }                                                                                               \
+} while (false);
+
 namespace yb {
 namespace ql {
 
@@ -47,6 +55,7 @@ enum class ErrorCode : int64_t {
   FAILURE = -1,
   SERVER_ERROR = -2,
   STALE_METADATA = -3,
+  UNAUTHORIZED  = -4,
 
   //------------------------------------------------------------------------------------------------
   // Limitation errors [-10, -50).
