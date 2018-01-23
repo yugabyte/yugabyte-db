@@ -14,6 +14,7 @@ using std::string;
 
 using strings::Substitute;
 using tablet::TabletStatusListener;
+using tablet::enterprise::Tablet;
 
 Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   RETURN_NOT_OK(super::FetchAll(status_listener));
@@ -34,9 +35,7 @@ Status RemoteBootstrapClient::DownloadSnapshotFiles() {
   CHECK(downloaded_rocksdb_files_);
 
   const string& rocksdb_dir = new_superblock_->rocksdb_dir();
-  const string top_snapshots_dir = JoinPathSegments(rocksdb_dir,
-                                                    tablet::enterprise::kSnapshotsDirName);
-
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
   // Create the snapshots directory first.
   RETURN_NOT_OK_PREPEND(fs_manager_->CreateDirIfMissingAndSync(top_snapshots_dir),
                         Substitute("Failed to create & sync top snapshots directory $0",
