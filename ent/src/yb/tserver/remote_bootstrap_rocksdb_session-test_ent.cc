@@ -8,6 +8,10 @@ namespace tserver {
 
 using std::string;
 
+using yb::tablet::enterprise::Tablet;
+
+static const string kSnapshotId = "0123456789ABCDEF0123456789ABCDEF";
+
 class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
  public:
   RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YQL_TABLE_TYPE) {}
@@ -18,15 +22,12 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
   }
 
   void CreateSnapshot() {
-    LOG(INFO) << "Creating Snapshot " << snapshot_id_ << " ...";
+    LOG(INFO) << "Creating Snapshot " << kSnapshotId << " ...";
     TabletSnapshotOpRequestPB request;
-    request.set_snapshot_id(snapshot_id_);
+    request.set_snapshot_id(kSnapshotId);
     tablet::SnapshotOperationState tx_state(tablet().get(), &request);
     ASSERT_OK(tablet()->CreateSnapshot(&tx_state));
   }
-
- protected:
-  const string snapshot_id_ = "0123456789ABCDEF0123456789ABCDEF";
 };
 
 TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
@@ -38,11 +39,10 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   const string& rocksdb_dir = superblock.rocksdb_dir();
   ASSERT_TRUE(env_->FileExists(rocksdb_dir));
 
-  const string top_snapshots_dir = JoinPathSegments(rocksdb_dir,
-                                                    tablet::enterprise::kSnapshotsDirName);
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
   ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
 
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id_);
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
   ASSERT_TRUE(env_->FileExists(snapshot_dir));
 
   vector<string> snapshot_files;
@@ -56,7 +56,7 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
     const string& snapshot_file_name = superblock.snapshot_files(i).name();
     const uint64_t snapshot_file_size_bytes = superblock.snapshot_files(i).size_bytes();
 
-    ASSERT_EQ(snapshot_id, snapshot_id_);
+    ASSERT_EQ(snapshot_id, kSnapshotId);
 
     const string file_path = JoinPathSegments(snapshot_dir, snapshot_file_name);
     ASSERT_TRUE(env_->FileExists(file_path));
