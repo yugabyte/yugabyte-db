@@ -472,7 +472,8 @@ public class TestSystemTables extends BaseCQLTest {
             .all().size());
 
     // Create an index and verify indexes vtable.
-    session.execute("CREATE table t1 (h1 int, r1 int, c1 text, primary key ((h1), r1));");
+    session.execute("CREATE table t1 (h1 int, r1 int, c1 text, primary key ((h1), r1)) " +
+                    "with transactions = { 'enabled' : true };");
     session.execute("CREATE index i1 on t1 (c1);");
     session.execute("SELECT * FROM system_schema.indexes;");
 

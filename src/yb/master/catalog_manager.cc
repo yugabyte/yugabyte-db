@@ -1278,16 +1278,20 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
 
 namespace {
 
-CHECKED_STATUS AddIndexedColumn(const Schema& index_schema,
-                                const size_t index_col_idx,
-                                const Schema& indexed_schema,
-                                google::protobuf::RepeatedField<google::protobuf::uint32>* cols) {
+CHECKED_STATUS AddIndexColumn(
+    const Schema& indexed_schema,
+    const Schema& index_schema,
+    const size_t index_col_idx,
+    google::protobuf::RepeatedPtrField<IndexInfoPB::IndexColumnPB>* cols) {
+
   const auto& col_name = index_schema.column(index_col_idx).name();
   const auto indexed_col_idx = indexed_schema.find_column(col_name);
   if (PREDICT_FALSE(indexed_col_idx == Schema::kColumnNotFound)) {
     return STATUS(NotFound, "The indexed table column does not exist", col_name);
   }
-  cols->Add(indexed_schema.column_id(indexed_col_idx));
+  auto* col = cols->Add();
+  col->set_column_id(index_schema.column_id(index_col_idx));
+  col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
   return Status::OK();
 }
 
@@ -1309,24 +1313,23 @@ Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
   // Populate index info.
   IndexInfoPB index_info;
   index_info.set_table_id(index_table_id);
-  for (size_t i = 0; i < index_schema.num_hash_key_columns(); i++) {
-    RETURN_NOT_OK(AddIndexedColumn(index_schema, i, indexed_schema,
-                                   index_info.mutable_hash_column_ids()));
+  index_info.set_version(0);
+  for (size_t i = 0; i < index_schema.num_columns(); i++) {
+    RETURN_NOT_OK(AddIndexColumn(indexed_schema, index_schema, i, index_info.mutable_columns()));
   }
-  for (size_t i = index_schema.num_hash_key_columns(); i < index_schema.num_key_columns(); i++) {
-    RETURN_NOT_OK(AddIndexedColumn(index_schema, i, indexed_schema,
-                                   index_info.mutable_range_column_ids()));
-  }
-  for (size_t i = index_schema.num_key_columns(); i < index_schema.num_columns(); i++) {
-    RETURN_NOT_OK(AddIndexedColumn(index_schema, i, indexed_schema,
-                                   index_info.mutable_covering_column_ids()));
-  }
+  index_info.set_hash_column_count(index_schema.num_hash_key_columns());
+  index_info.set_range_column_count(index_schema.num_range_key_columns());
 
   TRACE("Locking indexed table");
   auto l = indexed_table->LockForWrite();
 
-  // Add index info to indexed table.
+  // Add index info to indexed table and increment schema version.
   l->mutable_data()->pb.add_indexes()->Swap(&index_info);
+  l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+  l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
+                               Substitute("Alter table version=$0 ts=$1",
+                                          l->mutable_data()->pb.version(),
+                                          LocalTimeAsString()));
 
   // Update sys-catalog with the new indexed table info.
   TRACE("Updating indexed table metadata on disk");
@@ -1335,6 +1338,8 @@ Status CatalogManager::AddIndexInfoToTable(const TableId& indexed_table_id,
   // Update the in-memory state
   TRACE("Committing in-memory state");
   l->Commit();
+
+  SendAlterTableRequest(indexed_table);
 
   return Status::OK();
 }
@@ -1651,7 +1656,22 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   // 3. Set any current errors, if we are experiencing issues creating the table. This will be
   // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
   // MasterErrorPB::UNKNOWN_ERROR.
-  return table->GetCreateTableErrorStatus();
+  RETURN_NOT_OK(table->GetCreateTableErrorStatus());
+
+  // 4. For index table, check if alter schema is done on the indexed table also.
+  if (resp->done() && !l->data().pb.indexed_table_id().empty()) {
+    IsAlterTableDoneRequestPB alter_table_req;
+    IsAlterTableDoneResponsePB alter_table_resp;
+    alter_table_req.mutable_table()->set_table_id(l->data().pb.indexed_table_id());
+    const Status s = IsAlterTableDone(&alter_table_req, &alter_table_resp);
+    if (!s.ok()) {
+      resp->mutable_error()->Swap(alter_table_resp.mutable_error());
+      return s;
+    }
+    resp->set_done(alter_table_resp.done());
+  }
+
+  return Status::OK();
 }
 
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
@@ -2294,9 +2314,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
   l->mutable_data()->pb.set_next_column_id(next_col_id);
   l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
-                              Substitute("Alter table version=$0 ts=$1",
-                                         l->mutable_data()->pb.version(),
-                                         LocalTimeAsString()));
+                               Substitute("Alter table version=$0 ts=$1",
+                                          l->mutable_data()->pb.version(),
+                                          LocalTimeAsString()));
 
   // Update sys-catalog with the new table schema.
   TRACE("Updating metadata on disk");
@@ -2337,8 +2357,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 }
 
 Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
-                                        IsAlterTableDoneResponsePB* resp,
-                                        rpc::RpcContext* rpc) {
+                                        IsAlterTableDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
   scoped_refptr<TableInfo> table;
@@ -5243,28 +5262,14 @@ void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo>> *ret) const {
   }
 }
 
-void TableInfo::GetIndexInfo(const TableId& index_id, IndexInfo* index_info) const {
-  index_info->hash_column_ids.clear();
-  index_info->range_column_ids.clear();
-  index_info->covering_column_ids.clear();
+IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->data().pb.indexes()) {
     if (index_info_pb.table_id() == index_id) {
-      index_info->hash_column_ids.reserve(index_info_pb.hash_column_ids_size());
-      for (const auto id : index_info_pb.hash_column_ids()) {
-        index_info->hash_column_ids.push_back(ColumnId(id));
-      }
-      index_info->range_column_ids.reserve(index_info_pb.range_column_ids_size());
-      for (const auto id : index_info_pb.range_column_ids()) {
-        index_info->range_column_ids.push_back(ColumnId(id));
-      }
-      index_info->covering_column_ids.reserve(index_info_pb.covering_column_ids_size());
-      for (const auto id : index_info_pb.covering_column_ids()) {
-        index_info->covering_column_ids.push_back(ColumnId(id));
-      }
-      return;
+      return IndexInfo(index_info_pb);
     }
   }
+  return IndexInfo();
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {

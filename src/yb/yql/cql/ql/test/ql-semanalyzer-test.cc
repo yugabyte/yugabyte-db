@@ -192,7 +192,8 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
   CreateSimulatedCluster();
   TestQLProcessor *processor = GetQLProcessor();
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, "
-                          "PRIMARY KEY ((h1, h2), r1, r2));"));
+                          "PRIMARY KEY ((h1, h2), r1, r2)) "
+                          "with transactions = {'enabled':true};"));
 
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;
@@ -225,11 +226,17 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
 
 
   CHECK_OK(processor->Run("CREATE TABLE t2 (h1 int, h2 text, r1 int, r2 text, c list<int>, "
-                          "PRIMARY KEY ((h1, h2), r1, r2));"));
+                          "PRIMARY KEY ((h1, h2), r1, r2)) "
+                          "with transactions = {'enabled':true};"));
   // Unsupported complex type.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (c);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 ((r1), c);", &parse_tree);
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t2 (r1, r2) COVERING (c);", &parse_tree);
+
+  CHECK_OK(processor->Run("CREATE TABLE t3 (k int primary key, c int);"));
+
+  // Index on non-transactional table.
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t3 (c);", &parse_tree);
 }
 
 TEST_F(QLTestAnalyzer, TestTruncate) {

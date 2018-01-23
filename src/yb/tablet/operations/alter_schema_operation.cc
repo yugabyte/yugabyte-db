@@ -50,10 +50,18 @@ using std::bind;
 using consensus::ReplicateMsg;
 using consensus::ALTER_SCHEMA_OP;
 using consensus::DriverType;
+using google::protobuf::RepeatedPtrField;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 using tserver::AlterSchemaRequestPB;
 using tserver::AlterSchemaResponsePB;
+
+void AlterSchemaOperationState::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
+  index_lookup_map_.clear();
+  for (const auto& index : indexes) {
+    index_lookup_map_.emplace(index.table_id(), IndexInfo(index));
+  }
+}
 
 string AlterSchemaOperationState::ToString() const {
   return Substitute("AlterSchemaOperationState "
@@ -102,6 +110,8 @@ Status AlterSchemaOperation::Prepare() {
   RETURN_NOT_OK(tablet->CreatePreparedAlterSchema(state(), schema.get()));
 
   state()->AddToAutoReleasePool(schema.release());
+
+  state()->SetIndexes(state()->request()->indexes());
 
   TRACE("PREPARE ALTER-SCHEMA: finished");
   return s;

@@ -63,26 +63,27 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kKind, "COMPOSITES", &row));
 
     string target;
-    IndexInfo index_info;
-    indexed_table->GetIndexInfo(table->id(), &index_info);
-    for (size_t i = 0; i < index_info.hash_column_ids.size(); i++) {
-      target += ColumnName(indexed_schema, index_info.hash_column_ids[i]);
-      if (i != index_info.hash_column_ids.size() - 1) {
+    IndexInfo index_info = indexed_table->GetIndexInfo(table->id());
+    for (size_t i = 0; i < index_info.hash_column_count(); i++) {
+      target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      if (i != index_info.hash_column_count() - 1) {
         target += ", ";
       }
     }
-    if (index_info.hash_column_ids.size() > 1) {
+    if (index_info.hash_column_count() > 1) {
       target = '(' + target + ')';
     }
-    for (size_t i = 0; i < index_info.range_column_ids.size(); i++) {
+    for (size_t i = index_info.hash_column_count();
+         i < index_info.hash_column_count() + index_info.range_column_count(); i++) {
       target += ", ";
-      target += ColumnName(indexed_schema, index_info.range_column_ids[i]);
+      target += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
     }
 
     string covering;
-    for (size_t i = 0; i < index_info.covering_column_ids.size(); i++) {
-      covering += ColumnName(indexed_schema, index_info.covering_column_ids[i]);
-      if (i != index_info.covering_column_ids.size() - 1) {
+    for (size_t i = index_info.hash_column_count() + index_info.range_column_count();
+         i < index_info.columns().size(); i++) {
+      covering += ColumnName(indexed_schema, index_info.columns()[i].indexed_column_id);
+      if (i != index_info.columns().size() - 1) {
         covering += ", ";
       }
     }

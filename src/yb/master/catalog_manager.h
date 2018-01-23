@@ -194,14 +194,6 @@ struct TabletReplica {
   }
 };
 
-// Index info to return the ids of the columns in the indexed table that compose the hash and range
-// columns of the index table, and any additional columns in the indexed table covered by the index.
-struct IndexInfo {
-  std::vector<ColumnId> hash_column_ids;
-  std::vector<ColumnId> range_column_ids;
-  std::vector<ColumnId> covering_column_ids;
-};
-
 // The information about a single tablet which exists in the cluster,
 // including its state and locations.
 //
@@ -380,7 +372,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void GetAllTablets(std::vector<scoped_refptr<TabletInfo> > *ret) const;
 
   // Get info of the specified index.
-  void GetIndexInfo(const TableId& index_id, IndexInfo* index_info) const;
+  IndexInfo GetIndexInfo(const TableId& index_id) const;
 
   // Returns true if the table creation is in-progress
   bool IsCreateInProgress() const;
@@ -772,23 +764,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                             rpc::RpcContext* rpc);
 
   // Get the information about an in-progress alter operation
-  //
-  // The RPC context is provided for logging/tracing purposes,
-  // but this function does not itself respond to the RPC.
   CHECKED_STATUS IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
-                                  IsAlterTableDoneResponsePB* resp,
-                                  rpc::RpcContext* rpc);
+                                  IsAlterTableDoneResponsePB* resp);
 
   // Get the information about the specified table
   CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
-                        GetTableSchemaResponsePB* resp);
+                                GetTableSchemaResponsePB* resp);
 
   // List all the running tables
   CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
-                    ListTablesResponsePB* resp);
+                            ListTablesResponsePB* resp);
 
   CHECKED_STATUS GetTableLocations(const GetTableLocationsRequestPB* req,
-                           GetTableLocationsResponsePB* resp);
+                                   GetTableLocationsResponsePB* resp);
 
   // Look up the locations of the given tablet. The locations
   // vector is overwritten (not appended to).
@@ -797,7 +785,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
-                            TabletLocationsPB* locs_pb);
+                                    TabletLocationsPB* locs_pb);
 
   // Retrieves a SystemTablet instance based on the existing system tablets already created in our
   // syscatalog.

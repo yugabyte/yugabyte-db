@@ -71,19 +71,12 @@ static Status PBToClientTableType(
   }
 }
 
-YBTable::Data::Data(
-    shared_ptr<YBClient> client,
-    YBTableName name,
-    string id,
-    const YBSchema& schema,
-    PartitionSchema partition_schema)
-  : client_(std::move(client)),
-    name_(std::move(name)),
-    // The table type is set after the table is opened.
-    table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
-    id_(std::move(id)),
-    schema_(schema),
-    partition_schema_(std::move(partition_schema)) {
+YBTable::Data::Data(shared_ptr<YBClient> client, YBTableName name, Info info)
+    : client_(std::move(client)),
+      name_(std::move(name)),
+      // The table type is set after the table is opened.
+      table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
+      info_(std::move(info)) {
 }
 
 YBTable::Data::~Data() {
@@ -97,7 +90,7 @@ Status YBTable::Data::Open() {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(client_->default_admin_operation_timeout());
 
-  req.mutable_table()->set_table_id(id_);
+  req.mutable_table()->set_table_id(info_.table_id);
   Status s;
   // TODO: replace this with Async RPC-retrier based RPC in the next revision,
   // adding exponential backoff and allowing this to be used safely in a

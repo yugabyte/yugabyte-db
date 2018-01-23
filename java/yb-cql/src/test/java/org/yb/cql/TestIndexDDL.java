@@ -34,7 +34,8 @@ public class TestIndexDDL extends BaseCQLTest {
     session.execute("create table test_create_index " +
                     "(h1 int, h2 text, r1 int, r2 text, " +
                     "c1 int, c2 text, c3 decimal, c4 timestamp, " +
-                    "primary key ((h1, h2), r1, r2));");
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
 
     // Create test indexes with range and non-primary-key columns.
     session.execute("create index i1 on test_create_index (r1, r2) covering (c1, c4);");
@@ -85,7 +86,8 @@ public class TestIndexDDL extends BaseCQLTest {
     session.execute("create table test_create_index_2 " +
                     "(h1 int, h2 text, r1 int, r2 text, " +
                     "c1 int, c2 text, c3 decimal, c4 timestamp, " +
-                    "primary key ((h1, h2), r1, r2));");
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
 
     // Test create index by the same name on another table.
     try {
@@ -103,7 +105,8 @@ public class TestIndexDDL extends BaseCQLTest {
     session.execute("create table test_clustering_index " +
                     "(h1 int, h2 text, r1 int, r2 text, " +
                     "c1 int, c2 text, c3 decimal, c4 timestamp, c5 uuid, " +
-                    "primary key ((h1, h2), r1, r2));");
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
 
     // Create test indexes with range and non-primary-key columns.
     session.execute("create index i1 on test_clustering_index (r1, r2, c1, c2) " +
@@ -151,7 +154,8 @@ public class TestIndexDDL extends BaseCQLTest {
     session.execute("create table test_drop_index " +
                     "(h1 int, h2 text, r1 int, r2 text, " +
                     "c1 int, c2 text, c3 decimal, c4 timestamp, " +
-                    "primary key ((h1, h2), r1, r2));");
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
 
     // Create test index.
     session.execute("create index i1 on test_drop_index (r1, r2) covering (c1, c2);");
@@ -201,7 +205,8 @@ public class TestIndexDDL extends BaseCQLTest {
     session.execute("create table test_drop_cascade " +
                     "(h1 int, h2 text, r1 int, r2 text, " +
                     "c1 int, c2 text, c3 decimal, c4 timestamp, " +
-                    "primary key ((h1, h2), r1, r2));");
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
 
     // Create test index.
     session.execute("create index i1 on test_drop_cascade (r1, r2) covering (c1, c2);");

@@ -50,6 +50,8 @@ message AlterSchemaRequestPB {
   // (Schema, Column IDs, Column Attributes)
   required SchemaPB schema = 2;
 
+  repeated IndexInfoPB indexes = 7;
+
   required uint32 schema_version = 3;
   optional string new_table_name = 4;
 

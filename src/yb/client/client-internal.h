@@ -40,6 +40,7 @@
 
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
@@ -76,16 +77,16 @@ class YBClient::Data {
   // criteria, but are possibly filtered by the blacklist. This is useful for implementing
   // retry logic.
   CHECKED_STATUS GetTabletServer(YBClient* client,
-                         const scoped_refptr<internal::RemoteTablet>& rt,
-                         ReplicaSelection selection,
-                         const std::set<std::string>& blacklist,
-                         std::vector<internal::RemoteTabletServer*>* candidates,
-                         internal::RemoteTabletServer** ts);
+                                 const scoped_refptr<internal::RemoteTablet>& rt,
+                                 ReplicaSelection selection,
+                                 const std::set<std::string>& blacklist,
+                                 std::vector<internal::RemoteTabletServer*>* candidates,
+                                 internal::RemoteTabletServer** ts);
 
   CHECKED_STATUS CreateTable(YBClient* client,
-                     const master::CreateTableRequestPB& req,
-                     const YBSchema& schema,
-                     const MonoTime& deadline);
+                             const master::CreateTableRequestPB& req,
+                             const YBSchema& schema,
+                             const MonoTime& deadline);
 
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
                                          const YBTableName& table_name,
@@ -127,8 +128,8 @@ class YBClient::Data {
                                               const MonoTime& deadline);
 
   CHECKED_STATUS AlterTable(YBClient* client,
-                    const master::AlterTableRequestPB& req,
-                    const MonoTime& deadline);
+                            const master::AlterTableRequestPB& req,
+                            const MonoTime& deadline);
 
   CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
                                         const YBTableName& table_name,
@@ -142,10 +143,7 @@ class YBClient::Data {
   CHECKED_STATUS GetTableSchema(YBClient* client,
                                 const YBTableName& table_name,
                                 const MonoTime& deadline,
-                                YBSchema* schema,
-                                PartitionSchema* partition_schema,
-                                std::string* table_id,
-                                std::string* indexed_table_id);
+                                YBTable::Info* info);
 
   CHECKED_STATUS InitLocalHostNames();
 

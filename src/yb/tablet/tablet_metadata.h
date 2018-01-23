@@ -39,6 +39,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 
+#include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/opid_util.h"
@@ -151,6 +152,8 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   void SetSchema(const Schema& schema, uint32_t version);
 
+  void SetIndexLookupMap(IndexLookupMap&& index_lookup_map);
+
   void SetTableName(const std::string& table_name);
 
   // Return a reference to the current schema.
@@ -161,6 +164,8 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
         base::subtle::Acquire_Load(reinterpret_cast<const AtomicWord*>(&schema_)));
     return *s;
   }
+
+  Result<IndexInfo> FindIndex(const TableId& index_id) const;
 
   // Returns the partition schema of the tablet's table.
   const PartitionSchema& partition_schema() const {
@@ -325,6 +330,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // The current schema version. This is owned by this class.
   // We don't use gscoped_ptr so that we can do an atomic swap.
   Schema* schema_;
+  IndexLookupMap index_lookup_map_;
   uint32_t schema_version_;
   std::string table_name_;
   TableType table_type_;

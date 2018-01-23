@@ -405,6 +405,10 @@ YBSchema::YBSchema(const YBSchema& other) {
   CopyFrom(other);
 }
 
+YBSchema::YBSchema(YBSchema&& other) {
+  MoveFrom(std::move(other));
+}
+
 YBSchema::YBSchema(const Schema& schema)
     : schema_(new Schema(schema)) {
 }
@@ -419,8 +423,20 @@ YBSchema& YBSchema::operator=(const YBSchema& other) {
   return *this;
 }
 
+YBSchema& YBSchema::operator=(YBSchema&& other) {
+  if (&other != this) {
+    MoveFrom(std::move(other));
+  }
+  return *this;
+}
+
 void YBSchema::CopyFrom(const YBSchema& other) {
   schema_.reset(new Schema(*other.schema_));
+  version_ = other.version();
+}
+
+void YBSchema::MoveFrom(YBSchema&& other) {
+  schema_ = std::move(other.schema_);
   version_ = other.version();
 }
 

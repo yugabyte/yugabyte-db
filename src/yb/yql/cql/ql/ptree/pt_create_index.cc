@@ -48,6 +48,11 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
                                          &column_descs_, &num_key_columns_, &num_hash_key_columns_,
                                          &column_definitions_));
 
+  if (!table_->InternalSchema().table_properties().is_transactional()) {
+    return sem_context->Error(this, "Transactions are not enabled in the indexed table",
+                              ErrorCode::INVALID_TABLE_DEFINITION);
+  }
+
   // Save context state, and set "this" as current create-table statement in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_create_table_stmt(this);

@@ -42,6 +42,8 @@
 #include <vector>
 
 #include "yb/client/meta_cache.h"
+#include "yb/client/table-internal.h"
+#include "yb/common/index.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
@@ -484,10 +486,7 @@ Status YBClient::Data::CreateTable(
       // response (e.g., due to failure before the successful
       // response could be sent back, or due to a I/O pause or a
       // network blip leading to a timeout, etc...)
-      YBSchema actual_schema;
-      string table_id_ignored;
-      string indexed_table_id_ignored;
-      PartitionSchema actual_partition_schema;
+      YBTable::Info info;
       string keyspace = req.has_namespace_() ? req.namespace_().name() :
                         (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
       const YBTableName table_name(!keyspace.empty()
@@ -502,15 +501,14 @@ Status YBClient::Data::CreateTable(
           Substitute("Failed waiting for table $0 to finish being created", table_name.ToString()));
 
       RETURN_NOT_OK_PREPEND(
-          GetTableSchema(client, table_name, deadline, &actual_schema,
-                         &actual_partition_schema, &table_id_ignored, &indexed_table_id_ignored),
+          GetTableSchema(client, table_name, deadline, &info),
           Substitute("Unable to check the schema of table $0", table_name.ToString()));
-      if (!schema.Equals(actual_schema)) {
+      if (!schema.Equals(info.schema)) {
          string msg = Format("Table $0 already exists with a different "
                              "schema. Requested schema was: $1, actual schema is: $2",
                              table_name,
                              internal::GetSchema(schema),
-                             internal::GetSchema(actual_schema));
+                             internal::GetSchema(info.schema));
         LOG(ERROR) << msg;
         return STATUS(AlreadyPresent, msg);
       } else {
@@ -518,14 +516,14 @@ Status YBClient::Data::CreateTable(
         // We need to use the schema received from the server, because the user-constructed
         // schema might not have column ids.
         RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(),
-                                              internal::GetSchema(actual_schema),
+                                              internal::GetSchema(info.schema),
                                               &partition_schema));
-        if (!partition_schema.Equals(actual_partition_schema)) {
+        if (!partition_schema.Equals(info.partition_schema)) {
           string msg = Substitute("Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",
               table_name.ToString(),
               partition_schema.DebugString(internal::GetSchema(schema)),
-              actual_partition_schema.DebugString(internal::GetSchema(actual_schema)));
+              info.partition_schema.DebugString(internal::GetSchema(info.schema)));
           LOG(ERROR) << msg;
           return STATUS(AlreadyPresent, msg);
         } else {
@@ -851,10 +849,7 @@ class GetTableSchemaRpc : public Rpc {
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     YBTableName table_name,
-                    YBSchema* out_schema,
-                    PartitionSchema* out_partition_schema,
-                    string* out_id,
-                    string* out_indexed_table_id,
+                    YBTable::Info* info,
                     const MonoTime& deadline,
                     const shared_ptr<rpc::Messenger>& messenger);
 
@@ -874,30 +869,21 @@ class GetTableSchemaRpc : public Rpc {
   YBClient* client_;
   StatusCallback user_cb_;
   const YBTableName table_name_;
-  YBSchema* out_schema_;
-  PartitionSchema* out_partition_schema_;
-  string* out_id_;
-  string* out_indexed_table_id_;
+  YBTable::Info* info_;
   GetTableSchemaResponsePB resp_;
 };
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      YBTableName table_name,
-                                     YBSchema* out_schema,
-                                     PartitionSchema* out_partition_schema,
-                                     string* out_id,
-                                     string* out_indexed_table_id,
+                                     YBTable::Info* info,
                                      const MonoTime& deadline,
                                      const shared_ptr<rpc::Messenger>& messenger)
     : Rpc(deadline, messenger),
       client_(DCHECK_NOTNULL(client)),
       user_cb_(std::move(user_cb)),
       table_name_(std::move(table_name)),
-      out_schema_(DCHECK_NOTNULL(out_schema)),
-      out_partition_schema_(DCHECK_NOTNULL(out_partition_schema)),
-      out_id_(DCHECK_NOTNULL(out_id)),
-      out_indexed_table_id_(DCHECK_NOTNULL(out_indexed_table_id)) {
+      info_(DCHECK_NOTNULL(info)) {
 }
 
 GetTableSchemaRpc::~GetTableSchemaRpc() {
@@ -1007,17 +993,20 @@ void GetTableSchemaRpc::Finished(const Status& status) {
     std::unique_ptr<Schema> schema(new Schema());
     new_status = SchemaFromPB(resp_.schema(), schema.get());
     if (new_status.ok()) {
-      out_schema_->Reset(std::move(schema));
-      out_schema_->set_version(resp_.version());
+      info_->schema.Reset(std::move(schema));
+      info_->schema.set_version(resp_.version());
       new_status = PartitionSchema::FromPB(resp_.partition_schema(),
-                                           GetSchema(out_schema_),
-                                           out_partition_schema_);
+                                           GetSchema(&info_->schema),
+                                           &info_->partition_schema);
 
-      *out_id_ = resp_.identifier().table_id();
+      info_->table_id = resp_.identifier().table_id();
       if (resp_.has_indexed_table_id()) {
-        *out_indexed_table_id_ = resp_.indexed_table_id();
+        info_->indexed_table_id = resp_.indexed_table_id();
       }
-      CHECK_GT(out_id_->size(), 0) << "Running against a too-old master";
+      for (const auto& index : resp_.indexes()) {
+        info_->indexes.emplace_back(index);
+      }
+      CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
     }
   }
   if (!new_status.ok()) {
@@ -1031,19 +1020,13 @@ void GetTableSchemaRpc::Finished(const Status& status) {
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const YBTableName& table_name,
                                       const MonoTime& deadline,
-                                      YBSchema* schema,
-                                      PartitionSchema* partition_schema,
-                                      string* table_id,
-                                      string* indexed_table_id) {
+                                      YBTable::Info* info) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
       client,
       sync.AsStatusCallback(),
       table_name,
-      schema,
-      partition_schema,
-      table_id,
-      indexed_table_id,
+      info,
       deadline,
       messenger_);
   return sync.Wait();

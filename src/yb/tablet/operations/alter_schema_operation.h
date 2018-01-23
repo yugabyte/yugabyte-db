@@ -36,6 +36,7 @@
 #include <mutex>
 #include <string>
 
+#include "yb/common/index.h"
 #include "yb/gutil/macros.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
@@ -75,6 +76,12 @@ class AlterSchemaOperationState : public OperationState {
   void set_schema(const Schema* schema) { schema_ = schema; }
   const Schema* schema() const { return schema_; }
 
+  void SetIndexes(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
+
+  IndexLookupMap& index_lookup_map() {
+    return index_lookup_map_;
+  }
+
   std::string new_table_name() const {
     return request_->new_table_name();
   }
@@ -109,6 +116,9 @@ class AlterSchemaOperationState : public OperationState {
 
   // The new (target) Schema.
   const Schema* schema_ = nullptr;
+
+  // Lookup map for the associated indexes.
+  IndexLookupMap index_lookup_map_;
 
   // The original RPC request and response.
   const tserver::AlterSchemaRequestPB *request_;

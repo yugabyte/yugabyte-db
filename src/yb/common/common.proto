@@ -151,6 +151,22 @@ message SchemaPB {
   optional TablePropertiesPB table_properties = 2;
 }
 
+// This message contains the metadata of a secondary index of a table. It maps the indexed table
+// columns to the index table columns.
+message IndexInfoPB {
+  optional bytes table_id = 1;  // Index table id.
+  optional uint32 version = 2;  // Index table's schema version.
+
+  // Index column mapping.
+  message IndexColumnPB {
+    optional uint32 column_id = 1;         // Column id in the index table.
+    optional uint32 indexed_column_id = 2; // Corresponding column id in indexed table.
+  }
+  repeated IndexColumnPB columns = 3;  // Indexed and covering columns.
+  optional uint32 hash_column_count = 4;   // Number of hash columns in the index.
+  optional uint32 range_column_count = 5;  // Number of range columns in the index.
+}
+
 message HostPortPB {
   required string host = 1;
   required uint32 port = 2;

@@ -375,17 +375,17 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 PartitionSchema* partition_schema) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  string table_id_ignored;
-  string indexed_table_id;
-  RETURN_NOT_OK(data_->GetTableSchema(this,
-                                      table_name,
-                                      deadline,
-                                      schema,
-                                      partition_schema,
-                                      &table_id_ignored,
-                                      &indexed_table_id));
+  YBTable::Info info;
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
+
   // Verify it is not an index table.
-  return !indexed_table_id.empty() ? STATUS(NotFound, "The table does not exist") : Status::OK();
+  if (!info.indexed_table_id.empty()) {
+    return STATUS(NotFound, "The table does not exist");
+  }
+
+  *schema = std::move(info.schema);
+  *partition_schema = std::move(info.partition_schema);
+  return Status::OK();
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name) {
@@ -949,31 +949,19 @@ void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {
-  YBSchema schema;
-  string table_id;
-  string indexed_table_id;
-  PartitionSchema partition_schema;
+  YBTable::Info info;
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  RETURN_NOT_OK(data_->GetTableSchema(this,
-                                      table_name,
-                                      deadline,
-                                      &schema,
-                                      &partition_schema,
-                                      &table_id,
-                                      &indexed_table_id));
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
+
   // Verify it is not an index table.
-  if (!indexed_table_id.empty()) {
+  if (!info.indexed_table_id.empty()) {
     return STATUS(NotFound, "The table does not exist");
   }
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(),
-                                           table_name,
-                                           table_id,
-                                           schema,
-                                           partition_schema));
+  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(), table_name, info));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
   return Status::OK();
@@ -1229,13 +1217,8 @@ Status YBTableCreator::Create() {
 // YBTable
 ////////////////////////////////////////////////////////////
 
-YBTable::YBTable(
-    const shared_ptr<YBClient>& client,
-    const YBTableName& name,
-    const string& table_id,
-    const YBSchema& schema,
-    const PartitionSchema& partition_schema)
-  : data_(new YBTable::Data(client, name, table_id, schema, partition_schema)) {
+YBTable::YBTable(const shared_ptr<YBClient>& client, const YBTableName& name, const Info& info)
+    : data_(new YBTable::Data(client, name, info)) {
 }
 
 YBTable::~YBTable() {
@@ -1251,15 +1234,19 @@ YBTableType YBTable::table_type() const {
 }
 
 const string& YBTable::id() const {
-  return data_->id_;
+  return data_->info_.table_id;
 }
 
 const YBSchema& YBTable::schema() const {
-  return data_->schema_;
+  return data_->info_.schema;
 }
 
 const Schema& YBTable::InternalSchema() const {
-  return internal::GetSchema(data_->schema_);
+  return internal::GetSchema(data_->info_.schema);
+}
+
+const vector<IndexInfo>& YBTable::indexes() const {
+  return data_->info_.indexes;
 }
 
 YBqlWriteOp* YBTable::NewQLWrite() {
@@ -1291,7 +1278,7 @@ YBClient* YBTable::client() const {
 }
 
 const PartitionSchema& YBTable::partition_schema() const {
-  return data_->partition_schema_;
+  return data_->info_.partition_schema;
 }
 
 ////////////////////////////////////////////////////////////

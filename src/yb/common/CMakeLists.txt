@@ -84,6 +84,7 @@ set(COMMON_SRCS
   partition.cc
   row_key-util.cc
   schema.cc
+  index.cc
   hybrid_time.cc
   doc_hybrid_time.cc
   transaction.cc

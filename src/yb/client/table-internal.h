@@ -34,6 +34,7 @@
 
 #include <string>
 
+#include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/client/client.h"
 
@@ -41,28 +42,26 @@ namespace yb {
 
 namespace client {
 
+struct YBTable::Info {
+  std::string table_id;
+  std::string indexed_table_id;
+  YBSchema schema;
+  PartitionSchema partition_schema;
+  vector<IndexInfo> indexes;
+};
+
 class YBTable::Data {
  public:
-  Data(std::shared_ptr<YBClient> client,
-       YBTableName name,
-       std::string table_id,
-       const YBSchema& schema,
-       PartitionSchema partition_schema);
+  Data(std::shared_ptr<YBClient> client, YBTableName name, Info info);
   ~Data();
 
   CHECKED_STATUS Open();
 
   std::shared_ptr<YBClient> client_;
 
-  YBTableName name_;
+  const YBTableName name_;
   YBTableType table_type_;
-  const std::string id_;
-
-  // TODO: figure out how we deal with a schema change from the client perspective.
-  // Do we make them call a RefreshSchema() method? Or maybe reopen the table and get
-  // a new YBTable instance (which would simplify the object lifecycle a little?)
-  const YBSchema schema_;
-  const PartitionSchema partition_schema_;
+  const Info info_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

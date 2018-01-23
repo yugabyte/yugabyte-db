@@ -197,21 +197,6 @@ message BlacklistPB {
   optional int32 initial_replica_load = 2;
 }
 
-// This message contains the metadata of a secondary index of a table. It maps the indexed table
-// columns to the index table columns.
-message IndexInfoPB {
-
-  // Index table id.
-  optional bytes table_id = 1;
-
-  // Ids of indexed table columns that compose the hash and range columns of the index table.
-  repeated uint32 hash_column_ids = 2;
-  repeated uint32 range_column_ids = 3;
-
-  // Ids of additional indexed table columns covered by the index.
-  repeated uint32 covering_column_ids = 4;
-}
-
 ////////////////////////////////////////////////////////////
 // Sys Tables Metadata
 ////////////////////////////////////////////////////////////

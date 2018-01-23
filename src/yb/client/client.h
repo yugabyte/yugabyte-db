@@ -48,6 +48,7 @@
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/common/entity_ids.h"
+#include "yb/common/index.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
@@ -659,6 +660,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
 
+  const std::vector<IndexInfo>& indexes() const;
+
   // Create a new QL operation for this table.
   YBqlWriteOp* NewQLWrite();
   YBqlWriteOp* NewQLInsert();
@@ -673,15 +676,13 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const PartitionSchema& partition_schema() const;
 
  private:
+  struct Info;
   class Data;
 
   friend class YBClient;
+  friend class internal::GetTableSchemaRpc;
 
-  YBTable(const std::shared_ptr<YBClient>& client,
-          const YBTableName& name,
-          const std::string& table_id,
-          const YBSchema& schema,
-          const PartitionSchema& partition_schema);
+  YBTable(const std::shared_ptr<YBClient>& client, const YBTableName& name, const Info& info);
 
   // Owned.
   Data* data_;

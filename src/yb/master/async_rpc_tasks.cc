@@ -511,6 +511,7 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   req.set_new_table_name(l->data().pb.name());
   req.set_schema_version(l->data().pb.version());
   req.mutable_schema()->CopyFrom(l->data().pb.schema());
+  req.mutable_indexes()->CopyFrom(l->data().pb.indexes());
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
   schema_version_ = l->data().pb.version();
 

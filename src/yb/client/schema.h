@@ -323,10 +323,13 @@ class YBSchema {
   explicit YBSchema(const Schema& schema);
 
   YBSchema(const YBSchema& other);
+  YBSchema(YBSchema&& other);
   ~YBSchema();
 
   YBSchema& operator=(const YBSchema& other);
+  YBSchema& operator=(YBSchema&& other);
   void CopyFrom(const YBSchema& other);
+  void MoveFrom(YBSchema&& other);
 
   // DEPRECATED: will be removed soon.
   CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns,
