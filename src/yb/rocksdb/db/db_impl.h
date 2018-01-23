@@ -211,9 +211,9 @@ class DBImpl : public DB {
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
 
-  OpId GetFlushedOpId() override;
+  UserFrontierPtr GetFlushedFrontier() override;
 
-  CHECKED_STATUS SetFlushedOpId(const OpId& op_id) override;
+  CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr frontier) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

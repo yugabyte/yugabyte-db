@@ -25,6 +25,8 @@
 
 #include "yb/consensus/consensus.pb.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_manager.h"
@@ -519,6 +521,77 @@ TEST_F(QLTabletTest, WaitFlush) {
   workload.StopAndJoin();
 }
 
+
+TEST_F(QLTabletTest, BoundaryValues) {
+  constexpr size_t kTotalThreads = 8;
+  constexpr size_t kTotalRows = 10000;
+
+  TableHandle table;
+  CreateTable(kTable1Name, &table, 1);
+
+  std::vector<std::thread> threads;
+  std::atomic<int32_t> idx(0);
+  for (size_t t = 0; t != kTotalThreads; ++t) {
+    threads.emplace_back([this, &idx, &table] {
+      shared_ptr<YBSession> session(NewSession());
+      for(;;) {
+        int32_t i = idx++;
+        if (i >= kTotalRows) {
+          break;
+        }
+
+        SetValue(session, i, -i, &table);
+      }
+    });
+  }
+  const auto kSleepTime = NonTsanVsTsan(5s, 1s);
+  std::this_thread::sleep_for(kSleepTime);
+  LOG(INFO) << "Flushing tablets";
+  cluster_->FlushTablets();
+  std::this_thread::sleep_for(kSleepTime);
+  LOG(INFO) << "GC logs";
+  cluster_->CleanTabletLogs();
+  LOG(INFO) << "Wait for threads";
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  std::this_thread::sleep_for(kSleepTime * 5);
+  ASSERT_OK(cluster_->RestartSync());
+
+  size_t total_rows = 0;
+  for (const auto& row : TableRange(table)) {
+    EXPECT_EQ(row.column(0).int32_value(), -row.column(1).int32_value());
+    ++total_rows;
+  }
+  ASSERT_EQ(kTotalRows, total_rows);
+
+  cluster_->FlushTablets();
+  std::this_thread::sleep_for(kSleepTime);
+
+  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    std::vector<tablet::TabletPeerPtr> peers;
+    cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+    ASSERT_EQ(1, peers.size());
+    auto& peer = *peers[0];
+    auto op_id = peer.log()->GetLatestEntryOpId();
+    auto* db = peer.tablet()->TEST_db();
+    int64_t max_index = 0;
+    int64_t min_index = std::numeric_limits<int64_t>::max();
+    for (const auto& file : db->GetLiveFilesMetaData()) {
+      LOG(INFO) << "File: " << yb::ToString(file);
+      max_index = std::max(
+          max_index,
+          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).op_id().index);
+      min_index = std::min(
+          min_index,
+          down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier).op_id().index);
+    }
+
+    // Allow several entries for non write ops
+    ASSERT_GE(max_index, op_id.index - 5);
+    ASSERT_LE(min_index, 5);
+  }
+}
 
 } // namespace client
 } // namespace yb

@@ -23,7 +23,11 @@
 
 #include <stdint.h>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/util/opid.h"
+
+#include "yb/util/enums.h"
 
 namespace rocksdb {
 
@@ -34,6 +38,9 @@ typedef uint64_t SequenceNumber;
 #define PRISN PRIu64
 
 using yb::OpId;
+using yb::HybridTime;
+
+YB_DEFINE_ENUM(UpdateUserValueType, ((kSmallest, 1))((kLargest, -1)));
 
 }  //  namespace rocksdb
 

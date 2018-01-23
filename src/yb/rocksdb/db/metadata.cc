@@ -10,27 +10,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-syntax = "proto2";
 
-package yb.docdb;
+#include "yb/rocksdb/metadata.h"
 
-import "yb/common/common.proto";
-import "yb/util/opid.proto";
+#include "yb/util/format.h"
 
-option java_package = "org.yb.docdb";
+namespace rocksdb {
 
-message KeyValuePairPB {
-  optional bytes key = 1;
-  optional bytes value = 2;
+std::string FileBoundaryValuesBase::ToString() const {
+  return yb::Format("{ seqno: $0 user_frontier: $1 }", seqno, user_frontier);
 }
 
-// A set of key/value pairs to be written into RocksDB.
-message KeyValueWriteBatchPB {
-  repeated KeyValuePairPB kv_pairs = 1;
-  optional TransactionMetadataPB transaction = 2;
+void UserFrontier::Update(const UserFrontier* rhs, UpdateUserValueType type, UserFrontierPtr* out) {
+  if (!rhs) {
+    return;
+  }
+  if (*out) {
+    (**out).Update(*rhs, type);
+  } else {
+    *out = rhs->Clone();
+  }
 }
 
-message ConsensusFrontierPB {
-  optional OpIdPB op_id = 1;
-  optional fixed64 hybrid_time = 2;
-}
+} // namespace rocksdb

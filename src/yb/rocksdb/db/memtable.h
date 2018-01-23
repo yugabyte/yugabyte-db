@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_DB_MEMTABLE_H
-#define ROCKSDB_DB_MEMTABLE_H
+#ifndef YB_ROCKSDB_DB_MEMTABLE_H
+#define YB_ROCKSDB_DB_MEMTABLE_H
 
 #pragma once
 
@@ -322,8 +322,14 @@ class MemTable {
 
   const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
 
-  void SetLastOpId(const OpId& op_id);
-  OpId LastOpId() const { return last_op_id_.load(std::memory_order_acquire); }
+  void UpdateFrontiers(const UserFrontiers& value) {
+    if (frontiers_) {
+      frontiers_->Merge(value);
+    } else {
+      frontiers_ = value.Clone();
+    }
+  }
+  const UserFrontiers* Frontiers() const { return frontiers_.get(); }
 
  private:
   enum FlushStateEnum { FLUSH_NOT_REQUESTED, FLUSH_REQUESTED, FLUSH_SCHEDULED };
@@ -374,7 +380,7 @@ class MemTable {
 
   Env* env_;
 
-  std::atomic<OpId> last_op_id_ = {OpId()};
+  std::unique_ptr<UserFrontiers> frontiers_;
 
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;
@@ -391,4 +397,4 @@ extern const char* EncodeKey(std::string* scratch, const Slice& target);
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_MEMTABLE_H
+#endif // YB_ROCKSDB_DB_MEMTABLE_H

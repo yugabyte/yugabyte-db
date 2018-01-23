@@ -300,7 +300,7 @@ Status DBWithTTLImpl::Write(const WriteOptions& opts, WriteBatch* updates) {
     Env* env_;
   };
   Handler handler(GetEnv());
-  updates->Iterate(&handler);
+  RETURN_NOT_OK(updates->Iterate(&handler));
   if (!handler.batch_rewrite_status.ok()) {
     return handler.batch_rewrite_status;
   } else {

@@ -1019,9 +1019,8 @@ Status CompactionJob::OpenCompactionOutputFile(
   // Update sequence number boundaries for out.
   for (size_t level_idx = 0; level_idx < compact_->compaction->num_input_levels(); level_idx++) {
     for (FileMetaData *fmd : *compact_->compaction->inputs(level_idx) ) {
-      out.meta.UpdateBoundariesExceptKey(fmd->smallest, UpdateBoundariesType::SMALLEST);
-      out.meta.UpdateBoundariesExceptKey(fmd->largest, UpdateBoundariesType::LARGEST);
-      out.meta.last_op_id.UpdateIfGreater(fmd->last_op_id);
+      out.meta.UpdateBoundariesExceptKey(fmd->smallest, UpdateBoundariesType::kSmallest);
+      out.meta.UpdateBoundariesExceptKey(fmd->largest, UpdateBoundariesType::kLargest);
     }
   }
   out.finished = false;

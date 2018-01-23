@@ -312,7 +312,7 @@ TEST_F(WriteBatchTest, Blob) {
       PrintContents(&batch));
 
   TestHandler handler;
-  batch.Iterate(&handler);
+  ASSERT_OK(batch.Iterate(&handler));
   ASSERT_EQ(
       "Put(k1, v1)"
       "Put(k2, v2)"
@@ -384,7 +384,7 @@ TEST_F(WriteBatchTest, DISABLED_ManyUpdates) {
     bool Continue() override { return num_seen < kNumUpdates; }
   } handler;
 
-  batch.Iterate(&handler);
+  ASSERT_OK(batch.Iterate(&handler));
   ASSERT_EQ(kNumUpdates, handler.num_seen);
 }
 
@@ -435,7 +435,7 @@ TEST_F(WriteBatchTest, DISABLED_LargeKeyValue) {
     bool Continue() override { return num_seen < 2; }
   } handler;
 
-  batch.Iterate(&handler);
+  ASSERT_OK(batch.Iterate(&handler));
   ASSERT_EQ(2, handler.num_seen);
 }
 
@@ -478,7 +478,8 @@ TEST_F(WriteBatchTest, Continue) {
   batch.SingleDelete(Slice("k2"));
   batch.PutLogData(Slice("blob2"));
   batch.Merge(Slice("foo"), Slice("bar"));
-  batch.Iterate(&handler);
+  auto status = batch.Iterate(&handler);
+  LOG(INFO) << "Iterate result: " << status;
   ASSERT_EQ(
       "Put(k1, v1)"
       "Put(k2, v2)"
@@ -545,7 +546,7 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchTest) {
   batch.Merge(Slice("omom"), Slice("nom"));
 
   TestHandler handler;
-  batch.Iterate(&handler);
+  ASSERT_OK(batch.Iterate(&handler));
   ASSERT_EQ(
       "Put(foo, bar)"
       "PutCF(2, twofoo, bar2)"
@@ -648,7 +649,7 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchWithIndexTest) {
   ASSERT_TRUE(!iter->Valid());
 
   TestHandler handler;
-  batch.GetWriteBatch()->Iterate(&handler);
+  ASSERT_OK(batch.GetWriteBatch()->Iterate(&handler));
   ASSERT_EQ(
       "Put(foo, bar)"
       "PutCF(2, twofoo, bar2)"

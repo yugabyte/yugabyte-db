@@ -487,7 +487,7 @@ class TransactionParticipant::Impl {
         return Status::OK();
       } else {
         transactions_.modify(it, [&data](RunningTransaction& transaction) {
-          transaction.SetLocalCommitTime(data.commit_time);
+          transaction.SetLocalCommitTime(data.commit_ht);
         });
         // TODO(dtxn) cleanup
       }

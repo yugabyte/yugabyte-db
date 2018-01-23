@@ -232,7 +232,7 @@ Status TransactionImpl::LockBatch(WriteBatch* batch,
 
   // Iterating on this handler will add all keys in this batch into keys
   Handler handler;
-  batch->Iterate(&handler);
+  RETURN_NOT_OK(batch->Iterate(&handler));
 
   Status s;
 

@@ -14,8 +14,11 @@
 #include <iostream>
 
 #include "yb/rocksdb/util/statistics.h"
+
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tablet/tablet_options.h"
@@ -156,10 +159,13 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
                              hybrid_time.ToString());
   }
 
+  ConsensusFrontiers frontiers;
   rocksdb::WriteBatch rocksdb_write_batch;
   if (op_id_) {
     ++op_id_.index;
-    rocksdb_write_batch.SetUserOpId(op_id_);
+    set_op_id(op_id_, &frontiers);
+    set_hybrid_time(hybrid_time, &frontiers);
+    rocksdb_write_batch.SetFrontiers(&frontiers);
   }
 
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(

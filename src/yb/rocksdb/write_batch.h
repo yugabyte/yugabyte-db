@@ -36,8 +36,8 @@
 // non-const method, all threads accessing the same WriteBatch must use
 // external synchronization.
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_WRITE_BATCH_H
-#define ROCKSDB_INCLUDE_ROCKSDB_WRITE_BATCH_H
+#ifndef YB_ROCKSDB_WRITE_BATCH_H
+#define YB_ROCKSDB_WRITE_BATCH_H
 
 #include <stdint.h>
 
@@ -56,6 +56,7 @@ namespace rocksdb {
 
 class ColumnFamilyHandle;
 struct SavePoints;
+class UserFrontiers;
 
 class WriteBatch : public WriteBatchBase {
  public:
@@ -153,7 +154,7 @@ class WriteBatch : public WriteBatchBase {
     // default implementation will just call Put without column family for
     // backwards compatibility. If the column family is not default,
     // the function is noop
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
+    virtual CHECKED_STATUS PutCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) {
       if (column_family_id == 0) {
         // Put() historically doesn't return status. We didn't want to be
@@ -167,7 +168,7 @@ class WriteBatch : public WriteBatchBase {
     }
     virtual void Put(const Slice& /*key*/, const Slice& /*value*/) {}
 
-    virtual Status DeleteCF(uint32_t column_family_id, const Slice& key) {
+    virtual CHECKED_STATUS DeleteCF(uint32_t column_family_id, const Slice& key) {
       if (column_family_id == 0) {
         Delete(key);
         return Status::OK();
@@ -177,7 +178,7 @@ class WriteBatch : public WriteBatchBase {
     }
     virtual void Delete(const Slice& /*key*/) {}
 
-    virtual Status SingleDeleteCF(uint32_t column_family_id, const Slice& key) {
+    virtual CHECKED_STATUS SingleDeleteCF(uint32_t column_family_id, const Slice& key) {
       if (column_family_id == 0) {
         SingleDelete(key);
         return Status::OK();
@@ -190,7 +191,7 @@ class WriteBatch : public WriteBatchBase {
     // Merge and LogData are not pure virtual. Otherwise, we would break
     // existing clients of Handler on a source code level. The default
     // implementation of Merge does nothing.
-    virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
+    virtual CHECKED_STATUS MergeCF(uint32_t column_family_id, const Slice& key,
                            const Slice& value) {
       if (column_family_id == 0) {
         Merge(key, value);
@@ -201,8 +202,8 @@ class WriteBatch : public WriteBatchBase {
     }
     virtual void Merge(const Slice& /*key*/, const Slice& /*value*/) {}
 
-    virtual Status UserOpId(const OpId& /*op_id*/) {
-      return STATUS(NotSupported, "UserOpId not implemented");
+    virtual CHECKED_STATUS Frontiers(const UserFrontiers&) {
+      return STATUS(NotSupported, "UserFrontiers not implemented");
     }
 
     // The default implementation of LogData does nothing.
@@ -213,7 +214,7 @@ class WriteBatch : public WriteBatchBase {
     // implementation always returns true.
     virtual bool Continue();
   };
-  Status Iterate(Handler* handler) const;
+  CHECKED_STATUS Iterate(Handler* handler) const;
 
   // Retrieve the serialized version of this batch.
   const std::string& Data() const { return rep_; }
@@ -247,8 +248,8 @@ class WriteBatch : public WriteBatchBase {
   WriteBatch& operator=(const WriteBatch& src);
   WriteBatch& operator=(WriteBatch&& src);
 
-  void SetUserOpId(const OpId& op_id);
-  const OpId& UserOpId() const { return user_op_id_; }
+  void SetFrontiers(const UserFrontiers* value) { frontiers_ = value; }
+  const UserFrontiers* Frontiers() const { return frontiers_; }
 
  private:
   friend class WriteBatchInternal;
@@ -262,11 +263,11 @@ class WriteBatch : public WriteBatchBase {
 
  protected:
   std::string rep_;  // See comment in write_batch.cc for the format of rep_
-  OpId user_op_id_;
+  const UserFrontiers* frontiers_ = nullptr;
 
   // Intentionally copyable
 };
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_WRITE_BATCH_H
+#endif // YB_ROCKSDB_WRITE_BATCH_H

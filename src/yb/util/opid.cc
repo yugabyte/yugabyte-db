@@ -23,17 +23,34 @@ namespace yb {
 
 constexpr int64_t OpId::kUnknownTerm;
 
-void OpId::UpdateIfGreater(const OpId& rhs) {
-  if (rhs.index > index) {
-    DCHECK_LE(term, rhs.term);
+void OpId::MakeAtLeast(const OpId& rhs) {
+  if (rhs.empty()) {
+    return;
+  }
+  if (empty()) {
     *this = rhs;
-  } else {
-    DCHECK_LE(rhs.term, term);
+    return;
+  }
+  if (rhs.term > term || (rhs.term == term && rhs.index > index)) {
+    *this = rhs;
+  }
+}
+
+void OpId::MakeAtMost(const OpId& rhs) {
+  if (rhs.empty()) {
+    return;
+  }
+  if (empty()) {
+    *this = rhs;
+    return;
+  }
+  if (rhs.term < term || (rhs.term == term && rhs.index < index)) {
+    *this = rhs;
   }
 }
 
 std::ostream& operator<<(std::ostream& out, const OpId& op_id) {
-  return out << "{term=" << op_id.term << ", index=" << op_id.index << "}";
+  return out << "{ term: " << op_id.term << " index: " << op_id.index << " }";
 }
 
 } // namespace yb

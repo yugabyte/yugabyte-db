@@ -27,6 +27,7 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 using std::string;
 
@@ -75,8 +76,8 @@ struct UserOpIdTestHandler : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status UserOpId(const OpId& op_id) override {
-    out_ << "user_op_id={term=" << op_id.term << ", index=" << op_id.index << "}" << std::endl;
+  Status Frontiers(const UserFrontiers& frontier) override {
+    out_ << "frontiers=" << frontier.ToString() << std::endl;
     return Status::OK();
   }
 
@@ -104,9 +105,9 @@ struct UserOpIdTestHandler : public WriteBatch::Handler {
   bool need_separator_ = false;
 };
 
-static string WriteBatchToString(const WriteBatch& b) {
+std::string WriteBatchToString(const WriteBatch& b) {
   UserOpIdTestHandler handler;
-  b.Iterate(&handler);
+  EXPECT_OK(b.Iterate(&handler));
   return handler.str();
 }
 
@@ -116,11 +117,13 @@ class UserOpIdTest : public testing::Test {
  protected:
   WriteBatch CreateDummyWriteBatch() {
     WriteBatch b;
-    b.SetUserOpId(OpId(1, 123));
+    b.SetFrontiers(&frontiers_);
     b.Put("A", "B");
     b.Delete("C");
     return b;
   }
+
+  test::TestUserFrontiers frontiers_{1, 123};
 };
 
 TEST_F(UserOpIdTest, Empty) {
@@ -151,10 +154,11 @@ TEST_F(UserOpIdTest, Append) {
 TEST_F(UserOpIdTest, SetUserSequenceNumber) {
   WriteBatch b;
 
-  ASSERT_FALSE(b.UserOpId());
-  b.SetUserOpId(OpId(1, 77701));
+  ASSERT_FALSE(b.Frontiers());
+  test::TestUserFrontiers range(1, 77701);
+  b.SetFrontiers(&range);
   b.Put("k1", "v1");
-  ASSERT_FALSE(!b.UserOpId());
+  ASSERT_FALSE(!b.Frontiers());
 
   b.Put("k2", "v2");
 
@@ -162,10 +166,10 @@ TEST_F(UserOpIdTest, SetUserSequenceNumber) {
 
   b.Merge("k4", "v4");
 
-  ASSERT_FALSE(!b.UserOpId());
+  ASSERT_FALSE(!b.Frontiers());
 
   ASSERT_EQ(
-    "user_op_id={term=1, index=77701}\n"
+    "frontiers={ smallest: { value: 1 } largest: { value: 77701 } }\n"
     "PutCF(key='k1', value='v1')\n"
     "PutCF(key='k2', value='v2')\n"
     "DeleteCF(key='k3')\n"
@@ -175,7 +179,8 @@ TEST_F(UserOpIdTest, SetUserSequenceNumber) {
 
 TEST_F(UserOpIdTest, AppendBatchesWithUserSequenceNumbers) {
   WriteBatch dst;
-  dst.SetUserOpId(OpId(1, 1200));
+  test::TestUserFrontiers range(1, 1200);
+  dst.SetFrontiers(&range);
   dst.Put("my_key", "my_value");
 
   dst.Merge("my_merge_key", "my_merge_value");
@@ -185,7 +190,7 @@ TEST_F(UserOpIdTest, AppendBatchesWithUserSequenceNumbers) {
 
   WriteBatchInternal::Append(&dst, &src);
   ASSERT_EQ(
-      "user_op_id={term=1, index=1200}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 1200 } }\n"
       "PutCF(key='my_key', value='my_value')\n"
       "MergeCF(key='my_merge_key', value='my_merge_value')\n"
       "DeleteCF(key='my_key')\n",
@@ -198,7 +203,8 @@ TEST_F(UserOpIdTest, SavePointTest) {
   WriteBatch batch;
   batch.SetSavePoint();
 
-  batch.SetUserOpId(OpId(1, 1000));
+  test::TestUserFrontiers range(1, 1000);
+  batch.SetFrontiers(&range);
   batch.Put("A", "a");
   batch.Put("B", "b");
   batch.SetSavePoint();
@@ -210,38 +216,39 @@ TEST_F(UserOpIdTest, SavePointTest) {
 
   ASSERT_OK(batch.RollbackToSavePoint());
   ASSERT_EQ(
-      "user_op_id={term=1, index=1000}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 1000 } }\n"
       "PutCF(key='A', value='a')\n"
       "PutCF(key='B', value='b')\n"
       "PutCF(key='C', value='c')\n"
       "DeleteCF(key='A')\n",
       WriteBatchToString(batch));
-  ASSERT_FALSE(!batch.UserOpId());
+  ASSERT_FALSE(!batch.Frontiers());
 
   ASSERT_OK(batch.RollbackToSavePoint());
-  ASSERT_FALSE(!batch.UserOpId());
+  ASSERT_FALSE(!batch.Frontiers());
 
   ASSERT_OK(batch.RollbackToSavePoint());
   ASSERT_EQ(
-      "user_op_id={term=1, index=1000}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 1000 } }\n"
       "PutCF(key='A', value='a')\n"
       "PutCF(key='B', value='b')\n",
       WriteBatchToString(batch));
-  ASSERT_FALSE(!batch.UserOpId());
+  ASSERT_FALSE(!batch.Frontiers());
 
   batch.Delete("A");
   batch.Put("B", "bb");
-  ASSERT_FALSE(!batch.UserOpId());
+  ASSERT_FALSE(!batch.Frontiers());
 
   ASSERT_OK(batch.RollbackToSavePoint());
   ASSERT_EQ("", WriteBatchToString(batch));
-  ASSERT_FALSE(batch.UserOpId());
+  ASSERT_FALSE(batch.Frontiers());
 
   s = batch.RollbackToSavePoint();
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_EQ("", WriteBatchToString(batch));
 
-  batch.SetUserOpId(OpId(1, 1001));
+  test::TestUserFrontiers range2(1, 1001);
+  batch.SetFrontiers(&range2);
   batch.Put("D", "d");
   batch.Delete("A");
 
@@ -249,13 +256,13 @@ TEST_F(UserOpIdTest, SavePointTest) {
 
   batch.Put("A", "aaa");
 
-  ASSERT_EQ(OpId(1, 1001), batch.UserOpId());
+  ASSERT_EQ(range2, *batch.Frontiers());
 
   ASSERT_OK(batch.RollbackToSavePoint());
-  ASSERT_EQ(OpId(1, 1001), batch.UserOpId());
+  ASSERT_EQ(range2, *batch.Frontiers());
 
   ASSERT_EQ(
-      "user_op_id={term=1, index=1001}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 1001 } }\n"
       "PutCF(key='D', value='d')\n"
       "DeleteCF(key='A')\n",
       WriteBatchToString(batch));
@@ -267,7 +274,7 @@ TEST_F(UserOpIdTest, SavePointTest) {
 
   ASSERT_OK(batch.RollbackToSavePoint());
   ASSERT_EQ(
-      "user_op_id={term=1, index=1001}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 1001 } }\n"
       "PutCF(key='D', value='d')\n"
       "DeleteCF(key='A')\n",
       WriteBatchToString(batch));
@@ -275,7 +282,7 @@ TEST_F(UserOpIdTest, SavePointTest) {
   s = batch.RollbackToSavePoint();
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_EQ(
-      "user_op_id={term=1, index=1001}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 1001 } }\n"
       "PutCF(key='D', value='d')\n"
       "DeleteCF(key='A')\n",
       WriteBatchToString(batch));
@@ -288,27 +295,32 @@ TEST_F(UserOpIdTest, SavePointTest2) {
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_EQ("", WriteBatchToString(b));
 
-  b.SetUserOpId(OpId(1, 1002));
+  test::TestUserFrontiers range2(1, 1002);
+  b.SetFrontiers(&range2);
   b.Delete("A");
   b.SetSavePoint();
 
   s = b.RollbackToSavePoint();
   ASSERT_OK(s);
-  ASSERT_EQ("user_op_id={term=1, index=1002}\nDeleteCF(key='A')\n", WriteBatchToString(b));
+  ASSERT_EQ("frontiers={ smallest: { value: 1 } largest: { value: 1002 } }\nDeleteCF(key='A')\n",
+            WriteBatchToString(b));
 
   b.Clear();
   ASSERT_EQ("", WriteBatchToString(b));
 
   b.SetSavePoint();
 
-  b.SetUserOpId(OpId(1, 1003));
+  test::TestUserFrontiers range3(1, 1003);
+  b.SetFrontiers(&range3);
   b.Delete("B");
-  ASSERT_EQ("user_op_id={term=1, index=1003}\nDeleteCF(key='B')\n", WriteBatchToString(b));
+  ASSERT_EQ("frontiers={ smallest: { value: 1 } largest: { value: 1003 } }\nDeleteCF(key='B')\n",
+            WriteBatchToString(b));
 
   b.SetSavePoint();
   s = b.RollbackToSavePoint();
   ASSERT_OK(s);
-  ASSERT_EQ("user_op_id={term=1, index=1003}\nDeleteCF(key='B')\n", WriteBatchToString(b));
+  ASSERT_EQ("frontiers={ smallest: { value: 1 } largest: { value: 1003 } }\nDeleteCF(key='B')\n",
+            WriteBatchToString(b));
 
   s = b.RollbackToSavePoint();
   ASSERT_OK(s);
@@ -324,7 +336,7 @@ TEST_F(UserOpIdTest, CopyConstructorAndAssignmentOperator) {
   WriteBatch b_copy(b);
   WriteBatch b_assigned = b;
   auto expected_str =
-      "user_op_id={term=1, index=123}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 123 } }\n"
       "PutCF(key='A', value='B')\n"
       "DeleteCF(key='C')\n";
   ASSERT_EQ(expected_str, WriteBatchToString(b_copy));
@@ -337,7 +349,7 @@ TEST_F(UserOpIdTest, MoveConstructor) {
   temp = CreateDummyWriteBatch();
   WriteBatch b_move_assigned = std::move(temp);
   auto expected_str =
-      "user_op_id={term=1, index=123}\n"
+      "frontiers={ smallest: { value: 1 } largest: { value: 123 } }\n"
       "PutCF(key='A', value='B')\n"
       "DeleteCF(key='C')\n";
   ASSERT_EQ(expected_str, WriteBatchToString(b_moved));

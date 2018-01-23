@@ -43,6 +43,8 @@
 #include "yb/rocksdb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/logging.h"
+
 DEFINE_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "
             "number of files alone, without regards to relative sizes of the SSTable files.");
@@ -1277,11 +1279,11 @@ namespace {
 void GetSmallestLargestSeqno(const std::vector<FileMetaData*>& files,
                              SequenceNumber* smallest_seqno,
                              SequenceNumber* largest_seqno) {
-  assert(smallest_seqno != nullptr);
-  assert(largest_seqno != nullptr);
+  DCHECK_ONLY_NOTNULL(smallest_seqno);
+  DCHECK_ONLY_NOTNULL(largest_seqno);
   bool is_first = true;
   for (FileMetaData* f : files) {
-    assert(f->smallest.seqno <= f->largest.seqno);
+    DCHECK_LE(f->smallest.seqno, f->largest.seqno);
     if (is_first) {
       is_first = false;
       *smallest_seqno = f->smallest.seqno;
@@ -1452,11 +1454,11 @@ Compaction* UniversalCompactionPicker::DoPickCompaction(
   size_t level_index = 0U;
   if (c->start_level() == 0) {
     for (auto f : *c->inputs(0)) {
-      assert(f->smallest.seqno <= f->largest.seqno);
+      DCHECK_LE(f->smallest.seqno, f->largest.seqno);
       if (is_first) {
         is_first = false;
       } else {
-        assert(prev_smallest_seqno > f->largest.seqno);
+        DCHECK_GT(prev_smallest_seqno, f->largest.seqno);
       }
       prev_smallest_seqno = f->smallest.seqno;
     }

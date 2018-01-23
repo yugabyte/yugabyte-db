@@ -21,11 +21,12 @@ PROTOBUF_GENERATE_CPP(
 
 ADD_YB_LIBRARY(docdb_proto
   SRCS ${DOCDB_PROTO_SRCS}
-  DEPS protobuf yb_common_proto
+  DEPS protobuf yb_common_proto opid_proto
   NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_SRCS
     conflict_resolution.cc
+    consensus_frontier.cc
     doc_boundary_values_extractor.cc
     docdb.cc
     docdb_compaction_filter.cc

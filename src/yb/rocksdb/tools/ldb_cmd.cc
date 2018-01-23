@@ -569,7 +569,7 @@ void DBLoaderCommand::DoCommand() {
 
 namespace {
 
-void DumpManifestFile(std::string file, bool verbose, bool hex, bool json) {
+void DumpManifestFile(std::string file, bool verbose, bool hex) {
   Options options;
   EnvOptions sopt;
   std::string dbname("dummy");
@@ -583,7 +583,7 @@ void DumpManifestFile(std::string file, bool verbose, bool hex, bool json) {
   WriteController wc(options.delayed_write_rate);
   WriteBuffer wb(options.db_write_buffer_size);
   VersionSet versions(dbname, &options, sopt, tc.get(), &wb, &wc);
-  Status s = versions.DumpManifest(options, file, verbose, hex, json);
+  Status s = versions.DumpManifest(options, file, verbose, hex);
   if (!s.ok()) {
     printf("Error in processing file %s %s\n", file.c_str(),
            s.ToString().c_str());
@@ -610,10 +610,8 @@ ManifestDumpCommand::ManifestDumpCommand(const vector<string>& params,
     LDBCommand(options, flags, false,
                BuildCmdLineOptions({ARG_VERBOSE, ARG_PATH, ARG_HEX, ARG_JSON})),
     verbose_(false),
-    json_(false),
     path_("") {
   verbose_ = IsFlagPresent(flags, ARG_VERBOSE);
-  json_ = IsFlagPresent(flags, ARG_JSON);
 
   map<string, string>::const_iterator itr = options.find(ARG_PATH);
   if (itr != options.end()) {
@@ -666,7 +664,7 @@ void ManifestDumpCommand::DoCommand() {
     printf("Processing Manifest file %s\n", manifestfile.c_str());
   }
 
-  DumpManifestFile(manifestfile, verbose_, is_key_hex_, json_);
+  DumpManifestFile(manifestfile, verbose_, is_key_hex_);
 
   if (verbose_) {
     printf("Processing Manifest file %s done\n", manifestfile.c_str());
@@ -1072,8 +1070,7 @@ void DBDumperCommand::DoCommand() {
         DumpSstFile(path_, is_key_hex_, /* show_properties */ true);
         break;
       case kDescriptorFile:
-        DumpManifestFile(path_, /* verbose_ */ false, is_key_hex_,
-                         /*  json_ */ false);
+        DumpManifestFile(path_, /* verbose_ */ false, is_key_hex_);
         break;
       default:
         exec_state_ = LDBCommandExecuteResult::Failed(
@@ -1521,11 +1518,11 @@ class InMemoryHandler : public WriteBatch::Handler {
 
   void Delete(const Slice& key) override {
     row_ << "DELETE : ";
-    row_ << LDBCommand::StringToHex(key.ToString()) << " ";
+    row_ << LDBCommand::StringToHex(key.ToBuffer()) << " ";
   }
 
-  Status UserOpId(const OpId& op_id) override {
-    row_ << " USER_OP_ID : " << op_id << " ";
+  Status Frontiers(const UserFrontiers& range) override {
+    row_ << " MARGIN_RANGE : " << range.ToString() << " ";
     return Status::OK();
   }
 
@@ -1598,7 +1595,7 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
         row << WriteBatchInternal::ByteSize(&batch) << ",";
         row << reader.LastRecordOffset() << ",";
         InMemoryHandler handler(row, print_values);
-        batch.Iterate(&handler);
+        CHECK_OK(batch.Iterate(&handler));
         row << "\n";
       }
       std::cout << row.str();
@@ -2235,7 +2232,7 @@ void DBFileDumperCommand::DoCommand() {
   manifest_filename.resize(manifest_filename.size() - 1);
   string manifest_filepath = db_->GetName() + "/" + manifest_filename;
   std::cout << manifest_filepath << std::endl;
-  DumpManifestFile(manifest_filepath, false, false, false);
+  DumpManifestFile(manifest_filepath, false, false);
   std::cout << std::endl;
 
   std::cout << "SST Files" << std::endl;

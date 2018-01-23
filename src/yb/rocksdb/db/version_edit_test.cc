@@ -57,7 +57,8 @@ void SetupVersionEdit(VersionEdit* edit) {
   edit->SetLogNumber(kBig + 100);
   edit->SetNextFile(kBig + 200);
   edit->SetLastSequence(kBig + 1000);
-  edit->SetFlushedOpId(kBig + 100, kBig + 2000);
+  test::TestUserFrontier frontier(kBig + 100);
+  edit->SetFlushedFrontier(frontier.Clone());
 }
 
 TEST_F(VersionEditTest, EncodeDecode) {

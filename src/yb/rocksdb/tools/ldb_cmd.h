@@ -17,16 +17,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#ifndef YB_ROCKSDB_TOOLS_LDB_CMD_H
+#define YB_ROCKSDB_TOOLS_LDB_CMD_H
+
 #pragma once
 
 #ifndef ROCKSDB_LITE
 
+#include <stdlib.h>
+#include <stdio.h>
+
 #include <string>
 #include <iostream>
 #include <sstream>
-#include <stdlib.h>
 #include <algorithm>
-#include <stdio.h>
 #include <vector>
 #include <map>
 
@@ -50,8 +54,7 @@ using std::ostringstream;
 namespace rocksdb {
 
 class LDBCommand {
-public:
-
+ public:
   // Command-line arguments
   static const string ARG_DB;
   static const string ARG_PATH;
@@ -188,7 +191,7 @@ public:
     string result = "0x";
     char buf[10];
     for (size_t i = 0; i < str.length(); i++) {
-      snprintf(buf, 10, "%02X", (unsigned char)str[i]);
+      snprintf(buf, sizeof(buf), "%02X", (unsigned char)str[i]);
       result += buf;
     }
     return result;
@@ -196,7 +199,7 @@ public:
 
   static const char* DELIM;
 
-protected:
+ protected:
 
   LDBCommandExecuteResult exec_state_;
   string db_path_;
@@ -417,7 +420,7 @@ protected:
   }
 
   bool ParseIntOption(const map<string, string>& options, const string& option,
-                      int& value, LDBCommandExecuteResult& exec_state);
+                      int& value, LDBCommandExecuteResult& exec_state); // NOLINT
 
   bool ParseStringOption(const map<string, string>& options,
                          const string& option, string* value);
@@ -426,7 +429,7 @@ protected:
   std::vector<ColumnFamilyDescriptor> column_families_;
   LDBOptions ldb_options_;
 
-private:
+ private:
 
   /**
    * Interpret command line options and flags to determine if the key
@@ -476,7 +479,7 @@ private:
    */
   bool StringToBool(string val) {
     std::transform(val.begin(), val.end(), val.begin(),
-                   [](char ch)->char { return (char)::tolower(ch); });
+                   [](char ch)->char { return static_cast<char>(::tolower(ch)); });
 
     if (val == "true") {
       return true;
@@ -497,17 +500,17 @@ private:
 };
 
 class CompactorCommand: public LDBCommand {
-public:
+ public:
   static string Name() { return "compact"; }
 
   CompactorCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
-private:
+ private:
   bool null_from_;
   string from_;
   bool null_to_;
@@ -522,23 +525,23 @@ class DBFileDumperCommand : public LDBCommand {
                       const map<string, string>& options,
                       const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual void DoCommand() override;
 };
 
 class DBDumperCommand: public LDBCommand {
-public:
+ public:
   static string Name() { return "dump"; }
 
   DBDumperCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
-private:
+ private:
   /**
    * Extract file name from the full path. We handle both the forward slash (/)
    * and backslash (\) to make sure that different OS-s are supported.
@@ -573,18 +576,18 @@ private:
 };
 
 class InternalDumpCommand: public LDBCommand {
-public:
+ public:
   static string Name() { return "idump"; }
 
   InternalDumpCommand(const vector<string>& params,
                       const map<string, string>& options,
                       const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
-private:
+ private:
   bool has_from_;
   string from_;
   bool has_to_;
@@ -604,20 +607,20 @@ private:
 };
 
 class DBLoaderCommand: public LDBCommand {
-public:
+ public:
   static string Name() { return "load"; }
 
-  DBLoaderCommand(string& db_name, vector<string>& args);
+  DBLoaderCommand(string& db_name, vector<string>& args); // NOLINT
 
   DBLoaderCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual Options PrepareOptionsForOpenDB() override;
 
-private:
+ private:
   bool create_if_missing_;
   bool disable_wal_;
   bool bulk_load_;
@@ -629,20 +632,19 @@ private:
 };
 
 class ManifestDumpCommand: public LDBCommand {
-public:
+ public:
   static string Name() { return "manifest_dump"; }
 
   ManifestDumpCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual bool NoDBOpen() override { return true; }
 
-private:
+ private:
   bool verbose_;
-  bool json_;
   string path_;
 
   static const string ARG_VERBOSE;
@@ -658,7 +660,7 @@ class ListColumnFamiliesCommand : public LDBCommand {
                             const map<string, string>& options,
                             const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual bool NoDBOpen() override { return true; }
@@ -675,7 +677,7 @@ class CreateColumnFamilyCommand : public LDBCommand {
                             const map<string, string>& options,
                             const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
 
   virtual bool NoDBOpen() override { return false; }
@@ -685,7 +687,7 @@ class CreateColumnFamilyCommand : public LDBCommand {
 };
 
 class ReduceDBLevelsCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "reduce_levels"; }
 
   ReduceDBLevelsCommand(const vector<string>& params,
@@ -697,12 +699,12 @@ public:
 
   virtual bool NoDBOpen() override { return true; }
 
-  static void Help(string& msg);
+  static void Help(string& msg); // NOLINT
 
   static vector<string> PrepareArgs(const string& db_path, int new_levels,
       bool print_old_level = false);
 
-private:
+ private:
   int old_levels_;
   int new_levels_;
   bool print_old_levels_;
@@ -710,11 +712,11 @@ private:
   static const string ARG_NEW_LEVELS;
   static const string ARG_PRINT_OLD_LEVELS;
 
-  Status GetOldNumOfLevels(Options& opt, int* levels);
+  Status GetOldNumOfLevels(Options& opt, int* levels); // NOLINT
 };
 
 class ChangeCompactionStyleCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "change_compaction_style"; }
 
   ChangeCompactionStyleCommand(const vector<string>& params,
@@ -724,9 +726,9 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& msg);
+  static void Help(string& msg); // NOLINT
 
-private:
+ private:
   int old_compaction_style_;
   int new_compaction_style_;
 
@@ -735,7 +737,7 @@ private:
 };
 
 class WALDumperCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "dump_wal"; }
 
   WALDumperCommand(const vector<string>& params,
@@ -743,10 +745,10 @@ public:
 
   virtual bool NoDBOpen() override { return true; }
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
   virtual void DoCommand() override;
 
-private:
+ private:
   bool print_header_;
   string wal_file_;
   bool print_values_;
@@ -758,7 +760,7 @@ private:
 
 
 class GetCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "get"; }
 
   GetCommand(const vector<string>& params, const map<string, string>& options,
@@ -766,14 +768,14 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
-private:
+ private:
   string key_;
 };
 
 class ApproxSizeCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "approxsize"; }
 
   ApproxSizeCommand(const vector<string>& params,
@@ -781,15 +783,15 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
-private:
+ private:
   string start_key_;
   string end_key_;
 };
 
 class BatchPutCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "batchput"; }
 
   BatchPutCommand(const vector<string>& params,
@@ -797,11 +799,11 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual Options PrepareOptionsForOpenDB() override;
 
-private:
+ private:
   /**
    * The key-values to be inserted.
    */
@@ -809,7 +811,7 @@ private:
 };
 
 class ScanCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "scan"; }
 
   ScanCommand(const vector<string>& params, const map<string, string>& options,
@@ -817,9 +819,9 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
-private:
+ private:
   string start_key_;
   string end_key_;
   bool start_key_specified_;
@@ -829,7 +831,7 @@ private:
 };
 
 class DeleteCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "delete"; }
 
   DeleteCommand(const vector<string>& params,
@@ -837,14 +839,14 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
-private:
+ private:
   string key_;
 };
 
 class PutCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "put"; }
 
   PutCommand(const vector<string>& params, const map<string, string>& options,
@@ -852,11 +854,11 @@ public:
 
   virtual void DoCommand() override;
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual Options PrepareOptionsForOpenDB() override;
 
-private:
+ private:
   string key_;
   string value_;
 };
@@ -866,17 +868,17 @@ private:
  * get/put/delete.
  */
 class DBQuerierCommand: public LDBCommand {
-public:
+ public:
   static string Name() { return "query"; }
 
   DBQuerierCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 
   virtual void DoCommand() override;
 
-private:
+ private:
   static const char* HELP_CMD;
   static const char* GET_CMD;
   static const char* PUT_CMD;
@@ -884,7 +886,7 @@ private:
 };
 
 class CheckConsistencyCommand : public LDBCommand {
-public:
+ public:
   static string Name() { return "checkconsistency"; }
 
   CheckConsistencyCommand(const vector<string>& params,
@@ -894,9 +896,10 @@ public:
 
   virtual bool NoDBOpen() override { return true; }
 
-  static void Help(string& ret);
+  static void Help(string& ret); // NOLINT
 };
 
 } // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
+#endif // YB_ROCKSDB_TOOLS_LDB_CMD_H

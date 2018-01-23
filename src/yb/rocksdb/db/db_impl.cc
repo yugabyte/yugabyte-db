@@ -1154,7 +1154,10 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
   for (auto cfd : *versions_->GetColumnFamilySet()) {
     VersionEdit edit;
     edit.SetColumnFamily(cfd->GetID());
-    edit.SetFlushedOpId(versions_->FlushedOpId());
+    auto frontier = versions_->FlushedFrontier();
+    if (frontier) {
+      edit.SetFlushedFrontier(frontier->Clone());
+    }
     version_edits.insert({cfd->GetID(), edit});
   }
   int job_id = next_job_id_.fetch_add(1);
@@ -1461,7 +1464,11 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   auto pending_outputs_inserted_elem =
       CaptureCurrentFileNumberInPendingOutputs();
   meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0, 0);
-  meta.last_op_id = mem->LastOpId();
+  const auto* frontier = mem->Frontiers();
+  if (frontier) {
+    meta.smallest.user_frontier = frontier->Smallest().Clone();
+    meta.largest.user_frontier = frontier->Largest().Clone();
+  }
   ReadOptions ro;
   ro.total_order_seek = true;
   Arena arena;
@@ -4537,7 +4544,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
 
   uint64_t last_sequence = versions_->LastSequence();
-  OpId last_op_id;
   WriteThread::Writer* last_writer = &w;
   autovector<WriteThread::Writer*> write_group;
   bool need_log_sync = !write_options.disableWAL && write_options.sync;
@@ -4609,7 +4615,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
     // Reserve sequence numbers for all individual updates in this batch group.
     last_sequence += total_count;
-    last_op_id = my_batch->UserOpId();
 
     // Record statistics
     RecordTick(stats_, NUMBER_KEYS_WRITTEN, total_count);
@@ -4729,7 +4734,6 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         pg.leader = &w;
         pg.last_writer = last_writer;
         pg.last_sequence = last_sequence;
-        pg.last_op_id = last_op_id;
         pg.early_exit_allowed = !need_log_sync;
         pg.running.store(static_cast<uint32_t>(write_group.size()),
                          std::memory_order_relaxed);
@@ -5445,22 +5449,22 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
-OpId DBImpl::GetFlushedOpId() {
+UserFrontierPtr DBImpl::GetFlushedFrontier() {
   InstrumentedMutexLock l(&mutex_);
-  auto result = versions_->FlushedOpId();
-  if (!result) {
-    std::vector<LiveFileMetaData> files;
-    versions_->GetLiveFilesMetaData(&files);
-    OpId last_op_id;
-    for (const auto& file : files) {
-      if (!file.imported) {
-        last_op_id.UpdateIfGreater(file.last_op_id);
-      }
-    }
-    DCHECK_LE(last_op_id.index, result.index) << "Live files meta data: " << ToString(files);
-    result = last_op_id;
+  auto result = versions_->FlushedFrontier();
+  if (result) {
+    return result->Clone();
   }
-  return result;
+  std::vector<LiveFileMetaData> files;
+  versions_->GetLiveFilesMetaData(&files);
+  UserFrontierPtr accumulated;
+  for (const auto& file : files) {
+    if (!file.imported) {
+      UserFrontier::Update(
+          file.largest.user_frontier.get(), UpdateUserValueType::kLargest, &accumulated);
+    }
+  }
+  return accumulated;
 }
 
 Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
@@ -5474,9 +5478,9 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
   return Status::OK();
 }
 
-Status DBImpl::SetFlushedOpId(const OpId& op_id) {
+Status DBImpl::SetFlushedFrontier(UserFrontierPtr frontier) {
   VersionEdit edit;
-  edit.SetFlushedOpId(op_id);
+  edit.SetFlushedFrontier(std::move(frontier));
   return ApplyVersionEdit(&edit);
 }
 

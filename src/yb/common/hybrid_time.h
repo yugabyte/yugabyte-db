@@ -192,8 +192,16 @@ class HybridTime {
 
   explicit operator bool() const { return is_valid(); }
 
-  void MakeAtLeast(const HybridTime& rhs) {
-    v = is_valid() ? std::max(v, rhs.v) : rhs.v;
+  void MakeAtLeast(HybridTime rhs) {
+    if (rhs.is_valid()) {
+      v = is_valid() ? std::max(v, rhs.v) : rhs.v;
+    }
+  }
+
+  void MakeAtMost(HybridTime rhs) {
+    if (rhs.is_valid()) {
+      v = is_valid() ? std::min(v, rhs.v) : rhs.v;
+    }
   }
 
   // Set mode for HybridTime::ToString, in case of true hybrid time is rendered as human readable.

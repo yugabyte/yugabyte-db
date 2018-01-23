@@ -279,7 +279,7 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorBlobs) {
       return Status::OK();
     }
   } handler;
-  res.writeBatchPtr->Iterate(&handler);
+  ASSERT_OK(res.writeBatchPtr->Iterate(&handler));
   ASSERT_EQ(
       "Put(1, key1, 1024)"
       "Put(0, key2, 1024)"

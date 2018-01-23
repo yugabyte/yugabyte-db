@@ -73,32 +73,34 @@ enum ContentFlags : uint32_t {
   HAS_DELETE = 4,
   HAS_SINGLE_DELETE = 8,
   HAS_MERGE = 16,
+  HAS_FRONTIERS = 32,
 };
 
 struct BatchContentClassifier : public WriteBatch::Handler {
   uint32_t content_flags = 0;
 
-  Status PutCF(uint32_t, const Slice&, const Slice&) override {
+  CHECKED_STATUS PutCF(uint32_t, const Slice&, const Slice&) override {
     content_flags |= ContentFlags::HAS_PUT;
     return Status::OK();
   }
 
-  Status DeleteCF(uint32_t, const Slice&) override {
+  CHECKED_STATUS DeleteCF(uint32_t, const Slice&) override {
     content_flags |= ContentFlags::HAS_DELETE;
     return Status::OK();
   }
 
-  Status SingleDeleteCF(uint32_t, const Slice&) override {
+  CHECKED_STATUS SingleDeleteCF(uint32_t, const Slice&) override {
     content_flags |= ContentFlags::HAS_SINGLE_DELETE;
     return Status::OK();
   }
 
-  Status MergeCF(uint32_t, const Slice&, const Slice&) override {
+  CHECKED_STATUS MergeCF(uint32_t, const Slice&, const Slice&) override {
     content_flags |= ContentFlags::HAS_MERGE;
     return Status::OK();
   }
 
-  Status UserOpId(const OpId& op_id) override {
+  CHECKED_STATUS Frontiers(const UserFrontiers& range) override {
+    content_flags |= ContentFlags::HAS_FRONTIERS;
     return Status::OK();
   }
 };
@@ -112,7 +114,7 @@ struct SavePoint {
   size_t size;  // size of rep_
   uint32_t count;    // count of elements in rep_
   uint32_t content_flags;
-  OpId user_op_id;
+  const UserFrontiers* frontiers;
 };
 
 struct SavePoints {
@@ -132,7 +134,7 @@ WriteBatch::WriteBatch(const std::string& rep)
 WriteBatch::WriteBatch(const WriteBatch& src)
     : content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
       rep_(src.rep_),
-      user_op_id_(src.user_op_id_) {
+      frontiers_(src.frontiers_) {
   if (src.save_points_) {
     save_points_.reset(new SavePoints(*src.save_points_));
   }
@@ -142,7 +144,7 @@ WriteBatch::WriteBatch(WriteBatch&& src)
     : save_points_(std::move(src.save_points_)),
       content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
       rep_(std::move(src.rep_)),
-      user_op_id_(src.user_op_id_) {}
+      frontiers_(std::move(src.frontiers_)) {}
 
 WriteBatch& WriteBatch::operator=(const WriteBatch& src) {
   if (&src != this) {
@@ -185,7 +187,7 @@ void WriteBatch::Clear() {
     }
   }
 
-  user_op_id_ = OpId();
+  frontiers_ = nullptr;
 }
 
 uint32_t WriteBatch::Count() const {
@@ -196,7 +198,8 @@ uint32_t WriteBatch::ComputeContentFlags() const {
   auto rv = content_flags_.load(std::memory_order_relaxed);
   if ((rv & ContentFlags::DEFERRED) != 0) {
     BatchContentClassifier classifier;
-    Iterate(&classifier);
+    auto status = Iterate(&classifier);
+    LOG_IF(ERROR, !status.ok()) << "Iterate failed during ComputeContentFlags: " << status;
     rv = classifier.content_flags;
 
     // this method is conceptually const, because it is performing a lazy
@@ -289,8 +292,8 @@ Status WriteBatch::Iterate(Handler* handler) const {
   size_t found = 0;
   Status s;
 
-  if (user_op_id_) {
-    s = handler->UserOpId(user_op_id_);
+  if (frontiers_) {
+    s = handler->Frontiers(*frontiers_);
   }
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
@@ -543,7 +546,7 @@ void WriteBatch::SetSavePoint() {
   }
   // Record length and count of current batch of writes.
   save_points_->stack.push(
-     {GetDataSize(), Count(), content_flags_.load(std::memory_order_relaxed), user_op_id_});
+     {GetDataSize(), Count(), content_flags_.load(std::memory_order_relaxed), frontiers_});
 }
 
 Status WriteBatch::RollbackToSavePoint() {
@@ -568,7 +571,7 @@ Status WriteBatch::RollbackToSavePoint() {
     WriteBatchInternal::SetCount(this, savepoint.count);
     content_flags_.store(savepoint.content_flags, std::memory_order_relaxed);
   }
-  user_op_id_ = savepoint.user_op_id;
+  frontiers_ = savepoint.frontiers;
 
   return Status::OK();
 }
@@ -633,8 +636,8 @@ class MemTableInserter : public WriteBatch::Handler {
     return true;
   }
 
-  virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                       const Slice& value) override {
+  virtual CHECKED_STATUS PutCF(uint32_t column_family_id, const Slice& key,
+                               const Slice& value) override {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
       ++sequence_;
@@ -692,8 +695,8 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status DeleteImpl(uint32_t column_family_id, const Slice& key,
-                    ValueType delete_type) {
+  CHECKED_STATUS DeleteImpl(uint32_t column_family_id, const Slice& key,
+                            ValueType delete_type) {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
       ++sequence_;
@@ -723,18 +726,18 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  virtual Status DeleteCF(uint32_t column_family_id,
-                          const Slice& key) override {
+  virtual CHECKED_STATUS DeleteCF(uint32_t column_family_id,
+                                  const Slice& key) override {
     return DeleteImpl(column_family_id, key, kTypeDeletion);
   }
 
-  virtual Status SingleDeleteCF(uint32_t column_family_id,
-                                const Slice& key) override {
+  virtual CHECKED_STATUS SingleDeleteCF(uint32_t column_family_id,
+                                        const Slice& key) override {
     return DeleteImpl(column_family_id, key, kTypeSingleDeletion);
   }
 
-  virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& value) override {
+  virtual CHECKED_STATUS MergeCF(uint32_t column_family_id, const Slice& key,
+                                 const Slice& value) override {
     assert(!concurrent_memtable_writes_);
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
@@ -815,12 +818,12 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status UserOpId(const OpId& op_id) override {
+  CHECKED_STATUS Frontiers(const UserFrontiers& frontiers) override {
     Status seek_status;
     if (!SeekToColumnFamily(0, &seek_status)) {
       return seek_status;
     }
-    cf_mems_->GetMemTable()->SetLastOpId(op_id);
+    cf_mems_->GetMemTable()->UpdateFrontiers(frontiers);
     return Status::OK();
   }
 
@@ -907,10 +910,6 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
   } else {
     return leftByteSize + rightByteSize - kHeader;
   }
-}
-
-void WriteBatch::SetUserOpId(const OpId& op_id) {
-  user_op_id_ = op_id;
 }
 
 }  // namespace rocksdb

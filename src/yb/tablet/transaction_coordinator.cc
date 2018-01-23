@@ -609,7 +609,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       DCHECK_EQ(data.state.tablets_size(), 1);
       HybridTime commit_time(data.state.commit_hybrid_time());
       return transaction_participant_.ProcessApply(
-          { data.mode, data.applier, *id, data.op_id, commit_time, data.state.tablets(0) });
+          { data.mode, data.applier, *id, data.op_id, commit_time, data.hybrid_time,
+            data.state.tablets(0) });
     }
 
     PostponedLeaderActions actions;

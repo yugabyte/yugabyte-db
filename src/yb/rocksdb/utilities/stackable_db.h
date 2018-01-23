@@ -265,12 +265,12 @@ class StackableDB : public DB {
     db_->GetLiveFilesMetaData(metadata);
   }
 
-  OpId GetFlushedOpId() override {
-    return db_->GetFlushedOpId();
+  UserFrontierPtr GetFlushedFrontier() override {
+    return db_->GetFlushedFrontier();
   }
 
-  CHECKED_STATUS SetFlushedOpId(const OpId& op_id) override {
-    return db_->SetFlushedOpId(op_id);
+  CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr values) override {
+    return db_->SetFlushedFrontier(std::move(values));
   }
 
   virtual void GetColumnFamilyMetaData(

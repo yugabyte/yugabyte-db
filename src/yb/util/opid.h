@@ -41,17 +41,18 @@ struct OpId {
     return empty();
   }
 
-  void UpdateIfGreater(const OpId& rhs);
+  void MakeAtMost(const OpId& rhs);
+  void MakeAtLeast(const OpId& rhs);
+
+  template <class PB>
+  void ToPB(PB* out) const {
+    out->set_term(term);
+    out->set_index(index);
+  }
 
   template <class PB>
   static OpId FromPB(const PB& pb) {
     return OpId(pb.term(), pb.index());
-  }
-
-  template <class PB>
-  void ToPB(PB* pb) const {
-    pb->set_term(term);
-    pb->set_index(index);
   }
 };
 

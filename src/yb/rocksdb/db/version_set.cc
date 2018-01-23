@@ -324,6 +324,7 @@ SstFileMetaData::BoundaryValues ConvertBoundaryValues(const FileMetaData::Bounda
   SstFileMetaData::BoundaryValues result;
   result.key = source.key.user_key().ToBuffer();
   result.seqno = source.seqno;
+  result.user_frontier = source.user_frontier;
   result.user_values = source.user_values;
   return result;
 }
@@ -2342,8 +2343,8 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     manifest_file_number_ = pending_manifest_file_number_;
     manifest_file_size_ = new_manifest_file_size;
     prev_log_number_ = edit->prev_log_number_.get_value_or(0);
-    if (edit->flushed_op_id_) {
-      SetFlushedOpId(edit->flushed_op_id_);
+    if (edit->flushed_frontier_) {
+      SetFlushedFrontier(edit->flushed_frontier_);
     }
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,
@@ -2525,7 +2526,7 @@ Status VersionSet::Recover(
   bool have_prev_log_number = false;
   bool have_next_file = false;
   bool have_last_sequence = false;
-  OpId flushed_op_id;
+  UserFrontierPtr flushed_frontier;
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t log_number = 0;
@@ -2680,8 +2681,8 @@ Status VersionSet::Recover(
         have_last_sequence = true;
       }
 
-      if (edit.flushed_op_id_) {
-        flushed_op_id = edit.flushed_op_id_;
+      if (edit.flushed_frontier_) {
+        flushed_frontier = std::move(edit.flushed_frontier_);
       }
     }
     if (s.IsEndOfFile()) {
@@ -2750,19 +2751,21 @@ Status VersionSet::Recover(
     next_file_number_.store(next_file + 1);
     SetLastSequenceNoSanityChecking(last_sequence);
     prev_log_number_ = previous_log_number;
-    SetFlushedOpIdNoSanityChecking(flushed_op_id);
+    if (flushed_frontier) {
+      SetFlushedFrontierNoSanityChecking(std::move(flushed_frontier));
+    }
 
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
         "Recovered from manifest file:%s succeeded,"
         "manifest_file_number is %" PRIu64 ", next_file_number is %lu, "
         "last_sequence is %" PRIu64 ", log_number is %" PRIu64 ","
         "prev_log_number is %" PRIu64 ","
-        "max_column_family is %u, last_op_id is " OP_ID_FORMAT "\n",
+        "max_column_family is %u, flushed_values is %s\n",
         current_manifest_filename.c_str(), manifest_file_number_,
         next_file_number_.load(), LastSequence(),
         log_number, prev_log_number_,
         column_family_set_->GetMaxColumnFamily(),
-        flushed_op_id.term, flushed_op_id.index);
+        yb::ToString(flushed_frontier_).c_str());
 
     for (auto cfd : *column_family_set_) {
       if (cfd->IsDropped()) {
@@ -2799,7 +2802,8 @@ Status VersionSet::Import(const std::string& source_dir,
     }
     for (const auto& file : current.GetNewFiles()) {
       auto filemeta = file.second;
-      filemeta.last_op_id = OpId();
+      filemeta.largest.user_frontier.reset();
+      filemeta.smallest.user_frontier.reset();
       filemeta.imported = true;
       if (filemeta.largest.seqno >= seqno) {
         return STATUS_FORMAT(InvalidArgument,
@@ -3034,7 +3038,7 @@ Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
 }
 
 Status VersionSet::DumpManifest(const Options& options, const std::string& dscname,
-                                bool verbose, bool hex, bool json) {
+                                bool verbose, bool hex) {
   // Open the specified manifest file.
   unique_ptr<SequentialFileReader> file_reader;
   Status s;
@@ -3053,7 +3057,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t previous_log_number = 0;
-  OpId flushed_op_id;
+  UserFrontier* flushed_frontier = nullptr;
   int count = 0;
   std::unordered_map<uint32_t, std::string> comparators;
   std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
@@ -3081,10 +3085,8 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
       }
 
       // Write out each individual edit
-      if (verbose && !json) {
+      if (verbose) {
         printf("%s\n", edit.DebugString(hex).c_str());
-      } else if (json) {
-        printf("%s\n", edit.DebugJSON(count, hex).c_str());
       }
       count++;
 
@@ -3159,8 +3161,8 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
         have_last_sequence = true;
       }
 
-      if (edit.flushed_op_id_) {
-        flushed_op_id = edit.flushed_op_id_;
+      if (edit.flushed_frontier_) {
+        flushed_frontier = edit.flushed_frontier_.get();
       }
 
       if (edit.max_column_family_) {
@@ -3217,16 +3219,17 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 
     next_file_number_.store(next_file + 1);
     SetLastSequenceNoSanityChecking(last_sequence);
-    DCHECK_EQ(flushed_op_id, FlushedOpId());
+    if (flushed_frontier) {
+      DCHECK_EQ(*flushed_frontier, *FlushedFrontier());
+    }
     prev_log_number_ = previous_log_number;
 
     printf(
         "next_file_number %" PRIu64 " last_sequence "
-        "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u"
-        OP_ID_FORMAT "\n",
+        "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u flushed_values %s\n",
         next_file_number_.load(), last_sequence, previous_log_number,
         column_family_set_->GetMaxColumnFamily(),
-        flushed_op_id.term, flushed_op_id.index);
+        yb::ToString(flushed_frontier).c_str());
   }
 
   return s;
@@ -3588,7 +3591,6 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         filemetadata.base_size = file->fd.GetBaseFileSize();
         filemetadata.smallest = ConvertBoundaryValues(file->smallest);
         filemetadata.largest = ConvertBoundaryValues(file->largest);
-        filemetadata.last_op_id = file->last_op_id;
         filemetadata.imported = file->imported;
         metadata->push_back(filemetadata);
       }
@@ -3667,21 +3669,25 @@ uint64_t VersionSet::GetTotalSstFilesSize(Version* dummy_versions) {
 }
 
 #ifndef NDEBUG
-void VersionSet::EnsureIncreasingLastSequence(
+void VersionSet::EnsureNonDecreasingLastSequence(
     SequenceNumber prev_last_seq,
     SequenceNumber new_last_seq) {
-  if (new_last_seq <= prev_last_seq) {
-    RLOG(InfoLogLevel::FATAL_LEVEL, db_options_->info_log,
-        "New last sequence id %" PRIu64 " is lower than or equal to "
-        "the previous last sequence id %" PRIu64,
-        new_last_seq, prev_last_seq);
+  if (new_last_seq < prev_last_seq) {
+    LOG(FATAL) << "New last sequence id " << new_last_seq << " is lower than "
+               << "the previous last sequence " << prev_last_seq;
   }
 }
 
-void VersionSet::EnsureNonDecreasingFlushedOpId(const OpId& prev_value, const OpId& new_value) {
-  if (new_value.term < prev_value.term || new_value.index < prev_value.index) {
-    LOG(FATAL) << "New last op id " << new_value << " is lower than the previous last op id "
-               << prev_value;
+void VersionSet::EnsureNonDecreasingFlushedFrontier(const UserFrontier* prev_value,
+                                                  const UserFrontier& new_value) {
+  if (!prev_value) {
+    return;
+  }
+  auto temp = prev_value->Clone();
+  temp->Update(new_value, UpdateUserValueType::kLargest);
+  if (*temp != new_value) {
+    LOG(FATAL) << "Flushed frontier decreased from " << prev_value->ToString() << " to "
+               << new_value.ToString();
   }
 }
 #endif

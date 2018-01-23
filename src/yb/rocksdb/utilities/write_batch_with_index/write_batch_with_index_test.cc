@@ -254,7 +254,7 @@ void TestValueAsSecondaryIndexHelper(std::vector<Entry> entries,
 
   // Verify WriteBatch can be iterated
   TestHandler handler;
-  batch->GetWriteBatch()->Iterate(&handler);
+  ASSERT_OK(batch->GetWriteBatch()->Iterate(&handler));
 
   // Verify data column family
   {

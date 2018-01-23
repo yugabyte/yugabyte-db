@@ -48,7 +48,10 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
+
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
+
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -169,7 +172,9 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;
       return [index] (const rocksdb::MemTable& memtable) {
-          return memtable.LastOpId().index <= index;
+        const auto& largest = down_cast<const docdb::ConsensusFrontier&>(
+            memtable.Frontiers()->Largest());
+        return largest.op_id().index <= index;
       };
     });
 
@@ -553,7 +558,7 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   int64_t last_committed_write_index = tablet_->last_committed_write_index();
   Result<yb::OpId> max_persistent_op_id = tablet_->MaxPersistentOpId();
   RETURN_NOT_OK(max_persistent_op_id);
-  int64_t max_persistent_index = max_persistent_op_id.get_ptr()->index;
+  int64_t max_persistent_index = max_persistent_op_id->index;
   // Check whether we had writes after last persistent entry.
   // Note that last_committed_write_index could be zero if logs were cleaned before restart.
   // So correct check is 'less', and NOT 'not equals to'.

@@ -138,11 +138,11 @@ TEST_F(FlushJobTest, NonEmpty) {
     std::string value("value" + key);
     new_mem->Add(SequenceNumber(i), kTypeValue, key, value);
     InternalKey internal_key(key, SequenceNumber(i), kTypeValue);
-    inserted_keys.insert({internal_key.Encode().ToString(), value});
+    inserted_keys.emplace(internal_key.Encode().ToBuffer(), value);
     values.Feed(key);
   }
-  const OpId kOpId(1, 12345);
-  new_mem->SetLastOpId(kOpId);
+  test::TestUserFrontiers frontiers(1, 12345);
+  new_mem->UpdateFrontiers(frontiers);
 
   autovector<MemTable*> to_delete;
   cfd->imm()->Add(new_mem, &to_delete);
@@ -165,7 +165,8 @@ TEST_F(FlushJobTest, NonEmpty) {
   ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
   ASSERT_EQ(1, fd.smallest.seqno);
   ASSERT_EQ(9999, fd.largest.seqno);
-  ASSERT_EQ(kOpId, fd.last_op_id);
+  ASSERT_TRUE(frontiers.Smallest().Equals(*fd.smallest.user_frontier));
+  ASSERT_TRUE(frontiers.Largest().Equals(*fd.largest.user_frontier));
   values.Check(fd.smallest, fd.largest);
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();

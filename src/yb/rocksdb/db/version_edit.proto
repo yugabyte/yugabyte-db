@@ -17,6 +17,7 @@ syntax = "proto2";
 package rocksdb;
 
 import "yb/util/opid.proto";
+import "google/protobuf/any.proto";
 
 message DeletedFilePB {
   optional uint32 level = 1;
@@ -33,6 +34,7 @@ message UserBoundaryValuePB {
 message BoundaryValuesPB {
   optional bytes key = 1;
   optional uint64 seqno = 2;
+  optional google.protobuf.Any user_frontier = 4;
   repeated UserBoundaryValuePB user_values = 3;
 }
 
@@ -45,7 +47,7 @@ message NewFilePB {
   optional BoundaryValuesPB largest = 6;
   optional uint32 path_id = 7;
   optional bool marked_for_compaction = 8;
-  optional yb.OpIdPB last_op_id = 9;
+  optional yb.OpIdPB deprecated_last_op_id = 9;
   optional bool imported = 10;
 }
 
@@ -66,5 +68,6 @@ message VersionEditPB {
   // it includes column family name.
   optional string column_family_name = 10;
   optional bool is_column_family_drop = 11;
-  optional yb.OpIdPB last_op_id = 12;
+  optional yb.OpIdPB deprecated_last_op_id = 12;
+  optional google.protobuf.Any flushed_frontier = 13;
 }

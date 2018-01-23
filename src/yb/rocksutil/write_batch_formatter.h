@@ -36,25 +36,25 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
   explicit WriteBatchFormatter(OutputFormat output_format = OutputFormat::kEscaped)
       : output_format_(output_format) {}
 
-  virtual rocksdb::Status PutCF(
+  virtual CHECKED_STATUS PutCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  virtual rocksdb::Status DeleteCF(
+  virtual CHECKED_STATUS DeleteCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key) override;
 
-  virtual rocksdb::Status SingleDeleteCF(
+  virtual CHECKED_STATUS SingleDeleteCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key) override;
 
-  virtual rocksdb::Status MergeCF(
+  virtual CHECKED_STATUS MergeCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  Status UserOpId(const OpId& op_id) override;
+  CHECKED_STATUS Frontiers(const rocksdb::UserFrontiers& range) override;
 
   std::string str() { return out_.str(); }
 

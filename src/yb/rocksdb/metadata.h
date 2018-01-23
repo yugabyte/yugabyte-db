@@ -29,10 +29,18 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include "yb/util/format.h"
+#include <google/protobuf/any.pb.h>
+
+#include "yb/common/hybrid_time.h"
+
+#include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
 
 #include "yb/rocksdb/types.h"
+
+namespace yb {
+class OpIdPB;
+}
 
 namespace rocksdb {
 struct ColumnFamilyMetaData;
@@ -73,6 +81,89 @@ struct LevelMetaData {
   const std::vector<SstFileMetaData> files;
 };
 
+class UserFrontier;
+
+// Frontier should be able to be copied preserving its virtual nature.
+// We cannot use shared_ptr here, because we are planning to change cloned value,
+// with shared_ptr original would also be changed.
+typedef yb::clone_ptr<UserFrontier> UserFrontierPtr;
+
+// When writing a batch user could specify frontier values of that batch.
+// So we would maintain those values for each SST file and whole DB.
+// This class defines an abstract interface for single user frontier.
+class UserFrontier {
+ public:
+  virtual std::unique_ptr<UserFrontier> Clone() const = 0;
+  virtual std::string ToString() const = 0;
+  virtual void ToPB(google::protobuf::Any* pb) const = 0;
+  virtual bool Equals(const UserFrontier& rhs) const = 0;
+
+  virtual void Update(const UserFrontier& rhs, UpdateUserValueType type) = 0;
+  virtual void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) = 0;
+  virtual void FromPB(const google::protobuf::Any& pb) = 0;
+
+  virtual ~UserFrontier() {}
+
+  static void Update(const UserFrontier* rhs, UpdateUserValueType type, UserFrontierPtr* out);
+};
+
+inline bool operator==(const UserFrontier& lhs, const UserFrontier& rhs) {
+  return lhs.Equals(rhs);
+}
+
+inline bool operator!=(const UserFrontier& lhs, const UserFrontier& rhs) {
+  return !lhs.Equals(rhs);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const UserFrontier& frontier) {
+  return out << frontier.ToString();
+}
+
+// Abstract interface to a pair of user defined frontiers - smallest and largest.
+class UserFrontiers {
+ public:
+  virtual std::unique_ptr<UserFrontiers> Clone() const = 0;
+  virtual std::string ToString() const = 0;
+  virtual const UserFrontier& Smallest() const = 0;
+  virtual const UserFrontier& Largest() const = 0;
+
+  virtual void Merge(const UserFrontiers& rhs) = 0;
+
+  virtual ~UserFrontiers() {}
+};
+
+template<class Frontier>
+class UserFrontiersBase : public rocksdb::UserFrontiers {
+ public:
+  std::string ToString() const override {
+    return yb::Format("{ smallest: $0 largest: $1 }", smallest_, largest_);
+  }
+
+  const rocksdb::UserFrontier& Smallest() const override { return smallest_; }
+  const rocksdb::UserFrontier& Largest() const override { return largest_; }
+
+  Frontier& Smallest() { return smallest_; }
+  Frontier& Largest() { return largest_; }
+
+  std::unique_ptr<rocksdb::UserFrontiers> Clone() const override {
+    return std::make_unique<UserFrontiersBase>(*this);
+  }
+
+  void Merge(const UserFrontiers& pre_rhs) override {
+    const auto& rhs = down_cast<const UserFrontiersBase&>(pre_rhs);
+    smallest_.Update(rhs.smallest_, rocksdb::UpdateUserValueType::kSmallest);
+    largest_.Update(rhs.largest_, rocksdb::UpdateUserValueType::kLargest);
+  }
+
+ private:
+  Frontier smallest_;
+  Frontier largest_;
+};
+
+inline bool operator==(const UserFrontiers& lhs, const UserFrontiers& rhs) {
+  return lhs.Smallest() == rhs.Smallest() && lhs.Largest() == rhs.Largest();
+}
+
 typedef uint32_t UserBoundaryTag;
 
 class UserBoundaryValue {
@@ -89,8 +180,11 @@ typedef boost::container::small_vector_base<UserBoundaryValuePtr> UserBoundaryVa
 
 struct FileBoundaryValuesBase {
   SequenceNumber seqno; // Boundary sequence number in file.
+  UserFrontierPtr user_frontier;
   // We expect that there will be just a few user values, so use small_vector for it.
   boost::container::small_vector<UserBoundaryValuePtr, 10> user_values;
+
+  std::string ToString() const;
 };
 
 template<class KeyType>
@@ -106,11 +200,6 @@ inline UserBoundaryValuePtr UserValueWithTag(const UserBoundaryValues& values,
   }
   return UserBoundaryValuePtr();
 }
-
-enum class UpdateUserValueType {
-  SMALLEST = 1,
-  LARGEST = -1,
-};
 
 inline void UpdateUserValue(UserBoundaryValues* values,
                             const UserBoundaryValuePtr& new_value,
@@ -156,7 +245,6 @@ struct SstFileMetaData {
 
   BoundaryValues smallest;
   BoundaryValues largest;
-  OpId last_op_id;
   bool imported = false;
   bool being_compacted;  // true if the file is currently being compacted.
 };
@@ -164,13 +252,14 @@ struct SstFileMetaData {
 // The full set of metadata associated with each SST file.
 struct LiveFileMetaData : SstFileMetaData {
   std::string column_family_name;  // Name of the column family
-  int level;               // Level at which this file resides.
+  int level;                       // Level at which this file resides.
 
   std::string ToString() const {
-    return Format("{ total_size: $0 base_size: $1 name: \"$2\" db_path: \"$3\" last_op_id: $4"
-                      " imported: $5 being_compacted: $6 column_family_name: $7 level: $8 }",
-                  total_size, base_size, name, db_path, last_op_id, imported, being_compacted,
-                  column_family_name, level);
+    return yb::Format("{ total_size: $0 base_size: $1 name: \"$2\" db_path: \"$3\" imported: $4 "
+                      "being_compacted: $5 column_family_name: $6 level: $7 smallest: $8 "
+                      "largest: $9 }",
+                      total_size, base_size, name, db_path, imported, being_compacted,
+                      column_family_name, level, smallest, largest);
   }
 };
 

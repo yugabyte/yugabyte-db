@@ -787,9 +787,17 @@ class DB {
   // and end key
   virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}
 
-  virtual OpId GetFlushedOpId() { return OpId(); }
+  std::vector<LiveFileMetaData> GetLiveFilesMetaData() {
+    std::vector<LiveFileMetaData> result;
+    GetLiveFilesMetaData(&result);
+    return result;
+  }
 
-  virtual CHECKED_STATUS SetFlushedOpId(const OpId& op_id) { return Status::OK(); }
+  virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+
+  virtual CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr values) {
+    return Status::OK();
+  }
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

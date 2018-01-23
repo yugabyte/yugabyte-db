@@ -107,11 +107,11 @@ class CompactionJobTest : public testing::Test {
 
   std::string KeyStr(const std::string& user_key, const SequenceNumber seq_num,
       const ValueType t) {
-    return InternalKey(user_key, seq_num, t).Encode().ToString();
+    return InternalKey(user_key, seq_num, t).Encode().ToBuffer();
   }
 
   void AddMockFile(const stl_wrappers::KVMap& contents, int level = 0) {
-    assert(contents.size() > 0);
+    ASSERT_GT(contents.size(), 0);
 
     bool first_key = true;
     FileMetaData::BoundaryValues smallest_values, largest_values;
@@ -119,6 +119,7 @@ class CompactionJobTest : public testing::Test {
     largest_values.seqno = 0;
     std::string smallest, largest;
     test::BoundaryTestValues user_values;
+
     for (auto kv : contents) {
       ParsedInternalKey key;
       std::string skey;
@@ -152,8 +153,10 @@ class CompactionJobTest : public testing::Test {
     VersionEdit edit;
     smallest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.min_int));
     smallest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.min_string));
+    smallest_values.user_frontier = test::TestUserFrontier(smallest_values.seqno).Clone();
     largest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.max_int));
     largest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.max_string));
+    largest_values.user_frontier = test::TestUserFrontier(largest_values.seqno).Clone();
     edit.AddTestFile(level,
                      FileDescriptor(file_number, 0, 10, 10),
                      smallest_values,
@@ -168,7 +171,8 @@ class CompactionJobTest : public testing::Test {
 
   void SetLastSequence(const SequenceNumber sequence_number) {
     versions_->SetLastSequence(sequence_number + 1);
-    versions_->SetFlushedOpId(OpId(sequence_number / 10, sequence_number + 1));
+    test::TestUserFrontier frontier(sequence_number + 1);
+    versions_->SetFlushedFrontier(frontier.Clone());
   }
 
   // returns expected result after compaction
@@ -362,6 +366,17 @@ TEST_F(CompactionJobTest, SimpleDeletion) {
   RunCompaction({files}, expected_results);
 }
 
+namespace {
+
+void VerifyFrontier(const FileMetaData& meta, SequenceNumber min, SequenceNumber max) {
+  const auto& sfront = down_cast<test::TestUserFrontier&>(*meta.smallest.user_frontier);
+  const auto& lfront = down_cast<test::TestUserFrontier&>(*meta.largest.user_frontier);
+  ASSERT_EQ(min, sfront.Value());
+  ASSERT_EQ(max, lfront.Value());
+}
+
+} // namespace
+
 TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   NewDB();
 
@@ -381,10 +396,6 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   auto level1_files = cfd_->current()->storage_info()->LevelFiles(1);
   ASSERT_EQ(2, level0_files.size());
   ASSERT_EQ(0, level1_files.size());
-  ASSERT_EQ(4, level0_files[0]->largest.seqno);
-  ASSERT_EQ(3, level0_files[0]->smallest.seqno);
-  ASSERT_EQ(2, level0_files[1]->largest.seqno);
-  ASSERT_EQ(1, level0_files[1]->smallest.seqno);
   auto min_int = std::min(test::GetBoundaryInt(level0_files[0]->smallest.user_values),
                           test::GetBoundaryInt(level0_files[1]->smallest.user_values));
   auto max_int = std::max(test::GetBoundaryInt(level0_files[0]->largest.user_values),
@@ -396,11 +407,14 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   auto max_string = std::max(test::GetBoundaryString(level0_files[0]->largest.user_values),
                              test::GetBoundaryString(level0_files[1]->largest.user_values));
   ASSERT_LE(min_string, max_string);
+  ASSERT_NO_FATAL_FAILURE(VerifyFrontier(*level0_files[0], 3, 4));
+  ASSERT_NO_FATAL_FAILURE(VerifyFrontier(*level0_files[1], 1, 2));
 
   RunCompaction({level0_files}, expected_results);
 
   level0_files = cfd_->current()->storage_info()->LevelFiles(0);
   level1_files = cfd_->current()->storage_info()->LevelFiles(1);
+
   ASSERT_EQ(0, level0_files.size());
   ASSERT_EQ(1, level1_files.size());
   ASSERT_EQ(4, level1_files[0]->largest.seqno);
@@ -409,7 +423,7 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   ASSERT_EQ(max_int, test::GetBoundaryInt(level1_files[0]->largest.user_values));
   ASSERT_EQ(min_string, test::GetBoundaryString(level1_files[0]->smallest.user_values));
   ASSERT_EQ(max_string, test::GetBoundaryString(level1_files[0]->largest.user_values));
-  ASSERT_EQ(OpId(1, level1_files[0]->largest.seqno), level1_files[0]->last_op_id);
+  ASSERT_NO_FATAL_FAILURE(VerifyFrontier(*level1_files[0], 1, 4));
 }
 
 

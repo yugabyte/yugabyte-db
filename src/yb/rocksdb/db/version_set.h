@@ -31,8 +31,8 @@
 // Version,VersionSet are thread-compatible, but require external
 // synchronization on all accesses.
 
-#ifndef ROCKSDB_DB_VERSION_SET_H
-#define ROCKSDB_DB_VERSION_SET_H
+#ifndef YB_ROCKSDB_DB_VERSION_SET_H
+#define YB_ROCKSDB_DB_VERSION_SET_H
 
 #pragma once
 
@@ -639,7 +639,7 @@ class VersionSet {
 
   // printf contents (for debugging)
   Status DumpManifest(const Options& options, const std::string& manifestFileName,
-                      bool verbose, bool hex = false, bool json = false);
+                      bool verbose, bool hex = false);
 
 #endif  // ROCKSDB_LITE
 
@@ -660,14 +660,14 @@ class VersionSet {
     return last_sequence_.load(std::memory_order_acquire);
   }
 
-  OpId FlushedOpId() const {
-    return flushed_op_id_.load(std::memory_order_acquire);
+  UserFrontier* FlushedFrontier() const {
+    return flushed_frontier_.get();
   }
 
   // Set the last sequence number to s.
   void SetLastSequence(SequenceNumber s) {
 #ifndef NDEBUG
-    EnsureIncreasingLastSequence(LastSequence(), s);
+    EnsureNonDecreasingLastSequence(LastSequence(), s);
 #endif
     SetLastSequenceNoSanityChecking(s);
   }
@@ -678,15 +678,15 @@ class VersionSet {
   }
 
   // Set the last flushed op id to specified value.
-  void SetFlushedOpId(const OpId& value) {
+  void SetFlushedFrontier(UserFrontierPtr values) {
 #ifndef NDEBUG
-    EnsureNonDecreasingFlushedOpId(FlushedOpId(), value);
+    EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
 #endif
-    SetFlushedOpIdNoSanityChecking(value);
+    SetFlushedFrontierNoSanityChecking(std::move(values));
   }
 
-  void SetFlushedOpIdNoSanityChecking(const OpId& value) {
-    flushed_op_id_.store(value, std::memory_order_release);
+  void SetFlushedFrontierNoSanityChecking(UserFrontierPtr values) {
+    flushed_frontier_ = std::move(values);
   }
 
   // Mark the specified file number as used.
@@ -773,8 +773,10 @@ class VersionSet {
                                        VersionEdit* edit);
 
 #ifndef NDEBUG
-  void EnsureIncreasingLastSequence(SequenceNumber prev_last_seq, SequenceNumber new_last_seq);
-  void EnsureNonDecreasingFlushedOpId(const OpId& prev_value, const OpId& new_value);
+  static void EnsureNonDecreasingLastSequence(
+      SequenceNumber prev_last_seq, SequenceNumber new_last_seq);
+  static void EnsureNonDecreasingFlushedFrontier(
+      const UserFrontier* prev_value, const UserFrontier& new_value);
 #endif
 
   std::unique_ptr<ColumnFamilySet> column_family_set_;
@@ -787,7 +789,7 @@ class VersionSet {
   uint64_t pending_manifest_file_number_ = 0;
   std::atomic<uint64_t> last_sequence_ = {0};
   uint64_t prev_log_number_ = 0; // 0 or backing store for memtable being compacted
-  std::atomic<OpId> flushed_op_id_ = {OpId()};
+  UserFrontierPtr flushed_frontier_;
 
   // Opened lazily
   std::unique_ptr<log::Writer> descriptor_log_;
@@ -822,4 +824,4 @@ class VersionSet {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_VERSION_SET_H
+#endif // YB_ROCKSDB_DB_VERSION_SET_H

@@ -26,6 +26,7 @@
 #include "yb/rocksdb/experimental.h"
 #include "yb/rocksdb/utilities/convenience.h"
 #include "yb/rocksdb/util/sync_point.h"
+#include "yb/rocksdb/util/testutil.h"
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 
@@ -241,22 +242,23 @@ void TestFlushedOpId(bool compact, DBCompactionTest* test) {
   options.compaction_style = kCompactionStyleUniversal;
   options.num_levels = 1;
   options.initial_seqno = 100500;
+  options.boundary_extractor = test::MakeBoundaryValuesExtractor();
 
   test->DestroyAndReopen(options);
 
-  OpId last_op_id;
   const size_t kNumBatches = 4;
   for (size_t i = 0; i != kNumBatches; ++i) {
     WriteBatch batch;
-    last_op_id = OpId(1, 1 + i);
-    batch.SetUserOpId(last_op_id);
+    test::TestUserFrontiers frontiers(1 + i, 1 + i);
+    batch.SetFrontiers(&frontiers);
     batch.Put(std::to_string(i), std::to_string(-i));
 
     WriteOptions write_options;
     write_options.disableWAL = true;
     test->dbfull()->Write(write_options, &batch);
     test->dbfull()->TEST_FlushMemTable(true);
-    ASSERT_EQ(last_op_id, test->dbfull()->GetFlushedOpId());
+    ASSERT_EQ(1 + i,
+              down_cast<test::TestUserFrontier&>(*test->dbfull()->GetFlushedFrontier()).Value());
   }
 
   std::vector<LiveFileMetaData> files;
@@ -276,7 +278,8 @@ void TestFlushedOpId(bool compact, DBCompactionTest* test) {
 
   ASSERT_OK(test->TryReopen(options));
 
-  ASSERT_EQ(last_op_id, test->dbfull()->GetFlushedOpId());
+  ASSERT_EQ(kNumBatches,
+            down_cast<test::TestUserFrontier&>(*test->dbfull()->GetFlushedFrontier()).Value());
 }
 
 } // namespace

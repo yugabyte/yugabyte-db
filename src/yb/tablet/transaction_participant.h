@@ -54,7 +54,8 @@ struct TransactionApplyData {
   TransactionIntentApplier* applier;
   TransactionId transaction_id;
   consensus::OpId op_id;
-  HybridTime commit_time;
+  HybridTime commit_ht;
+  HybridTime log_ht;
   TabletId status_tablet;
 };
 

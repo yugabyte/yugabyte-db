@@ -15,6 +15,7 @@
 
 #include "yb/rocksdb/db/dbformat.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
 
 namespace yb {
@@ -185,6 +186,10 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
     DCHECK(PerformSanityCheck(user_key, slices, *values));
 
     return Status::OK();
+  }
+
+  rocksdb::UserFrontierPtr CreateFrontier() override {
+    return new docdb::ConsensusFrontier();
   }
 
   bool PerformSanityCheck(Slice user_key,

@@ -87,6 +87,10 @@ class MemTracker;
 class MetricEntity;
 class RowChangeList;
 
+namespace docdb {
+class ConsensusFrontier;
+}
+
 namespace log {
 class LogAnchorRegistry;
 }
@@ -230,7 +234,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   void ApplyKeyValueRowOperations(
       const docdb::KeyValueWriteBatchPB& put_batch,
-      const consensus::OpId& op_id,
+      const rocksdb::UserFrontiers* frontiers,
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch = nullptr);
 
@@ -401,6 +405,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     mem_table_flush_filter_factory_ = std::move(factory);
   }
 
+  rocksdb::DB* TEST_db() const {
+    return rocksdb_.get();
+  }
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -436,9 +444,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   Result<util::ScopedPendingOperationPause> PauseReadWriteOperations();
 
-  // Initialize RocksDB's max persistent op id to that of the operation state. Necessary for cases
-  // like truncate or restore snapshot when RocksDB is reset.
-  CHECKED_STATUS SetFlushedOpId(const consensus::OpId& op_id);
+  // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
+  // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
+  CHECKED_STATUS SetFlushedFrontier(const docdb::ConsensusFrontier& value);
 
   // Lock protecting schema_ and key_schema_.
   //

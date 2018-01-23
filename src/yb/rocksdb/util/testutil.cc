@@ -364,7 +364,7 @@ int64_t ExtractIntValue(Slice key) {
 
 // Use some weird logic to extract string value from key.
 std::string ExtractStringValue(Slice key) {
-  std::string temp = key.ToString();
+  std::string temp = key.ToBuffer();
   std::reverse(temp.begin(), temp.end());
   return temp;
 }
@@ -387,7 +387,7 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
         break;
       }
       case TAG_STRING_VALUE:
-        *value = std::make_shared<StringValue>(data.ToString());
+        *value = std::make_shared<StringValue>(data.ToBuffer());
         break;
     }
     return Status::OK();
@@ -397,6 +397,10 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
     values->push_back(MakeIntBoundaryValue(ExtractIntValue(user_key)));
     values->push_back(MakeStringBoundaryValue(ExtractStringValue(user_key)));
     return Status::OK();
+  }
+
+  UserFrontierPtr CreateFrontier() override {
+    return new TestUserFrontier(0);
   }
 
   virtual ~TestBoundaryValuesExtractor() {}

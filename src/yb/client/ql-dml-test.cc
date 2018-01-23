@@ -331,68 +331,6 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
   }
 }
 
-TEST_F(QLDmlTest, FlushedOpId) {
-  constexpr size_t kTotalThreads = 8;
-  constexpr size_t kTotalRows = 10000;
-  constexpr size_t kEntryLen = 8;
-
-  std::vector<std::thread> threads;
-  std::atomic<int32_t> idx(0);
-  for (size_t t = 0; t != kTotalThreads; ++t) {
-    threads.emplace_back([this, &idx] {
-      shared_ptr<YBSession> session(NewSession());
-      for(;;) {
-        int32_t i = idx++;
-        if (i >= kTotalRows) {
-          break;
-        }
-        const shared_ptr<YBqlWriteOp> op = InsertRow(session,
-                                                     kHashInt,
-                                                     kHashStr,
-                                                     i,
-                                                     "range_" + std::to_string(i),
-                                                     -i,
-                                                     RandomValueAt(i, kEntryLen));
-        EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
-      }
-    });
-  }
-  const auto kSleepTime = NonTsanVsTsan(5s, 1s);
-  std::this_thread::sleep_for(kSleepTime);
-  LOG(INFO) << "Flushing tablets";
-  cluster_->FlushTablets();
-  std::this_thread::sleep_for(kSleepTime);
-  LOG(INFO) << "GC logs";
-  cluster_->CleanTabletLogs();
-  LOG(INFO) << "Wait threads";
-  for (auto& thread : threads) {
-    thread.join();
-  }
-  std::this_thread::sleep_for(kSleepTime * 5);
-  ASSERT_OK(cluster_->RestartSync());
-
-  auto session = NewSession();
-  const shared_ptr<YBqlReadOp> op = table_.NewReadOp();
-  auto* const req = op->mutable_request();
-  QLAddInt32HashValue(req, kHashInt);
-  QLAddStringHashValue(req, kHashStr);
-  auto c2_column_id = table_.ColumnId("c2");
-  req->add_selected_exprs()->set_column_id(c2_column_id);
-  req->mutable_column_refs()->add_ids(c2_column_id);
-  QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
-  rscol_desc->set_name("c2");
-  QLType::Create(DataType::STRING)->ToQLTypePB(rscol_desc->mutable_ql_type());
-
-  ASSERT_OK(session->Apply(op));
-  ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
-  auto rowblock = RowsResult(op.get()).GetRowBlock();
-  ASSERT_EQ(kTotalRows, rowblock->row_count());
-
-  for (size_t i = 0; i != kTotalRows; ++i) {
-    EXPECT_EQ(RandomValueAt(i, kEntryLen), rowblock->row(i).column(0).string_value());
-  }
-}
-
 TEST_F(QLDmlTest, TestInsertMultipleRows) {
   {
     const shared_ptr<YBSession> session(NewSession());

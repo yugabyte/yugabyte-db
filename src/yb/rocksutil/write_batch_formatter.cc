@@ -13,6 +13,7 @@
 
 #include <yb/gutil/stringprintf.h>
 #include "yb/rocksutil/write_batch_formatter.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/util/bytes_formatter.h"
 
 using std::endl;
@@ -64,9 +65,9 @@ rocksdb::Status WriteBatchFormatter::MergeCF(
   return rocksdb::Status::OK();
 }
 
-Status WriteBatchFormatter::UserOpId(const OpId& op_id) {
+Status WriteBatchFormatter::Frontiers(const rocksdb::UserFrontiers& range) {
   StartOutputLine(__FUNCTION__);
-  out_ << op_id;
+  out_ << range.ToString();
   FinishOutputLine();
   return Status::OK();
 }

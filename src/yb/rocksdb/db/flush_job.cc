@@ -230,7 +230,13 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
       total_num_entries += m->num_entries();
       total_num_deletes += m->num_deletes();
       total_memory_usage += m->ApproximateMemoryUsage();
-      meta->last_op_id.UpdateIfGreater(m->LastOpId());
+      const auto* range = m->Frontiers();
+      if (range) {
+        UserFrontier::Update(
+            &range->Smallest(), UpdateUserValueType::kSmallest, &meta->smallest.user_frontier);
+        UserFrontier::Update(
+            &range->Largest(), UpdateUserValueType::kLargest, &meta->largest.user_frontier);
+      }
     }
 
     event_logger_->Log() << "job" << job_context_->job_id << "event"

@@ -9614,7 +9614,7 @@ TEST_F(DBTest, WalFilterTestWithChangeBatch) {
                                           bool* batch_changed) const override {
       if (current_record_index_ >= change_records_from_index_) {
         ChangeBatchHandler handler(new_batch, num_keys_to_add_in_new_batch_);
-        batch.Iterate(&handler);
+        EXPECT_OK(batch.Iterate(&handler));
         *batch_changed = true;
       }
 

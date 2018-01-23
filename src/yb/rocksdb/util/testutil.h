@@ -35,13 +35,15 @@
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
+#include "yb/rocksdb/db/version_edit.pb.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/random.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 class SequentialFile;
@@ -155,7 +157,7 @@ class VectorIterator : public InternalIterator {
   virtual void SeekToLast() override { current_ = keys_.size() - 1; }
 
   virtual void Seek(const Slice& target) override {
-    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToString()) -
+    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) -
                keys_.begin();
   }
 
@@ -665,6 +667,75 @@ struct BoundaryTestValues {
   int64_t max_int = std::numeric_limits<int64_t>::min();
   std::string min_string;
   std::string max_string;
+};
+
+// A test implementation of UserFrontier, wrapper over simple int64_t value.
+class TestUserFrontier : public UserFrontier {
+ public:
+  TestUserFrontier() : value_(0) {}
+  explicit TestUserFrontier(uint64_t value) : value_(value) {}
+
+  std::unique_ptr<UserFrontier> Clone() const override {
+    return std::make_unique<TestUserFrontier>(*this);
+  }
+
+  void SetValue(uint64_t value) {
+    value_ = value;
+  }
+
+  uint64_t Value() const {
+    return value_;
+  }
+
+  std::string ToString() const override {
+    return yb::Format("{ value: $0 }", value_);
+  }
+
+  void ToPB(google::protobuf::Any* pb) const override {
+    UserBoundaryValuePB value;
+    value.set_tag(static_cast<uint32_t>(value_));
+    pb->PackFrom(value);
+  }
+
+  bool Equals(const UserFrontier& rhs) const override {
+    return value_ == down_cast<const TestUserFrontier&>(rhs).value_;
+  }
+
+  void Update(const UserFrontier& rhs, UpdateUserValueType type) override {
+    auto rhs_value = down_cast<const TestUserFrontier&>(rhs).value_;
+    switch (type) {
+      case UpdateUserValueType::kLargest:
+        value_ = std::max(value_, rhs_value);
+        return;
+      case UpdateUserValueType::kSmallest:
+        value_ = std::min(value_, rhs_value);
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
+  }
+
+  void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) override {}
+
+  void FromPB(const google::protobuf::Any& pb) override {
+    UserBoundaryValuePB value;
+    pb.UnpackTo(&value);
+    value_ = value.tag();
+  }
+
+ private:
+  uint64_t value_ = 0;
+};
+
+class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
+ public:
+  TestUserFrontiers(uint64_t min, uint64_t max) {
+    Smallest().SetValue(min);
+    Largest().SetValue(max);
+  }
+
+  std::unique_ptr<UserFrontiers> Clone() const {
+    return std::make_unique<TestUserFrontiers>(*this);
+  }
 };
 
 }  // namespace test

@@ -59,6 +59,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/conflict_resolution.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -490,9 +491,10 @@ void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
           // Bootstrap case.
           : operation_state->request()->write_batch();
 
-  ApplyKeyValueRowOperations(put_batch,
-                             operation_state->op_id(),
-                             operation_state->hybrid_time());
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id({operation_state->op_id().term(), operation_state->op_id().index()}, &frontiers);
+  set_hybrid_time(operation_state->hybrid_time(), &frontiers);
+  ApplyKeyValueRowOperations(put_batch, &frontiers, operation_state->hybrid_time());
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir,
@@ -552,13 +554,13 @@ void Tablet::PrepareTransactionWriteBatch(
 }
 
 void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
-                                        const consensus::OpId& op_id,
+                                        const rocksdb::UserFrontiers* frontiers,
                                         const HybridTime hybrid_time,
                                         rocksdb::WriteBatch* rocksdb_write_batch) {
   // Write batch could be preallocated, here we handle opposite case.
   if (rocksdb_write_batch == nullptr) {
     WriteBatch write_batch;
-    ApplyKeyValueRowOperations(put_batch, op_id, hybrid_time, &write_batch);
+    ApplyKeyValueRowOperations(put_batch, frontiers, hybrid_time, &write_batch);
     return;
   }
 
@@ -566,7 +568,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
     return;
   }
 
-  rocksdb_write_batch->SetUserOpId(rocksdb::OpId(op_id.term(), op_id.index()));
+  rocksdb_write_batch->SetFrontiers(frontiers);
 
   if (put_batch.has_transaction()) {
     PrepareTransactionWriteBatch(put_batch, hybrid_time, rocksdb_write_batch);
@@ -887,7 +889,7 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
         // Time will be added when writing batch to rocks db.
         std::array<Slice, 2> key_parts = {{
             intent->doc_path,
-            doc_ht_buffer.EncodeWithValueType(data.commit_time, write_id),
+            doc_ht_buffer.EncodeWithValueType(data.commit_ht, write_id),
         }};
         std::array<Slice, 2> value_parts = {{
             intent->doc_ht,
@@ -907,8 +909,11 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id({data.op_id.term(), data.op_id.index()}, &frontiers);
+  set_hybrid_time(data.log_ht, &frontiers);
   ApplyKeyValueRowOperations(
-      KeyValueWriteBatchPB(), data.op_id, data.commit_time, &rocksdb_write_batch);
+      KeyValueWriteBatchPB(), &frontiers, data.commit_ht, &rocksdb_write_batch);
   return Status::OK();
 }
 
@@ -995,14 +1000,14 @@ Result<ScopedPendingOperationPause> Tablet::PauseReadWriteOperations() {
   return STATUS(InternalError, "unexpected return"); // should not happen
 }
 
-Status Tablet::SetFlushedOpId(const consensus::OpId& op_id) {
-  const rocksdb::OpId flushed_op_id(op_id.term(), op_id.index());
-  const Status s = rocksdb_->SetFlushedOpId(flushed_op_id);
+Status Tablet::SetFlushedFrontier(const docdb::ConsensusFrontier& frontier) {
+  const Status s = rocksdb_->SetFlushedFrontier(frontier.Clone());
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Failed to set flushed op id: " << s;
-    return STATUS(IllegalState, "Failed to set flushed op id", s.ToString());
+    auto status = STATUS(IllegalState, "Failed to set flushed frontier", s.ToString());
+    LOG(WARNING) << status;
+    return status;
   }
-  DCHECK_EQ(flushed_op_id, rocksdb_->GetFlushedOpId());
+  DCHECK_EQ(frontier, *rocksdb_->GetFlushedFrontier());
   return Flush(FlushMode::kAsync);
 }
 
@@ -1035,7 +1040,10 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     return s;
   }
 
-  RETURN_NOT_OK(SetFlushedOpId(state->op_id()));
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id({state->op_id().term(), state->op_id().index()});
+  frontier.set_hybrid_time(state->hybrid_time());
+  RETURN_NOT_OK(SetFlushedFrontier(frontier));
 
   LOG(INFO) << "Created new db for truncated tablet " << tablet_id();
   LOG(INFO) << "Sequence numbers: old=" << sequence_number
@@ -1072,7 +1080,11 @@ Result<yb::OpId> Tablet::MaxPersistentOpId() const {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  return rocksdb_->GetFlushedOpId();
+  auto temp = rocksdb_->GetFlushedFrontier();
+  if (!temp) {
+    return yb::OpId();
+  }
+  return down_cast<docdb::ConsensusFrontier*>(temp.get())->op_id();
 }
 
 Status Tablet::DebugDump(vector<string> *lines) {

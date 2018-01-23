@@ -36,6 +36,8 @@ void QLDmlTestBase::SetUp() {
 
   // Create test table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+
+  HybridTime::TEST_SetPrettyToString(true);
 }
 
 void QLDmlTestBase::DoTearDown() {
