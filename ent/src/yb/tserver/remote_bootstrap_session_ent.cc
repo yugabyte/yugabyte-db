@@ -13,6 +13,7 @@ using std::string;
 using std::vector;
 
 using strings::Substitute;
+using tablet::enterprise::Tablet;
 using tablet::TabletMetadata;
 using tablet::TabletPeer;
 
@@ -21,8 +22,7 @@ Status RemoteBootstrapSession::InitSnapshotFiles() {
   tablet_superblock_.clear_snapshot_files();
 
   // Add snapshot files to tablet superblock.
-  const string top_snapshots_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(),
-                                                    tablet::enterprise::kSnapshotsDirName);
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(tablet_superblock_.rocksdb_dir());
 
   vector<string> snapshots;
   if (metadata->fs_manager()->env()->FileExists(top_snapshots_dir)) {
@@ -67,8 +67,7 @@ Status RemoteBootstrapSession::GetSnapshotFilePiece(const std::string snapshot_i
                                                     std::string* data,
                                                     int64_t* log_file_size,
                                                     RemoteBootstrapErrorPB::Code* error_code) {
-  const string snapshots_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(),
-                                                tablet::enterprise::kSnapshotsDirName);
+  const string snapshots_dir = Tablet::SnapshotsDirName(tablet_superblock_.rocksdb_dir());
   return GetFilePiece(
       JoinPathSegments(snapshots_dir, snapshot_id), file_name, offset,
       client_maxlen, data, log_file_size, error_code);
