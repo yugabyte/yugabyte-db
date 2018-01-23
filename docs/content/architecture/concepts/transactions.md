@@ -105,7 +105,7 @@ that all previous Raft-committed entries are applied to RocksDB and other persis
 data structures, and it is only possible after we know that all entries in the new leader's log are
 committed.
 
-### Leader leases: deading the latest data in case of a network partition
+### Leader leases: reading the latest data in case of a network partition
 
 Leader leases are a mechanism for a tablet leader to establish its authority for a certain short
 time period in order to avoid the following inconsistency:
