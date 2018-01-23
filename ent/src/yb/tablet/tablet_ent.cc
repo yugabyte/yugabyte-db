@@ -4,7 +4,9 @@
 
 #include <boost/scope_exit.hpp>
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/tablet/operations/snapshot_operation.h"
@@ -72,13 +74,16 @@ Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
   const string snapshots_dir = JoinPathSegments(metadata_->rocksdb_dir(), kSnapshotsDirName);
   const string snapshot_dir = JoinPathSegments(snapshots_dir, tx_state->request()->snapshot_id());
 
-  const Status s = RestoreCheckpoint(snapshot_dir, tx_state->op_id());
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(tx_state->op_id());
+  frontier.set_hybrid_time(tx_state->hybrid_time());
+  const Status s = RestoreCheckpoint(snapshot_dir, frontier);
   VLOG(1) << "Complete checkpoint restoring for tablet " << tablet_id()
           << " with result " << s << " in folder " << metadata_->rocksdb_dir();
   return s;
 }
 
-Status Tablet::RestoreCheckpoint(const std::string& dir, const consensus::OpId& op_id) {
+Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusFrontier& frontier) {
   auto op_pause = PauseReadWriteOperations();
   RETURN_NOT_OK(op_pause);
 
@@ -119,7 +124,7 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const consensus::OpId& 
     return s;
   }
 
-  s = SetFlushedOpId(op_id);
+  s = SetFlushedFrontier(frontier);
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Failed tablet db setting flushed op id: " << s;
     return s;

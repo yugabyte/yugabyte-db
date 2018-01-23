@@ -41,7 +41,8 @@ class Tablet : public yb::tablet::Tablet {
 
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
-  CHECKED_STATUS RestoreCheckpoint(const std::string& dir, const consensus::OpId& op_id);
+  CHECKED_STATUS RestoreCheckpoint(
+      const std::string& dir, const docdb::ConsensusFrontier& frontier);
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);
