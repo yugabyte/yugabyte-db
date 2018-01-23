@@ -1,15 +1,4 @@
 // Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
-//
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -28,7 +17,7 @@ using std::string;
 
 using yb::rpc::RpcController;
 using yb::tablet::TabletPeer;
-using yb::tablet::enterprise::kSnapshotsDirName;
+using yb::tablet::enterprise::Tablet;
 
 class BackupServiceTest : public TabletServerTestBase {
  public:
@@ -54,8 +43,8 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
 
   const string snapshot_id = "00000000000000000000000000000000";
   const string rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
-  const string snapshots_dir = JoinPathSegments(rocksdb_dir, kSnapshotsDirName);
-  const string tablet_dir = JoinPathSegments(snapshots_dir, snapshot_id);
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
+  const string tablet_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
 
   TabletSnapshotOpRequestPB req;
   TabletSnapshotOpResponsePB resp;
@@ -76,7 +65,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   req.set_tablet_id(kTabletId);
 
   ASSERT_TRUE(fs->Exists(rocksdb_dir));
-  ASSERT_FALSE(fs->Exists(snapshots_dir));
+  ASSERT_FALSE(fs->Exists(top_snapshots_dir));
 
   // Send the call.
   {
@@ -88,7 +77,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   }
 
   ASSERT_TRUE(fs->Exists(rocksdb_dir));
-  ASSERT_TRUE(fs->Exists(snapshots_dir));
+  ASSERT_TRUE(fs->Exists(top_snapshots_dir));
   ASSERT_TRUE(fs->Exists(tablet_dir));
   // Check existence of snapshot files:
   ASSERT_TRUE(fs->Exists(JoinPathSegments(tablet_dir, "CURRENT")));

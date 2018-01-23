@@ -50,17 +50,18 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
     return STATUS(IllegalState, "Unable to flush rocksdb", s.ToString());
   }
 
-  const string snapshots_dir = JoinPathSegments(metadata_->rocksdb_dir(), kSnapshotsDirName);
-  RETURN_NOT_OK_PREPEND(metadata_->fs_manager()->CreateDirIfMissing(snapshots_dir),
-      Substitute("Unable to create snapshots diretory $0", snapshots_dir));
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
+  RETURN_NOT_OK_PREPEND(metadata_->fs_manager()->CreateDirIfMissing(top_snapshots_dir),
+      Substitute("Unable to create snapshots diretory $0", top_snapshots_dir));
 
-  const string snapshot_dir = JoinPathSegments(snapshots_dir, tx_state->request()->snapshot_id());
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
+                                               tx_state->request()->snapshot_id());
 
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for rocksdb object.
   s = CreateCheckpoint(snapshot_dir);
   VLOG(1) << "Complete checkpoint creation for tablet " << tablet_id()
-          << " with result " << s << " in folder " << metadata_->rocksdb_dir();
+          << " with result " << s << " in folder " << snapshot_dir;
   return s;
 }
 
@@ -71,8 +72,9 @@ Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
   // The table type must be checked on the Master side.
   DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
 
-  const string snapshots_dir = JoinPathSegments(metadata_->rocksdb_dir(), kSnapshotsDirName);
-  const string snapshot_dir = JoinPathSegments(snapshots_dir, tx_state->request()->snapshot_id());
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
+                                               tx_state->request()->snapshot_id());
 
   docdb::ConsensusFrontier frontier;
   frontier.set_op_id(tx_state->op_id());
@@ -110,7 +112,7 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
     return STATUS(IllegalState, "Cannot cleanup db files", s.ToString());
   }
 
-  s = rocksdb::CopyDirectory(rocksdb_options.env, dir, db_dir, rocksdb::CreateIfMissing::kFalse);
+  s = rocksdb::CopyDirectory(rocksdb_options.env, dir, db_dir, rocksdb::CreateIfMissing::kTrue);
   if (PREDICT_FALSE(!s.ok())) {
     LOG(WARNING) << "Copy checkpoint files status: " << s;
     return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());

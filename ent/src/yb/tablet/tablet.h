@@ -12,7 +12,7 @@ class SnapshotOperationState;
 
 namespace enterprise {
 
-static const char* const kSnapshotsDirName = "snapshots";
+static const char* const kSnapshotsDirSuffix = ".snapshots";
 
 class Tablet : public yb::tablet::Tablet {
   typedef yb::tablet::Tablet super;
@@ -43,6 +43,10 @@ class Tablet : public yb::tablet::Tablet {
   // Only used when table_type_ == YQL_TABLE_TYPE.
   CHECKED_STATUS RestoreCheckpoint(
       const std::string& dir, const docdb::ConsensusFrontier& frontier);
+
+  static std::string SnapshotsDirName(const std::string& rocksdb_dir) {
+    return rocksdb_dir + kSnapshotsDirSuffix;
+  }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);
