@@ -34,7 +34,7 @@ using rpc::MessengerBuilder;
 using rpc::RpcController;
 using itest::TabletServerMap;
 using yb::tablet::TabletPeer;
-using yb::tablet::enterprise::kSnapshotsDirName;
+using yb::tablet::enterprise::Tablet;
 using yb::tserver::MiniTabletServer;
 using yb::master::kNumSystemNamespaces;
 using yb::master::MiniMaster;
@@ -446,10 +446,10 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     for (scoped_refptr<TabletPeer>& tablet_peer : ts_tablet_peers) {
       FsManager* const fs = tablet_peer->tablet_metadata()->fs_manager();
       const string rocksdb_dir = tablet_peer->tablet_metadata()->rocksdb_dir();
-      const string snapshots_dir = JoinPathSegments(rocksdb_dir, kSnapshotsDirName);
+      const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
 
       ASSERT_TRUE(fs->Exists(rocksdb_dir));
-      ASSERT_FALSE(fs->Exists(snapshots_dir));
+      ASSERT_FALSE(fs->Exists(top_snapshots_dir));
     }
   }
 
@@ -469,12 +469,12 @@ TEST_F(MiniClusterMasterTest, TestCreateSnapshot) {
     for (scoped_refptr<TabletPeer>& tablet_peer : ts_tablet_peers) {
       FsManager* const fs = tablet_peer->tablet_metadata()->fs_manager();
       const string rocksdb_dir = tablet_peer->tablet_metadata()->rocksdb_dir();
-      const string snapshots_dir = JoinPathSegments(rocksdb_dir, kSnapshotsDirName);
-      const string tablet_dir = JoinPathSegments(snapshots_dir, snapshot_id);
+      const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
+      const string tablet_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
 
       LOG(INFO) << "Checking tablet snapshot folder: " << tablet_dir;
       ASSERT_TRUE(fs->Exists(rocksdb_dir));
-      ASSERT_TRUE(fs->Exists(snapshots_dir));
+      ASSERT_TRUE(fs->Exists(top_snapshots_dir));
       ASSERT_TRUE(fs->Exists(tablet_dir));
       // Check existence of snapshot files:
       ASSERT_TRUE(fs->Exists(JoinPathSegments(tablet_dir, "CURRENT")));
