@@ -1,4 +1,9 @@
-%define api.prefix {orafce_sql_yy}
+/*
+ * %define api.prefix {orafce_sql_yy} is not compileable on old bison 2.4
+ * so I am using obsolete but still working option.
+ */
+
+%name-prefix "orafce_sql_yy"
 
 %{
 
@@ -46,8 +51,6 @@ static int	scanbuflen;
 
 void orafce_sql_yyerror(List **result, const char *message);
 
-
-#define ORAFCE_SQL_YYLTYPE		int
 #define YYMALLOC	malloc	/* XXX: should use palloc? */
 #define YYFREE		free	/* XXX: should use pfree? */
 
