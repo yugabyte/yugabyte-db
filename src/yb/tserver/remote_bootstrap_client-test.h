@@ -67,6 +67,10 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
     ASSERT_OK(fs_manager_->Open());
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0)));
+    SetUpRemoteBootstrapClient();
+  }
+
+  virtual void SetUpRemoteBootstrapClient() {
     ASSERT_OK(rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build().MoveTo(&messenger_));
     client_.reset(new RemoteBootstrapClientClass(GetTabletId(),
                                                  fs_manager_.get(),
