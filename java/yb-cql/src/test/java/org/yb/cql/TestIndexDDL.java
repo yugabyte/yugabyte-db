@@ -14,6 +14,7 @@ package org.yb.cql;
 
 import java.util.*;
 
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.datastax.driver.core.Row;
@@ -26,6 +27,26 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 public class TestIndexDDL extends BaseCQLTest {
+
+  @BeforeClass
+  public static void SetUpBeforeClass() throws Exception {
+    BaseCQLTest.tserverArgs = Arrays.asList("--allow_index_table_read_write");
+    BaseCQLTest.setUpBeforeClass();
+  }
+
+  @Test
+  public void testReadWriteIndexTable() throws Exception {
+    // TODO: remove this test case and the "allow_index_table_read_write" flag above after
+    // secondary index feature is complete.
+    session.execute("create table test_index (h int, r1 int, r2 int, c int, " +
+                    "primary key ((h), r1, r2)) with transactions = { 'enabled' : true};");
+    session.execute("create index i on test_index (h, r2, r1) covering (c);");
+
+    session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
+    session.execute("insert into i (h, r2, r1, c) values (1, 3, 2, 4);");
+    assertQuery("select * from test_index;", "Row[1, 2, 3, 4]");
+    assertQuery("select * from i;", "Row[1, 3, 2, 4]");
+  }
 
   @Test
   public void testCreateIndex() throws Exception {

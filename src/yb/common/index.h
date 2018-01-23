@@ -25,12 +25,9 @@
 
 namespace yb {
 
-class IndexInfoPB;
-
 // A class to maintain the information of an index.
 class IndexInfo {
  public:
-
   // Index column mapping.
   struct IndexColumn {
     ColumnId column_id;         // Column id in the index table.

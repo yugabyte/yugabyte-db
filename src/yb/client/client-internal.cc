@@ -857,7 +857,13 @@ class GetTableSchemaRpc : public Rpc {
  public:
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
-                    YBTableName table_name,
+                    const YBTableName& table_name,
+                    YBTable::Info* info,
+                    const MonoTime& deadline,
+                    const shared_ptr<rpc::Messenger>& messenger);
+  GetTableSchemaRpc(YBClient* client,
+                    StatusCallback user_cb,
+                    const TableId& table_id,
                     YBTable::Info* info,
                     const MonoTime& deadline,
                     const shared_ptr<rpc::Messenger>& messenger);
@@ -877,21 +883,50 @@ class GetTableSchemaRpc : public Rpc {
 
   YBClient* client_;
   StatusCallback user_cb_;
-  const YBTableName table_name_;
+  master::TableIdentifierPB table_identifier_;
   YBTable::Info* info_;
   GetTableSchemaResponsePB resp_;
 };
 
+namespace {
+
+master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
+  master::TableIdentifierPB id;
+  table_name.SetIntoTableIdentifierPB(&id);
+  return id;
+}
+
+master::TableIdentifierPB ToTableIdentifierPB(const TableId& table_id) {
+  master::TableIdentifierPB id;
+  id.set_table_id(table_id);
+  return id;
+}
+
+} // namespace
+
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
-                                     YBTableName table_name,
+                                     const YBTableName& table_name,
                                      YBTable::Info* info,
                                      const MonoTime& deadline,
                                      const shared_ptr<rpc::Messenger>& messenger)
     : Rpc(deadline, messenger),
       client_(DCHECK_NOTNULL(client)),
       user_cb_(std::move(user_cb)),
-      table_name_(std::move(table_name)),
+      table_identifier_(ToTableIdentifierPB(table_name)),
+      info_(DCHECK_NOTNULL(info)) {
+}
+
+GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
+                                     StatusCallback user_cb,
+                                     const TableId& table_id,
+                                     YBTable::Info* info,
+                                     const MonoTime& deadline,
+                                     const shared_ptr<rpc::Messenger>& messenger)
+    : Rpc(deadline, messenger),
+      client_(DCHECK_NOTNULL(client)),
+      user_cb_(std::move(user_cb)),
+      table_identifier_(ToTableIdentifierPB(table_id)),
       info_(DCHECK_NOTNULL(info)) {
 }
 
@@ -912,15 +947,15 @@ void GetTableSchemaRpc::SendRpc() {
       MonoTime::Earliest(rpc_deadline, retrier().deadline()));
 
   GetTableSchemaRequestPB req;
-  table_name_.SetIntoTableIdentifierPB(req.mutable_table());
+  req.mutable_table()->CopyFrom(table_identifier_);
   client_->data_->master_proxy()->GetTableSchemaAsync(
       req, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&GetTableSchemaRpc::Finished, this, Status::OK()));
 }
 
 string GetTableSchemaRpc::ToString() const {
-  return Substitute("GetTableSchemaRpc(table_name: $0, num_attempts: $1)",
-                    table_name_.ToString(), num_attempts());
+  return Substitute("GetTableSchemaRpc(table_identifier: $0, num_attempts: $1)",
+                    table_identifier_.ShortDebugString(), num_attempts());
 }
 
 void GetTableSchemaRpc::ResetLeaderMasterAndRetry() {
@@ -1008,6 +1043,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
                                            GetSchema(&info_->schema),
                                            &info_->partition_schema);
 
+      info_->table_name.GetFromTableIdentifierPB(resp_.identifier());
       info_->table_id = resp_.identifier().table_id();
       if (resp_.has_indexed_table_id()) {
         info_->indexed_table_id = resp_.indexed_table_id();
@@ -1035,6 +1071,21 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       client,
       sync.AsStatusCallback(),
       table_name,
+      info,
+      deadline,
+      messenger_);
+  return sync.Wait();
+}
+
+Status YBClient::Data::GetTableSchema(YBClient* client,
+                                      const TableId& table_id,
+                                      const MonoTime& deadline,
+                                      YBTable::Info* info) {
+  Synchronizer sync;
+  auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
+      client,
+      sync.AsStatusCallback(),
+      table_id,
       info,
       deadline,
       messenger_);

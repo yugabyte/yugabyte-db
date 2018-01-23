@@ -423,7 +423,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 };
 
 class DeletedTableInfo;
-typedef std::pair<TServerId, TabletId> TabletKey;
+typedef std::pair<TabletServerId, TabletId> TabletKey;
 typedef std::unordered_map<
     TabletKey, scoped_refptr<DeletedTableInfo>, boost::hash<TabletKey>> DeletedTabletMap;
 
@@ -920,7 +920,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
-  void NotifyTabletDeleteFinished(const TServerId& tserver_uuid, const TableId& table_id);
+  void NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid, const TableId& table_id);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.

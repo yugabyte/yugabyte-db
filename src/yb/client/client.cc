@@ -925,12 +925,13 @@ Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
   return Status::OK();
 }
 
-Status YBMetaDataCache::GetTable(
-    const YBTableName& table_name, shared_ptr<YBTable>* table, bool* cache_used) {
+Status YBMetaDataCache::GetTable(const YBTableName& table_name,
+                                 shared_ptr<YBTable>* table,
+                                 bool* cache_used) {
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    auto itr = cached_tables_.find(table_name);
-    if (itr != cached_tables_.end()) {
+    auto itr = cached_tables_by_name_.find(table_name);
+    if (itr != cached_tables_by_name_.end()) {
       *table = itr->second;
       *cache_used = true;
       return Status::OK();
@@ -940,7 +941,31 @@ Status YBMetaDataCache::GetTable(
   RETURN_NOT_OK(client_->OpenTable(table_name, table));
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_[table_name] = *table;
+    cached_tables_by_name_[(*table)->name()] = *table;
+    cached_tables_by_id_[(*table)->id()] = *table;
+  }
+  *cache_used = false;
+  return Status::OK();
+}
+
+Status YBMetaDataCache::GetTable(const TableId& table_id,
+                                 shared_ptr<YBTable>* table,
+                                 bool* cache_used) {
+  {
+    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    auto itr = cached_tables_by_id_.find(table_id);
+    if (itr != cached_tables_by_id_.end()) {
+      *table = itr->second;
+      *cache_used = true;
+      return Status::OK();
+    }
+  }
+
+  RETURN_NOT_OK(client_->OpenTable(table_id, table));
+  {
+    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    cached_tables_by_name_[(*table)->name()] = *table;
+    cached_tables_by_id_[table_id] = *table;
   }
   *cache_used = false;
   return Status::OK();
@@ -948,7 +973,22 @@ Status YBMetaDataCache::GetTable(
 
 void YBMetaDataCache::RemoveCachedTable(const YBTableName& table_name) {
   std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-  cached_tables_.erase(table_name);
+  const auto itr = cached_tables_by_name_.find(table_name);
+  if (itr != cached_tables_by_name_.end()) {
+    const auto table_id = itr->second->id();
+    cached_tables_by_name_.erase(itr);
+    cached_tables_by_id_.erase(table_id);
+  }
+}
+
+void YBMetaDataCache::RemoveCachedTable(const TableId& table_id) {
+  std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+  const auto itr = cached_tables_by_id_.find(table_id);
+  if (itr != cached_tables_by_id_.end()) {
+    const auto table_name = itr->second->name();
+    cached_tables_by_name_.erase(table_name);
+    cached_tables_by_id_.erase(itr);
+  }
 }
 
 Status YBMetaDataCache::GetUDType(const string &keyspace_name,
@@ -987,14 +1027,23 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
   deadline.AddDelta(default_admin_operation_timeout());
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
 
-  // Verify it is not an index table.
-  if (!info.indexed_table_id.empty()) {
-    return STATUS(NotFound, "The table does not exist");
-  }
+  // In the future, probably will look up the table in some map to reuse YBTable
+  // instances.
+  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(), info));
+  RETURN_NOT_OK(ret->data_->Open());
+  table->swap(ret);
+  return Status::OK();
+}
+
+Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table) {
+  YBTable::Info info;
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(), table_name, info));
+  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(), info));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
   return Status::OK();
@@ -1250,8 +1299,8 @@ Status YBTableCreator::Create() {
 // YBTable
 ////////////////////////////////////////////////////////////
 
-YBTable::YBTable(const shared_ptr<YBClient>& client, const YBTableName& name, const Info& info)
-    : data_(new YBTable::Data(client, name, info)) {
+YBTable::YBTable(const shared_ptr<YBClient>& client, const Info& info)
+    : data_(new YBTable::Data(client, info)) {
 }
 
 YBTable::~YBTable() {
@@ -1259,7 +1308,7 @@ YBTable::~YBTable() {
 }
 
 const YBTableName& YBTable::name() const {
-  return data_->name_;
+  return data_->info_.table_name;
 }
 
 YBTableType YBTable::table_type() const {
@@ -1280,6 +1329,10 @@ const Schema& YBTable::InternalSchema() const {
 
 const vector<IndexInfo>& YBTable::indexes() const {
   return data_->info_.indexes;
+}
+
+bool YBTable::IsIndex() const {
+  return !data_->info_.indexed_table_id.empty();
 }
 
 YBqlWriteOp* YBTable::NewQLWrite() {

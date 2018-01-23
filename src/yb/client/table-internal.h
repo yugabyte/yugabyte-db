@@ -43,6 +43,7 @@ namespace yb {
 namespace client {
 
 struct YBTable::Info {
+  YBTableName table_name;
   std::string table_id;
   std::string indexed_table_id;
   YBSchema schema;
@@ -52,14 +53,12 @@ struct YBTable::Info {
 
 class YBTable::Data {
  public:
-  Data(std::shared_ptr<YBClient> client, YBTableName name, Info info);
+  Data(std::shared_ptr<YBClient> client, Info info);
   ~Data();
 
   CHECKED_STATUS Open();
 
   std::shared_ptr<YBClient> client_;
-
-  const YBTableName name_;
   YBTableType table_type_;
   const Info info_;
 

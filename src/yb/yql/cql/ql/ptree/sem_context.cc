@@ -16,11 +16,14 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 #include "yb/client/client.h"
-
+#include "yb/util/flag_tags.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
 namespace yb {
 namespace ql {
+
+DEFINE_bool(allow_index_table_read_write, false, "Allow direct read and write of index tables");
+TAG_FLAG(allow_index_table_read_write, hidden);
 
 using std::shared_ptr;
 using client::YBTable;
@@ -64,7 +67,7 @@ Status SemContext::LookupTable(const YBTableName& name,
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();
   *table = GetTableDesc(name);
-  if (*table == nullptr) {
+  if (*table == nullptr || (*table)->IsIndex() && !FLAGS_allow_index_table_read_write) {
     return Error(loc, ErrorCode::TABLE_NOT_FOUND);
   }
   set_current_table(*table);

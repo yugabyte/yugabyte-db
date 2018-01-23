@@ -22,22 +22,21 @@ namespace yb {
 
 // TODO: switch many of these to opaque types for additional type safety and efficiency.
 
-using TableId = std::string;
-using TabletId = std::string;
-using UDTypeId = std::string;
-
-// TODO: keep only one of these.
-using TabletServerId = std::string;
-using TServerId = std::string;
-
-using NamespaceId = std::string;
+using NamespaceName = std::string;
 using TableName = std::string;
 using UDTypeName = std::string;
-using NamespaceName = std::string;
-typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
-typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
-
 using RoleName = std::string;
+
+using NamespaceId = std::string;
+using TableId = std::string;
+using UDTypeId = std::string;
+using RoleName = std::string;
+
+using TabletServerId = std::string;
+using TabletId = std::string;
+
+using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
+using SystemTableSet = std::set<NamespaceIdTableNamePair>;
 
 }  // namespace yb
 

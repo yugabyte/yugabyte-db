@@ -2441,6 +2441,12 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->mutable_identifier()->set_table_name(l->data().pb.name());
   resp->mutable_identifier()->set_table_id(table->id());
   resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
+  NamespaceIdentifierPB nsid;
+  nsid.set_id(table->namespace_id());
+  scoped_refptr<NamespaceInfo> nsinfo;
+  if (FindNamespace(nsid, &nsinfo).ok()) {
+    resp->mutable_identifier()->mutable_namespace_()->set_name(nsinfo->name());
+  }
   resp->set_version(l->data().pb.version());
   resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
   if (l->data().pb.has_indexed_table_id()) {
@@ -2578,7 +2584,7 @@ bool CatalogManager::IsSystemTable(const TableInfo& table) const {
   return table.IsSupportedSystemTable(sys_tables_handler_.supported_system_tables());
 }
 
-void CatalogManager::NotifyTabletDeleteFinished(const TServerId& tserver_uuid,
+void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
                                                 const TabletId& tablet_id) {
   scoped_refptr<DeletedTableInfo> deleted_table;
   {

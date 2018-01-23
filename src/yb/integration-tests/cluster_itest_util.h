@@ -103,8 +103,8 @@ struct TServerDetails {
 typedef std::unordered_multimap<std::string, TServerDetails*> TabletReplicaMap;
 
 // uuid -> tablet server map.
-typedef std::unordered_map<TServerId, std::unique_ptr<TServerDetails>> TabletServerMap;
-typedef std::unordered_map<TServerId, TServerDetails*> TabletServerMapUnowned;
+typedef std::unordered_map<TabletServerId, std::unique_ptr<TServerDetails>> TabletServerMap;
+typedef std::unordered_map<TabletServerId, TServerDetails*> TabletServerMapUnowned;
 
 // Returns possibly the simplest imaginable schema, with a single int key column.
 client::YBSchema SimpleIntKeyYBSchema();

@@ -375,13 +375,13 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // 'exists' is set only on success.
   CHECKED_STATUS TableExists(const YBTableName& table_name, bool* exists);
 
-  // Open the table with the given name. This will do an RPC to ensure that
+  // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
   //
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
-  CHECKED_STATUS OpenTable(const YBTableName& table_name,
-                           std::shared_ptr<YBTable>* table);
+  CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
+  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
@@ -501,14 +501,19 @@ class YBMetaDataCache {
  public:
   explicit YBMetaDataCache(std::shared_ptr<YBClient> client) : client_(client) {}
 
-  // Opens the table with the given name. If the table has been opened before, returns the
+  // Opens the table with the given name or id. If the table has been opened before, returns the
   // previously opened table from cached_tables_. If the table has not been opened before
   // in this client, this will do an RPC to ensure that the table exists and look up its schema.
-  CHECKED_STATUS GetTable(
-      const YBTableName& table_name, std::shared_ptr<YBTable>* table, bool* cache_used);
+  CHECKED_STATUS GetTable(const YBTableName& table_name,
+                          std::shared_ptr<YBTable>* table,
+                          bool* cache_used);
+  CHECKED_STATUS GetTable(const TableId& table_id,
+                          std::shared_ptr<YBTable>* table,
+                          bool* cache_used);
 
   // Remove the table from cached_tables_ if it is in the cache.
   void RemoveCachedTable(const YBTableName& table_name);
+  void RemoveCachedTable(const TableId& table_id);
 
   // Opens the type with the given name. If the type has been opened before, returns the
   // previously opened type from cached_types_. If the type has not been opened before
@@ -527,8 +532,15 @@ class YBMetaDataCache {
   // Map from table-name to YBTable instances.
   typedef std::unordered_map<YBTableName,
                              std::shared_ptr<YBTable>,
-                             boost::hash<YBTableName>> YBTableMap;
-  YBTableMap cached_tables_;
+                             boost::hash<YBTableName>> YBTableByNameMap;
+  YBTableByNameMap cached_tables_by_name_;
+
+  // Map from table-id to YBTable instances.
+  typedef std::unordered_map<TableId,
+                             std::shared_ptr<YBTable>,
+                             boost::hash<TableId>> YBTableByIdMap;
+  YBTableByIdMap cached_tables_by_id_;
+
   std::mutex cached_tables_mutex_;
 
   // Map from type-name to QLType instances.
@@ -670,6 +682,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   const std::vector<IndexInfo>& indexes() const;
 
+  bool IsIndex() const;
+
   // Create a new QL operation for this table.
   YBqlWriteOp* NewQLWrite();
   YBqlWriteOp* NewQLInsert();
@@ -690,7 +704,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
 
-  YBTable(const std::shared_ptr<YBClient>& client, const YBTableName& name, const Info& info);
+  YBTable(const std::shared_ptr<YBClient>& client, const Info& info);
 
   // Owned.
   Data* data_;

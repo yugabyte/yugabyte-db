@@ -48,10 +48,9 @@ class QLEnv {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  QLEnv(
-      std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBMetaDataCache> cache,
-      cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
+  QLEnv(std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
+        std::shared_ptr<client::YBMetaDataCache> cache,
+        cqlserver::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~QLEnv();
 
   virtual client::YBTableCreator *NewTableCreator();
@@ -86,10 +85,12 @@ class QLEnv {
   // Commit the current distributed transaction.
   void CommitTransaction(client::CommitCallback callback);
 
-  virtual std::shared_ptr<client::YBTable> GetTableDesc(
-      const client::YBTableName& table_name, bool *cache_used);
+  virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
+                                                        bool *cache_used);
+  virtual std::shared_ptr<client::YBTable> GetTableDesc(const TableId& table_id, bool *cache_used);
 
   virtual void RemoveCachedTableDesc(const client::YBTableName& table_name);
+  virtual void RemoveCachedTableDesc(const TableId& table_id);
 
 
   // Permission related methods.

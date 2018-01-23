@@ -71,9 +71,8 @@ static Status PBToClientTableType(
   }
 }
 
-YBTable::Data::Data(shared_ptr<YBClient> client, YBTableName name, Info info)
+YBTable::Data::Data(shared_ptr<YBClient> client, Info info)
     : client_(std::move(client)),
-      name_(std::move(name)),
       // The table type is set after the table is opened.
       table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
       info_(std::move(info)) {
@@ -174,9 +173,9 @@ Status YBTable::Data::Open() {
 
 
   RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
-    strings::Substitute("Invalid table type for table '$0'", name_.ToString()));
+    strings::Substitute("Invalid table type for table '$0'", info_.table_name.ToString()));
 
-  VLOG(1) << "Open Table " << name_.ToString() << ", found "
+  VLOG(1) << "Open Table " << info_.table_name.ToString() << ", found "
           << resp.tablet_locations_size() << " tablets";
   return Status::OK();
 }

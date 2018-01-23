@@ -67,9 +67,8 @@ const auto kSessionTimeout = 60s;
     }                              \
   } while (0)
 
-QLEnv::QLEnv(
-    weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-    shared_ptr<YBMetaDataCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
+QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
+             shared_ptr<YBMetaDataCache> cache, cqlserver::CQLRpcServerEnv* cql_rpcserver_env)
     : client_(client),
       metadata_cache_(cache),
       session_(client->NewSession()),
@@ -210,6 +209,18 @@ shared_ptr<YBTable> QLEnv::GetTableDesc(const YBTableName& table_name, bool* cac
   return yb_table;
 }
 
+shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
+  shared_ptr<YBTable> yb_table;
+  Status s = metadata_cache_->GetTable(table_id, &yb_table, cache_used);
+
+  if (!s.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+    return nullptr;
+  }
+
+  return yb_table;
+}
+
 shared_ptr<QLType> QLEnv::GetUDType(const std::string &keyspace_name,
                                       const std::string &type_name,
                                       bool *cache_used) {
@@ -226,6 +237,10 @@ shared_ptr<QLType> QLEnv::GetUDType(const std::string &keyspace_name,
 
 void QLEnv::RemoveCachedTableDesc(const YBTableName& table_name) {
   metadata_cache_->RemoveCachedTable(table_name);
+}
+
+void QLEnv::RemoveCachedTableDesc(const TableId& table_id) {
+  metadata_cache_->RemoveCachedTable(table_id);
 }
 
 void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::string& type_name) {
