@@ -20,10 +20,8 @@ set(YB_ENT_CURRENT_SOURCE_DIR
   ${YB_ENT_CURRENT_SOURCE_DIR}
   PARENT_SCOPE)
 
-set(TSERVER_EXTENSIONS_TEST1
+set(TSERVER_EXTENSIONS_TESTS
   backup_service-test
-  PARENT_SCOPE)
-
-set(TSERVER_EXTENSIONS_TEST2
   remote_bootstrap_rocksdb_session-test_ent
+  remote_bootstrap_rocksdb_client-test_ent
   PARENT_SCOPE)
