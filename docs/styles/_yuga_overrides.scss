@@ -474,3 +474,59 @@ table code {
     margin-top: 12px !important;
   }
 }
+
+
+.search-container {
+  position: relative;
+  padding-bottom: 20px;
+  margin-top: -20px;
+  width: 200px !important;
+
+  .search-icon {
+    position: absolute;
+    top: 11px;
+    left: 15px;
+    font-size: 18px;
+    z-index: 1000;
+    color: $YB_ORANGE;
+  }
+  .search-input {
+    text-indent: 20px;
+    background: $YB_LIGHT_GRAY;
+    width: 200px;
+    padding: 20px;
+  }
+  .search-input::-webkit-input-placeholder {
+     font-size: 16px;
+     text-align: center;
+  }
+
+  .algolia-autocomplete {
+    font-family: Montserrat, sans-serif !important;
+  }
+
+  .algolia-autocomplete .aa-hint {
+    color: $YB_ORANGE;
+  }
+
+  .algolia-autocomplete .aa-dropdown-menu {
+    min-width: 250px;
+    width: 200px;
+    background-color: #fff;
+    border: 1px solid $YB_GRAY;
+    border-top: none;
+    margin-top: 2px;
+  }
+  .algolia-autocomplete .aa-dropdown-menu .aa-suggestion {
+    cursor: pointer;
+    padding: 5px 4px;
+  }
+  .algolia-autocomplete .aa-dropdown-menu .aa-suggestion.aa-cursor {
+    background-color: #B2D7FF;
+  }
+  .algolia-autocomplete .aa-dropdown-menu .aa-suggestion em {
+    font-weight: bold;
+    font-style: normal;
+    color: $YB_ORANGE;
+  }
+}

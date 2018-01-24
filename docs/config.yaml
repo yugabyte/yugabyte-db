@@ -1,0 +1,714 @@
+---
+baseurl: https://docs.yugabyte.com
+languageCode: en-us
+title: YugaByte DB Docs
+metadataformat: yaml
+canonifyurls: true
+googleAnalytics: UA-104956980-1
+algolia:
+  index: docs
+  appID: 4LBMOWH4F9
+params:
+  author: Team YugaByte
+  description: 'YugaByte, a cloud-native DB for mission-critical applications'
+  copyright: 'YugaByte, Inc.'
+  block_indexing: false
+  version: Beta
+  logo: /images/og-image.jpg
+  favicon: /images/favicon.ico
+  permalink: '#'
+  custom_css: []
+  custom_js: []
+  highlight_css: css/highlight/hemisu.css
+  palette:
+    primary: orange
+    accent: amber
+  font:
+    text: Open Sans
+    code: Inconsolata
+social: {}
+menu:
+  main:
+    - name: Introduction
+      identifier: intro
+      url: introduction/
+      weight: 20
+    - name: Overview
+      parent: intro
+      url: introduction/overview/
+      weight: 30
+    - name: Core Features
+      parent: intro
+      url: introduction/core-features/
+      weight: 40
+    - name: Benefits
+      parent: intro
+      url: introduction/benefits/
+      weight: 50
+    - name: Quick Start
+      identifier: quick-start
+      url: quick-start/
+      weight: 100
+    - name: 1. Install YugaByte DB
+      parent: quick-start
+      url: quick-start/install/
+      weight: 110
+    - name: 2. Create Local Cluster
+      parent: quick-start
+      url: quick-start/create-local-cluster/
+      weight: 120
+    - name: 3. Test Cassandra API
+      parent: quick-start
+      url: quick-start/test-cassandra/
+      weight: 130
+    - name: 4. Test Redis API
+      parent: quick-start
+      url: quick-start/test-redis/
+      weight: 140
+    - name: 5. Run Sample Apps
+      parent: quick-start
+      url: quick-start/run-sample-apps/
+      weight: 150
+    - name: Explore
+      identifier: explore
+      url: explore/
+      weight: 200
+    - name: 1. Linear Scalability
+      parent: explore
+      url: explore/linear-scalability/
+      weight: 210
+    - name: 2. Fault Tolerance
+      parent: explore
+      url: explore/fault-tolerance/
+      weight: 220
+    - name: 3. Auto Rebalancing
+      parent: explore
+      url: explore/auto-rebalancing/
+      weight: 240
+    - name: 4. Tunable Reads
+      parent: explore
+      url: explore/tunable-reads/
+      weight: 260
+    - name: Develop
+      identifier: develop
+      url: develop/
+      weight: 540
+    - name: Client Drivers
+      parent: develop
+      identifier: develop-client-drivers
+      url: develop/client-drivers/
+      weight: 550
+    - name: Java
+      parent: develop-client-drivers
+      identifier: develop-client-drivers-java
+      url: develop/client-drivers/java/
+      weight: 552
+    - name: NodeJS
+      parent: develop-client-drivers
+      identifier: develop-client-drivers-nodejs
+      url: develop/client-drivers/nodejs/
+      weight: 553
+    - name: Python
+      parent: develop-client-drivers
+      identifier: develop-client-drivers-python
+      url: develop/client-drivers/python/
+      weight: 554
+    - name: Ecosystem Integrations
+      parent: develop
+      identifier: develop-ecosystem-integrations
+      url: develop/ecosystem-integrations/
+      weight: 570
+    - name: Apache Spark
+      parent: develop-ecosystem-integrations
+      identifier: develop-ecosystem-integrations-apache-spark
+      url: develop/ecosystem-integrations/apache-spark/
+      weight: 571
+    - name: JanusGraph
+      parent: develop-ecosystem-integrations
+      identifier: develop-ecosystem-integrations-janusgraph
+      url: develop/ecosystem-integrations/janusgraph/
+      weight: 572
+    - name: KairosDB
+      parent: develop-ecosystem-integrations
+      identifier: develop-ecosystem-integrations-kairosdb
+      url: develop/ecosystem-integrations/kairosdb/
+      weight: 573
+    - name: Real World Examples
+      parent: develop
+      identifier: develop-realworld-apps
+      url: develop/realworld-apps/
+      weight: 580
+    - name: IoT - Spark & Kafka
+      parent: develop-realworld-apps
+      identifier: develop-realworld-apps-iot-spark-kafka
+      url: develop/realworld-apps/iot-spark-kafka/
+      weight: 583
+    - name: Deploy
+      identifier: deploy
+      url: deploy/
+      weight: 600
+    - name: Multi-Node Cluster
+      parent: deploy
+      identifier: multi-node-cluster
+      url: deploy/multi-node-cluster/
+      weight: 610
+    - name: Enterprise Edition
+      parent: deploy
+      identifier: enterprise-edition
+      url: deploy/enterprise-edition/
+      weight: 620
+    - name: Install Admin Console
+      parent: enterprise-edition
+      url: deploy/enterprise-edition/admin-console/
+      weight: 630
+    - name: Configure Cloud Providers
+      parent: enterprise-edition
+      url: deploy/enterprise-edition/configure-cloud-providers/
+      weight: 640
+    - name: Manage
+      identifier: manage
+      url: manage/
+      weight: 700
+    - name: Diagnostics Reporting
+      parent: manage
+      url: manage/diagnostics-reporting/
+      weight: 702
+    - name: Enterprise Edition
+      identifier: manage-ee
+      parent: manage
+      url: manage/enterprise-edition/
+      weight: 710
+    - name: Create Universe
+      parent: manage-ee
+      url: manage/enterprise-edition/create-universe/
+      weight: 720
+    - name: Edit Universe
+      parent: manage-ee
+      url: manage/enterprise-edition/edit-universe/
+      weight: 730
+    - name: Edit Config Flags
+      parent: manage-ee
+      url: manage/enterprise-edition/edit-config/
+      weight: 740
+    - name: Upgrade Universe
+      parent: manage-ee
+      url: manage/enterprise-edition/upgrade-universe/
+      weight: 750
+    - name: Delete Universe
+      parent: manage-ee
+      url: manage/enterprise-edition/delete-universe/
+      weight: 760
+    - name: Troubleshoot
+      identifier: troubleshoot
+      url: troubleshoot/
+      weight: 800
+    - name: Troubleshooting Overview
+      parent: troubleshoot
+      url: troubleshoot/overview/
+      weight: 810
+    - name: Cluster Level Issues
+      parent: troubleshoot
+      identifier: troubleshoot-cluster
+      url: troubleshoot/cluster/
+      weight: 820
+    - name: Cassandra Connection Issues
+      parent: troubleshoot-cluster
+      url: troubleshoot/cluster/connect-cassandra/
+      weight: 822
+    - name: Redis Connection Issues
+      parent: troubleshoot-cluster
+      url: troubleshoot/cluster/connect-redis/
+      weight: 824
+    - name: Node Level Issues
+      identifier: troubleshoot-nodes
+      parent: troubleshoot
+      url: troubleshoot/nodes/
+      weight: 840
+    - name: Check Processes
+      parent: troubleshoot-nodes
+      url: troubleshoot/nodes/check-processes/
+      weight: 842
+    - name: Inspect Logs
+      parent: troubleshoot-nodes
+      url: troubleshoot/nodes/check-logs/
+      weight: 844
+    - name: System Stats
+      parent: troubleshoot-nodes
+      url: troubleshoot/nodes/check-stats/
+      weight: 846
+    - name: Enterprise Edition
+      identifier: troubleshoot-ee
+      parent: troubleshoot
+      url: troubleshoot/enterprise-edition/
+      weight: 850
+    - name: Troubleshoot Universes
+      parent: troubleshoot-ee
+      url: troubleshoot/enterprise-edition/universes
+      weight: 853
+    - name: Architecture
+      identifier: architecture
+      url: architecture/
+      weight: 900
+    - name: Concepts
+      parent: architecture
+      identifier: concepts
+      url: architecture/concepts/
+      weight: 910
+    - name: Single Node
+      parent: concepts
+      url: architecture/concepts/single-node/
+      weight: 920
+    - name: 'Universe, YB-TServer, YB-Master'
+      parent: concepts
+      url: architecture/concepts/universe/
+      weight: 930
+    - name: Sharding
+      parent: concepts
+      url: architecture/concepts/sharding/
+      weight: 940
+    - name: Replication
+      parent: concepts
+      url: architecture/concepts/replication/
+      weight: 950
+    - name: Persistence
+      parent: concepts
+      url: architecture/concepts/persistence/
+      weight: 960
+    - name: Query Layer
+      parent: concepts
+      url: architecture/concepts/yql/
+      weight: 970
+    - name: ACID Transactions
+      parent: concepts
+      url: architecture/concepts/transactions/
+      weight: 971
+    - name: Acknowledgements
+      parent: concepts
+      url: architecture/concepts/acknowledgements/
+      weight: 980
+    - name: Core Functions
+      parent: architecture
+      identifier: core-functions
+      url: architecture/core-functions/
+      weight: 990
+    - name: Universe Creation
+      parent: core-functions
+      url: architecture/core-functions/universe-creation/
+      weight: 1000
+    - name: Table Creation
+      parent: core-functions
+      url: architecture/core-functions/table-creation/
+      weight: 1010
+    - name: Write IO Path
+      parent: core-functions
+      url: architecture/core-functions/write-path/
+      weight: 1020
+    - name: Read IO Path
+      parent: core-functions
+      url: architecture/core-functions/read-path/
+      weight: 1030
+    - name: High Availability
+      parent: core-functions
+      url: architecture/core-functions/high-availability/
+      weight: 1040
+    - name: Comparisons
+      identifier: comparisons
+      url: comparisons/
+      weight: 1070
+    - name: Apache Cassandra
+      parent: comparisons
+      url: comparisons/cassandra/
+      weight: 1080
+    - name: MongoDB
+      parent: comparisons
+      url: comparisons/mongodb/
+      weight: 1090
+    - name: Redis
+      parent: comparisons
+      url: comparisons/redis/
+      weight: 1100
+    - name: Apache HBase
+      parent: comparisons
+      url: comparisons/hbase/
+      weight: 1110
+    - name: API Reference
+      identifier: API
+      url: api/
+      weight: 1200
+    - name: Apache Cassandra
+      weight: 1210
+      identifier: api-cassandra
+      parent: API
+      url: api/cassandra/
+    - name: ALTER TABLE
+      weight: 1220
+      parent: api-cassandra
+      url: api/cassandra/ddl_alter_table/
+    - name: CREATE KEYSPACE
+      weight: 1230
+      parent: api-cassandra
+      url: api/cassandra/ddl_create_keyspace/
+    - name: CREATE TABLE
+      weight: 1240
+      parent: api-cassandra
+      url: api/cassandra/ddl_create_table/
+    - name: CREATE TYPE
+      weight: 1250
+      parent: api-cassandra
+      url: api/cassandra/ddl_create_type/
+    - name: DROP KEYSPACE
+      weight: 1260
+      parent: api-cassandra
+      url: api/cassandra/ddl_drop_keyspace/
+    - name: DROP TABLE
+      weight: 1270
+      parent: api-cassandra
+      url: api/cassandra/ddl_drop_table/
+    - name: DROP TYPE
+      weight: 1280
+      parent: api-cassandra
+      url: api/cassandra/ddl_drop_type/
+    - name: USE
+      weight: 1290
+      parent: api-cassandra
+      url: api/cassandra/ddl_use/
+    - name: INSERT
+      weight: 1300
+      parent: api-cassandra
+      url: api/cassandra/dml_insert/
+    - name: SELECT
+      weight: 1310
+      parent: api-cassandra
+      url: api/cassandra/dml_select/
+    - name: UPDATE
+      weight: 1320
+      parent: api-cassandra
+      url: api/cassandra/dml_update/
+    - name: DELETE
+      weight: 1330
+      parent: api-cassandra
+      url: api/cassandra/dml_delete/
+    - name: TRUNCATE
+      weight: 1335
+      parent: api-cassandra
+      url: api/cassandra/dml_truncate/
+    - name: Simple Value
+      weight: 1340
+      parent: api-cassandra
+      url: api/cassandra/expr_simple/
+    - name: Subscript
+      weight: 1350
+      parent: api-cassandra
+      url: api/cassandra/expr_subscript/
+    - name: Operator Call
+      weight: 1360
+      parent: api-cassandra
+      url: api/cassandra/expr_ocall/
+    - name: Function Call
+      weight: 1370
+      parent: api-cassandra
+      url: api/cassandra/expr_fcall/
+    - name: BIGINT
+      weight: 1380
+      parent: api-cassandra
+      url: api/cassandra/type_int/
+    - name: BLOB
+      weight: 1390
+      parent: api-cassandra
+      url: api/cassandra/type_blob/
+    - name: BOOLEAN
+      weight: 1400
+      parent: api-cassandra
+      url: api/cassandra/type_bool/
+    - name: COUNTER
+      weight: 1410
+      parent: api-cassandra
+      url: api/cassandra/type_int/
+    - name: DECIMAL
+      weight: 1420
+      parent: api-cassandra
+      url: api/cassandra/type_number/
+    - name: DOUBLE
+      weight: 1430
+      parent: api-cassandra
+      url: api/cassandra/type_number/
+    - name: FLOAT
+      weight: 1440
+      parent: api-cassandra
+      url: api/cassandra/type_number/
+    - name: FROZEN
+      weight: 1450
+      parent: api-cassandra
+      url: api/cassandra/type_frozen/
+    - name: INET
+      weight: 1460
+      parent: api-cassandra
+      url: api/cassandra/type_inet/
+    - name: INT
+      weight: 1470
+      parent: api-cassandra
+      url: api/cassandra/type_int/
+    - name: LIST
+      weight: 1480
+      parent: api-cassandra
+      url: api/cassandra/type_collection/
+    - name: MAP
+      weight: 1490
+      parent: api-cassandra
+      url: api/cassandra/type_collection/
+    - name: SET
+      weight: 1500
+      parent: api-cassandra
+      url: api/cassandra/type_collection/
+    - name: SMALLINT
+      weight: 1510
+      parent: api-cassandra
+      url: api/cassandra/type_int/
+    - name: TEXT
+      weight: 1520
+      parent: api-cassandra
+      url: api/cassandra/type_text/
+    - name: TIMESTAMP
+      weight: 1530
+      parent: api-cassandra
+      url: api/cassandra/type_timestamp/
+    - name: TIMEUUID
+      weight: 1540
+      parent: api-cassandra
+      url: api/cassandra/type_uuid/
+    - name: TINYINT
+      weight: 1550
+      parent: api-cassandra
+      url: api/cassandra/type_int/
+    - name: UUID
+      weight: 1560
+      parent: api-cassandra
+      url: api/cassandra/type_uuid/
+    - name: Redis
+      weight: 2000
+      identifier: api-redis
+      parent: API
+      url: api/redis/
+    - name: APPEND
+      weight: 2010
+      parent: api-redis
+      url: api/redis/append/
+    - name: AUTH
+      weight: 2020
+      parent: api-redis
+      url: api/redis/auth/
+    - name: CONFIG
+      weight: 2030
+      parent: api-redis
+      url: api/redis/config/
+    - name: DEL
+      weight: 2040
+      parent: api-redis
+      url: api/redis/del/
+    - name: ECHO
+      weight: 2050
+      parent: api-redis
+      url: api/redis/echo/
+    - name: EXISTS
+      weight: 2060
+      parent: api-redis
+      url: api/redis/exists/
+    - name: FLUSHALL
+      weight: 2064
+      parent: api-redis
+      url: api/redis/flushall/
+    - name: FLUSHDB
+      weight: 2065
+      parent: api-redis
+      url: api/redis/flushdb/
+    - name: GET
+      weight: 2070
+      parent: api-redis
+      url: api/redis/get/
+    - name: GETRANGE
+      weight: 2080
+      parent: api-redis
+      url: api/redis/getrange/
+    - name: GETSET
+      weight: 2090
+      parent: api-redis
+      url: api/redis/getset/
+    - name: HDEL
+      weight: 2100
+      parent: api-redis
+      url: api/redis/hdel/
+    - name: HEXISTS
+      weight: 2110
+      parent: api-redis
+      url: api/redis/hexists/
+    - name: HGET
+      weight: 2120
+      parent: api-redis
+      url: api/redis/hget/
+    - name: HGETALL
+      weight: 2130
+      parent: api-redis
+      url: api/redis/hgetall/
+    - name: HKEYS
+      weight: 2140
+      parent: api-redis
+      url: api/redis/hkeys/
+    - name: HLEN
+      weight: 2150
+      parent: api-redis
+      url: api/redis/hlen/
+    - name: HMGET
+      weight: 2160
+      parent: api-redis
+      url: api/redis/hmget/
+    - name: HMSET
+      weight: 2170
+      parent: api-redis
+      url: api/redis/hmset/
+    - name: HSET
+      weight: 2180
+      parent: api-redis
+      url: api/redis/hset/
+    - name: HSTRLEN
+      weight: 2190
+      parent: api-redis
+      url: api/redis/hstrlen/
+    - name: HVALS
+      weight: 2200
+      parent: api-redis
+      url: api/redis/hvals/
+    - name: INCR
+      weight: 2210
+      parent: api-redis
+      url: api/redis/incr/
+    - name: MGET
+      weight: 2220
+      parent: api-redis
+      url: api/redis/mget/
+    - name: MSET
+      weight: 2230
+      parent: api-redis
+      url: api/redis/mset/
+    - name: ROLE
+      weight: 2240
+      parent: api-redis
+      url: api/redis/role/
+    - name: SADD
+      weight: 2250
+      parent: api-redis
+      url: api/redis/sadd/
+    - name: SCARD
+      weight: 2260
+      parent: api-redis
+      url: api/redis/scard/
+    - name: SET
+      weight: 2270
+      parent: api-redis
+      url: api/redis/set/
+    - name: SETRANGE
+      weight: 2280
+      parent: api-redis
+      url: api/redis/setrange/
+    - name: SISMEMBER
+      weight: 2290
+      parent: api-redis
+      url: api/redis/sismember/
+    - name: SMEMBERS
+      weight: 2300
+      parent: api-redis
+      url: api/redis/smembers/
+    - name: SREM
+      weight: 2310
+      parent: api-redis
+      url: api/redis/srem/
+    - name: STRLEN
+      weight: 2320
+      parent: api-redis
+      url: api/redis/strlen/
+    - name: TSADD
+      weight: 2330
+      parent: api-redis
+      url: api/redis/tsadd/
+    - name: TSGET
+      weight: 2340
+      parent: api-redis
+      url: api/redis/tsget/
+    - name: TSRANGEBYTIME
+      weight: 2350
+      parent: api-redis
+      url: api/redis/tsrangebytime/
+    - name: TSREM
+      weight: 2360
+      parent: api-redis
+      url: api/redis/tsrem/
+    - name: ZADD
+      weight: 2370
+      parent: api-redis
+      url: api/redis/zadd/
+    - name: ZCARD
+      weight: 2380
+      parent: api-redis
+      url: api/redis/zcard/
+    - name: ZRANGEBYSCORE
+      weight: 2390
+      parent: api-redis
+      url: api/redis/zrangebyscore/
+    - name: ZREM
+      weight: 2391
+      parent: api-redis
+      url: api/redis/zrem/
+    - name: Admin Reference
+      weight: 2400
+      url: admin/
+      identifier: admin
+    - name: yb-ctl
+      weight: 2410
+      identifier: yb-ctl
+      parent: admin
+      url: admin/yb-ctl/
+    - name: yb-docker-ctl
+      weight: 2420
+      identifier: yb-docker-ctl
+      parent: admin
+      url: admin/yb-docker-ctl/
+    - name: docker-compose
+      weight: 2430
+      identifier: docker-compose
+      parent: admin
+      url: admin/docker-compose/
+    - name: yb-master
+      weight: 2440
+      identifier: yb-master
+      parent: admin
+      url: admin/yb-master/
+    - name: yb-tserver
+      weight: 2450
+      identifier: yb-tserver
+      parent: admin
+      url: admin/yb-tserver/
+    - name: FAQs
+      identifier: faq
+      url: faq/
+      weight: 2460
+    - name: Product
+      parent: faq
+      url: faq/product/
+      weight: 2470
+    - name: Architecture
+      parent: faq
+      url: faq/architecture/
+      weight: 2480
+    - name: Enterprise Edition
+      parent: faq
+      url: faq/enterprise-edition/
+      weight: 2490
+    - name: Apache Cassandra API
+      parent: faq
+      url: faq/cassandra/
+      weight: 2500
+blackfriday:
+  smartypants: true
+  fractions: true
+  smartDashes: true
+  plainIDAnchors: true
+---

@@ -23,6 +23,7 @@
       {{ end }}
 
       <div class="toc">
+        {{ partial "search" . }}
         {{ partial "nav" . }}
 
         {{ if isset .Site.Params "author" }}

@@ -1,0 +1,25 @@
+<div class="search-container">
+  <i class="fa fa-search search-icon"></i>
+  <input class="form-control search-input" id="search-input" placeholder="Search">
+</div>
+
+<script>
+
+var client = algoliasearch("4LBMOWH4F9", "76cc3c40acc9719f5cd0d45bc07e2aeb");
+var index = client.initIndex('docs');
+
+$('#search-input').autocomplete(
+    {hint: false}, [
+    {
+      source: $.fn.autocomplete.sources.hits(index, { hitsPerPage: 5 }),
+      displayKey: 'name',
+      templates: {
+        suggestion: function(suggestion) {
+          return suggestion._highlightResult.title.value;
+        }
+      }
+    }
+  ]).on('autocomplete:selected', function(event, suggestion, dataset) {
+    window.location = "/" + suggestion.uri;
+  });
+</script>
