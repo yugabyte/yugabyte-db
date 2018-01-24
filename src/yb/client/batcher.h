@@ -141,6 +141,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return transaction_prepare_data_;
   }
 
+  void set_allow_local_calls_in_curr_thread(bool flag) { allow_local_calls_in_curr_thread_ = flag; }
+
+  bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;
@@ -171,9 +175,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
-  void FlushBuffer(RemoteTablet* tablet,
-                   InFlightOps::const_iterator begin,
-                   InFlightOps::const_iterator end);
+  void FlushBuffer(
+      RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
+      const bool allow_local_calls_in_curr_thread);
 
   // Log an error where an Rpc callback has response count mismatch.
   void AddOpCountMismatchError();
@@ -247,6 +251,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // The maximum number of bytes of encoded operations which will be allowed to
   // be buffered.
   int64_t max_buffer_size_;
+
+  // If true, we might allow the local calls to be run in the same IPC thread.
+  bool allow_local_calls_in_curr_thread_ = true;
 
   // The number of bytes used in the buffer for pending operations.
   AtomicInt<int64_t> buffer_bytes_used_;

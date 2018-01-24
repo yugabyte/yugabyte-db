@@ -56,10 +56,10 @@ typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
 // This class deletes itself after Rpc returns and is processed.
 class AsyncRpc : public rpc::Rpc, public TabletRpc {
  public:
-  AsyncRpc(const scoped_refptr<Batcher> &batcher,
-           RemoteTablet *const tablet,
-           InFlightOps ops,
-           YBConsistencyLevel yb_consistency_level);
+  AsyncRpc(
+      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
+      bool allow_local_calls_in_curr_thread, InFlightOps ops,
+      YBConsistencyLevel yb_consistency_level);
 
   virtual ~AsyncRpc();
 
@@ -110,10 +110,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 template <class Req, class Resp>
 class AsyncRpcBase : public AsyncRpc {
  public:
-  AsyncRpcBase(const scoped_refptr<Batcher>& batcher,
-               RemoteTablet* const tablet,
-               InFlightOps ops,
-               YBConsistencyLevel consistency_level);
+  AsyncRpcBase(
+      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
+      bool allow_local_calls_in_curr_thread, InFlightOps ops, YBConsistencyLevel consistency_level);
 
   const Resp& resp() const { return resp_; }
   Resp& resp() { return resp_; }
@@ -137,9 +136,9 @@ class AsyncRpcBase : public AsyncRpc {
 
 class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
  public:
-  WriteRpc(const scoped_refptr<Batcher>& batcher,
-           RemoteTablet* const tablet,
-           InFlightOps ops);
+  WriteRpc(
+      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
+      bool allow_local_calls_in_curr_thread, InFlightOps ops);
 
   virtual ~WriteRpc();
 
@@ -150,10 +149,10 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
  public:
-  ReadRpc(const scoped_refptr<Batcher>& batcher,
-          RemoteTablet* const tablet,
-          InFlightOps ops,
-          YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
+  ReadRpc(
+      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
+      bool allow_local_calls_in_curr_thread, InFlightOps ops,
+      YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
 
   virtual ~ReadRpc();
 

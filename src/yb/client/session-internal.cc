@@ -116,10 +116,19 @@ void YBSessionData::FlushAsync(boost::function<void(const Status&)> callback) {
       std::lock_guard<simple_spinlock> l(lock_);
       flushed_batchers_.insert(old_batcher);
     }
+    old_batcher->set_allow_local_calls_in_curr_thread(allow_local_calls_in_curr_thread_);
     old_batcher->FlushAsync(std::move(callback));
   } else {
     callback(Status::OK());
   }
+}
+
+bool YBSessionData::allow_local_calls_in_curr_thread() const {
+  return allow_local_calls_in_curr_thread_;
+}
+
+void YBSessionData::set_allow_local_calls_in_curr_thread(bool flag) {
+  allow_local_calls_in_curr_thread_ = flag;
 }
 
 Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {

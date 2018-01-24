@@ -1381,6 +1381,14 @@ YBClient* YBSession::client() const {
   return data_->client();
 }
 
+void YBSession::set_allow_local_calls_in_curr_thread(bool flag) {
+  data_->set_allow_local_calls_in_curr_thread(flag);
+}
+
+bool YBSession::allow_local_calls_in_curr_thread() const {
+  return data_->allow_local_calls_in_curr_thread();
+}
+
 ////////////////////////////////////////////////////////////
 // YBTableAlterer
 ////////////////////////////////////////////////////////////

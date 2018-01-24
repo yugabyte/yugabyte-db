@@ -994,6 +994,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Caller takes ownership of the returned errors.
   CollectedErrors GetPendingErrors();
 
+  // Allow local calls to run in the current thread.
+  void set_allow_local_calls_in_curr_thread(bool flag);
+  bool allow_local_calls_in_curr_thread() const;
+
   YBClient* client() const;
 
  private:

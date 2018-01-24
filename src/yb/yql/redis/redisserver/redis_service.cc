@@ -348,7 +348,7 @@ class Block : public std::enable_shared_from_this<Block> {
     ops_.push_back(operation);
   }
 
-  void Launch(SessionPool* session_pool) {
+  void Launch(SessionPool* session_pool, bool allow_local_calls_in_curr_thread = true) {
     session_pool_ = session_pool;
     session_ = session_pool->Take();
     bool has_ok = false;
@@ -356,6 +356,9 @@ class Block : public std::enable_shared_from_this<Block> {
       has_ok = op->Apply(session_.get()) || has_ok;
     }
     if (has_ok) {
+      // Allow local calls in this thread only if no one is waiting behind us.
+      session_->set_allow_local_calls_in_curr_thread(
+          allow_local_calls_in_curr_thread && this->next_ == nullptr);
       session_->FlushAsync(BlockCallback(shared_from_this()));
     } else {
       Processed();
@@ -403,10 +406,11 @@ class Block : public std::enable_shared_from_this<Block> {
   }
 
   void Processed() {
+    auto allow_local_calls_in_curr_thread = session_->allow_local_calls_in_curr_thread();
     session_pool_->Release(session_);
     session_.reset();
     if (next_) {
-      next_->Launch(session_pool_);
+      next_->Launch(session_pool_, allow_local_calls_in_curr_thread);
     }
     context_.reset();
   }
@@ -438,15 +442,15 @@ class TabletOperations {
     return read ? read_data_ : write_data_;
   }
 
-  void Done(SessionPool* session_pool) {
+  void Done(SessionPool* session_pool, bool allow_local_calls_in_curr_thread) {
     if (flush_head_) {
-      flush_head_->Launch(session_pool);
+      flush_head_->Launch(session_pool, allow_local_calls_in_curr_thread);
     } else {
       if (read_data_.block) {
-        read_data_.block->Launch(session_pool);
+        read_data_.block->Launch(session_pool, allow_local_calls_in_curr_thread);
       }
       if (write_data_.block) {
-        write_data_.block->Launch(session_pool);
+        write_data_.block->Launch(session_pool, allow_local_calls_in_curr_thread);
       }
     }
   }
@@ -597,8 +601,9 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
       }
     }
 
+    int idx = 0;
     for (auto& tablet : tablets_) {
-      tablet.second.Done(session_pool_);
+      tablet.second.Done(session_pool_, ++idx == tablets_.size());
     }
   }
 

@@ -433,13 +433,14 @@ void Batcher::FlushBuffersIfReady() {
   for (auto it = start; it != ops.end(); ++it) {
     auto it_group = GetOpGroup(*it);
     if ((**it).tablet.get() != (**start).tablet.get() || start_group != it_group) {
-      FlushBuffer(start->get()->tablet.get(), start, it);
+      FlushBuffer(
+          start->get()->tablet.get(), start, it, /* allow_local_calls_in_curr_thread */ false);
       start = it;
       start_group = it_group;
     }
   }
 
-  FlushBuffer(start->get()->tablet.get(), start, ops.end());
+  FlushBuffer(start->get()->tablet.get(), start, ops.end(), allow_local_calls_in_curr_thread_);
 }
 
 const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
@@ -450,9 +451,9 @@ YBTransactionPtr Batcher::transaction() const {
   return transaction_;
 }
 
-void Batcher::FlushBuffer(RemoteTablet* tablet,
-                          InFlightOps::const_iterator begin,
-                          InFlightOps::const_iterator end) {
+void Batcher::FlushBuffer(
+    RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
+    const bool allow_local_calls_in_curr_thread) {
   VLOG(3) << "FlushBuffersIfReady: already in flushing state, immediately flushing to "
           << tablet->tablet_id();
 
@@ -471,14 +472,17 @@ void Batcher::FlushBuffer(RemoteTablet* tablet,
   auto op_group = GetOpGroup(*begin);
   switch (op_group) {
     case OpGroup::kWrite:
-      rpc = std::make_shared<WriteRpc>(this, tablet, std::move(ops));
+      rpc = std::make_shared<WriteRpc>(
+          this, tablet, allow_local_calls_in_curr_thread, std::move(ops));
       break;
     case OpGroup::kLeaderRead:
-      rpc = std::make_shared<ReadRpc>(this, tablet, std::move(ops));
+      rpc =
+          std::make_shared<ReadRpc>(this, tablet, allow_local_calls_in_curr_thread, std::move(ops));
       break;
     case OpGroup::kConsistentPrefixRead:
       rpc = std::make_shared<ReadRpc>(
-          this, tablet, std::move(ops), YBConsistencyLevel::CONSISTENT_PREFIX);
+          this, tablet, allow_local_calls_in_curr_thread, std::move(ops),
+          YBConsistencyLevel::CONSISTENT_PREFIX);
       break;
   }
   if (!rpc) {

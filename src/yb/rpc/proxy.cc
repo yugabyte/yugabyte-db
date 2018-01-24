@@ -127,7 +127,7 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
     // Otherwise, enqueue the call to be handled by the service's handler thread.
     const shared_ptr<LocalYBInboundCall>& local_call =
         static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall();
-    if (ThreadPool::IsCurrentThreadRpcWorker()) {
+    if (controller->allow_local_calls_in_curr_thread() && ThreadPool::IsCurrentThreadRpcWorker()) {
       messenger_->Handle(local_call);
     } else {
       messenger_->QueueInboundCall(local_call);

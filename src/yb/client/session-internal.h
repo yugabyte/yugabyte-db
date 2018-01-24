@@ -95,11 +95,15 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
     return async_rpc_metrics_;
   }
 
+  void set_allow_local_calls_in_curr_thread(bool flag);
+  bool allow_local_calls_in_curr_thread() const;
+
  private:
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
 
   YBTransactionPtr transaction_;
+  bool allow_local_calls_in_curr_thread_ = true;
 
   // Lock protecting flushed_batchers_.
   mutable simple_spinlock lock_;
