@@ -47,6 +47,7 @@ public class CmdLineOpts {
     CassandraHelloWorld,
     CassandraKeyValue,
     CassandraBatchKeyValue,
+    CassandraBatchTimeseries,
     CassandraTransactionalKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
@@ -119,8 +120,7 @@ public class CmdLineOpts {
       AppBase.appConfig.readOnly = true;
       readOnly = true;
       if (!commandLine.hasOption("uuid") && !commandLine.hasOption("nouuid")) {
-        LOG.error(
-            "uuid (or nouuid) needs to be provided when using --read-only");
+        LOG.error("uuid (or nouuid) needs to be provided when using --read-only");
         System.exit(1);
       }
     }
@@ -137,6 +137,20 @@ public class CmdLineOpts {
     }
     LOG.info("Local reads: " + localReads);
     LOG.info("Read only load: " + readOnly);
+    if (appName == AppName.CassandraBatchTimeseries) {
+      if (commandLine.hasOption("read_batch_size")) {
+        AppBase.appConfig.cassandraReadBatchSize =
+            Integer.parseInt(commandLine.getOptionValue("read_batch_size"));
+        LOG.info("CassandraBatchTimeseries batch size: " +
+                 AppBase.appConfig.cassandraReadBatchSize);
+      }
+      if (commandLine.hasOption("read_back_delta_from_now")) {
+        AppBase.appConfig.readBackDeltaTimeFromNow =
+            Integer.parseInt(commandLine.getOptionValue("read_back_delta_from_now"));
+        LOG.info("CassandraBatchTimeseries delta read: " +
+                 AppBase.appConfig.readBackDeltaTimeFromNow);
+      }
+    }
     if (appName == AppName.CassandraBatchKeyValue) {
       if (commandLine.hasOption("batch_size")) {
         AppBase.appConfig.cassandraBatchSize =
@@ -190,8 +204,7 @@ public class CmdLineOpts {
             Integer.parseInt(commandLine.getOptionValue("num_subkeys_per_key"));
         if (AppBase.appConfig.redisPipelineLength >
             AppBase.appConfig.numUniqueKeysToWrite) {
-          LOG.fatal(
-              "The pipeline length cannot be more than the number of unique keys");
+          LOG.fatal("The pipeline length cannot be more than the number of unique keys");
           System.exit(-1);
         }
       }
@@ -506,6 +519,12 @@ public class CmdLineOpts {
     // Options for CassandraBatchKeyValue app.
     options.addOption("batch_size", true,
                       "[CassandraBatchKeyValue] Number of keys to write in a batch.");
+
+    // Options for CassandraBatchTimeseries app.
+    options.addOption("read_batch_size", true,
+                      "[CassandraBatchTimeseries] Number of keys to read in a batch.");
+    options.addOption("read_back_delta_from_now", true,
+                      "[CassandraBatchTimeseries] Time unit delta back from current time unit.");
 
     options.addOption("with_local_dc", true, "Local DC name.");
 
