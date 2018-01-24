@@ -89,11 +89,11 @@ Status YQLIndexesVTable::RetrieveData(const QLReadRequestPB& request,
     }
 
     QLValue options;
-    options.set_frozen_value();
-    options.add_frozen_elem()->set_string_value("target");
-    options.add_frozen_elem()->set_string_value(target);
-    options.add_frozen_elem()->set_string_value("covering");
-    options.add_frozen_elem()->set_string_value(covering);
+    options.set_map_value();
+    options.add_map_key()->set_string_value("target");
+    options.add_map_value()->set_string_value(target);
+    options.add_map_key()->set_string_value("covering");
+    options.add_map_value()->set_string_value(covering);
     RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
 
     // Create appropriate table uuids.
@@ -114,9 +114,8 @@ Schema YQLIndexesVTable::CreateSchema() const {
   CHECK_OK(builder.AddKeyColumn(kTableName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddKeyColumn(kIndexName, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kKind, QLType::Create(DataType::STRING)));
-  CHECK_OK(builder.AddColumn(
-      kOptions,
-      QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::STRING, DataType::STRING))));
+  CHECK_OK(builder.AddColumn(kOptions,
+                             QLType::CreateTypeMap(DataType::STRING, DataType::STRING)));
   CHECK_OK(builder.AddColumn(kTableId, QLType::Create(DataType::UUID)));
   CHECK_OK(builder.AddColumn(kIndexId, QLType::Create(DataType::UUID)));
 

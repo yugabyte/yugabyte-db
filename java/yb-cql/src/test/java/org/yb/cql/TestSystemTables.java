@@ -462,23 +462,4 @@ public class TestSystemTables extends BaseCQLTest {
     // Verify the last end_key is empty.
     assertFalse(endKey.hasRemaining());
   }
-
-  @Test
-  public void testFrozenTypes() {
-    assertEquals(0,
-        session.execute("SELECT argument_types FROM system_schema.aggregates;").all().size());
-    assertEquals(0,
-        session.execute("SELECT argument_types, argument_names FROM system_schema.functions;")
-            .all().size());
-
-    // Create an index and verify indexes vtable.
-    session.execute("CREATE table t1 (h1 int, r1 int, c1 text, primary key ((h1), r1)) " +
-                    "with transactions = { 'enabled' : true };");
-    session.execute("CREATE index i1 on t1 (c1);");
-    session.execute("SELECT * FROM system_schema.indexes;");
-
-    // Create UDT and check table.
-    session.execute("CREATE TYPE test (a int, b int, c text);");
-    session.execute("SELECT * FROM system_schema.types;");
-  }
 }
