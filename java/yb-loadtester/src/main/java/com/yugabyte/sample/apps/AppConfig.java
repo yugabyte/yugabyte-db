@@ -87,6 +87,12 @@ public class AppConfig {
   // Batch size to send from client for Cassandra batch key-value app.
   public int cassandraBatchSize = 1;
 
+  // Batch size to read for Cassandra batch timeseries app.
+  public int cassandraReadBatchSize = 1;
+
+  // Time interval to read for Cassandra batch timeseries app.
+  public int readBackDeltaTimeFromNow = 100;
+
   // Perform sanity checks at the termination of app.
   public boolean sanityCheckAtEnd = false;
 
