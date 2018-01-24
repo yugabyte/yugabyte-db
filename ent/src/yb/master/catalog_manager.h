@@ -98,6 +98,9 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS RestoreSnapshot(const RestoreSnapshotRequestPB* req,
                                  RestoreSnapshotResponsePB* resp);
 
+  CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
+                                    ImportSnapshotMetaResponsePB* resp);
+
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
@@ -109,11 +112,38 @@ class CatalogManager : public yb::master::CatalogManager {
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
 
+  // Per table structure for external cluster snapshot importing to this cluster.
+  // Old IDs mean IDs on external cluster, new IDs - IDs on this cluster.
+  struct ExternalTableSnapshotData {
+    NamespaceId old_namespace_id;
+    NamespaceId new_namespace_id;
+    TableId old_table_id;
+    TableId new_table_id;
+    int num_tablets;
+    typedef std::pair<std::string, std::string> PartitionKeys;
+    typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
+    PartitionToIdMap new_tablets_map;
+    // Mapping: Old tablet ID -> New tablet ID.
+    google::protobuf::RepeatedPtrField<IdPairPB>* tablet_id_map;
+  };
+
+  CHECKED_STATUS ImportNamespaceEntry(const SysRowEntry& entry, ExternalTableSnapshotData* s_data);
+  CHECKED_STATUS ImportTableEntry(const SysRowEntry& entry, ExternalTableSnapshotData* s_data);
+  CHECKED_STATUS ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotData* s_data);
+
   void SendCreateTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                        const std::string& snapshot_id);
 
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                         const std::string& snapshot_id);
+
+  template <class Collection>
+  typename Collection::value_type::second_type LockAndFindPtrOrNull(
+      const Collection& collection, const typename Collection::value_type::first_type& key) {
+    std::lock_guard<LockType> l(lock_);
+    TRACE("Acquired catalog manager lock");
+    return FindPtrOrNull(collection, key);
+  }
 
   // Snapshot map: snapshot-id -> SnapshotInfo
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;

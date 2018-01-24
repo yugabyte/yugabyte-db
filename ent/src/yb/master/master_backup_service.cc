@@ -40,5 +40,11 @@ void MasterBackupServiceImpl::RestoreSnapshot(const RestoreSnapshotRequestPB* re
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::RestoreSnapshot);
 }
 
+void MasterBackupServiceImpl::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
+                                                 ImportSnapshotMetaResponsePB* resp,
+                                                 RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ImportSnapshotMeta);
+}
+
 } // namespace master
 } // namespace yb
