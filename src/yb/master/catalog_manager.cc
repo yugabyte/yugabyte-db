@@ -1079,7 +1079,7 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
   }
 
   if (FindPtrOrNull(namespace_names_map_, name) != nullptr) {
-    LOG(INFO) << strings::Substitute("Namespace $0 already created, skipping initialization",
+    LOG(INFO) << strings::Substitute("Keyspace $0 already created, skipping initialization",
                                      name);
     return Status::OK();
   }
@@ -1736,7 +1736,7 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
 
         namespace_id = ns->id();
       } else {
-        return STATUS(InvalidArgument, "Neither namespace id or namespace name are specified");
+        return STATUS(InvalidArgument, "Neither keyspace id or keyspace name are specified");
       }
     }
 
@@ -1758,15 +1758,15 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   if (ns_identifier.has_id()) {
     *ns_info = FindPtrOrNull(namespace_ids_map_, ns_identifier.id());
     if (*ns_info == nullptr) {
-      return STATUS(NotFound, "Namespace identifier not found", ns_identifier.id());
+      return STATUS(NotFound, "Keyspace identifier not found", ns_identifier.id());
     }
   } else if (ns_identifier.has_name()) {
     *ns_info = FindPtrOrNull(namespace_names_map_, ns_identifier.name());
     if (*ns_info == nullptr) {
-      return STATUS(NotFound, "Namespace name not found", ns_identifier.name());
+      return STATUS(NotFound, "Keyspace name not found", ns_identifier.name());
     }
   } else {
-    return STATUS(NotFound, "Neither namespace id or namespace name are specified");
+    return STATUS(NotFound, "Neither keyspace id nor keyspace name is specified.");
   }
   return Status::OK();
 }
@@ -2923,7 +2923,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Verify that the namespace does not exist
     ns = FindPtrOrNull(namespace_names_map_, req->name());
     if (ns != nullptr) {
-      s = STATUS(AlreadyPresent, Substitute("Namespace $0 already exists", req->name()), ns->id());
+      s = STATUS(AlreadyPresent, Substitute("Keyspace $0 already exists", req->name()), ns->id());
       return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
     }
 

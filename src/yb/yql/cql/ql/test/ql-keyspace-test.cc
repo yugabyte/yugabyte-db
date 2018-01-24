@@ -96,7 +96,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1), "Keyspace Not Found",
-      "Namespace name not found");
+      "Keyspace name not found");
 
   // Delete unknown keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
@@ -118,7 +118,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Try to delete already deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1), "Keyspace Not Found",
-      "Namespace name not found");
+      "Keyspace name not found");
 
   // Delete already deleted keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
@@ -187,7 +187,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1), "Keyspace Not Found",
-      "Namespace name not found");
+      "Keyspace name not found");
 
   // Delete unknown keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
@@ -209,7 +209,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Try to delete already deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1), "Keyspace Not Found",
-      "Namespace name not found");
+      "Keyspace name not found");
 
   // Delete already deleted keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
@@ -330,7 +330,7 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
   // The keyspace (keyspace1) has not been created yet.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_table3);
   EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_table3), "Keyspace Not Found",
-      "Namespace name not found");
+      "Keyspace name not found");
 
   // Invalid name 'keyspace.SOMETHING.table'.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_any_table4);

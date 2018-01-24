@@ -754,7 +754,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(other_ns_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Namespace $0 already exists", other_ns_name));
+        Substitute("Keyspace $0 already exists", other_ns_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -828,7 +828,7 @@ TEST_F(MasterTest, TestNamespaces) {
     const Status s = CreateNamespace(default_namespace_name, &resp);
     ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
-        Substitute("Namespace $0 already exists", default_namespace_name));
+        Substitute("Keyspace $0 already exists", default_namespace_name));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -851,7 +851,7 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Namespace name not found");
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace name not found");
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1032,7 +1032,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   {
     Status s = CreateTable("nonexistingns", kTableName, kTableSchema);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(), "Namespace name not found");
+    ASSERT_STR_CONTAINS(s.ToString(), "Keyspace name not found");
   }
 
   // List tables, should show 1 table.
@@ -1086,7 +1086,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Namespace name not found");
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace name not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
@@ -1108,7 +1108,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Namespace identifier not found");
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace identifier not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
