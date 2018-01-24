@@ -13,7 +13,7 @@ cqlsh>
 ```sql
 cqlsh> describe keyspaces;
 
-system_schema  system_auth  system  default_keyspace
+system_schema  system_auth  system
 
 cqlsh> 
 ```

@@ -40,7 +40,7 @@ Where
 cqlsh> CREATE KEYSPACE example;
 
 cqlsh> DESCRIBE KEYSPACES;
-example  system_schema  system  default_keyspace
+example  system_schema  system_auth  system
 
 cqlsh> DESCRIBE example;
 CREATE KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '3'} AND DURABLE_WRITES = true;
