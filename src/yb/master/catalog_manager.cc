@@ -3189,6 +3189,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Verify that the namespace does not exist
     ns = FindPtrOrNull(namespace_names_map_, req->name());
     if (ns != nullptr) {
+      resp->set_id(ns->id());
       s = STATUS(AlreadyPresent, Substitute("Keyspace $0 already exists", req->name()), ns->id());
       return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
     }
