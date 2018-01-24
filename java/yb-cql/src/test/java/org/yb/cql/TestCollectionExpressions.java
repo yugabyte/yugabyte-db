@@ -578,7 +578,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       // --------------------------------- Testing List --------------------------------------------
 
       // Test updating existing index
-      session.execute(String.format(update_template, "vl[2] = 'y1'", 1, 1));
+      session.execute(String.format(update_template, "vl[1] = 'y1'", 1, 1));
       // Checking row
       row = runSelect(String.format(select_template, 1, 1)).next();
       List list = row.getList("vl", String.class);
@@ -587,7 +587,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y1", list.get(1));
 
       // Testing deleting elem by setting index to null
-      session.execute(String.format(update_template, "vl[1] = null", 1, 1));
+      session.execute(String.format(update_template, "vl[0] = null", 1, 1));
       // Checking row
       row = runSelect(String.format(select_template, 1, 1)).next();
       list = row.getList("vl", String.class);
@@ -604,13 +604,13 @@ public class TestCollectionExpressions extends BaseCQLTest {
       runInvalidStmt(String.format(update_template, "vm[1.0] = 'a'", 1, 2));
 
       // Invalid stmt: index too large
-      runInvalidStmt(String.format(update_template, "vl[3] = 'z'", 1, 1));
+      runInvalidStmt(String.format(update_template, "vl[2] = 'z'", 1, 1));
 
       // Invalid stmt: index too small
-      runInvalidStmt(String.format(update_template, "vl[0] = 'a'", 1, 1));
+      runInvalidStmt(String.format(update_template, "vl[-1] = 'a'", 1, 1));
 
       // Invalid stmt: null column (index always out of bounds)
-      runInvalidStmt(String.format(update_template, "vl[1] = 'a'", 1, 2));
+      runInvalidStmt(String.format(update_template, "vl[0] = 'a'", 1, 2));
 
       // ---------------------------------- Testing Set --------------------------------------------
 
@@ -696,7 +696,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       //-------------------------------- Testing List ----------------------------------------------
 
       // Test update list with true equality condition
-      session.execute(String.format(update_template, "vl[2] = 'y1'", 1, "vl[2] = 'y'"));
+      session.execute(String.format(update_template, "vl[1] = 'y1'", 1, "vl[1] = 'y'"));
       // Checking row -- should apply.
       row = runSelect(String.format(select_template, 2, 1)).next();
       List list = row.getList("vl", String.class);
@@ -705,7 +705,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y1", list.get(1));
 
       // Test update list with false equality condition
-      session.execute(String.format(update_template, "vl[2] = 'y2'", 1, "vl[2] = 'y'"));
+      session.execute(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] = 'y'"));
       // Checking row -- should do nothing.
       row = runSelect(String.format(select_template, 2, 1)).next();
       list = row.getList("vl", String.class);
@@ -714,7 +714,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y1", list.get(1));
 
       // Test update list with true inequality condition
-      session.execute(String.format(update_template, "vl[2] = 'y2'", 1, "vl[2] >= 'y1'"));
+      session.execute(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] >= 'y1'"));
       // Checking row -- should do nothing.
       row = runSelect(String.format(select_template, 2, 1)).next();
       list = row.getList("vl", String.class);
@@ -723,7 +723,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y2", list.get(1));
 
       // Test update list with true inequality condition
-      session.execute(String.format(update_template, "vl[2] = 'y3'", 1, "vl[2] < 'y2'"));
+      session.execute(String.format(update_template, "vl[1] = 'y3'", 1, "vl[1] < 'y2'"));
       // Checking row -- should do nothing.
       row = runSelect(String.format(select_template, 2, 1)).next();
       list = row.getList("vl", String.class);
@@ -732,8 +732,8 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y2", list.get(1));
 
       // Invalid Stmt: compare with null
-      runInvalidStmt(String.format(update_template, "vl[2] = 'y2'", 1, "vl[2] > null"));
-      runInvalidStmt(String.format(update_template, "vl[2] = 'y2'", 1, "vl[2] <= null"));
+      runInvalidStmt(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] > null"));
+      runInvalidStmt(String.format(update_template, "vl[1] = 'y2'", 1, "vl[1] <= null"));
     }
 
     //----------------------------------------------------------------------------------------------
@@ -758,12 +758,12 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("c", map.get(3));
 
       // Test select with false equality condition
-      it = session.execute(String.format(select_template, 1, "vl[2] = 'y1'")).iterator();
+      it = session.execute(String.format(select_template, 1, "vl[1] = 'y1'")).iterator();
       // expecting no rows
       assertFalse(it.hasNext());
 
       // Test select with true inequality condition
-      it = runSelect(String.format(select_template, 1, "vl[1] <= 'z'"));
+      it = runSelect(String.format(select_template, 1, "vl[0] <= 'z'"));
       // expecting one row
       row = it.next();
       assertFalse(it.hasNext());
@@ -851,6 +851,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertTrue(row.isNull("vs"));
       assertTrue(row.isNull("vl"));
     }
+
     //----------------------------------------------------------------------------------------------
     // Testing update (missing range key should be allowed).
     //----------------------------------------------------------------------------------------------
@@ -860,7 +861,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       // -------------------------------- Testing Map ----------------------------------------------
 
       // Test updating existing value
-      session.execute(String.format(update_template, "vm[2] = 'b1'", 1, 1));
+      session.execute(String.format(update_template, "vm[2] = 'b1'", 1));
       // Checking row
       Row row = runSelect(String.format(select_template, 1, 1)).next();
       Map map = row.getMap("vm", Integer.class, String.class);
@@ -869,7 +870,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("c", map.get(3));
 
       // Test adding new value
-      session.execute(String.format(update_template, "vm[1] = 'a'", 1, 1));
+      session.execute(String.format(update_template, "vm[1] = 'a'", 1));
       // Checking row
       row = runSelect(String.format(select_template, 1, 1)).next();
       map = row.getMap("vm", Integer.class, String.class);
@@ -879,7 +880,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("c", map.get(3));
 
       // Test deleting entry by setting value to null
-      session.execute(String.format(update_template, "vm[2] = null", 1, 1));
+      session.execute(String.format(update_template, "vm[2] = null", 1));
       // Checking row
       row = runSelect(String.format(select_template, 1, 1)).next();
       map = row.getMap("vm", Integer.class, String.class);
@@ -888,7 +889,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("c", map.get(3));
 
       // Test adding value to null column
-      session.execute(String.format(update_template, "vm[1] = 'a'", 2, 1));
+      session.execute(String.format(update_template, "vm[1] = 'a'", 2));
       // Checking row
       row = runSelect(String.format(select_template, 2, 1)).next();
       map = row.getMap("vm", Integer.class, String.class);
@@ -896,15 +897,15 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("a", map.get(1));
 
       // Invalid stmt: wrong type (column type)
-      runInvalidStmt(String.format(update_template, "vm[1] = {1 : 'a'}", 2, 1));
+      runInvalidStmt(String.format(update_template, "vm[1] = {1 : 'a'}", 2));
 
       // Invalid stmt: wrong type
-      runInvalidStmt(String.format(update_template, "vm[1] = 2", 2, 1));
+      runInvalidStmt(String.format(update_template, "vm[1] = 2", 2));
 
       // --------------------------------- Testing List --------------------------------------------
 
       // Test updating existing index
-      session.execute(String.format(update_template, "vl[2] = 'y1'", 1, 1));
+      session.execute(String.format(update_template, "vl[1] = 'y1'", 1));
       // Checking row
       row = runSelect(String.format(select_template, 1, 1)).next();
       List list = row.getList("vl", String.class);
@@ -913,7 +914,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y1", list.get(1));
 
       // Testing deleting elem by setting index to null
-      session.execute(String.format(update_template, "vl[1] = null", 1, 1));
+      session.execute(String.format(update_template, "vl[0] = null", 1));
       // Checking row
       row = runSelect(String.format(select_template, 1, 1)).next();
       list = row.getList("vl", String.class);
@@ -921,26 +922,26 @@ public class TestCollectionExpressions extends BaseCQLTest {
       assertEquals("y1", list.get(0));
 
       // Invalid stmt: wrong type (column type)
-      runInvalidStmt(String.format(update_template, "vm[1] = ['a']", 2, 1));
+      runInvalidStmt(String.format(update_template, "vm[1] = ['a']", 2));
 
       // Invalid stmt: wrong type
-      runInvalidStmt(String.format(update_template, "vm[1] = 2", 2, 1));
+      runInvalidStmt(String.format(update_template, "vm[1] = 2", 2));
 
       // Invalid stmt: index too large
-      runInvalidStmt(String.format(update_template, "vl[3] = 'z'", 1, 1));
+      runInvalidStmt(String.format(update_template, "vl[2] = 'z'", 1));
 
       // Invalid stmt: index too small
-      runInvalidStmt(String.format(update_template, "vl[0] = 'a'", 1, 1));
+      runInvalidStmt(String.format(update_template, "vl[-1] = 'a'", 1));
 
       // Invalid stmt: null column (index always out of bounds)
-      runInvalidStmt(String.format(update_template, "vl[0] = 'a'", 2, 1));
+      runInvalidStmt(String.format(update_template, "vl[0] = 'a'", 3));
 
       // ---------------------------------- Testing Set --------------------------------------------
 
       // Invalid stmts: index-based access not allowed for set
-      runInvalidStmt(String.format(update_template, "vs[1] = null", 1, 1));
-      runInvalidStmt(String.format(update_template, "vs[1] = ''", 1, 1));
-      runInvalidStmt(String.format(update_template, "vs[1] = 1", 1, 1));
+      runInvalidStmt(String.format(update_template, "vs[1] = null", 1));
+      runInvalidStmt(String.format(update_template, "vs[1] = ''", 1));
+      runInvalidStmt(String.format(update_template, "vs[1] = 1", 1));
     }
   }
 
@@ -967,7 +968,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
     // Note: Replacing in list requires reading entries to find right index in addition to
     // updating the value -- this checks that read-time and entry TTL interact as expected
     //----------------------------------------------------------------------------------------------
-    session.execute(String.format(update_template, 1, "vl[2] = 'b1'", 1, 1));
+    session.execute(String.format(update_template, 1, "vl[1] = 'b1'", 1, 1));
     Row row = runSelect(String.format(select_template, 1, 1)).next();
     List list = row.getList("vl", String.class);
     assertEquals(3, list.size());
@@ -984,7 +985,7 @@ public class TestCollectionExpressions extends BaseCQLTest {
     assertEquals("c", list.get(1));
 
     // This should skip the expired element
-    session.execute(String.format(update_template, 1, "vl[2] = 'c1'", 1, 1));
+    session.execute(String.format(update_template, 1, "vl[1] = 'c1'", 1, 1));
     row = runSelect(String.format(select_template, 1, 1)).next();
     list = row.getList("vl", String.class);
     assertEquals(2, list.size());

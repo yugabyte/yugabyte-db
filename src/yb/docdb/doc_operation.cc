@@ -1749,7 +1749,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                   MonoDelta::FromMilliseconds(schema_.table_properties().DefaultTimeToLive()) :
                   MonoDelta::kMax;
 
-                int index = column_value.subscript_args(0).value().int32_value();
+                // At YQL layer list indexes start at 0, but internally we start at 1.
+                int index = column_value.subscript_args(0).value().int32_value() + 1;
                 Status s = data.doc_write_batch->ReplaceInList(
                     sub_path, {index}, {sub_doc}, data.read_time.read, request_.query_id(),
                     table_ttl, ttl);

@@ -470,7 +470,7 @@ public class TestTTLSemantics extends BaseCQLTest {
         tableName));
     session.execute(String.format("UPDATE %s USING TTL 15 set c4 = c4 + {3:3} where c1=1 and c2=2",
         tableName));
-    session.execute(String.format("UPDATE %s USING TTL 15 set c5[3] = 3 where c1=1 and c2=2",
+    session.execute(String.format("UPDATE %s USING TTL 15 set c5[2] = 3 where c1=1 and c2=2",
         tableName));
 
     // Add new elements.

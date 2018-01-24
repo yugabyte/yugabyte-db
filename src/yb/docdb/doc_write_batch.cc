@@ -340,7 +340,7 @@ Status DocWriteBatch::ReplaceInList(
       return STATUS_SUBSTITUTE(
           QLError,
           "Unable to replace items into list, expecting index $0, reached end of list with size $1",
-          indexes[replace_index],
+          indexes[replace_index] - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
     }
 

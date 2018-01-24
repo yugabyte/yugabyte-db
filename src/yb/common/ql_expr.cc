@@ -344,9 +344,8 @@ CHECKED_STATUS QLTableRow::ReadSubscriptedColumn(const QLSubscriptedColPB& subco
     auto& list = col_iter->second.value.list_value();
     if (index_arg.value().has_int32_value()) {
       int list_index = index_arg.int32_value();
-      // QL list index starts from 1 not 0
-      if (list_index > 0 && list_index <= list.elems_size()) {
-        *col_value = list.elems(list_index - 1);
+      if (list_index >= 0 && list_index < list.elems_size()) {
+        *col_value = list.elems(list_index);
       }
     }
   }
