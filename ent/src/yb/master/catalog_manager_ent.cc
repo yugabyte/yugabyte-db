@@ -4,21 +4,25 @@
 #include "yb/master/catalog_manager-internal.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/tostring.h"
-#include "yb/tserver/backup.proxy.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/async_snapshot_tasks.h"
-
-namespace yb {
-namespace master {
+#include "yb/tserver/backup.proxy.h"
+#include "yb/util/cast.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::unique_ptr;
-using rpc::RpcContext;
-using strings::Substitute;
-using google::protobuf::RepeatedPtrField;
 
+using google::protobuf::RepeatedPtrField;
+using strings::Substitute;
+
+namespace yb {
+
+using rpc::RpcContext;
+using util::to_uchar_ptr;
+
+namespace master {
 namespace enterprise {
 
 ////////////////////////////////////////////////////////////
@@ -232,22 +236,39 @@ Status CatalogManager::IsSnapshotOpDone(const IsSnapshotOpDoneRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB*,
+Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
                                      ListSnapshotsResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
   boost::shared_lock<LockType> l(lock_);
+  TRACE("Acquired catalog manager lock");
 
   if (!current_snapshot_id_.empty()) {
     resp->set_current_snapshot_id(current_snapshot_id_);
   }
 
-  for (const SnapshotInfoMap::value_type& entry : snapshot_ids_map_) {
-    auto snapshot_lock = entry.second->LockForRead();
+  auto setup_snapshot_pb_lambda = [resp](scoped_refptr<SnapshotInfo> snapshot_info) {
+    auto snapshot_lock = snapshot_info->LockForRead();
 
-    ListSnapshotsResponsePB::SnapshotInfo* const snapshot = resp->add_snapshots();
-    snapshot->set_id(entry.first);
-    *(snapshot->mutable_entry()) = entry.second->metadata().state().pb;
+    SnapshotInfoPB* const snapshot = resp->add_snapshots();
+    snapshot->set_id(snapshot_info->id());
+    *snapshot->mutable_entry() = snapshot_info->metadata().state().pb;
+  };
+
+  if (req->has_snapshot_id()) {
+    TRACE("Looking up snapshot");
+    scoped_refptr<SnapshotInfo> snapshot_info =
+        FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
+    if (snapshot_info == nullptr) {
+      const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
+      return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+    }
+
+    setup_snapshot_pb_lambda(snapshot_info);
+  } else {
+    for (const SnapshotInfoMap::value_type& entry : snapshot_ids_map_) {
+      setup_snapshot_pb_lambda(entry.second);
+    }
   }
 
   return Status::OK();
@@ -383,6 +404,208 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
           "Unexpected entry type in the snapshot: $0", entry.type()));
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
+                                          ImportSnapshotMetaResponsePB* resp) {
+  LOG(INFO) << "Servicing ImportSnapshotMeta request: " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+  const SnapshotInfoPB& snapshot_info_pb = req->snapshot();
+  const SysSnapshotEntryPB& snapshot_pb = snapshot_info_pb.entry();
+  ExternalTableSnapshotData data;
+
+  // Check this snapshot.
+  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+    if (entry.type() == SysRowEntry::TABLE) {
+      if (data.old_table_id.empty()) {
+        data.old_table_id = entry.id();
+      } else {
+        return SetupError(resp->mutable_error(),
+                          MasterErrorPB::UNKNOWN_ERROR,
+                          STATUS_SUBSTITUTE(NotSupported,
+                                            "Currently supported snapshots with one table only. "
+                                            "First table id is $0, second table id is $1",
+                                            data.old_table_id,
+                                            entry.id()));
+      }
+    }
+  }
+
+  DCHECK(!data.old_table_id.empty());
+
+  data.num_tablets = snapshot_pb.tablet_snapshots_size();
+  ImportSnapshotMetaResponsePB_TableMetaPB* const table_meta = resp->mutable_tables_meta()->Add();
+  data.tablet_id_map = table_meta->mutable_tablets_ids();
+  Status s;
+
+  // Restore all entries.
+  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+    switch (entry.type()) {
+      case SysRowEntry::NAMESPACE: // Recreate NAMESPACE.
+        s = ImportNamespaceEntry(entry, &data);
+        break;
+      case SysRowEntry::TABLE: // Recreate TABLE.
+        s = ImportTableEntry(entry, &data);
+        break;
+      case SysRowEntry::TABLET: // Create tablets IDs map.
+        s = ImportTabletEntry(entry, &data);
+        break;
+      case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
+      case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::UDTYPE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
+      case SysRowEntry::SNAPSHOT:
+        FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
+    }
+
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+    }
+  }
+
+  table_meta->mutable_namespace_ids()->set_old_id(std::move(data.old_namespace_id));
+  table_meta->mutable_namespace_ids()->set_new_id(std::move(data.new_namespace_id));
+  table_meta->mutable_table_ids()->set_old_id(std::move(data.old_table_id));
+  table_meta->mutable_table_ids()->set_new_id(std::move(data.new_table_id));
+  return Status::OK();
+}
+
+Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
+                                            ExternalTableSnapshotData* s_data) {
+  DCHECK_EQ(entry.type(), SysRowEntry::NAMESPACE);
+  // Recreate NAMESPACE.
+  s_data->old_namespace_id = entry.id();
+
+  TRACE("Looking up namespace");
+  scoped_refptr<NamespaceInfo> ns = LockAndFindPtrOrNull(namespace_ids_map_, entry.id());
+
+  if (ns != nullptr) {
+    s_data->new_namespace_id = s_data->old_namespace_id;
+    return Status::OK();
+  }
+
+  SysNamespaceEntryPB meta;
+  const string& data = entry.data();
+  RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+
+  CreateNamespaceRequestPB req;
+  CreateNamespaceResponsePB resp;
+  req.set_name(meta.name());
+  const Status s = CreateNamespace(&req, &resp, nullptr);
+
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s.CloneAndAppend("Failed to create namespace");
+  }
+
+  if (s.IsAlreadyPresent()) {
+    LOG(INFO) << "Using existing namespace " << meta.name() << ": " << resp.id();
+  }
+
+  s_data->new_namespace_id = resp.id();
+  return Status::OK();
+}
+
+Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
+                                        ExternalTableSnapshotData* s_data) {
+  DCHECK_EQ(entry.type(), SysRowEntry::TABLE);
+  // Recreate TABLE.
+  s_data->old_table_id = entry.id();
+
+  TRACE("Looking up table");
+  scoped_refptr<TableInfo> table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
+
+  if (table == nullptr) {
+    SysTablesEntryPB meta;
+    const string& data = entry.data();
+    RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+    req.set_name(meta.name());
+    req.set_table_type(meta.table_type());
+    req.set_num_tablets(s_data->num_tablets);
+    *req.mutable_partition_schema() = meta.partition_schema();
+    *req.mutable_replication_info() = meta.replication_info();
+
+    // Supporting now 1 table & 1 namespace in snapshot.
+    DCHECK(!s_data->new_namespace_id.empty());
+    req.mutable_namespace_()->set_id(s_data->new_namespace_id);
+
+    // Clear column IDs.
+    SchemaPB* const schema = req.mutable_schema();
+    *schema = meta.schema();
+    for (int i = 0; i < schema->columns_size(); ++i) {
+      schema->mutable_columns(i)->clear_id();
+    }
+
+    RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr));
+    s_data->new_table_id = resp.table_id();
+
+    TRACE("Looking up new table");
+    {
+      table = LockAndFindPtrOrNull(table_ids_map_, s_data->new_table_id);
+
+      if (table == nullptr) {
+        return STATUS_SUBSTITUTE(
+            InternalError, "Created table not found: $0", s_data->new_table_id);
+      }
+    }
+  } else {
+    s_data->new_table_id = s_data->old_table_id;
+  }
+
+  TRACE("Locking table");
+  auto l = table->LockForRead();
+  vector<scoped_refptr<TabletInfo>> new_tablets;
+  table->GetAllTablets(&new_tablets);
+
+  for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
+    auto l = tablet->LockForRead();
+    const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
+    const ExternalTableSnapshotData::PartitionKeys key(
+        partition_pb.partition_key_start(), partition_pb.partition_key_end());
+    s_data->new_tablets_map[key] = tablet->id();
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
+                                         ExternalTableSnapshotData* s_data) {
+  DCHECK_EQ(entry.type(), SysRowEntry::TABLET);
+  // Create tablets IDs map.
+  TRACE("Looking up tablet");
+  scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(tablet_map_, entry.id());
+
+  if (tablet != nullptr) {
+    IdPairPB* const pair = s_data->tablet_id_map->Add();
+    pair->set_old_id(entry.id());
+    pair->set_new_id(entry.id());
+    return Status::OK();
+  }
+
+  SysTabletsEntryPB meta;
+  const string& data = entry.data();
+  RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+
+  const PartitionPB& partition_pb = meta.partition();
+  const ExternalTableSnapshotData::PartitionKeys key(
+      partition_pb.partition_key_start(), partition_pb.partition_key_end());
+  const ExternalTableSnapshotData::PartitionToIdMap::const_iterator it =
+      s_data->new_tablets_map.find(key);
+
+  if (it == s_data->new_tablets_map.end()) {
+    return STATUS_SUBSTITUTE(NotFound,
+                             "Not found new tablet with expected partition keys: $0 - $1",
+                             partition_pb.partition_key_start(),
+                             partition_pb.partition_key_end());
+  }
+
+  IdPairPB* const pair = s_data->tablet_id_map->Add();
+  pair->set_old_id(entry.id());
+  pair->set_new_id(it->second);
   return Status::OK();
 }
 
