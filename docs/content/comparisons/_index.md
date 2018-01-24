@@ -36,7 +36,7 @@ Auto Sharding  |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i cl
 Auto Rebalancing |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Distributed ACID Transactions |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 SQL Joins|<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i>
-Consensus Driven Strongly Consistent Replication |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>| <i class="fa fa-check"></i>
+Consensus Driven Strongly Consistent Replication |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-times">| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>
 Global Consistency Across Multi-DC/Regions |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-times">| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>
 Multiple Read Consistency Levels | <i class="fa fa-times"></i> |<i class="fa fa-times"></i>| <i class="fa fa-times"></i> |<i class="fa fa-check"></i>| <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
 Cloud-Native Reconfigurability |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
