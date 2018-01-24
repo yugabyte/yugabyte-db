@@ -53,6 +53,35 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               Substitute("Unable to restore snapshot $0", snapshot_id));
         return Status::OK();
       });
+
+  Register(
+      "export_snapshot", " <snapshot_id> <file_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
+        }
+
+        const string snapshot_id = args[2];
+        const string file_name = args[3];
+        RETURN_NOT_OK_PREPEND(client->CreateSnapshotMetaFile(snapshot_id, file_name),
+                              Substitute("Unable to export snapshot $0 to file $1",
+                                         snapshot_id,
+                                         file_name));
+        return Status::OK();
+      });
+
+  Register(
+      "import_snapshot", " <file_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          UsageAndExit(args[0]);
+        }
+
+        const string file_name = args[2];
+        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name),
+                              Substitute("Unable to import snapshot meta file $0", file_name));
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise
