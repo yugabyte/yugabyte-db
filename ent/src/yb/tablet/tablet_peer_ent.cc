@@ -2,6 +2,7 @@
 
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 namespace yb {
