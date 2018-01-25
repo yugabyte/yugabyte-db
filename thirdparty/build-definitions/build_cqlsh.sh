@@ -2,7 +2,7 @@
 
 # Copyright (c) YugaByte, Inc.
 
-CQLSH_VERSION=3.10
+CQLSH_VERSION=3.10-yb-1
 CQLSH_DIR=$TP_SOURCE_DIR/cqlsh-${CQLSH_VERSION}
 CQLSH_URL="https://github.com/YugaByte/cqlsh/archive/v${CQLSH_VERSION}.tar.gz"
 
