@@ -327,6 +327,8 @@ start_tserver() {
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
+      --emulate_redis_responses=true \
+      --vmodule="redis_rpc=4" \
       --tserver_yb_client_default_timeout_ms 20000 \
       $tserver_optional_params \
        >"$tserver_base_dir/tserver.out" \
@@ -542,7 +544,7 @@ redis_http_port_base=11000
 cql_http_port_base=12000
 master_rpc_port=7100
 tserver_rpc_port=8100
-redis_rpc_port=10100
+redis_rpc_port=6379
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
 cql_rpc_port=9042
 

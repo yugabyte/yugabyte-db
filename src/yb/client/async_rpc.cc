@@ -140,20 +140,22 @@ void AsyncRpc::Finished(const Status& status) {
 
 void AsyncRpc::Failed(const Status& status) {
   std::string error_message = status.message().ToBuffer();
+  auto redis_error_code = status.IsInvalidCommand() || status.IsInvalidArgument() ?
+      RedisResponsePB_RedisStatusCode_PARSING_ERROR : RedisResponsePB_RedisStatusCode_SERVER_ERROR;
   for (auto op : ops_) {
     YBOperation* yb_op = op->yb_op.get();
     switch (yb_op->type()) {
       case YBOperation::Type::REDIS_READ: {
         RedisResponsePB* resp = down_cast<YBRedisReadOp*>(yb_op)->mutable_response();
         resp->Clear();
-        resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+        resp->set_code(redis_error_code);
         resp->set_error_message(error_message);
         break;
       }
       case YBOperation::Type::REDIS_WRITE: {
         RedisResponsePB* resp = down_cast<YBRedisWriteOp *>(yb_op)->mutable_response();
         resp->Clear();
-        resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+        resp->set_code(redis_error_code);
         resp->set_error_message(error_message);
         break;
       }

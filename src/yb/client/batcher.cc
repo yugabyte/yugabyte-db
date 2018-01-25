@@ -295,6 +295,7 @@ void Batcher::MarkInFlightOpFailed(const InFlightOpPtr& op, const Status& s) {
 void Batcher::MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s) {
   CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
                                         << " from in-flight list";
+
   error_collector_->AddError(in_flight_op->yb_op, s);
   had_errors_ = true;
 }

@@ -995,7 +995,7 @@ void RedisServiceImpl::Impl::RespondWithFailure(
   // Send the result.
   DVLOG(4) << "Responding to call " << call->ToString() << " with failure " << error;
   std::string cmd = command[0].ToBuffer();
-  call->RespondFailure(idx, STATUS_FORMAT(RuntimeError, "$0: $1", cmd, error));
+  call->RespondFailure(idx, STATUS_FORMAT(InvalidCommand, "ERR $0: $1", cmd, error));
 }
 
 RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_address)
