@@ -64,7 +64,7 @@ Status SnapshotOperation::Prepare() {
   return Status::OK();
 }
 
-void SnapshotOperation::Start() {
+void SnapshotOperation::DoStart() {
   DCHECK_EQ(state()->tablet()->table_type(), TableType::YQL_TABLE_TYPE);
 
   state()->TrySetHybridTimeFromClock();
