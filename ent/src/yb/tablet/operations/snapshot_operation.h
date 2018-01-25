@@ -80,9 +80,6 @@ class SnapshotOperation : public Operation {
 
   CHECKED_STATUS Prepare() override;
 
-  // Starts the TabletSnapshotOp operation by assigning it a timestamp.
-  void Start() override;
-
   // Executes an Apply for the TabletSnapshotOp operation
   CHECKED_STATUS Apply() override;
 
@@ -92,6 +89,9 @@ class SnapshotOperation : public Operation {
   std::string ToString() const override;
 
  private:
+  // Starts the TabletSnapshotOp operation by assigning it a timestamp.
+  void DoStart() override;
+
   std::unique_ptr<SnapshotOperationState> state_;
 
   DISALLOW_COPY_AND_ASSIGN(SnapshotOperation);

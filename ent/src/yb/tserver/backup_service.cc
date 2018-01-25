@@ -5,6 +5,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tserver/service_util.h"
 

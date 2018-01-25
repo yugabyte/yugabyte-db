@@ -11,6 +11,9 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
+
+#include "yb/tablet/tablet.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
