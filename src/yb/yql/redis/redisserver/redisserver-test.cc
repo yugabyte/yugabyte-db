@@ -47,9 +47,9 @@ DECLARE_int32(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 
 DEFINE_uint64(test_redis_max_concurrent_commands, 20,
-              "Value of redis_max_concurrent_commands for pipeline test");
+    "Value of redis_max_concurrent_commands for pipeline test");
 DEFINE_uint64(test_redis_max_batch, 250,
-              "Value of redis_max_batch for pipeline test");
+    "Value of redis_max_batch for pipeline test");
 
 METRIC_DECLARE_gauge_uint64(redis_available_sessions);
 METRIC_DECLARE_gauge_uint64(redis_allocated_sessions);
@@ -87,27 +87,27 @@ class TestRedisService : public RedisTableTestBase {
   void SendCommandAndExpectTimeout(const string& cmd);
 
   void SendCommandAndExpectResponse(int line,
-                                    const string& cmd,
-                                    const string& resp,
-                                    bool partial = false);
+      const string& cmd,
+      const string& resp,
+      bool partial = false);
 
   void SendCommandAndExpectResponse(int line,
-                                    const RefCntBuffer& cmd,
-                                    const RefCntBuffer& resp,
-                                    bool partial = false) {
+      const RefCntBuffer& cmd,
+      const RefCntBuffer& resp,
+      bool partial = false) {
     SendCommandAndExpectResponse(line, cmd.ToBuffer(), resp.ToBuffer(), partial);
   }
 
   template <class Callback>
   void DoRedisTest(int line,
-                   const std::vector<std::string>& command,
-                   cpp_redis::reply::type reply_type,
-                   const Callback& callback);
+      const std::vector<std::string>& command,
+      cpp_redis::reply::type reply_type,
+      const Callback& callback);
 
   void DoRedisTestString(int line,
-                         const std::vector<std::string>& command,
-                         const std::string& expected,
-                         cpp_redis::reply::type type = cpp_redis::reply::type::simple_string) {
+      const std::vector<std::string>& command,
+      const std::string& expected,
+      cpp_redis::reply::type type = cpp_redis::reply::type::simple_string) {
     DoRedisTest(line, command, type,
         [line, expected](const RedisReply& reply) {
           ASSERT_EQ(expected, reply.as_string()) << "Originator: " << __FILE__ << ":" << line;
@@ -116,8 +116,8 @@ class TestRedisService : public RedisTableTestBase {
   }
 
   void DoRedisTestBulkString(int line,
-                             const std::vector<std::string>& command,
-                             const std::string& expected) {
+      const std::vector<std::string>& command,
+      const std::string& expected) {
     DoRedisTestString(line, command, expected, cpp_redis::reply::type::bulk_string);
   }
 
@@ -131,9 +131,14 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  void DoRedisTestExpectErrorMsg(int line, const std::vector<std::string>& command,
+      const std::string& error_msg) {
+    DoRedisTestString(line, command, error_msg, cpp_redis::reply::type::error);
+  }
+
   void DoRedisTestInt(int line,
-                      const std::vector<std::string>& command,
-                      int expected) {
+      const std::vector<std::string>& command,
+      int expected) {
     DoRedisTest(line, command, cpp_redis::reply::type::integer,
         [line, expected](const RedisReply& reply) {
           ASSERT_EQ(expected, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
@@ -152,10 +157,10 @@ class TestRedisService : public RedisTableTestBase {
           for (size_t i = 0; i < expected.size(); i++) {
             if (expected[i] == "") {
               ASSERT_TRUE(replies[i].is_null())
-                  << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+                            << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
             } else {
               ASSERT_EQ(expected[i], replies[i].as_string())
-                  << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+                            << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
             }
           }
         }
@@ -164,29 +169,29 @@ class TestRedisService : public RedisTableTestBase {
 
   // Used to check pairs of doubles and strings, for range scans withscores.
   void DoRedisTestScoreValueArray(int line,
-                        const std::vector<std::string>& command,
-                        const std::vector<double>& expected_scores,
-                        const std::vector<std::string>& expected_values) {
+      const std::vector<std::string>& command,
+      const std::vector<double>& expected_scores,
+      const std::vector<std::string>& expected_values) {
     ASSERT_EQ(expected_scores.size(), expected_values.size());
     DoRedisTest(line, command, cpp_redis::reply::type::array,
-      [line, expected_scores, expected_values](const RedisReply& reply) {
-        const auto& replies = reply.as_array();
-        ASSERT_EQ(expected_scores.size()*2, replies.size())
-                      << "Originator: " << __FILE__ << ":" << line;
-        for (size_t i = 0; i < expected_scores.size(); i++) {
-          std::string::size_type sz;
-          double reply_score = std::stod(replies[2 * i].as_string(), &sz);
-          ASSERT_EQ(expected_scores[i], reply_score)
-                        << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
-          ASSERT_EQ(expected_values[i], replies[2 * i + 1].as_string())
-                        << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+        [line, expected_scores, expected_values](const RedisReply& reply) {
+          const auto& replies = reply.as_array();
+          ASSERT_EQ(expected_scores.size()*2, replies.size())
+                        << "Originator: " << __FILE__ << ":" << line;
+          for (size_t i = 0; i < expected_scores.size(); i++) {
+            std::string::size_type sz;
+            double reply_score = std::stod(replies[2 * i].as_string(), &sz);
+            ASSERT_EQ(expected_scores[i], reply_score)
+                          << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+            ASSERT_EQ(expected_values[i], replies[2 * i + 1].as_string())
+                          << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+          }
         }
-      }
     );
   }
 
   void DoRedisTestNull(int line,
-                       const std::vector<std::string>& command) {
+      const std::vector<std::string>& command) {
     DoRedisTest(line, command, cpp_redis::reply::type::null,
         [line](const RedisReply& reply) {
           ASSERT_TRUE(reply.is_null()) << "Originator: " << __FILE__ << ":" << line;
@@ -212,7 +217,7 @@ class TestRedisService : public RedisTableTestBase {
   }
 
   void TestTSTtl(const std::string& expire_command, int64_t ttl_sec, int64_t expire_val,
-                 const std::string& redis_key) {
+      const std::string& redis_key) {
     DoRedisTestOk(__LINE__, {"TSADD", redis_key, "10", "v1", "20", "v2", "30", "v3", expire_command,
         strings::Substitute("$0", expire_val)});
     SyncClient();
@@ -446,17 +451,17 @@ Status TestRedisService::Send(const std::string& cmd) {
 
 Status TestRedisService::SendCommandAndGetResponse(
     const string& cmd, int expected_resp_length, int timeout_in_millis) {
-  RETURN_NOT_OK(Send(cmd));
+      RETURN_NOT_OK(Send(cmd));
 
   // Receive the response.
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
   size_t bytes_read = 0;
   resp_.resize(expected_resp_length);
-  RETURN_NOT_OK(client_sock_.BlockingRecv(resp_.data(),
-                                          expected_resp_length,
-                                          &bytes_read,
-                                          deadline));
+      RETURN_NOT_OK(client_sock_.BlockingRecv(resp_.data(),
+      expected_resp_length,
+      &bytes_read,
+      deadline));
   resp_.resize(bytes_read);
   if (expected_resp_length != bytes_read) {
     return STATUS(
@@ -471,9 +476,9 @@ void TestRedisService::SendCommandAndExpectTimeout(const string& cmd) {
 }
 
 void TestRedisService::SendCommandAndExpectResponse(int line,
-                                                    const string& cmd,
-                                                    const string& expected,
-                                                    bool partial) {
+    const string& cmd,
+    const string& expected,
+    bool partial) {
   if (partial) {
     auto seed = GetRandomSeed32();
     std::mt19937_64 rng(seed);
@@ -506,15 +511,15 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
 
   std::string response(util::to_char_ptr(resp_.data()), expected.length());
   ASSERT_EQ(expected, response)
-      << "Command: " << Slice(cmd).ToDebugString() << std::endl
-      << "Originator: " << __FILE__ << ":" << line;
+                << "Command: " << Slice(cmd).ToDebugString() << std::endl
+                << "Originator: " << __FILE__ << ":" << line;
 }
 
 template <class Callback>
 void TestRedisService::DoRedisTest(int line,
-                                   const std::vector<std::string>& command,
-                                   cpp_redis::reply::type reply_type,
-                                   const Callback& callback) {
+    const std::vector<std::string>& command,
+    cpp_redis::reply::type reply_type,
+    const Callback& callback) {
   expected_callbacks_called_++;
   VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
   client().send(command, [this, line, reply_type, callback] (RedisReply& reply) {
@@ -671,13 +676,13 @@ TEST_F_EX(TestRedisService, Pipeline, TestRedisServicePipelined) {
 
 TEST_F_EX(TestRedisService, PipelinePartial, TestRedisServicePipelined) {
   SendCommandAndExpectResponse(__LINE__,
-                               PipelineSetCommand(),
-                               PipelineSetResponse(),
-                               true /* partial */);
+      PipelineSetCommand(),
+      PipelineSetResponse(),
+      true /* partial */);
   SendCommandAndExpectResponse(__LINE__,
-                               PipelineGetCommand(),
-                               PipelineGetResponse(),
-                               true /* partial */);
+      PipelineGetCommand(),
+      PipelineGetResponse(),
+      true /* partial */);
 }
 
 namespace {
@@ -806,22 +811,22 @@ TEST_F(TestRedisService, BatchedCommandMulti) {
   SendCommandAndExpectResponse(
       __LINE__,
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
-      "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
-      "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",
+          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
+          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",
       "+OK\r\n+OK\r\n+OK\r\n");
 }
 
 TEST_F(TestRedisService, BatchedCommandMultiPartial) {
   for (int i = 0; i != 1000; ++i) {
     ASSERT_NO_FATAL_FAILURE(
-      SendCommandAndExpectResponse(
-          __LINE__,
-          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST1\r\n"
-          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST2\r\n"
-          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST3\r\n"
-          "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n",
-          "+OK\r\n+OK\r\n+OK\r\n$5\r\nTEST3\r\n",
-          /* partial */ true)
+        SendCommandAndExpectResponse(
+            __LINE__,
+            "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST1\r\n"
+                "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST2\r\n"
+                "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST3\r\n"
+                "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n",
+            "+OK\r\n+OK\r\n+OK\r\n$5\r\nTEST3\r\n",
+            /* partial */ true)
     );
   }
 }
@@ -911,11 +916,11 @@ TEST_F(TestRedisService, Echo) {
   SendCommandAndExpectResponse(
       __LINE__,
       EncodeAsArray({  // The request is sent as a multi bulk array.
-                        "echo"s,
-                        "foo bar"s
-                    }),
+          "echo"s,
+          "foo bar"s
+      }),
       EncodeAsBulkString("foo bar")  // The response is in the bulk string format.
-      );
+  );
 }
 
 TEST_F(TestRedisService, TestSetOnly) {
@@ -945,18 +950,18 @@ TEST_F(TestRedisService, TestSetThenGet) {
   SendCommandAndExpectResponse(
       __LINE__,
       EncodeAsArray({  // The request is sent as a multi bulk array.
-                        "set"s,
-                        "name"s,
-                        "yugabyte"s
-                    }),
+          "set"s,
+          "name"s,
+          "yugabyte"s
+      }),
       EncodeAsSimpleString("OK")  // The response is in the simple string format.
   );
   SendCommandAndExpectResponse(
       __LINE__,
       EncodeAsArray({  // The request is sent as a multi bulk array.
-                        "get"s,
-                        "name"s
-                    }),
+          "get"s,
+          "name"s
+      }),
       EncodeAsBulkString("yugabyte")  // The response is in the bulk string format.
   );
 }
@@ -1111,14 +1116,14 @@ TEST_F(TestRedisService, TestTimeSeries) {
   DoRedisTestNull(__LINE__, {"TSGET", "abc", "30"});
 
   // HGET/SISMEMBER/GET should not work with this.
-  DoRedisTestNull(__LINE__, {"HGET", "ts_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"HGET", "ts_key", "30"});
   DoRedisTestExpectError(__LINE__, {"SISMEMBER", "ts_key", "30"});
   DoRedisTestExpectError(__LINE__, {"HEXISTS", "ts_key", "30"});
   DoRedisTestExpectError(__LINE__, {"GET", "ts_key"});
 
   // TSGET should not work with HSET.
   DoRedisTestInt(__LINE__, {"HSET", "map_key", "30", "v1"}, 1);
-  DoRedisTestNull(__LINE__, {"TSGET", "map_key", "30"});
+  DoRedisTestExpectError(__LINE__, {"TSGET", "map_key", "30"});
 
   SyncClient();
   VerifyCallbacks();
@@ -1179,6 +1184,11 @@ TEST_F(TestRedisService, TestSortedSets) {
   DoRedisTestInt(__LINE__, {"ZADD", "z_key", "30.000001", "v8"}, 1);
   SyncClient();
   DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 10);
+  DoRedisTestOk(__LINE__, {"SET", "s_key", "s_val"});
+  SyncClient();
+  DoRedisTestExpectError(__LINE__, {"ZCARD", "s_key"});
+  DoRedisTestExpectErrorMsg(__LINE__, {"ZCARD", "s_key"},
+      "WRONGTYPE Operation against a key holding the wrong kind of value");
 
   DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "-10.0", "v3", "-20.0", "v2", "-30.0", "v1",
       "10.0", "v4", "20.0", "v5", "30.0", "v6"}, 6);
@@ -1196,12 +1206,12 @@ TEST_F(TestRedisService, TestSortedSets) {
   LOG(INFO) << "Starting ZRANGE queries";
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "+inf", "-inf"}, {});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
-                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+      {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "(-inf", "(+inf"},
-                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+      {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "30.0"}, {"v5", "v6"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "30.000001"},
-                   {"v5", "v6", "v7", "v8"});
+      {"v5", "v6", "v7", "v8"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "(30.000001"}, {"v5", "v6"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "(20.0", "30.000001"}, {"v6", "v7", "v8"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-20.0", "-10.0"}, {"v2", "v3"});
@@ -1209,30 +1219,30 @@ TEST_F(TestRedisService, TestSortedSets) {
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "+inf", "-inf"}, {});
 
   DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "20.0", "30.0", "WITHSCORES"},
-                             {20.0, 30.0}, {"v5", "v6"});
+      {20.0, 30.0}, {"v5", "v6"});
   DoRedisTestScoreValueArray(__LINE__,
-                             {"ZRANGEBYSCORE", "z_key", "20.0", "30.000001", "withscores"},
-                             {20.0, 30.0, 30.000001, 30.000001}, {"v5", "v6", "v7", "v8"});
+      {"ZRANGEBYSCORE", "z_key", "20.0", "30.000001", "withscores"},
+      {20.0, 30.0, 30.000001, 30.000001}, {"v5", "v6", "v7", "v8"});
 
 
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "-inf", "+inf"},
-                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+      {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "(-inf", "(+inf"},
-                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
+      {"vmin", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "vmax"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "30.0"}, {"v5", "v6"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "30.000001"},
-                   {"v5", "v6", "v7", "v8"});
+      {"v5", "v6", "v7", "v8"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "(30.000001"}, {"v5", "v6"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "(20.0", "30.000001"},
-                   {"v6", "v7", "v8"});
+      {"v6", "v7", "v8"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "-20.0", "-10.0"}, {"v2", "v3"});
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "(-20.0", "(-10.0"}, {});
 
   DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "20.0", "30.0", "WITHSCORES"},
-                             {20.0, 30.0}, {"v5", "v6"});
+      {20.0, 30.0}, {"v5", "v6"});
   DoRedisTestScoreValueArray(__LINE__,
-                             {"ZRANGEBYSCORE", "z_multi", "20.0", "30.000001", "withscores"},
-                             {20.0, 30.0, 30.000001, 30.000001}, {"v5", "v6", "v7", "v8"});
+      {"ZRANGEBYSCORE", "z_multi", "20.0", "30.000001", "withscores"},
+      {20.0, 30.0, 30.000001, 30.000001}, {"v5", "v6", "v7", "v8"});
 
   DoRedisTestInt(__LINE__, {"ZREM", "z_key", "v6"}, 1);
   SyncClient();
@@ -1249,11 +1259,11 @@ TEST_F(TestRedisService, TestSortedSets) {
   SyncClient();
 
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
-                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
+      {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
   DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 8);
 
   DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_multi", "-inf", "+inf"},
-                   {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
+      {"vmin", "v1", "v2", "v3", "v4", "v5", "v8", "vmax"});
   DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 8);
 
   // Test NX/CH option.
@@ -1282,10 +1292,10 @@ TEST_F(TestRedisService, TestSortedSets) {
 
   // Make sure that only v9 exists at 0 and v8 exists at 30.000001.
   DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "0.0", "0.0", "WITHSCORES"},
-                             {0.0}, {"v9"});
+      {0.0}, {"v9"});
   DoRedisTestScoreValueArray(__LINE__,
-                             {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
-                             {30.000001}, {"v8"});
+      {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
+      {30.000001}, {"v8"});
   DoRedisTestInt(__LINE__, {"ZCARD", "z_key"}, 9);
 
   // Test NX/XX/CH option for multi.
@@ -1298,10 +1308,10 @@ TEST_F(TestRedisService, TestSortedSets) {
 
   // Make sure that only v9 exists and 0 and v8 exists at 30.000001.
   DoRedisTestScoreValueArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "0.0", "0.0", "WITHSCORES"},
-                             {0.0}, {"v9"});
+      {0.0}, {"v9"});
   DoRedisTestScoreValueArray(__LINE__,
-                             {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
-                             {30.000001}, {"v8"});
+      {"ZRANGEBYSCORE", "z_key", "30.000001", "30.000001", "WITHSCORES"},
+      {30.000001}, {"v8"});
   DoRedisTestInt(__LINE__, {"ZCARD", "z_multi"}, 9);
 
   // Test incr option.
@@ -1410,7 +1420,7 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       std::to_string(curr_time_sec + kRedisMaxTtlSeconds + 1)});
 }
 
-  TEST_F(TestRedisService, TestTsRangeByTime) {
+TEST_F(TestRedisService, TestTsRangeByTime) {
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
       "-50", "v1",
       "-40", "v2",
@@ -1426,7 +1436,7 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
 
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-35", "25"},
-                   {"-30", "v3", "-20", "v4", "-10", "v5", "10", "v6", "20", "v7"});
+      {"-30", "v3", "-20", "v4", "-10", "v5", "10", "v6", "20", "v7"});
 
   // Overwrite and test.
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
@@ -1444,13 +1454,13 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
 
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "-10"},
-                   {"-50", "v11", "-40", "v22", "-30", "v33", "-20", "v44", "-10", "v55"});
+      {"-50", "v11", "-40", "v22", "-30", "v33", "-20", "v44", "-10", "v55"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-20", "55"},
-                   {"-20", "v44", "-10", "v55", "10", "v66", "20", "v77", "30", "v88", "40", "v99",
-                       "50", "v110"});
+      {"-20", "v44", "-10", "v55", "10", "v66", "20", "v77", "30", "v88", "40", "v99",
+          "50", "v110"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "55"},
-                   {"-50", "v11", "-40", "v22", "-30", "v33", "-20", "v44", "-10", "v55",
-                       "10", "v66", "20", "v77", "30", "v88", "40", "v99", "50", "v110"});
+      {"-50", "v11", "-40", "v22", "-30", "v33", "-20", "v44", "-10", "v55",
+          "10", "v66", "20", "v77", "30", "v88", "40", "v99", "50", "v110"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {"-10", "v55"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"10", "v66"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "-10"}, {"-10", "v55"});
@@ -1469,11 +1479,11 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
   SyncClient();
   std::this_thread::sleep_for(std::chrono::seconds(6));
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "-10"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44"});
+      {"-50", "v11", "-40", "v22", "-20", "v44"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-20", "55"},
-                   {"-20", "v44", "10", "v66", "40", "v99"});
+      {"-20", "v44", "10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "60"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-15", "-5"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "10"}, {"10", "v66"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-25", "-15"}, {"-20", "v44"});
@@ -1488,25 +1498,25 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "(10"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-50", "(-40"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-55", "(11"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-50", "10"},
-                   {"-40", "v22", "-20", "v44", "10", "v66"});
+      {"-40", "v22", "-20", "v44", "10", "v66"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-51", "10"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
 
   // Test infinity.
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "+inf"},
-                   {"10", "v66", "40", "v99"});
+      {"10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-inf", "10"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-10", "(+inf"},
-                   {"10", "v66", "40", "v99"});
+      {"10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-inf", "10"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "-inf", "+inf"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "(-inf", "(+inf"},
-                   {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
+      {"-50", "v11", "-40", "v22", "-20", "v44", "10", "v66", "40", "v99"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "-inf"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "10"}, {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "+inf", "+inf"}, {});
@@ -1522,39 +1532,39 @@ TEST_F(TestRedisService, TestTimeSeriesTTL) {
       int64Max_, "v4",
   });
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-inf", "+inf"},
-                   {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
+      {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "(-inf", "(+inf"},
-                   {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
+      {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-inf", "-inf"},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "+inf", "+inf"},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-10", "(+inf"},
-                   {"-10", "v2", "10", "v3", int64Max_, "v4"});
+      {"-10", "v2", "10", "v3", int64Max_, "v4"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-10", "+inf"},
-                   {"-10", "v2", "10", "v3", int64Max_, "v4"});
+      {"-10", "v2", "10", "v3", int64Max_, "v4"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "(-inf", "10"},
-                   {int64Min_, "v1", "-10", "v2", "10", "v3"});
+      {int64Min_, "v1", "-10", "v2", "10", "v3"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", "-inf", "10"},
-                   {int64Min_, "v1", "-10", "v2", "10", "v3"});
+      {int64Min_, "v1", "-10", "v2", "10", "v3"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Min_, int64Max_},
-                   {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
+      {int64Min_, "v1", "-10", "v2", "10", "v3", int64Max_, "v4"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MaxExclusive_, int64Max_},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MaxExclusive_, int64MaxExclusive_},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Max_, int64MaxExclusive_},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MinExclusive_, int64MinExclusive_},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64MinExclusive_, int64Min_},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Min_, int64MinExclusive_},
-                   {});
+      {});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Min_, int64Min_},
-                   {int64Min_, "v1"});
+      {int64Min_, "v1"});
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_inf", int64Max_, int64Max_},
-                   {int64Max_, "v4"});
+      {int64Max_, "v4"});
 
   // Test invalid requests.
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "20", "30"});
@@ -1602,11 +1612,11 @@ TEST_F(TestRedisService, TestTsRem) {
   DoRedisTestOk(__LINE__, {"TSREM", "ts_key", "20", "40", "70", "90"});
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
-                   {"10", "v1", "30", "v3", "50", "v5", "60", "v6", "80", "v8", "100", "v10"});
+      {"10", "v1", "30", "v3", "50", "v5", "60", "v6", "80", "v8", "100", "v10"});
   DoRedisTestOk(__LINE__, {"TSREM", "ts_key", "30", "60", "70", "80", "90"});
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
-                   {"10", "v1", "50", "v5", "100", "v10"});
+      {"10", "v1", "50", "v5", "100", "v10"});
 
   // Now add some data and try some more deletes.
   DoRedisTestOk(__LINE__, {"TSADD", "ts_key",
@@ -1620,13 +1630,13 @@ TEST_F(TestRedisService, TestTsRem) {
   });
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
-                   {"10", "v1", "25", "v25", "35", "v35", "45", "v45", "50", "v5", "55", "v55",
-                       "75", "v75", "85", "v85", "95", "v95", "100", "v10"});
+      {"10", "v1", "25", "v25", "35", "v35", "45", "v45", "50", "v5", "55", "v55",
+          "75", "v75", "85", "v85", "95", "v95", "100", "v10"});
   DoRedisTestOk(__LINE__, {"TSREM", "ts_key", "10", "25", "30", "45", "50", "65", "70", "85",
       "90"});
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
-                   {"35", "v35", "55", "v55", "75", "v75", "95", "v95", "100", "v10"});
+      {"35", "v35", "55", "v55", "75", "v75", "95", "v95", "100", "v10"});
 
   // Delete top level, then add some values and verify.
   DoRedisTestInt(__LINE__, {"DEL", "ts_key"}, 1);
@@ -1642,8 +1652,8 @@ TEST_F(TestRedisService, TestTsRem) {
   });
   SyncClient();
   DoRedisTestArray(__LINE__, {"TSRANGEBYTIME" , "ts_key", "10", "100"},
-                   {"22", "v22", "33", "v33", "44", "v44", "55", "v55", "77", "v77", "88", "v88",
-                       "99", "v99"});
+      {"22", "v22", "33", "v33", "44", "v44", "55", "v55", "77", "v77", "88", "v88",
+          "99", "v99"});
 
   // Now try invalid commands.
   DoRedisTestExpectError(__LINE__, {"TSREM", "ts_key"}); // Not enough arguments.
@@ -1673,7 +1683,7 @@ TEST_F(TestRedisService, TestOverwrites) {
   // Test NX.
   DoRedisTestOk(__LINE__, {"SET", "key", "value1", "NX"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value1");
-  DoRedisTestNull(__LINE__, {"SET", "key", "value2", "NX"});
+  DoRedisTestExpectError(__LINE__, {"SET", "key", "value2", "NX"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value1");
 
   // Test XX.
@@ -1681,7 +1691,7 @@ TEST_F(TestRedisService, TestOverwrites) {
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value2");
   DoRedisTestOk(__LINE__, {"SET", "key", "value3", "XX"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value3");
-  DoRedisTestNull(__LINE__, {"SET", "unknown_key", "value", "XX"});
+  DoRedisTestExpectError(__LINE__, {"SET", "unknown_key", "value", "XX"});
 
   SyncClient();
   VerifyCallbacks();
@@ -1713,6 +1723,9 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestOk(__LINE__, {"SET", "key1", "30"});
 
   SyncClient();
+
+  // Should be error due to wrong type.
+  DoRedisTestExpectError(__LINE__, {"HGET", "key1", "subkey1"});
 
   DoRedisTestBulkString(__LINE__, {"GETSET", "key1", "val1"}, "30");
   DoRedisTestNull(__LINE__, {"GETSET", "non_existent", "val2"});
@@ -1755,6 +1768,8 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
 
   DoRedisTestInt(__LINE__, {"INCR", "key3"}, 24);
+  // If no value is present, 0 is the default
+  DoRedisTestInt(__LINE__, {"INCR", "key4"}, 1);
 
   SyncClient();
 
@@ -1769,6 +1784,8 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   DoRedisTestInt(__LINE__, {"EXISTS", "key3"}, 1);
   DoRedisTestInt(__LINE__, {"EXISTS", "map_key"}, 1);
   DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "1", "-1"}, "axyz3tra1");
+  DoRedisTestBulkString(__LINE__, {"GETRANGE", "key5", "1", "4"}, "");
+  DoRedisTestBulkString(__LINE__, {"GETRANGE", "key1", "-12", "4"}, "vaxyz");
 
   DoRedisTestOk(__LINE__, {"HMSET", "map_key", "subkey5", "19", "subkey6", "14"});
   // The last value for a duplicate key is picked up.
@@ -1781,9 +1798,9 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
       {"hashkey1", "v3", "hashkey2", "v2", "subkey1", "41", "subkey2", "12", "subkey5", "19",
           "subkey6", "14"});
   DoRedisTestArray(__LINE__, {"HKEYS", "map_key"},
-                   {"hashkey1", "hashkey2", "subkey1", "subkey2", "subkey5", "subkey6"});
+      {"hashkey1", "hashkey2", "subkey1", "subkey2", "subkey5", "subkey6"});
   DoRedisTestArray(__LINE__, {"HVALS", "map_key"},
-                   {"v3", "v2", "41", "12", "19", "14"});
+      {"v3", "v2", "41", "12", "19", "14"});
   DoRedisTestInt(__LINE__, {"HLEN", "map_key"}, 6);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey1"}, 1);
   DoRedisTestInt(__LINE__, {"HEXISTS", "map_key", "subkey2"}, 1);
@@ -1818,6 +1835,7 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
   SyncClient();
   DoRedisTestInt(__LINE__, {"SADD", "set1", "val1"}, 1);
   DoRedisTestInt(__LINE__, {"SADD", "set2", "val5", "val5", "val5"}, 1);
+  SyncClient();
   DoRedisTestInt(__LINE__, {"EXISTS", "set1"}, 1);
 
   SyncClient();

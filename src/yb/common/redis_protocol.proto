@@ -275,15 +275,18 @@ message RedisResponsePB {
 
   enum RedisStatusCode {
     OK = 1;
+    // Nil is when value is not found, but isn't an error case, eg. GET key when key has no value.
     NIL = 2;
+    // Not found is an error when an existing value is needed for the command, eg. RENAME.
+    NOT_FOUND = 5;
     UNKNOWN_COMMAND = 3;
     WRONG_TYPE = 4;
-    NOT_FOUND = 5;
     // This code is set in the client to mark commands for which no response was received.
     // This happens when the batch RPC fails somewhere and the individual requests don't
     // get processed.
     SERVER_ERROR = 6;
     INDEX_OUT_OF_BOUNDS = 7;
+    PARSING_ERROR = 8;
   }
 
   optional RedisStatusCode code = 1;

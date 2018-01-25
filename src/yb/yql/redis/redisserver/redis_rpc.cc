@@ -237,14 +237,24 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
   // handle arrays, hashes etc. For now, we only support the string response.
 
   for (const auto& redis_response : responses) {
-    if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-      out = SerializeError("Request was unable to be processed from server.", out);
-    } else if (redis_response.code() == RedisResponsePB_RedisStatusCode_NOT_FOUND) {
+    string error_message = redis_response.error_message();
+    if (error_message == "") {
+      error_message = "Unknown error";
+    }
+    // Several types of error cases:
+    //    1) Parsing error: The command is malformed (eg. too few arguments "SET a")
+    //    2) Server error: Request to server failed due to reasons not related to the command
+    //    3) Execution error: The command ran into problem during execution (eg. WrongType errors,
+    //          HSET on a key that isn't a hash)
+
+    if (redis_response.code() == RedisResponsePB_RedisStatusCode_PARSING_ERROR) {
+      out = SerializeError(error_message, out);
+    } else if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
+      out = SerializeError(error_message, out);
+    } else if (redis_response.code() == RedisResponsePB_RedisStatusCode_NIL) {
       out = SerializeEncoded(kNilResponse, out);
     } else if (redis_response.code() != RedisResponsePB_RedisStatusCode_OK) {
-      // We send a nil response for all non-ok statuses as of now.
-      // TODO: Follow redis error messages.
-      out = SerializeError("Error: Something wrong", out);
+      out = SerializeError(error_message, out);
     } else if (redis_response.has_string_response()) {
       out = SerializeBulkString(redis_response.string_response(), out);
     } else if (redis_response.has_int_response()) {
@@ -312,7 +322,7 @@ void RedisInboundCall::RespondSuccess(size_t idx,
 void RedisInboundCall::RespondFailure(size_t idx, const Status& status) {
   RedisResponsePB resp;
   Slice message = status.message();
-  resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+  resp.set_code(RedisResponsePB_RedisStatusCode_PARSING_ERROR);
   resp.set_error_message(message.data(), message.size());
   Respond(idx, false, &resp);
 }

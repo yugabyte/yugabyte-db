@@ -87,7 +87,7 @@ void RedisTableTestBase::GetKeyValue(
   ASSERT_OK(ParseGet(get_op.get(), SlicesFromString({"get", key})));
   ASSERT_OK(session_->ReadSync(get_op));
   if (expect_not_found) {
-    ASSERT_EQ(RedisResponsePB_RedisStatusCode_NOT_FOUND, get_op->response().code());
+    ASSERT_EQ(RedisResponsePB_RedisStatusCode_NIL, get_op->response().code());
   } else {
     ASSERT_EQ(RedisResponsePB_RedisStatusCode_OK, get_op->response().code());
     ASSERT_EQ(value, get_op->response().string_response());

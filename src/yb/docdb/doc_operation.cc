@@ -60,6 +60,9 @@ bool EmulateRedisResponse(const RedisDataType& data_type) {
   return FLAGS_emulate_redis_responses && data_type != REDIS_TYPE_TIMESERIES;
 }
 
+static const string wrong_type_message =
+    "WRONGTYPE Operation against a key holding the wrong kind of value";
+
 CHECKED_STATUS PrimitiveValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb,
                                         PrimitiveValue *primitive_value) {
   switch (subkey_pb.subkey_case()) {
@@ -248,7 +251,7 @@ bool VerifyTypeAndSetCode(
     VerifySuccessIfMissing verify_success_if_missing = VerifySuccessIfMissing::kFalse) {
   if (actual_type == RedisDataType::REDIS_TYPE_NONE) {
     if (verify_success_if_missing) {
-      response->set_code(RedisResponsePB_RedisStatusCode_OK);
+      response->set_code(RedisResponsePB_RedisStatusCode_NIL);
     } else {
       response->set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
     }
@@ -256,6 +259,7 @@ bool VerifyTypeAndSetCode(
   }
   if (actual_type != expected_type) {
     response->set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response->set_error_message(wrong_type_message);
     return false;
   }
   response->set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -268,6 +272,7 @@ bool VerifyTypeAndSetCode(
     RedisResponsePB *response) {
   if (actual_type != expected_type) {
     response->set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response->set_error_message(wrong_type_message);
     return false;
   }
   response->set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -385,7 +390,13 @@ CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_valu
 
 void SetOptionalInt(RedisDataType type, int64_t value, int64_t none_value,
                     RedisResponsePB* response) {
-  response->set_int_response(type == RedisDataType::REDIS_TYPE_NONE ? none_value : value);
+  if (type == RedisDataType::REDIS_TYPE_NONE) {
+    response->set_code(RedisResponsePB_RedisStatusCode_NIL);
+    response->set_int_response(none_value);
+  } else {
+    response->set_code(RedisResponsePB_RedisStatusCode_OK);
+    response->set_int_response(value);
+  }
 }
 
 void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response) {
@@ -431,7 +442,7 @@ CHECKED_STATUS GetAndPopulateResponseValues(
   // Validate and populate response.
   response->set_allocated_array_response(new RedisArrayPB());
   if (!data.doc_found) {
-    response->set_code(RedisResponsePB_RedisStatusCode_OK);
+    response->set_code(RedisResponsePB_RedisStatusCode_NIL);
     return Status::OK();
   }
 
@@ -523,6 +534,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
       case REDIS_TYPE_HASH: {
         if (*data_type != kv.type() && *data_type != REDIS_TYPE_NONE) {
           response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+          response_.set_error_message(wrong_type_message);
           return Status::OK();
         }
         SubDocument kv_entries = SubDocument();
@@ -561,6 +573,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
       case REDIS_TYPE_SORTEDSET: {
         if (*data_type != kv.type() && *data_type != REDIS_TYPE_NONE) {
           response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+          response_.set_error_message(wrong_type_message);
           return Status::OK();
         }
 
@@ -692,6 +705,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
                 doc_path, kv_entries, redis_query_id(), ttl));
           }
         }
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
         response_.set_int_response(return_value);
         break;
       }
@@ -742,7 +756,8 @@ Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
         "Getset kv should have 1 value, found $0", kv.value_size());
   }
 
-  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
+      VerifySuccessIfMissing::kTrue)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -772,6 +787,7 @@ Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
 
   value->value += kv.value(0);
 
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(value->value.length());
 
   return data.doc_write_batch->SetPrimitive(
@@ -787,6 +803,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
   RETURN_NOT_OK(data_type);
   if (*data_type != REDIS_TYPE_NONE && *data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response_.set_error_message(wrong_type_message);
     return Status::OK();
   }
 
@@ -907,11 +924,11 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
     return Status::OK();
   }
 
-  // TODO (akashnil): Handle overflows.
   if (request_.set_range_request().offset() > value->value.length()) {
     value->value.resize(request_.set_range_request().offset(), 0);
   }
   value->value.replace(request_.set_range_request().offset(), kv.value(0).length(), kv.value(0));
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(value->value.length());
 
   return data.doc_write_batch->SetPrimitive(
@@ -925,23 +942,40 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data, int64_t
   auto value = GetValue(data);
   RETURN_NOT_OK(value);
 
-  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
+      VerifySuccessIfMissing::kTrue)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
 
   int64_t old_value, new_value;
+  string message = "ERR value is not an integer or out of range";
 
-  try {
-    old_value = std::stoll(value->value);
-    new_value = old_value + incr;
-  } catch (std::invalid_argument e) {
-    response_.set_error_message("Can not parse incr argument as a number");
-    return Status::OK();
-  } catch (std::out_of_range e) {
-    response_.set_error_message("Can not parse incr argument as a number");
-    return Status::OK();
+  if (value->type == REDIS_TYPE_NONE) {
+    // If no value is present, 0 is the default.
+    old_value = 0;
+  } else {
+    try {
+      old_value = std::stoll(value->value);
+      if (std::to_string(old_value) != value->value) {
+        // This can happen if there are leading or trailing spaces, which we should treat as error
+        // even though std::stoll would parse it as number.
+        response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+        response_.set_error_message(message);
+        return Status::OK();
+      }
+    } catch (std::invalid_argument e) {
+      response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+      response_.set_error_message(message);
+      return Status::OK();
+    } catch (std::out_of_range e) {
+      response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+      response_.set_error_message(message);
+      return Status::OK();
+    }
   }
+
+  new_value = old_value + incr;
 
   if ((incr < 0 && old_value < 0 && incr < numeric_limits<int64_t>::min() - old_value) ||
       (incr > 0 && old_value > 0 && incr > numeric_limits<int64_t>::max() - old_value)) {
@@ -949,6 +983,7 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data, int64_t
     return Status::OK();
   }
 
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   response_.set_int_response(new_value);
 
   return data.doc_write_batch->SetPrimitive(
@@ -976,6 +1011,7 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
 
   if (*data_type != REDIS_TYPE_SET && *data_type != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    response_.set_error_message(wrong_type_message);
     return Status::OK();
   }
 
@@ -1045,8 +1081,8 @@ Status RedisReadOperation::Execute() {
 
 int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
   if (index < 0) index += len;
-  if (index < 0 || index >= len)
-    return -1;
+  if (index < 0) index = 0;
+  if (index > len) index = len;
   return index;
 }
 
@@ -1076,9 +1112,18 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
         }
       } else {
         int64_t card;
+        data.return_type_only = true;
+        RETURN_NOT_OK(GetSubDocument(
+            db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
+        if (*data.doc_found && data.result->value_type() != ValueType::kRedisSortedSet) {
+          response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+          response_.set_error_message(wrong_type_message);
+          return Status::OK();
+        }
         RETURN_NOT_OK(GetCardinality(db_, redis_query_id(), read_time_,
                                      request_.key_value(), &card));
         response_.set_int_response(card);
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
       }
       break;
     }
@@ -1097,6 +1142,7 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
           RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(), AddResponseValuesGeneric,
                                              &response_, add_keys, add_values));
         } else {
+          response_.set_code(RedisResponsePB_RedisStatusCode_OK);
           response_.set_int_response(doc.object_container().size());
         }
       }
@@ -1169,7 +1215,6 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
             db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, data,
             ValueType::kObject, request_, &response_,
             /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
-
       } else {
         SubDocKey doc_key(
             DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
@@ -1281,16 +1326,34 @@ Result<RedisValue> RedisReadOperation::GetValue(int subkey_index) {
 
 Status RedisReadOperation::ExecuteGet() {
   const auto request_type = request_.get_request().request_type();
+  RedisDataType expected_type;
+  switch (request_type) {
+    case RedisGetRequestPB_GetRequestType_GET:
+      expected_type = REDIS_TYPE_STRING; break;
+    case RedisGetRequestPB_GetRequestType_TSGET:
+      expected_type = REDIS_TYPE_TIMESERIES; break;
+    case RedisGetRequestPB_GetRequestType_HGET: FALLTHROUGH_INTENDED;
+    case RedisGetRequestPB_GetRequestType_HEXISTS:
+      expected_type = REDIS_TYPE_HASH; break;
+    case RedisGetRequestPB_GetRequestType_SISMEMBER:
+      expected_type = REDIS_TYPE_SET; break;
+    default:
+      expected_type = REDIS_TYPE_NONE;
+  }
   switch (request_type) {
     case RedisGetRequestPB_GetRequestType_GET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_TSGET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB_GetRequestType_HGET: {
-      auto value = GetValue();
-      RETURN_NOT_OK(value);
-
+      auto type = GetValueType();
+      RETURN_NOT_OK(type);
       // If wrong type, we set the error code in the response.
-      if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_)) {
-        response_.set_string_response(value->value);
+      if (VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
+        auto value = GetValue();
+        RETURN_NOT_OK(value);
+        if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
+            VerifySuccessIfMissing::kTrue)) {
+          response_.set_string_response(value->value);
+        }
       }
       return Status::OK();
     }
@@ -1298,13 +1361,11 @@ Status RedisReadOperation::ExecuteGet() {
     case RedisGetRequestPB_GetRequestType_SISMEMBER: {
       auto type = GetValueType();
       RETURN_NOT_OK(type);
-      auto expected_type = request_type == RedisGetRequestPB_GetRequestType_HEXISTS
-              ? RedisDataType::REDIS_TYPE_HASH
-              : RedisDataType::REDIS_TYPE_SET;
       if (VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
         auto subtype = GetValueType(0);
         RETURN_NOT_OK(subtype);
         SetOptionalInt(*subtype, 1, &response_);
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
       }
       return Status::OK();
     }
@@ -1316,6 +1377,7 @@ Status RedisReadOperation::ExecuteGet() {
         auto value = GetValue();
         RETURN_NOT_OK(value);
         SetOptionalInt(value->type, value->value.length(), &response_);
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
       }
       return Status::OK();
     }
@@ -1368,23 +1430,26 @@ Status RedisReadOperation::ExecuteGet() {
 
 Status RedisReadOperation::ExecuteStrLen() {
   auto value = GetValue();
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   RETURN_NOT_OK(value);
 
   if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
                            VerifySuccessIfMissing::kTrue)) {
     SetOptionalInt(value->type, value->value.length(), &response_);
   }
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
 
   return Status::OK();
 }
 
 Status RedisReadOperation::ExecuteExists() {
   auto value = GetValue();
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   RETURN_NOT_OK(value);
 
   // We only support exist command with one argument currently.
-  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   SetOptionalInt(value->type, 1, &response_);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
 
   return Status::OK();
 }
@@ -1393,26 +1458,27 @@ Status RedisReadOperation::ExecuteGetRange() {
   auto value = GetValue();
   RETURN_NOT_OK(value);
 
-  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_)) {
+  if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
+      VerifySuccessIfMissing::kTrue)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
 
   const int32_t len = value->value.length();
+  int32_t exclusive_end = request_.get_range_request().end() + 1;
+  if (exclusive_end == 0) {
+    exclusive_end = len;
+  }
 
   // We treat negative indices to refer backwards from the end of the string.
   const int32_t start = ApplyIndex(request_.get_range_request().start(), len);
-  if (start == -1) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_INDEX_OUT_OF_BOUNDS);
-    return Status::OK();
-  }
-  const int32_t end = ApplyIndex(request_.get_range_request().end(), len);
-  if (end == -1 || end < start) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_INDEX_OUT_OF_BOUNDS);
-    return Status::OK();
+  int32_t end = ApplyIndex(exclusive_end, len);
+  if (end < start) {
+    end = start;
   }
 
-  response_.set_string_response(value->value.c_str() + start, end - start + 1);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  response_.set_string_response(value->value.c_str() + start, end - start);
   return Status::OK();
 }
 

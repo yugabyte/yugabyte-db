@@ -99,7 +99,7 @@ Result<int32_t> ParseInt32(const Slice& slice, const char* field) {
 
 CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args[1].empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_SUBSTITUTE(InvalidCommand,
         "A SET request must have a non empty key field");
   }
   op->mutable_request()->set_allocated_set_request(new RedisSetRequestPB());
@@ -112,13 +112,13 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   while (idx < args.size()) {
     if (args[idx] == "EX" || args[idx] == "PX") {
       if (args.size() < idx + 2) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
+        return STATUS_SUBSTITUTE(InvalidCommand,
             "Expected TTL field after the EX flag, no value found");
       }
       auto ttl_val = ParseInt64(args[idx + 1], "TTL");
       RETURN_NOT_OK(ttl_val);
       if (*ttl_val < kRedisMinTtlSeconds || *ttl_val > kRedisMaxTtlSeconds) {
-        return STATUS_FORMAT(InvalidArgument,
+        return STATUS_FORMAT(InvalidCommand,
             "TTL field $0 is not within valid bounds", args[idx + 1]);
       }
       const int64_t milliseconds_per_unit =
@@ -132,7 +132,7 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
       op->mutable_request()->mutable_set_request()->set_mode(REDIS_WRITEMODE_INSERT);
       idx += 1;
     } else {
-      return STATUS_FORMAT(InvalidArgument,
+      return STATUS_FORMAT(InvalidCommand,
           "Unidentified argument $0 found while parsing set command", args[idx]);
     }
   }
@@ -142,7 +142,7 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
 // TODO: support MSET
 CHECKED_STATUS ParseMSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   if (args.size() < 3 || args.size() % 2 == 0) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_SUBSTITUTE(InvalidCommand,
         "An MSET request must have at least 3, odd number of arguments, found $0", args.size());
   }
   return STATUS(InvalidCommand, "MSET command not yet supported");
@@ -197,7 +197,7 @@ template <typename AddSubKey>
 CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args,
                                       const RedisDataType& type,
                                       AddSubKey add_sub_key) {
-  if (args.size() < 4) {
+  if (args.size() < 4 || (args.size() % 2 == 1 && type == REDIS_TYPE_HASH)) {
     return STATUS_SUBSTITUTE(InvalidArgument,
                              "wrong number of arguments: $0 for command: $1", args.size(),
                              string(args[0].cdata(), args[0].size()));
@@ -238,7 +238,7 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
     // EXPIRE_AT/EXPIRE_IN only supported for redis timeseries currently.
     if ((args[i] == kExpireAt || args[i] == kExpireIn) && type == REDIS_TYPE_TIMESERIES) {
       if (i + 2 != args.size()) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "$0 should be at the end of the command",
+        return STATUS_SUBSTITUTE(InvalidCommand, "$0 should be at the end of the command",
                                  string(args[i].cdata(), args[i].size()));
       }
       auto temp = util::CheckedStoll(args[i + 1]);
@@ -248,7 +248,7 @@ CHECKED_STATUS ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientComma
           : *temp - GetCurrentTimeMicros() / MonoTime::kMicrosecondsPerSecond;
 
       if (ttl > kRedisMaxTtlSeconds || ttl < kRedisMinTtlSeconds) {
-        return STATUS_SUBSTITUTE(InvalidArgument, "TTL: $0 needs be in the range [$1, $2]", ttl,
+        return STATUS_SUBSTITUTE(InvalidCommand, "TTL: $0 needs be in the range [$1, $2]", ttl,
                                  kRedisMinTtlSeconds, kRedisMaxTtlSeconds);
       }
       // Need to pass ttl in milliseconds, user supplied values are in seconds.
@@ -333,6 +333,7 @@ CHECKED_STATUS ParseTsRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   return ParseCollection(op, args, REDIS_TYPE_TIMESERIES, add_timestamp_subkey);
 }
+
 CHECKED_STATUS ParseZRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_del_request(new RedisDelRequestPB());
   return ParseCollection(op, args, REDIS_TYPE_SORTEDSET, add_string_subkey);
@@ -385,6 +386,12 @@ CHECKED_STATUS ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args)
 
   auto offset = ParseInt32(args[2], "offset");
   RETURN_NOT_OK(offset);
+  // TODO: Should we have an upper bound?
+  // A very large offset would allocate a lot of memory and maybe crash
+  if (*offset < 0) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "offset field of SETRANGE must be non-negative, found: $0", *offset);
+  }
   op->mutable_request()->mutable_set_range_request()->set_offset(*offset);
 
   return Status::OK();
@@ -401,7 +408,7 @@ CHECKED_STATUS ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->set_allocated_get_request(new RedisGetRequestPB());
   const auto& key = args[1];
   if (key.empty()) {
-    return STATUS_SUBSTITUTE(InvalidArgument,
+    return STATUS_SUBSTITUTE(InvalidCommand,
         "A GET request must have non empty key field");
   }
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
@@ -474,7 +481,7 @@ CHECKED_STATUS
 ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
                    RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type) {
   if (slice.empty()) {
-    return STATUS(InvalidArgument, "range bound key cannot be empty");
+    return STATUS(InvalidCommand, "range bound key cannot be empty");
   }
 
   if (slice[0] == '(' && slice.size() > 1) {
