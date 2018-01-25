@@ -26,6 +26,7 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/tablet.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

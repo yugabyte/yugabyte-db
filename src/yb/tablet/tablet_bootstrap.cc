@@ -258,6 +258,8 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
       log_anchor_registry_(data.log_anchor_registry),
       tablet_options_(data.tablet_options) {}
 
+TabletBootstrap::~TabletBootstrap() {}
+
 Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
                                   ConsensusBootstrapInfo* consensus_info) {

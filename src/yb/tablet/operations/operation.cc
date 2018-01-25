@@ -32,6 +32,7 @@
 
 #include "yb/tablet/operations/operation.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
 namespace yb {
@@ -45,6 +46,13 @@ Operation::Operation(std::unique_ptr<OperationState> state,
     : state_(std::move(state)),
       type_(type),
       operation_type_(operation_type) {
+}
+
+void Operation::Start() {
+  DoStart();
+  if (propagated_safe_time_) {
+    state()->tablet()->mvcc_manager()->SetPropagatedSafeTime(propagated_safe_time_);
+  }
 }
 
 OperationState::OperationState(Tablet* tablet)

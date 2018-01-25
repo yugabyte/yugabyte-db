@@ -13,14 +13,24 @@
 #ifndef YB_TABLET_TABLET_FWD_H
 #define YB_TABLET_TABLET_FWD_H
 
+#include "yb/util/strongly_typed_bool.h"
+
 namespace yb {
 namespace tablet {
 
-class Tablet;
+class AbstractTablet;
+class TabletMetadata;
 class TabletPeer;
+class TabletStatusPB;
+class TabletStatusListener;
+
+class Tablet;
+typedef std::shared_ptr<Tablet> TabletPtr;
 
 typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
 typedef YB_EDITION_NS_PREFIX TabletPeer TabletPeerClass;
+
+YB_STRONGLY_TYPED_BOOL(RequireLease);
 
 }  // namespace tablet
 }  // namespace yb

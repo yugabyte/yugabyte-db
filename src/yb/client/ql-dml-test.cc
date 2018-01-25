@@ -16,6 +16,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"

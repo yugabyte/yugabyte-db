@@ -49,6 +49,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/mutex.h"

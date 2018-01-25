@@ -117,7 +117,7 @@ Status AlterSchemaOperation::Prepare() {
   return s;
 }
 
-void AlterSchemaOperation::Start() {
+void AlterSchemaOperation::DoStart() {
   state()->TrySetHybridTimeFromClock();
   TRACE("START. HybridTime: $0",
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));

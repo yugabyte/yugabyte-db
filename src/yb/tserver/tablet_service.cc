@@ -58,6 +58,7 @@
 
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tablet/operations/alter_schema_operation.h"
@@ -801,7 +802,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   tablet::RequireLease require_lease(req->consistency_level() == YBConsistencyLevel::STRONG);
   bool transactional = tablet->SchemaRef().table_properties().is_transactional();
   if (!read_time) {
-    safe_ht_to_read = tablet->SafeHybridTimeToReadAt(require_lease);
+    safe_ht_to_read = tablet->SafeTime(require_lease);
     // If the read time is not specified, then it is non transactional read.
     // So we should restart it in server in case of failure.
     read_time.read = safe_ht_to_read;
@@ -815,8 +816,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       read_time.global_limit = read_time.read;
     }
   } else {
-    safe_ht_to_read = tablet->SafeHybridTimeToReadAt(
-        require_lease, read_time.read, context.GetClientDeadline());
+    safe_ht_to_read = tablet->SafeTime(require_lease, read_time.read, context.GetClientDeadline());
     if (!safe_ht_to_read.is_valid()) { // Timed out
       SetupErrorAndRespond(resp->mutable_error(), STATUS(TimedOut, ""),
                            TabletServerErrorPB::UNKNOWN_ERROR, &context);
@@ -839,8 +839,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   for (;;) {
     resp->Clear();
     context.ResetRpcSidecars();
-    auto result = DoRead(
-        tablet.get(), req, read_time, safe_ht_to_read, &host_port_pb, resp, &context);
+    auto result = DoRead(tablet.get(), req, read_time, safe_ht_to_read, require_lease,
+                         &host_port_pb, resp, &context);
     if (!result.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(), result.status(), TabletServerErrorPB::UNKNOWN_ERROR, &context);
@@ -875,10 +875,10 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
                                                  const ReadRequestPB* req,
                                                  ReadHybridTime read_time,
                                                  HybridTime safe_ht_to_read,
+                                                 tablet::RequireLease require_lease,
                                                  HostPortPB* host_port_pb,
                                                  ReadResponsePB* resp,
                                                  rpc::RpcContext* context) {
-  tablet::RequireLease require_lease(req->consistency_level() == YBConsistencyLevel::STRONG);
   tablet::ScopedReadOperation read_tx(tablet, require_lease, read_time);
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {

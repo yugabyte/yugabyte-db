@@ -53,6 +53,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master-test-util.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

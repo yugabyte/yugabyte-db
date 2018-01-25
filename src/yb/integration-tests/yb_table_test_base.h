@@ -34,7 +34,6 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/mini_master.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"

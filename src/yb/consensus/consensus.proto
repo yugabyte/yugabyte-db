@@ -370,6 +370,9 @@ message ConsensusRequestPB {
   // Leader lease expiration, physical part of hybrid time. A new leader cannot add new
   // entries to RAFT log until hybrid time passes this expiration.
   optional fixed64 ht_lease_expiration = 9;
+
+  // Safe time to read on leader when this request was generated.
+  optional fixed64 propagated_safe_time = 10;
 }
 
 message ConsensusResponsePB {

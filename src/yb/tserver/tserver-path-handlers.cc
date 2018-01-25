@@ -48,8 +48,10 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/server/webui_util.h"
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -215,8 +217,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     if (status.has_estimated_on_disk_size()) {
       n_bytes = HumanReadableNumBytes::ToString(status.estimated_on_disk_size());
     }
-    string partition = peer->tablet_metadata()
-                           ->partition_schema()
+    string partition = peer->tablet_metadata()->partition_schema()
                             .PartitionDebugString(peer->status_listener()->partition(),
                                                   peer->tablet_metadata()->schema());
 

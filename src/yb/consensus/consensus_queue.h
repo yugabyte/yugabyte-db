@@ -296,6 +296,10 @@ class PeerMessageQueue {
   void NotifyObserversOfFailedFollower(const std::string& uuid,
                                        const std::string& reason);
 
+  void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider) {
+    propagated_safe_time_provider_ = std::move(provider);
+  }
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
 
@@ -447,6 +451,8 @@ class PeerMessageQueue {
   Metrics metrics_;
 
   server::ClockPtr clock_;
+
+  std::function<HybridTime()> propagated_safe_time_provider_;
 };
 
 inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::Mode mode) {

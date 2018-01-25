@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/server/metadata.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"

@@ -60,7 +60,7 @@ class TabletBootstrap {
  public:
   explicit TabletBootstrap(const BootstrapTabletData& data);
 
-  virtual ~TabletBootstrap() {}
+  virtual ~TabletBootstrap();
 
   // Plays the log segments, rebuilding the portion of the Tablet's soft state that is present in
   // the log (additional soft state may be present in other replicas).  A successful call will yield

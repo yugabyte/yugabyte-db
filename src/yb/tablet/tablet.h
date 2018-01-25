@@ -397,7 +397,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetTotalSSTFileSizes() const;
 
-  void SetHybridTimeLeaseProvider(std::function<MicrosTime(MicrosTime, MonoTime)> provider) {
+  void SetHybridTimeLeaseProvider(std::function<HybridTime(MicrosTime, MonoTime)> provider) {
     ht_lease_provider_ = std::move(provider);
   }
 
@@ -578,18 +578,16 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // be flushed in RocksDB.
   std::shared_ptr<TabletFlushStats> flush_stats_;
 
-  std::function<MicrosTime(MicrosTime, MonoTime)> ht_lease_provider_;
+  std::function<HybridTime(MicrosTime, MonoTime)> ht_lease_provider_;
 
  private:
-  HybridTime DoGetSafeHybridTimeToReadAt(
+  HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
-
-typedef std::shared_ptr<Tablet> TabletPtr;
 
 // A helper class to manage read transactions. Grabs and registers a read point with the tablet
 // when created, and deregisters the read point when this object is destructed.

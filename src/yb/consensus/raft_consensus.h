@@ -218,6 +218,10 @@ class RaftConsensus : public Consensus,
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
+  void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider);
+
+  void SetPropagatedSafeTimeUpdater(std::function<void()> updater);
+
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
   // If the replication was successful, an status will be OK. Otherwise, it
@@ -362,7 +366,8 @@ class RaftConsensus : public Consensus,
 
   // Begin a replica operation. If the type of message in 'msg' is not a type
   // that uses operations, delegates to StartConsensusOnlyRoundUnlocked().
-  CHECKED_STATUS StartReplicaOperationUnlocked(const ReplicateMsgPtr& msg);
+  CHECKED_STATUS StartReplicaOperationUnlocked(const ReplicateMsgPtr& msg,
+                                               HybridTime propagated_safe_time);
 
   // Return header string for RequestVote log messages. The ReplicaState lock must be held.
   std::string GetRequestVoteLogPrefixUnlocked() const;
@@ -610,6 +615,7 @@ class RaftConsensus : public Consensus,
   ConditionVariable leader_lease_wait_cond_{&leader_lease_wait_mtx_};
 
   std::function<void()> lost_leadership_listener_;
+  std::function<void()> propagated_safe_time_updater_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

@@ -46,7 +46,7 @@ consensus::ReplicateMsgPtr TruncateOperation::NewReplicateMsg() {
   return result;
 }
 
-void TruncateOperation::Start() {
+void TruncateOperation::DoStart() {
   state()->TrySetHybridTimeFromClock();
 
   TRACE("START TRUNCATE: hybrid time: $0",

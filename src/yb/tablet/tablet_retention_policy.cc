@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/common/schema.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 DEFINE_int32(timestamp_history_retention_interval_sec, 10,
              "The time interval in seconds to retain DocDB history for. This should be "

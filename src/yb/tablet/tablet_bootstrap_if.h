@@ -45,6 +45,7 @@
 #include "yb/consensus/log.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/server/clock.h"
 #include "yb/util/status.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"

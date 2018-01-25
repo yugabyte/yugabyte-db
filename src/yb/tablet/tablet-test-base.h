@@ -56,7 +56,6 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/tablet/local_tablet_writer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/gutil/strings/numbers.h"
 

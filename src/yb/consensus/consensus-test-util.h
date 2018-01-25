@@ -33,7 +33,6 @@
 #ifndef YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
 #define YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
 
-#include <gmock/gmock.h>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -41,7 +40,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <boost/bind.hpp>
+
+#include <gmock/gmock.h>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
@@ -643,10 +643,13 @@ class TestDriver {
 // testing RaftConsensusState. Does not actually support running transactions.
 class MockOperationFactory : public ReplicaOperationFactory {
  public:
-  virtual CHECKED_STATUS StartReplicaOperation(const scoped_refptr<ConsensusRound>& round)
-      override {
+  CHECKED_STATUS StartReplicaOperation(
+      const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     return StartReplicaOperationMock(round.get());
   }
+
+  void SetPropagatedSafeTime(HybridTime ht) override {}
+
   MOCK_METHOD1(StartReplicaOperationMock, Status(ConsensusRound* round));
 };
 
@@ -661,12 +664,15 @@ class TestOperationFactory : public ReplicaOperationFactory {
     consensus_ = consensus;
   }
 
-  CHECKED_STATUS StartReplicaOperation(const scoped_refptr<ConsensusRound>& round) override {
+  CHECKED_STATUS StartReplicaOperation(
+      const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     auto txn = new TestDriver(pool_.get(), round);
     txn->round_->SetConsensusReplicatedCallback(Bind(&TestDriver::ReplicationFinished,
                                                      Unretained(txn)));
     return Status::OK();
   }
+
+  void SetPropagatedSafeTime(HybridTime ht) override {}
 
   void ReplicateAsync(ConsensusRound* round) {
     CHECK_OK(consensus_->Replicate(round));

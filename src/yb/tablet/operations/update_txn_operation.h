@@ -72,7 +72,7 @@ class UpdateTxnOperation : public Operation {
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
   CHECKED_STATUS Prepare() override;
-  void Start() override;
+  void DoStart() override;
   CHECKED_STATUS Apply() override;
   std::string ToString() const override;
   void Finish(OperationResult result) override;

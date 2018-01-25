@@ -57,12 +57,19 @@ class MvccManager {
   // Sets time of last replicated operation, used after bootstrap.
   void SetLastReplicated(HybridTime ht);
 
+  // Sets safe time to read propagated by leader. Should be called on followers.
+  void SetPropagatedSafeTime(HybridTime ht);
+
+  // Updates propagated safe time to read, so that it becomes equal to safe time to read.
+  // Should be called on leader to maintain it's own safe time for follower.
+  void UpdatePropagatedSafeTime(HybridTime max_allowed);
+
   // Adds time of new tracked operation.
   // `ht` is in-out parameter.
   // In case of replica `ht` is already assigned, in case of leader we should assign ht by
   // by ourselves.
   // We pass ht as pointer here, because clock should be accessed with locked mutex, otherwise
-  // SafeHybridTimeToReadAt could return time greater than added.
+  // SafeTime could return time greater than added.
   void AddPending(HybridTime* ht);
 
   // Notifies that operation with appropriate time was replicated.
@@ -85,21 +92,28 @@ class MvccManager {
   //
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
   // because of timeout.
-  HybridTime SafeHybridTimeToReadAt(
+  HybridTime SafeTime(
       HybridTime min_allowed, MonoTime deadline, HybridTime max_allowed) const;
 
-  HybridTime SafeHybridTimeToReadAt(HybridTime limit) const {
-    return SafeHybridTimeToReadAt(HybridTime::kMin, MonoTime::kMax, limit);
+  HybridTime SafeTime(HybridTime limit) const {
+    return SafeTime(HybridTime::kMin, MonoTime::kMax, limit);
   }
 
-  HybridTime SafeHybridTimeToReadAt() const {
-    return SafeHybridTimeToReadAt(HybridTime::kMax);
+  HybridTime SafeTime() const {
+    return SafeTime(HybridTime::kMax);
   }
+
+  HybridTime SafeTimeForFollower(HybridTime min_allowed, MonoTime deadline) const;
 
   // Returns time of last replicated operation.
   HybridTime LastReplicatedHybridTime() const;
 
  private:
+  HybridTime DoGetSafeTime(HybridTime min_allowed,
+                           MonoTime deadline,
+                           HybridTime max_allowed,
+                           std::unique_lock<std::mutex>* lock) const;
+
   const std::string& LogPrefix() const { return prefix_; }
   void PopFront(std::lock_guard<std::mutex>* lock);
 
@@ -113,7 +127,9 @@ class MvccManager {
   // middle of the queue.
   std::priority_queue<HybridTime, std::vector<HybridTime>, std::greater<>> aborted_;
   HybridTime last_replicated_ = HybridTime::kMin;
+  HybridTime propagated_safe_time_ = HybridTime::kMin;
   mutable HybridTime max_safe_time_returned_ = HybridTime::kMin;
+  mutable HybridTime max_safe_time_returned_for_follower_ = HybridTime::kMin;
 };
 
 }  // namespace tablet

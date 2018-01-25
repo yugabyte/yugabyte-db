@@ -89,6 +89,10 @@ class Operation {
   virtual OperationState* state() { return state_.get(); }
   virtual const OperationState* state() const { return state_.get(); }
 
+  void SetPropagatedSafeTime(HybridTime ht) {
+    propagated_safe_time_ = ht;
+  }
+
   // Returns whether this transaction is being executed on the leader or on a
   // replica.
   consensus::DriverType type() const { return type_; }
@@ -110,7 +114,7 @@ class Operation {
   // hybrid_time is only available on the LEADER's commit message.
   // Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
-  virtual void Start() = 0;
+  void Start();
 
   // Executes the Apply() phase of the transaction, the actual actions of
   // this phase depend on the transaction type, but usually this is the
@@ -138,11 +142,14 @@ class Operation {
   virtual ~Operation() {}
 
  private:
+  virtual void DoStart() = 0;
+
   // A private version of this transaction's transaction state so that
   // we can use base OperationState methods on destructors.
   std::unique_ptr<OperationState> state_;
   const consensus::DriverType type_;
   const OperationType operation_type_;
+  HybridTime propagated_safe_time_;
 };
 
 class OperationState {

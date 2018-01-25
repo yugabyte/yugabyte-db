@@ -105,7 +105,7 @@ class CompositePushdownTest : public YBTabletTest {
   };
 
   void ScanTablet(QLReadRequestPB* req, vector<string> *results) {
-    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeHybridTimeToReadAt());
+    ReadHybridTime read_time = ReadHybridTime::SingleTime(tablet()->SafeTime());
     QLReadRequestResult result;
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, req);

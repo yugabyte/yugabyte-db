@@ -37,6 +37,7 @@
 #include "yb/client/client.h"
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/strings/strcat.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/util/debug-util.h"

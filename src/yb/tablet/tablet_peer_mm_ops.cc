@@ -40,6 +40,7 @@
 #include <gflags/gflags.h>
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"

@@ -32,6 +32,10 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 
+#include "yb/tablet/tablet.h"
+
+#include "yb/server/test_clock.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -45,6 +49,7 @@ using namespace std::literals; // NOLINT
 DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int64(db_write_buffer_size);
+DECLARE_bool(use_test_clock);
 
 namespace yb {
 namespace client {
@@ -54,7 +59,7 @@ using ql::RowsResult;
 namespace {
 
 const std::string kKey = "key"s;
-const std::string kValue = "value"s;
+const std::string kValue = "int_val"s;
 const YBTableName kTable1Name("my_keyspace", "ql_client_test_table1");
 const YBTableName kTable2Name("my_keyspace", "ql_client_test_table2");
 
@@ -69,6 +74,11 @@ const int kBigSeqNo = 100500;
 
 class QLTabletTest : public QLDmlTestBase {
  protected:
+  void SetUp() override {
+    FLAGS_use_test_clock = true;
+    QLDmlTestBase::SetUp();
+  }
+
   void CreateTables(uint64_t initial_seqno1, uint64_t initial_seqno2) {
     google::FlagSaver saver;
     FLAGS_initial_seqno = initial_seqno1;
@@ -122,9 +132,15 @@ class QLTabletTest : public QLDmlTestBase {
     ASSERT_OK(table->Create(table_name, num_tablets, client_.get(), &builder));
   }
 
+  YBSessionPtr CreateSession() {
+    auto session = client_->NewSession();
+    session->SetTimeout(15s);
+    return session;
+  }
+
   void FillTable(int begin, int end, TableHandle* table) {
     {
-      auto session = client_->NewSession();
+      auto session = CreateSession();
       for (int i = begin; i != end; ++i) {
         SetValue(session, i, ValueForKey(i), table);
       }
@@ -134,7 +150,7 @@ class QLTabletTest : public QLDmlTestBase {
   }
 
   void VerifyTable(int begin, int end, TableHandle* table) {
-    auto session = client_->NewSession();
+    auto session = CreateSession();
     for (int i = begin; i != end; ++i) {
       auto value = GetValue(session, i, table);
       ASSERT_TRUE(value.is_initialized()) << "i: " << i << ", table: " << table->name().ToString();
@@ -447,8 +463,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   StepDownAllTablets(cluster_.get());
 
   LOG(INFO) << "Write value";
-  auto session = client_->NewSession();
-  session->SetTimeout(15s);
+  auto session = CreateSession();
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, 1);
@@ -533,7 +548,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   std::atomic<int32_t> idx(0);
   for (size_t t = 0; t != kTotalThreads; ++t) {
     threads.emplace_back([this, &idx, &table] {
-      shared_ptr<YBSession> session(NewSession());
+      auto session = CreateSession();
       for(;;) {
         int32_t i = idx++;
         if (i >= kTotalRows) {
@@ -591,6 +606,54 @@ TEST_F(QLTabletTest, BoundaryValues) {
     ASSERT_GE(max_index, op_id.index - 5);
     ASSERT_LE(min_index, 5);
   }
+}
+
+// There was bug with MvccManager when clocks were skewed.
+// Client tries to read from follower and max safe time is requested w/o any limits,
+// so new operations could be added with HT lower than returned.
+TEST_F(QLTabletTest, SkewedClocks) {
+  google::FlagSaver saver;
+
+  auto delta_changers = SkewClocks(cluster_.get(), 50ms);
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000);
+  workload.set_num_tablets(12);
+  workload.set_num_write_threads(2);
+  workload.set_write_batch_size(1);
+  workload.set_payload_bytes(128);
+  workload.Setup();
+  workload.Start();
+
+  while (workload.rows_inserted() < 100) {
+    std::this_thread::sleep_for(10ms);
+  }
+
+  TableHandle table;
+  ASSERT_OK(table.Open(kTable1Name, client_.get()));
+  auto session = CreateSession();
+
+  for (int i = 0; i != 1000; ++i) {
+    auto op = table.NewReadOp();
+    auto req = op->mutable_request();
+    QLAddInt32HashValue(req, i);
+    auto value_column_id = table.ColumnId(kValue);
+    req->add_selected_exprs()->set_column_id(value_column_id);
+    req->mutable_column_refs()->add_ids(value_column_id);
+
+    QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
+    rscol_desc->set_name(kValue);
+    table.ColumnType(kValue)->ToQLTypePB(rscol_desc->mutable_ql_type());
+    op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+    ASSERT_OK(session->Apply(op));
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
+  }
+
+  workload.StopAndJoin();
+
+  cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
+  cluster_.reset();
 }
 
 } // namespace client

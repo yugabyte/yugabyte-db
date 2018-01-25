@@ -59,8 +59,10 @@
 
 #include "yb/rocksdb/db/memtable.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
@@ -202,8 +204,25 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         std::bind(&Tablet::LostLeadership, tablet.get()),
         raft_pool);
 
-    tablet_->SetHybridTimeLeaseProvider([this](MicrosTime min_allowed, MonoTime deadline) {
-        return consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
+    auto ht_lease_provider = [this](MicrosTime min_allowed, MonoTime deadline) {
+      auto lease = consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
+      if (!lease) {
+        return HybridTime::kInvalid;
+      }
+      return HybridTime(lease, 0);
+    };
+    tablet_->SetHybridTimeLeaseProvider(ht_lease_provider);
+
+    auto* mvcc_manager = tablet_->mvcc_manager();
+    consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
+      return mvcc_manager->SafeTime(ht_lease_provider(0, MonoTime::kMax));
+    });
+
+    consensus_->SetPropagatedSafeTimeUpdater([mvcc_manager, ht_lease_provider] {
+      auto ht_lease = ht_lease_provider(0, MonoTime::kMax);
+      if (ht_lease) {
+        mvcc_manager->UpdatePropagatedSafeTime(ht_lease);
+      }
     });
 
     prepare_thread_ = std::make_unique<PrepareThread>(consensus_.get());
@@ -396,7 +415,7 @@ Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
     auto restart_time = operation->state()->response()->mutable_restart_read_time();
     restart_time->set_read_ht(restart_read_ht.ToUint64());
     restart_time->set_local_limit_ht(
-        tablet_->SafeHybridTimeToReadAt(RequireLease::kTrue).ToUint64());
+        tablet_->SafeTime(RequireLease::kTrue).ToUint64());
     // Global limit is ignored by caller, so we don't set it.
     operation->state()->completion_callback()->OperationCompleted();
     return Status::OK();
@@ -632,7 +651,8 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
 }
 
-Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& round) {
+Status TabletPeer::StartReplicaOperation(
+    const scoped_refptr<ConsensusRound>& round, HybridTime propagated_safe_time) {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (state_ != RUNNING && state_ != BOOTSTRAPPING) {
@@ -643,6 +663,9 @@ Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& ro
   consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   auto operation = CreateOperation(replicate_msg);
+  if (propagated_safe_time) {
+    operation->SetPropagatedSafeTime(propagated_safe_time);
+  }
 
   // TODO(todd) Look at wiring the stuff below on the driver
   OperationState* state = operation->state();
@@ -665,6 +688,10 @@ Status TabletPeer::StartReplicaOperation(const scoped_refptr<ConsensusRound>& ro
 
   driver->ExecuteAsync();
   return Status::OK();
+}
+
+void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
+  tablet_->mvcc_manager()->SetPropagatedSafeTime(ht);
 }
 
 const std::string& TabletPeer::permanent_uuid() const {
@@ -771,6 +798,11 @@ consensus::Consensus::LeaderStatus TabletPeer::LeaderStatus() const {
 HybridTime TabletPeer::HtLeaseExpiration() const {
   HybridTime result(consensus_->MajorityReplicatedHtLeaseExpiration(0, MonoTime::kMax), 0);
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
+}
+
+TableType TabletPeer::table_type() {
+  // TODO: what if tablet is not set?
+  return tablet()->table_type();
 }
 
 }  // namespace tablet

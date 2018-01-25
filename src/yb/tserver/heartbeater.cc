@@ -47,6 +47,7 @@
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/server/webserver.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/ts_tablet_manager.h"

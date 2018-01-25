@@ -87,7 +87,7 @@ Status WriteOperation::Prepare() {
   return Status::OK();
 }
 
-void WriteOperation::Start() {
+void WriteOperation::DoStart() {
   TRACE("Start()");
   state()->tablet()->StartOperation(state());
 }

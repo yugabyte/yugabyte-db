@@ -30,6 +30,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/test_clock.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -113,16 +114,6 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
   });
   txn->reset();
   latch.Wait();
-}
-
-MUST_USE_RESULT std::vector<server::TestClockDeltaChanger> SkewClocks(
-    MiniCluster* cluster, std::chrono::milliseconds clock_skew) {
-  std::vector<server::TestClockDeltaChanger> delta_changers;
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    auto* tserver = cluster->mini_tablet_server(i)->server();
-    delta_changers.emplace_back(i * clock_skew, down_cast<server::TestClock*>(tserver->clock()));
-  }
-  return delta_changers;
 }
 
 } // namespace
@@ -402,6 +393,9 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
     // physical component. We are waiting double skew, until time on servers became skewed again.
     std::this_thread::sleep_for(kClockSkew * 2);
   }
+
+  cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
+  cluster_.reset();
 }
 
 TEST_F(QLTransactionTest, WriteRestart) {
@@ -852,7 +846,6 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
 
-
   for (int32_t key = 0; key != 10; ++key) {
     std::atomic<bool> stop(false);
     std::atomic<int32_t> value(0);
@@ -928,6 +921,9 @@ TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
       EXPECT_GE(read.load(), kMinReads);
     }
   }
+
+  cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
+  cluster_.reset();
 }
 
 struct TransactionState {

@@ -37,13 +37,16 @@
 #include <utility>
 #include <vector>
 
+#include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/fs/fs_manager.h"
 #include "yb/server/logical_clock.h"
 #include "yb/server/metadata.h"
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"

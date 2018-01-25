@@ -1478,10 +1478,14 @@ void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
 TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   FLAGS_num_replicas = 3;
   FLAGS_num_tablet_servers = 3;
-  vector<string> ts_flags, master_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--max_wait_for_safe_time_ms=100");
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  auto ts_flags = {
+       "--enable_leader_failure_detection=false"s,
+       "--max_wait_for_safe_time_ms=100"s,
+       "--propagate_safe_time=false"s
+  };
+  auto master_flags = {
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s
+  };
   ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   // Kill all the servers but one.

@@ -93,7 +93,8 @@ void MvccManager::AddPending(HybridTime* ht) {
   } else {
     VLOG_WITH_PREFIX(1) << "AddPending(" << *ht << ")";
   }
-  CHECK_GT(*ht, max_safe_time_returned_);
+  CHECK_GT(*ht, max_safe_time_returned_) << LogPrefix();
+  CHECK_GT(*ht, max_safe_time_returned_for_follower_) << LogPrefix();
   if (!queue_.empty()) {
     CHECK_GT(*ht, queue_.back());
   }
@@ -111,18 +112,70 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
   cond_.notify_all();
 }
 
-HybridTime MvccManager::SafeHybridTimeToReadAt(HybridTime min_allowed,
-                                            MonoTime deadline,
-                                            HybridTime max_allowed) const {
-  CHECK_LE(min_allowed, max_allowed);
+void MvccManager::SetPropagatedSafeTime(HybridTime ht) {
+  VLOG_WITH_PREFIX(1) << "SetPropagatedSafeTime(" << ht << ")";
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    propagated_safe_time_ = ht;
+  }
+  cond_.notify_all();
+}
+
+void MvccManager::UpdatePropagatedSafeTime(HybridTime max_allowed) {
+  VLOG_WITH_PREFIX(1) << "UpdatePropagatedSafeTime(" << max_allowed << ")";
+
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    propagated_safe_time_ = DoGetSafeTime(HybridTime::kMin, MonoTime::kMax, max_allowed, &lock);
+  }
+  cond_.notify_all();
+}
+
+HybridTime MvccManager::SafeTimeForFollower(
+    HybridTime min_allowed, MonoTime deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);
+  HybridTime result;
+  auto predicate = [this, &result, min_allowed] {
+    // last_replicated_ is updated earlier than propagated_safe_time_, so because of
+    // concurrency it could be greater than propagated_safe_time_.
+    result = std::max(propagated_safe_time_, last_replicated_);
+    return result >= min_allowed;
+  };
+  if (deadline == MonoTime::kMax) {
+    cond_.wait(lock, predicate);
+  } else if (!cond_.wait_until(lock, deadline.ToSteadyTimePoint(), predicate)) {
+    return HybridTime::kInvalid;
+  }
+  VLOG_WITH_PREFIX(1) << "SafeTimeForFollower(" << min_allowed
+                      << "), result = " << result;
+  CHECK_GE(result, max_safe_time_returned_for_follower_) << LogPrefix();
+  max_safe_time_returned_for_follower_ = result;
+  return result;
+}
+
+HybridTime MvccManager::SafeTime(HybridTime min_allowed,
+                                 MonoTime deadline,
+                                 HybridTime max_allowed) const {
+  std::unique_lock<std::mutex> lock(mutex_);
+  return DoGetSafeTime(min_allowed, deadline, max_allowed, &lock);
+}
+
+HybridTime MvccManager::DoGetSafeTime(HybridTime min_allowed,
+                                      MonoTime deadline,
+                                      HybridTime max_allowed,
+                                      std::unique_lock<std::mutex>* lock) const {
+  DCHECK_ONLY_NOTNULL(lock);
+  CHECK_LE(min_allowed, max_allowed);
   HybridTime result;
   auto predicate = [this, &result, min_allowed, max_allowed] {
     if (queue_.empty()) {
       result = clock_->Now();
       CHECK_GE(result, min_allowed);
+      VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Now: " << result;
     } else {
       result = queue_.front().Decremented();
+      VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Queue front: " << result;
     }
 
     result = std::min(result, max_allowed);
@@ -134,13 +187,14 @@ HybridTime MvccManager::SafeHybridTimeToReadAt(HybridTime min_allowed,
   // In the case of an empty queue, the safe hybrid time to read at is only limited by hybrid time
   // max_allowed, which is by definition higher than min_allowed, so we would not get blocked.
   if (deadline == MonoTime::kMax) {
-    cond_.wait(lock, predicate);
-  } else if (!cond_.wait_until(lock, deadline.ToSteadyTimePoint(), predicate)) {
+    cond_.wait(*lock, predicate);
+  } else if (!cond_.wait_until(*lock, deadline.ToSteadyTimePoint(), predicate)) {
     return HybridTime::kInvalid;
   }
-  CHECK_GE(result, max_safe_time_returned_);
+  VLOG_WITH_PREFIX(1) << "DoGetSafeTime(" << min_allowed << ", "
+                      << max_allowed << "), result = " << result;
+  CHECK_GE(result, max_safe_time_returned_) << LogPrefix();
   max_safe_time_returned_ = result;
-  VLOG_WITH_PREFIX(1) << "GetMaxSafeTimeToReadAt(), result = " << result;
   return result;
 }
 

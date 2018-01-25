@@ -18,6 +18,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/ql_storage_interface.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 namespace yb {
 namespace tablet {
 
@@ -26,8 +28,6 @@ struct QLReadRequestResult {
   faststring rows_data;
   HybridTime restart_read_ht;
 };
-
-YB_STRONGLY_TYPED_BOOL(RequireLease);
 
 class AbstractTablet {
  public:
@@ -66,10 +66,10 @@ class AbstractTablet {
   //
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
   // because of timeout.
-  HybridTime SafeHybridTimeToReadAt(RequireLease require_lease = RequireLease::kTrue,
-                                 HybridTime min_allowed = HybridTime::kMin,
-                                 MonoTime deadline = MonoTime::kMax) const {
-    return DoGetSafeHybridTimeToReadAt(require_lease, min_allowed, deadline);
+  HybridTime SafeTime(RequireLease require_lease = RequireLease::kTrue,
+                      HybridTime min_allowed = HybridTime::kMin,
+                      MonoTime deadline = MonoTime::kMax) const {
+    return DoGetSafeTime(require_lease, min_allowed, deadline);
   }
 
  protected:
@@ -80,7 +80,7 @@ class AbstractTablet {
       QLReadRequestResult* result);
 
  private:
-  virtual HybridTime DoGetSafeHybridTimeToReadAt(
+  virtual HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const = 0;
 };
 

@@ -15,6 +15,7 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
 
@@ -44,7 +45,7 @@ Status UpdateTxnOperation::Prepare() {
   return Status::OK();
 }
 
-void UpdateTxnOperation::Start() {
+void UpdateTxnOperation::DoStart() {
   state()->TrySetHybridTimeFromClock();
 }
 

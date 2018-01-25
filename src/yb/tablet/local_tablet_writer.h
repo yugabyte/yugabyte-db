@@ -36,7 +36,6 @@
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"

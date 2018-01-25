@@ -72,17 +72,17 @@ class TruncateOperation : public Operation {
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
 
-  virtual CHECKED_STATUS Prepare() override { return Status::OK(); }
-
-  // Starts the TruncateOperation by assigning it a timestamp.
-  virtual void Start() override;
+  CHECKED_STATUS Prepare() override { return Status::OK(); }
 
   // Executes an Apply for the truncate transaction.
-  virtual CHECKED_STATUS Apply() override;
+  CHECKED_STATUS Apply() override;
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
  private:
+  // Starts the TruncateOperation by assigning it a timestamp.
+  void DoStart() override;
+
   DISALLOW_COPY_AND_ASSIGN(TruncateOperation);
 };
 

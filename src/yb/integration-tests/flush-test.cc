@@ -17,6 +17,7 @@
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/rocksdb/memory_monitor.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 

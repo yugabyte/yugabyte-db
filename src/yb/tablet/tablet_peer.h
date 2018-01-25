@@ -47,8 +47,8 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operation_order_verifier.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/prepare_thread.h"
@@ -87,6 +87,7 @@ class TabletStatusPB;
 class TabletStatusListener;
 class OperationDriver;
 class UpdateTxnOperationState;
+class WriteOperationState;
 
 // A peer in a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
@@ -155,7 +156,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Used by consensus to create and start a new ReplicaOperation.
   CHECKED_STATUS StartReplicaOperation(
-      const scoped_refptr<consensus::ConsensusRound>& round) override;
+      const scoped_refptr<consensus::ConsensusRound>& round,
+      HybridTime propagated_safe_time) override;
+
+  void SetPropagatedSafeTime(HybridTime ht) override;
 
   consensus::Consensus* consensus() const;
 
@@ -292,10 +296,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return meta_;
   }
 
-  TableType table_type() {
-    // TODO: what if tablet is not set?
-    return tablet()->table_type();
-  }
+  TableType table_type();
 
   // Return the total on-disk size of this tablet replica, in bytes.
   // Caller should hold the lock_.

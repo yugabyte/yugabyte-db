@@ -149,20 +149,20 @@ class AlterSchemaOperation : public Operation {
   //
   // TODO: need a schema lock?
 
-  virtual CHECKED_STATUS Prepare() override;
-
-  // Starts the AlterSchemaOperation by assigning it a timestamp.
-  virtual void Start() override;
+  CHECKED_STATUS Prepare() override;
 
   // Executes an Apply for the alter schema transaction
-  virtual CHECKED_STATUS Apply() override;
+  CHECKED_STATUS Apply() override;
 
   // Actually commits the transaction.
-  virtual void Finish(OperationResult result) override;
+  void Finish(OperationResult result) override;
 
-  virtual std::string ToString() const override;
+  std::string ToString() const override;
 
  private:
+  // Starts the AlterSchemaOperation by assigning it a timestamp.
+  void DoStart() override;
+
   DISALLOW_COPY_AND_ASSIGN(AlterSchemaOperation);
 };
 

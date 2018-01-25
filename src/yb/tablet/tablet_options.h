@@ -14,7 +14,9 @@
 #define YB_TABLET_TABLET_OPTIONS_H
 
 namespace rocksdb {
+class Cache;
 class EventListener;
+class MemoryMonitor;
 }
 
 namespace yb {

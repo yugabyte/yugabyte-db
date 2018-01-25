@@ -41,7 +41,6 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
 
-#include "yb/tablet/mvcc.h"
 #include "yb/util/status.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:

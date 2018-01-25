@@ -33,6 +33,7 @@
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/tablet/tablet_bootstrap.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/debug/trace_event.h"
 
@@ -44,8 +45,7 @@ using std::shared_ptr;
 using consensus::ConsensusBootstrapInfo;
 
 TabletStatusListener::TabletStatusListener(const scoped_refptr<TabletMetadata>& meta)
-    : meta_(meta),
-      last_status_("") {
+    : meta_(meta) {
 }
 
 const string TabletStatusListener::tablet_id() const {

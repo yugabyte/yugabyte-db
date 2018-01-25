@@ -41,6 +41,7 @@
 #include "yb/fs/block_manager.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/util/crc.h"

@@ -88,11 +88,13 @@ class TestClockDeltaChanger {
  public:
   template <class Delta>
   TestClockDeltaChanger(Delta new_delta, TestClock* test_clock)
-      : test_clock_(test_clock), old_delta_(test_clock->SetDelta(new_delta)) {
+      : test_clock_(test_clock), clock_holder_(test_clock),
+        old_delta_(test_clock->SetDelta(new_delta)) {
   }
 
   TestClockDeltaChanger(TestClockDeltaChanger&& rhs)
-      : test_clock_(rhs.test_clock_), old_delta_(rhs.old_delta_) {
+      : test_clock_(rhs.test_clock_), clock_holder_(std::move(rhs.clock_holder_)),
+        old_delta_(rhs.old_delta_) {
     rhs.test_clock_ = nullptr;
   }
 
@@ -102,11 +104,13 @@ class TestClockDeltaChanger {
   ~TestClockDeltaChanger() {
     if (test_clock_) {
       test_clock_->SetDelta(old_delta_);
+      clock_holder_.reset();
     }
   }
 
  private:
   TestClock* test_clock_;
+  ClockPtr clock_holder_;
   HybridTime old_delta_;
 };
 

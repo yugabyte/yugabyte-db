@@ -55,7 +55,6 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
 #include "yb/server/monitored_task.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/locks.h"

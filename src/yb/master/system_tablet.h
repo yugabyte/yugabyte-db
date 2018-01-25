@@ -57,7 +57,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TableName& GetTableName() const;
  private:
-  HybridTime DoGetSafeHybridTimeToReadAt(
+  HybridTime DoGetSafeTime(
       tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
 
   Schema schema_;

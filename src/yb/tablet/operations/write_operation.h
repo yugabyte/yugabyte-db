@@ -49,7 +49,6 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/tablet/lock_manager.h"
-#include "yb/tablet/mvcc.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/operations/operation.h"
 
@@ -194,9 +193,6 @@ class WriteOperation : public Operation {
   // affected rows.
   CHECKED_STATUS Prepare() override;
 
-  // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
-  void Start() override;
-
   // Executes an Apply for a write transaction.
   //
   // Actually applies inserts/mutates into the tablet. After these start being
@@ -227,6 +223,9 @@ class WriteOperation : public Operation {
   std::string ToString() const override;
 
  private:
+  // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
+  void DoStart() override;
+
   // this transaction's start time
   MonoTime start_time_;
 

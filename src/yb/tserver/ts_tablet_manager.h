@@ -50,6 +50,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
@@ -76,13 +77,6 @@ namespace master {
 class ReportedTabletPB;
 class TabletReportPB;
 } // namespace master
-
-namespace tablet {
-class TabletMetadata;
-class TabletPeer;
-class TabletStatusPB;
-class TabletStatusListener;
-}
 
 namespace tserver {
 class TabletServer;

@@ -1178,9 +1178,12 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
   return Status::OK();
 }
 
-HybridTime Tablet::DoGetSafeHybridTimeToReadAt(
+HybridTime Tablet::DoGetSafeTime(
     tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
   HybridTime max_allowed;
+  if (!require_lease) {
+    return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  }
   if (require_lease && ht_lease_provider_) {
     // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
     // max_allowed >= min_allowed.
@@ -1188,11 +1191,10 @@ HybridTime Tablet::DoGetSafeHybridTimeToReadAt(
     if (min_allowed.GetLogicalValue()) {
       ++min_allowed_lease;
     }
-    auto lease = ht_lease_provider_(min_allowed_lease, deadline);
-    if (!lease) {
+    max_allowed = ht_lease_provider_(min_allowed_lease, deadline);
+    if (!max_allowed) {
       return HybridTime::kInvalid;
     }
-    max_allowed = HybridTime(lease, 0);
   } else {
     max_allowed = HybridTime::kMax;
   }
@@ -1201,7 +1203,7 @@ HybridTime Tablet::DoGetSafeHybridTimeToReadAt(
                 << max_allowed;
     return HybridTime::kInvalid;
   }
-  return mvcc_.SafeHybridTimeToReadAt(min_allowed, deadline, max_allowed);
+  return mvcc_.SafeTime(min_allowed, deadline, max_allowed);
 }
 
 HybridTime Tablet::OldestReadPoint() const {
@@ -1303,7 +1305,7 @@ ScopedReadOperation::ScopedReadOperation(
     AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time)
     : tablet_(tablet), read_time_(read_time) {
   if (!read_time_) {
-    read_time_ = ReadHybridTime::SingleTime(tablet->SafeHybridTimeToReadAt(require_lease));
+    read_time_ = ReadHybridTime::SingleTime(tablet->SafeTime(require_lease));
   }
 
   tablet_->RegisterReaderTimestamp(read_time_.read);

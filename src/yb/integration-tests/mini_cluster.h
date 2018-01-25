@@ -56,6 +56,10 @@ class TSDescriptor;
 class TabletLocationsPB;
 }
 
+namespace server {
+class TestClockDeltaChanger;
+}
+
 namespace tserver {
 class MiniTabletServer;
 }
@@ -211,6 +215,9 @@ class MiniCluster : public MiniClusterBase {
 
   PortPicker port_picker_;
 };
+
+MUST_USE_RESULT std::vector<server::TestClockDeltaChanger> SkewClocks(
+    MiniCluster* cluster, std::chrono::milliseconds clock_skew);
 
 }  // namespace yb
 

@@ -46,7 +46,6 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/tablet/mvcc.h"
 #include "yb/util/random.h"
 
 DEFINE_int32(num_batches, 10000,

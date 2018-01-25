@@ -363,7 +363,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
                                    << state_->GetActiveConfigUnlocked().ShortDebugString();
     for (const auto& replicate : info.orphaned_replicates) {
       ReplicateMsgPtr replicate_ptr = std::make_shared<ReplicateMsg>(*replicate);
-      RETURN_NOT_OK(StartReplicaOperationUnlocked(replicate_ptr));
+      RETURN_NOT_OK(StartReplicaOperationUnlocked(replicate_ptr, HybridTime::kInvalid));
     }
 
     RETURN_NOT_OK(state_->InitCommittedIndexUnlocked(info.last_committed_id));
@@ -1006,6 +1006,9 @@ void RaftConsensus::UpdateMajorityReplicated(
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_index, &committed_index_changed);
+  if (propagated_safe_time_updater_) {
+    propagated_safe_time_updater_();
+  }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("Unable to mark committed up to $0: $1",
                             majority_replicated_data.op_id.ShortDebugString(),
@@ -1135,7 +1138,8 @@ static bool IsChangeConfigOperation(OperationType op_type) {
   return op_type == CHANGE_CONFIG_OP;
 }
 
-Status RaftConsensus::StartReplicaOperationUnlocked(const ReplicateMsgPtr& msg) {
+Status RaftConsensus::StartReplicaOperationUnlocked(
+    const ReplicateMsgPtr& msg, HybridTime propagated_safe_time) {
   if (IsConsensusOnlyOperation(msg->op_type())) {
     return StartConsensusOnlyRoundUnlocked(msg);
   }
@@ -1149,7 +1153,7 @@ Status RaftConsensus::StartReplicaOperationUnlocked(const ReplicateMsgPtr& msg) 
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
   RETURN_NOT_OK(state_->GetReplicaOperationFactoryUnlocked()->
-      StartReplicaOperation(round));
+      StartReplicaOperation(round, propagated_safe_time));
   return state_->AddPendingOperation(round_ptr);
 }
 
@@ -1608,13 +1612,31 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
     }
   }
 
-  while (iter != deduped_req.messages.end()) {
-    prepare_status = StartReplicaOperationUnlocked(*iter);
-    if (PREDICT_FALSE(!prepare_status.ok())) {
-      LOG(WARNING) << "StartReplicaOperationUnlocked failed: " << prepare_status.ToString();
-      break;
+  HybridTime propagated_safe_time;
+  if (request.has_propagated_safe_time()) {
+    propagated_safe_time = HybridTime(request.propagated_safe_time());
+    if (deduped_req.messages.empty()) {
+      state_->GetReplicaOperationFactoryUnlocked()->SetPropagatedSafeTime(
+          propagated_safe_time);
     }
-    ++iter;
+  }
+
+  if (iter != deduped_req.messages.end()) {
+    for (;;) {
+      const ReplicateMsgPtr& msg = *iter;
+      ++iter;
+      bool last = iter == deduped_req.messages.end();
+      prepare_status = StartReplicaOperationUnlocked(
+          msg, last ? propagated_safe_time : HybridTime::kInvalid);
+      if (PREDICT_FALSE(!prepare_status.ok())) {
+        --iter;
+        LOG(WARNING) << "StartReplicaOperationUnlocked failed: " << prepare_status.ToString();
+        break;
+      }
+      if (last) {
+        break;
+      }
+    }
   }
 
   // If we stopped before reaching the end we failed to prepare some message(s) and need
@@ -2834,6 +2856,14 @@ uint64_t RaftConsensus::OnDiskSize() const {
 
 yb::OpId RaftConsensus::WaitForSafeOpIdToApply(const yb::OpId& op_id) {
   return log_->WaitForSafeOpIdToApply(op_id);
+}
+
+void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider) {
+  queue_->SetPropagatedSafeTimeProvider(std::move(provider));
+}
+
+void RaftConsensus::SetPropagatedSafeTimeUpdater(std::function<void()> updater) {
+  propagated_safe_time_updater_ = std::move(updater);
 }
 
 }  // namespace consensus

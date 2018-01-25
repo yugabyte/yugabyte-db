@@ -36,10 +36,11 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/read_hybrid_time.h"
 #include "yb/consensus/consensus.service.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server_interface.h"
@@ -50,12 +51,6 @@ namespace yb {
 class Schema;
 class Status;
 class HybridTime;
-
-namespace tablet {
-class Tablet;
-class TabletPeer;
-class OperationState;
-}  // namespace tablet
 
 namespace tserver {
 
@@ -144,6 +139,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
                                 const ReadRequestPB* req,
                                 ReadHybridTime read_time,
                                 HybridTime safe_ht_to_read,
+                                tablet::RequireLease require_lease,
                                 HostPortPB* hostPortPB,
                                 ReadResponsePB* resp,
                                 rpc::RpcContext* context);

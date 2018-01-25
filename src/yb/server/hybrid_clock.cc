@@ -269,8 +269,7 @@ void HybridClock::NowWithErrorUnlocked(HybridTime *hybrid_time, uint64_t *max_er
     *max_error_usec = error_usec;
     if (PREDICT_FALSE(VLOG_IS_ON(2))) {
       VLOG(2) << "Current clock is higher than the last one. Resetting logical values."
-          << " Physical Value: " << now_usec << " usec Logical Value: 0  Error: "
-          << error_usec;
+          << " Time: " << HybridTime(now_usec, 0) << ", Error: " << error_usec;
     }
     return;
   }

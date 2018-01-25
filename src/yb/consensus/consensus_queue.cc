@@ -94,6 +94,8 @@ TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
 
 DECLARE_int32(rpc_max_message_size);
 
+DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
+
 namespace yb {
 namespace consensus {
 
@@ -333,6 +335,13 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     peer->last_leader_lease_expiration_sent_to_follower =
         MonoTime::Now() + MonoDelta::FromMilliseconds(leader_lease_duration_ms);
     peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
+
+    if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
+      request->set_propagated_safe_time(
+          propagated_safe_time_provider_().ToUint64());
+    } else {
+      request->clear_propagated_safe_time();
+    }
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
     request->mutable_ops()->ExtractSubrange(0, request->ops_size(), nullptr);

@@ -512,7 +512,9 @@ struct StateChangeContext {
 //   replica Consensus instance does not wait for Prepare() to finish).
 class ReplicaOperationFactory {
  public:
-  virtual CHECKED_STATUS StartReplicaOperation(const ConsensusRoundPtr& context) = 0;
+  virtual CHECKED_STATUS StartReplicaOperation(
+      const ConsensusRoundPtr& context, HybridTime propagated_safe_time) = 0;
+  virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
 
   virtual ~ReplicaOperationFactory() {}
 };
