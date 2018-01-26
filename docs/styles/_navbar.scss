@@ -32,6 +32,30 @@ a.anchor {
   }
 }
 
+@media (max-width: 839px) {
+  .navbar-header {
+    float: none;
+  }
+  .navbar-toggle {
+    display: block;
+    float: right;
+  }
+}
+
+@media screen and (max-width: 839px) {
+  .navbar-fixed-bottom .navbar-collapse,
+  .navbar-fixed-top .navbar-collapse {
+    float: none !important;
+    margin: 0 !important;
+    width: 100%;
+    text-align: center;
+    background: rgba(255,255,255,0.97);
+    max-height: 480px !important;
+    border: 0 !important;
+    border-radius: 12px;
+  }
+}
+
 @media screen and (max-width: 767px) {
   .navbar-fixed-bottom .navbar-collapse, .navbar-fixed-top .navbar-collapse {
     margin: 0 !important;
@@ -44,6 +68,10 @@ a.anchor {
 
     .navbar-text a {
       color: $YB_ORANGE !important;
+
+      &.btn {
+        color: #fff !important;
+      }
     }
   }
 }
@@ -54,6 +82,19 @@ a.anchor {
   border-bottom: 1px solid $YB_INVISIBLE_WHITE;
   background: $YB_INVISIBLE_WHITE;
   transition: all 0.3s;
+
+  .container {
+    position: relative;
+    width: 100%;
+  }
+
+  .github-star-button {
+    padding-top: 10px !important;
+
+    @media screen and (min-width: 992px) {
+      padding-top: 18px !important;
+    }
+  }
 
   img.scrolled {
     display: none !important;
@@ -119,19 +160,23 @@ a.anchor {
 
     .dropdown-row {
       display: inline-block;
-      width: 880px;
+      width: 484px;
       padding: 0 0 5px 10px;
+
+      @media (max-width: 991px) {
+        width: 440px;
+      }
     }
 
     .dropdown-column {
       float: left;
-      margin: 10px;
+      margin: 0 10px 10px;
       text-align: left;
 
       h3 {
         border-bottom: 1px solid $YB_ORANGE;
         padding: 0 0 15px;
-        margin: 15px 16px 5px;
+        margin: 35px 16px 5px;
         font-size: 16px;
         font-weight: 500;
         font-family: Montserrat, sans-serif;
@@ -240,7 +285,7 @@ a.anchor {
       .cta-button {
         font-size: 13px;
         font-weight: 500;
-        margin: -10px 0 -9px 6px;
+        margin: -12px 0 -9px 6px;
         padding: 4px 12px 6px;
         border: none;
       }
@@ -250,5 +295,22 @@ a.anchor {
   .navbar-collapse {
     float: right;
     margin-right: -15px;
+  }
+
+  @media screen and (max-width: 839px) {
+    .container-fluid, .container {
+      padding-left: 5px;
+      padding-right: 5px;
+    }
+  }
+
+  .navbar-page-links {
+    @media screen and (min-width: 840px) {
+      position: absolute;
+      left: 184px;
+    }
+    @media screen and (min-width: 992px) {
+      left: 230px;
+    }
   }
 }
