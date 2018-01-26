@@ -40,27 +40,67 @@ import errno
 import glob
 import logging
 import signal
-import shutil
 import subprocess
+import sys
 import time
+
 import os
+import shutil
 
 
-class ClusterOptions():
-    DAEMON_TYPES = ["master", "tserver"]
+DAEMON_TYPE_MASTER = 'master'
+DAEMON_TYPE_TSERVER = 'tserver'
+DAEMON_TYPES = [DAEMON_TYPE_MASTER, DAEMON_TYPE_TSERVER]
+
+
+class ExitWithError(Exception):
+    pass
+
+
+def get_local_ip(index):
+    return "127.0.0.{}".format(index)
+
+
+class DaemonId:
+    def __init__(self, daemon_type, index):
+        if daemon_type not in DAEMON_TYPES:
+            raise RuntimeError("Invalid daemon type: '{}'".format(daemon_type))
+
+        self.daemon_type = daemon_type
+        self.index = index
+
+    def __str__(self):
+        return "{}-{}".format(self.daemon_type, self.index)
+
+    def is_master(self):
+        return self.daemon_type == DAEMON_TYPE_MASTER
+
+    def is_tserver(self):
+        return self.daemon_type == DAEMON_TYPE_TSERVER
+
+    def get_ip_address(self):
+        return get_local_ip(self.index)
+
+
+class ClusterOptions:
 
     def __init__(self):
         self.max_daemon_index = 20
         self.num_shards_per_tserver = None
         self.replication_factor = None
-        self.base_local_url_format = "127.0.0.{}"
 
         self.cluster_base_dir = None
 
         self.custom_binary_dir = None
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
+
+        if os.environ['YB_USE_EXTERNAL_BUILD_ROOT'] == '1':
+            build_dir = os.path.dirname(self.script_dir) + '__build'
+        else:
+            build_dir = os.path.join(self.script_dir, "..", "build")
+
         self.build_bin_dir = os.path.realpath(
-                os.path.join(self.script_dir, "..", "build", "latest", "bin"))
+                os.path.join(build_dir, "latest", "bin"))
 
         self.drives = ["disk-{}".format(i) for i in xrange(1, 3)]
 
@@ -72,11 +112,11 @@ class ClusterOptions():
 
         self.master_addresses = ""
         self.base_ports = {
-                "master": {
+                DAEMON_TYPE_MASTER: {
                     "http": 7000,
                     "rpc": 7100
                 },
-                "tserver": {
+                DAEMON_TYPE_TSERVER: {
                     "http": 9000,
                     "rpc": 9100,
                     "redis_http": 11000,
@@ -107,7 +147,7 @@ class ClusterOptions():
             setattr(self, arg, self.parse_flag_args(parser_arg))
 
     def validate_daemon_type(self, daemon_type):
-        if daemon_type not in ClusterOptions.DAEMON_TYPES:
+        if daemon_type not in DAEMON_TYPES:
             raise RuntimeError("Invalid daemon type: {}".format(daemon_type))
         # Validate the binary.
         self.get_server_binary_path(daemon_type)
@@ -133,24 +173,22 @@ class ClusterOptions():
                 logging.debug("No binary found at {}".format(path))
             else:
                 return path
-        raise RuntimeError("No binary found for {}".format(binary_name))
+        raise RuntimeError("No binary found for {}. Considered binary directories: {}".format(
+            binary_name, binary_dirs))
 
     def get_base_node_dirs(self, daemon_index):
         return ["{}/node-{}/{}".format(self.cluster_base_dir, daemon_index, drive)
                 for drive in self.drives]
 
-    def get_local_url_for_index(self, daemon_index):
-        return self.base_local_url_format.format(daemon_index)
-
-    def get_address(self, daemon_type, daemon_index, port_type, include_base_url=False):
+    def get_address(self, daemon_id, port_type, include_base_url=False):
         # We index nodes from 1, but we would like to always start from the actual base port for
         # all use cases, hence the -1.
-        port_str = str(self.base_ports[daemon_type][port_type])
-        base_local_url = self.get_local_url_for_index(daemon_index)
+        port_str = str(self.base_ports[daemon_id.daemon_type][port_type])
+        base_local_url = daemon_id.get_ip_address()
         return port_str if not include_base_url else "{}:{}".format(base_local_url, port_str)
 
 
-class ClusterControl():
+class ClusterControl:
     def __init__(self):
         self.options = ClusterOptions()
         self.args = None
@@ -160,12 +198,24 @@ class ClusterControl():
         self.setup_parsing()
 
     def setup_base_parser(self, command, help=None):
-        p = self.subparsers.add_parser(command, help=help)
+        subparser = self.subparsers.add_parser(command, help=help)
         func = getattr(self, command, None)
         if not func:
             raise RuntimeError("Invalid command: {}".format(command))
-        p.set_defaults(func=func)
-        return p
+        subparser.set_defaults(func=func)
+        return subparser
+
+    @staticmethod
+    def add_extra_flags_arguments(subparser):
+        subparser.add_argument(
+            "--master_flags",
+           help="Specify extra master flags as a set of key value pairs. "
+                "Format (key=value,key=value)")
+
+        subparser.add_argument(
+            "--tserver_flags",
+           help="Specify extra tserver flags as a set of key value pairs. "
+                "Format (key=value,key=value)")
 
     def setup_parsing(self):
         self.parser.add_argument(
@@ -183,37 +233,28 @@ class ClusterControl():
         self.parser.add_argument(
             "--num_shards_per_tserver", default=2, type=int,
             help="Number of shards (tablets) to create per tablet server for each table.")
-        p = self.setup_base_parser("create", help="Create a new cluster")
 
-        p.add_argument("--master_flags", default=None,
-                       help="Specify extra master flags as a set of key value pairs. "
-                            "Format (key=value,key=value)")
+        subparsers = {}
+        for cmd_name, help in (
+                ("create", "Create a new cluster"),
+                ("destroy", "Destroy the current cluster"),
+                ("recreate", "Destroy the cluster and create it again"),
+                ("restart", "Restart the current cluster all at once"),
+                ("rolling_restart", "Restart the current cluster in a rolling fashion"),
+                ("status", "Get info on the current cluster processes"),
+                ("add_node", "Add a new tserver to the current cluster"),
+                ("setup_redis", "Setup YugaByte to support Redis queries"),
+                ("remove_node", "Remove a tserver from the current cluster")
+            ):
 
-        p.add_argument("--tserver_flags", default=None,
-                       help="Specify extra tserver flags as a set of key value pairs. "
-                            "Format (key=value,key=value)")
+            subparsers[cmd_name] = self.setup_base_parser(cmd_name, help=help)
 
-        p = self.setup_base_parser("destroy", help="Destroy the current cluster")
+        subparsers["remove_node"].add_argument("node_id", type=int,
+               help="The id of the tserver to remove in range: 1-{}".format(
+                  self.options.max_daemon_index))
 
-        p = self.setup_base_parser("status", help="Get info on the current cluster processes")
-
-        p = self.setup_base_parser("add_node", help="Add a new tserver to the current cluster")
-
-        p.add_argument("--master_flags", default=None,
-                       help="Specify extra master flags as a set of key value pairs. "
-                            "Format (key=value,key=value)")
-
-        p.add_argument("--tserver_flags", default=None,
-                       help="Specify extra tserver flags as a set of key value pairs. "
-                            "Format (key=value,key=value)")
-
-        p = self.setup_base_parser("remove_node", help="Remove a tserver from the current cluster")
-
-        p.add_argument("node_id", type=int,
-                       help="The id of the tserver to remove in range: 1-{}".format(
-                          self.options.max_daemon_index))
-
-        p = self.setup_base_parser("setup_redis", help="Setup YugaByte to support Redis queries")
+        for cmd in ["create", "add_node"]:
+            ClusterControl.add_extra_flags_arguments(subparsers[cmd])
 
     def run(self):
         self.args = self.parser.parse_args()
@@ -222,19 +263,19 @@ class ClusterControl():
 
     def set_master_addresses(self, server_counts):
         self.options.master_addresses = ",".join(
-            [self.options.get_address("master", i, "rpc", True)
+            [self.options.get_address(DaemonId(DAEMON_TYPE_MASTER, i), "rpc", True)
              for i in range(1, server_counts + 1)])
 
-    def get_number_servers(self, daemon_type):
+    def get_number_of_servers(self, daemon_type):
         return len(glob.glob("{}/*/{}/yb-data/{}".format(
             self.options.cluster_base_dir, self.options.drives[0], daemon_type)))
 
-    def get_pid(self, daemon_type, daemon_index):
+    def get_pid(self, daemon_id):
         try:
             return int(subprocess.check_output(
                 ["pgrep", "-f", "yb-{} .* --rpc_bind_addresses {}".format(
-                    daemon_type,
-                    self.options.get_local_url_for_index(daemon_index))]))
+                    daemon_id.daemon_type,
+                    daemon_id.get_ip_address())]))
         except subprocess.CalledProcessError as e:
             # From man pgrep
             #
@@ -247,19 +288,19 @@ class ClusterControl():
                 raise RuntimeError("Error during pgrep: {}".format(e.output))
             return 0
 
-    def build_command(self, daemon_type, daemon_index, specific_arg_list):
-        node_base_dirs = self.options.get_base_node_dirs(daemon_index)
+    def build_command(self, daemon_id, specific_arg_list):
+        node_base_dirs = self.options.get_base_node_dirs(daemon_id.index)
         first_base_dir = node_base_dirs[0]
 
         command_list = [
             # Start with the actual binary
-            self.options.get_server_binary_path(daemon_type),
+            self.options.get_server_binary_path(daemon_id.daemon_type),
             # Add in all the shared flags
             "--fs_data_dirs \"{}\"".format(",".join(node_base_dirs)),
-            "--webserver_interface {}".format(self.options.get_local_url_for_index(daemon_index)),
-            "--rpc_bind_addresses {}".format(self.options.get_local_url_for_index(daemon_index))
+            "--webserver_interface {}".format(daemon_id.get_ip_address()),
+            "--rpc_bind_addresses {}".format(daemon_id.get_ip_address())
         ]
-        binary_path = self.options.get_server_binary_path(daemon_type)
+        binary_path = self.options.get_server_binary_path(daemon_id.daemon_type)
         www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
         version_metadata_path = os.path.realpath(
             os.path.join(os.path.dirname(binary_path), ".."))
@@ -272,148 +313,173 @@ class ClusterControl():
         command_list.extend(specific_arg_list)
         # Redirect out and err and launch in the background
         command_list.append(">\"{0}/{1}.out\" 2>\"{0}/{1}.err\" &".format(
-            first_base_dir, daemon_type))
+            first_base_dir, daemon_id.daemon_type))
         return " ".join(command_list)
 
-    def get_flags_in_command_format(self, flags):
-        new_flags = ["--{}".format(item) for item in flags]
-        return new_flags
+    @staticmethod
+    def customize_flags(flags, extra_flags):
+        return flags + ["--{}".format(item) for item in extra_flags]
 
-    def get_master_only_flags(self, daemon_index):
+    def get_master_only_flags(self, daemon_id):
         command_list = [
             "--replication_factor={}".format(self.options.replication_factor),
             "--master_addresses {}".format(self.options.master_addresses)
         ]
-        command_list.extend(self.get_flags_in_command_format(self.options.master_flags))
-        return command_list
+        return self.customize_flags(command_list, self.options.master_flags)
 
-    def get_tserver_only_flags(self, daemon_index):
-        daemon_type = "tserver"
+    def get_tserver_only_flags(self, daemon_id):
         command_list = [
             "--tserver_master_addrs {}".format(self.options.master_addresses),
             "--memory_limit_hard_bytes {}".format(1024 * 1024 * 1024),
             "--yb_num_shards_per_tserver {}".format(self.options.num_shards_per_tserver),
-            "--redis_proxy_bind_address {}".format(
-                self.options.get_local_url_for_index(daemon_index)),
-            "--cql_proxy_bind_address {}".format(
-                self.options.get_local_url_for_index(daemon_index)),
-            "--local_ip_for_outbound_sockets {}".format(
-                self.options.get_local_url_for_index(daemon_index))
+            "--redis_proxy_bind_address {}".format(daemon_id.get_ip_address()),
+            "--cql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
+            "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address())
         ]
-        command_list.extend(self.get_flags_in_command_format(self.options.tserver_flags))
-        return command_list
+        return self.customize_flags(command_list, self.options.tserver_flags)
 
-    def start_daemon(self, daemon_type, daemon_index):
-        self.options.validate_daemon_type(daemon_type)
-        self.options.validate_daemon_index(daemon_index)
+    def start_daemon(self, daemon_id):
+        self.options.validate_daemon_type(daemon_id.daemon_type)
+        self.options.validate_daemon_index(daemon_id.index)
 
         if not os.path.isdir(self.options.cluster_base_dir):
-            raise RuntimeError("Found no cluster data at {}, cannot add node...".format(
+            raise ExitWithError("Found no cluster data at {}, cannot add node...".format(
                 self.options.cluster_base_dir))
 
-        for path in self.options.get_base_node_dirs(daemon_index):
+        for path in self.options.get_base_node_dirs(daemon_id.index):
             if not os.path.exists(path):
                 os.makedirs(path)
 
-        custom_flags = []
-        if daemon_type == "master":
-            custom_flags = self.get_master_only_flags(daemon_index)
+        if daemon_id.is_master():
+            custom_flags = self.get_master_only_flags(daemon_id)
         else:
-            custom_flags = self.get_tserver_only_flags(daemon_index)
-        command = self.build_command(daemon_type, daemon_index, custom_flags)
-        logging.info("Starting {} with:\n{}".format(daemon_type, command))
+            custom_flags = self.get_tserver_only_flags(daemon_id)
+        command = self.build_command(daemon_id, custom_flags)
+        logging.info("Starting {} with:\n{}".format(daemon_id, command))
         os.system(command)
 
-    def stop_daemon(self, daemon_type, daemon_index):
-        pid = self.get_pid(daemon_type, daemon_index)
+    def stop_daemon(self, daemon_id):
+        pid = self.get_pid(daemon_id)
         if pid == 0:
-            logging.info("Server type={} node_id={} already stopped".format(
-                daemon_type, daemon_index))
+            logging.info("Server {} already stopped".format(daemon_id))
             return
-        logging.info("Stopping server type={} node_id={} PID={}".format(
-            daemon_type, daemon_index, pid))
+        logging.info("Stopping server {} PID={}".format(daemon_id, pid))
         # Kill the process.
         os.kill(pid, signal.SIGTERM)
         # Wait for process to stop.
         while True:
             try:
-                logging.info("Waiting for server type={} node_id={} PID={} to stop...".format(
-                    daemon_type, daemon_index, pid))
+                logging.info("Waiting for server {} PID={} to stop...".format(daemon_id, pid))
                 time.sleep(0.5)
                 os.kill(pid, 0)
             except OSError as err:
                 if err.errno == errno.ESRCH:
                     return
 
+    def restart_daemon(self, daemon_id):
+        self.stop_daemon(daemon_id)
+        self.start_daemon(daemon_id)
+
     def create(self):
         server_counts = self.options.replication_factor
         self.set_master_addresses(server_counts)
 
         if os.path.isdir(self.options.cluster_base_dir):
-            raise RuntimeError("Found cluster data at {}, cannot create new cluster...".format(
-                self.options.cluster_base_dir))
+            raise ExitWithError(
+                ("Found cluster data at {}, cannot create new cluster. Use --data_dir to "
+                 "specify a different data directory if necessary, or 'destroy' / 'recreate'."
+                 "commands to wipe out the old directory.").format(
+                    self.options.cluster_base_dir))
         os.makedirs(self.options.cluster_base_dir)
 
-        for t in ClusterOptions.DAEMON_TYPES:
-            for i in range(1, server_counts + 1):
-                pid = self.get_pid(t, i)
+        for daemon_type in DAEMON_TYPES:
+            for daemon_index in range(1, server_counts + 1):
+                daemon_id = DaemonId(daemon_type, daemon_index)
+                pid = self.get_pid(daemon_id)
                 if pid > 0:
-                    logging.info("Server type={} node_id={} is running on PID={}".format(t, i, pid))
+                    logging.info("Server {} is running on PID={}".format(daemon_id, pid))
                 else:
-                    self.start_daemon(t, i)
+                    self.start_daemon(daemon_id)
+
+    def set_running_master_addresses(self):
+        self.set_master_addresses(self.get_number_of_servers(DAEMON_TYPE_MASTER))
 
     def add_node(self):
-        self.set_master_addresses(self.get_number_servers("master"))
-        daemon_type = "tserver"
-        num_servers = self.get_number_servers(daemon_type)
-        self.start_daemon(daemon_type, num_servers + 1)
+        self.set_running_master_addresses()
+        daemon_type = DAEMON_TYPE_TSERVER
+        num_servers = self.get_number_of_servers(daemon_type)
+        self.start_daemon(DaemonId(daemon_type, num_servers + 1))
 
     def remove_node(self):
-        daemon_type = "tserver"
-        daemon_index = self.args.node_id
-        logging.info("Removing server type={} node_id={}".format(daemon_type, daemon_index))
-        self.stop_daemon(daemon_type, daemon_index)
+        # Note: remove_node in its current implementation would be more appropriately called
+        # "stop_node". To properly decommission a local "node", we'll need to remove it from the
+        # master's metadata and also delete the data directory.
+        daemon_id = DaemonId(DAEMON_TYPE_TSERVER, self.args.node_id)
+        logging.info("Stopping server {}".format(daemon_id))
+        self.stop_daemon(daemon_id)
+
+    def show_node_status(self, daemon_id):
+        pid = self.get_pid(daemon_id)
+
+        def get_address(port_type):
+            return self.options.get_address(daemon_id, port_type, include_base_url=True)
+
+        if pid == 0:
+            logging.info("Server {} is not running".format(daemon_id))
+        else:
+            info_list = [
+                ("type", daemon_id.daemon_type),
+                ("node_id", daemon_id.index),
+                ("PID", pid),
+                ("admin service", "http://" + get_address("http"))
+            ]
+            if daemon_id.is_tserver():
+                info_list.extend([
+                    ("cql service", get_address("cql_rpc")),
+                    ("redis service", get_address("redis_rpc"))
+                ])
+            logging.info("Server is running: {}".format(
+                ", ".join(["{}={}".format(k, v) for k, v in info_list])))
 
     def status(self):
-        for t in ClusterOptions.DAEMON_TYPES:
-            num_servers = self.get_number_servers(t)
-            for i in range(1, num_servers + 1):
-                pid = self.get_pid(t, i)
-                if pid == 0:
-                    logging.info("Server type={} node_id={} is not running".format(t, i))
-                else:
-                    info_list = [
-                        ("type", t),
-                        ("node_id", i),
-                        ("PID", pid),
-                        ("admin service", self.options.get_address(t, i, "http", True))
-                        ]
-                    if t == "tserver":
-                        info_list.extend([
-                            ("cql service", self.options.get_address(t, i, "cql_rpc", True)),
-                            ("redis service", self.options.get_address(t, i, "redis_rpc", True))
-                            ])
-                    logging.info("Server is running: {}".format(
-                        ", ".join(["{}={}".format(k, v) for k, v in info_list])))
+        self.for_all_daemons(self.show_node_status)
 
+    def for_all_daemons(self, fn):
+        """
+        Run the given function for all daemons.
+        """
+        for daemon_type in DAEMON_TYPES:
+            num_servers = self.get_number_of_servers(daemon_type)
+            for daemon_index in range(1, num_servers + 1):
+                fn(DaemonId(daemon_type, daemon_index))
 
     def destroy(self):
-        # Stop all the daemons.
-        for t in ["master", "tserver"]:
-            num_servers = self.get_number_servers(t)
-            for i in range(1, num_servers + 1):
-                self.stop_daemon(t, i)
+        self.for_all_daemons(self.stop_daemon)
+
         # Remove the top-level directory.
         top_level = self.options.cluster_base_dir
         if os.path.exists(top_level) and os.path.isdir(top_level):
             logging.info("Removing base directory: {}".format(top_level))
             shutil.rmtree(self.options.cluster_base_dir)
 
+    def restart(self):
+        self.set_running_master_addresses()
+        self.for_all_daemons(self.stop_daemon)
+        self.for_all_daemons(self.start_daemon)
+
+    def rolling_restart(self):
+        self.set_running_master_addresses()
+        self.for_all_daemons(self.restart_daemon)
+
     def setup_redis(self):
-        self.set_master_addresses(self.get_number_servers("master"))
+        self.set_running_master_addresses()
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
         os.system("{} --master_addresses {} setup_redis_table".format(
             yb_admin_binary_path, self.options.master_addresses))
+
+    def recreate(self):
+        self.destroy()
+        self.create()
 
 
 if __name__ == "__main__":
@@ -421,4 +487,8 @@ if __name__ == "__main__":
             level=logging.INFO,
             format="%(asctime)s %(levelname)s: %(message)s")
 
-    ClusterControl().run()
+    try:
+        ClusterControl().run()
+    except ExitWithError, ex:
+        logging.error(ex)
+        sys.exit(1)

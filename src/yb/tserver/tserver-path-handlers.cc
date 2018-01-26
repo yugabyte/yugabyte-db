@@ -400,7 +400,6 @@ void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest&
   *output << "<h3>Dashboards</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Dashboard</th><th>Description</th></tr>\n";
-  *output << GetDashboardLine("scans", "Scans", "List of scanners that are currently running.");
   *output << GetDashboardLine("transactions", "Transactions", "List of transactions that are "
                                                               "currently running.");
   *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",

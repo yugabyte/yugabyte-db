@@ -36,11 +36,14 @@
 
 #include <glog/logging.h>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
+#include "yb/gutil/strings/util.h"
 
 using strings::Substitute;
 using std::shared_ptr;
@@ -48,6 +51,11 @@ using std::string;
 
 namespace yb {
 namespace env_util {
+
+// We use this suffix in the "external build directory" mode, i.e. the source could be in
+// ~/code/yugabyte the build directories for different configurations will all be in
+// ~/code/yugabyte__build. This will prevent IDEs from trying to parse build artifacts.
+const string kExternalBuildDirSuffix = "__build";
 
 std::string GetRootDir(const string& search_for_dir) {
   char* yb_home = getenv("YB_HOME");
@@ -71,14 +79,25 @@ std::string GetRootDir(const string& search_for_dir) {
   auto path = executable_path;
   while (path != "/") {
     path = DirName(path);
-    auto sub_dir = JoinPathSegments(path, search_for_dir);
-    bool is_dir = false;
-    auto status = Env::Default()->IsDirectory(sub_dir, &is_dir);
-    if (!status.ok()) {
-      continue;
+
+    boost::container::small_vector<string, 2> candidates { path };
+    if (HasSuffixString(path, kExternalBuildDirSuffix)) {
+      candidates.push_back(std::string(path.begin(), path.end() - kExternalBuildDirSuffix.size()));
+      if (candidates.back().back() == '/') {
+        // path was of the ".../__build" form instead of ".../<some_name>__build", ignore it.
+        candidates.pop_back();
+      }
     }
-    if (is_dir) {
-      return path;
+    for (const auto& candidate_path : candidates) {
+      auto sub_dir = JoinPathSegments(candidate_path, search_for_dir);
+      bool is_dir = false;
+      auto status = Env::Default()->IsDirectory(sub_dir, &is_dir);
+      if (!status.ok()) {
+        continue;
+      }
+      if (is_dir) {
+        return candidate_path;
+      }
     }
   }
 

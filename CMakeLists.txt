@@ -267,6 +267,18 @@ endfunction()
 # ------------------------------------------------------------------------------------------------
 # Main build
 
+# CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
+# is re-linked. Enabling the optimized behavior by default, and allowing to customize it with the
+# YB_CMAKE_LINK_DEPENDS_NO_SHARED environment variable.
+if (NOT "$ENV{YB_CMAKE_LINK_DEPENDS_NO_SHARED}" STREQUAL "")
+  message(
+    "Setting CMAKE_LINK_DEPENDS_NO_SHARED to '$ENV{YB_CMAKE_LINK_DEPENDS_NO_SHARED}' "
+    "based on the YB_CMAKE_LINK_DEPENDS_NO_SHARED environment variable.")
+  set(CMAKE_LINK_DEPENDS_NO_SHARED $ENV{YB_CMAKE_LINK_DEPENDS_NO_SHARED})
+else()
+  set(CMAKE_LINK_DEPENDS_NO_SHARED 1)
+endif()
+
 set(YB_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 message("YB_SRC_ROOT: ${YB_SRC_ROOT}")
 
@@ -282,6 +294,7 @@ endif()
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
+get_filename_component(YB_BUILD_ROOT_PARENT "${YB_BUILD_ROOT}" DIRECTORY)
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
 
 DETECT_NUMBER_OF_PROCESSORS()
@@ -308,13 +321,16 @@ CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 # build/<first build directory>
 # build/<second build directory>
 # ...
-if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/[^/]+$" AND
+set(LATEST_BUILD_SYMLINK_PATH "${YB_BUILD_ROOT_PARENT}/latest")
+if (("${YB_BUILD_ROOT_PARENT}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build$" OR
+     "${YB_BUILD_ROOT_PARENT}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}__build$") AND
     # We disable the "latest" symlink on Jenkins, because there it could lead to duplicate test
     # results. Jenkins JUnit plugin would pick up JUnit-compatible test result XML files from both
     # the real build directory, e.g. build/release-gcc-dynamic-enterprise, and from the
     # build/latest directory pointing to the same directory.
     NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
-  if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/latest")
+  message("LATEST SYMLINK PATH: ${LATEST_BUILD_SYMLINK_PATH}")
+  if ("${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${LATEST_BUILD_SYMLINK_PATH}")
     message(FATAL_ERROR "Should not run cmake inside the build/latest symlink. "
             "First change directories into the destination of the symlink.")
   endif()
@@ -327,9 +343,8 @@ if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/[^
     set(MORE_ARGS "-h")
   endif()
   add_custom_target(latest_symlink ALL
-    ln ${MORE_ARGS} -sf ${CMAKE_CURRENT_BINARY_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/build/latest
-    COMMENT "Recreating ../build/latest symlink")
+    ln ${MORE_ARGS} -sf "${CMAKE_CURRENT_BINARY_DIR}" "${LATEST_BUILD_SYMLINK_PATH}"
+    COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
 
   # 'ALL' above doesn't actually add 'latest_symlink' as a dependency to all targets. So, we
   # override add_executable to ensure that whenever any executable is built, the symlink is
