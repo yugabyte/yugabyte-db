@@ -483,4 +483,97 @@ public class TestUtils {
   public static void waitForTTL(Long ttl) throws Exception {
     Thread.sleep(ttl + WAIT_FOR_TTL_EXTENSION_MS);
   }
+
+  public static String joinLinesForLogging(List<String> lines) {
+    if (lines.isEmpty()) {
+      return "";
+    }
+    StringBuilder sb = new StringBuilder();
+    boolean firstLine = true;
+    for (String line : lines) {
+      if (firstLine) {
+        firstLine = false;
+      } else {
+        sb.append("\n");
+      }
+      sb.append("    " + line);
+    }
+    return sb.toString();
+  }
+
+  public static class CommandResult {
+    public final String cmd;
+    public final int exitCode;
+    public final List<String> stdoutLines;
+    public final List<String> stderrLines;
+
+    public CommandResult(
+        String cmd, int exitCode, List<String> stdoutLines, List<String> stderrLines) {
+      this.cmd = cmd;
+      this.exitCode = exitCode;
+      this.stdoutLines = stdoutLines;
+      this.stderrLines = stderrLines;
+    }
+
+    public boolean isSuccess() {
+      return exitCode == 0;
+    }
+
+    public void logErrorOutput() {
+      if (!stderrLines.isEmpty()) {
+        LOG.warn("Standard error output from command {{ " + cmd + " }}" +
+            (exitCode == 0 ? "" : " (exit code: " + exitCode + "):\n" +
+                joinLinesForLogging(stderrLines)));
+      }
+    }
+  }
+
+  public static List<String> readLinesFrom(File f) throws IOException {
+    if (!f.exists()) {
+      return new ArrayList<>();
+    }
+    BufferedReader reader = new BufferedReader(new InputStreamReader(
+        new FileInputStream(f)));
+    List<String> lines = new ArrayList<>();
+    String line;
+    while ((line = reader.readLine()) != null) {
+      lines.add(line);
+    }
+    return lines;
+  }
+
+  public static CommandResult runShellCommand(String cmd) throws IOException {
+    File outputFile = new File(TestUtils.getBaseDir() + "/tmp_stdout_"  +
+        randomNonNegNumber() + ".txt");
+    File errorFile = new File(TestUtils.getBaseDir() + "/tmp_stderr_"  +
+        randomNonNegNumber() + ".txt");
+    try {
+
+      Process process = new ProcessBuilder().command(Arrays.asList(new String[]{
+          "bash", "-c", cmd
+      })).redirectOutput(outputFile).redirectError(errorFile).start();
+      int exitCode;
+      try {
+        exitCode = process.waitFor();
+      } catch (InterruptedException ex) {
+        throw new IOException("Interrupted while trying to run command: " + cmd, ex);
+      }
+      CommandResult result;
+      return new CommandResult(
+          cmd,
+          exitCode,
+          readLinesFrom(outputFile),
+          readLinesFrom(errorFile));
+    } catch (IOException ex) {
+      LOG.error("Exception while running command: " + cmd, ex);
+      throw ex;
+    } finally {
+      if (outputFile.exists()) {
+        outputFile.delete();
+      }
+      if (errorFile.exists()) {
+        errorFile.delete();
+      }
+    }
+  }
 }

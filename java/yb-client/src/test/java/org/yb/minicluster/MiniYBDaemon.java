@@ -15,11 +15,173 @@
 package org.yb.minicluster;
 
 import com.google.common.net.HostAndPort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import static org.yb.client.TestUtils.CommandResult;
+
 public class MiniYBDaemon {
+  private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
+
   private static final String PID_PREFIX = "pid";
   private static final String LOG_PREFIX_SEPARATOR = "|";
+  private static final long SYSLOG_TAIL_BYTES = 1024 * 1024;
+  private static final String SYSLOG_PATH = "/var/log/messages";
+  private static final int SYSLOG_CONTEXT_NUM_LINES = 15;
+  private static final int NUM_LAST_SYSLOG_LINES_TO_USE = 10000;
+
+  // This correspons to regular termination of yb-master and yb-tserver with SIGTERM.
+  private static final int EXPECTED_EXIT_CODE = 143;
+
+  private static final String INVALID_PID_STR = "<error_getting_pid>";
+
+  // This is a helper class that waits for the process to terminate and logs possible reasons for
+  // the termination, e.g. looks at /var/log/messages.
+  private class TerminationHandler {
+
+    private int exitCode;
+
+    private void analyzeSystemLog() throws IOException {
+      File syslogFile = new File(SYSLOG_PATH);
+      if (!syslogFile.exists())
+        return;
+      if (!syslogFile.canRead()) {
+        LOG.warn("Cannot read syslog file at " + SYSLOG_PATH);
+        return;
+      }
+
+      String pidStr = getPidStr();
+      if (pidStr.equals(INVALID_PID_STR)) {
+        LOG.warn("pid unknown, cannot look for it in " + SYSLOG_PATH + ": " + this);
+        return;
+      }
+      String regexStr = "(\\b" + pidStr + "\\b|out-of-memory|killed process|oom_killer)";
+      CommandResult cmdResult = TestUtils.runShellCommand(
+          String.format(
+              "tail -%d '%s' | egrep -i -C %d '%s'", NUM_LAST_SYSLOG_LINES_TO_USE,
+              SYSLOG_PATH, SYSLOG_CONTEXT_NUM_LINES, regexStr));
+      cmdResult.logErrorOutput();
+      if (cmdResult.stdoutLines.isEmpty()) {
+        if (!terminatedNormally()) {
+          LOG.warn("Could not find anything in " + SYSLOG_PATH + " relevant to the " +
+              "disappearance of process: " + this);
+        }
+      } else {
+        LOG.warn("Potentially relevant lines from " + SYSLOG_PATH +
+            " for termination of " + this + ":\n" +
+            TestUtils.joinLinesForLogging(cmdResult.stdoutLines));
+      }
+    }
+
+    private void analyzeMemoryUsage() throws IOException {
+      CommandResult cmdResult = TestUtils.runShellCommand(
+          "ps -e -orss=,pid=,args= | egrep 'yb-(master|tserver)' | sort -k2,2 -rn");
+      cmdResult.logErrorOutput();
+      if (!cmdResult.isSuccess()) {
+        return;
+      }
+      long totalMasterRssKB = 0;
+      long totalTserverRssKB = 0;
+      int numMasters = 0;
+      int numTservers = 0;
+      List<String> masterTserverPsLines = new ArrayList<String>();
+      for (String line : cmdResult.stdoutLines) {
+        // Four parts: RSS, pid, executable path, arguments.
+        String[] items = line.split("\\s+", 4);
+        if (items.length < 4) {
+          LOG.warn("Could not parse a ps output line: " + line + " (got " +
+              items.length + " parts, expected 4)");
+          continue;
+        }
+        long rssKB = 0;
+        try {
+          rssKB = Long.valueOf(items[0]);
+        } catch (NumberFormatException ex) {
+          LOG.warn("Failed parsing number: '" + rssKB + "' in ps output line:" + line);
+          continue;
+        }
+        String executablePath = items[2];
+        String executableBasename = new File(executablePath).getName();
+
+        if (executableBasename.equals("yb-master")) {
+          totalMasterRssKB += rssKB;
+          ++numMasters;
+          masterTserverPsLines.add(line);
+        } else if (executableBasename.equals("yb-tserver")) {
+          totalTserverRssKB += rssKB;
+          ++numTservers;
+          masterTserverPsLines.add(line);
+        }
+      }
+      if (numMasters + numTservers > 0) {
+        LOG.info(
+            "Num master processes: " + numMasters +
+                ", total master memory usage (MB): " + (totalMasterRssKB / 1024) +
+                ", num tserver processes: " + numTservers +
+                ", total tserver memory usage (MB): " + (totalTserverRssKB / 1024) + "; " +
+                "ps output:\n" +
+                TestUtils.joinLinesForLogging(cmdResult.stdoutLines));
+      } else {
+        LOG.info("Did not find any yb-master/yb-tserver processes in 'ps' output");
+      }
+    }
+
+    private String processDescription() {
+      return MiniYBDaemon.this.toString();
+    }
+
+    private boolean terminatedNormally() {
+      return exitCode == EXPECTED_EXIT_CODE || exitCode == 0;
+    }
+
+    private void handleTermination(int exitCode) throws IOException {
+
+      String msg = "Process " + processDescription() + " exited with code " + exitCode;
+      if (exitCode == 0) {
+        LOG.info(msg);
+        return;
+      }
+
+      analyzeSystemLog();
+      if (!terminatedNormally()) {
+        analyzeMemoryUsage();
+      }
+    }
+
+    private void waitForAndHandleTermination() {
+      try {
+        exitCode = process.waitFor();
+      } catch (InterruptedException ex) {
+        LOG.info("Interrupted when waiting for process to complete: " + this, ex);
+        return;
+      }
+
+      try {
+        handleTermination(exitCode);
+      } catch (IOException ex) {
+        LOG.info("Error handling termination of " + processDescription(), ex);
+      }
+    }
+
+    void startInBackground() {
+      Thread thread = new Thread(() -> {
+        try {
+          waitForAndHandleTermination();
+        } finally {
+          shutdownLatch.countDown();
+        }
+      });
+      thread.setName("Termination handler for " + MiniYBDaemon.this);
+      thread.start();
+    }
+
+  }
 
   /**
    * @param type daemon type (master / tablet server)
@@ -39,6 +201,7 @@ public class MiniYBDaemon {
     this.cqlWebPort = cqlWebPort;
     this.redisWebPort = redisWebPort;
     this.dataDirPath = dataDirPath;
+    new TerminationHandler().startInBackground();
   }
 
   public MiniYBDaemonType getType() {
@@ -61,14 +224,14 @@ public class MiniYBDaemon {
     try {
       return String.valueOf(getPid());
     } catch (NoSuchFieldException | IllegalAccessException ex) {
-      return "<error_getting_pid>";
+      return INVALID_PID_STR;
     }
   }
 
   @Override
   public String toString() {
     return type.toString().toLowerCase() + " process on bind IP " + bindIp + ", rpc port " +
-        rpcPort + ", web port " + webPort;
+        rpcPort + ", web port " + webPort + ", pid " + getPidStr();
   }
 
   private final MiniYBDaemonType type;
@@ -81,6 +244,7 @@ public class MiniYBDaemon {
   private final int cqlWebPort;
   private final int redisWebPort;
   private final String dataDirPath;
+  private final CountDownLatch shutdownLatch = new CountDownLatch(1);
 
   public HostAndPort getWebHostAndPort() {
     return HostAndPort.fromParts(bindIp, webPort);
@@ -115,5 +279,17 @@ public class MiniYBDaemon {
   public String getLocalhostIP() {
     return bindIp;
   }
+
+  void waitForShutdown() {
+    try {
+      if (!shutdownLatch.await(10, TimeUnit.SECONDS)) {
+        LOG.warn("Timed out waiting for logging of process shutdown to finish: " + this);
+      }
+    } catch (InterruptedException ex) {
+      LOG.warn("Interrupted when waiting for logging of process shutdown to finish: " + this);
+      Thread.currentThread().interrupt();
+    }
+  }
+
 
 }

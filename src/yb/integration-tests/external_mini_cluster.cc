@@ -1338,6 +1338,15 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
     argv.push_back("--mem_tracker_log_stack_trace");
   }
 
+  const char* test_invocation_id = getenv("YB_TEST_INVOCATION_ID");
+  if (test_invocation_id) {
+    // We use --metric_node_name=... to include a unique "test invocation id" into the command
+    // line so we can kill any stray processes later. --metric_node_name is normally how we pass
+    // the Universe ID to the cluster. We could use any other flag that is present in yb-master
+    // and yb-tserver for this.
+    argv.push_back(Format("--metric_node_name=$0", test_invocation_id));
+  }
+
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
@@ -1349,6 +1358,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
               FLAGS_external_daemon_heap_profile_prefix + "_" + short_description_);
     p->SetEnv("HEAPPROFILESIGNAL", std::to_string(kHeapProfileSignal));
   }
+
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 

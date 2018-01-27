@@ -42,6 +42,15 @@
 
 set -euo pipefail
 
+cleanup() {
+  local exit_code=$?
+  kill_stuck_processes
+  if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
+    exit_code=1
+  fi
+  exit "$exit_code"
+}
+
 if [[ ${YB_DEBUG_RUN_TEST:-} == "1" ]]; then
   log "Running ${0##*/} with 'set -x' for debugging (perhaps it previously failed with no output)."
   set -x
@@ -63,6 +72,7 @@ umask 0002
 # of them that remain.
 timestamp=$( get_timestamp_for_filenames )
 export YB_TEST_INVOCATION_ID=${timestamp}_${RANDOM}_${RANDOM}_$$
+trap cleanup EXIT
 
 if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   # This is a Java test.
@@ -96,16 +106,7 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     -Dmaven.javadoc.skip \
     -X \
     surefire:test
-
-  exit_code=$?
-  for pid in $( pgrep -f "$YB_TEST_INVOCATION_ID" ); do
-    log "Found pid $pid from this test suite (YB_TEST_INVOCATION_ID=$YB_TEST_INVOCATION_ID)," \
-        "killing it with SIGKILL and setting exit code to 1."
-    ps -p "$pid" -f
-    kill -9 "$pid"
-    exit_code=1
-  done
-  exit $exit_code
+  exit
 fi
 
 TEST_PATH=${1:-}

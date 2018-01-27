@@ -1483,6 +1483,26 @@ detect_os() {
   fi
 }
 
+# Kills any processes that have YB_TEST_INVOCATION_ID in their command line. Sets
+# killed_stuck_processes=true in case that happens.
+kill_stuck_processes() {
+  expect_num_args 0 "$@"
+  killed_stuck_processes=false
+  if [[ -z ${YB_TEST_INVOCATION_ID:-} ]]; then
+    return
+  fi
+  local pid
+  for pid in $( pgrep -f "$YB_TEST_INVOCATION_ID" ); do
+    log "Found pid $pid from this test suite (YB_TEST_INVOCATION_ID=$YB_TEST_INVOCATION_ID)," \
+        "killing it with SIGKILL."
+    ps -p "$pid" -f
+    if kill -9 "$pid"; then
+      killed_stuck_processes=true
+      log "Killed process $pid with SIGKILL."
+    fi
+  done
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

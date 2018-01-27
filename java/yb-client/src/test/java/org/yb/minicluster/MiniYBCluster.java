@@ -181,6 +181,10 @@ public class MiniYBCluster implements AutoCloseable {
     // processes even if MiniYBCluster fails to kill them.
     String testInvocationId = System.getenv("YB_TEST_INVOCATION_ID");
     if (testInvocationId != null) {
+      // We use --metric_node_name=... to include a unique "test invocation id" into the command
+      // line so we can kill any stray processes later. --metric_node_name is normally how we pass
+      // the Universe ID to the cluster. We could use any other flag that is present in yb-master
+      // and yb-tserver for this.
       commonFlags.add("--metric_node_name=" + testInvocationId);
     }
 
@@ -663,6 +667,9 @@ public class MiniYBCluster implements AutoCloseable {
   public void shutdown() throws Exception {
     LOG.info("Shutting down mini cluster");
     List<Process> processes = new ArrayList<>();
+    List<MiniYBDaemon> allDaemons = new ArrayList<>();
+    allDaemons.addAll(masterProcesses.values());
+    allDaemons.addAll(tserverProcesses.values());
     processes.addAll(destroyDaemons(masterProcesses.values()));
     processes.addAll(destroyDaemons(tserverProcesses.values()));
     for (Process process : processes) {
@@ -686,6 +693,10 @@ public class MiniYBCluster implements AutoCloseable {
     }
     if (syncClient != null) {
       syncClient.shutdown();
+    }
+
+    for (MiniYBDaemon daemon : allDaemons) {
+      daemon.waitForShutdown();
     }
     LOG.info("Mini cluster shutdown finished");
   }
