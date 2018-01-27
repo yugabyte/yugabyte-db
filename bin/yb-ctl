@@ -144,7 +144,7 @@ class ClusterOptions:
         for arg in ["master_flags", "tserver_flags"]:
             try:
                 parser_arg = getattr(args, arg)
-            except:
+            except AttributeError:
                 parser_arg = None
             setattr(self, arg, self.parse_flag_args(parser_arg))
 
@@ -223,12 +223,12 @@ class ClusterControl:
     @staticmethod
     def add_extra_flags_arguments(subparser):
         subparser.add_argument(
-            "--master_flags",
+            "--master_flags", default=None,
            help="Specify extra master flags as a set of key value pairs. "
                 "Format (key=value,key=value)")
 
         subparser.add_argument(
-            "--tserver_flags",
+            "--tserver_flags", default=None,
            help="Specify extra tserver flags as a set of key value pairs. "
                 "Format (key=value,key=value)")
 
@@ -264,11 +264,11 @@ class ClusterControl:
 
             subparsers[cmd_name] = self.setup_base_parser(cmd_name, help=help)
 
-        subparsers["create"].add_argument("placement_info", default=None,
+        subparsers["create"].add_argument("--placement_info",
                     help="Specify the placement info in the following format: "
                     "cloud.region.zone,cloud.region.zone,cloud.region.zone")
 
-        subparsers["add_node"].add_argument("placement_info", default=None,
+        subparsers["add_node"].add_argument("--placement_info",
                     help="Specify the placement info in the following format:"
                     "cloud.region.zone")
 
@@ -387,8 +387,9 @@ class ClusterControl:
         else:
             custom_flags = self.get_tserver_only_flags(daemon_id)
 
-        mod_val = daemon_id.index % len(self.options.placement_info)
-        custom_flags.extend(self.get_placement_info_flags(self.options.placement_info[mod_val]))
+        if len(self.options.placement_info) > 0:
+            mod_val = daemon_id.index % len(self.options.placement_info)
+            custom_flags.extend(self.get_placement_info_flags(self.options.placement_info[mod_val]))
         command = self.build_command(daemon_id, custom_flags)
         logging.info("Starting {} with:\n{}".format(daemon_id, command))
         os.system(command)
