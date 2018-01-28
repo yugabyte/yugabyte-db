@@ -13,6 +13,12 @@ After [installing YugaByte DB](/quick-start/install/), follow the instructions b
     </a>
   </li>
   <li >
+    <a data-toggle="tab" href="#kubernetes">
+      <i class="fa fa-apple" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+  <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
@@ -29,6 +35,9 @@ After [installing YugaByte DB](/quick-start/install/), follow the instructions b
 <div class="tab-content">
   <div id="docker" class="tab-pane fade in active">
     {{% includeMarkdown "/quick-start/docker/create-local-cluster.md" /%}}
+  </div>
+  <div id="kubernetes" class="tab-pane fade">
+   {{% includeMarkdown "/quick-start/kubernetes/create-local-cluster.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
    {{% includeMarkdown "/quick-start/binary/create-local-cluster.md" /%}}

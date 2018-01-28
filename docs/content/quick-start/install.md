@@ -10,6 +10,12 @@ weight: 110
       Docker
     </a>
   </li>
+  <li>
+    <a data-toggle="tab" href="#kubernetes">
+      <i class="fa fa-linux" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
   <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
@@ -27,6 +33,9 @@ weight: 110
 <div class="tab-content">
   <div id="docker" class="tab-pane fade in active">
     {{% includeMarkdown "/quick-start/docker/install.md" /%}}
+  </div>
+  <div id="kubernetes" class="tab-pane fade">
+    {{% includeMarkdown "/quick-start/kubernetes/install.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
     {{% includeMarkdown "/quick-start/binary/macos-install.md" /%}}
