@@ -448,7 +448,7 @@ class ClusterControl:
         self.set_running_master_addresses()
         daemon_type = DAEMON_TYPE_TSERVER
         num_servers = self.get_number_of_servers(daemon_type)
-        if len(self.options.placement_info) != 1:
+        if len(self.options.placement_info) > 1:
             raise RuntimeError("Please specify exactly one placement_info value.")
         self.start_daemon(DaemonId(daemon_type, num_servers + 1))
 
