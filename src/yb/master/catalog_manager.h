@@ -856,6 +856,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const std::string& salted_hash,
                                     const bool login, const bool superuser);
 
+
+  // Grant one role to another role
+  CHECKED_STATUS GrantRole(const GrantRoleRequestPB* req,
+                           GrantRoleResponsePB* resp,
+                           rpc::RpcContext* rpc);
+
+
   // Create a new User-Defined Type with the specified attributes.
   //
   // The RPC context is provided for logging/tracing purposes,

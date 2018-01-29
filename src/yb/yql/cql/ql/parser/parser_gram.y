@@ -215,7 +215,7 @@ using namespace yb::ql;
                           DropStmt
 
                           // Grant
-                          GrantStmt
+                          GrantStmt GrantRoleStmt
 
                           // Select.
                           distinct_clause opt_all_clause
@@ -435,7 +435,7 @@ using namespace yb::ql;
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
                           DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
-                          GrantRoleStmt ImportForeignSchemaStmt
+                          ImportForeignSchemaStmt
                           ListenStmt LoadStmt LockStmt NotifyStmt ExplainableStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt RevokeStmt RevokeRoleStmt
@@ -812,6 +812,9 @@ stmt:
   }
   | GrantStmt {
     $$ = $1;
+  }
+  | GrantRoleStmt {
+      $$ = $1;
   }
   | TruncateStmt {
     $$ = $1;
@@ -5347,7 +5350,6 @@ inactive_stmt:
   | ExecuteStmt
   | ExplainStmt
   | FetchStmt
-  | GrantRoleStmt
   | ImportForeignSchemaStmt
   | ListenStmt
   | RefreshMatViewStmt
@@ -7798,9 +7800,16 @@ function_with_argtypes:
  * GRANT and REVOKE ROLE statements
  *
  *****************************************************************************/
-
+/*
 GrantRoleStmt:
   GRANT privilege_list TO role_list opt_grant_admin_option opt_granted_by {
+  }
+;
+*/
+
+GrantRoleStmt:
+  GRANT role_name TO role_name {
+    $$ = MAKE_NODE(@1, PTGrantRole, $2, $4 );
   }
 ;
 

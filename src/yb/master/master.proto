@@ -116,6 +116,7 @@ message MasterErrorPB {
     // Invalid Roles
     ROLE_ALREADY_PRESENT = 27;
     ROLE_NOT_FOUND = 28;
+    INVALID_REQUEST = 29;
   }
 
   // The error code.
@@ -1006,6 +1007,16 @@ message DeleteRoleResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 }
+
+message GrantRoleRequestPB {
+  optional string granted_role = 1;
+  optional string recipient_role = 2;
+}
+
+message GrantRoleResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
 // ============================================================================
 //  (User-Defined) Type
 // ============================================================================
@@ -1103,6 +1114,8 @@ service MasterService {
 
   rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);
   rpc DeleteRole(DeleteRoleRequestPB) returns (DeleteRoleResponsePB);
+  rpc GrantRole(GrantRoleRequestPB) returns (GrantRoleResponsePB);
+
   rpc CreateUDType(CreateUDTypeRequestPB) returns (CreateUDTypeResponsePB);
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);

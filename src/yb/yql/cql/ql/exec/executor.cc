@@ -158,6 +158,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTCreateRole:
       return ExecPTNode(static_cast<const PTCreateRole *>(tnode));
 
+    case TreeNodeOpcode::kPTGrantRole:
+      return ExecPTNode(static_cast<const PTGrantRole *>(tnode));
+
     case TreeNodeOpcode::kPTDropStmt:
       return ExecPTNode(static_cast<const PTDropStmt *>(tnode));
 
@@ -218,6 +221,26 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
     return exec_context_->Error(tnode, s, error_code);
   }
 
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::ExecPTNode(const PTGrantRole *tnode) {
+
+  Status s = exec_context_->GrantRole(tnode->granted_role_name(), tnode->recipient_role_name());
+
+  if (PREDICT_FALSE(!s.ok())) {
+    ErrorCode error_code = ErrorCode::SERVER_ERROR;
+    if (s.IsInvalidArgument()) {
+      error_code = ErrorCode::INVALID_REQUEST;
+    }
+    if (s.IsNotFound()) {
+      error_code = ErrorCode::ROLE_NOT_FOUND;
+    }
+    // TODO (Bristy) : Set result_ properly
+    return exec_context_->Error(tnode, s, error_code);
+  }
   return Status::OK();
 }
 

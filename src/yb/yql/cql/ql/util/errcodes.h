@@ -128,6 +128,7 @@ enum class ErrorCode : int64_t {
   RESTART_REQUIRED = -313,
   ROLE_NOT_FOUND = -314,
   RESOURCE_NOT_FOUND = -315,
+  INVALID_REQUEST = -316,
 
 };
 

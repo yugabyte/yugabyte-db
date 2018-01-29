@@ -319,6 +319,12 @@ void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::DeleteRole);
 }
 
+void MasterServiceImpl::GrantRole(const GrantRoleRequestPB* req,
+                                  GrantRoleResponsePB* resp,
+                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GrantRole);
+}
+
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      CreateUDTypeResponsePB* resp,
                                      rpc::RpcContext rpc) {

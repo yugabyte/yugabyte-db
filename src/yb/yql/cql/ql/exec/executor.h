@@ -98,11 +98,14 @@ class Executor : public QLExprExecutor {
   // Drop a table.
   CHECKED_STATUS ExecPTNode(const PTDropStmt *tnode);
 
-  // Create a user-defined type;
+  // Create a user-defined type.
   CHECKED_STATUS ExecPTNode(const PTCreateType *tnode);
 
-  // Creates a role;
+  // Creates a role.
   CHECKED_STATUS ExecPTNode(const PTCreateRole *tnode);
+
+  // Grants a role to another role.
+  CHECKED_STATUS ExecPTNode(const PTGrantRole *tnode);
 
   // Select statement.
   CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);

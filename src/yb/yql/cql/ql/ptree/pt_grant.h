@@ -33,7 +33,58 @@ namespace yb {
 namespace ql {
 
 //--------------------------------------------------------------------------------------------------
-// GRANT Permission Statment
+// GRANT Role Statement
+
+class PTGrantRole : public TreeNode {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTGrantRole> SharedPtr;
+  typedef MCSharedPtr<const PTGrantRole> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTGrantRole(MemoryContext* memctx, YBLocation::SharedPtr loc,
+              const MCSharedPtr<MCString>& granted_role_name,
+              const MCSharedPtr<MCString>& recipient_role_name);
+  virtual ~PTGrantRole();
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTGrantRole;
+  }
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTGrantRole::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTGrantRole>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext* sem_context) override {
+    return Status::OK();
+  }
+  void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  // Name of Role that is being granted
+  std::string granted_role_name() const {
+    return granted_role_name_->c_str();
+  }
+
+  // Name of role that is receiving the grant statement
+  std::string recipient_role_name() const {
+    return recipient_role_name_->c_str();
+  }
+
+
+ private:
+  const MCSharedPtr<MCString>  granted_role_name_;
+  const MCSharedPtr<MCString>  recipient_role_name_;
+};
+
+
+//--------------------------------------------------------------------------------------------------
+// GRANT Permission Statement
 
 class PTGrantPermission : public TreeNode {
  public:
