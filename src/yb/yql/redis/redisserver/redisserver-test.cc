@@ -1339,6 +1339,17 @@ TEST_F(TestRedisService, TestSortedSets) {
   // Cannot have incr with multiple score value pairs.
   DoRedisTestExpectError(__LINE__, {"ZADD", "z_key", "INCR", "0", "v1", "1", "v2"});
 
+  // Test ZREM on non-existent key and then add the same key.
+  DoRedisTestInt(__LINE__, {"ZREM", "my_z_set", "v1"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZCARD", "my_z_set"}, 0);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZADD", "my_z_set", "1", "v1"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"ZCARD", "my_z_set"}, 1);
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "my_z_set", "1", "1"}, {"v1"});
+
   SyncClient();
   VerifyCallbacks();
 }

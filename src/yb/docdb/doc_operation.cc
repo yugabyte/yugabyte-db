@@ -772,6 +772,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), *data_type, &primitive_value));
         values.SetChild(primitive_value, SubDocument(ValueType::kTombstone));
       }
+      num_keys = kv.subkey_size();
       break;
     }
     case REDIS_TYPE_SORTEDSET: {
@@ -839,9 +840,12 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
       break;
     }
   }
-  DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
-  RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
-      doc_path, values, redis_query_id()));
+
+  if (num_keys != 0) {
+    DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
+    RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(doc_path, values, redis_query_id()));
+  }
+
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   if (EmulateRedisResponse(kv.type())) {
     // If the flag is true, we respond with the number of keys actually being deleted. We don't
