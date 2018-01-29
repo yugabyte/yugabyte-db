@@ -125,6 +125,8 @@ using yb::master::CreateRoleRequestPB;
 using yb::master::CreateRoleResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
+using yb::master::GrantRoleRequestPB;
+using yb::master::GrantRoleResponsePB;
 using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::GrantPermissionRequestPB;
@@ -333,6 +335,12 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
     DeleteRoleResponsePB* resp, int* num_attempts, const char* func_name,
     const std::function<Status(
         MasterServiceProxy*, const DeleteRoleRequestPB&, DeleteRoleResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const GrantRoleRequestPB& req,
+    GrantRoleResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const GrantRoleRequestPB&, GrantRoleResponsePB*,
         RpcController*)>& func);
 
 template Status YBClient::Data::SyncLeaderMasterRpc(

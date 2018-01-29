@@ -28,6 +28,31 @@ using std::shared_ptr;
 using std::to_string;
 using strings::Substitute;
 
+//--------------------------------------------------------------------------------------------------
+// GRANT Role Statement
+
+PTGrantRole::PTGrantRole(MemoryContext* memctx,
+                         YBLocation::SharedPtr loc,
+                         const MCSharedPtr<MCString>& granted_role_name,
+                         const MCSharedPtr<MCString>& recipient_role_name)
+    : TreeNode(memctx, loc),
+      granted_role_name_(granted_role_name),
+      recipient_role_name_(recipient_role_name) {
+}
+
+PTGrantRole::~PTGrantRole() {
+}
+
+void PTGrantRole::PrintSemanticAnalysisResult(SemContext* sem_context) {
+  MCString sem_output("\tGRANT Role ", sem_context->PTempMem());
+  sem_output = sem_output + granted_role_name().c_str() +  " TO  " + recipient_role_name().c_str();
+  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
+}
+
+
+//--------------------------------------------------------------------------------------------------
+// GRANT Permission Statement
+
 // TODO (Bristy) : Move this into commn/util
 const std::map<std::string, PermissionType >  PTGrantPermission::kPermissionMap = {
     {"all", PermissionType::ALL_PERMISSION },

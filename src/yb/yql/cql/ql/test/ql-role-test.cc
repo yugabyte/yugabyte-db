@@ -56,7 +56,7 @@ class TestQLPermission : public QLTestBase {
   }
 
   // Helper Functions
-  void CreateTable(TestQLProcessor *processor, const string& keyspace_name,
+  void CreateTable(TestQLProcessor* processor, const string& keyspace_name,
                    const string& table_name) {
     const string create_stmt = Substitute(
         "CREATE TABLE $0.$1(id int, name varchar, primary key(id));", keyspace_name, table_name);
@@ -64,14 +64,14 @@ class TestQLPermission : public QLTestBase {
     CHECK(s.ok());
   }
 
-  void CreateKeyspace(TestQLProcessor *processor, const string& keyspace_name) {
+  void CreateKeyspace(TestQLProcessor* processor, const string& keyspace_name) {
     const string create_stmt = Substitute(
         "CREATE KEYSPACE $0;", keyspace_name);
     Status s = processor->Run(create_stmt);
     CHECK(s.ok());
   }
 
-  void CreateRole(TestQLProcessor *processor, const string& role_name) {
+  void CreateRole(TestQLProcessor* processor, const string& role_name) {
     const string create_stmt = Substitute(
         "CREATE ROLE $0 WITH LOGIN = TRUE AND SUPERUSER = TRUE AND PASSWORD = 'TEST';", role_name);
     Status s = processor->Run(create_stmt);
@@ -124,7 +124,7 @@ class TestQLPermission : public QLTestBase {
   }
 
   // Generic Select
-  void CheckPermission(TestQLProcessor *processor, const string& grant_stmt,
+  void CheckPermission(TestQLProcessor* processor, const string& grant_stmt,
                        const string& canonical_resource,
                        const std::vector<string> &permissions, const string& role_name){
 
@@ -144,13 +144,12 @@ class TestQLPermission : public QLTestBase {
 
 };
 
-
 TEST_F(TestQLPermission, TestGrantAll) {
 
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
   // Ensure permission granted to proper role
   const string role_name = "test_role";
   const string role_name_2 = "test_role_2";
@@ -199,7 +198,7 @@ TEST_F(TestQLPermission, TestGrantKeyspace) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
   // Ensure permission granted to proper role
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
@@ -242,7 +241,7 @@ TEST_F(TestQLPermission, TestGrantRole) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
   // Ensure permission granted to proper role
   const string role_name = "test_role";
   const string role_name_2 = "test_role_2";
@@ -268,7 +267,7 @@ TEST_F(TestQLPermission, TestGrantTable) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
   // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
   // Ensure permission granted to proper role
   const string role_name = "test_role";
   const string keyspace1 = "keyspace1";
@@ -318,7 +317,47 @@ class TestQLRole : public QLTestBase {
     return "DROP ROLE IF EXISTS " + params;
   }
 
-  void CheckCreateAndDropRole(TestQLProcessor *processor, const string& role_name,
+  static const string GrantStmt(const string& role, const string& recipient) {
+    return Substitute("GRANT $0 to $1", role, recipient);
+  }
+
+  void CreateRole(TestQLProcessor* processor, const string& role_name) {
+    const string create_stmt = Substitute(
+        "CREATE ROLE $0 WITH LOGIN = TRUE AND SUPERUSER = TRUE AND PASSWORD = 'TEST';", role_name);
+    Status s = processor->Run(create_stmt);
+    CHECK(s.ok());
+  }
+
+  void GrantRole(TestQLProcessor* processor, const string& role, const string& recipient) {
+    const string grant_stmt = GrantStmt(role, recipient);
+    Status s = processor->Run(grant_stmt);
+    CHECK(s.ok());
+  }
+
+  string SelectStmt(const string& role_name) const {
+    return Substitute("SELECT * FROM system_auth.roles where role='$0';", role_name);
+  }
+
+  // Check the granted roles for a role
+  void CheckGrantedRoles(TestQLProcessor* processor, const string& role_name,
+                  const std::unordered_set<string>& roles) {
+    auto select = SelectStmt(role_name);
+    Status s = processor->Run(select);
+    CHECK(s.ok());
+    auto row_block = processor->row_block();
+    EXPECT_EQ(1, row_block->row_count());
+
+    QLRow &row = row_block->row(0);
+
+    EXPECT_EQ(QLValue::InternalType::kListValue, row.column(3).type());
+    QLSeqValuePB list_value = row.column(3).list_value();
+    EXPECT_EQ(roles.size(), list_value.elems_size());
+    for (int i = 0; i < list_value.elems_size(); i++) {
+      EXPECT_TRUE(roles.find(list_value.elems(i).string_value()) != roles.end());
+    }
+  }
+
+  void CheckCreateAndDropRole(TestQLProcessor* processor, const string& role_name,
                               const char* password, const bool is_superuser,
                               const bool can_login) {
 
@@ -374,12 +413,50 @@ class TestQLRole : public QLTestBase {
   }
 };
 
+TEST_F(TestQLRole, TestGrantRole) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor* processor = GetQLProcessor();
+  const string role_1 = "role1";
+  const string role_2 = "role2";
+  const string role_3 = "role3";
+  const string role_4 = "role4";
+  CreateRole(processor, role_1);
+  CreateRole(processor, role_2);
+  CreateRole(processor, role_3);
+
+  // Single Role Granted
+  GrantRole(processor, role_1, role_2);
+  std::unordered_set<string> roles ( {role_1} );
+  CheckGrantedRoles(processor, role_2, roles);
+
+  // Multiple Roles Granted
+  GrantRole(processor, role_3, role_2);
+  roles.insert(role_3);
+  CheckGrantedRoles(processor, role_2, roles);
+
+  // Same Grant Twice
+  const string invalid_grant_1 = GrantStmt(role_1, role_2);
+  EXEC_INVALID_STMT_MSG(invalid_grant_1, "Invalid Request");
+
+  // Roles not present
+  const string invalid_grant_2 = GrantStmt(role_1, role_4);
+  EXEC_INVALID_STMT_MSG(invalid_grant_2, "Role Not Found");
+
+  const string invalid_grant_3 = GrantStmt(role_4, role_2);
+  EXEC_INVALID_STMT_MSG(invalid_grant_3, "Role Not Found");
+  // TODO (Bristy) : Add in test to check circular grant of roles.
+
+}
+
 TEST_F(TestQLRole, TestRoleQuerySimple) {
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
   CheckCreateAndDropRole(processor, "test_role1", "test_pw", true, true);
   // Test no password set
   CheckCreateAndDropRole(processor, "test_role2", nullptr, false, true);
@@ -390,7 +467,7 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   ASSERT_NO_FATALS (CreateSimulatedCluster());
 
   // Get an available processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
 
   // Valid Create Role Statements
   const string role1 = "manager1;";
@@ -490,7 +567,7 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   ASSERT_NO_FATALS (CreateSimulatedCluster());
 
   // Get an available processor.
-  TestQLProcessor *processor = GetQLProcessor();
+  TestQLProcessor* processor = GetQLProcessor();
 
   // Valid Create Role Statements
   const string role1 = "manager1;";

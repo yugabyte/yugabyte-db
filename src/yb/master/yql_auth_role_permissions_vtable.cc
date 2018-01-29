@@ -63,7 +63,6 @@ Status YQLAuthRolePermissionsVTable::RetrieveData(const QLReadRequestPB& request
 
 Schema YQLAuthRolePermissionsVTable::CreateSchema() const {
   SchemaBuilder builder;
-  // TODO : (Bristy) What should be the type for permissions ?
   CHECK_OK(builder.AddHashKeyColumn(kRole, DataType::STRING));
   CHECK_OK(builder.AddColumn(kResource, QLType::Create(DataType::STRING)));
   CHECK_OK(builder.AddColumn(kPermissions, QLType::CreateTypeList(DataType::STRING)));

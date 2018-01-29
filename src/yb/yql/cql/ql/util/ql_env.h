@@ -131,6 +131,9 @@ class QLEnv {
   // Delete role by name
   virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
 
+  CHECKED_STATUS GrantRole(const std::string& granted_role_name,
+                           const std::string& recipient_role_name);
+
   // (User-defined) Type related methods.
 
   // Create (user-defined) type with the given arguments

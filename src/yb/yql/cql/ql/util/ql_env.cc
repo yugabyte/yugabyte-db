@@ -315,6 +315,11 @@ Status QLEnv::DeleteRole(const std::string& role_name) {
   return client_->DeleteRole(role_name);
 }
 
+Status QLEnv::GrantRole(const std::string& granted_role_name,
+                        const std::string& recipient_role_name) {
+  return client_->GrantRole(granted_role_name, recipient_role_name);
+}
+
 Status QLEnv::CreateUDType(const std::string &keyspace_name,
                            const std::string &type_name,
                            const std::vector<std::string> &field_names,

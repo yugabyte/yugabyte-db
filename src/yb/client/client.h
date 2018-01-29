@@ -311,13 +311,17 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
 
   // Authentication and Authorization
-  // Create a new role
+  // Create a new role.
   CHECKED_STATUS CreateRole(const std::string& role_name,
                             const std::string& salted_hash,
                             const bool login, const bool superuser);
 
-  // Delete a (user-defined) type by name.
+  // Delete a role.
   CHECKED_STATUS DeleteRole(const std::string& role_name);
+
+  // Grants a role to another role.
+  CHECKED_STATUS GrantRole(const std::string& granted_role_name,
+                           const std::string& recipient_role_name);
 
   // (User-defined) type related methods.
 

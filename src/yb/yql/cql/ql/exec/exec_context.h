@@ -113,6 +113,11 @@ class ExecContext : public ProcessContextBase {
     return ql_env_->DeleteRole(role_name);
   }
 
+  CHECKED_STATUS GrantRole(const std::string& granted_role_name,
+                           const std::string& recipient_role_name) {
+    return ql_env_->GrantRole(granted_role_name, recipient_role_name);
+  }
+
   // (User-defined) Type related methods.
 
   // Create (user-defined) type with the given arguments

@@ -110,6 +110,7 @@ const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage
   { ErrorCode::RESTART_REQUIRED, "Restart Required" },
   { ErrorCode::ROLE_NOT_FOUND, "Role Not Found"},
   { ErrorCode::RESOURCE_NOT_FOUND, "Resource Not Found"},
+  { ErrorCode::INVALID_REQUEST, "Invalid Request"},
 };
 
 ErrorCode GetErrorCode(const Status& s) {

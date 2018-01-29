@@ -3433,6 +3433,73 @@ Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::GrantRole(const GrantRoleRequestPB* req,
+                                 GrantRoleResponsePB* resp,
+                                 rpc::RpcContext* rpc) {
+
+  LOG(INFO) << "Servicing GrantRole request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+  Status s;
+  bool role_found = false;
+  if (!req->has_granted_role() || !req->has_recipient_role()) {
+    s = STATUS(InvalidArgument, "No role name given", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+  }
+
+  {
+    TRACE("Acquired catalog manager lock");
+    std::lock_guard<LockType> l_big(lock_);
+    if (FindPtrOrNull(roles_map_, req->granted_role()) == nullptr) {
+      s = STATUS(NotFound,
+                 Substitute("The role $0 does not exists", req->granted_role()));
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    }
+
+    scoped_refptr<RoleInfo> rp;
+    rp = FindPtrOrNull(roles_map_, req->recipient_role());
+    if (rp == nullptr) {
+      s = STATUS(NotFound,
+                 Substitute("The role $0 does not exists", req->recipient_role()));
+      return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
+    }
+
+    // Both roles are present
+    SysRoleEntryPB *metadata;
+    rp->mutable_metadata()->StartMutation();
+    metadata = &rp->mutable_metadata()->mutable_dirty()->pb;
+
+    for (int i = 0; i < metadata->member_of_size(); i++) {
+      if (metadata->member_of(i) == req->granted_role()) {
+        role_found = true;
+        break;
+      }
+    }
+
+    if (!role_found) {
+      metadata->add_member_of(req->granted_role());
+      s = sys_catalog_->UpdateItem(rp.get());
+      if (!s.ok()) {
+        s = s.CloneAndPrepend(Substitute(
+            "An error occurred while updating roles in sys-catalog: $0", s.ToString()));
+        LOG(WARNING) << s.ToString();
+        return CheckIfNoLongerLeaderAndSetupError(s, resp);
+      }
+      TRACE("Wrote Grant Role to sys-catalog");
+      LOG(INFO) << "Modified 'member of' field of role " << rp->id();
+    }
+    rp->mutable_metadata()->CommitMutation();
+  }
+
+  if (role_found) {
+    s = STATUS(InvalidArgument,
+               Substitute("The role $0 is already a member of $1",
+                          req->granted_role(), req->recipient_role()));
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
                                     CreateUDTypeResponsePB* resp,
                                     rpc::RpcContext* rpc) {

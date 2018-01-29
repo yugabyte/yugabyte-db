@@ -108,6 +108,8 @@ using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
+using yb::master::GrantRoleRequestPB;
+using yb::master::GrantRoleResponsePB;
 using yb::master::ListUDTypesRequestPB;
 using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
@@ -573,6 +575,25 @@ CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
   deadline.AddDelta(default_admin_operation_timeout());
   Status st = data_->SyncLeaderMasterRpc<DeleteRoleRequestPB, DeleteRoleResponsePB>(
       deadline, this, req, &resp, nullptr, "DeleteRole", &MasterServiceProxy::DeleteRole);
+      RETURN_NOT_OK(st);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::GrantRole(const std::string& granted_role_name,
+                                   const std::string& recipient_role_name) {
+  // Setting up request.
+  GrantRoleRequestPB req;
+  req.set_granted_role(granted_role_name);
+  req.set_recipient_role(recipient_role_name);
+
+  GrantRoleResponsePB resp;
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status st = data_->SyncLeaderMasterRpc<GrantRoleRequestPB, GrantRoleResponsePB>(
+      deadline, this, req, &resp, nullptr, "GrantRole", &MasterServiceProxy::GrantRole);
       RETURN_NOT_OK(st);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());

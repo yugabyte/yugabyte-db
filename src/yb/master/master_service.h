@@ -112,6 +112,10 @@ class MasterServiceImpl : public MasterServiceIf,
   virtual void DeleteRole(const DeleteRoleRequestPB* req,
                           DeleteRoleResponsePB* resp,
                           rpc::RpcContext rpc) override;
+  virtual void GrantRole(const GrantRoleRequestPB* req,
+                         GrantRoleResponsePB* resp,
+                         rpc::RpcContext rpc) override;
+
   virtual void CreateUDType(const CreateUDTypeRequestPB* req,
                             CreateUDTypeResponsePB* resp,
                             rpc::RpcContext rpc) override;
