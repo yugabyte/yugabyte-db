@@ -116,8 +116,10 @@ class MiniCluster : public MiniClusterBase {
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  CHECKED_STATUS AddTabletServer(
-      const tserver::TabletServerOptions& extra_opts = tserver::TabletServerOptions());
+  CHECKED_STATUS AddTabletServer(const tserver::TabletServerOptions& extra_opts);
+
+  // Same as above, but get options from flags.
+  CHECKED_STATUS AddTabletServer();
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if

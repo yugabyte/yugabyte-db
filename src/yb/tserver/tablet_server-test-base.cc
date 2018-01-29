@@ -88,7 +88,10 @@ void TabletServerTestBase::SetUp() {
 void TabletServerTestBase::StartTabletServer() {
   // Start server with an invalid master address, so it never successfully
   // heartbeats, even if there happens to be a master running on this machine.
-  mini_server_.reset(new MiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0));
+  auto mini_ts =
+      MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
+  CHECK_OK(mini_ts);
+  mini_server_ = std::move(*mini_ts);
   auto addr = std::make_shared<vector<HostPort>>();
   addr->push_back(HostPort("255.255.255.255", 1));
   mini_server_->options()->SetMasterAddresses(addr);
@@ -285,7 +288,10 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   ShutdownTablet();
 
   // Start server.
-  mini_server_.reset(new MiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0));
+  auto mini_ts =
+      MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
+  CHECK_OK(mini_ts);
+  mini_server_ = std::move(*mini_ts);
   auto addr = std::make_shared<vector<HostPort>>();
   addr->push_back(HostPort("255.255.255.255", 1));
   mini_server_->options()->SetMasterAddresses(addr);

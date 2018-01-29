@@ -47,13 +47,13 @@ namespace tserver {
 // tablet servers having different options.
 class TabletServerOptions : public yb::server::ServerBaseOptions {
  public:
-  TabletServerOptions();
-
-  ~TabletServerOptions() {}
+  static Result<TabletServerOptions> CreateTabletServerOptions();
 
   static const char* kServerType;
 
  private:
+  explicit TabletServerOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses);
+
   void ValidateMasterAddresses() const;
 };
 

@@ -34,8 +34,10 @@
 
 #include <gflags/gflags.h>
 
+#include "yb/gutil/strings/join.h"
 #include "yb/rpc/yb_rpc.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/net/net_util.h"
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -57,6 +59,7 @@ namespace yb {
 namespace server {
 
 using std::vector;
+using namespace std::literals;
 
 DEFINE_string(server_dump_info_path, "",
               "Path into which the server information will be "
@@ -127,6 +130,57 @@ void ServerBaseOptions::SetMasterAddressesNoValidation(
 ServerBaseOptions::addresses_shared_ptr ServerBaseOptions::GetMasterAddresses() const {
   std::lock_guard<std::mutex> l(master_addresses_mtx_);
   return master_addresses_;
+}
+
+Status ServerBaseOptions::DetermineMasterAddresses(
+    const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
+    uint64_t master_replication_factor, std::vector<HostPort>* master_addresses,
+    std::string* master_addresses_resolved_str) {
+  const auto kResolvePeriod = 1s;
+
+  master_addresses->clear();
+  if (!master_addresses_flag.empty()) {
+    Status s = HostPort::ParseStrings(master_addresses_flag,
+                                      master::kMasterDefaultPort,
+                                      master_addresses);
+    RETURN_NOT_OK_PREPEND(s, "Couldn't parse the " + master_addresses_flag_name + " flag ('" +
+        master_addresses_flag + "')");
+  }
+
+  if (master_replication_factor <= 0) {
+    *master_addresses_resolved_str = master_addresses_flag;
+    return Status::OK();
+  }
+
+  std::vector<Endpoint> addrs;
+  for (;;) {
+    addrs.clear();
+    for (auto hp : *master_addresses) {
+      auto s = hp.ResolveAddresses(&addrs);
+      if (!s.ok()) {
+        LOG(WARNING) << s;
+      }
+    }
+    if (addrs.size() >= master_replication_factor) {
+      break;
+    }
+    std::this_thread::sleep_for(kResolvePeriod);
+  }
+  if (addrs.size() > master_replication_factor) {
+    return STATUS_FORMAT(
+        ConfigurationError, "Expected $0 master endpoints, but got: $1",
+        master_replication_factor, ToString(addrs));
+  }
+  LOG(INFO) << Format("Resolved master addresses: $0", ToString(addrs));
+  master_addresses->clear();
+  vector<string> master_addr_strings(addrs.size());
+  for (const auto& addr : addrs) {
+    auto hp = HostPort(addr);
+    master_addresses->emplace_back(hp);
+    master_addr_strings.emplace_back(hp.ToString());
+  }
+  *master_addresses_resolved_str = JoinStrings(master_addr_strings, ",");
+  return Status::OK();
 }
 
 } // namespace server

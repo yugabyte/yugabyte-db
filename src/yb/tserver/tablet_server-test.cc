@@ -738,7 +738,8 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   FLAGS_rpc_bind_addresses = "0.0.0.0:2000";
   RpcServerOptions opts;
   ServerRegistrationPB reg;
-  TabletServerOptions tbo;
+  auto tbo = TabletServerOptions::CreateTabletServerOptions();
+  ASSERT_OK(tbo);
   MessengerBuilder mb("foo");
   auto messenger = mb.Build();
   ASSERT_OK(messenger);
@@ -757,8 +758,8 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_OK(server3.Init(*messenger));
 
   reg.Clear();
-  tbo.rpc_opts = opts3;
-  YB_EDITION_NS_PREFIX TabletServer server(tbo);
+  tbo->rpc_opts = opts3;
+  YB_EDITION_NS_PREFIX TabletServer server(*tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(server.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(server.GetRegistration(&reg), "Ignore"));
@@ -769,8 +770,8 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   reg.Clear();
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
   RpcServerOptions opts4;
-  tbo.rpc_opts = opts4;
-  YB_EDITION_NS_PREFIX TabletServer tserver2(tbo);
+  tbo->rpc_opts = opts4;
+  YB_EDITION_NS_PREFIX TabletServer tserver2(*tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.GetRegistration(&reg), "Ignore"));

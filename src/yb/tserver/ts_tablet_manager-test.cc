@@ -79,11 +79,17 @@ class TsTabletManagerTest : public YBTest {
     : schema_({ ColumnSchema("key", UINT32) }, 1) {
   }
 
+  void CreateMiniTabletServer() {
+    auto mini_ts = MiniTabletServer::CreateMiniTabletServer(test_data_root_, 0);
+    ASSERT_OK(mini_ts);
+    mini_server_ = std::move(*mini_ts);
+  }
+
   void SetUp() override {
     YBTest::SetUp();
 
     test_data_root_ = GetTestPath("TsTabletManagerTest-fsroot");
-    mini_server_.reset(new MiniTabletServer(test_data_root_, 0));
+    CreateMiniTabletServer();
     ASSERT_OK(mini_server_->Start());
     mini_server_->FailHeartbeats();
 
@@ -113,7 +119,7 @@ class TsTabletManagerTest : public YBTest {
   }
 
  protected:
-  gscoped_ptr<MiniTabletServer> mini_server_;
+  std::unique_ptr<MiniTabletServer> mini_server_;
   FsManager* fs_manager_;
   TSTabletManager* tablet_manager_;
 
@@ -134,7 +140,7 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   LOG(INFO) << "Shutting down tablet manager";
   mini_server_->Shutdown();
   LOG(INFO) << "Restarting tablet manager";
-  mini_server_.reset(new MiniTabletServer(test_data_root_, 0));
+  CreateMiniTabletServer();
   ASSERT_OK(mini_server_->Start());
   ASSERT_OK(mini_server_->WaitStarted());
   tablet_manager_ = mini_server_->server()->tablet_manager();
@@ -173,7 +179,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     LOG(INFO) << "Shutting down tablet manager";
     mini_server_->Shutdown();
     LOG(INFO) << "Restarting tablet manager";
-    mini_server_.reset(new MiniTabletServer(test_data_root_, 0));
+    CreateMiniTabletServer();
     ASSERT_OK(mini_server_->Start());
     auto* tablet_manager = mini_server_->server()->tablet_manager();
     ASSERT_NE(nullptr, tablet_manager);

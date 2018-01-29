@@ -60,6 +60,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"

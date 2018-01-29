@@ -90,6 +90,13 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
 MiniTabletServer::~MiniTabletServer() {
 }
 
+Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServer(
+    const string& fs_root, uint16_t rpc_port, int index) {
+  auto options_result = TabletServerOptions::CreateTabletServerOptions();
+  RETURN_NOT_OK(options_result);
+  return std::make_unique<MiniTabletServer>(fs_root, rpc_port, *options_result, index);
+}
+
 Status MiniTabletServer::Start() {
   CHECK(!started_);
 

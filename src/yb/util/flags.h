@@ -36,8 +36,6 @@
 
 #include "yb/gutil/macros.h"
 
-DECLARE_string(tserver_master_addrs);
-
 namespace yb {
 
 // Looks for flags in argv and parses them.  Rearranges argv to put

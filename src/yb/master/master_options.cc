@@ -38,12 +38,8 @@
 #include "yb/master/master.h"
 #include "yb/util/flag_tags.h"
 
-#include "yb/gutil/strings/join.h"
-
 using std::make_shared;
 using std::vector;
-
-using namespace std::literals;
 
 namespace yb {
 namespace master {
@@ -77,55 +73,14 @@ MasterOptions::MasterOptions(server::ServerBaseOptions::addresses_shared_ptr mas
 }
 
 Result<MasterOptions> MasterOptions::CreateMasterOptions() {
-  const auto resolve_period = 1s;
-
-  vector<HostPort> master_addresses = std::vector<HostPort>();
-  if (!FLAGS_master_addresses.empty()) {
-    Status s = HostPort::ParseStrings(FLAGS_master_addresses,
-                                      kMasterDefaultPort,
-                                      &master_addresses);
-    if (!s.ok()) {
-      LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
-                 << FLAGS_master_addresses << "'): " << s.ToString();
-    }
-  }
-
-  std::string master_addresses_flag;
-  if (FLAGS_master_replication_factor > 0) {
-    vector<Endpoint> addrs;
-    for (;;) {
-      addrs.clear();
-      for (auto hp : master_addresses) {
-        auto s = hp.ResolveAddresses(&addrs);
-        if (!s.ok()) {
-          LOG(WARNING) << s;
-        }
-      }
-      if (addrs.size() >= FLAGS_master_replication_factor) {
-        break;
-      }
-      std::this_thread::sleep_for(resolve_period);
-    }
-    if (addrs.size() > FLAGS_master_replication_factor) {
-      return STATUS_FORMAT(
-          ConfigurationError, "Expected $0 master endpoints, but got: $1",
-          FLAGS_master_replication_factor, ToString(addrs));
-    }
-    LOG(INFO) << Format("Resolved master addresses: $0", ToString(addrs));
-    master_addresses.clear();
-    vector<string> master_addr_strings;
-    for (auto addr : addrs) {
-      auto hp = HostPort(addr);
-      master_addresses.emplace_back(hp);
-      master_addr_strings.emplace_back(hp.ToString());
-    }
-    master_addresses_flag = JoinStrings(master_addr_strings, ",");
-  } else {
-    master_addresses_flag = FLAGS_master_addresses;
-  }
+  std::vector<HostPort> master_addresses;
+  std::string master_addresses_resolved_str;
+  RETURN_NOT_OK(DetermineMasterAddresses(
+      "master_addresses", FLAGS_master_addresses, FLAGS_master_replication_factor,
+      &master_addresses, &master_addresses_resolved_str));
 
   MasterOptions opts(make_shared<vector<HostPort>>(std::move(master_addresses)));
-  opts.master_addresses_flag = master_addresses_flag;
+  opts.master_addresses_flag = master_addresses_resolved_str;
   return opts;
 }
 
