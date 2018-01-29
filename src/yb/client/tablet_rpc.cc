@@ -238,6 +238,12 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   if (!status->ok()) {
+    if (status->IsTimedOut()) {
+      VLOG(1) << "Call timed out. Marking replica as failed.";
+      if (tablet_ != nullptr && current_ts_ != nullptr) {
+        tablet_->MarkReplicaFailed(current_ts_, *status);
+      }
+    }
     std::string current_ts_string;
     if (current_ts_) {
       current_ts_string = Format("on tablet server $0", *current_ts_);
