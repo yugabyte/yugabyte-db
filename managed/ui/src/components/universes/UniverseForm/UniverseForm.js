@@ -202,12 +202,12 @@ class UniverseForm extends Component {
   }
 
   handleUniverseConfigure(universeTaskParams) {
-    const {universe: {currentUniverse}} = this.props;
+    const {universe: {currentUniverse}, type} = this.props;
     const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
     if (!isNonEmptyObject(primaryCluster)) return;
     const checkSpotPrice = primaryCluster.userIntent.providerType === 'aws' && !this.state.gettingSuggestedSpotPrice;
     if (isDefinedNotNull(this.state.instanceTypeSelected) && isNonEmptyArray(this.state.regionList) &&
-        (!checkSpotPrice || _.isEqual(this.state.spotPrice.toString(), normalizeToPositiveFloat(this.state.spotPrice.toString())))) {
+        (!checkSpotPrice || _.isEqual(this.state.spotPrice.toString(), normalizeToPositiveFloat(this.state.spotPrice.toString())) || type === "Edit")) {
       if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
         const prevPrimaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
         const nextPrimaryCluster = getPrimaryCluster(universeTaskParams.clusters);
