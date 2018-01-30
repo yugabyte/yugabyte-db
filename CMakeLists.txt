@@ -150,7 +150,13 @@ function(VALIDATE_COMPILER_TYPE)
     set(ENV{YB_COMPILER_TYPE} "${COMPILER_FAMILY}")
   endif()
 
-  if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${COMPILER_FAMILY}")
+  if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "zapcc")
+    if (NOT "${COMPILER_FAMILY}" STREQUAL "clang")
+      message(FATAL_ERROR
+              "Compiler type is zapcc but the compiler family is '${COMPILER_FAMILY}' "
+              "(expected to be clang)")
+    endif()
+  elseif (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "${COMPILER_FAMILY}")
     message(FATAL_ERROR
             "YB_COMPILER_TYPE environment variable ($ENV{YB_COMPILER_TYPE}) does not match the "
             "compiler family detected by CMake (${COMPILER_FAMILY}")
@@ -431,6 +437,9 @@ endif()
 # versions of the compiler will have different keys in ccache.
 ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
 ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
+if ($ENV{YB_COMPILER_TYPE} STREQUAL "zapcc")
+  ADD_CXX_FLAGS("-DYB_ZAPCC")
+endif()
 
 ############################################################
 # Compiler flags

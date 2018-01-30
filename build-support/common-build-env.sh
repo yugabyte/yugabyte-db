@@ -236,7 +236,7 @@ readonly VALID_CMAKE_BUILD_TYPES=(
 )
 readonly VALID_CMAKE_BUILD_TYPES_RE=$( regex_from_list "${VALID_CMAKE_BUILD_TYPES[@]}" )
 
-readonly VALID_COMPILER_TYPES=( gcc clang )
+readonly VALID_COMPILER_TYPES=( gcc clang zapcc )
 readonly VALID_COMPILER_TYPES_RE=$( regex_from_list "${VALID_COMPILER_TYPES[@]}" )
 
 readonly YELLOW_COLOR="\033[0;33m"
@@ -915,6 +915,15 @@ find_compiler_by_type() {
       fi
       if [[ -z ${cxx_executable:-} ]]; then
         cxx_executable=$cc_executable++  # clang -> clang++
+      fi
+    ;;
+    zapcc)
+      if [[ -n ${YB_ZAPCC_INSTALL_PATH:-} ]]; then
+        cc_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc
+        cxx_executable=$YB_ZAPCC_INSTALL_PATH/bin/zapcc++
+      else
+        cc_executable=zapcc
+        cxx_executable=zapcc++
       fi
     ;;
     *)

@@ -9,7 +9,13 @@
 #include <mutex>
 #include <thread>
 
-#if defined(__APPLE__) && __clang_major__ < 8
+#if defined(__APPLE__) && __clang_major__ < 8 || YB_ZAPCC
+#define YB_CONCURRENT_VALUE_USE_BOOST_THREAD_SPECIFIC_PTR 1
+#else
+#define YB_CONCURRENT_VALUE_USE_BOOST_THREAD_SPECIFIC_PTR 0
+#endif
+
+#if YB_CONCURRENT_VALUE_USE_BOOST_THREAD_SPECIFIC_PTR
 #include <boost/thread/tss.hpp>
 #endif
 
@@ -184,7 +190,7 @@ class URCU {
 
   std::atomic <uint32_t> global_control_word_{1};
   std::mutex mutex_;
-#if defined(__APPLE__) && __clang_major__ < 8
+#if YB_CONCURRENT_VALUE_USE_BOOST_THREAD_SPECIFIC_PTR
   static void CleanupThreadData(URCUThreadData* data) {
     ThreadList<URCUThreadData>::Instance().Retire(data);
   }
