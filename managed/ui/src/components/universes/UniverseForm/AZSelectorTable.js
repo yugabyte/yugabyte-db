@@ -190,7 +190,8 @@ export default class AZSelectorTable extends Component {
         });
       });
     }
-    return ({groups: groupsArray,
+    let sortedGroups = groupsArray.sort((a, b)=>(a.value - b.value));
+    return ({groups: sortedGroups,
       uniqueRegions: uniqueRegions.length,
       uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
   };
