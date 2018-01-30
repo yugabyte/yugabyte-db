@@ -10,6 +10,7 @@ import Register from './pages/Register';
 import AuthenticatedComponent from './pages/AuthenticatedComponent';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
+import UniverseDetailNew from './pages/UniverseDetailNew';
 import Universes from './pages/Universes';
 import {Tasks, TasksList, TaskDetail} from './pages/tasks';
 import Alerts from './pages/Alerts';
@@ -68,6 +69,7 @@ export default (store) => {
         <Route path="/universes" component={Universes} >
           <IndexRoute component={ListUniverse} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
+          <Route path="/universes/:uuid/new" component={UniverseDetailNew} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail}/>
         </Route>
         <Route path="/tasks" component={Tasks} >

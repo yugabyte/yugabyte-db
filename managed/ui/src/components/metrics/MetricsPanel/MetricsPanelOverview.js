@@ -2,8 +2,9 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { removeNullProperties, isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
+import _ from 'lodash';
 import { METRIC_FONT } from '../MetricsConfig';
 
 const Plotly = require('plotly.js/lib/core');
@@ -12,17 +13,16 @@ const WIDTH_OFFSET = 0;
 const MAX_GRAPH_WIDTH_PX = 600;
 const GRAPH_GUTTER_WIDTH_PX = 15;
 
-export default class MetricsPanel extends Component {
+export default class MetricsPanelOverview extends Component {
   static propTypes = {
     metric: PropTypes.object.isRequired,
     metricKey: PropTypes.string.isRequired
   }
 
   componentDidMount() {
-    const { metricKey, metric } = this.props;
+    const { metricKey } = this.props;
+    const metric = _.cloneDeep(this.props.metric);
     if (isNonEmptyObject(metric)) {
-      // Remove Null Properties from the layout
-      removeNullProperties(metric.layout);
 
       // TODO: send this data from backend.
       let max = 0;
@@ -37,30 +37,28 @@ export default class MetricsPanel extends Component {
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
       metric.layout.width = this.getGraphWidth(this.props.width || 1200);
-      metric.layout.height = 360;
-      metric.layout.showlegend = true;
+      metric.layout.height = 135;
+      metric.layout.title = "";
+      metric.layout.showlegend = false;
       metric.layout.margin = {
-        l: 45,
-        r: 25,
+        l: 0,
+        r: 0,
         b: 0,
-        t: 70,
-        pad: 4,
+        t: 0,
+        pad: 0,
       };
       if (isNonEmptyObject(metric.layout.yaxis) && isNonEmptyString(metric.layout.yaxis.ticksuffix)) {
-        metric.layout.margin.l = 70;
+        metric.layout.margin.l = 40;
         metric.layout.yaxis.range = [0, max];
       } else {
         metric.layout.yaxis = {range: [0, max]};
       }
+      metric.layout.yaxis.fixedrange = true;
+      metric.layout.xaxis.fixedrange = true;
+      metric.layout.yaxis._offset = 10;
       metric.layout.font = {
         family: METRIC_FONT,
-      };
-      metric.layout.legend = {
-        orientation: "h",
-        xanchor: "center",
-        yanchor: "bottom",
-        x: 0.5,
-        y: -0.5,
+        weight: 300
       };
 
       // Handle the case when the metric data is empty, we would show
@@ -68,15 +66,14 @@ export default class MetricsPanel extends Component {
       if (!isNonEmptyArray(metric.data)) {
         metric.layout["annotations"] = [{
           visible: true,
-          align: "center",
+          align: "top",
           text: "No Data",
           showarrow: false,
           x: 1,
           y: 1
         }];
-        metric.layout.margin.b = 105;
         metric.layout.xaxis = {range: [0, 2]};
-        metric.layout.yaxis = {range: [0, 2]};
+        metric.layout.yaxis = {range: [0, 5]};
       }
 
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
@@ -90,7 +87,7 @@ export default class MetricsPanel extends Component {
   }
 
   getGraphWidth(containerWidth) {
-    const width = containerWidth - WIDTH_OFFSET;
+    const width = containerWidth - WIDTH_OFFSET+25+Math.round(16000/containerWidth);
     const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }

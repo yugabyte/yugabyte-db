@@ -9,14 +9,14 @@ const FlexContainer = ({ className, ...props }) => (
   </div>
 );
 
-const FlexGrow = ({ power, ...props }) => (
-  <div {...props} className={ props.className ? "flex-grow " + props.classNames : "flex-grow"} style={{...props.style, flexGrow: power}}>
+const FlexGrow = ({ power, className, ...props }) => (
+  <div {...props} className={ className ? "flex-grow " + className : "flex-grow"} style={{...props.style, flexGrow: power}}>
     {props.children}
   </div>
 );
 
-const FlexShrink = ({ power, ...props }) => (
-  <div {...props} className={ props.className ? "flex-shrink " + props.className : "flex-shrink" } style={{...props.style}}>
+const FlexShrink = ({ power, className, ...props }) => (
+  <div {...props} className={ className ? "flex-shrink " + className : "flex-shrink" } style={{...props.style}}>
     {props.children}
   </div>
 );

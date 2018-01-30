@@ -1,0 +1,103 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+.widget-panel {
+  margin: 0;
+  padding: 0;
+  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.05);
+  border: none;
+  background-color: #fff;
+  border-radius: 4px;
+  margin-bottom: 25px;
+  height: 180px;
+  overflow: hidden;
+
+  > .header {
+    height: 45px;
+    padding: 0 20px;
+    border-bottom: 1px solid $YB_BACKGROUND;
+    overflow: hidden;
+    line-height: 45px;
+    text-transform: lowercase;
+    font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+
+    .left {
+      color: $YB_SUBTITLE_COLOR;
+      text-align: left;
+    }
+
+    .right {
+      text-align: right;
+    }
+  }
+
+  > .body {
+    position: relative;
+    padding: 10px 20px 15px 20px;
+    margin: 0;
+    min-height: 134px;
+
+    &.body-no-margin {
+      padding: 0;
+    }
+  }
+  
+  &.widget-panel-row-2 {
+    height: 385px;
+    > .body {
+      min-height: 339px;
+    }
+  }
+
+  &.widget-panel-row-3 {
+    height: 570px;
+    > .body {
+      min-height: 524px;
+    }
+  }
+
+  .dl-normal {
+    margin: 0;
+    padding: 0;
+  
+    dd, dt {
+      font-weight: 300;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      line-height: 22px;
+    }
+
+    dt {
+      color: $YB_SUBTITLE_COLOR;
+      float: left;
+      overflow: hidden;
+      clear: left;
+      width: 120px;
+      text-align: left;
+    }
+  }
+}
+
+.content-panel-margin-top {
+  margin-top: 58px;
+}
+.panel_toolbox {
+  float: right;
+  min-width: 70px;
+}
+.panel_toolbox>li {
+  float: left;
+  cursor: pointer;
+}
+.panel_toolbox>li>a {
+  padding: 5px;
+  color: #C5C7CB;
+  font-size: 14px;
+}
+.panel_toolbox>li>a:hover {
+  background: #F5F7FA;
+}

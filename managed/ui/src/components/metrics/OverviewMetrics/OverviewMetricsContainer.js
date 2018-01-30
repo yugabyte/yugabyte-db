@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 
-import { GraphPanel } from '../../metrics';
+import { OverviewMetrics } from '../../metrics';
 import { queryMetrics, queryMetricsSuccess, queryMetricsFailure,
   resetMetrics } from '../../../actions/graph';
 
@@ -29,4 +29,4 @@ const mapStateToProps = (state) => {
   };
 };
 
-export default connect( mapStateToProps, mapDispatchToProps)(GraphPanel);
+export default connect( mapStateToProps, mapDispatchToProps)(OverviewMetrics);
