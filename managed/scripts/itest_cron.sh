@@ -17,6 +17,20 @@ code_root=/home/centos/code/
 itest_yw_repo="$code_root"/yugaware
 itest_devops_repo="$code_root"/devops
 
+function rebase_repos() {
+  cd $itest_devops_repo
+  git stash
+  git checkout master
+  git pull --rebase
+  cd bin
+  ./install_python_requirements.sh
+
+  cd $itest_yw_repo
+  git stash
+  git checkout master
+  git pull --rebase
+}
+
 if [ ! -d "$itest_yw_repo" ]; then
   cd $code_root
   git clone git@bitbucket.org:yugabyte/yugaware.git
@@ -29,17 +43,26 @@ fi
 
 export DEVOPS_HOME=$itest_devops_repo
 
-cd $itest_devops_repo
-git stash
-git checkout master
-git pull --rebase
-cd bin
-./install_python_requirements.sh
+# Separated to standalone function for single edit commenting out.
+rebase_repos
 
+export ITEST_USER=sched
+
+# TODO(bogdan): figure out how to remove the PID file as well on stop!
+# currently added a manual tweak to the service file for YW for PIDFile=
+#
+# Currently stopping the service before running itest, so that build doesn't OOM due to YW.
+sudo service yugaware stop
+
+# DEFAULT SETTING
 cd $itest_yw_repo
-git stash
-git checkout master
-git pull --rebase
+unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify
 
-# The `unset` is needed to make yugabyte build correctly (otherwise hit ELF lib check failures).
-unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --perform_perf_runs --notify
+# Setting to use when testing local yw/devops changes
+# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify --local_path $code_root
+
+# Setting to use existing latest build but still notify!
+# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify --use_latest_deploy
+
+# For testing without notify and with existing latest build on gcp only!
+# unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --use_latest_build --run_universe_test gcp
