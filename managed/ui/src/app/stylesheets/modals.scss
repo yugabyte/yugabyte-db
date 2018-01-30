@@ -4,6 +4,8 @@
 
 .modal-content {
   border-radius: 0px;
+  -webkit-box-shadow: 0 15px 45px rgba(0, 0, 0, .3);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, .3);
   .modal-header {
     text-align: left;
     button.close {

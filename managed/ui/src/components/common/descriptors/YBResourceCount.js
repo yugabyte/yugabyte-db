@@ -9,6 +9,7 @@ export default class YBResourceCount extends Component {
   static propTypes = {
     kind: PropTypes.string.isRequired,
     unit: PropTypes.string,
+    className: PropTypes.string,
     pluralizeKind: PropTypes.bool,
     pluralizeUnit: PropTypes.bool,
     typePlural: PropTypes.string,
@@ -24,7 +25,7 @@ export default class YBResourceCount extends Component {
   }
 
   render() {
-    const {size, kind, unit, pluralizeKind, pluralizeUnit} = this.props;
+    const {size, kind, unit, pluralizeKind, className, pluralizeUnit} = this.props;
     const displayUnit = unit && pluralizeUnit ?
       ((size === 1) ? unit : (this.props.unitPlural || this.pluralize(unit))) :
       unit;
@@ -33,7 +34,7 @@ export default class YBResourceCount extends Component {
       kind;
 
     return (
-      <div className="yb-resource-count">
+      <div className={"yb-resource-count "+className}>
         <div className="yb-resource-count-size">
           {size}
           {displayUnit && <span className="yb-resource-count-unit">{displayUnit}</span>}
