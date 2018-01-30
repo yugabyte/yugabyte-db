@@ -57,9 +57,9 @@ using tserver::AlterSchemaRequestPB;
 using tserver::AlterSchemaResponsePB;
 
 void AlterSchemaOperationState::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
-  index_lookup_map_.clear();
+  index_map_.clear();
   for (const auto& index : indexes) {
-    index_lookup_map_.emplace(index.table_id(), IndexInfo(index));
+    index_map_.emplace(index.table_id(), IndexInfo(index));
   }
 }
 

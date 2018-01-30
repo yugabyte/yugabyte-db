@@ -1327,8 +1327,8 @@ const Schema& YBTable::InternalSchema() const {
   return internal::GetSchema(data_->info_.schema);
 }
 
-const vector<IndexInfo>& YBTable::indexes() const {
-  return data_->info_.indexes;
+const IndexMap& YBTable::index_map() const {
+  return data_->info_.index_map;
 }
 
 bool YBTable::IsIndex() const {

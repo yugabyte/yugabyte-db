@@ -1050,7 +1050,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
         info_->indexed_table_id = resp_.indexed_table_id();
       }
       for (const auto& index : resp_.indexes()) {
-        info_->indexes.emplace_back(index);
+        info_->index_map.emplace(index.table_id(), IndexInfo(index));
       }
       CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
     }

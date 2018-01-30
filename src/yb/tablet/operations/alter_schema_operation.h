@@ -78,8 +78,8 @@ class AlterSchemaOperationState : public OperationState {
 
   void SetIndexes(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
 
-  IndexLookupMap& index_lookup_map() {
-    return index_lookup_map_;
+  IndexMap& index_map() {
+    return index_map_;
   }
 
   std::string new_table_name() const {
@@ -118,7 +118,7 @@ class AlterSchemaOperationState : public OperationState {
   const Schema* schema_ = nullptr;
 
   // Lookup map for the associated indexes.
-  IndexLookupMap index_lookup_map_;
+  IndexMap index_map_;
 
   // The original RPC request and response.
   const tserver::AlterSchemaRequestPB *request_;

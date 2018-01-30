@@ -981,7 +981,7 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
     }
 
     // Update the index info.
-    metadata_->SetIndexLookupMap(std::move(operation_state->index_lookup_map()));
+    metadata_->SetIndexMap(std::move(operation_state->index_map()));
 
     // If the current schema and the new one are equal, there is nothing to do.
     if (same_schema) {

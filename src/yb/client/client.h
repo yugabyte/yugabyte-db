@@ -680,7 +680,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
 
-  const std::vector<IndexInfo>& indexes() const;
+  const IndexMap& index_map() const;
 
   bool IsIndex() const;
 

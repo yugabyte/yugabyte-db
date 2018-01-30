@@ -319,6 +319,9 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   if (!s.ok()) {
     return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    table_properties.SetTransactional(true);
+  }
 
   b.SetTableProperties(table_properties);
 
@@ -767,7 +770,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   }
 
   // Set the values for columns.
-  s = ColumnArgsToPB(table, tnode, req);
+  s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -786,7 +789,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
     }
   }
 
-  // Apply the operator.
+  // Apply the operation.
   return ApplyWriteOp(tnode, insert_op);
 }
 
@@ -817,7 +820,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
-  s = ColumnArgsToPB(table, tnode, req);
+  s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -830,7 +833,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
     }
   }
 
-  // Apply the operator.
+  // Apply the operation.
   return ApplyWriteOp(tnode, delete_op);
 }
 
@@ -863,7 +866,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   }
 
   // Setup the columns' new values.
-  s = ColumnArgsToPB(table, tnode, update_op->mutable_request());
+  s = ColumnArgsToPB(tnode, update_op->mutable_request());
   if (PREDICT_FALSE(!s.ok())) {
     return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
@@ -882,7 +885,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
     }
   }
 
-  // Apply the operator.
+  // Apply the operation.
   return ApplyWriteOp(tnode, update_op);
 }
 

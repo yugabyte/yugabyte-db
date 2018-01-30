@@ -552,9 +552,9 @@ void TabletMetadata::SetSchema(const Schema& schema, uint32_t version) {
   SetSchemaUnlocked(new_schema.Pass(), version);
 }
 
-void TabletMetadata::SetIndexLookupMap(IndexLookupMap&& index_lookup_map) {
+void TabletMetadata::SetIndexMap(IndexMap&& index_map) {
   std::lock_guard<LockType> l(data_lock_);
-  index_lookup_map_ = std::move(index_lookup_map);
+  index_map_ = std::move(index_map);
 }
 
 void TabletMetadata::SetSchemaUnlocked(gscoped_ptr<Schema> new_schema, uint32_t version) {
@@ -590,8 +590,8 @@ TableType TabletMetadata::table_type() const {
 
 Result<IndexInfo> TabletMetadata::FindIndex(const TableId& index_id) const {
   std::lock_guard<LockType> l(data_lock_);
-  const auto itr = index_lookup_map_.find(index_id);
-  if (itr != index_lookup_map_.end()) {
+  const auto itr = index_map_.find(index_id);
+  if (itr != index_map_.end()) {
     return itr->second;
   }
   return STATUS(NotFound, Format("Index id $0 not found", index_id));

@@ -249,9 +249,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS ColumnRefsToPB(const PTDmlStmt *tnode, QLReferencedColumnsPB *columns_pb);
 
   // Convert column arguments to protobuf.
-  CHECKED_STATUS ColumnArgsToPB(const std::shared_ptr<client::YBTable>& table,
-                                const PTDmlStmt *tnode,
-                                QLWriteRequestPB *req);
+  CHECKED_STATUS ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
   //------------------------------------------------------------------------------------------------
   // Where clause evaluation.
