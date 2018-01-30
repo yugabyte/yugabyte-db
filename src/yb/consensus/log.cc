@@ -106,11 +106,14 @@ DEFINE_int32(log_inject_latency_ms_mean, 100,
              "The number of milliseconds of latency to inject, on average. "
              "Only takes effect if --log_inject_latency is true");
 DEFINE_int32(log_inject_latency_ms_stddev, 100,
-             "The standard deviation of latency to inject in the log. "
+             "The standard deviation of latency to inject in before log sync operations. "
              "Only takes effect if --log_inject_latency is true");
 TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
+
+DEFINE_int32(log_inject_append_latency_ms_max, 0,
+             "The maximum latency to inject before the log append operation.");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -517,20 +520,13 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
 
     RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
 
-    // We keep track of the last-written OpId here.
-    // This is needed to initialize Consensus on startup.
-    if (entry_batch->type_ == REPLICATE) {
-      // TODO Probably remove the code below as it looks suspicious: Tablet peer uses this
-      // as 'safe' anchor as it believes it in the log, when it actually isn't, i.e. this
-      // is not the last durable operation. Either move this to tablet peer (since we're
-      // using in flights anyway no need to scan for ids here) or actually delay doing this
-      // until fsync() has been done. See KUDU-527.
+    // We keep track of the last-written OpId here. This is needed to initialize Consensus on
+    // startup.
 
-      auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
-      std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
-      last_entry_op_id_.store(new_op_id, std::memory_order_release);
-      last_entry_op_id_cond_.notify_all();
-    }
+    auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
+    std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
+    last_entry_op_id_.store(new_op_id, std::memory_order_release);
+    last_entry_op_id_cond_.notify_all();
 
     // We don't update the last segment offset here anymore. This is done on the Sync() method to
     // guarantee that we only try to read what we have persisted in disk.
@@ -547,9 +543,8 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
   CHECK_OK(UpdateIndexForBatch(*entry_batch, start_offset));
   UpdateFooterForBatch(entry_batch);
 
-  // For REPLICATE batches, we expect the caller to free the actual entries if
-  // caller_owns_operation is set.
-  if (entry_batch->type_ == REPLICATE && caller_owns_operation) {
+  // We expect the caller to free the actual entries if caller_owns_operation is set.
+  if (caller_owns_operation) {
     for (int i = 0; i < entry_batch->entry_batch_pb_.entry_size(); i++) {
       LogEntryPB* entry_pb = entry_batch->entry_batch_pb_.mutable_entry(i);
       entry_pb->release_replicate();
@@ -582,18 +577,16 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
   // We keep track of the last-written OpId here.  This is needed to initialize Consensus on
   // startup.  We also retrieve the OpId of the first operation in the batch so that, if we roll
   // over to a new segment, we set the first operation in the footer immediately.
-  if (batch->type_ == REPLICATE) {
-    // Update the index bounds for the current segment.
-    for (const LogEntryPB& entry_pb : batch->entry_batch_pb_.entry()) {
-      int64_t index = entry_pb.replicate().id().index();
-      if (!footer_builder_.has_min_replicate_index() ||
-          index < footer_builder_.min_replicate_index()) {
-        footer_builder_.set_min_replicate_index(index);
-      }
-      if (!footer_builder_.has_max_replicate_index() ||
-          index > footer_builder_.max_replicate_index()) {
-        footer_builder_.set_max_replicate_index(index);
-      }
+  // Update the index bounds for the current segment.
+  for (const LogEntryPB& entry_pb : batch->entry_batch_pb_.entry()) {
+    int64_t index = entry_pb.replicate().id().index();
+    if (!footer_builder_.has_min_replicate_index() ||
+        index < footer_builder_.min_replicate_index()) {
+      footer_builder_.set_min_replicate_index(index);
+    }
+    if (!footer_builder_.has_max_replicate_index() ||
+        index > footer_builder_.max_replicate_index()) {
+      footer_builder_.set_max_replicate_index(index);
     }
   }
 }

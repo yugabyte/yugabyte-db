@@ -200,26 +200,28 @@ Status Wait(std::function<Result<bool>()> condition,
             MonoTime deadline,
             const std::string& description,
             MonoDelta initial_delay,
-            double delay_multiplier) {
+            double delay_multiplier,
+            MonoDelta max_delay) {
   auto start = MonoTime::Now();
   MonoDelta delay = initial_delay;
   for (;;) {
-    auto current = condition();
+    const auto current = condition();
     if (!current.ok()) {
       return current.status();
     }
     if (current.get()) {
       break;
     }
-    auto now = MonoTime::Now();
-    auto left = deadline - now;
+    const auto now = MonoTime::Now();
+    const auto left = deadline - now;
     if (left <= MonoDelta::kZero) {
       return STATUS_FORMAT(TimedOut,
                            "Operation '$0' didn't complete within $1ms",
                            description,
                            (now - start).ToMilliseconds());
     }
-    delay = std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left);
+    delay = std::min(std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left),
+                     max_delay);
     SleepFor(delay);
   }
   return Status::OK();
@@ -230,9 +232,10 @@ Status WaitFor(std::function<Result<bool>()> condition,
                MonoDelta timeout,
                const string& description,
                MonoDelta initial_delay,
-               double delay_multiplier) {
-  return Wait(
-      condition, MonoTime::Now() + timeout, description, initial_delay, delay_multiplier);
+               double delay_multiplier,
+               MonoDelta max_delay) {
+  return Wait(condition, MonoTime::Now() + timeout, description, initial_delay, delay_multiplier,
+              max_delay);
 }
 
 string GetToolPath(const string& tool_name) {

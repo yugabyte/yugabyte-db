@@ -141,6 +141,8 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
                                    unique_ptr<ThreadPoolToken> raft_pool_token)
     : raft_pool_observers_token_(std::move(raft_pool_token)),
       local_peer_pb_(local_peer_pb),
+      local_peer_uuid_(local_peer_pb_.has_permanent_uuid() ? local_peer_pb_.permanent_uuid()
+                                                           : string()),
       tablet_id_(tablet_id),
       log_cache_(metric_entity, log, local_peer_pb.permanent_uuid(), tablet_id),
       metrics_(metric_entity),
@@ -155,7 +157,7 @@ void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
   log_cache_.Init(last_locally_replicated);
   queue_state_.last_appended = last_locally_replicated;
   queue_state_.state = State::kQueueOpen;
-  TrackPeerUnlocked(local_peer_pb_.permanent_uuid());
+  local_peer_ = TrackPeerUnlocked(local_peer_uuid_);
 }
 
 void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
@@ -167,7 +169,7 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
   queue_state_.committed_index = committed_index;
   queue_state_.majority_replicated_opid = committed_index;
   queue_state_.active_config.reset(new RaftConfigPB(active_config));
-  CHECK(IsRaftConfigVoter(local_peer_pb_.permanent_uuid(), *queue_state_.active_config))
+  CHECK(IsRaftConfigVoter(local_peer_uuid_, *queue_state_.active_config))
       << local_peer_pb_.ShortDebugString() << " not a voter in config: "
       << queue_state_.active_config->ShortDebugString();
   queue_state_.majority_size_ = MajoritySize(CountVoters(*queue_state_.active_config));
@@ -199,7 +201,7 @@ void PeerMessageQueue::TrackPeer(const string& uuid) {
   TrackPeerUnlocked(uuid);
 }
 
-void PeerMessageQueue::TrackPeerUnlocked(const string& uuid) {
+PeerMessageQueue::TrackedPeer* PeerMessageQueue::TrackPeerUnlocked(const string& uuid) {
   CHECK(!uuid.empty()) << "Got request to track peer with empty UUID";
   DCHECK_EQ(queue_state_.state, State::kQueueOpen);
 
@@ -220,6 +222,7 @@ void PeerMessageQueue::TrackPeerUnlocked(const string& uuid) {
   // We don't know how far back this peer is, so set the all replicated watermark to
   // MinimumOpId. We'll advance it when we know how far along the peer is.
   queue_state_.all_replicated_opid = MinimumOpId();
+  return tracked_peer;
 }
 
 void PeerMessageQueue::UntrackPeer(const string& uuid) {
@@ -256,7 +259,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   // so that we don't need to construct this fake response, but this
   // seems to work for now.
   ConsensusResponsePB fake_response;
-  fake_response.set_responder_uuid(local_peer_pb_.permanent_uuid());
+  fake_response.set_responder_uuid(local_peer_uuid_);
   *fake_response.mutable_status()->mutable_last_received() = id;
   *fake_response.mutable_status()->mutable_last_received_current_leader() = id;
   {
@@ -270,7 +273,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
   }
   bool junk;
-  ResponseFromPeer(local_peer_pb_.permanent_uuid(), fake_response, &junk);
+  ResponseFromPeer(local_peer_uuid_, fake_response, &junk);
 
   callback.Run(status);
 }
@@ -320,7 +323,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
-    DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
+    DCHECK_NE(uuid, local_peer_uuid_);
 
     peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
@@ -450,7 +453,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
-    DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
+    DCHECK_NE(uuid, local_peer_uuid_);
     peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
@@ -469,7 +472,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   req->Clear();
   req->set_dest_uuid(uuid);
   req->set_tablet_id(tablet_id_);
-  req->set_bootstrap_peer_uuid(local_peer_pb_.permanent_uuid());
+  req->set_bootstrap_peer_uuid(local_peer_uuid_);
   *req->mutable_bootstrap_peer_addr() = local_peer_pb_.last_known_addr();
   req->set_caller_term(queue_state_.current_term);
   peer->needs_remote_bootstrap = false; // Now reset the flag.
@@ -516,32 +519,48 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   boost::container::small_vector<
       typename Policy::result_type, kMaxPracticalReplicationFactor> watermarks;
   watermarks.reserve(num_peers - 1);
+
+  // This flag indicates whether to implicitly assume that the local peer has an "infinite"
+  // replicated value of the dimension that we are computing a watermark for. There is a difference
+  // in logic between handling of OpIds vs. leader leases:
+  // - For OpIds, the local peer might actually be less up-to-date than followers.
+  // - For leader leases, we always assume that we've replicated an "infinite" lease to ourselves.
+  const bool local_peer_infinite_watermark = Policy::LocalPeerHasInfiniteWatermark();
+
   for (const PeersMap::value_type &peer_map_entry : peers_map_) {
     const TrackedPeer &peer = *peer_map_entry.second;
-    if (peer.uuid == local_peer_pb_.permanent_uuid()) {
+    if (peer.uuid == local_peer_uuid_ && local_peer_infinite_watermark) {
+      // Don't even include the local peer in the watermarks array. Assume it has an "infinite"
+      // value of the watermark.
       continue;
     }
     if (peer.is_last_exchange_successful) {
       watermarks.push_back(Policy::ExtractValue(peer));
     }
   }
-  VLOG(1) << "Leader lease expiration watermarks by peer: " << ::yb::ToString(watermarks)
+  VLOG(1) << Policy::Name() << " watermarks by peer: " << ::yb::ToString(watermarks)
           << ", num_peers_required=" << num_peers_required;
 
   // We always assume that local peer has most recent information.
-  const size_t num_responsive_peers = watermarks.size() + 1;
+  const size_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
 
   if (num_responsive_peers < num_peers_required) {
     // There are not enough peers with which the last message exchange was successful.
     return Policy::Min();
   }
 
-  // For example:
   // If there are 5 peers (and num_peers_required is 3), and we have successfully replicated
-  // something to 3 of them and 4th is our local peer, then we're interested in the value at
-  // index 4 - 3 = 1 of the four-value watermarks vector. Values at indexes 2 and 3 are both
-  // greater than or equal to this, and this is the maximum value successfully replicated to
-  // 3 servers.
+  // something to 3 of them and 4th is our local peer, there are two possibilities:
+  // - If local_peer_infinite_watermark is false (for OpId): watermarks.size() is 4,
+  //   and we want an OpId value such that 3 or more peers have replicated that or greater value.
+  //   Then index_of_interest = 1, computed as watermarks.size() - num_peers_required, or
+  //   num_responsive_peers - num_peers_required.
+  //
+  // - If local_peer_infinite_watermark is true (for leader leases): watermarks.size() is 3, and we
+  //   are assuming that the local peer (leader) has replicated an infinitely high watermark to
+  //   itself. Then watermark.size() is 3 (because we skip the local peer when populating
+  //   watermarks), but num_responsive_peers is still 4, and the expression stays the same.
+
   const size_t index_of_interest = num_responsive_peers - num_peers_required;
   DCHECK_LT(index_of_interest, watermarks.size());
 
@@ -568,6 +587,14 @@ MonoTime PeerMessageQueue::LeaderLeaseExpirationWatermark() {
       MonoTime lease_exp = peer.last_leader_lease_expiration_received_by_follower;
       return lease_exp.Initialized() ? lease_exp : MonoTime::kMin;
     }
+
+    static const char* Name() {
+      return "Leader lease expiration";
+    }
+
+    static bool LocalPeerHasInfiniteWatermark() {
+      return true;
+    }
   };
 
   return GetWatermark<Policy>();
@@ -589,6 +616,14 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
 
     static result_type ExtractValue(const TrackedPeer& peer) {
       return peer.last_ht_lease_expiration_received_by_follower;
+    }
+
+    static const char* Name() {
+      return "Hybrid time leader lease expiration";
+    }
+
+    static bool LocalPeerHasInfiniteWatermark() {
+      return true;
     }
   };
 
@@ -616,6 +651,14 @@ OpId PeerMessageQueue::OpIdWatermark() {
         return lhs.index() < rhs.index();
       }
     };
+
+    static const char* Name() {
+      return "OpId";
+    }
+
+    static bool LocalPeerHasInfiniteWatermark() {
+      return false;
+    }
   };
 
   return GetWatermark<Policy>();
@@ -786,9 +829,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       auto new_majority_replicated_opid = OpIdWatermark();
       if (!OpIdEquals(new_majority_replicated_opid, MinimumOpId())) {
         if (new_majority_replicated_opid.index() == MaximumOpId().index()) {
-          auto it = peers_map_.find(local_peer_pb_.permanent_uuid());
-          DCHECK(it != peers_map_.end());
-          queue_state_.majority_replicated_opid = it->second->last_received;
+          queue_state_.majority_replicated_opid = local_peer_->last_received;
         } else {
           queue_state_.majority_replicated_opid = new_majority_replicated_opid;
         }
@@ -1059,7 +1100,7 @@ string PeerMessageQueue::LogPrefixUnlocked() const {
   Mode mode = ANNOTATE_UNPROTECTED_READ(queue_state_.mode);
   return Substitute("T $0 P $1 [$2]: ",
                     tablet_id_,
-                    local_peer_pb_.permanent_uuid(),
+                    local_peer_uuid_,
                     ModeToStr(mode));
 }
 

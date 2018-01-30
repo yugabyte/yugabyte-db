@@ -106,13 +106,12 @@ RaftPeerPB FakeRaftPeerPB(const std::string& uuid) {
 static inline void AppendReplicateMessagesToQueue(
     PeerMessageQueue* queue,
     const scoped_refptr<server::Clock>& clock,
-    int first,
+    int first_index,
     int count,
     int payload_size = 0) {
 
-  for (int i = first; i < first + count; i++) {
-    int term = i / 7;
-    int index = i;
+  for (int index = first_index; index < first_index + count; index++) {
+    int term = index / 7;
     CHECK_OK(queue->AppendOperation(CreateDummyReplicate(term, index, clock->Now(), payload_size)));
   }
 }
@@ -857,14 +856,19 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
  public:
   bool IsMajorityReplicated(int64_t index) {
     std::lock_guard<simple_spinlock> lock(lock_);
-    return index <= majority_replicated_index_;
+    return majority_replicated_op_id_.index() >= index;
+  }
+
+  OpId majority_replicated_op_id() {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    return majority_replicated_op_id_;
   }
 
  protected:
   void UpdateMajorityReplicated(const MajorityReplicatedData& data,
                                 OpId* committed_index) override {
     std::lock_guard<simple_spinlock> lock(lock_);
-    majority_replicated_index_ = data.op_id.index();
+    majority_replicated_op_id_ = data.op_id;
     committed_index->CopyFrom(data.op_id);
   }
   virtual void NotifyTermChange(int64_t term) override {}
@@ -874,7 +878,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 
  private:
   mutable simple_spinlock lock_;
-  int64_t majority_replicated_index_;
+  OpId majority_replicated_op_id_;
 };
 
 }  // namespace consensus

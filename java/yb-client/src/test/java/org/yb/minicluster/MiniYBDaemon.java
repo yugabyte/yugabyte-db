@@ -36,7 +36,7 @@ public class MiniYBDaemon {
   private static final int SYSLOG_CONTEXT_NUM_LINES = 15;
   private static final int NUM_LAST_SYSLOG_LINES_TO_USE = 10000;
 
-  // This correspons to regular termination of yb-master and yb-tserver with SIGTERM.
+  // This corresponds to regular termination of yb-master and yb-tserver with SIGTERM.
   private static final int EXPECTED_EXIT_CODE = 143;
 
   private static final String INVALID_PID_STR = "<error_getting_pid>";

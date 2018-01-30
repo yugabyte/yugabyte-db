@@ -30,7 +30,11 @@
 // under the License.
 //
 
+#include <chrono>
+
 #include <gtest/gtest.h>
+
+#include <boost/scope_exit.hpp>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -46,6 +50,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/opid.h"
+
+using namespace std::chrono_literals;
 
 METRIC_DECLARE_entity(tablet);
 
@@ -96,6 +103,11 @@ class ConsensusPeersTest : public YBTest {
         clock_,
         raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
     message_queue_->RegisterObserver(consensus_.get());
+
+    message_queue_->Init(MinimumOpId());
+    message_queue_->SetLeaderMode(MinimumOpId(),
+                                  MinimumOpId().term(),
+                                  BuildRaftConfigPBForTests(3));
   }
 
   void TearDown() override {
@@ -122,29 +134,23 @@ class ConsensusPeersTest : public YBTest {
   }
 
   void CheckLastLogEntry(int term, int index) {
-    auto id = log_->GetLatestEntryOpId();
-    ASSERT_EQ(id.term, term);
-    ASSERT_EQ(id.index, index);
+    ASSERT_EQ(log_->GetLatestEntryOpId(), yb::OpId(term, index));
   }
 
   void CheckLastRemoteEntry(DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int term, int index) {
-    OpId id;
-    id.CopyFrom(proxy->proxy()->last_received());
-    ASSERT_EQ(id.term(), term);
-    ASSERT_EQ(id.index(), index);
+    ASSERT_EQ(yb::OpId::FromPB(proxy->proxy()->last_received()), yb::OpId(term, index));
   }
 
   // Registers a callback triggered when the op with the provided term and index
   // is committed in the test consensus impl.
   // This must be called _before_ the operation is committed.
-  void WaitForMajorityReplicatedIndex(int index) {
-    for (int i = 0; i < 100; i++) {
-      if (consensus_->IsMajorityReplicated(index)) {
-        return;
-      }
-      SleepFor(MonoDelta::FromMilliseconds(i));
-    }
-    FAIL() << "Never replicated index " << index << " on a majority";
+  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
+    ASSERT_OK(WaitFor(
+        [&]() {
+          return consensus_->IsMajorityReplicated(index);
+        },
+        timeout,
+        Format("waiting for index $0 to be replicated", index)));
   }
 
  protected:
@@ -170,39 +176,62 @@ class ConsensusPeersTest : public YBTest {
 TEST_F(ConsensusPeersTest, TestRemotePeer) {
   // We use a majority size of 2 since we make one fake remote peer
   // in addition to our real local log.
-  message_queue_->Init(MinimumOpId());
-  message_queue_->SetLeaderMode(MinimumOpId(),
-                                MinimumOpId().term(),
-                                BuildRaftConfigPBForTests(3));
 
   std::unique_ptr<Peer> remote_peer;
-  DelayablePeerProxy<NoOpTestPeerProxy>* proxy =
-      NewRemotePeer(kFollowerUuid, &remote_peer);
+  DelayablePeerProxy<NoOpTestPeerProxy>* proxy = NewRemotePeer(kFollowerUuid, &remote_peer);
 
   // Append a bunch of messages to the queue
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 20);
 
-  // The above append ends up appending messages in term 2, so we
-  // update the peer's term to match.
+  // The above append ends up appending messages in term 2, so we update the peer's term to match.
   remote_peer->SetTermForTest(2);
 
   // signal the peer there are requests pending.
   ASSERT_OK(remote_peer->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
-  // now wait on the status of the last operation
-  // this will complete once the peer has logged all
+
+  // Now wait on the status of the last operation. This will complete once the peer has logged all
   // requests.
   WaitForMajorityReplicatedIndex(20);
-  // verify that the replicated watermark corresponds to the last replicated
-  // message.
+  // Verify that the replicated watermark corresponds to the last replicated message.
   CheckLastRemoteEntry(proxy, 2, 20);
 }
 
-TEST_F(ConsensusPeersTest, TestRemotePeers) {
-  message_queue_->Init(MinimumOpId());
-  message_queue_->SetLeaderMode(MinimumOpId(),
-                                MinimumOpId().term(),
-                                BuildRaftConfigPBForTests(3));
+TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
+  // Create a set of remote peers
+  std::unique_ptr<Peer> remote_peer1;
+  NewRemotePeer("peer-1", &remote_peer1);
 
+  std::unique_ptr<Peer> remote_peer2;
+  DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
+      NewRemotePeer("peer-2", &remote_peer2);
+
+  // Delay the response from the second remote peer.
+  const auto kAppendDelayTime = 1s;
+  log_->TEST_SetSleepDuration(kAppendDelayTime);
+  remote_peer2_proxy->DelayResponse();
+  BOOST_SCOPE_EXIT(&log_, &remote_peer2_proxy) {
+    log_->TEST_SetSleepDuration(0s);
+    remote_peer2_proxy->Respond(TestPeerProxy::kUpdate);
+  } BOOST_SCOPE_EXIT_END
+
+  // Append one message to the queue.
+  const auto start_time = MonoTime::Now();
+  OpId first = MakeOpId(0, 1);
+  AppendReplicateMessagesToQueue(message_queue_.get(), clock_, first.index(), 1);
+
+  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+  ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+
+  // Replication should time out, because the time
+  WaitForMajorityReplicatedIndex(first.index());
+  const auto elapsed_time = MonoTime::Now() - start_time;
+  LOG(INFO) << "Replication elapsed time: " << elapsed_time;
+  // Replication should take at least as much time as it takes the local peer to append, because
+  // there is only one remote peer that is responding.
+  ASSERT_GE(elapsed_time, kAppendDelayTime);
+}
+
+TEST_F(ConsensusPeersTest, TestRemotePeers) {
   // Create a set of remote peers
   std::unique_ptr<Peer> remote_peer1;
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer1_proxy =
@@ -216,9 +245,9 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   remote_peer2_proxy->DelayResponse();
 
   // Append one message to the queue.
-  AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 1);
-
   OpId first = MakeOpId(0, 1);
+
+  AppendReplicateMessagesToQueue(message_queue_.get(), clock_, first.index(), 1);
 
   ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
   ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
@@ -227,6 +256,12 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   // majority = 2 and only one peer was delayed. The majority is made up
   // of remote-peer1 and the local log.
   WaitForMajorityReplicatedIndex(first.index());
+
+  SCOPED_TRACE(Format(
+      "Written to log locally: $0, Received by peer1: {$1}, by peer2: {$2}",
+      log_->GetLatestEntryOpId(),
+      remote_peer1_proxy->proxy()->last_received(),
+      remote_peer2_proxy->proxy()->last_received()));
 
   CheckLastLogEntry(first.term(), first.index());
   CheckLastRemoteEntry(remote_peer1_proxy, first.term(), first.index());
@@ -257,11 +292,6 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
 // Regression test for KUDU-699: even if a peer isn't making progress,
 // and thus always has data pending, we should be able to close the peer.
 TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
-  message_queue_->Init(MinimumOpId());
-  message_queue_->SetLeaderMode(MinimumOpId(),
-                                MinimumOpId().term(),
-                                BuildRaftConfigPBForTests(3));
-
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   std::unique_ptr<Peer> peer;
   ASSERT_OK(Peer::NewRemotePeer(FakeRaftPeerPB(kFollowerUuid),
@@ -296,11 +326,6 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
 }
 
 TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
-  message_queue_->Init(MinimumOpId());
-  message_queue_->SetLeaderMode(MinimumOpId(),
-                                MinimumOpId().term(),
-                                BuildRaftConfigPBForTests(3));
-
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   std::unique_ptr<Peer> peer;
   ASSERT_OK(Peer::NewRemotePeer(FakeRaftPeerPB(kFollowerUuid),
@@ -353,4 +378,3 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
 
 }  // namespace consensus
 }  // namespace yb
-

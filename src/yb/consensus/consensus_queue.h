@@ -398,7 +398,7 @@ class PeerMessageQueue {
   // is empty.
   const OpId& GetLastOp() const;
 
-  void TrackPeerUnlocked(const std::string& uuid);
+  TrackedPeer* TrackPeerUnlocked(const std::string& uuid);
 
   // Checks that if the queue is in LEADER mode then all registered peers are in the active config.
   // Crashes with a FATAL log message if this invariant does not hold. If the queue is in NON_LEADER
@@ -430,6 +430,7 @@ class PeerMessageQueue {
 
   // PB containing identifying information about the local peer.
   const RaftPeerPB local_peer_pb_;
+  const yb::PeerId local_peer_uuid_;
 
   const TabletId tablet_id_;
 
@@ -437,6 +438,7 @@ class PeerMessageQueue {
 
   // The currently tracked peers.
   PeersMap peers_map_;
+  TrackedPeer* local_peer_ = nullptr;
 
   using LockType = simple_spinlock;
   using LockGuard = std::lock_guard<LockType>;
