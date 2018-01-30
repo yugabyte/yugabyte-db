@@ -462,6 +462,15 @@ CHECKED_STATUS ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
 }
 
 CHECKED_STATUS
+ParseIndexBoundArg(const Slice& slice, RedisIndexBoundPB* bound_pb, bool exclusive) {
+  auto index_bound = util::CheckedStoll(slice);
+  RETURN_NOT_OK(index_bound);
+  bound_pb->set_index(*index_bound);
+  bound_pb->set_is_exclusive(exclusive);
+  return Status::OK();
+}
+
+CHECKED_STATUS
 ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
                    RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type) {
   if (slice.empty()) {
@@ -474,6 +483,21 @@ ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
     RETURN_NOT_OK(ParseTsBoundArg(slice_copy, bound_pb, request_type, /* exclusive */ true));
   } else {
     RETURN_NOT_OK(ParseTsBoundArg(slice, bound_pb, request_type, /* exclusive */ false));
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS ParseIndexBound(const Slice& slice, RedisIndexBoundPB* bound_pb) {
+  if (slice.empty()) {
+    return STATUS(InvalidArgument, "range bound index cannot be empty");
+  }
+
+  if (slice[0] == '(' && slice.size() > 1) {
+    auto slice_copy = slice;
+    slice_copy.remove_prefix(1);
+    RETURN_NOT_OK(ParseIndexBoundArg(slice_copy, bound_pb, /* exclusive */ true));
+  } else {
+    RETURN_NOT_OK(ParseIndexBoundArg(slice, bound_pb, /* exclusive */ false));
   }
   return Status::OK();
 }
@@ -522,6 +546,33 @@ CHECKED_STATUS ParseZRangeByScore(YBRedisReadOp* op, const RedisClientCommand& a
     args[3],
     op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
     RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE));
+    op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+    if (args.size() == 5) {
+      RETURN_NOT_OK(ParseWithScores(
+      args[4],
+      op->mutable_request()->mutable_get_collection_range_request()));
+    }
+    return Status::OK();
+  } else {
+    return STATUS(InvalidArgument, "Expected at most 5 arguments, found $0",
+                  std::to_string(args.size()));
+  }
+}
+
+CHECKED_STATUS ParseZRevRange(YBRedisReadOp* op, const RedisClientCommand& args) {
+  if (args.size() <= 5) {
+    op->mutable_request()->set_allocated_get_collection_range_request(
+        new RedisCollectionGetRangeRequestPB());
+    op->mutable_request()->mutable_get_collection_range_request()->set_request_type(
+        RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZREVRANGE);
+
+    const auto& key = args[1];
+        RETURN_NOT_OK(ParseIndexBound(
+        args[2],
+        op->mutable_request()->mutable_index_range()->mutable_lower_bound()));
+        RETURN_NOT_OK(ParseIndexBound(
+        args[3],
+        op->mutable_request()->mutable_index_range()->mutable_upper_bound()));
     op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
     if (args.size() == 5) {
       RETURN_NOT_OK(ParseWithScores(

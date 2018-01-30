@@ -311,7 +311,8 @@ CHECKED_STATUS AddResponseValuesGeneric(const PrimitiveValue& first,
                                         const PrimitiveValue& second,
                                         RedisResponsePB* response,
                                         bool add_keys,
-                                        bool add_values) {
+                                        bool add_values,
+                                        bool reverse = false) {
   if (add_keys) {
     RETURN_NOT_OK(AddPrimitiveValueToResponseArray(first, response->mutable_array_response()));
   }
@@ -321,15 +322,29 @@ CHECKED_STATUS AddResponseValuesGeneric(const PrimitiveValue& first,
   return Status::OK();
 }
 
+// Populate the response array for sorted sets range queries.
+// first refers to the score for the given values.
+// second refers to a subdocument where each key is a value with the given score.
 CHECKED_STATUS AddResponseValuesSortedSets(const PrimitiveValue& first,
                                            const SubDocument& second,
                                            RedisResponsePB* response,
                                            bool add_keys,
-                                           bool add_values) {
-  for (const auto& kv : second.object_container()) {
-    const PrimitiveValue& value = kv.first;
-    RETURN_NOT_OK(AddResponseValuesGeneric(first, value,
-                                           response, add_keys, add_values));
+                                           bool add_values,
+                                           bool reverse = false) {
+  if (reverse) {
+    for (auto it = second.object_container().rbegin();
+         it != second.object_container().rend();
+         it++) {
+      const PrimitiveValue& value = it->first;
+      RETURN_NOT_OK(AddResponseValuesGeneric(first, value,
+                                             response, add_keys, add_values));
+    }
+  } else {
+    for (const auto& kv : second.object_container()) {
+      const PrimitiveValue& value = kv.first;
+      RETURN_NOT_OK(AddResponseValuesGeneric(first, value,
+                                             response, add_keys, add_values));
+    }
   }
   return Status::OK();
 }
@@ -340,10 +355,12 @@ CHECKED_STATUS PopulateRedisResponseFromInternal(T iter,
                                                  const T& iter_end,
                                                  RedisResponsePB *response,
                                                  bool add_keys,
-                                                 bool add_values) {
+                                                 bool add_values,
+                                                 bool reverse = false) {
   response->set_allocated_array_response(new RedisArrayPB());
   for (; iter != iter_end; iter++) {
-    RETURN_NOT_OK(add_response_row(iter->first, iter->second, response, add_keys, add_values));
+    RETURN_NOT_OK(add_response_row(
+        iter->first, iter->second, response, add_keys, add_values, reverse));
   }
   return Status::OK();
 }
@@ -357,10 +374,12 @@ CHECKED_STATUS PopulateResponseFrom(const SubDocument::ObjectContainer &key_valu
                                     bool reverse = false) {
   if (reverse) {
     return PopulateRedisResponseFromInternal(key_values.rbegin(), add_response_row,
-                                             key_values.rend(), response, add_keys, add_values);
+                                             key_values.rend(), response, add_keys,
+                                             add_values, reverse);
   } else {
     return PopulateRedisResponseFromInternal(key_values.begin(),  add_response_row,
-                                             key_values.end(), response, add_keys, add_values);
+                                             key_values.end(), response, add_keys,
+                                             add_values, reverse);
   }
 }
 
@@ -400,35 +419,52 @@ CHECKED_STATUS GetAndPopulateResponseValues(
     rocksdb::QueryId query_id,
     ReadHybridTime hybrid_time,
     AddResponseValues add_response_values,
-    const SubDocKey& doc_key,
+    const GetSubDocumentData& data,
     ValueType expected_type,
-    const SubDocKeyBound& low_subkey,
-    const SubDocKeyBound& high_subkey,
     const RedisReadRequestPB& request,
     RedisResponsePB* response,
     bool add_keys, bool add_values, bool reverse) {
 
-  SubDocument doc;
-  bool doc_found = false;
-  GetSubDocumentData data = { &doc_key, &doc, &doc_found };
-  data.low_subkey = &low_subkey;
-  data.high_subkey = &high_subkey;
   RETURN_NOT_OK(GetSubDocument(
   rocksdb, data, query_id, boost::none /* txn_op_context */, hybrid_time));
 
   // Validate and populate response.
   response->set_allocated_array_response(new RedisArrayPB());
-  if (!doc_found) {
+  if (!data.doc_found) {
     response->set_code(RedisResponsePB_RedisStatusCode_OK);
     return Status::OK();
   }
 
-  if (VerifyTypeAndSetCode(expected_type, doc.value_type(), response)) {
-    RETURN_NOT_OK(PopulateResponseFrom(doc.object_container(),
+  if (VerifyTypeAndSetCode(expected_type, data.result->value_type(), response)) {
+    RETURN_NOT_OK(PopulateResponseFrom(data.result->object_container(),
                                        add_response_values,
                                        response, add_keys, add_values, reverse));
   }
   return Status::OK();
+}
+
+// Get normalized (with respect to card) upper and lower index bounds for reverse range scans.
+void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card,
+                         int64* low_idx_normalized, int64* high_idx_normalized) {
+  // Turn negative bounds positive.
+  if (low_idx < 0) {
+    low_idx = card + low_idx;
+  }
+  if (high_idx < 0) {
+    high_idx = card + high_idx;
+  }
+
+  // Index from lower to upper instead of upper to lower.
+  *low_idx_normalized = card - high_idx - 1;
+  *high_idx_normalized = card - low_idx - 1;
+
+  // Fit bounds to range [0, card).
+  if (*low_idx_normalized < 0) {
+    *low_idx_normalized = 0;
+  }
+  if (*high_idx_normalized >= card) {
+    *high_idx_normalized = card - 1;
+  }
 }
 
 } // anonymous namespace
@@ -1072,15 +1108,18 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
 
 Status RedisReadOperation::ExecuteCollectionGetRange() {
   const RedisKeyValuePB& key_value = request_.key_value();
-  if (!request_.has_key_value() || !key_value.has_key() || !request_.has_subkey_range() ||
-      !request_.subkey_range().has_lower_bound() || !request_.subkey_range().has_upper_bound()) {
-    return STATUS(InvalidArgument, "Need to specify the key and the subkey range");
+  if (!request_.has_key_value() || !key_value.has_key()) {
+    return STATUS(InvalidArgument, "Need to specify the key");
   }
 
   const auto request_type = request_.get_collection_range_request().request_type();
   switch (request_type) {
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE: FALLTHROUGH_INTENDED;
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME: {
+      if(!request_.has_subkey_range() || !request_.subkey_range().has_lower_bound() ||
+          !request_.subkey_range().has_upper_bound()) {
+        return STATUS(InvalidArgument, "Need to specify the subkey range");
+      }
       const RedisSubKeyBoundPB& lower_bound = request_.subkey_range().lower_bound();
       const RedisSubKeyBoundPB& upper_bound = request_.subkey_range().upper_bound();
 
@@ -1121,9 +1160,14 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
         bool add_keys = request_.get_collection_range_request().with_scores();
 
+        SubDocument doc;
+        bool doc_found = false;
+        GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+        data.low_subkey = &low_subkey;
+        data.high_subkey = &high_subkey;
         RETURN_NOT_OK(GetAndPopulateResponseValues(
-            db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, doc_key,
-            ValueType::kObject,  low_subkey, high_subkey, request_, &response_,
+            db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, data,
+            ValueType::kObject, request_, &response_,
             /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
 
       } else {
@@ -1144,11 +1188,79 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
                                                                        SortOrder::kDescending)),
                                               lower_bound.is_exclusive(), /* is_lower_bound */
                                               false);
+        SubDocument doc;
+        bool doc_found = false;
+        GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+        data.low_subkey = &low_subkey;
+        data.high_subkey = &high_subkey;
         RETURN_NOT_OK(GetAndPopulateResponseValues(
-            db_, redis_query_id(), read_time_, AddResponseValuesGeneric, doc_key,
-            ValueType::kRedisTS,  low_subkey, high_subkey, request_, &response_,
+            db_, redis_query_id(), read_time_, AddResponseValuesGeneric, data,
+            ValueType::kRedisTS, request_, &response_,
             /* add_keys */ true, /* add_values */ true, /* reverse */ true));
       }
+      break;
+    }
+    case RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZREVRANGE: {
+      if(!request_.has_index_range() || !request_.index_range().has_lower_bound() ||
+          !request_.index_range().has_upper_bound()) {
+        return STATUS(InvalidArgument, "Need to specify the index range");
+      }
+
+      // First make sure is of type sorted set or none.
+      auto type = GetValueType();
+      RETURN_NOT_OK(type);
+      auto expected_type = RedisDataType::REDIS_TYPE_SORTEDSET;
+      if (!VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
+        return Status::OK();
+      }
+
+      int64_t card;
+      RETURN_NOT_OK(GetCardinality(db_, redis_query_id(), read_time_,
+                                   request_.key_value(), &card));
+
+      const RedisIndexBoundPB& low_index_bound = request_.index_range().lower_bound();
+      const RedisIndexBoundPB& high_index_bound = request_.index_range().upper_bound();
+
+      int64 low_idx_normalized, high_idx_normalized;
+
+      int64 low_idx = low_index_bound.index();
+      int64 high_idx = high_index_bound.index();
+      // Normalize the bounds to be positive and go from low to high index.
+      GetNormalizedBounds(low_idx, high_idx, card, &low_idx_normalized, &high_idx_normalized);
+
+      if (high_idx_normalized < low_idx_normalized) {
+        // Return empty response.
+        response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+        RETURN_NOT_OK(PopulateResponseFrom(SubDocument::ObjectContainer(),
+                                           AddResponseValuesGeneric,
+                                           &response_, /* add_keys */
+                                           true, /* add_values */
+                                           true));
+        return Status::OK();
+      }
+      SubDocKey doc_key(
+          DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()),
+          PrimitiveValue(ValueType::kSSForward));
+
+      bool add_keys = request_.get_collection_range_request().with_scores();
+      bool low_is_exclusive = low_index_bound.is_exclusive();
+      bool high_is_exclusive = high_index_bound.is_exclusive();
+
+      IndexBound low_bound =
+          IndexBound(low_idx_normalized, low_is_exclusive, true /* is_lower */);
+      IndexBound high_bound =
+          IndexBound(high_idx_normalized, high_is_exclusive, false /* is_lower */);
+
+      SubDocument doc;
+      bool doc_found = false;
+      GetSubDocumentData data = { &doc_key, &doc, &doc_found};
+      data.low_index = &low_bound;
+      data.high_index = &high_bound;
+
+      RETURN_NOT_OK(GetAndPopulateResponseValues(
+      db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, data,
+      ValueType::kObject, request_, &response_,
+      /* add_keys */ add_keys, /* add_values */ true, /* reverse */ true));
       break;
     }
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_UNKNOWN:

@@ -225,6 +225,37 @@ class SubDocKeyBound : public SubDocKey {
   const bool is_lower_bound_;
 };
 
+class IndexBound {
+ public:
+  IndexBound() :
+      index_(-1),
+      is_exclusive_(false),
+      is_lower_bound_(false) {}
+
+  IndexBound(int64 index, bool is_exclusive, bool is_lower_bound) :
+      index_(index),
+      is_exclusive_(is_exclusive),
+      is_lower_bound_(is_lower_bound) {}
+
+  bool CanInclude(int64 curr_index) const {
+    if (index_ == -1 ) {
+      return true;
+    }
+    if (is_lower_bound_) {
+      return (is_exclusive_) ? (index_ < curr_index) : (index_ <= curr_index);
+    } else {
+      return (is_exclusive_) ? (index_ > curr_index) : (index_ >= curr_index);
+    }
+  }
+
+  static const IndexBound& Empty();
+
+ private:
+  const int64 index_;
+  const bool is_exclusive_;
+  const bool is_lower_bound_;
+};
+
 // Pass data to GetSubDocument function.
 struct GetSubDocumentData {
   GetSubDocumentData(
@@ -237,8 +268,12 @@ struct GetSubDocumentData {
 
   MonoDelta table_ttl = Value::kMaxTtl;
   bool return_type_only = false;
+  // Represent bounds on the first and last subkey to be considered.
   const SubDocKeyBound* low_subkey = &SubDocKeyBound::Empty();
   const SubDocKeyBound* high_subkey = &SubDocKeyBound::Empty();
+  // Represent bounds on the first and last ranks to be considered.
+  const IndexBound* low_index = &IndexBound::Empty();
+  const IndexBound* high_index = &IndexBound::Empty();
 
   GetSubDocumentData Adjusted(
       const SubDocKey* subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
@@ -247,6 +282,8 @@ struct GetSubDocumentData {
     result.return_type_only = return_type_only;
     result.low_subkey = low_subkey;
     result.high_subkey = high_subkey;
+    result.low_index = low_index;
+    result.high_index = high_index;
     return result;
   }
 

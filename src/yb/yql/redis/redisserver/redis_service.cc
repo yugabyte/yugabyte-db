@@ -138,6 +138,7 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((tsadd, TsAdd, -4, WRITE)) \
     ((tsrangebytime, TsRangeByTime, 4, READ)) \
     ((zrangebyscore, ZRangeByScore, -4, READ)) \
+    ((zrevrange, ZRevRange, -4, READ)) \
     ((tsrem, TsRem, -3, WRITE)) \
     ((zrem, ZRem, -3, WRITE)) \
     ((zadd, ZAdd, -4, WRITE)) \

@@ -108,6 +108,11 @@ const SubDocKeyBound& SubDocKeyBound::Empty() {
   return result;
 }
 
+const IndexBound& IndexBound::Empty() {
+  static IndexBound result;
+  return result;
+}
+
 void PrepareDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                               const scoped_refptr<Histogram>& write_lock_latency,
                               IsolationLevel isolation_level,
@@ -369,15 +374,21 @@ void SeekToLowerBound(const SubDocKeyBound& lower_bound, IntentAwareIterator* it
 // after the function returns, the iterator should be placed just completely outside the
 // subdocument_key prefix. Although if high_subkey is specified, the iterator is only guaranteed
 // to be positioned after the high_subkey and not necessarily outside the subdocument_key prefix.
+// num_values_observed is used for queries on indices, and keeps track of the number of primitive
+// values observed thus far. In a query with lower index bound k, ignore the first k primitive
+// values before building the subdocument.
 CHECKED_STATUS BuildSubDocument(
     IntentAwareIterator* iter,
     const GetSubDocumentData& data,
-    DocHybridTime low_ts) {
+    DocHybridTime low_ts,
+    int64* num_values_observed) {
   DCHECK(!data.subdocument_key->has_hybrid_time());
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
   const KeyBytes encoded_key = data.subdocument_key->Encode();
   while (iter->valid()) {
+    // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
+    int64 current_values_observed = *num_values_observed;
     auto iter_key = iter->FetchKey();
     RETURN_NOT_OK(iter_key);
     VLOG(4) << "iter: " << iter_key->ToDebugString()
@@ -485,7 +496,14 @@ CHECKED_STATUS BuildSubDocument(
             user_timestamp == Value::kInvalidUserTimestamp
                 ? write_time.hybrid_time().GetPhysicalValueMicros()
                 : doc_value.user_timestamp());
-        *data.result = SubDocument(doc_value.primitive_value());
+        if (!data.high_index->CanInclude(current_values_observed)) {
+          iter->SeekOutOfSubDoc(found_key);
+          return Status::OK();
+        }
+        if (data.low_index->CanInclude(*num_values_observed)) {
+          *data.result = SubDocument(doc_value.primitive_value());
+        }
+        (*num_values_observed)++;
         VLOG(3) << "SeekForward: " << found_key.ToString() << ".AdvanceOutOfSubDoc() = "
                 << found_key.AdvanceOutOfSubDoc().ToString();
         iter->SeekOutOfSubDoc(found_key);
@@ -496,11 +514,11 @@ CHECKED_STATUS BuildSubDocument(
     SubDocument descendant = SubDocument(PrimitiveValue(ValueType::kInvalidValueType));
     // TODO: what if found_key is the same as before? We'll get into an infinite recursion then.
     found_key.remove_hybrid_time();
-
     {
       auto encoded_found_key = found_key.Encode();
       IntentAwareIteratorPrefixScope prefix_scope(encoded_found_key, iter);
-      RETURN_NOT_OK(BuildSubDocument(iter, data.Adjusted(&found_key, &descendant), low_ts));
+      RETURN_NOT_OK(BuildSubDocument(iter, data.Adjusted(&found_key, &descendant),
+                                     low_ts, num_values_observed));
     }
     if (descendant.value_type() == ValueType::kInvalidValueType) {
       // The document was not found in this level (maybe a tombstone was encountered).
@@ -520,7 +538,14 @@ CHECKED_STATUS BuildSubDocument(
       continue;
     }
 
-    if (data.high_subkey->IsValid() && !data.high_subkey->CanInclude(found_key_prefix_high)) {
+    // We use num_values_observed as a conservative figure for lower bound and
+    // current_values_observed for upper bound so we don't lose any data we should be including.
+    if (!data.low_index->CanInclude(*num_values_observed)) {
+      continue;
+    }
+
+    if ((data.high_subkey->IsValid() && !data.high_subkey->CanInclude(found_key_prefix_high)) ||
+        !data.high_index->CanInclude(current_values_observed)) {
       // We have encountered a subkey higher than our constraints, we should stop here.
       return Status::OK();
     }
@@ -612,7 +637,8 @@ yb::Status GetSubDocument(
   if (projection == nullptr) {
     *data.result = SubDocument(ValueType::kInvalidValueType);
     IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
-    RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_deleted_ts));
+    int64 num_values_observed = 0;
+    RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_deleted_ts, &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueType::kInvalidValueType;
     if (*data.doc_found && doc_value.value_type() == ValueType::kRedisSet) {
       RETURN_NOT_OK(data.result->ConvertToRedisSet());
@@ -637,8 +663,10 @@ yb::Status GetSubDocument(
     db_iter->SeekForwardWithoutHt(encoded_projection_subdockey);
 
     SubDocument descendant(ValueType::kInvalidValueType);
+    int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
-        db_iter, data.Adjusted(&projection_subdockey, &descendant), max_deleted_ts));
+        db_iter, data.Adjusted(&projection_subdockey, &descendant),
+        max_deleted_ts, &num_values_observed));
     if (descendant.value_type() != ValueType::kInvalidValueType) {
       *data.doc_found = true;
     }

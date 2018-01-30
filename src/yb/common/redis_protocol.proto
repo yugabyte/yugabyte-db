@@ -53,11 +53,22 @@ message RedisReadRequestPB {
 
   optional RedisKeyValuePB key_value = 6;
   optional RedisSubKeyRangePB subkey_range = 7;
+  optional RedisIndexRangePB index_range = 8;
 }
 
 message RedisSubKeyRangePB {
   optional RedisSubKeyBoundPB lower_bound = 1;
   optional RedisSubKeyBoundPB upper_bound = 2;
+}
+
+message RedisIndexRangePB {
+  optional RedisIndexBoundPB lower_bound = 1;
+  optional RedisIndexBoundPB upper_bound = 2;
+}
+
+message RedisIndexBoundPB {
+  required int64 index = 1;
+  optional bool is_exclusive = 2 [default = false];
 }
 
 // Wrapper for a subkey which denotes an upper/lower bound for a range request.
@@ -189,11 +200,12 @@ message RedisCollectionGetRangeRequestPB {
   enum GetRangeRequestType {
     TSRANGEBYTIME = 1;
     ZRANGEBYSCORE = 2;
+    ZREVRANGE = 3;
     UNKNOWN = 99;
   }
 
   optional GetRangeRequestType request_type = 1 [ default = TSRANGEBYTIME ];
-  optional bool with_scores = 2 [ default = false ]; // Used only with ZRANGEBYSCORE.
+  optional bool with_scores = 2 [ default = false ]; // Used only with ZRANGEBYSCORE, ZREVRANGE.
 }
 
 // GETSET

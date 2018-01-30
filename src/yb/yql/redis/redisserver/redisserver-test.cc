@@ -1354,6 +1354,45 @@ TEST_F(TestRedisService, TestSortedSets) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestZRevRange) {
+  // The default value is true, but we explicitly set this here for clarity.
+  FLAGS_emulate_redis_responses = true;
+  DoRedisTestInt(__LINE__, {"ZADD", "z_multi", "0", "v0", "0", "v1", "0", "v2",
+      "1", "v3", "1", "v4", "1", "v5"}, 6);
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "0", "5"},
+                   {"v5", "v4", "v3", "v2", "v1", "v0"});
+  DoRedisTestScoreValueArray(__LINE__, {"ZREVRANGE", "z_multi", "0", "-1", "WITHSCORES"},
+                             {1, 1, 1, 0, 0, 0},
+                             {"v5", "v4", "v3", "v2", "v1", "v0"});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "0", "1"}, {"v5", "v4"});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "(0", "(1"}, {});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "2", "3"}, {"v3", "v2"});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "6", "7"}, {});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "0", "-1"},
+                   {"v5", "v4", "v3", "v2", "v1", "v0"});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "-2", "-1"}, {"v1", "v0"});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "-3", "-2"}, {"v2", "v1"});
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_multi", "-3", "5"}, {"v2", "v1", "v0"});
+
+  // Test empty key.
+  DoRedisTestArray(__LINE__, {"ZREVRANGE", "z_key", "0", "1"}, {});
+
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "0"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "1", "2", "3"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "1", "2", "WITHSCORES", "1"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "z_multi", "1.0", "2.0"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "1", "2"});
+
+  // Test key with wrong type.
+  DoRedisTestOk(__LINE__, {"SET", "s_key", "s_val"});
+  DoRedisTestExpectError(__LINE__, {"ZREVRANGE", "s_key", "1", "2"});
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestTimeSeriesTTL) {
   int64_t ttl_sec = 5;
   TestTSTtl("EXPIRE_IN", ttl_sec, ttl_sec, "test_expire_in");
