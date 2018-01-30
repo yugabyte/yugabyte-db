@@ -11,7 +11,7 @@ class Metrics extends Component {
   }
 
   onResize(dimensions) {
-    dimensions.width -= 2;
+    dimensions.width -= 20;
     this.setState({dimensions});
   }
   render() {

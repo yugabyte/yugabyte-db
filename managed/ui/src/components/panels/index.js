@@ -4,6 +4,7 @@ export { default as HighlightedStatsPanel } from './HighlightedStatsPanel/Highli
 export { default as UniverseDisplayPanel } from './UniverseDisplayPanel/UniverseDisplayPanel';
 export { default as UniverseRegionLocationPanel } from './UniverseRegionLocationPanel/UniverseRegionLocationPanel';
 export { default as YBPanelItem } from './YBPanelItem/YBPanelItem';
+export { default as YBWidget } from './YBWidget/YBWidget';
 export { default as YBTabsPanel } from './YBTabsPanel/YBTabsPanel';
 export { default as UniverseInfoPanel } from './UniverseInfoPanel/UniverseInfoPanel';
 export { default as ConnectStringPanel } from './ConnectStringPanel/ConnectStringPanel';

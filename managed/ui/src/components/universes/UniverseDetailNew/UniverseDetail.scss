@@ -1,0 +1,113 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+.universe-details-new {
+
+  .content-panel {
+    > .header {
+      margin-bottom: 24px;
+
+      @media (max-width: 991px) {
+        .flex-cnt {
+          flex-direction: column;
+          .flex-shrink {
+            order: 1;
+            max-width: fit-content;
+          }
+          .flex-grow {
+            order: 2;
+          }
+        }
+      }
+    }
+  }
+  .universe-resources {
+    justify-content: flex-start;
+    padding: 13px 0 0;
+    @media (max-width: 991px) {
+      justify-content: space-between;
+    }
+    @media (max-width: 767px) {
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+    .hidden-costs {
+      display: none;
+
+      @media (max-width: 991px) {
+        display: block;
+      }
+    }
+
+   
+    .yb-resource-count {
+      text-align: left;
+      margin-left: 0;
+      margin-right: 27px;
+      @media (max-width: 991px) {
+        margin-right: 0;
+      }
+      @media (max-width: 991px) {
+        margin-right: 27px;
+      }
+      @media (min-width: 1200px) {
+        margin-right: 40px;
+      }
+
+      .yb-resource-count-size {
+        font-size: 28px;
+        line-height: 30px;
+        font-weight: 600;
+        color: #44518b;
+        @media (max-width: 991px) {
+          font-size: 22px;
+        }
+      }
+    }
+  }
+  .yb-region-map {
+    border: none;
+    min-height: 340px;
+  }
+  .yb-map-legend {
+    margin: 20px;
+    border-radius: 4px;
+  }
+  .leaflet-container {
+    height: 340px;
+  }
+
+  #universe-tab-panel-pane-overview {
+    .row {
+      margin-left: -12px;
+      margin-right: -12px;
+      div[class^=col-] {
+        padding: 0 12px;
+      }
+    }
+  }
+}
+
+.operating-costs {
+  position: relative;
+  border: none;
+  min-height: 80px;
+  background-color: #fff;
+  border-radius: 4px;
+  padding-left: 70px;
+  &:before {
+    content: 'costs';
+    transform: rotate(-90deg);
+    color: $YB_TEXT_COLOR;
+    font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+    font-weight: 500;
+    font-size: 16px;
+    position: absolute;
+    top: 30px;
+    left: 15px;
+  }
+  @media (max-width: 991px) {
+    display: none;
+  }
+}

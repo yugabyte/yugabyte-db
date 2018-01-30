@@ -11,9 +11,9 @@ export default class YBPanelItem extends Component {
     const bodyClassName = "body " + (noBackground ? "body-transparent" : "");
     return (
       <div className={"content-panel "+className}>
-        {this.props.header &&
+        {(this.props.header || this.props.title) &&
           <div className="header">
-            {this.props.header}
+            {this.props.header} {this.props.title}
           </div>
         }
         {this.props.body &&
