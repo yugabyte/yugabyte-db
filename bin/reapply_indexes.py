@@ -25,10 +25,10 @@ def create_conn():
     return conn
 
 
-def create_index(conn, partman_schema, child_schemaname, child_tablename, child_index_list, parent_index_list):
+def create_index(conn, partman_schema, child_schemaname, child_tablename, child_index_list, parent, parent_index_list):
     cur = conn.cursor()
     sql = """SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"""
-    cur.execute(sql, [args.parent])
+    cur.execute(sql, [parent])
     result = cur.fetchone()
     parent_schemaname = result[0]
     parent_tablename = result[1]
@@ -105,7 +105,7 @@ def close_conn(conn):
     conn.close()
 
 
-def drop_index(conn, child_schemaname, child_tablename, child_index_list, parent_index_list):
+def drop_index(conn, child_schemaname, child_tablename, child_index_list ,parent_index_list):
     cur = conn.cursor()
     for d in child_index_list:
         if d[1] == True and args.primary:
@@ -192,7 +192,7 @@ def get_child_index_list(conn, child_schemaname, child_tablename):
     return child_index_list
 
 
-def get_parent_index_list(conn, partman_schema):
+def get_parent_index_list(conn, parent):
     cur = conn.cursor()
 
     # Get template table if exists to use its indexes
@@ -221,12 +221,22 @@ def get_parent_index_list(conn, partman_schema):
             JOIN parent_info pi ON i.indrelid = pi.oid
             WHERE i.indisvalid
             ORDER BY 1"""
-    if template_table == None:
-        cur.execute(sql, [args.parent])
-    else:
-        cur.execute(sql, [template_table[0]])
+    cur.execute(sql, [parent])
     parent_index_list = cur.fetchall()
     return parent_index_list
+
+
+def get_parent(conn, partman_schema):
+    cur = conn.cursor()
+
+    sql = "SELECT template_table FROM " + partman_schema + ".part_config WHERE parent_table = %s AND partition_type = 'native'"
+    cur.execute(sql, [args.parent])
+    template_table = cur.fetchone()
+
+    if template_table is None:
+        return args.parent
+    else:
+        return template_table[0]
 
 
 def get_partman_schema(conn):
@@ -256,13 +266,13 @@ def print_version():
     sys.exit()
 
 
-def reindex_proc(child_schemaname, child_tablename, parent_index_list, partman_schema):
+def reindex_proc(child_schemaname, child_tablename, parent, parent_index_list, partman_schema):
     conn = create_conn()
     conn.autocommit = True # must be turned on to support CONCURRENTLY
     cur = conn.cursor()
     child_index_list = get_child_index_list(conn, child_schemaname, child_tablename)
     drop_index(conn, child_schemaname, child_tablename, child_index_list, parent_index_list)
-    create_index(conn, partman_schema, child_schemaname, child_tablename, child_index_list, parent_index_list)
+    create_index(conn, partman_schema, child_schemaname, child_tablename, child_index_list, parent, parent_index_list)
 
     sql = "ANALYZE \"" + child_schemaname + "\".\"" + child_tablename + "\""
     if not args.quiet:
@@ -297,13 +307,14 @@ if __name__ == "__main__":
 
     partman_schema = get_partman_schema(conn)
     quoted_parent_table = get_quoted_parent_table(conn)
-    parent_index_list = get_parent_index_list(conn, partman_schema)
+    parent = get_parent(conn, partman_schema)
+    parent_index_list = get_parent_index_list(conn, parent)
     child_list = get_children(conn, partman_schema)
     close_conn(conn)
 
     if args.jobs == 0:
          for c in child_list:
-            reindex_proc(c[0], c[1], parent_index_list, partman_schema)
+            reindex_proc(c[0], c[1], parent, parent_index_list, partman_schema)
             if args.wait > 0:
                 time.sleep(args.wait)
     else:
@@ -316,7 +327,7 @@ if __name__ == "__main__":
             processlist = []
             for num in range(0, args.jobs):
                 c = child_list.pop()
-                p = Process(target=reindex_proc, args=(c[0], c[1],parent_index_list,partman_schema))
+                p = Process(target=reindex_proc, args=(c[0], c[1], parent, parent_index_list, partman_schema))
                 p.start()
                 processlist.append(p)
             for j in processlist:
