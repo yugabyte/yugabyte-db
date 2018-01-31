@@ -105,7 +105,7 @@ def close_conn(conn):
     conn.close()
 
 
-def drop_index(conn, child_schemaname, child_tablename, child_index_list ,parent_index_list):
+def drop_index(conn, child_schemaname, child_tablename, child_index_list, parent_index_list):
     cur = conn.cursor()
     for d in child_index_list:
         if d[1] == True and args.primary:
@@ -195,11 +195,6 @@ def get_child_index_list(conn, child_schemaname, child_tablename):
 def get_parent_index_list(conn, parent):
     cur = conn.cursor()
 
-    # Get template table if exists to use its indexes
-    sql = "SELECT template_table FROM " + partman_schema + ".part_config WHERE parent_table = %s AND partition_type = 'native'"
-    cur.execute(sql, [args.parent])
-    template_table = cur.fetchone()
-
     sql = """
             WITH parent_info AS (
                 SELECT c1.oid FROM pg_catalog.pg_class c1
@@ -248,19 +243,6 @@ def get_partman_schema(conn):
     return partman_schema
 
 
-def get_quoted_parent_table(conn):
-    cur = conn.cursor()
-    sql = "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"
-    cur.execute(sql, [args.parent])
-    result = cur.fetchone()
-    if result == None:
-        print("Given parent table ("+args.parent+") does not exist")
-        sys.exit(2)
-    quoted_parent_table = "\"" + result[0] + "\".\"" + result[1] + "\""
-    cur.close()
-    return quoted_parent_table
-
-
 def print_version():
     print(partman_version)
     sys.exit()
@@ -306,7 +288,6 @@ if __name__ == "__main__":
     cur.close()
 
     partman_schema = get_partman_schema(conn)
-    quoted_parent_table = get_quoted_parent_table(conn)
     parent = get_parent(conn, partman_schema)
     parent_index_list = get_parent_index_list(conn, parent)
     child_list = get_children(conn, partman_schema)

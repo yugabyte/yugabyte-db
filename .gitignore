@@ -4,3 +4,4 @@ ignore/*
 .deps/*
 *.o
 *.so
+sql/*.sql
