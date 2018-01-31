@@ -109,17 +109,29 @@ public class Util {
    * @param taskParams taskParams for the Create/Edit operation
    * @return Map of AZUUID to number of desired nodes in the AZ
    */
-  public static HashMap<UUID, Integer> toBeAddedAzUuidToNumNodes(UniverseDefinitionTaskParams taskParams) {
-    HashMap<UUID, Integer> toBeAddedazUUIDToNumNodes = new HashMap<>();
+  public static HashMap<UUID, Integer> toBeAddedAzUuidToNumNodes(
+      UniverseDefinitionTaskParams taskParams) {
+    HashMap<UUID, Integer> toBeAddedazUUIDToNumNodes = new HashMap<UUID, Integer>();
     if (taskParams == null || taskParams.nodeDetailsSet.isEmpty()) {
       return toBeAddedazUUIDToNumNodes;
     }
     for (NodeDetails currentNode: taskParams.nodeDetailsSet) {
       if (currentNode.state == NodeDetails.NodeState.ToBeAdded) {
         UUID currentAZUUID = currentNode.azUuid;
-        toBeAddedazUUIDToNumNodes.put(currentAZUUID, toBeAddedazUUIDToNumNodes.getOrDefault(currentAZUUID, 0) + 1);
+        toBeAddedazUUIDToNumNodes.put(currentAZUUID,
+                                      toBeAddedazUUIDToNumNodes.getOrDefault(currentAZUUID,0) + 1);
       }
     }
     return toBeAddedazUUIDToNumNodes;
+  }
+  
+  /**
+   * Create a custom node prefix name from the given parameters.
+   * @param  custId customer id owing the universe.
+   * @param  univName universe name.
+   * @return The custom node prefix name.
+   */
+  public static String getNodePrefix(Long custId, String univName) {
+    return "yb-" + Long.toString(custId) + "-" + univName;
   }
 }
