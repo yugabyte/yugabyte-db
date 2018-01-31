@@ -106,6 +106,10 @@ export default class TableDetail extends Component {
           </Link>
           <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
           </YBLabelWithIcon>
+          <Link to={`/universes/${currentUniverse.data.universeUUID}?tab=tables`}>
+            Tables
+          </Link>
+          <YBLabelWithIcon icon="fa fa-angle-right fa-fw"/>
         </div>
       );
 
