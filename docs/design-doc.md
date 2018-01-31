@@ -12,6 +12,7 @@ YugaByte was built with the following design goals:
 - **highly resilient**
 - **very performant**
 - **cloud-native**
+- **no dependence on external systems**
 
 In order to support the needs of a wide array of distributed cloud services without imposing the necessity to learn a new API, YugaByte can be accessed using one or more of the following APIs on top of a common data fabric underneath:
 - **Redis** APIs
