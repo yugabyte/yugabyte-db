@@ -1,5 +1,4 @@
 # YugaByteDB Docs
------------------
 
 The documents in this repo are meant for:
 - committers and contributors working on the codebase
