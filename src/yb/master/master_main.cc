@@ -37,6 +37,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/call_home.h"
 #include "yb/master/master.h"
+#include "yb/consensus/log_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -74,7 +75,7 @@ static int MasterMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
 
   auto opts_result = MasterOptions::CreateMasterOptions();
