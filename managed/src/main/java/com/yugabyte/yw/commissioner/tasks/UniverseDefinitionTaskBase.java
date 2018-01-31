@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -107,18 +108,35 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  // Fix up the name of all the nodes. This fixes the name and the node index for the newly created nodes.
+  // Fix up the name of all the nodes. This fixes the name and the node index for being created
+  // nodes. Since universe name can be changed in the UI, and configure is not called
+  // before submitting Create, we fix up the node-prefix also to latest universe name.
   public void updateNodeNames() {
     Collection<NodeDetails> nodes = taskParams().nodeDetailsSet;
     Universe universe = Universe.get(taskParams().universeUUID);
     int iter = 0;
     int startIndex = PlacementInfoUtil.getStartIndex(universe.getNodes());
-
     final Map<String, NameAndIndex> oldToNewName = new HashMap<String, NameAndIndex>();
+    String nodePrefix = taskParams().nodePrefix;
+    // Pick the univese name from the current in-memory state.
+    String univNewName = taskParams().retrievePrimaryCluster().userIntent.universeName;
+    boolean updateNodePrefix = !nodePrefix.contains(univNewName);
+    final boolean univNameChanged = !universe.name.equals(univNewName);
+
+    // Note that `universe` should have the new name persisted before this call.
+    if (updateNodePrefix) {
+      if (univNameChanged) {
+    	LOG.warn("Universe name mismatched: expected {} but found {}. Updating to {}.",
+    			 univNewName, universe.name, univNewName);
+      }
+      nodePrefix = Util.getNodePrefix(universe.customerId, univNewName);
+      LOG.info("Updating node prefix to {}.", nodePrefix);
+    }
+
     for (NodeDetails node : nodes) {
       if (node.state == NodeDetails.NodeState.ToBeAdded) {
         node.nodeIdx = startIndex + iter;
-        String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
+        String newName = nodePrefix + "-n" + node.nodeIdx;
         LOG.info("Changing in-memory node name from {} to {}.", node.nodeName , newName);
         oldToNewName.put(node.nodeName, new NameAndIndex(newName, node.nodeIdx));
         node.nodeName = newName;
@@ -143,11 +161,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             node.nodeIdx = newInfo.index;
           }
         }
+        if (univNameChanged) {
+          universe.name = univNewName;
+        }
       }
     };
     universe = Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Updated {} nodes in universe {}.", taskParams().nodeDetailsSet.size(),
-        taskParams().universeUUID);
+              taskParams().universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universeDetails.retrievePrimaryCluster().userIntent.providerType.equals(CloudType.onprem)) {
