@@ -1,0 +1,31 @@
+---
+title: Search results
+type: page
+weight: 2400
+---
+
+<div class="search-results-container" id="search-results"/>
+<script>
+  var queryStr = document.URL.split('?')[1];
+  if(queryStr != undefined){
+    queryParams = queryStr.split('&');
+    searchParam = queryParams.find( (param) => param.startsWith("q="));
+    if (searchParam != undefined) {
+      var client = algoliasearch("4LBMOWH4F9", "76cc3c40acc9719f5cd0d45bc07e2aeb");
+      var index = client.initIndex('docs');
+      index.search(searchParam.split("=")[1], function(err, content) {
+        formattedHits = docsearch.formatHits(content.hits);
+        formattedHits.map((hit) => {
+          $('#search-results').append(
+            $('<div class="search-content">\
+                <h3 class="search-title">\
+                  <a href="' + hit.url + '">' + hit.category + '</a></div>\
+                </h3>\
+                <h4 class="search-text">' + hit.title + '</h4>\
+              </div>')
+          );
+        });
+      });
+    }
+  }
+</script>
