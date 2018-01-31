@@ -48,6 +48,7 @@
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/consensus/log_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -112,6 +113,7 @@ static int TabletServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
 
 #ifdef TCMALLOC_ENABLED

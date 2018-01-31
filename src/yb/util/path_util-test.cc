@@ -33,6 +33,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/path_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/init.h"
 
 namespace yb {
 
@@ -78,4 +80,12 @@ TEST(TestPathUtil, JoinPathSegments) {
   ASSERT_EQ(JoinPathSegments("/usr/bin/", "vim"), "/usr/bin/vim");
 }
 
+
+#if defined(__linux__)
+TEST(TestPathUtil, TestODirectFileCreationInDir) {
+  string dir = "/var/run";
+  Env* env_test = yb::Env::Default();
+  ASSERT_NOK(CheckODirectTempFileCreationInDir(env_test, dir));
+}
+#endif
 } // namespace yb

@@ -52,6 +52,9 @@
 
 // Used by other classes, now part of the API.
 DECLARE_bool(durable_wal_write);
+DECLARE_bool(require_durable_wal_write);
+DECLARE_string(fs_wal_dirs);
+DECLARE_string(fs_data_dirs);
 
 namespace yb {
 
@@ -98,7 +101,6 @@ struct LogOptions {
 
   LogOptions();
 };
-
 
 // A sequence of segments, ordered by increasing sequence number.
 typedef std::vector<scoped_refptr<ReadableLogSegment> > SegmentSequence;
@@ -417,6 +419,12 @@ void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs,
 
 // Checks if 'fname' is a correctly formatted name of log segment file.
 bool IsLogFileName(const std::string& fname);
+
+CHECKED_STATUS CheckPathsAreODirectWritable(const std::vector<std::string>& paths);
+CHECKED_STATUS CheckRelevantPathsAreODirectWritable();
+
+// Modify durable wal write flag depending on the value of FLAGS_require_durable_wal_write.
+CHECKED_STATUS ModifyDurableWriteFlagIfNotODirect();
 
 }  // namespace log
 }  // namespace yb

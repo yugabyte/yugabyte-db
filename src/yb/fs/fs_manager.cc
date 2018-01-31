@@ -73,8 +73,8 @@ DECLARE_string(fs_data_dirs);
 
 DEFINE_string(fs_wal_dirs, "",
               "Comma-separated list of directories for write-ahead logs. This is an optional "
-              "argument. If this is not specified, fs_data_dirs is used for write-ahead logs "
-              "also and that's a reasonable default for most use cases.");
+                  "argument. If this is not specified, fs_data_dirs is used for write-ahead logs "
+                  "also and that's a reasonable default for most use cases.");
 TAG_FLAG(fs_wal_dirs, stable);
 
 using google::protobuf::Message;

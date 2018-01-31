@@ -88,6 +88,14 @@ DEFINE_bool(log_async_preallocate_segments, true,
             "Whether the WAL segments preallocation should happen asynchronously");
 TAG_FLAG(log_async_preallocate_segments, advanced);
 
+DECLARE_string(fs_data_dirs);
+
+DEFINE_bool(require_durable_wal_write, false, "Whether durable WAL write is required."
+    "In case you cannot write using O_DIRECT in WAL and data directories and this flag is set true"
+    "the system will deliberately crash with the appropriate error. If this flag is set false, "
+    "the system will soft downgrade the durable_wal_write flag.");
+TAG_FLAG(require_durable_wal_write, stable);
+
 namespace yb {
 namespace log {
 
@@ -845,5 +853,52 @@ bool IsLogFileName(const string& fname) {
   return true;
 }
 
+std::vector<std::string> ParseDirFlags(string flag_dirs, string flag_name) {
+  std::vector<std::string> paths = strings::Split(flag_dirs, ",", strings::SkipEmpty());
+  if (paths.size() < 1) {
+    LOG(ERROR) << "Flag " << flag_name << " is empty.";
+  }
+  return paths;
+}
+
+Status CheckPathsAreODirectWritable(const std::vector<std::string> &paths) {
+  Env *def_env = Env::Default();
+  for (const auto &path : paths) {
+    RETURN_NOT_OK(CheckODirectTempFileCreationInDir(def_env, path));
+  }
+  return Status::OK();
+}
+
+Status CheckRelevantPathsAreODirectWritable() {
+  if (!FLAGS_log_dir.empty()) {
+    RETURN_NOT_OK_PREPEND(CheckPathsAreODirectWritable(ParseDirFlags(
+        FLAGS_log_dir, "--log_dir")), "Not all log_dirs are O_DIRECT Writable.");
+  }
+  RETURN_NOT_OK_PREPEND(CheckPathsAreODirectWritable(ParseDirFlags(
+      FLAGS_fs_data_dirs, "--data_dirs")), "Not all fs_data_dirs are O_DIRECT Writable.");
+
+  RETURN_NOT_OK_PREPEND(CheckPathsAreODirectWritable(ParseDirFlags(
+      FLAGS_fs_wal_dirs, "--wal_dirs")), "Not all fs_wal_dirs are O_DIRECT Writable.");
+  return Status::OK();
+}
+
+Status ModifyDurableWriteFlagIfNotODirect() {
+  if (FLAGS_durable_wal_write) {
+    Status s = CheckRelevantPathsAreODirectWritable();
+    if (!s.ok()) {
+      if (FLAGS_require_durable_wal_write) {
+        // Crash with appropriate error.
+        RETURN_NOT_OK_PREPEND(s, "require_durable_wal_write is set true, but O_DIRECT is "
+            "not allowed.")
+      } else {
+        // Report error but do not crash.
+        LOG(ERROR) << "O_DIRECT is not allowed in some of the directories. "
+            "Setting durable wal write flag to false.";
+        FLAGS_durable_wal_write = false;
+      }
+    }
+  }
+  return Status::OK();
+}
 }  // namespace log
 }  // namespace yb

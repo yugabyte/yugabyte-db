@@ -36,6 +36,7 @@
 #include <string>
 
 #include "yb/util/status.h"
+#include "yb/util/env.h"
 
 namespace yb {
 
@@ -60,11 +61,15 @@ std::string BaseName(const std::string& path);
 std::string GetYbDataPath(const std::string& root);
 std::string GetServerTypeDataPath(const std::string& root, const std::string& server_type);
 
-// For the user specified root dirs, setup the two level heirarchy below it and report the final
+// For the user specified root dirs, setup the two level hierarchy below it and report the final
 // path as well as whether we created the final path or not.
 Status SetupRootDir(
     Env* env, const std::string& root, const std::string& server_type, std::string* out_dir,
     bool* created);
+
+// Tests whether a given path allows creation of temporary files with O_DIRECT given a
+// environment variable.
+Status CheckODirectTempFileCreationInDir(Env* env, const std::string& dir_path);
 
 } // namespace yb
 #endif /* YB_UTIL_PATH_UTIL_H */
