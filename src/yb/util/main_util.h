@@ -19,6 +19,9 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/env.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/util/path_util.h"
 
 namespace yb {
 
