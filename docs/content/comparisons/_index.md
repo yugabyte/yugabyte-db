@@ -31,7 +31,7 @@ Feature |  Clustrix | CockroachDB | AWS Aurora | MS Azure CosmosDB | Google Span
 --------|---------|-------------|------------|----------------|----------------|-------------
 Linear Write Scalability | <i class="fa fa-check"></i> |  <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Linear Read Scalability | <i class="fa fa-check"></i> |  <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
-Automated Failover &amp; Repair| <i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-times"></i> | <i class="fa fa-check"></i>
+Automated Failover &amp; Repair| <i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Auto Sharding  |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Auto Rebalancing |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Distributed ACID Transactions |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
