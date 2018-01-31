@@ -78,15 +78,19 @@ public class UpgradeUniverse extends UniverseTaskBase {
               taskParams().ybSoftwareVersion, universe.name);
           // TODO: This is assuming that master nodes is a subset of tserver node, instead we should do a union
           createDownloadTasks(tServerNodes);
-          // Disable the load balancer.
-          createLoadBalancerStateChangeTask(false /*enable*/)
-            .setSubTaskGroupType(getTaskSubGroupType());
+          // Disable the load balancer for rolling upgrade.
+          if (taskParams().rollingUpgrade) {
+            createLoadBalancerStateChangeTask(false /*enable*/)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          }
 
           createAllUpgradeTasks(masterNodes, ServerType.MASTER); // Implicitly calls setSubTaskGroupType
           createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
-          // Enable the load balancer.
-          createLoadBalancerStateChangeTask(true /*enable*/)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          // Enable the load balancer for rolling upgrade only.
+          if (taskParams().rollingUpgrade) {
+            createLoadBalancerStateChangeTask(true /*enable*/)
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          }
           didUpgradeUniverse = true;
           break;
         case GFlags:
@@ -99,13 +103,17 @@ public class UpgradeUniverse extends UniverseTaskBase {
           if (!taskParams().tserverGFlags.isEmpty()) {
             LOG.info("Updating T-Server gflags: {} for {} nodes in universe {}",
                 taskParams().tserverGFlags,  tServerNodes.size(), universe.name);
-            // Disable the load balancer.
-            createLoadBalancerStateChangeTask(false /*enable*/)
-              .setSubTaskGroupType(getTaskSubGroupType());
+            // Disable the load balancer for rolling upgrade.
+            if (taskParams().rollingUpgrade) {
+              createLoadBalancerStateChangeTask(false /*enable*/)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
             createAllUpgradeTasks(tServerNodes, ServerType.TSERVER); // Implicitly calls setSubTaskGroupType
-            // Enable the load balancer.
-            createLoadBalancerStateChangeTask(true /*enable*/)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            // Enable the load balancer for rolling upgrade only.
+            if (taskParams().rollingUpgrade) {
+              createLoadBalancerStateChangeTask(true /*enable*/)
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            }
             didUpgradeUniverse = true;
           }
       }

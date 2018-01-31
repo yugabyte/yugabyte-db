@@ -280,7 +280,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       commonNodeTasks.add(TaskType.WaitForServer);
     }
 
-    if (!type.name().endsWith("MASTER_ONLY")) {
+    if (type.name().equals("ROLLING_UPGRADE") || type.name().equals("ROLLING_UPGRADE_TSERVER_ONLY")) {
       commonNodeTasks.add(TaskType.LoadBalancerStateChange);
     }
 
@@ -305,8 +305,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
 
     if (isFinalStep) {
+      if (type.name().equals("ROLLING_UPGRADE") || type.name().equals("ROLLING_UPGRADE_TSERVER_ONLY")) {
+        commonNodeTasks.add(TaskType.LoadBalancerStateChange);
+      }
+
       commonNodeTasks.addAll(ImmutableList.of(
-          TaskType.LoadBalancerStateChange,
           TaskType.UpdateSoftwareVersion,
           TaskType.UniverseUpdateSucceeded));
     }
@@ -419,11 +422,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(3, downloadTasks.size());
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position = assertSoftwareUpgradeSequence(subTasksByPosition, MASTER, position, false);
     position = assertSoftwareUpgradeSequence(subTasksByPosition, TSERVER, position, false);
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
-    assertEquals(14, position);
+    assertEquals(13, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -444,10 +446,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     int position = 0;
     position = assertGFlagsUpgradeSequence(subTasksByPosition, MASTER, position, false);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, false);
     position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
-    assertEquals(16, position);
+    assertEquals(14, position);
   }
 
   @Test
@@ -484,11 +485,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position = assertGFlagsUpgradeSequence(subTasksByPosition, TSERVER, position, false);
     position = assertGFlagsCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE_TSERVER_ONLY, true);
 
-    assertEquals(10, position);
+    assertEquals(8, position);
   }
 
   @Test
