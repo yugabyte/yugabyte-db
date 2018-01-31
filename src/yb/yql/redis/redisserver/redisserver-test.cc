@@ -174,19 +174,19 @@ class TestRedisService : public RedisTableTestBase {
       const std::vector<std::string>& expected_values) {
     ASSERT_EQ(expected_scores.size(), expected_values.size());
     DoRedisTest(line, command, cpp_redis::reply::type::array,
-        [line, expected_scores, expected_values](const RedisReply& reply) {
-          const auto& replies = reply.as_array();
-          ASSERT_EQ(expected_scores.size()*2, replies.size())
-                        << "Originator: " << __FILE__ << ":" << line;
-          for (size_t i = 0; i < expected_scores.size(); i++) {
-            std::string::size_type sz;
-            double reply_score = std::stod(replies[2 * i].as_string(), &sz);
-            ASSERT_EQ(expected_scores[i], reply_score)
-                          << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
-            ASSERT_EQ(expected_values[i], replies[2 * i + 1].as_string())
-                          << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
-          }
+      [line, expected_scores, expected_values](const RedisReply& reply) {
+        const auto& replies = reply.as_array();
+        ASSERT_EQ(expected_scores.size() * 2, replies.size())
+                      << "Originator: " << __FILE__ << ":" << line;
+        for (size_t i = 0; i < expected_scores.size(); i++) {
+          ASSERT_EQ(expected_values[i], replies[2 * i].as_string())
+                        << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
+          std::string::size_type sz;
+          double reply_score = std::stod(replies[2 * i + 1].as_string(), &sz);
+          ASSERT_EQ(expected_scores[i], reply_score)
+                        << "Originator: " << __FILE__ << ":" << line << ", i: " << i;
         }
+      }
     );
   }
 

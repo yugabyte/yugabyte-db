@@ -311,7 +311,6 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
   return Status::OK();
 }
 
-
 CHECKED_STATUS AddResponseValuesGeneric(const PrimitiveValue& first,
                                         const PrimitiveValue& second,
                                         RedisResponsePB* response,
@@ -341,14 +340,12 @@ CHECKED_STATUS AddResponseValuesSortedSets(const PrimitiveValue& first,
          it != second.object_container().rend();
          it++) {
       const PrimitiveValue& value = it->first;
-      RETURN_NOT_OK(AddResponseValuesGeneric(first, value,
-                                             response, add_keys, add_values));
+      RETURN_NOT_OK(AddResponseValuesGeneric(value, first, response, add_values, add_keys));
     }
   } else {
     for (const auto& kv : second.object_container()) {
       const PrimitiveValue& value = kv.first;
-      RETURN_NOT_OK(AddResponseValuesGeneric(first, value,
-                                             response, add_keys, add_values));
+      RETURN_NOT_OK(AddResponseValuesGeneric(value, first, response, add_values, add_keys));
     }
   }
   return Status::OK();
