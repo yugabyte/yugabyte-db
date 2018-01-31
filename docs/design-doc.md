@@ -33,7 +33,7 @@ In order to support the needs of a wide array of distributed cloud services with
 
 The figure above summarizes the core database features needed to build modern distributed cloud service (and those that are not).
 
-There necessary features needed to build distributed cloud services are:
+The necessary features needed to build distributed cloud services are:
 - **Strong consistency** This refers to *single row ACID* transactions, where consistency is enforced for a single key.
 - **Consistent secondary Indexes** Maintain secondary indexes on some pre-defined set of columns or attributes, and query them efficiently.
 - **Multi-row ACID transactions** Allow operations that insert, update or delete multiple rows with transactional semantics
@@ -57,4 +57,20 @@ Note that master-slave async replication (which has timeline consistency) as wel
 
 
 # Architecture
+
+## Overview
+
+In terms of the traditional CAP theorem, YugaByteDB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Google Cloud Spanner, which is also a CP system. YugaByteDB has no single points of failure.
+
+A YugaByte cluster, also referred to as a universe, is a group of nodes (VMs, physical machines or containers) that collectively function as a highly available and resilient database. A YugaByte universe can be deployed in a variety of configurations depending on business requirements, and latency considerations. Some examples:
+- Single availability zone (AZ/rack/failure domain)
+- Multiple AZs in a region
+- Multiple regions (with synchronous and asynchronous replication choices)
+
+
+Every YugaByteDB node is comprised of 2 layers:
+
+- **YBase** This is the core data fabric. It is a highly available, distributed system with strong write consistency, tunable read consistency, and an advanced log-structured row/document-oriented storage. It includes several optimizations for handling ever-growing datasets efficiently. 
+
+- **YQL** is the upper/edge layer that has the API specific aspects - for example, the server-side implementation of Apache Cassandra Query Language and Redis protocols, and the corresponding query/command compilation and run-time (data type representations, built-in operations, etc.).
 
