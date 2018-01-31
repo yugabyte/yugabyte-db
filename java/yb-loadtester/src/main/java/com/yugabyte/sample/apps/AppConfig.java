@@ -111,5 +111,8 @@ public class AppConfig {
   // For example, if we only need to drop a table, or any such DDL/non-CRUD op.
   public boolean skipWorkload = false;
 
+  // Run time for workload. Negative values means no limit.
+  public long runTimeSeconds = -1;
+
   public String localDc;
 }

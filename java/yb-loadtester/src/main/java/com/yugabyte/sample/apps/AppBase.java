@@ -463,6 +463,11 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     hasFinished.set(true);
   }
 
+  private boolean isOutOfTime() {
+    return appConfig.runTimeSeconds > 0 &&
+        (System.currentTimeMillis() - workloadStartTime > appConfig.runTimeSeconds * 1000);
+  }
+
   /**
    * Called by the framework to perform write operations - internally measures the time taken to
    * perform the write op and keeps track of the number of keys written, so that we are able to
@@ -470,7 +475,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void performWrite() {
     // If we have written enough keys we are done.
-    if (appConfig.numKeysToWrite > 0 && numKeysWritten.get() >= appConfig.numKeysToWrite) {
+    if (appConfig.numKeysToWrite > 0 && numKeysWritten.get() >= appConfig.numKeysToWrite
+        || isOutOfTime()) {
       hasFinished.set(true);
       return;
     }
@@ -493,7 +499,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void performRead() {
     // If we have read enough keys we are done.
-    if (appConfig.numKeysToRead > 0 && numKeysRead.get() >= appConfig.numKeysToRead) {
+    if (appConfig.numKeysToRead > 0 && numKeysRead.get() >= appConfig.numKeysToRead
+        || isOutOfTime()) {
       hasFinished.set(true);
       return;
     }
