@@ -155,6 +155,9 @@ class SemContext : public ProcessContext {
   // Find table descriptor from metadata server.
   std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
 
+  // Find table descriptor from metadata server.
+  std::shared_ptr<client::YBTable> GetTableDesc(const TableId& table_id);
+
   // Get (user-defined) type from metadata server.
   std::shared_ptr<QLType> GetUDType(const string &keyspace_name, const string &type_name);
 

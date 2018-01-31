@@ -16,7 +16,6 @@ package com.yugabyte.sample.apps;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
@@ -201,24 +200,15 @@ public class RedisHashPipelined extends RedisPipelinedKeyValue {
         getRedisHashLoadGenerator().getKeySubkeysToWrite();
     Key key = keySubKeys.get(0).getKey();
     Response<String> resp;
-    Response<Long> respHSet;
     if (appConfig.valueSize == 0) {
       HashMap<String, String> hash = new HashMap<>();
       for (KeySubKey ks : keySubKeys) {
         hash.put(ks.getSubkey().asString(), ks.getValueStr());
       }
-      if (hash.size() == 1) { // Hack to avoid ENG-2644.
-        KeySubKey ks = keySubKeys.get(0);
-        respHSet = getRedisPipeline().hset(ks.getKey().asString(),
-                                           ks.getSubkey().asString(), ks.getValueStr());
-        verifyWriteResultInt(keySubKeys, respHSet);
-      } else {
-        resp = getRedisPipeline().hmset(key.asString(), hash);
-        verifyWriteResult(keySubKeys, resp);
-      }
+      resp = getRedisPipeline().hmset(key.asString(), hash);
+      verifyWriteResult(keySubKeys, resp);
     } else {
       HashMap<byte[], byte[]> hash = new HashMap<>();
-      HashSet<String> uniqueSubkeys = new HashSet<>();
       for (KeySubKey ks : keySubKeys) {
         int size = subkeyValueSize[(int)ks.subkeyAsNumber()];
         LOG.debug("Writing to key-subkey " + ks.toString() + " with size " +
@@ -226,43 +216,15 @@ public class RedisHashPipelined extends RedisPipelinedKeyValue {
         hash.put(ks.getSubkey().asString().getBytes(),
                  getRandomValue(ks.getSubkey(),
                                 subkeyValueBuffers[(int)ks.subkeyAsNumber()]));
-        uniqueSubkeys.add(ks.getSubkey().asString());
       }
-      if (uniqueSubkeys.size() == 1) { // Hack to avoid ENG-2644.
-        KeySubKey ks = keySubKeys.get(0);
-        LOG.debug("Writing HSet for " + ks.toString() + " with size " +
-                  subkeyValueSize[(int)ks.subkeyAsNumber()]);
-        respHSet = getRedisPipeline().hset(
-            key.asString().getBytes(), ks.getSubkey().asString().getBytes(),
-            getRandomValue(ks.getSubkey(),
-                           subkeyValueBuffers[(int)ks.subkeyAsNumber()]));
-        verifyWriteResultInt(keySubKeys, respHSet);
-      } else {
-        resp = getRedisPipeline().hmset(key.asString().getBytes(), hash);
-        verifyWriteResult(keySubKeys, resp);
-      }
+      resp = getRedisPipeline().hmset(key.asString().getBytes(), hash);
+      verifyWriteResult(keySubKeys, resp);
     }
     return flushPipelineIfNecessary();
   }
 
   private long verifyWriteResult(final ArrayList<KeySubKey> ks,
                                  final Response<String> retVal) {
-    pipelinedOpResponseCallables.add(new Callable<Integer>() {
-      @Override
-      public Integer call() throws Exception {
-        if (retVal.get() == null) {
-          getRedisHashLoadGenerator().recordWriteFailure(ks);
-          return 0;
-        }
-        getRedisHashLoadGenerator().recordWriteSuccess(ks);
-        return 1;
-      }
-    });
-    return 1;
-  }
-
-  private long verifyWriteResultInt(final ArrayList<KeySubKey> ks,
-                                    final Response<Long> retVal) {
     pipelinedOpResponseCallables.add(new Callable<Integer>() {
       @Override
       public Integer call() throws Exception {

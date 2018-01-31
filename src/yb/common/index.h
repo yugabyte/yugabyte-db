@@ -44,8 +44,10 @@ class IndexInfo {
   uint32_t schema_version() const { return schema_version_; }
 
   const std::vector<IndexColumn>& columns() const { return columns_; }
+  const IndexColumn& column(const size_t idx) const { return columns_[idx]; }
   size_t hash_column_count() const { return hash_column_count_; }
   size_t range_column_count() const { return range_column_count_; }
+  size_t key_column_count() const { return hash_column_count_ + range_column_count_; }
 
  private:
   const TableId table_id_;            // Index table id.
@@ -57,7 +59,7 @@ class IndexInfo {
 };
 
 // A map to look up an index by its index table id.
-using IndexLookupMap = std::unordered_map<TableId, IndexInfo>;
+using IndexMap = std::unordered_map<TableId, IndexInfo>;
 
 }  // namespace yb
 

@@ -72,15 +72,6 @@ DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_string(tserver_master_addrs, "127.0.0.1:7100",
-              "Comma separated addresses of the masters which the "
-              "tablet server should connect to. The CQL proxy reads this flag as well to "
-              "determine the new set of masters");
-TAG_FLAG(tserver_master_addrs, stable);
-
-DEFINE_int32(yb_num_shards_per_tserver, yb::NonTsanVsTsan(8, 2),
-             "The default number of shards per table per tablet server when a table is created.");
-
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
 //------------------------------------------------------------

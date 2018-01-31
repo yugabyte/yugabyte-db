@@ -135,6 +135,18 @@ ADD_YB_LIBRARY(tserver_service_proto
   NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
+# tserver_util
+#########################################
+
+set(TSERVER_UTIL_SRCS
+  tserver_flags.cc)
+set(TSERVER_UTIL_LIBS
+  yb_util)
+ADD_YB_LIBRARY(tserver_util
+  SRCS ${TSERVER_UTIL_SRCS}
+  DEPS ${TSERVER_UTIL_LIBS})
+
+#########################################
 # tserver
 #########################################
 

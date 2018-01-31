@@ -55,8 +55,12 @@ class TabletServer;
 // An in-process tablet server meant for use in test cases.
 class MiniTabletServer {
  public:
+  static Result<std::unique_ptr<MiniTabletServer>> CreateMiniTabletServer(const string& fs_root,
+                                                                          uint16_t rpc_port,
+                                                                          int index = 0);
+
   MiniTabletServer(const std::string& fs_root, uint16_t rpc_port,
-                   const TabletServerOptions& extra_opts = TabletServerOptions(), int index = 0);
+                   const TabletServerOptions& extra_opts, int index = 0);
   ~MiniTabletServer();
 
   // Return the options which will be used to start the tablet server.

@@ -176,6 +176,19 @@ shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_na
   return table;
 }
 
+shared_ptr<YBTable> SemContext::GetTableDesc(const TableId& table_id) {
+  bool cache_used = false;
+  shared_ptr<YBTable> table = ql_env_->GetTableDesc(table_id, &cache_used);
+  if (table != nullptr) {
+    parse_tree_->AddAnalyzedTable(table->name());
+    if (cache_used) {
+      // Remember cache was used.
+      cache_used_ = true;
+    }
+  }
+  return table;
+}
+
 std::shared_ptr<QLType> SemContext::GetUDType(const string &keyspace_name,
                                               const string &type_name) {
   bool cache_used = false;

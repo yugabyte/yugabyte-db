@@ -60,6 +60,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
@@ -1049,7 +1050,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
         info_->indexed_table_id = resp_.indexed_table_id();
       }
       for (const auto& index : resp_.indexes()) {
-        info_->indexes.emplace_back(index);
+        info_->index_map.emplace(index.table_id(), IndexInfo(index));
       }
       CHECK_GT(info_->table_id.size(), 0) << "Running against a too-old master";
     }

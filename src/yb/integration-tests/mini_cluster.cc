@@ -258,6 +258,12 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   return Status::OK();
 }
 
+Status MiniCluster::AddTabletServer() {
+  auto options = tserver::TabletServerOptions::CreateTabletServerOptions();
+  RETURN_NOT_OK(options);
+  return AddTabletServer(*options);
+}
+
 MiniMaster* MiniCluster::leader_mini_master() {
   Stopwatch sw;
   sw.start();

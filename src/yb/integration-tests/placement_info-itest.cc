@@ -44,11 +44,12 @@ class PlacementInfoTest : public YBTest {
     // Start tservers with different placement information.
     std::vector<tserver::TabletServerOptions> tserver_opts;
     for (int i = 0; i < kNumTservers; i++) {
-      tserver::TabletServerOptions opts;
-      opts.placement_cloud = "aws";
-      opts.placement_region = PlacementRegion(i);
-      opts.placement_zone = PlacementZone(i);
-      tserver_opts.push_back(opts);
+      auto opts = tserver::TabletServerOptions::CreateTabletServerOptions();
+      ASSERT_OK(opts);
+      opts->placement_cloud = "aws";
+      opts->placement_region = PlacementRegion(i);
+      opts->placement_zone = PlacementZone(i);
+      tserver_opts.push_back(*opts);
     }
 
     cluster_.reset(new MiniCluster(env_.get(), opts));

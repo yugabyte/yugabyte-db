@@ -77,6 +77,11 @@ class ServerBaseOptions {
 
   rpc::ConnectionContextFactory connection_context_factory;
 
+  static Status DetermineMasterAddresses(
+      const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
+      uint64_t master_replication_factor, std::vector<HostPort>* master_addresses,
+      std::string* master_addresses_resolved_str);
+
   // This can crash the process if you pass in an invalid list of master addresses!
   void SetMasterAddresses(addresses_shared_ptr master_addresses) {
     CHECK_NOTNULL(master_addresses.get());

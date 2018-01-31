@@ -48,7 +48,7 @@ struct YBTable::Info {
   std::string indexed_table_id;
   YBSchema schema;
   PartitionSchema partition_schema;
-  vector<IndexInfo> indexes;
+  IndexMap index_map;
 };
 
 class YBTable::Data {

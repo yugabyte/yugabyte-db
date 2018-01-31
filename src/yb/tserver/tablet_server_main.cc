@@ -89,8 +89,9 @@ static int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType));
   InitGoogleLoggingSafe(argv[0]);
 
-  TabletServerOptions tablet_server_options;
-  YB_EDITION_NS_PREFIX TabletServer server(tablet_server_options);
+  auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
+  YB_EDITION_NS_PREFIX TabletServer server(*tablet_server_options);
   LOG(INFO) << "Initializing tablet server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
   LOG(INFO) << "Starting tablet server...";
@@ -108,12 +109,12 @@ static int TabletServerMain(int argc, char** argv) {
     RedisServerOptions redis_server_options;
     redis_server_options.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
     redis_server_options.webserver_opts.port = FLAGS_redis_proxy_webserver_port;
-    redis_server_options.master_addresses_flag = tablet_server_options.master_addresses_flag;
-    redis_server_options.SetMasterAddresses(tablet_server_options.GetMasterAddresses());
+    redis_server_options.master_addresses_flag = tablet_server_options->master_addresses_flag;
+    redis_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
     redis_server_options.dump_info_path =
-        (tablet_server_options.dump_info_path.empty()
+        (tablet_server_options->dump_info_path.empty()
              ? ""
-             : tablet_server_options.dump_info_path + "-redis");
+             : tablet_server_options->dump_info_path + "-redis");
     redis_server.reset(new RedisServer(redis_server_options, &server));
     LOG(INFO) << "Starting redis server...";
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(redis_server->Start());
@@ -126,12 +127,12 @@ static int TabletServerMain(int argc, char** argv) {
     cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
     cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
     cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
-    cql_server_options.master_addresses_flag = tablet_server_options.master_addresses_flag;
-    cql_server_options.SetMasterAddresses(tablet_server_options.GetMasterAddresses());
+    cql_server_options.master_addresses_flag = tablet_server_options->master_addresses_flag;
+    cql_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
     cql_server_options.dump_info_path =
-        (tablet_server_options.dump_info_path.empty()
+        (tablet_server_options->dump_info_path.empty()
              ? ""
-             : tablet_server_options.dump_info_path + "-cql");
+             : tablet_server_options->dump_info_path + "-cql");
     boost::asio::io_service io;
     cql_server.reset(new CQLServer(cql_server_options, &io, &server));
     LOG(INFO) << "Starting CQL server...";

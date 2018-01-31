@@ -153,7 +153,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   void SetSchema(const Schema& schema, uint32_t version);
 
-  void SetIndexLookupMap(IndexLookupMap&& index_lookup_map);
+  void SetIndexMap(IndexMap&& index_map);
 
   void SetTableName(const std::string& table_name);
 
@@ -331,7 +331,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // The current schema version. This is owned by this class.
   // We don't use gscoped_ptr so that we can do an atomic swap.
   Schema* schema_;
-  IndexLookupMap index_lookup_map_;
+  IndexMap index_map_;
   uint32_t schema_version_;
   std::string table_name_;
   TableType table_type_;

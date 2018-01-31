@@ -37,9 +37,7 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::ColumnArgsToPB(const shared_ptr<client::YBTable>& table,
-                                        const PTDmlStmt *tnode,
-                                        QLWriteRequestPB *req) {
+CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
