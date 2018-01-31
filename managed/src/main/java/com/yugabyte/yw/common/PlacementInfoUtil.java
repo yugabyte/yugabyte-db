@@ -317,8 +317,8 @@ public class PlacementInfoUtil {
     }
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix =
-        "yb-" + Long.toString(customerId) + "-" + primaryCluster.userIntent.universeName;
+    taskParams.nodePrefix = Util.getNodePrefix(customerId, primaryCluster.userIntent.universeName);
+
     Universe universe = null;
     if (taskParams.universeUUID == null) {
       taskParams.universeUUID = UUID.randomUUID();
