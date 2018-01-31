@@ -38,6 +38,6 @@ script:
 
 notifications:
     email:
-      - leveldb@fb.com
+      - cicd@yugabyte.com
     webhooks:
       - https://buildtimetrend.herokuapp.com/travis
