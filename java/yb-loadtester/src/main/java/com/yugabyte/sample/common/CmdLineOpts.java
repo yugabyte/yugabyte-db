@@ -100,6 +100,12 @@ public class CmdLineOpts {
       }
     }
 
+    if (commandLine.hasOption("run_time")) {
+      AppBase.appConfig.runTimeSeconds =
+          Integer.parseInt(commandLine.getOptionValue("run_time"));
+    }
+    LOG.info("Run time (seconds): " + AppBase.appConfig.runTimeSeconds);
+
     // Get the proxy nodes.
     List<String> hostPortList = Arrays.asList(commandLine.getOptionValue("nodes").split(","));
     for (String hostPort : hostPortList) {
@@ -429,8 +435,10 @@ public class CmdLineOpts {
     options.addOption("disable_yb_load_balancing_policy", false,
         "Disable Yugabyte load-balancing policy.");
     options.addOption("print_all_exceptions", false,
-      "Print all exceptions encountered on the client, instead of sampling.");
+        "Print all exceptions encountered on the client, instead of sampling.");
     options.addOption("skip_workload", false, "Skip running workload.");
+    options.addOption("run_time", true,
+        "Run time for workload. Negative value means forever (default).");
 
     // Options for CassandraTimeseries workload.
     options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");
