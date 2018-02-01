@@ -359,7 +359,9 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
                 .table_type(YBTableType::YQL_TABLE_TYPE)
                 .schema(&schema);
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
-    table_creator->indexed_table_id(static_cast<const PTCreateIndex*>(tnode)->indexed_table_id());
+    const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
+    table_creator->indexed_table_id(index_node->indexed_table_id());
+    table_creator->is_local_index(index_node->is_local());
   }
   s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {

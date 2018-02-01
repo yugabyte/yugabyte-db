@@ -135,6 +135,10 @@ class TestQLProcessor : public QLProcessor {
     return ql_env_.UseKeyspace(keyspace_name);
   }
 
+  void RemoveCachedTableDesc(const client::YBTableName& table_name) {
+    ql_env_.RemoveCachedTableDesc(table_name);
+  }
+
  private:
   // Execute result.
   ExecutedResult::SharedPtr result_;

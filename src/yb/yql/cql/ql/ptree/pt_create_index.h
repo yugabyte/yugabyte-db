@@ -67,6 +67,10 @@ class PTCreateIndex : public PTCreateTable {
     return table_->id();
   }
 
+  const bool& is_local() const {
+    return is_local_;
+  }
+
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
@@ -78,6 +82,7 @@ class PTCreateIndex : public PTCreateTable {
   const PTListNode::SharedPtr covering_;
 
   // The semantic analyzer will decorate the following information.
+  bool is_local_ = false;
   std::shared_ptr<client::YBTable> table_;
   MCVector<ColumnDesc> column_descs_;
   MCVector<PTColumnDefinition::SharedPtr> column_definitions_;

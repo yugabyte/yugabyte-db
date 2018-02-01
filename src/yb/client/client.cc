@@ -1190,6 +1190,11 @@ YBTableCreator& YBTableCreator::indexed_table_id(const string& id) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::is_local_index(const bool& is_local_index) {
+  data_->is_local_index_ = is_local_index;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::timeout(const MonoDelta& timeout) {
   data_->timeout_ = timeout;
   return *this;
@@ -1287,6 +1292,7 @@ Status YBTableCreator::Create() {
 
   if (!data_->indexed_table_id_.empty()) {
     req.set_indexed_table_id(data_->indexed_table_id_);
+    req.set_is_local_index(data_->is_local_index_);
   }
 
   MonoTime deadline = MonoTime::Now();

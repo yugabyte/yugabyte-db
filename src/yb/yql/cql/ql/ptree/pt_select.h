@@ -18,6 +18,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
 #define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
 
+#include "yb/yql/cql/ql/ptree/selectivity.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -245,8 +246,21 @@ class PTSelectStmt : public PTDmlStmt {
     return is_aggregate_;
   }
 
+  bool use_index() const {
+    return use_index_;
+  }
+
+  bool read_just_index() const {
+    return read_just_index_;
+  }
+
+  const TableId& index_id() const {
+    return index_id_;
+  }
+
  private:
 
+  CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context);
   CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
@@ -270,6 +284,9 @@ class PTSelectStmt : public PTDmlStmt {
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
   bool is_aggregate_ = false;
+  bool use_index_ = false;
+  bool read_just_index_ = false;
+  TableId index_id_;
 };
 
 }  // namespace ql

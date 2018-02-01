@@ -44,6 +44,7 @@ vector<IndexInfo::IndexColumn> IndexColumnFromPB(
 IndexInfo::IndexInfo(const IndexInfoPB& pb)
     : table_id_(pb.table_id()),
       schema_version_(pb.version()),
+      is_local_(pb.is_local()),
       columns_(IndexColumnFromPB(pb.columns())),
       hash_column_count_(pb.hash_column_count()),
       range_column_count_(pb.range_column_count()) {

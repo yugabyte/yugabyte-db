@@ -32,6 +32,7 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
     : PTCreateTable(memctx, loc, table_name, columns, create_if_not_exists, ordering_list),
       name_(name),
       covering_(covering),
+      is_local_(false),
       column_descs_(memctx),
       column_definitions_(memctx) {
 }
@@ -47,11 +48,6 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
                                          true /* write_table */, &table_, &is_system_ignored,
                                          &column_descs_, &num_key_columns_, &num_hash_key_columns_,
                                          &column_definitions_));
-
-  if (!table_->InternalSchema().table_properties().is_transactional()) {
-    return sem_context->Error(this, "Transactions are not enabled in the indexed table",
-                              ErrorCode::INVALID_TABLE_DEFINITION);
-  }
 
   // Save context state, and set "this" as current create-table statement in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
@@ -74,6 +70,29 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   if (covering_ != nullptr) {
     RETURN_NOT_OK((covering_->Apply<SemContext, PTName>(sem_context,
                                                         &PTName::SetupCoveringIndexColumn)));
+  }
+
+  // Check whether the index is local, i.e. whether the hash keys match (including being in the
+  // same order).
+  is_local_ = true;
+  if (num_hash_key_columns_ != hash_columns_.size()) {
+    is_local_ = false;
+  } else {
+    int idx = 0;
+    for (const auto& column : hash_columns_) {
+      if (column->yb_name() != column_descs_[idx].name()) {
+        is_local_ = false;
+        break;
+      }
+      idx++;
+    }
+  }
+
+  if (!is_local_ && !table_->InternalSchema().table_properties().is_transactional()) {
+    return sem_context->Error(this,
+                              "Non-local secondary index cannot be created "
+                              "on a table in which transactions are disabled",
+                              ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Restore the context value as we are done with this table.
