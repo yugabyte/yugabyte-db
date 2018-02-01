@@ -42,6 +42,7 @@ class IndexInfo {
 
   const TableId& table_id() const { return table_id_; }
   uint32_t schema_version() const { return schema_version_; }
+  bool is_local() const { return is_local_; }
 
   const std::vector<IndexColumn>& columns() const { return columns_; }
   const IndexColumn& column(const size_t idx) const { return columns_[idx]; }
@@ -52,7 +53,7 @@ class IndexInfo {
  private:
   const TableId table_id_;            // Index table id.
   const uint32_t schema_version_ = 0; // Index table's schema version.
-
+  const bool is_local_ = false;       // Whether index is local.
   const std::vector<IndexColumn> columns_; // Index columns.
   const size_t hash_column_count_ = 0;     // Number of hash columns in the index.
   const size_t range_column_count_ = 0;    // Number of range columns in the index.

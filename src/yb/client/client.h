@@ -627,6 +627,9 @@ class YBTableCreator {
   // For index table: sets the indexed table id of this index.
   YBTableCreator& indexed_table_id(const std::string& id);
 
+  // For index table: sets whether this index is local
+  YBTableCreator& is_local_index(const bool& is_local_index);
+
   // Set the timeout for the operation. This includes any waiting
   // after the create has been submitted (i.e if the create is slow
   // to be performed for a large table, it may time out and then

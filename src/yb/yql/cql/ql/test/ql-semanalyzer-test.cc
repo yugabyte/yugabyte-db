@@ -239,6 +239,137 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t3 (c);", &parse_tree);
 }
 
+TEST_F(QLTestAnalyzer, TestCreateLocalIndex) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, "
+                          "PRIMARY KEY ((h1, h2), r1, r2));"));
+
+  // Analyze the sql statement.
+  // Because transactions are not enabled, an index creation will fail iff the index is not local.
+  ParseTree::UniPtr parse_tree;
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((h1, h2));", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((h1, h2), c2, c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((h1, h2), r2, c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((h1, h2), r1, r2);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((h1, h2), r1, r2, c1, c2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (h1, h2, r1, r2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((h1), h2, r1, r2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1, r2), h1, h2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((h2), r1, r2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((h1, h2, r1));", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((h1, h2, r1, r2), c1, c2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((h1, r1), h2);", &parse_tree);
+  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (h1, h2);", &parse_tree);
+}
+
+
+// TODO(omer): should also input the index_tree, in order to ensure the id found is the id of the
+// index that should be used, but I do not know how to do this yet, as index_tree has the name of
+// the index while select_tree has the id.
+CHECKED_STATUS AnalyzeSelectTree(const ParseTree::UniPtr &select_parse_tree,
+                                 const bool &use_index = false,
+                                 const bool &read_just_index = false) {
+  TreeNode::SharedPtr root = select_parse_tree->root();
+  EXPECT_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
+  PTSelectStmt::SharedPtr pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
+
+  EXPECT_EQ(pt_select_stmt->use_index(), use_index);
+
+  EXPECT_EQ(pt_select_stmt->read_just_index(), read_just_index);
+
+  return Status::OK();
+}
+
+TEST_F(QLTestAnalyzer, TestSelectLocalIndex) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  EXPECT_OK(processor->Run("CREATE TABLE t (h1 int, h2 int, r1 int, r2 int, c1 int, c2 int, "
+                              "PRIMARY KEY ((h1, h2), r1, r2)) "
+                              "with transactions = {'enabled':true};"));
+
+  ParseTree::UniPtr select_parse_tree, parse_tree;
+
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r1 = 1", &select_parse_tree));
+  // Should not use index if there is no index.
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+
+  EXPECT_OK(processor->Run("CREATE INDEX i1 ON t ((h1, h2), r1);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i2 ON t ((h1, h2), c2, c1);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i3 ON t ((h1, h2), r2) COVERING (c1);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i4 ON t ((h1, h2), r2) COVERING (c2);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i5 ON t ((h1, h2), c1);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i6 ON t ((c1, r2), c2);"));
+  EXPECT_OK(processor->Run("CREATE INDEX i7 ON t ((h2, h1), c1) COVERING (c2);"));
+
+  client::YBTableName table_name(kDefaultKeyspaceName, "t");
+  processor->RemoveCachedTableDesc(table_name);
+
+  // Should use the table.
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND c2 = 1 AND c1 = 1", &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r1 = 1", &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND c1 = 1 AND c2 = 1", &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, false, false));
+
+  // None for i1, as the table itself is always better.
+
+  // Should use i2.
+  EXPECT_OK(TestAnalyzer("SELECT c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND c2 = 1 AND c1 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  // Check that fully specified beats range clauses.
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c2 = 1 AND r1 > 0 AND r1 < 2",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  // Should use i3.
+  EXPECT_OK(TestAnalyzer("SELECT c1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  // Should use either i3 or i4; they are the same.
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, false));
+
+  // Should use i4.
+  EXPECT_OK(TestAnalyzer("SELECT c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  EXPECT_OK(TestAnalyzer("SELECT h2, c2, r1 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND "
+                            "c2 = 1 AND r1 > 0 AND r1 < 2",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  // Should use i5.
+  // Check that local beats-non-local.
+  EXPECT_OK(TestAnalyzer("SELECT c1 FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  // Should use i6.
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1 AND c2 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  // Should use i7.
+  // Check that non-local beats local if it can perform the read.
+  EXPECT_OK(TestAnalyzer("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+  EXPECT_OK(TestAnalyzer("SELECT c2 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1",
+                        &select_parse_tree));
+  EXPECT_OK(AnalyzeSelectTree(select_parse_tree, true, true));
+
+}
+
 TEST_F(QLTestAnalyzer, TestTruncate) {
   CreateSimulatedCluster();
   TestQLProcessor *processor = GetQLProcessor();

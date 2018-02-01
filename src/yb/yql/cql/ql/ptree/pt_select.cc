@@ -145,6 +145,9 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Constructing the schema of the result set.
   RETURN_NOT_OK(ConstructSelectedSchema());
 
+  // Check whether we should use an index.
+  RETURN_NOT_OK(AnalyzeIndexes(sem_context));
+
   return Status::OK();
 }
 
@@ -153,6 +156,42 @@ void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
 }
 
 //--------------------------------------------------------------------------------------------------
+
+// Check whether we can use a local index.
+// Updates use_index_, index_id_ and read_just_index_ fields properly.
+CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
+
+  if (table_->index_map().empty()) {
+    use_index_ = false;
+    return Status::OK();
+  }
+
+  // We can now find the best local index for this query. We are going for the most selective
+  // index, where most selective is defined as having the largest fully specified prefix. In case
+  // of a tie, choose the one that also specifies some range for the column right after the prefix.
+  // If we still have a tie, we choose the indexed table over an index, then a local index over an
+  // index, and if nothing else worked, an index that can perform the select on its own as opposed
+  // to one that has to go back to the indexed table.
+  MCSet<Selectivity> selectivities(sem_context->PTempMem());
+
+  selectivities.emplace(sem_context->PTempMem(), table_->schema(), key_where_ops_, where_ops_);
+
+  for (const std::pair<TableId, IndexInfo>& index : table_->index_map()) {
+    selectivities.emplace(sem_context->PTempMem(), index.second,
+                          key_where_ops_, where_ops_, column_refs_);
+  }
+
+  const Selectivity& best_sel = *selectivities.rbegin();
+  use_index_ = best_sel.is_index();
+  if (use_index_) {
+    read_just_index_ = best_sel.enough_for_read();
+    index_id_ = best_sel.index_id();
+  } else {
+    read_just_index_ = false;
+  }
+
+  return Status::OK();
+}
 
 CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   // Only partition and static columns are allowed to be used with distinct clause.

@@ -317,6 +317,9 @@ message SysTablesEntryPB {
 
   // For index table: indexed table id of this index.
   optional bytes indexed_table_id = 13;
+
+  // For index table: whether the index is local.
+  optional bool is_local_index = 14;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -572,6 +575,8 @@ message CreateTableRequestPB {
   optional NamespaceIdentifierPB namespace = 8;
   // For index table: indexed table id of this index.
   optional bytes indexed_table_id = 9;
+  // For index table: whether the index is local.
+  optional bool is_local_index = 10;
 }
 
 message CreateTableResponsePB {
