@@ -26,6 +26,8 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
     TabletSnapshotOpRequestPB request;
     request.set_snapshot_id(kSnapshotId);
     tablet::SnapshotOperationState tx_state(tablet().get(), &request);
+    tx_state.set_hybrid_time(tablet()->clock()->Now());
+    tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
     ASSERT_OK(tablet()->CreateSnapshot(&tx_state));
   }
 };
@@ -53,16 +55,15 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
 
   for (int i = 0; i < superblock.snapshot_files().size(); ++i) {
     const string& snapshot_id = superblock.snapshot_files(i).snapshot_id();
-    const string& snapshot_file_name = superblock.snapshot_files(i).name();
-    const uint64_t snapshot_file_size_bytes = superblock.snapshot_files(i).size_bytes();
+    const string& snapshot_file_name = superblock.snapshot_files(i).file().name();
+    const uint64_t snapshot_file_size_bytes = superblock.snapshot_files(i).file().size_bytes();
 
     ASSERT_EQ(snapshot_id, kSnapshotId);
 
     const string file_path = JoinPathSegments(snapshot_dir, snapshot_file_name);
     ASSERT_TRUE(env_->FileExists(file_path));
 
-    uint64 file_size_bytes = 0;
-    ASSERT_OK(env_->GetFileSize(file_path, &file_size_bytes));
+    uint64 file_size_bytes = ASSERT_RESULT(env_->GetFileSize(file_path));
     ASSERT_EQ(snapshot_file_size_bytes, file_size_bytes);
   }
 }
