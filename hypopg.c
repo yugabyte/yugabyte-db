@@ -1585,10 +1585,10 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	Oid				indexid = PG_GETARG_OID(0);
 	ListCell	   *indexpr_item;
 	StringInfoData	buf;
-	hypoEntry	   *entry;
+	hypoEntry	   *entry = NULL;
 	ListCell	   *lc;
 	List		   *context;
-	int				keyno, cpt;
+	int				keyno, cpt = 0;
 
 	foreach(lc, entries)
 	{
