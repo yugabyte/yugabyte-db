@@ -20,8 +20,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef ROCKSDB_TABLE_BLOCK_H
-#define ROCKSDB_TABLE_BLOCK_H
+#ifndef YB_ROCKSDB_TABLE_BLOCK_H
+#define YB_ROCKSDB_TABLE_BLOCK_H
 
 #pragma once
 #include <stddef.h>
@@ -127,19 +127,7 @@ class BlockIter : public InternalIterator {
 
   void Initialize(const Comparator* comparator, const char* data,
       uint32_t restarts, uint32_t num_restarts, BlockHashIndex* hash_index,
-      BlockPrefixIndex* prefix_index) {
-    assert(data_ == nullptr);           // Ensure it is called only once
-    assert(num_restarts > 0);           // Ensure the param is valid
-
-    comparator_ = comparator;
-    data_ = data;
-    restarts_ = restarts;
-    num_restarts_ = num_restarts;
-    current_ = restarts_;
-    restart_index_ = num_restarts_;
-    hash_index_ = hash_index;
-    prefix_index_ = prefix_index;
-  }
+      BlockPrefixIndex* prefix_index);
 
   void SetStatus(Status s) {
     status_ = s;
@@ -239,4 +227,4 @@ class BlockIter : public InternalIterator {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_TABLE_BLOCK_H
+#endif // YB_ROCKSDB_TABLE_BLOCK_H

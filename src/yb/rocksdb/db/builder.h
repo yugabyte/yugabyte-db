@@ -21,8 +21,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_DB_BUILDER_H
-#define ROCKSDB_DB_BUILDER_H
+#ifndef YB_ROCKSDB_DB_BUILDER_H
+#define YB_ROCKSDB_DB_BUILDER_H
 
 #include <string>
 #include <utility>
@@ -52,7 +52,7 @@ class InternalStats;
 class InternalIterator;
 
 TableBuilder* NewTableBuilder(const ImmutableCFOptions& options,
-                              const InternalKeyComparator& internal_comparator,
+                              const InternalKeyComparatorPtr& internal_comparator,
                               const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
                               uint32_t column_family_id,
                               WritableFileWriter* file,
@@ -61,7 +61,7 @@ TableBuilder* NewTableBuilder(const ImmutableCFOptions& options,
                               const bool skip_filters = false);
 
 TableBuilder* NewTableBuilder(const ImmutableCFOptions& options,
-                              const InternalKeyComparator& internal_comparator,
+                              const InternalKeyComparatorPtr& internal_comparator,
                               const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
                               uint32_t column_family_id,
                               WritableFileWriter* metadata_file,
@@ -83,7 +83,7 @@ extern Status BuildTable(
     TableCache* table_cache,
     InternalIterator* iter,
     FileMetaData* meta,
-    const InternalKeyComparator& internal_comparator,
+    const InternalKeyComparatorPtr& internal_comparator,
     const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
     uint32_t column_family_id,
     std::vector<SequenceNumber> snapshots,
@@ -98,4 +98,4 @@ extern Status BuildTable(
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_DB_BUILDER_H
+#endif  // YB_ROCKSDB_DB_BUILDER_H

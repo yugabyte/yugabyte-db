@@ -187,8 +187,7 @@ Status CopyFile(Env* env, const string& source_path, const string& dest_path,
                 WritableFileOptions opts) {
   gscoped_ptr<SequentialFile> source;
   RETURN_NOT_OK(env->NewSequentialFile(source_path, &source));
-  uint64_t size;
-  RETURN_NOT_OK(env->GetFileSize(source_path, &size));
+  uint64_t size = VERIFY_RESULT(env->GetFileSize(source_path));
 
   gscoped_ptr<WritableFile> dest;
   RETURN_NOT_OK(env->NewWritableFile(opts, dest_path, &dest));

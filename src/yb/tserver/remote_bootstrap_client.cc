@@ -227,18 +227,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   }
 
   LOG(INFO) << "Received superblock: " << resp.superblock().ShortDebugString();
-  string files;
-  for (const auto& file : resp.superblock().rocksdb_files()) {
-    files += "Name: " + file.name() + " -- size: " + std::to_string(file.size_bytes()) + ", ";
-  }
-  LOG(INFO) << "RocksDB files: " << files;
-
-  string snapshot_files;
-  for (const auto& file : resp.superblock().snapshot_files()) {
-    snapshot_files += "Snapshot: " + file.snapshot_id() + " Name: " + file.name() +
-        " -- size: " + std::to_string(file.size_bytes()) + ", ";
-  }
-  LOG(INFO) << "Snapshot files: " << snapshot_files;
+  LOG(INFO) << "RocksDB files: " << yb::ToString(resp.superblock().rocksdb_files());
+  LOG(INFO) << "Snapshot files: " << yb::ToString(resp.superblock().snapshot_files());
 
   session_id_ = resp.session_id();
   LOG(INFO) << "Began remote bootstrap session " << session_id_;
@@ -533,6 +523,42 @@ Status RemoteBootstrapClient::DownloadWALs() {
   return Status::OK();
 }
 
+Status RemoteBootstrapClient::DownloadFile(
+    const tablet::FilePB& file_pb, const std::string& dir, DataIdPB *data_id) {
+  auto file_path = JoinPathSegments(dir, file_pb.name());
+  if (file_pb.inode() != 0) {
+    auto it = inode2file_.find(file_pb.inode());
+    if (it != inode2file_.end()) {
+      VLOG(2) << "File with the same inode already found: " << file_path
+              << " => " << it->second;
+      auto link_status = fs_manager_->env()->LinkFile(it->second, file_path);
+      if (link_status.ok()) {
+        return Status::OK();
+      }
+      // TODO fallback to copy.
+      LOG(ERROR) << "Failed to link file: " << file_path << " => " << it->second
+                 << ": " << link_status;
+    }
+  }
+
+  WritableFileOptions opts;
+  opts.sync_on_close = true;
+  gscoped_ptr<WritableFile> file;
+  RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(opts, file_path, &file));
+
+  data_id->set_file_name(file_pb.name());
+  RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get()),
+                        Format("Unable to download $0 file $1",
+                               DataIdPB::IdType_Name(data_id->type()), file_path));
+  VLOG(2) << "Downloaded file " << file_path;
+
+  if (file_pb.inode() != 0) {
+    inode2file_.emplace(file_pb.inode(), file_path);
+  }
+
+  return Status::OK();
+}
+
 Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   gscoped_ptr<TabletSuperBlockPB> new_sb(new TabletSuperBlockPB());
   new_sb->CopyFrom(*superblock_);
@@ -549,20 +575,10 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
                         Substitute("Failed to create RocksDB tablet directory $0",
                                    rocksdb_dir));
 
+  DataIdPB data_id;
+  data_id.set_type(DataIdPB::ROCKSDB_FILE);
   for (auto const& file_pb : new_sb->rocksdb_files()) {
-    WritableFileOptions opts;
-    opts.sync_on_close = true;
-    gscoped_ptr<WritableFile> rocksdb_file;
-    auto file_path = JoinPathSegments(rocksdb_dir, file_pb.name());
-    RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(opts, file_path, &rocksdb_file));
-
-    DataIdPB data_id;
-    data_id.set_type(DataIdPB::ROCKSDB_FILE);
-    data_id.set_file_name(file_pb.name());
-    RETURN_NOT_OK_PREPEND(DownloadFile(data_id, rocksdb_file.get()),
-                          Substitute("Unable to download rocksdb file $0",
-                                     file_path));
-    VLOG(2) << "Downloading file " << file_path;
+    RETURN_NOT_OK(DownloadFile(file_pb, rocksdb_dir, &data_id));
   }
   new_superblock_.swap(new_sb);
   downloaded_rocksdb_files_ = true;

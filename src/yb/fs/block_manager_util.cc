@@ -74,8 +74,7 @@ Status PathInstanceMetadataFile::Create(const string& uuid, const vector<string>
       "Creating a metadata file that's already locked would release the lock";
   DCHECK(ContainsKey(set<string>(all_uuids.begin(), all_uuids.end()), uuid));
 
-  uint64_t block_size;
-  RETURN_NOT_OK(env_->GetBlockSize(DirName(filename_), &block_size));
+  uint64_t block_size = VERIFY_RESULT(env_->GetBlockSize(DirName(filename_)));
 
   PathInstanceMetadataPB new_instance;
 
@@ -108,8 +107,7 @@ Status PathInstanceMetadataFile::LoadFromDisk() {
     return STATUS(IOError, "Wrong block manager type", pb->block_manager_type());
   }
 
-  uint64_t block_size;
-  RETURN_NOT_OK(env_->GetBlockSize(filename_, &block_size));
+  uint64_t block_size = VERIFY_RESULT(env_->GetBlockSize(filename_));
   if (pb->filesystem_block_size_bytes() != block_size) {
     return STATUS(IOError, "Wrong filesystem block size", Substitute(
         "Expected $0 but was $1", pb->filesystem_block_size_bytes(), block_size));

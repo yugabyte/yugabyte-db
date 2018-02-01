@@ -35,6 +35,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <unordered_map>
 
 #include <gtest/gtest_prod.h>
 
@@ -43,6 +44,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -179,6 +181,9 @@ class RemoteBootstrapClient {
 
   CHECKED_STATUS VerifyData(uint64_t offset, const DataChunkPB& resp);
 
+  CHECKED_STATUS DownloadFile(
+      const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id);
+
   // Return standard log prefix.
   std::string LogPrefix();
 
@@ -220,6 +225,8 @@ class RemoteBootstrapClient {
   bool succeeded_;
 
  private:
+  std::unordered_map<uint64_t, std::string> inode2file_;
+
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };
 

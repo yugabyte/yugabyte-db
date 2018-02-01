@@ -25,7 +25,7 @@ using namespace std::placeholders;
 Status BinarySearchIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer,
     const BlockHandle& index_handle, Env* env,
-    const Comparator* comparator,
+    const ComparatorPtr& comparator,
     std::unique_ptr<IndexReader>* index_reader) {
   std::unique_ptr<Block> index_block;
   auto s = block_based_table::ReadBlockFromFile(
@@ -40,7 +40,7 @@ Status BinarySearchIndexReader::Create(
 
 Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
                        const Footer& footer, RandomAccessFileReader* file,
-                       Env* env, const Comparator* comparator,
+                       Env* env, const ComparatorPtr& comparator,
                        const BlockHandle& index_handle,
                        InternalIterator* meta_index_iter,
                        std::unique_ptr<IndexReader>* index_reader,
@@ -279,7 +279,7 @@ class MultiLevelIterator : public InternalIterator {
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
     BlockBasedTable* table, RandomAccessFileReader* file, const Footer& footer,
     const int num_levels, const BlockHandle& top_level_index_handle, Env* env,
-    const Comparator* comparator, std::unique_ptr<TwoLevelIteratorState> state) {
+    const ComparatorPtr& comparator, std::unique_ptr<TwoLevelIteratorState> state) {
   std::unique_ptr<Block> index_block;
   RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
       file, footer, ReadOptions::kDefault, top_level_index_handle, &index_block, env));
@@ -289,7 +289,8 @@ Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
 }
 
 InternalIterator* MultiLevelIndexReader::NewIterator(BlockIter* iter, bool) {
-  InternalIterator* top_level_iter = top_level_index_block_->NewIterator(comparator_, iter, true);
+  InternalIterator* top_level_iter =
+      top_level_index_block_->NewIterator(comparator_.get(), iter, true /* total_order_seek */);
   return new MultiLevelIterator(state_.get(), top_level_iter, num_levels_, top_level_iter != iter);
 }
 

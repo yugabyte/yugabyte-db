@@ -105,7 +105,7 @@ Options GetOptionsWithNumLevels(int num_levels,
 class VersionStorageInfoTest : public testing::Test {
  public:
   const Comparator* ucmp_;
-  InternalKeyComparator icmp_;
+  InternalKeyComparatorPtr icmp_;
   std::shared_ptr<CountingLogger> logger_;
   Options options_;
   ImmutableCFOptions ioptions_;
@@ -114,12 +114,12 @@ class VersionStorageInfoTest : public testing::Test {
 
   VersionStorageInfoTest()
       : ucmp_(BytewiseComparator()),
-        icmp_(ucmp_),
+        icmp_(std::make_shared<InternalKeyComparator>(ucmp_)),
         logger_(new CountingLogger()),
         options_(GetOptionsWithNumLevels(6, logger_)),
         ioptions_(options_),
         mutable_cf_options_(options_, ioptions_),
-        vstorage_(&icmp_, ucmp_, 6, kCompactionStyleLevel, nullptr) {}
+        vstorage_(icmp_, ucmp_, 6, kCompactionStyleLevel, nullptr) {}
 
   ~VersionStorageInfoTest() {
     for (int i = 0; i < vstorage_.num_levels(); i++) {

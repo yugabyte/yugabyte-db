@@ -380,8 +380,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status GetFileSize(const std::string& fname,
-                             uint64_t* size) override {
+  Status GetFileSize(const std::string& fname, uint64_t* size) override {
     Status s;
     struct stat sbuf;
     if (stat(fname.c_str(), &sbuf) != 0) {

@@ -96,6 +96,23 @@ void BlockIter::Prev() {
   } while (ParseNextKey() && NextEntryOffset() < original);
 }
 
+void BlockIter::Initialize(const Comparator* comparator, const char* data,
+                           uint32_t restarts, uint32_t num_restarts, BlockHashIndex* hash_index,
+                           BlockPrefixIndex* prefix_index) {
+  DCHECK(data_ == nullptr); // Ensure it is called only once
+  DCHECK_GT(num_restarts, 0); // Ensure the param is valid
+
+  comparator_ = comparator;
+  data_ = data;
+  restarts_ = restarts;
+  num_restarts_ = num_restarts;
+  current_ = restarts_;
+  restart_index_ = num_restarts_;
+  hash_index_ = hash_index;
+  prefix_index_ = prefix_index;
+}
+
+
 void BlockIter::Seek(const Slice& target) {
   PERF_TIMER_GUARD(block_seek_nanos);
   if (data_ == nullptr) {  // Not init yet

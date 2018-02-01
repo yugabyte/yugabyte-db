@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_DB_COLUMN_FAMILY_H
-#define ROCKSDB_DB_COLUMN_FAMILY_H
+#ifndef YB_ROCKSDB_DB_COLUMN_FAMILY_H
+#define YB_ROCKSDB_DB_COLUMN_FAMILY_H
 
 #pragma once
 
@@ -283,10 +283,10 @@ class ColumnFamilyData {
   CompactionPicker* compaction_picker() { return compaction_picker_.get(); }
   // thread-safe
   const Comparator* user_comparator() const {
-    return internal_comparator_.user_comparator();
+    return internal_comparator_->user_comparator();
   }
   // thread-safe
-  const InternalKeyComparator& internal_comparator() const {
+  const InternalKeyComparatorPtr& internal_comparator() const {
     return internal_comparator_;
   }
 
@@ -354,7 +354,7 @@ class ColumnFamilyData {
   std::atomic<int> refs_;      // outstanding references to ColumnFamilyData
   bool dropped_;               // true if client dropped it
 
-  const InternalKeyComparator internal_comparator_;
+  InternalKeyComparatorPtr internal_comparator_;
   IntTblPropCollectorFactories int_tbl_prop_collector_factories_;
 
   const Options options_;
@@ -564,4 +564,4 @@ extern const Comparator* GetColumnFamilyUserComparator(
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_COLUMN_FAMILY_H
+#endif // YB_ROCKSDB_DB_COLUMN_FAMILY_H

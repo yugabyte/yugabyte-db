@@ -34,6 +34,10 @@ class MiniClusterBase {
     return DoCreateClient(builder, client);
   }
 
+  CHECKED_STATUS CreateClient(std::shared_ptr<client::YBClient>* client) {
+    return DoCreateClient(nullptr /* builder */, client);
+  }
+
   Endpoint GetLeaderMasterBoundRpcAddr() {
     return DoGetLeaderMasterBoundRpcAddr();
   }

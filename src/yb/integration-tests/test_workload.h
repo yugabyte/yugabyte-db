@@ -32,20 +32,31 @@
 #ifndef YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 #define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 
-#include <string>
-#include <vector>
-
 #include "yb/client/client.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/util/atomic.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/monotime.h"
 
 namespace yb {
 
 class MiniClusterBase;
 class Thread;
+
+struct TestWorkloadOptions {
+  static const client::YBTableName kDefaultTableName;
+
+  int payload_bytes = 11;
+  int num_write_threads = 4;
+  int write_batch_size = 50;
+  MonoDelta default_rpc_timeout = std::chrono::seconds(60);
+  std::chrono::milliseconds write_timeout = std::chrono::seconds(20);
+  bool timeout_allowed = false;
+  bool not_found_allowed = false;
+  bool pathological_one_row_enabled = false;
+  bool sequential_write = false;
+  bool insert_failures_allowed = true;
+
+  int num_replicas = 3;
+  int num_tablets = 1;
+  client::YBTableName table_name = kDefaultTableName;
+};
 
 // Utility class for generating a workload against a test cluster.
 //
@@ -54,35 +65,41 @@ class Thread;
 // to verify that replicas do not diverge.
 class TestWorkload {
  public:
-  static const client::YBTableName kDefaultTableName;
-
   explicit TestWorkload(MiniClusterBase* cluster);
   ~TestWorkload();
 
+  TestWorkload(TestWorkload&& rhs);
+
+  void operator=(TestWorkload&& rhs);
+
   void set_payload_bytes(int n) {
-    payload_bytes_ = n;
+    options_.payload_bytes = n;
   }
 
   void set_num_write_threads(int n) {
-    num_write_threads_ = n;
+    options_.num_write_threads = n;
   }
 
   void set_write_batch_size(int s) {
-    write_batch_size_ = s;
+    options_.write_batch_size = s;
   }
 
   void set_client_default_rpc_timeout_millis(int t) {
-    client_builder_.default_rpc_timeout(MonoDelta::FromMilliseconds(t));
+    options_.default_rpc_timeout = MonoDelta::FromMilliseconds(t);
+  }
+
+  void set_write_timeout(std::chrono::milliseconds value) {
+    options_.write_timeout = value;
   }
 
   void set_write_timeout_millis(int t) {
-    write_timeout_millis_ = t;
+    options_.write_timeout = std::chrono::milliseconds(t);
   }
 
   // Set whether to fail if we see a TimedOut() error inserting a row.
   // By default, this triggers a CHECK failure.
   void set_timeout_allowed(bool allowed) {
-    timeout_allowed_ = allowed;
+    options_.timeout_allowed = allowed;
   }
 
   // Set whether to fail if we see a NotFound() error inserting a row.
@@ -90,30 +107,38 @@ class TestWorkload {
   // is running.
   // By default, this triggers a CHECK failure.
   void set_not_found_allowed(bool allowed) {
-    not_found_allowed_ = allowed;
+    options_.not_found_allowed = allowed;
   }
 
   void set_num_replicas(int r) {
-    num_replicas_ = r;
+    options_.num_replicas = r;
   }
 
   // Set the number of tablets for the table created by this workload.
   // The split points are evenly distributed through positive int32s.
   void set_num_tablets(int tablets) {
     CHECK_GE(tablets, 1);
-    num_tablets_ = tablets;
+    options_.num_tablets = tablets;
   }
 
   void set_table_name(const client::YBTableName& table_name) {
-    table_name_ = table_name;
+    options_.table_name = table_name;
   }
 
   const client::YBTableName& table_name() const {
-    return table_name_;
+    return options_.table_name;
   }
 
   void set_pathological_one_row_enabled(bool enabled) {
-    pathological_one_row_enabled_ = enabled;
+    options_.pathological_one_row_enabled = enabled;
+  }
+
+  void set_sequential_write(bool value) {
+    options_.sequential_write = value;
+  }
+
+  void set_insert_failures_allowed(bool value) {
+    options_.insert_failures_allowed = value;
   }
 
   // Sets up the internal client and creates the table which will be used for
@@ -126,47 +151,25 @@ class TestWorkload {
   // Stop the writers and wait for them to exit.
   void StopAndJoin();
 
+  void Stop();
+
+  void Join();
+
+  void WaitInserted(int64_t required);
+
   // Return the number of rows inserted so far. This may be called either
   // during or after the write workload.
-  int64_t rows_inserted() const {
-    return rows_inserted_.Load();
-  }
+  int64_t rows_inserted() const;
 
   // Return the number of batches in which we have successfully inserted at
   // least one row.
-  int64_t batches_completed() const {
-    return batches_completed_.Load();
-  }
+  int64_t batches_completed() const;
 
  private:
-  void WriteThread();
+  class State;
 
-  MiniClusterBase* cluster_;
-  client::YBClientBuilder client_builder_;
-  std::shared_ptr<client::YBClient> client_;
-
-  int payload_bytes_;
-  int num_write_threads_;
-  int write_batch_size_;
-  int write_timeout_millis_;
-  bool timeout_allowed_;
-  bool not_found_allowed_;
-  bool pathological_one_row_enabled_;
-
-  int num_replicas_;
-  int num_tablets_;
-  client::YBTableName table_name_;
-
-  CountDownLatch start_latch_;
-  AtomicBool should_run_;
-  std::atomic<int64_t> pathological_one_row_counter_{0};
-  std::atomic<bool> pathological_one_row_inserted_{false};
-  AtomicInt<int64_t> rows_inserted_;
-  AtomicInt<int64_t> batches_completed_;
-
-  std::vector<scoped_refptr<Thread> > threads_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestWorkload);
+  TestWorkloadOptions options_;
+  std::unique_ptr<State> state_;
 };
 
 }  // namespace yb

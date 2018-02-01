@@ -122,6 +122,9 @@ void MiniTabletServer::Shutdown() {
 }
 
 void MiniTabletServer::FlushTablets() {
+  if (!server_) {
+    return;
+  }
   std::vector<tablet::TabletPeerPtr> tablets;
   server_->tablet_manager()->GetTabletPeers(&tablets);
   for (const auto& tablet : tablets) {
@@ -130,6 +133,9 @@ void MiniTabletServer::FlushTablets() {
 }
 
 void MiniTabletServer::CleanTabletLogs() {
+  if (!server_) {
+    return;
+  }
   std::vector<tablet::TabletPeerPtr> tablets;
   server_->tablet_manager()->GetTabletPeers(&tablets);
   for (const auto& tablet : tablets) {

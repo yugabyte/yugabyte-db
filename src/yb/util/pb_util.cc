@@ -594,8 +594,7 @@ Status ReadablePBContainerFile::Close() {
 Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
                                                 Slice* result, gscoped_ptr<uint8_t[]>* scratch) {
   // Validate the read length using the file size.
-  uint64_t file_size;
-  RETURN_NOT_OK(reader_->Size(&file_size));
+  uint64_t file_size = VERIFY_RESULT(reader_->Size());
   if (offset_ + length > file_size) {
     switch (eofOK) {
       case EOF_OK:

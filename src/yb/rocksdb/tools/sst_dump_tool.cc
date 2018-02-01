@@ -60,7 +60,7 @@ SstFileReader::SstFileReader(const std::string& file_path,
                              bool output_hex)
     :file_name_(file_path), read_num_(0), verify_checksum_(verify_checksum),
     output_hex_(output_hex), ioptions_(options_),
-    internal_comparator_(BytewiseComparator()) {
+    internal_comparator_(std::make_shared<InternalKeyComparator>(BytewiseComparator())) {
   fprintf(stdout, "Process %s\n", file_path.c_str());
   init_result_ = GetTableReader(file_name_);
 }
@@ -101,7 +101,7 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
       options_.env->NewRandomAccessFile(file_path, &file, soptions_);
       file_.reset(new RandomAccessFileReader(std::move(file)));
     }
-    options_.comparator = &internal_comparator_;
+    options_.comparator = internal_comparator_.get();
     // For old sst format, ReadTableProperties might fail but file can be read
     if (ReadTableProperties(magic_number, file_.get(), file_size).ok()) {
       SetTableOptionsByMagicNumber(magic_number);
@@ -111,7 +111,7 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
   }
 
   if (s.ok()) {
-    s = NewTableReader(ioptions_, soptions_, internal_comparator_, file_size,
+    s = NewTableReader(ioptions_, soptions_, *internal_comparator_, file_size,
                        &table_reader_);
     if (s.ok() && table_reader_->IsSplitSst()) {
       unique_ptr<RandomAccessFile> data_file;
@@ -195,7 +195,7 @@ int SstFileReader::ShowAllCompressionSizes(size_t block_size) {
   ReadOptions read_options;
   Options opts;
   const ImmutableCFOptions imoptions(opts);
-  rocksdb::InternalKeyComparator ikc(opts.comparator);
+  auto ikc = std::make_shared<rocksdb::InternalKeyComparator>(opts.comparator);
   std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
       block_based_table_factories;
 

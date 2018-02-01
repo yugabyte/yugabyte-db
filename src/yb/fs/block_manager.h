@@ -33,9 +33,10 @@
 #ifndef YB_FS_BLOCK_MANAGER_H
 #define YB_FS_BLOCK_MANAGER_H
 
+#include <stdint.h>
+
 #include <cstddef>
 #include <memory>
-#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 DECLARE_bool(block_coalesce_close);
@@ -155,7 +157,7 @@ class ReadableBlock : public Block {
   virtual CHECKED_STATUS Close() = 0;
 
   // Returns the on-disk size of a written block.
-  virtual CHECKED_STATUS Size(uint64_t* sz) const = 0;
+  virtual Result<uint64_t> Size() const = 0;
 
   // Reads exactly 'length' bytes beginning from 'offset' in the block,
   // returning an error if fewer bytes exist. A slice referencing the
@@ -292,4 +294,4 @@ class ScopedWritableBlockCloser {
 } // namespace fs
 } // namespace yb
 
-#endif
+#endif // YB_FS_BLOCK_MANAGER_H

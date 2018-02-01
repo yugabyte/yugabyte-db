@@ -118,7 +118,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
         s = Status::OK();
       }
     }
-    if (!is_table_file || (!same_fs)) {
+    if (!is_table_file || !same_fs) {
       RLOG(db->GetOptions().info_log, "Copying %s", src_fname.c_str());
       s = CopyFile(db->GetEnv(), db->GetName() + src_fname,
                    full_private_path + src_fname,

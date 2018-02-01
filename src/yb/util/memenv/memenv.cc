@@ -230,9 +230,12 @@ class RandomAccessFileImpl : public RandomAccessFile {
     return file_->Read(offset, n, result, scratch);
   }
 
-  Status Size(uint64_t *size) const override {
-    *size = file_->Size();
-    return Status::OK();
+  Result<uint64_t> Size() const override {
+    return file_->Size();
+  }
+
+  Result<uint64_t> INode() const override {
+    return 0;
   }
 
   const string& filename() const override {
@@ -445,7 +448,8 @@ class InMemoryEnv : public EnvWrapper {
     return file_map_.find(fname) != file_map_.end();
   }
 
-  virtual Status GetChildren(const std::string& dir,
+  CHECKED_STATUS GetChildren(const std::string& dir,
+                             ExcludeDots exclude_dots,
                              vector<std::string>* result) override {
     MutexLock lock(mutex_);
     result->clear();
@@ -507,24 +511,26 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  Status GetFileSize(const std::string& fname, uint64_t* file_size) override {
+  Result<uint64_t> GetFileSize(const std::string& fname) override {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       return STATUS(IOError, fname, "File not found");
     }
 
-    *file_size = file_map_[fname]->Size();
-    return Status::OK();
+    return file_map_[fname]->Size();
   }
 
-  Status GetFileSizeOnDisk(const std::string& fname, uint64_t* file_size) override {
-    return GetFileSize(fname, file_size);
+  Result<uint64_t> GetFileINode(const std::string& fname) override {
+    return 0;
   }
 
-  Status GetBlockSize(const string& fname, uint64_t* block_size) override {
+  Result<uint64_t> GetFileSizeOnDisk(const std::string& fname) override {
+    return GetFileSize(fname);
+  }
+
+  Result<uint64_t> GetBlockSize(const string& fname) override {
     // The default for ext3/ext4 filesystems.
-    *block_size = 4096;
-    return Status::OK();
+    return 4096;
   }
 
   virtual Status RenameFile(const std::string& src,

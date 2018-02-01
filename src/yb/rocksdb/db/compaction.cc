@@ -333,7 +333,7 @@ bool Compaction::KeyNotExistsBeyondOutputLevel(
 
 bool Compaction::ShouldStopBefore(const Slice& internal_key) {
   // Scan to find earliest grandparent file that contains key.
-  const InternalKeyComparator* icmp = &cfd_->internal_comparator();
+  const InternalKeyComparator* icmp = cfd_->internal_comparator().get();
   while (grandparent_index_ < grandparents_.size() &&
       icmp->Compare(internal_key,
                     grandparents_[grandparent_index_]->largest.key.Encode()) > 0) {

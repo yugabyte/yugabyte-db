@@ -17,8 +17,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_TABLE_PLAIN_TABLE_READER_H
-#define ROCKSDB_TABLE_PLAIN_TABLE_READER_H
+#ifndef YB_ROCKSDB_TABLE_PLAIN_TABLE_READER_H
+#define YB_ROCKSDB_TABLE_PLAIN_TABLE_READER_H
 
 #ifndef ROCKSDB_LITE
 #include <stdint.h>
@@ -87,7 +87,7 @@ class PlainTableReader: public TableReader {
  public:
   static Status Open(const ImmutableCFOptions& ioptions,
                      const EnvOptions& env_options,
-                     const InternalKeyComparator& internal_comparator,
+                     const InternalKeyComparatorPtr& internal_comparator,
                      unique_ptr<RandomAccessFileReader>&& file,
                      uint64_t file_size, unique_ptr<TableReader>* table,
                      const int bloom_bits_per_key, double hash_table_ratio,
@@ -122,7 +122,7 @@ class PlainTableReader: public TableReader {
   PlainTableReader(const ImmutableCFOptions& ioptions,
                    unique_ptr<RandomAccessFileReader>&& file,
                    const EnvOptions& env_options,
-                   const InternalKeyComparator& internal_comparator,
+                   const InternalKeyComparatorPtr& internal_comparator,
                    EncodingType encoding_type, uint64_t file_size,
                    const TableProperties* table_properties);
   virtual ~PlainTableReader();
@@ -147,7 +147,7 @@ class PlainTableReader: public TableReader {
   Status MmapDataIfNeeded();
 
  private:
-  const InternalKeyComparator internal_comparator_;
+  InternalKeyComparatorPtr internal_comparator_;
   EncodingType encoding_type_;
   // represents plain table's current status.
   Status status_;
@@ -252,4 +252,4 @@ class PlainTableReader: public TableReader {
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
 
-#endif  // ROCKSDB_TABLE_PLAIN_TABLE_READER_H
+#endif  // YB_ROCKSDB_TABLE_PLAIN_TABLE_READER_H

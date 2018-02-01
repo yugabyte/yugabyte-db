@@ -505,7 +505,7 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
   LevelFileIteratorState(TableCache* table_cache,
                          const ReadOptions& read_options,
                          const EnvOptions& env_options,
-                         const InternalKeyComparator& icomparator,
+                         const InternalKeyComparatorPtr& icomparator,
                          HistogramImpl* file_read_hist, bool for_compaction,
                          bool prefix_enabled, bool skip_filters)
       : TwoLevelIteratorState(prefix_enabled),
@@ -539,7 +539,7 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
   TableCache* table_cache_;
   const ReadOptions read_options_;
   const EnvOptions& env_options_;
-  const InternalKeyComparator& icomparator_;
+  InternalKeyComparatorPtr icomparator_;
   HistogramImpl* file_read_hist_;
   bool for_compaction_;
   bool skip_filters_;
@@ -843,14 +843,14 @@ void Version::AddIterators(const ReadOptions& read_options,
                                  IsFilterSkipped(level));
       mem = arena->AllocateAligned(sizeof(LevelFileNumIterator));
       auto* first_level_iter = new (mem) LevelFileNumIterator(
-          cfd_->internal_comparator(), &storage_info_.LevelFilesBrief(level));
+          *cfd_->internal_comparator(), &storage_info_.LevelFilesBrief(level));
       merge_iter_builder->AddIterator(NewTwoLevelIterator(state, first_level_iter, arena, false));
     }
   }
 }
 
 VersionStorageInfo::VersionStorageInfo(
-    const InternalKeyComparator* internal_comparator,
+    const InternalKeyComparatorPtr& internal_comparator,
     const Comparator* user_comparator, int levels,
     CompactionStyle compaction_style, VersionStorageInfo* ref_vstorage)
     : internal_comparator_(internal_comparator),
@@ -901,7 +901,7 @@ Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
       table_cache_((cfd_ == nullptr) ? nullptr : cfd_->table_cache()),
       merge_operator_((cfd_ == nullptr) ? nullptr
                                         : cfd_->ioptions()->merge_operator),
-      storage_info_((cfd_ == nullptr) ? nullptr : &cfd_->internal_comparator(),
+      storage_info_((cfd_ == nullptr) ? nullptr : cfd_->internal_comparator(),
                     (cfd_ == nullptr) ? nullptr : cfd_->user_comparator(),
                     cfd_ == nullptr ? 0 : cfd_->NumberLevels(),
                     cfd_ == nullptr ? kCompactionStyleLevel
@@ -937,11 +937,11 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
   FilePicker fp(
       storage_info_.files_, user_key, ikey, &storage_info_.level_files_brief_,
       storage_info_.num_non_empty_levels_, &storage_info_.file_indexer_,
-      user_comparator(), internal_comparator());
+      user_comparator(), internal_comparator().get());
   FdWithBoundaries* f = fp.GetNextFile();
   while (f != nullptr) {
     *status = table_cache_->Get(
-        read_options, *internal_comparator(), f->fd, ikey, &get_context,
+        read_options, internal_comparator(), f->fd, ikey, &get_context,
         cfd_->internal_stats()->GetFileReadHist(fp.GetHitFileLevel()),
         IsFilterSkipped(static_cast<int>(fp.GetHitFileLevel()),
                         fp.IsHitFileLastInLevel()));
@@ -3281,7 +3281,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         edit.SetColumnFamily(cfd->GetID());
       }
       edit.SetComparatorName(
-          cfd->internal_comparator().user_comparator()->Name());
+          cfd->internal_comparator()->user_comparator()->Name());
       RETURN_NOT_OK(AddEdit(edit, db_options_, log));
     }
 
@@ -3314,7 +3314,7 @@ uint64_t VersionSet::ApproximateSize(Version* v, const Slice& start,
                                      const Slice& end, int start_level,
                                      int end_level) {
   // pre-condition
-  assert(v->cfd_->internal_comparator().Compare(start, end) <= 0);
+  assert(v->cfd_->internal_comparator()->Compare(start, end) <= 0);
 
   uint64_t size = 0;
   const auto* vstorage = v->storage_info();
@@ -3342,7 +3342,7 @@ uint64_t VersionSet::ApproximateSize(Version* v, const Slice& start,
 
     // identify the file position for starting key
     const uint64_t idx_start = FindFileInRange(
-        v->cfd_->internal_comparator(), files_brief, start,
+        *v->cfd_->internal_comparator(), files_brief, start,
         /*start=*/0, static_cast<uint32_t>(files_brief.num_files - 1));
     assert(idx_start < files_brief.num_files);
 
@@ -3392,10 +3392,10 @@ uint64_t VersionSet::ApproximateSize(Version* v, const FdWithBoundaries& f, cons
   assert(v);
 
   uint64_t result = 0;
-  if (v->cfd_->internal_comparator().Compare(f.largest.key, key) <= 0) {
+  if (v->cfd_->internal_comparator()->Compare(f.largest.key, key) <= 0) {
     // Entire file is before "key", so just add the file size
     result = f.fd.GetTotalFileSize();
-  } else if (v->cfd_->internal_comparator().Compare(f.smallest.key, key) > 0) {
+  } else if (v->cfd_->internal_comparator()->Compare(f.smallest.key, key) > 0) {
     // Entire file is after "key", so ignore
     result = 0;
   } else {
@@ -3487,14 +3487,14 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
                 nullptr /* no per level latency histogram */,
                 true /* for_compaction */, false /* prefix enabled */,
                 false /* skip_filters */),
-            new LevelFileNumIterator(cfd->internal_comparator(),
+            new LevelFileNumIterator(*cfd->internal_comparator(),
                                      c->input_levels(which)));
       }
     }
   }
   assert(num <= space);
   InternalIterator* result =
-      NewMergingIterator(&c->column_family_data()->internal_comparator(), list,
+      NewMergingIterator(c->column_family_data()->internal_comparator().get(), list,
                          static_cast<int>(num));
   delete[] list;
   return result;

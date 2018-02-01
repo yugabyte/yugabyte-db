@@ -24,8 +24,8 @@
 // All Env implementations are safe for concurrent access from
 // multiple threads without any external synchronization.
 
-#ifndef STORAGE_LEVELDB_INCLUDE_ENV_H_
-#define STORAGE_LEVELDB_INCLUDE_ENV_H_
+#ifndef YB_UTIL_ENV_H
+#define YB_UTIL_ENV_H
 
 #include <stdint.h>
 #include <cstdarg>
@@ -34,7 +34,9 @@
 
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -48,6 +50,8 @@ class WritableFile;
 struct RandomAccessFileOptions;
 struct RWFileOptions;
 struct WritableFileOptions;
+
+YB_STRONGLY_TYPED_BOOL(ExcludeDots);
 
 class Env {
  public:
@@ -147,8 +151,12 @@ class Env {
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
-  virtual CHECKED_STATUS GetChildren(const std::string& dir,
-                             std::vector<std::string>* result) = 0;
+  CHECKED_STATUS GetChildren(const std::string& dir, std::vector<std::string>* result) {
+    return GetChildren(dir, ExcludeDots::kFalse, result);
+  }
+
+  virtual CHECKED_STATUS GetChildren(const std::string& dir, ExcludeDots exclude_dots,
+                                     std::vector<std::string>* result) = 0;
 
   // Delete the named file.
   virtual CHECKED_STATUS DeleteFile(const std::string& fname) = 0;
@@ -167,17 +175,22 @@ class Env {
   virtual CHECKED_STATUS DeleteRecursively(const std::string &dirname) = 0;
 
   // Store the logical size of fname in *file_size.
-  virtual CHECKED_STATUS GetFileSize(const std::string& fname, uint64_t* file_size) = 0;
+  virtual Result<uint64_t> GetFileSize(const std::string& fname) = 0;
+
+  virtual Result<uint64_t> GetFileINode(const std::string& fname) = 0;
+
+  virtual CHECKED_STATUS LinkFile(const std::string& src,
+                                  const std::string& target) = 0;
 
   // Store the physical size of fname in *file_size.
   //
   // This differs from GetFileSize() in that it returns the actual amount
   // of space consumed by the file, not the user-facing file size.
-  virtual CHECKED_STATUS GetFileSizeOnDisk(const std::string& fname, uint64_t* file_size) = 0;
+  virtual Result<uint64_t> GetFileSizeOnDisk(const std::string& fname) = 0;
 
   // Store the block size of the filesystem where fname resides in
   // *block_size. fname must exist but it may be a file or a directory.
-  virtual CHECKED_STATUS GetBlockSize(const std::string& fname, uint64_t* block_size) = 0;
+  virtual Result<uint64_t> GetBlockSize(const std::string& fname) = 0;
 
   // Rename file src to target.
   virtual CHECKED_STATUS RenameFile(const std::string& src,
@@ -330,7 +343,9 @@ class RandomAccessFile {
                       uint8_t *scratch) const = 0;
 
   // Returns the size of the file
-  virtual CHECKED_STATUS Size(uint64_t *size) const = 0;
+  virtual Result<uint64_t> Size() const = 0;
+
+  virtual Result<uint64_t> INode() const = 0;
 
   // Returns the filename provided when the RandomAccessFile was constructed.
   virtual const std::string& filename() const = 0;
@@ -564,22 +579,31 @@ class EnvWrapper : public Env {
     return target_->NewRWFile(o, f, r);
   }
   bool FileExists(const std::string& f) override { return target_->FileExists(f); }
-  CHECKED_STATUS GetChildren(const std::string& dir, std::vector<std::string>* r) override {
-    return target_->GetChildren(dir, r);
+  CHECKED_STATUS GetChildren(
+      const std::string& dir, ExcludeDots exclude_dots, std::vector<std::string>* r) override {
+    return target_->GetChildren(dir, exclude_dots, r);
   }
   CHECKED_STATUS DeleteFile(const std::string& f) override { return target_->DeleteFile(f); }
   CHECKED_STATUS CreateDir(const std::string& d) override { return target_->CreateDir(d); }
   CHECKED_STATUS SyncDir(const std::string& d) override { return target_->SyncDir(d); }
   CHECKED_STATUS DeleteDir(const std::string& d) override { return target_->DeleteDir(d); }
-  CHECKED_STATUS DeleteRecursively(const std::string& d) override { return target_->DeleteRecursively(d); }
-  CHECKED_STATUS GetFileSize(const std::string& f, uint64_t* s) override {
-    return target_->GetFileSize(f, s);
+  CHECKED_STATUS DeleteRecursively(const std::string& d) override {
+    return target_->DeleteRecursively(d);
   }
-  CHECKED_STATUS GetFileSizeOnDisk(const std::string& f, uint64_t* s) override {
-    return target_->GetFileSizeOnDisk(f, s);
+  Result<uint64_t> GetFileSize(const std::string& f) override {
+    return target_->GetFileSize(f);
   }
-  CHECKED_STATUS GetBlockSize(const std::string& f, uint64_t* s) override {
-    return target_->GetBlockSize(f, s);
+  Result<uint64_t> GetFileINode(const std::string& f) override {
+    return target_->GetFileINode(f);
+  }
+  Result<uint64_t> GetFileSizeOnDisk(const std::string& f) override {
+    return target_->GetFileSizeOnDisk(f);
+  }
+  Result<uint64_t> GetBlockSize(const std::string& f) override {
+    return target_->GetBlockSize(f);
+  }
+  CHECKED_STATUS LinkFile(const std::string& s, const std::string& t) override {
+    return target_->LinkFile(s, t);
   }
   CHECKED_STATUS RenameFile(const std::string& s, const std::string& t) override {
     return target_->RenameFile(s, t);
@@ -623,4 +647,4 @@ class EnvWrapper : public Env {
 
 }  // namespace yb
 
-#endif  // STORAGE_LEVELDB_INCLUDE_ENV_H_
+#endif // YB_UTIL_ENV_H

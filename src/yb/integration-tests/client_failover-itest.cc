@@ -139,7 +139,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
 
   // Open the scanner and count the rows.
   client::TableHandle table;
-  ASSERT_OK(table.Open(TestWorkload::kDefaultTableName, client_.get()));
+  ASSERT_OK(table.Open(TestWorkloadOptions::kDefaultTableName, client_.get()));
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table));
   LOG(INFO) << "Number of rows: " << workload.rows_inserted()
             << ", batches: " << workload.batches_completed()

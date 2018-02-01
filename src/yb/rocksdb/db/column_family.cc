@@ -356,9 +356,9 @@ ColumnFamilyData::ColumnFamilyData(
       current_(nullptr),
       refs_(0),
       dropped_(false),
-      internal_comparator_(cf_options.comparator),
+      internal_comparator_(std::make_shared<InternalKeyComparator>(cf_options.comparator)),
       options_(*db_options,
-               SanitizeOptions(*db_options, &internal_comparator_, cf_options)),
+               SanitizeOptions(*db_options, internal_comparator_.get(), cf_options)),
       ioptions_(options_),
       mutable_cf_options_(options_, ioptions_),
       write_buffer_(write_buffer),
@@ -387,17 +387,17 @@ ColumnFamilyData::ColumnFamilyData(
     table_cache_.reset(new TableCache(ioptions_, env_options, _table_cache));
     if (ioptions_.compaction_style == kCompactionStyleLevel) {
       compaction_picker_.reset(
-          new LevelCompactionPicker(ioptions_, &internal_comparator_));
+          new LevelCompactionPicker(ioptions_, internal_comparator_.get()));
 #ifndef ROCKSDB_LITE
     } else if (ioptions_.compaction_style == kCompactionStyleUniversal) {
       compaction_picker_.reset(
-          new UniversalCompactionPicker(ioptions_, &internal_comparator_));
+          new UniversalCompactionPicker(ioptions_, internal_comparator_.get()));
     } else if (ioptions_.compaction_style == kCompactionStyleFIFO) {
       compaction_picker_.reset(
-          new FIFOCompactionPicker(ioptions_, &internal_comparator_));
+          new FIFOCompactionPicker(ioptions_, internal_comparator_.get()));
     } else if (ioptions_.compaction_style == kCompactionStyleNone) {
       compaction_picker_.reset(new NullCompactionPicker(
-          ioptions_, &internal_comparator_));
+          ioptions_, internal_comparator_.get()));
       RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
           "Column family %s does not use any background compaction. "
           "Compactions can only be done via CompactFiles\n",
@@ -409,7 +409,7 @@ ColumnFamilyData::ColumnFamilyData(
           "Column family %s will use kCompactionStyleLevel.\n",
           ioptions_.compaction_style, GetName().c_str());
       compaction_picker_.reset(
-          new LevelCompactionPicker(ioptions_, &internal_comparator_));
+          new LevelCompactionPicker(ioptions_, internal_comparator_.get()));
     }
 
     if (column_family_set_->NumberOfColumnFamilies() < 10) {
@@ -701,7 +701,7 @@ uint64_t ColumnFamilyData::GetTotalSstFilesSize() const {
 MemTable* ColumnFamilyData::ConstructNewMemtable(
     const MutableCFOptions& mutable_cf_options, SequenceNumber earliest_seq) {
   assert(current() != nullptr);
-  return new MemTable(internal_comparator_, ioptions_, mutable_cf_options,
+  return new MemTable(*internal_comparator_, ioptions_, mutable_cf_options,
                       write_buffer_, earliest_seq);
 }
 

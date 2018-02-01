@@ -107,7 +107,7 @@ extern void DoGenerateLevelFilesBrief(LevelFilesBrief* file_level,
 
 class VersionStorageInfo {
  public:
-  VersionStorageInfo(const InternalKeyComparator* internal_comparator,
+  VersionStorageInfo(const InternalKeyComparatorPtr& internal_comparator,
                      const Comparator* user_comparator, int num_levels,
                      CompactionStyle compaction_style,
                      VersionStorageInfo* src_vstorage);
@@ -323,7 +323,7 @@ class VersionStorageInfo {
     next_file_to_compact_by_size_[level] = 0;
   }
 
-  const InternalKeyComparator* InternalComparator() {
+  const InternalKeyComparatorPtr& InternalComparator() {
     return internal_comparator_;
   }
 
@@ -346,7 +346,7 @@ class VersionStorageInfo {
   }
 
  private:
-  const InternalKeyComparator* internal_comparator_;
+  InternalKeyComparatorPtr internal_comparator_;
   const Comparator* user_comparator_;
   int num_levels_;            // Number of levels
   int num_non_empty_levels_;  // Number of levels. Any level larger than it
@@ -531,7 +531,7 @@ class Version {
   Env* env_;
   friend class VersionSet;
 
-  const InternalKeyComparator* internal_comparator() const {
+  const InternalKeyComparatorPtr& internal_comparator() const {
     return storage_info_.internal_comparator_;
   }
   const Comparator* user_comparator() const {

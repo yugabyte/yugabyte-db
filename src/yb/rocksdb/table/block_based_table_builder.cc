@@ -258,7 +258,7 @@ struct BlockBasedTableBuilder::FileWriterWithOffsetAndCachePrefix {
 struct BlockBasedTableBuilder::Rep {
   const ImmutableCFOptions ioptions;
   const BlockBasedTableOptions table_options;
-  const InternalKeyComparator& internal_comparator;
+  InternalKeyComparatorPtr internal_comparator;
   // When two file writers are passed to BlockBasedTableBuilder during creation - we
   // use separate writers for data and metadata. In case BlockBasedTableBuilder was created for
   // single file - both data_writer and metadata_writer will actually point to the same structure,
@@ -301,7 +301,7 @@ struct BlockBasedTableBuilder::Rep {
 
   Rep(const ImmutableCFOptions& _ioptions,
       const BlockBasedTableOptions& table_opt,
-      const InternalKeyComparator& icomparator,
+      const InternalKeyComparatorPtr& icomparator,
       const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
       uint32_t column_family_id,
       WritableFileWriter* metadata_file,
@@ -333,7 +333,7 @@ Status BlockBasedTableBuilder::BlockBasedTablePropertiesCollector::Finish(
 BlockBasedTableBuilder::Rep::Rep(
     const ImmutableCFOptions& _ioptions,
     const BlockBasedTableOptions& table_opt,
-    const InternalKeyComparator& icomparator,
+    const InternalKeyComparatorPtr& icomparator,
     const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
     uint32_t column_family_id,
     WritableFileWriter* metadata_file,
@@ -354,7 +354,7 @@ BlockBasedTableBuilder::Rep::Rep(
           table_opt.filter_policy->GetKeyTransformer() : nullptr),
       data_index_builder(
           IndexBuilder::CreateIndexBuilder(
-              table_options.index_type, &internal_comparator, &internal_prefix_transform,
+              table_options.index_type, internal_comparator.get(), &internal_prefix_transform,
               table_options)),
       filter_index_builder(
           // Prefix_extractor is not used by binary search index which we use for bloom filter
@@ -388,7 +388,7 @@ BlockBasedTableBuilder::Rep::Rep(
 BlockBasedTableBuilder::BlockBasedTableBuilder(
     const ImmutableCFOptions& ioptions,
     const BlockBasedTableOptions& table_options,
-    const InternalKeyComparator& internal_comparator,
+    const InternalKeyComparatorPtr& internal_comparator,
     const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
     uint32_t column_family_id,
     WritableFileWriter* metadata_file,
@@ -436,7 +436,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   DCHECK(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
-    DCHECK_GT(r->internal_comparator.Compare(key, Slice(r->last_key)), 0);
+    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0);
   }
 
   const auto should_flush_data = r->flush_block_policy->Update(key, value);

@@ -67,13 +67,7 @@ class PendingOperationCounter {
  private:
   CHECKED_STATUS WaitForOpsToFinish(const MonoDelta& timeout);
 
-  uint64_t Update(uint64_t delta) {
-    const uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_release);
-    // Ensure that there is no underflow in either counter.
-    DCHECK_EQ((result & (1ull << 63)), 0); // Counter of Disable() calls.
-    DCHECK_EQ((result & (kDisabledDelta >> 1)), 0); // Counter of pending operations.
-    return result;
-  }
+  uint64_t Update(uint64_t delta);
 
   // Upper bits are used for storing number of Disable() calls.
   std::atomic<uint64_t> counters_;

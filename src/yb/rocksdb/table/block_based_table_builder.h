@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H
-#define ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H
+#ifndef YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H
+#define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H
 
 #include <stdint.h>
 #include <limits>
@@ -53,7 +53,7 @@ class BlockBasedTableBuilder : public TableBuilder {
   BlockBasedTableBuilder(
       const ImmutableCFOptions& ioptions,
       const BlockBasedTableOptions& table_options,
-      const InternalKeyComparator& internal_comparator,
+      const std::shared_ptr<const InternalKeyComparator>& internal_comparator,
       const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
       uint32_t column_family_id, WritableFileWriter* metadata_file,
       WritableFileWriter* data_file,
@@ -146,4 +146,4 @@ class BlockBasedTableBuilder : public TableBuilder {
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H
+#endif  // YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H

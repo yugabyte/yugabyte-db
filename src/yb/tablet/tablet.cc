@@ -412,7 +412,7 @@ Status Tablet::OpenKeyValueTablet() {
   if (transaction_participant_) {
     transaction_participant_->SetDB(db);
   }
-  LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
+  LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir << ", obj: " << db;
   return Status::OK();
 }
 
@@ -498,7 +498,7 @@ void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir,
-                                google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files) {
+                                google::protobuf::RepeatedPtrField<FilePB>* rocksdb_files) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -527,6 +527,8 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
       auto rocksdb_file_pb = rocksdb_files->Add();
       rocksdb_file_pb->set_name(file_attrs.name);
       rocksdb_file_pb->set_size_bytes(file_attrs.size_bytes);
+      rocksdb_file_pb->set_inode(VERIFY_RESULT(
+          metadata_->fs_manager()->env()->GetFileINode(JoinPathSegments(dir, file_attrs.name))));
     }
   }
 

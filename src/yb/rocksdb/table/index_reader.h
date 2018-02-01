@@ -39,7 +39,7 @@ class RandomAccessFileReader;
 // IndexReader is the interface that provide the functionality for index access.
 class IndexReader {
  public:
-  explicit IndexReader(const Comparator* comparator)
+  explicit IndexReader(const ComparatorPtr& comparator)
       : comparator_(comparator) {}
 
   virtual ~IndexReader() {}
@@ -64,7 +64,7 @@ class IndexReader {
   virtual size_t ApproximateMemoryUsage() const = 0;
 
  protected:
-  const Comparator* comparator_;
+  ComparatorPtr comparator_;
 };
 
 // Index that allows binary search lookup for the first key of each block.
@@ -78,10 +78,10 @@ class BinarySearchIndexReader : public IndexReader {
   // unmodified.
   static CHECKED_STATUS Create(
       RandomAccessFileReader* file, const Footer& footer, const BlockHandle& index_handle, Env* env,
-      const Comparator* comparator, std::unique_ptr<IndexReader>* index_reader);
+      const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader);
 
   InternalIterator* NewIterator(BlockIter* iter = nullptr, bool dont_care = true) override {
-    auto new_iter = index_block_->NewIterator(comparator_, iter, true);
+    auto new_iter = index_block_->NewIterator(comparator_.get(), iter, true);
     return iter ? nullptr : new_iter;
   }
 
@@ -101,7 +101,7 @@ class BinarySearchIndexReader : public IndexReader {
   }
 
  private:
-  BinarySearchIndexReader(const Comparator* comparator,
+  BinarySearchIndexReader(const ComparatorPtr& comparator,
                           std::unique_ptr<Block>&& index_block)
       : IndexReader(comparator), index_block_(std::move(index_block)) {
     DCHECK(index_block_);
@@ -118,12 +118,12 @@ class HashIndexReader : public IndexReader {
  public:
   static CHECKED_STATUS Create(
       const SliceTransform* hash_key_extractor, const Footer& footer, RandomAccessFileReader* file,
-      Env* env, const Comparator* comparator, const BlockHandle& index_handle,
+      Env* env, const ComparatorPtr& comparator, const BlockHandle& index_handle,
       InternalIterator* meta_index_iter, std::unique_ptr<IndexReader>* index_reader,
       bool hash_index_allow_collision);
 
   InternalIterator* NewIterator(BlockIter* iter = nullptr, bool total_order_seek = true) override {
-    auto new_iter = index_block_->NewIterator(comparator_, iter, total_order_seek);
+    auto new_iter = index_block_->NewIterator(comparator_.get(), iter, total_order_seek);
     return iter ? nullptr : new_iter;
   }
 
@@ -143,7 +143,7 @@ class HashIndexReader : public IndexReader {
   }
 
  private:
-  HashIndexReader(const Comparator* comparator, std::unique_ptr<Block>&& index_block)
+  HashIndexReader(const ComparatorPtr& comparator, std::unique_ptr<Block>&& index_block)
       : IndexReader(comparator), index_block_(std::move(index_block)) {
     DCHECK(index_block_);
   }
@@ -165,11 +165,11 @@ class MultiLevelIndexReader : public IndexReader {
   // Read the top level index from the file and create an instance for `MultiLevelIndexReader`.
   static Result<std::unique_ptr<MultiLevelIndexReader>> Create(
       BlockBasedTable* table, RandomAccessFileReader* file, const Footer& footer, int num_levels,
-      const BlockHandle& top_level_index_handle, Env* env, const Comparator* comparator,
+      const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator,
       std::unique_ptr<TwoLevelIteratorState> state);
 
   MultiLevelIndexReader(
-      BlockBasedTable* table, const Comparator* comparator, int num_levels,
+      BlockBasedTable* table, const ComparatorPtr& comparator, int num_levels,
       std::unique_ptr<Block> top_level_index_block,
       std::unique_ptr<TwoLevelIteratorState> state)
       : IndexReader(comparator),

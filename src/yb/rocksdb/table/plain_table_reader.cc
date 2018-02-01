@@ -108,7 +108,7 @@ extern const uint64_t kPlainTableMagicNumber;
 PlainTableReader::PlainTableReader(const ImmutableCFOptions& ioptions,
                                    unique_ptr<RandomAccessFileReader>&& file,
                                    const EnvOptions& storage_options,
-                                   const InternalKeyComparator& icomparator,
+                                   const InternalKeyComparatorPtr& icomparator,
                                    EncodingType encoding_type,
                                    uint64_t file_size,
                                    const TableProperties* table_properties)
@@ -130,7 +130,7 @@ PlainTableReader::~PlainTableReader() {
 
 Status PlainTableReader::Open(const ImmutableCFOptions& ioptions,
                               const EnvOptions& env_options,
-                              const InternalKeyComparator& internal_comparator,
+                              const InternalKeyComparatorPtr& internal_comparator,
                               unique_ptr<RandomAccessFileReader>&& file,
                               uint64_t file_size,
                               unique_ptr<TableReader>* table_reader,
@@ -461,7 +461,7 @@ Status PlainTableReader::GetOffset(PlainTableKeyDecoder* decoder,
     if (!s.ok()) {
       return s;
     }
-    int cmp_result = internal_comparator_.Compare(mid_key, parsed_target);
+    int cmp_result = internal_comparator_->Compare(mid_key, parsed_target);
     if (cmp_result < 0) {
       low = mid;
     } else {
@@ -602,7 +602,7 @@ Status PlainTableReader::Get(const ReadOptions& ro, const Slice& target,
     }
     // TODO(ljin): since we know the key comparison result here,
     // can we enable the fast path?
-    if (internal_comparator_.Compare(found_key, parsed_target) >= 0) {
+    if (internal_comparator_->Compare(found_key, parsed_target) >= 0) {
       if (!get_context->SaveValue(found_key, found_value)) {
         break;
       }
@@ -693,7 +693,7 @@ void PlainTableIterator::Seek(const Slice& target) {
         }
         prefix_match = true;
       }
-      if (table_->internal_comparator_.Compare(key(), target) >= 0) {
+      if (table_->internal_comparator_->Compare(key(), target) >= 0) {
         break;
       }
     }

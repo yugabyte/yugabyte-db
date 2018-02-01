@@ -134,7 +134,7 @@ Status NewFileReader(const ImmutableCFOptions& ioptions, const EnvOptions& env_o
 
 Status TableCache::GetTableReader(
     const EnvOptions& env_options,
-    const InternalKeyComparator& internal_comparator, const FileDescriptor& fd,
+    const InternalKeyComparatorPtr& internal_comparator, const FileDescriptor& fd,
     bool sequential_mode, bool record_read_stats, HistogramImpl* file_read_hist,
     unique_ptr<TableReader>* table_reader, bool skip_filters) {
   const std::string base_fname = TableFileName(ioptions_.db_paths, fd.GetNumber(), fd.GetPathId());
@@ -170,7 +170,7 @@ Status TableCache::GetTableReader(
 }
 
 Status TableCache::FindTable(const EnvOptions& env_options,
-                             const InternalKeyComparator& internal_comparator,
+                             const InternalKeyComparatorPtr& internal_comparator,
                              const FileDescriptor& fd, Cache::Handle** handle,
                              const QueryId query_id, const bool no_io, bool record_read_stats,
                              HistogramImpl* file_read_hist, bool skip_filters) {
@@ -226,7 +226,7 @@ TableCache::TableReaderWithHandle::~TableReaderWithHandle() {
 Status TableCache::DoGetTableReaderForIterator(
     const ReadOptions& options,
     const EnvOptions& env_options,
-    const InternalKeyComparator& icomparator,
+    const InternalKeyComparatorPtr& icomparator,
     const FileDescriptor& fd, TableReaderWithHandle* trwh,
     HistogramImpl* file_read_hist,
     bool for_compaction,
@@ -261,7 +261,8 @@ Status TableCache::DoGetTableReaderForIterator(
 
 Status TableCache::GetTableReaderForIterator(
     const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparator& icomparator, const FileDescriptor& fd, TableReaderWithHandle* trwh,
+    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd,
+    TableReaderWithHandle* trwh,
     HistogramImpl* file_read_hist, bool for_compaction, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
   return DoGetTableReaderForIterator(options, env_options, icomparator, fd, trwh, file_read_hist,
@@ -301,7 +302,7 @@ InternalIterator* TableCache::DoNewIterator(
 
 InternalIterator* TableCache::NewIterator(
     const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparator& icomparator, const FileDescriptor& fd,
+    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd,
     TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
     bool for_compaction, Arena* arena, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
@@ -327,7 +328,7 @@ InternalIterator* TableCache::NewIterator(
 }
 
 Status TableCache::Get(const ReadOptions& options,
-    const InternalKeyComparator& internal_comparator,
+    const InternalKeyComparatorPtr& internal_comparator,
     const FileDescriptor& fd, const Slice& k,
     GetContext* get_context, HistogramImpl* file_read_hist,
     bool skip_filters) {
@@ -413,7 +414,7 @@ Status TableCache::Get(const ReadOptions& options,
 
 Status TableCache::GetTableProperties(
     const EnvOptions& env_options,
-    const InternalKeyComparator& internal_comparator, const FileDescriptor& fd,
+    const InternalKeyComparatorPtr& internal_comparator, const FileDescriptor& fd,
     std::shared_ptr<const TableProperties>* properties, bool no_io) {
   Status s;
   auto table_reader = fd.table_reader;
@@ -438,7 +439,7 @@ Status TableCache::GetTableProperties(
 
 size_t TableCache::GetMemoryUsageByTableReader(
     const EnvOptions& env_options,
-    const InternalKeyComparator& internal_comparator,
+    const InternalKeyComparatorPtr& internal_comparator,
     const FileDescriptor& fd) {
   Status s;
   auto table_reader = fd.table_reader;

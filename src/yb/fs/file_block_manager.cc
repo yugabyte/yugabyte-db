@@ -396,7 +396,7 @@ class FileReadableBlock : public ReadableBlock {
 
   const BlockId& id() const override;
 
-  Status Size(uint64_t* sz) const override;
+  Result<uint64_t> Size() const override;
 
   virtual Status Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const override;
@@ -453,10 +453,11 @@ const BlockId& FileReadableBlock::id() const {
   return block_id_;
 }
 
-Status FileReadableBlock::Size(uint64_t* sz) const {
-  DCHECK(!closed_.Load());
-
-  return reader_->Size(sz);
+Result<uint64_t> FileReadableBlock::Size() const {
+  if (closed_.Load()) {
+    return STATUS(IllegalState, "File not opened");
+  }
+  return reader_->Size();
 }
 
 Status FileReadableBlock::Read(uint64_t offset, size_t length,

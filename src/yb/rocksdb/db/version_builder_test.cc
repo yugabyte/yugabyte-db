@@ -31,7 +31,7 @@ namespace rocksdb {
 class VersionBuilderTest : public testing::Test {
  public:
   const Comparator* ucmp_;
-  InternalKeyComparator icmp_;
+  InternalKeyComparatorPtr icmp_;
   Options options_;
   ImmutableCFOptions ioptions_;
   MutableCFOptions mutable_cf_options_;
@@ -42,10 +42,10 @@ class VersionBuilderTest : public testing::Test {
 
   VersionBuilderTest()
       : ucmp_(BytewiseComparator()),
-        icmp_(ucmp_),
+        icmp_(std::make_shared<InternalKeyComparator>(ucmp_)),
         ioptions_(options_),
         mutable_cf_options_(options_, ioptions_),
-        vstorage_(&icmp_, ucmp_, options_.num_levels, kCompactionStyleLevel,
+        vstorage_(icmp_, ucmp_, options_.num_levels, kCompactionStyleLevel,
                  nullptr),
         file_num_(1) {
     mutable_cf_options_.RefreshDerivedOptions(ioptions_);
@@ -141,7 +141,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveTo) {
 
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
-  VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
+  VersionStorageInfo new_vstorage(icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr);
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
@@ -179,7 +179,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic) {
 
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
-  VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
+  VersionStorageInfo new_vstorage(icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr);
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
@@ -222,7 +222,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic2) {
 
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
-  VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
+  VersionStorageInfo new_vstorage(icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr);
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
@@ -268,7 +268,7 @@ TEST_F(VersionBuilderTest, ApplyMultipleAndSaveTo) {
 
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
-  VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
+  VersionStorageInfo new_vstorage(icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr);
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
@@ -283,7 +283,7 @@ TEST_F(VersionBuilderTest, ApplyDeleteAndSaveTo) {
 
   EnvOptions env_options;
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
-  VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
+  VersionStorageInfo new_vstorage(icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr);
 
   VersionEdit version_edit;

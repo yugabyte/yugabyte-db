@@ -303,15 +303,24 @@ class PosixRandomAccessFile: public RandomAccessFile {
     return s;
   }
 
-  Status Size(uint64_t *size) const override {
-    TRACE_EVENT1("io", "PosixRandomAccessFile::Size", "path", filename_);
+  Result<uint64_t> Size() const override {
+    TRACE_EVENT1("io", __PRETTY_FUNCTION__, "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     struct stat st;
     if (fstat(fd_, &st) == -1) {
       return IOError(filename_, errno);
     }
-    *size = st.st_size;
-    return Status::OK();
+    return st.st_size;
+  }
+
+  Result<uint64_t> INode() const override {
+    TRACE_EVENT1("io", __PRETTY_FUNCTION__, "path", filename_);
+    ThreadRestrictions::AssertIOAllowed();
+    struct stat st;
+    if (fstat(fd_, &st) == -1) {
+      return IOError(filename_, errno);
+    }
+    return st.st_ino;
   }
 
   const string& filename() const override { return filename_; }
@@ -1068,7 +1077,8 @@ class PosixEnv : public Env {
     return access(fname.c_str(), F_OK) == 0;
   }
 
-  virtual Status GetChildren(const std::string& dir,
+  CHECKED_STATUS GetChildren(const std::string& dir,
+                             ExcludeDots exclude_dots,
                              std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
     ThreadRestrictions::AssertIOAllowed();
@@ -1080,6 +1090,9 @@ class PosixEnv : public Env {
     struct dirent* entry;
     // TODO: lint: Consider using readdir_r(...) instead of readdir(...) for improved thread safety.
     while ((entry = readdir(d)) != nullptr) {
+      if (exclude_dots && (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)) {
+        continue;
+      }
       result->push_back(entry->d_name);
     }
     closedir(d);
@@ -1136,48 +1149,53 @@ class PosixEnv : public Env {
                                        Unretained(this)));
   }
 
-  Status GetFileSize(const std::string& fname, uint64_t* size) override {
-    TRACE_EVENT1("io", "PosixEnv::GetFileSize", "path", fname);
+  template <class Extractor>
+  Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extractor extractor) {
+    TRACE_EVENT1("io", event, "path", fname);
     ThreadRestrictions::AssertIOAllowed();
-    Status s;
     struct stat sbuf;
     if (stat(fname.c_str(), &sbuf) != 0) {
-      s = IOError(fname, errno);
-    } else {
-      *size = sbuf.st_size;
+      return IOError(fname, errno);
     }
-    return s;
+    return extractor(sbuf);
   }
 
-  Status GetFileSizeOnDisk(const std::string& fname, uint64_t* size) override {
-    TRACE_EVENT1("io", "PosixEnv::GetFileSizeOnDisk", "path", fname);
-    ThreadRestrictions::AssertIOAllowed();
-    Status s;
-    struct stat sbuf;
-    if (stat(fname.c_str(), &sbuf) != 0) {
-      s = IOError(fname, errno);
-    } else {
-      // From stat(2):
-      //
-      //   The st_blocks field indicates the number of blocks allocated to
-      //   the file, 512-byte units. (This may be smaller than st_size/512
-      //   when the file has holes.)
-      *size = sbuf.st_blocks * 512;
-    }
-    return s;
+  Result<uint64_t> GetFileSize(const std::string& fname) override {
+    return GetFileStat(
+        fname, "PosixEnv::GetFileSize", [](const struct stat& sbuf) { return sbuf.st_size; });
   }
 
-  Status GetBlockSize(const string& fname, uint64_t* block_size) override {
-    TRACE_EVENT1("io", "PosixEnv::GetBlockSize", "path", fname);
-    ThreadRestrictions::AssertIOAllowed();
-    Status s;
-    struct stat sbuf;
-    if (stat(fname.c_str(), &sbuf) != 0) {
-      s = IOError(fname, errno);
-    } else {
-      *block_size = sbuf.st_blksize;
+  Result<uint64_t> GetFileINode(const std::string& fname) override {
+    return GetFileStat(
+        fname, "PosixEnv::GetFileINode", [](const struct stat& sbuf) { return sbuf.st_ino; });
+  }
+
+  Result<uint64_t> GetFileSizeOnDisk(const std::string& fname) override {
+    return GetFileStat(
+        fname, "PosixEnv::GetFileSizeOnDisk", [](const struct stat& sbuf) {
+            // From stat(2):
+            //
+            //   The st_blocks field indicates the number of blocks allocated to
+            //   the file, 512-byte units. (This may be smaller than st_size/512
+            //   when the file has holes.)
+            return sbuf.st_blocks * 512;
+        });
+  }
+
+  Result<uint64_t> GetBlockSize(const string& fname) override {
+    return GetFileStat(
+        fname, "PosixEnv::GetBlockSize", [](const struct stat& sbuf) { return sbuf.st_blksize; });
+  }
+
+  CHECKED_STATUS LinkFile(const std::string& src,
+                          const std::string& target) override {
+    if (link(src.c_str(), target.c_str()) != 0) {
+      if (errno == EXDEV) {
+        return STATUS(NotSupported, "No cross FS links allowed");
+      }
+      return IOError(src, errno);
     }
-    return s;
+    return Status::OK();
   }
 
   Status RenameFile(const std::string& src, const std::string& target) override {
@@ -1422,7 +1440,7 @@ class PosixEnv : public Env {
                                     gscoped_ptr<WritableFile>* result) {
     uint64_t file_size = 0;
     if (opts.mode == OPEN_EXISTING) {
-      RETURN_NOT_OK(GetFileSize(fname, &file_size));
+      file_size = VERIFY_RESULT(GetFileSize(fname));
     }
     PosixWritableFile *posix_writable_file;
 #if defined(__linux)

@@ -53,7 +53,7 @@ namespace {
 static const uint32_t kTestColumnFamilyId = 66;
 
 void MakeBuilder(const Options& options, const ImmutableCFOptions& ioptions,
-                 const InternalKeyComparator& internal_comparator,
+                 const InternalKeyComparatorPtr& internal_comparator,
                  const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
                  std::unique_ptr<WritableFileWriter>* writable,
                  std::unique_ptr<TableBuilder>* builder) {
@@ -243,7 +243,7 @@ extern const uint64_t kPlainTableMagicNumber;
 namespace {
 void TestCustomizedTablePropertiesCollector(
     bool backward_mode, uint64_t magic_number, bool test_int_tbl_prop_collector,
-    const Options& options, const InternalKeyComparator& internal_comparator) {
+    const Options& options, const InternalKeyComparatorPtr& internal_comparator) {
   // make sure the entries will be inserted with order.
   std::map<std::pair<std::string, ValueType>, std::string> kvs = {
       {{"About   ", kTypeValue}, "val5"},  // starts with 'A'
@@ -345,7 +345,7 @@ TEST_P(TablePropertiesTest, CustomizedTablePropertiesCollector) {
         std::make_shared<FlushBlockEveryThreePolicyFactory>();
     options.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
-    test::PlainInternalKeyComparator ikc(options.comparator);
+    auto ikc = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
     std::shared_ptr<TablePropertiesCollectorFactory> collector_factory(
         new RegularKeysStartWithAFactory(backward_mode_));
     options.table_properties_collector_factories.resize(1);
@@ -389,7 +389,7 @@ void TestInternalKeyPropertiesCollector(
   std::unique_ptr<TableBuilder> builder;
   std::unique_ptr<WritableFileWriter> writable;
   Options options;
-  test::PlainInternalKeyComparator pikc(options.comparator);
+  auto pikc = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
 
   IntTblPropCollectorFactories int_tbl_prop_collector_factories;
   options.table_factory = table_factory;
@@ -403,7 +403,7 @@ void TestInternalKeyPropertiesCollector(
     // SanitizeOptions().
     options.info_log = std::make_shared<test::NullLogger>();
     options = SanitizeOptions("db",            // just a place holder
-                              &pikc,
+                              pikc.get(),
                               options);
     GetIntTblPropCollectorFactory(options, &int_tbl_prop_collector_factories);
     options.comparator = comparator;

@@ -64,7 +64,21 @@ inline bool operator!=(const OpId& lhs, const OpId& rhs) {
   return !(lhs == rhs);
 }
 
-#define OP_ID_FORMAT "(%" PRIu64 ", %" PRIu64 ")"
+inline bool operator<(const OpId& lhs, const OpId& rhs) {
+  return (lhs.term < rhs.term) || (lhs.term == rhs.term && lhs.index < rhs.index);
+}
+
+inline bool operator<=(const OpId& lhs, const OpId& rhs) {
+  return !(rhs < lhs);
+}
+
+inline bool operator>(const OpId& lhs, const OpId& rhs) {
+  return rhs < lhs;
+}
+
+inline bool operator>=(const OpId& lhs, const OpId& rhs) {
+  return !(lhs < rhs);
+}
 
 std::ostream& operator<<(std::ostream& out, const OpId& op_id);
 

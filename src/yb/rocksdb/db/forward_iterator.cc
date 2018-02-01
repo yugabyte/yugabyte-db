@@ -140,7 +140,7 @@ ForwardIterator::ForwardIterator(DBImpl* db, const ReadOptions& read_options,
       cfd_(cfd),
       prefix_extractor_(cfd->ioptions()->prefix_extractor),
       user_comparator_(cfd->user_comparator()),
-      immutable_min_heap_(MinIterComparator(&cfd_->internal_comparator())),
+      immutable_min_heap_(MinIterComparator(cfd_->internal_comparator().get())),
       sv_(current_sv),
       mutable_iter_(nullptr),
       current_(nullptr),
@@ -217,7 +217,7 @@ void ForwardIterator::SeekToFirst() {
 
 bool ForwardIterator::IsOverUpperBound(const Slice& internal_key) const {
   return !(read_options_.iterate_upper_bound == nullptr ||
-           cfd_->internal_comparator().user_comparator()->Compare(
+           cfd_->internal_comparator()->user_comparator()->Compare(
                ExtractUserKey(internal_key),
                *read_options_.iterate_upper_bound) < 0);
 }
@@ -250,7 +250,7 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
   if (seek_to_first || NeedToSeekImmutable(internal_key)) {
     immutable_status_ = Status::OK();
     if ((has_iter_trimmed_for_upper_bound_) &&
-        (cfd_->internal_comparator().InternalKeyComparator::Compare(
+        (cfd_->internal_comparator()->InternalKeyComparator::Compare(
              prev_key_.GetKey(), internal_key) > 0)) {
       // Some iterators are trimmed. Need to rebuild.
       RebuildIterators(true);
@@ -259,7 +259,7 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
                     : mutable_iter_->Seek(internal_key);
     }
     {
-      auto tmp = MinIterHeap(MinIterComparator(&cfd_->internal_comparator()));
+      auto tmp = MinIterHeap(MinIterComparator(cfd_->internal_comparator().get()));
       immutable_min_heap_.swap(tmp);
     }
     for (size_t i = 0; i < imm_iters_.size(); i++) {
@@ -511,7 +511,7 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
   l0_iters_.reserve(l0_files.size());
   for (const auto* l0 : l0_files) {
     if ((read_options_.iterate_upper_bound != nullptr) &&
-        cfd_->internal_comparator().user_comparator()->Compare(
+        cfd_->internal_comparator()->user_comparator()->Compare(
             l0->smallest.key.user_key(), *read_options_.iterate_upper_bound) > 0) {
       has_iter_trimmed_for_upper_bound_ = true;
       l0_iters_.push_back(nullptr);
@@ -646,7 +646,7 @@ void ForwardIterator::UpdateCurrent() {
     current_ = immutable_min_heap_.top();
     assert(current_ != nullptr);
     assert(current_->Valid());
-    int cmp = cfd_->internal_comparator().InternalKeyComparator::Compare(
+    int cmp = cfd_->internal_comparator()->InternalKeyComparator::Compare(
         mutable_iter_->key(), current_->key());
     assert(cmp != 0);
     if (cmp > 0) {
@@ -684,7 +684,7 @@ bool ForwardIterator::NeedToSeekImmutable(const Slice& target) {
     prefix_extractor_->Transform(prev_key)) != 0) {
     return true;
   }
-  if (cfd_->internal_comparator().InternalKeyComparator::Compare(
+  if (cfd_->internal_comparator()->InternalKeyComparator::Compare(
         prev_key, target) >= (is_prev_inclusive_ ? 1 : 0)) {
     return true;
   }
@@ -693,7 +693,7 @@ bool ForwardIterator::NeedToSeekImmutable(const Slice& target) {
     // Nothing to seek on.
     return false;
   }
-  if (cfd_->internal_comparator().InternalKeyComparator::Compare(
+  if (cfd_->internal_comparator()->InternalKeyComparator::Compare(
         target, current_ == mutable_iter_ ? immutable_min_heap_.top()->key()
                                           : current_->key()) > 0) {
     return true;
@@ -772,7 +772,7 @@ uint32_t ForwardIterator::FindFileInRange(
   while (left < right) {
     uint32_t mid = (left + right) / 2;
     const FileMetaData* f = files[mid];
-    if (cfd_->internal_comparator().InternalKeyComparator::Compare(
+    if (cfd_->internal_comparator()->InternalKeyComparator::Compare(
           f->largest.key.Encode(), internal_key) < 0) {
       // Key at "mid.largest" is < "target".  Therefore all
       // files at or before "mid" are uninteresting.
