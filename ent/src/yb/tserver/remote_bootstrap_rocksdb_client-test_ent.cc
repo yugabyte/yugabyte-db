@@ -30,6 +30,8 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     TabletSnapshotOpRequestPB request;
     request.set_snapshot_id(kSnapshotId);
     tablet::SnapshotOperationState tx_state(tablet_peer_->tablet(), &request);
+    tx_state.set_hybrid_time(tablet_peer_->clock().Now());
+    tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
     ASSERT_OK(tablet_peer_->tablet()->CreateSnapshot(&tx_state));
   }
 };
