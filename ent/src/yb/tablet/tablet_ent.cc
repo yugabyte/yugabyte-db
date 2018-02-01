@@ -62,6 +62,12 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   s = CreateCheckpoint(snapshot_dir);
   VLOG(1) << "Complete checkpoint creation for tablet " << tablet_id()
           << " with result " << s << " in folder " << snapshot_dir;
+
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(tx_state->op_id());
+  frontier.set_hybrid_time(tx_state->hybrid_time());
+  RETURN_NOT_OK(SetFlushedFrontier(frontier));
+
   return s;
 }
 
