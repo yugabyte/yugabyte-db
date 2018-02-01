@@ -46,14 +46,16 @@ Status RemoteBootstrapSession::InitSnapshotFiles() {
       }
 
       const string path = JoinPathSegments(snapshot_dir, file);
-      uint64_t file_size = 0;
-      RETURN_NOT_OK_PREPEND(metadata->fs_manager()->env()->GetFileSize(path, &file_size),
-                            Substitute("Unable to get file size for file $0", path));
+      const uint64_t file_size = VERIFY_RESULT_PREPEND(
+          metadata->fs_manager()->env()->GetFileSize(path),
+          Substitute("Unable to get file size for file $0", path));
 
       auto snapshot_file_pb = tablet_superblock_.mutable_snapshot_files()->Add();
-      snapshot_file_pb->set_name(file);
+      auto& file_pb = *snapshot_file_pb->mutable_file();
       snapshot_file_pb->set_snapshot_id(snapshot_id);
-      snapshot_file_pb->set_size_bytes(file_size);
+      file_pb.set_name(file);
+      file_pb.set_size_bytes(file_size);
+      file_pb.set_inode(VERIFY_RESULT(metadata->fs_manager()->env()->GetFileINode(path)));
     }
   }
 
