@@ -75,14 +75,14 @@ class VersionBuilder::Rep {
   // kLevelNon0 -- BySmallestKey
   struct FileComparator {
     enum SortMethod { kLevel0 = 0, kLevelNon0 = 1, } sort_method;
-    const InternalKeyComparator* internal_comparator;
+    InternalKeyComparatorPtr internal_comparator;
 
     bool operator()(FileMetaData* f1, FileMetaData* f2) const {
       switch (sort_method) {
         case kLevel0:
           return NewestFirstBySeqNo(f1, f2);
         case kLevelNon0:
-          return BySmallestKey(f1, f2, internal_comparator);
+          return BySmallestKey(f1, f2, internal_comparator.get());
       }
       assert(false);
       return false;
@@ -324,7 +324,7 @@ class VersionBuilder::Rep {
         auto* file_meta = files_meta[file_idx].first;
         int level = files_meta[file_idx].second;
         table_cache_->FindTable(env_options_,
-                                *(base_vstorage_->InternalComparator()),
+                                base_vstorage_->InternalComparator(),
                                 file_meta->fd, &file_meta->table_reader_handle,
                                 kDefaultQueryId,
                                 false /*no_io */, true /* record_read_stats */,

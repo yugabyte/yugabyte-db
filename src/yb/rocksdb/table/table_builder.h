@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_TABLE_TABLE_BUILDER_H
-#define ROCKSDB_TABLE_TABLE_BUILDER_H
+#ifndef YB_ROCKSDB_TABLE_TABLE_BUILDER_H
+#define YB_ROCKSDB_TABLE_TABLE_BUILDER_H
 
 #include <stdint.h>
 
@@ -47,7 +47,7 @@ struct TableReaderOptions {
   // @param skip_filters Disables loading/accessing the filter block
   TableReaderOptions(const ImmutableCFOptions& _ioptions,
                      const EnvOptions& _env_options,
-                     const InternalKeyComparator& _internal_comparator,
+                     const InternalKeyComparatorPtr& _internal_comparator,
                      bool _skip_filters = false)
       : ioptions(_ioptions),
         env_options(_env_options),
@@ -56,7 +56,7 @@ struct TableReaderOptions {
 
   const ImmutableCFOptions& ioptions;
   const EnvOptions& env_options;
-  const InternalKeyComparator& internal_comparator;
+  const InternalKeyComparatorPtr& internal_comparator;
   // This is only used for BlockBasedTable (reader)
   bool skip_filters;
 };
@@ -64,7 +64,7 @@ struct TableReaderOptions {
 struct TableBuilderOptions {
   TableBuilderOptions(
       const ImmutableCFOptions& _ioptions,
-      const InternalKeyComparator& _internal_comparator,
+      const std::shared_ptr<const InternalKeyComparator>& _internal_comparator,
       const IntTblPropCollectorFactories& _int_tbl_prop_collector_factories,
       CompressionType _compression_type,
       const CompressionOptions& _compression_opts,
@@ -77,7 +77,7 @@ struct TableBuilderOptions {
         skip_filters(_skip_filters) {}
 
   const ImmutableCFOptions& ioptions;
-  const InternalKeyComparator& internal_comparator;
+  std::shared_ptr<const InternalKeyComparator> internal_comparator;
   const IntTblPropCollectorFactories* int_tbl_prop_collector_factories;
   CompressionType compression_type;
   const CompressionOptions& compression_opts;
@@ -137,4 +137,4 @@ class TableBuilder {
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_TABLE_TABLE_BUILDER_H
+#endif  // YB_ROCKSDB_TABLE_TABLE_BUILDER_H

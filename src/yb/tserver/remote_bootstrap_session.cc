@@ -408,9 +408,10 @@ Status RemoteBootstrapSession::GetFilePiece(const std::string path,
 
   RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(file_path, &readable_file));
 
-  uint64 file_size = 0;
-  RETURN_NOT_OK(readable_file->Size(&file_size));
-  VLOG(2) << "Reading RocksDB file. File path: " << file_path << " file size: " << file_size;
+  uint64 file_size = VERIFY_RESULT(readable_file->Size());
+  auto inode = VERIFY_RESULT(readable_file->INode());
+  VLOG(2) << "Reading RocksDB file. File path: " << file_path << ", file size: " << file_size
+          << ", inode: " << inode;
 
   readable_file_shared_ptr.reset(readable_file.release());
 
@@ -460,11 +461,7 @@ Status RemoteBootstrapSession::OpenBlockUnlocked(const BlockId& block_id) {
                                         block_id.ToString()));
   }
 
-  uint64_t size;
-  s = block->Size(&size);
-  if (PREDICT_FALSE(!s.ok())) {
-    return s.CloneAndPrepend("Unable to get size of block");
-  }
+  uint64_t size = VERIFY_RESULT_PREPEND(block->Size(), "Unable to get size of block");
 
   s = AddImmutableFileToMap(&blocks_, block_id, block.get(), size);
   if (!s.ok()) {

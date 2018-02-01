@@ -596,7 +596,7 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
     splits.push_back(row);
   }
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  ASSERT_OK(table_creator->table_name(TestWorkload::kDefaultTableName)
+  ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                           .split_rows(splits)
                           .schema(&client_schema)
                           .num_replicas(3)

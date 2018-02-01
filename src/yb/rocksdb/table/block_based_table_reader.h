@@ -125,7 +125,7 @@ class BlockBasedTable : public TableReader {
   static Status Open(const ImmutableCFOptions& ioptions,
                      const EnvOptions& env_options,
                      const BlockBasedTableOptions& table_options,
-                     const InternalKeyComparator& internal_key_comparator,
+                     const InternalKeyComparatorPtr& internal_key_comparator,
                      unique_ptr<RandomAccessFileReader>&& base_file,
                      uint64_t base_file_size,
                      unique_ptr<TableReader>* table_reader,

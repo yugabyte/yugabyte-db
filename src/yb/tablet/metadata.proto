@@ -120,7 +120,7 @@ message TabletSuperBlockPB {
   optional string wal_dir = 18;
 
   // List of RocksDB SST files.
-  repeated RocksDBFilePB rocksdb_files = 17;
+  repeated FilePB rocksdb_files = 17;
 
   // List of Snapshot files.
   repeated SnapshotFilePB snapshot_files = 20;
@@ -134,23 +134,21 @@ message TabletSuperBlockPB {
   repeated DeletedColumnPB deleted_cols = 19;
 }
 
-message RocksDBFilePB {
+message FilePB {
   // Required. File name (no path).
   optional string name = 1;
 
   // Required.
   optional uint64 size_bytes = 2;
+
+  // Used to avoid copying same files over network, so we could hardlink them.
+  optional uint64 inode = 3;
 }
 
 message SnapshotFilePB {
-  // Required. File name (no path).
-  optional string name = 1;
+  optional FilePB file = 1;
 
-  // Required. Snapshot id.
   optional bytes snapshot_id = 2;
-
-  // Required.
-  optional uint64 size_bytes = 3;
 }
 
 // The enum of tablet states.

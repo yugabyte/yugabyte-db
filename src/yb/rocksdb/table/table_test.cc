@@ -146,9 +146,9 @@ class Constructor {
   // and stores the key/value pairs in "*kvmap"
   void Finish(const Options& options, const ImmutableCFOptions& ioptions,
               const BlockBasedTableOptions& table_options,
-              const InternalKeyComparator& internal_comparator,
+              const InternalKeyComparatorPtr& internal_comparator,
               std::vector<std::string>* keys, stl_wrappers::KVMap* kvmap) {
-    last_internal_key_ = &internal_comparator;
+    last_internal_key_ = internal_comparator;
     *kvmap = data_;
     keys->clear();
     for (const auto& kv : data_) {
@@ -164,7 +164,7 @@ class Constructor {
   virtual Status FinishImpl(const Options& options,
                             const ImmutableCFOptions& ioptions,
                             const BlockBasedTableOptions& table_options,
-                            const InternalKeyComparator& internal_comparator,
+                            const InternalKeyComparatorPtr& internal_comparator,
                             const stl_wrappers::KVMap& data) = 0;
 
   virtual InternalIterator* NewIterator() const = 0;
@@ -178,7 +178,7 @@ class Constructor {
   virtual bool AnywayDeleteIterator() const { return false; }
 
  protected:
-  const InternalKeyComparator* last_internal_key_;
+  InternalKeyComparatorPtr last_internal_key_;
 
  private:
   stl_wrappers::KVMap data_;
@@ -196,7 +196,7 @@ class BlockConstructor: public Constructor {
   virtual Status FinishImpl(const Options& options,
                             const ImmutableCFOptions& ioptions,
                             const BlockBasedTableOptions& table_options,
-                            const InternalKeyComparator& internal_comparator,
+                            const InternalKeyComparatorPtr& internal_comparator,
                             const stl_wrappers::KVMap& kv_map) override {
     delete block_;
     block_ = nullptr;
@@ -286,7 +286,7 @@ class TableConstructor: public Constructor {
   virtual Status FinishImpl(const Options& options,
                             const ImmutableCFOptions& ioptions,
                             const BlockBasedTableOptions& table_options,
-                            const InternalKeyComparator& internal_comparator,
+                            const InternalKeyComparatorPtr& internal_comparator,
                             const stl_wrappers::KVMap& kv_map) override {
     Reset();
     soptions.use_mmap_reads = ioptions.allow_mmap_reads;
@@ -348,7 +348,7 @@ class TableConstructor: public Constructor {
     file_reader_.reset(test::GetRandomAccessFileReader(new test::StringSource(
         GetSink()->contents(), uniq_id_, ioptions.allow_mmap_reads)));
     return ioptions.table_factory->NewTableReader(
-        TableReaderOptions(ioptions, soptions, *last_internal_key_),
+        TableReaderOptions(ioptions, soptions, last_internal_key_),
         std::move(file_reader_), GetSink()->contents().size(), &table_reader_);
   }
 
@@ -409,7 +409,7 @@ class MemTableConstructor: public Constructor {
   }
   virtual Status FinishImpl(const Options&, const ImmutableCFOptions& ioptions,
                             const BlockBasedTableOptions& table_options,
-                            const InternalKeyComparator& internal_comparator,
+                            const InternalKeyComparatorPtr& internal_comparator,
                             const stl_wrappers::KVMap& kv_map) override {
     delete memtable_->Unref();
     ImmutableCFOptions mem_ioptions(ioptions);
@@ -473,7 +473,7 @@ class DBConstructor: public Constructor {
   virtual Status FinishImpl(const Options& options,
                             const ImmutableCFOptions& ioptions,
                             const BlockBasedTableOptions& table_options,
-                            const InternalKeyComparator& internal_comparator,
+                            const InternalKeyComparatorPtr& internal_comparator,
                             const stl_wrappers::KVMap& kv_map) override {
     delete db_;
     db_ = nullptr;
@@ -747,7 +747,7 @@ class HarnessTest : public testing::Test {
     std::vector<std::string> keys;
     stl_wrappers::KVMap data;
     constructor_->Finish(options_, ioptions_, table_options_,
-                         *internal_comparator_, &keys, &data);
+                         internal_comparator_, &keys, &data);
 
     TestForwardScan(keys, data);
     if (support_prev_) {
@@ -932,7 +932,7 @@ class HarnessTest : public testing::Test {
   WriteBuffer write_buffer_;
   bool support_prev_;
   bool only_support_prefix_seek_;
-  shared_ptr<InternalKeyComparator> internal_comparator_;
+  InternalKeyComparatorPtr internal_comparator_;
 };
 
 static bool Between(uint64_t val, uint64_t low, uint64_t high) {
@@ -947,13 +947,12 @@ static bool Between(uint64_t val, uint64_t low, uint64_t high) {
 // Tests against all kinds of tables
 class TableTest : public testing::Test {
  public:
-  const InternalKeyComparator& GetPlainInternalComparator(
+  const InternalKeyComparatorPtr& GetPlainInternalComparator(
       const Comparator* comp) {
     if (!plain_internal_comparator) {
-      plain_internal_comparator.reset(
-          new test::PlainInternalKeyComparator(comp));
+      plain_internal_comparator = std::make_shared<test::PlainInternalKeyComparator>(comp);
     }
-    return *plain_internal_comparator;
+    return plain_internal_comparator;
   }
 
   void TestIndex(BlockBasedTableOptions table_options, int expected_num_index_levels);
@@ -961,7 +960,7 @@ class TableTest : public testing::Test {
       const BlockBasedTableOptions& table_options, const Options& options);
 
  private:
-  std::unique_ptr<InternalKeyComparator> plain_internal_comparator;
+  InternalKeyComparatorPtr plain_internal_comparator;
 };
 
 class GeneralTableTest : public TableTest {};
@@ -1132,8 +1131,7 @@ TEST_F(BlockBasedTableTest, PrefetchTest) {
   // The purpose of this test is to test the prefetching operation built into
   // BlockBasedTable.
   Options opt;
-  unique_ptr<InternalKeyComparator> ikc;
-  ikc.reset(new test::PlainInternalKeyComparator(opt.comparator));
+  auto ikc = std::make_shared<test::PlainInternalKeyComparator>(opt.comparator);
   opt.compression = kNoCompression;
   BlockBasedTableOptions table_options;
   table_options.block_size = 1024;
@@ -1153,7 +1151,7 @@ TEST_F(BlockBasedTableTest, PrefetchTest) {
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
   const ImmutableCFOptions ioptions(opt);
-  c.Finish(opt, ioptions, table_options, *ikc, &keys, &kvmap);
+  c.Finish(opt, ioptions, table_options, ikc, &keys, &kvmap);
 
   // We get the following data spread :
   //
@@ -1339,13 +1337,12 @@ TEST_F(BlockBasedTableTest, NoopTransformSeek) {
     // user-key is a single byte so that the index key exactly matches
     // the user-key.
     InternalKey key("a", 1, kTypeValue);
-    c.Add(key.Encode().ToString(), "b");
+    c.Add(key.Encode().ToBuffer(), "b");
     std::vector<std::string> keys;
     stl_wrappers::KVMap kvmap;
     const ImmutableCFOptions ioptions(options);
-    const InternalKeyComparator internal_comparator(options.comparator);
-    c.Finish(options, ioptions, table_options, internal_comparator, &keys,
-        &kvmap);
+    auto internal_comparator = std::make_shared<InternalKeyComparator>(options.comparator);
+    c.Finish(options, ioptions, table_options, internal_comparator, &keys, &kvmap);
 
     auto* reader = c.GetTableReader();
     for (int i = 0; i < 2; ++i) {
@@ -1396,10 +1393,9 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
   table_options.block_cache = NewLRUCache(1024);
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
-  std::unique_ptr<InternalKeyComparator> comparator(
-      new InternalKeyComparator(BytewiseComparator()));
+  auto comparator = std::make_shared<InternalKeyComparator>(BytewiseComparator());
   const ImmutableCFOptions ioptions(options);
-  c.Finish(options, ioptions, table_options, *comparator, &keys, &kvmap);
+  c.Finish(options, ioptions, table_options, comparator, &keys, &kvmap);
   {
     auto props = c.GetTableProperties().user_collected_properties;
     auto pos = props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
@@ -1970,8 +1966,7 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   // unique ID from the file.
 
   Options opt;
-  unique_ptr<InternalKeyComparator> ikc;
-  ikc.reset(new test::PlainInternalKeyComparator(opt.comparator));
+  auto ikc = std::make_shared<test::PlainInternalKeyComparator>(opt.comparator);
   opt.compression = kNoCompression;
   BlockBasedTableOptions table_options;
   table_options.block_size = 1024;
@@ -1990,7 +1985,7 @@ TEST_F(BlockBasedTableTest, BlockCacheLeak) {
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
   const ImmutableCFOptions ioptions(opt);
-  c.Finish(opt, ioptions, table_options, *ikc, &keys, &kvmap);
+  c.Finish(opt, ioptions, table_options, ikc, &keys, &kvmap);
 
   {
     // Put iterator into dedicated block, so it doesn't survive block_cache destruction.
@@ -2037,7 +2032,7 @@ TEST_F(PlainTableTest, BasicPlainTableProperties) {
       test::GetWritableFileWriter(new test::StringSink()));
   Options options;
   const ImmutableCFOptions ioptions(options);
-  InternalKeyComparator ikc(options.comparator);
+  auto ikc = std::make_shared<InternalKeyComparator>(options.comparator);
   IntTblPropCollectorFactories int_tbl_prop_collector_factories;
   std::unique_ptr<TableBuilder> builder(factory.NewTableBuilder(
       TableBuilderOptions(ioptions,
@@ -2092,7 +2087,7 @@ TEST_F(GeneralTableTest, ApproximateOffsetOfPlain) {
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
   Options options;
-  test::PlainInternalKeyComparator internal_comparator(options.comparator);
+  auto internal_comparator = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
   options.compression = kNoCompression;
   BlockBasedTableOptions table_options;
   table_options.block_size = 1024;
@@ -2124,7 +2119,7 @@ static void DoCompressionTest(CompressionType comp) {
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
   Options options;
-  test::PlainInternalKeyComparator ikc(options.comparator);
+  auto ikc = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
   options.compression = comp;
   BlockBasedTableOptions table_options;
   table_options.block_size = 1024;
@@ -2441,10 +2436,9 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
 
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
-  std::unique_ptr<InternalKeyComparator> comparator(
-      new InternalKeyComparator(BytewiseComparator()));
+  auto comparator = std::make_shared<InternalKeyComparator>(BytewiseComparator());
   const ImmutableCFOptions ioptions(options);
-  c.Finish(options, ioptions, table_options, *comparator, &keys, &kvmap);
+  c.Finish(options, ioptions, table_options, comparator, &keys, &kvmap);
   auto reader = c.GetTableReader();
 
   std::unique_ptr<InternalIterator> db_iter(reader->NewIterator(ReadOptions()));

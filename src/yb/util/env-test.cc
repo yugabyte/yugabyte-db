@@ -320,8 +320,7 @@ TEST_P(TestEnv, TestPreallocate) {
   // the writable file size should report 0
   ASSERT_EQ(file->Size(), 0);
   // but the real size of the file on disk should report 1MB
-  uint64_t size;
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  uint64_t size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(size, kOneMb);
 
   // write 1 MB
@@ -335,7 +334,7 @@ TEST_P(TestEnv, TestPreallocate) {
   ASSERT_OK(file->Close());
   // and the real size for the file on disk should match ony the
   // written size
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(kOneMb, size);
 }
 
@@ -360,8 +359,7 @@ TEST_F(TestEnv, TestConsecutivePreallocate) {
   // the writable file size should report 0
   ASSERT_EQ(file->Size(), 0);
   // but the real size of the file on disk should report 64 MBs
-  uint64_t size;
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  uint64_t size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(size, 64 * kOneMb);
 
   // write 1 MB
@@ -372,7 +370,7 @@ TEST_F(TestEnv, TestConsecutivePreallocate) {
 
   // the writable file size should now report 1 MB
   ASSERT_EQ(kOneMb, file->Size());
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(64 * kOneMb, size);
 
   // pre-allocate 64 additional MBs
@@ -382,7 +380,7 @@ TEST_F(TestEnv, TestConsecutivePreallocate) {
   // the writable file size should now report 1 MB
   ASSERT_EQ(kOneMb, file->Size());
   // while the real file size should report 128 MB's
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(128 * kOneMb, size);
 
   // write another MB
@@ -392,13 +390,13 @@ TEST_F(TestEnv, TestConsecutivePreallocate) {
   // the writable file size should now report 2 MB
   ASSERT_EQ(file->Size(), 2 * kOneMb);
   // while the real file size should reamin at 128 MBs
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(128 * kOneMb, size);
 
   // close the file (which ftruncates it to the real size)
   ASSERT_OK(file->Close());
   // and the real size for the file on disk should match only the written size
-  ASSERT_OK(env_->GetFileSize(test_path, &size));
+  size = ASSERT_RESULT(env_->GetFileSize(test_path));
   ASSERT_EQ(2* kOneMb, size);
 
 }
@@ -420,8 +418,7 @@ TEST_F(TestEnv, TestHolePunch) {
   uint64_t sz;
   ASSERT_OK(file->Size(&sz));
   ASSERT_EQ(kOneMb, sz);
-  uint64_t size_on_disk;
-  ASSERT_OK(env_->GetFileSizeOnDisk(test_path, &size_on_disk));
+  uint64_t size_on_disk = ASSERT_RESULT(env_->GetFileSizeOnDisk(test_path));
   // Some kernels and filesystems (e.g. Centos 6.6 with XFS) aggressively
   // preallocate file disk space when writing to files, so the disk space may be
   // greater than 1MiB.
@@ -433,7 +430,7 @@ TEST_F(TestEnv, TestHolePunch) {
   ASSERT_OK(file->PunchHole(4096, punch_amount));
   ASSERT_OK(file->Size(&sz));
   ASSERT_EQ(kOneMb, sz);
-  ASSERT_OK(env_->GetFileSizeOnDisk(test_path, &new_size_on_disk));
+  new_size_on_disk = ASSERT_RESULT(env_->GetFileSizeOnDisk(test_path));
   ASSERT_EQ(size_on_disk - punch_amount, new_size_on_disk);
 }
 
@@ -457,8 +454,12 @@ class ShortReadRandomAccessFile : public RandomAccessFile {
     return wrapped_->Read(offset, short_n, result, scratch);
   }
 
-  Status Size(uint64_t *size) const override {
-    return wrapped_->Size(size);
+  Result<uint64_t> Size() const override {
+    return wrapped_->Size();
+  }
+
+  Result<uint64_t> INode() const override {
+    return wrapped_->INode();
   }
 
   const string& filename() const override { return wrapped_->filename(); }
@@ -554,8 +555,7 @@ TEST_F(TestEnv, TestOpenEmptyRandomAccessFile) {
   ASSERT_NO_FATALS(WriteTestFile(env, test_file, 0));
   gscoped_ptr<RandomAccessFile> readable_file;
   ASSERT_OK(env->NewRandomAccessFile(test_file, &readable_file));
-  uint64_t size;
-  ASSERT_OK(readable_file->Size(&size));
+  uint64_t size = ASSERT_RESULT(readable_file->Size());
   ASSERT_EQ(0, size);
 }
 
@@ -604,8 +604,7 @@ TEST_F(TestEnv, TestReopen) {
   // Check that the file has both strings.
   shared_ptr<RandomAccessFile> reader;
   ASSERT_OK(env_util::OpenFileForRandom(env_.get(), test_path, &reader));
-  uint64_t size;
-  ASSERT_OK(reader->Size(&size));
+  uint64_t size = ASSERT_RESULT(reader->Size());
   ASSERT_EQ(first.length() + second.length(), size);
   Slice s;
   std::vector<uint8_t> scratch(size);
@@ -713,20 +712,19 @@ TEST_F(TestEnv, TestWalkCbReturnsError) {
 }
 
 TEST_F(TestEnv, TestGetBlockSize) {
-  uint64_t block_size;
-
   // Does not exist.
-  ASSERT_TRUE(env_->GetBlockSize("does_not_exist", &block_size).IsNotFound());
+  auto result = env_->GetBlockSize("does_not_exist");
+  ASSERT_TRUE(!result.ok() && result.status().IsNotFound());
 
   // Try with a directory.
-  ASSERT_OK(env_->GetBlockSize(".", &block_size));
+  auto block_size = ASSERT_RESULT(env_->GetBlockSize("."));
   ASSERT_GT(block_size, 0);
 
   // Try with a file.
   string path = GetTestPath("foo");
   gscoped_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(path, &writer));
-  ASSERT_OK(env_->GetBlockSize(path, &block_size));
+  block_size = ASSERT_RESULT(env_->GetBlockSize(path));
   ASSERT_GT(block_size, 0);
 }
 

@@ -46,6 +46,7 @@
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
 
 DECLARE_bool(enable_data_block_fsync);
 
@@ -207,6 +208,12 @@ class FsManager {
 
   CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const {
     return env_->GetChildren(path, objects);
+  }
+
+  Result<std::vector<std::string>> ListDir(const std::string& path) const {
+    std::vector<std::string> result;
+    RETURN_NOT_OK(env_->GetChildren(path, ExcludeDots::kTrue, &result));
+    return result;
   }
 
   CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);

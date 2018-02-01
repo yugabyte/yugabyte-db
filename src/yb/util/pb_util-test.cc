@@ -104,8 +104,7 @@ Status TestPBUtil::BitFlipFileByteRange(const string& path, uint64_t offset, uin
   {
     gscoped_ptr<RandomAccessFile> file;
     RETURN_NOT_OK(env_->NewRandomAccessFile(path, &file));
-    uint64_t size;
-    RETURN_NOT_OK(file->Size(&size));
+    uint64_t size = VERIFY_RESULT(file->Size());
     Slice slice;
     faststring scratch;
     scratch.resize(size);
@@ -214,8 +213,7 @@ TEST_F(TestPBUtil, TestPBContainerCorruption) {
 
   // Test truncated file.
   ASSERT_OK(CreateKnownGoodContainerFile());
-  uint64_t known_good_size = 0;
-  ASSERT_OK(env_->GetFileSize(path_, &known_good_size));
+  uint64_t known_good_size = ASSERT_RESULT(env_->GetFileSize(path_));
   int ret = truncate(path_.c_str(), known_good_size - 2);
   if (ret != 0) {
     PLOG(ERROR) << "truncate() of file " << path_ << " failed";

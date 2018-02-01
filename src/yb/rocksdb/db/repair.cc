@@ -107,8 +107,8 @@ class Repairer {
   Repairer(const std::string& dbname, const Options& options)
       : dbname_(dbname),
         env_(options.env),
-        icmp_(options.comparator),
-        options_(SanitizeOptions(dbname, &icmp_, options)),
+        icmp_(std::make_shared<InternalKeyComparator>(options.comparator)),
+        options_(SanitizeOptions(dbname, icmp_.get(), options)),
         ioptions_(options_),
         raw_table_cache_(
             // TableCache can be small since we expect each table to be opened
@@ -160,7 +160,7 @@ class Repairer {
 
   std::string const dbname_;
   Env* const env_;
-  const InternalKeyComparator icmp_;
+  InternalKeyComparatorPtr icmp_;
   IntTblPropCollectorFactories int_tbl_prop_collector_factories_;
   const Options options_;
   const ImmutableCFOptions ioptions_;
@@ -272,7 +272,7 @@ class Repairer {
     WriteBatch batch;
     WriteBuffer wb(options_.db_write_buffer_size);
     MemTable* mem =
-        new MemTable(icmp_, ioptions_, MutableCFOptions(options_, ioptions_),
+        new MemTable(*icmp_, ioptions_, MutableCFOptions(options_, ioptions_),
                      &wb, kMaxSequenceNumber);
     auto cf_mems_default = new ColumnFamilyMemTablesDefault(mem);
     mem->Ref();
@@ -424,7 +424,7 @@ class Repairer {
       }
     }
 
-    edit_->SetComparatorName(icmp_.user_comparator()->Name());
+    edit_->SetComparatorName(icmp_->user_comparator()->Name());
     edit_->SetLogNumber(0);
     edit_->SetNextFile(next_file_number_);
     edit_->SetLastSequence(max_sequence);

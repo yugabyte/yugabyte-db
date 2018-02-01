@@ -16,13 +16,20 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/monotime.h"
-#include "yb/util/status.h"
 
 using strings::Substitute;
 
 namespace yb {
 namespace util {
+
+uint64_t PendingOperationCounter::Update(uint64_t delta) {
+  const uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_release);
+  VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
+  // Ensure that there is no underflow in either counter.
+  DCHECK_EQ((result & (1ull << 63)), 0); // Counter of Disable() calls.
+  DCHECK_EQ((result & (kDisabledDelta >> 1)), 0); // Counter of pending operations.
+  return result;
+}
 
 // The implementation is based on OperationTracker::WaitForAllToFinish.
 Status PendingOperationCounter::WaitForOpsToFinish(const MonoDelta& timeout) {

@@ -260,8 +260,7 @@ Status ReadableLogSegment::ReadFileSize() {
   // Check the size of the file.
   // Env uses uint here, even though we generally prefer signed ints to avoid
   // underflow bugs. Use a local to convert.
-  uint64_t size;
-  RETURN_NOT_OK_PREPEND(readable_file_->Size(&size), "Unable to read file size");
+  uint64_t size = VERIFY_RESULT_PREPEND(readable_file_->Size(), "Unable to read file size");
   file_size_.Store(size);
   if (size == 0) {
     VLOG(1) << "Log segment file $0 is zero-length: " << path();

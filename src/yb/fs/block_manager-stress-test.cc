@@ -301,7 +301,7 @@ void BlockManagerStressTest<T>::ReaderThread() {
       if (num_blocks > 0) {
         uint32_t next_id = rand.Uniform(num_blocks);
         const BlockId& block_id = written_blocks_[next_id];
-        CHECK_OK(bm_->OpenBlock(block_id, &block));
+        ASSERT_OK(bm_->OpenBlock(block_id, &block));
       }
     }
     if (!block) {
@@ -310,15 +310,14 @@ void BlockManagerStressTest<T>::ReaderThread() {
 
     // Read it fully into memory.
     string block_id = block->id().ToString();
-    uint64_t block_size;
-    CHECK_OK(block->Size(&block_size));
+    uint64_t block_size = ASSERT_RESULT(block->Size());
     Slice data;
     gscoped_ptr<uint8_t[]> scratch(new uint8_t[block_size]);
-    CHECK_OK(block->Read(0, block_size, &data, scratch.get()));
+    ASSERT_OK(block->Read(0, block_size, &data, scratch.get()));
     LOG(INFO) << "Read " << block_size << " bytes from block " << block_id;
 
     // The first 4 bytes correspond to the PRNG seed.
-    CHECK(data.size() >= 4);
+    ASSERT_GE(data.size(), 4);
     uint32_t seed;
     memcpy(&seed, data.data(), sizeof(uint32_t));
     LOG(INFO) << "Read seed " << seed << " from block " << block_id;
@@ -338,7 +337,7 @@ void BlockManagerStressTest<T>::ReaderThread() {
                    << block_id;
       }
     }
-    CHECK_EQ(bytes_processed, data.size());
+    ASSERT_EQ(bytes_processed, data.size());
     LOG(INFO) << "Finished reading block " << block->id().ToString();
     num_blocks_read++;
     num_bytes_read += block_size;

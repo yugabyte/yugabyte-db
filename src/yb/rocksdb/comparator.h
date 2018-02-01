@@ -24,6 +24,7 @@
 #ifndef YB_ROCKSDB_COMPARATOR_H
 #define YB_ROCKSDB_COMPARATOR_H
 
+#include <memory>
 #include <string>
 
 #include "yb/util/slice.h"
@@ -81,10 +82,14 @@ class Comparator {
   virtual void FindShortSuccessor(std::string* key) const = 0;
 };
 
+typedef std::shared_ptr<const Comparator> ComparatorPtr;
+
 // Return a builtin comparator that uses lexicographic byte-wise
 // ordering.  The result remains the property of this module and
 // must not be deleted.
 extern const Comparator* BytewiseComparator();
+
+extern const ComparatorPtr& SharedBytewiseComparator();
 
 // Return a builtin comparator that uses reverse lexicographic byte-wise
 // ordering.

@@ -64,7 +64,7 @@ void createSST(const std::string& base_file_name,
   ReadOptions read_options;
   Options opts;
   const ImmutableCFOptions imoptions(opts);
-  rocksdb::InternalKeyComparator ikc(opts.comparator);
+  auto ikc = std::make_shared<rocksdb::InternalKeyComparator>(opts.comparator);
   unique_ptr<TableBuilder> tb;
 
   env->NewWritableFile(base_file_name, &base_file, env_options);

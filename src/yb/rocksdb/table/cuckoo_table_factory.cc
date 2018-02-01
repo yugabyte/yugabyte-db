@@ -33,7 +33,7 @@ Status CuckooTableFactory::NewTableReader(
     std::unique_ptr<TableReader>* table) const {
   std::unique_ptr<CuckooTableReader> new_reader(new CuckooTableReader(
       table_reader_options.ioptions, std::move(file), file_size,
-      table_reader_options.internal_comparator.user_comparator(), nullptr));
+      table_reader_options.internal_comparator->user_comparator(), nullptr));
   Status s = new_reader->status();
   if (s.ok()) {
     *table = std::move(new_reader);
@@ -50,7 +50,7 @@ TableBuilder *CuckooTableFactory::NewTableBuilder(const TableBuilderOptions &tab
   // TODO: change builder to take the option struct
   return new CuckooTableBuilder(
       base_file, table_options_.hash_table_ratio, 64, table_options_.max_search_depth,
-      table_builder_options.internal_comparator.user_comparator(),
+      table_builder_options.internal_comparator->user_comparator(),
       table_options_.cuckoo_block_size, table_options_.use_module_hash,
       table_options_.identity_as_first_hash, nullptr);
 }

@@ -3410,7 +3410,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
   InternalIterator* internal_iter;
   assert(arena != nullptr);
   // Need to create internal iterator from the arena.
-  MergeIteratorBuilder merge_iter_builder(&cfd->internal_comparator(), arena);
+  MergeIteratorBuilder merge_iter_builder(cfd->internal_comparator().get(), arena);
   // Collect iterator for mutable mem
   merge_iter_builder.AddIterator(
       super_version->mem->NewIterator(read_options, arena));
@@ -5401,10 +5401,10 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
       for (uint32_t j = 0; j < level_files.size(); j++) {
         level_file = level_files[j];
         if (((begin == nullptr) ||
-             (cfd->internal_comparator().user_comparator()->Compare(
+             (cfd->internal_comparator()->user_comparator()->Compare(
                   level_file->smallest.key.user_key(), *begin) >= 0)) &&
             ((end == nullptr) ||
-             (cfd->internal_comparator().user_comparator()->Compare(
+             (cfd->internal_comparator()->user_comparator()->Compare(
                   level_file->largest.key.user_key(), *end) <= 0))) {
           if (level_file->being_compacted) {
             continue;

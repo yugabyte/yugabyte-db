@@ -254,9 +254,7 @@ void ConsensusMetadata::UpdateActiveRole() {
 
 Status ConsensusMetadata::UpdateOnDiskSize() {
   string path = fs_manager_->GetConsensusMetadataPath(tablet_id_);
-  uint64_t on_disk_size = 0;
-  RETURN_NOT_OK(fs_manager_->env()->GetFileSize(path, &on_disk_size));
-  on_disk_size_.store(on_disk_size);
+  on_disk_size_.store(VERIFY_RESULT(fs_manager_->env()->GetFileSize(path)));
   return Status::OK();
 }
 

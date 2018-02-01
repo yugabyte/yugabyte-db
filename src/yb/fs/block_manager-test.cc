@@ -197,8 +197,7 @@ TYPED_TEST(BlockManagerTest, EndToEndTest) {
   // Read the data back.
   gscoped_ptr<ReadableBlock> read_block;
   ASSERT_OK(this->bm_->OpenBlock(written_block->id(), &read_block));
-  uint64_t sz;
-  ASSERT_OK(read_block->Size(&sz));
+  uint64_t sz = ASSERT_RESULT(read_block->Size());
   ASSERT_EQ(test_data.length(), sz);
   Slice data;
   gscoped_ptr<uint8_t[]> scratch(new uint8_t[test_data.length()]);
@@ -380,12 +379,11 @@ TYPED_TEST(BlockManagerTest, PersistenceTest) {
   // Test that the state of all three blocks is properly reflected.
   gscoped_ptr<ReadableBlock> read_block;
   ASSERT_OK(new_bm->OpenBlock(written_block1->id(), &read_block));
-  uint64_t sz;
-  ASSERT_OK(read_block->Size(&sz));
+  uint64_t sz = ASSERT_RESULT(read_block->Size());
   ASSERT_EQ(0, sz);
   ASSERT_OK(read_block->Close());
   ASSERT_OK(new_bm->OpenBlock(written_block2->id(), &read_block));
-  ASSERT_OK(read_block->Size(&sz));
+  sz = ASSERT_RESULT(read_block->Size());
   ASSERT_EQ(test_data.length(), sz);
   Slice data;
   gscoped_ptr<uint8_t[]> scratch(new uint8_t[test_data.length()]);

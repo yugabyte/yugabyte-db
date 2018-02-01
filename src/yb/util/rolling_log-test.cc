@@ -128,8 +128,7 @@ TEST_F(RollingLogTest, TestCompression) {
   ASSERT_TRUE(HasSuffixString(children[0], ".gz"));
 
   // Ensure that the output is actually gzipped.
-  uint64_t size;
-  ASSERT_OK(env_->GetFileSize(JoinPathSegments(log_dir_, children[0]), &size));
+  uint64_t size = ASSERT_RESULT(env_->GetFileSize(JoinPathSegments(log_dir_, children[0])));
   ASSERT_LT(size, raw_size / 10);
   ASSERT_GT(size, 0);
 }

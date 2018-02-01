@@ -180,14 +180,14 @@ struct BlockBasedTable::Rep {
 
   Rep(const ImmutableCFOptions& _ioptions, const EnvOptions& _env_options,
       const BlockBasedTableOptions& _table_opt,
-      const InternalKeyComparator& _internal_comparator, bool skip_filters,
+      const InternalKeyComparatorPtr& _internal_comparator, bool skip_filters,
       const DataIndexLoadMode data_index_load_mode_)
       : ioptions(_ioptions),
         env_options(_env_options),
         table_options(_table_opt),
         filter_policy(skip_filters ? nullptr : _table_opt.filter_policy.get()),
         filter_key_transformer(filter_policy ? filter_policy->GetKeyTransformer() : nullptr),
-        internal_comparator(_internal_comparator),
+        comparator(_internal_comparator),
         filter_type(FilterType::kNoFilter),
         whole_key_filtering(_table_opt.whole_key_filtering),
         prefix_filtering(true),
@@ -198,7 +198,7 @@ struct BlockBasedTable::Rep {
   const BlockBasedTableOptions& table_options;
   const FilterPolicy* const filter_policy;
   const FilterPolicy::KeyTransformer* const filter_key_transformer;
-  const InternalKeyComparator& internal_comparator;
+  InternalKeyComparatorPtr comparator;
   const NotMatchingFilterEntry not_matching_filter_entry;
   Status status;
   std::shared_ptr<FileReaderWithCachePrefix> base_reader_with_cache_prefix;
@@ -324,7 +324,7 @@ bool IsFeatureSupported(const TableProperties& table_properties,
 Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
                              const EnvOptions& env_options,
                              const BlockBasedTableOptions& table_options,
-                             const InternalKeyComparator& internal_comparator,
+                             const InternalKeyComparatorPtr& internal_comparator,
                              unique_ptr<RandomAccessFileReader>&& base_file,
                              uint64_t base_file_size,
                              unique_ptr<TableReader>* table_reader,
@@ -766,7 +766,7 @@ Status BlockBasedTable::CreateFilterIndexReader(std::unique_ptr<IndexReader>* fi
   auto env = rep_->ioptions.env;
   auto footer = rep_->footer;
   return BinarySearchIndexReader::Create(base_file_reader, footer, rep_->filter_handle, env,
-      BytewiseComparator(), filter_index_reader);
+      SharedBytewiseComparator(), filter_index_reader);
 }
 
 FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_handle, Rep* rep,
@@ -1124,7 +1124,7 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
 
   InternalIterator* iter;
   if (s.ok() && block.value != nullptr) {
-    iter = block.value->NewIterator(&rep_->internal_comparator, input_iter);
+    iter = block.value->NewIterator(rep_->comparator.get(), input_iter);
     if (block.cache_handle != nullptr) {
       iter->RegisterCleanup(&ReleaseCachedEntry, block_cache,
           block.cache_handle);
@@ -1392,7 +1392,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& intern
 
 Status BlockBasedTable::Prefetch(const Slice* const begin,
                                  const Slice* const end) {
-  auto& comparator = rep_->internal_comparator;
+  auto& comparator = *rep_->comparator;
   // pre-condition
   if (begin && end && comparator.Compare(*begin, *end) > 0) {
     return STATUS(InvalidArgument, *begin, *end);
@@ -1484,7 +1484,7 @@ Status BlockBasedTable::CreateDataBlockIndexReader(
 
   auto file = rep_->base_reader_with_cache_prefix->reader.get();
   auto env = rep_->ioptions.env;
-  auto comparator = &rep_->internal_comparator;
+  const auto& comparator = rep_->comparator;
   const Footer& footer = rep_->footer;
 
   if (index_type_on_file == IndexType::kHashSearch &&

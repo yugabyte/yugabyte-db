@@ -123,14 +123,20 @@ class ReverseBytewiseComparatorImpl : public BytewiseComparatorImpl {
 
 }  // namespace
 
+const ComparatorPtr& SharedBytewiseComparator() {
+  // Comparator should be shared ptr, because we use shared_from_this to store it in index reader.
+  static ComparatorPtr bytewise = std::make_shared<BytewiseComparatorImpl>();
+  return bytewise;
+}
+
 const Comparator* BytewiseComparator() {
-  static BytewiseComparatorImpl bytewise;
-  return &bytewise;
+  // Comparator should be shared ptr, because we use shared_from_this to store it in index reader.
+  return SharedBytewiseComparator().get();
 }
 
 const Comparator* ReverseBytewiseComparator() {
-  static ReverseBytewiseComparatorImpl rbytewise;
-  return &rbytewise;
+  static ComparatorPtr rbytewise = std::make_shared<ReverseBytewiseComparatorImpl>();
+  return rbytewise.get();
 }
 
 class Uint64ComparatorImpl : public Comparator {
@@ -165,8 +171,8 @@ class Uint64ComparatorImpl : public Comparator {
 };
 
 const Comparator* Uint64Comparator() {
-  static Uint64ComparatorImpl uint64comparator;
-  return &uint64comparator;
+  static ComparatorPtr uint64comparator = std::make_shared<Uint64ComparatorImpl>();
+  return uint64comparator.get();
 }
 
 }  // namespace rocksdb

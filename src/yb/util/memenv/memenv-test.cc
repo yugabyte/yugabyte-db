@@ -19,11 +19,12 @@
 // Modified for yb:
 // - use gtest
 
-#include <gtest/gtest.h>
 #include <string>
 #include <memory>
 #include <unordered_set>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/util/env.h"
@@ -62,7 +63,7 @@ TEST_F(MemEnvTest, Basics) {
 
   // Check that the directory is empty.
   ASSERT_TRUE(!env_->FileExists("/dir/non_existent"));
-  ASSERT_TRUE(!env_->GetFileSize("/dir/non_existent", &file_size).ok());
+  ASSERT_FALSE(env_->GetFileSize("/dir/non_existent").ok());
   ASSERT_OK(env_->GetChildren("/dir", &children));
   ASSERT_EQ(0, children.size());
 
@@ -72,7 +73,7 @@ TEST_F(MemEnvTest, Basics) {
 
   // Check that the file exists.
   ASSERT_TRUE(env_->FileExists("/dir/f"));
-  ASSERT_OK(env_->GetFileSize("/dir/f", &file_size));
+  file_size = ASSERT_RESULT(env_->GetFileSize("/dir/f"));
   ASSERT_EQ(0, file_size);
   ASSERT_OK(env_->GetChildren("/dir", &children));
   ASSERT_EQ(1, children.size());
@@ -84,7 +85,7 @@ TEST_F(MemEnvTest, Basics) {
   writable_file.reset();
 
   // Check for expected size.
-  ASSERT_OK(env_->GetFileSize("/dir/f", &file_size));
+  file_size = ASSERT_RESULT(env_->GetFileSize("/dir/f"));
   ASSERT_EQ(3, file_size);
 
   // Check that renaming works.
@@ -92,7 +93,7 @@ TEST_F(MemEnvTest, Basics) {
   ASSERT_OK(env_->RenameFile("/dir/f", "/dir/g"));
   ASSERT_TRUE(!env_->FileExists("/dir/f"));
   ASSERT_TRUE(env_->FileExists("/dir/g"));
-  ASSERT_OK(env_->GetFileSize("/dir/g", &file_size));
+  file_size = ASSERT_RESULT(env_->GetFileSize("/dir/g"));
   ASSERT_EQ(3, file_size);
 
   // Check that opening non-existent file fails.
@@ -253,12 +254,11 @@ TEST_F(MemEnvTest, Reopen) {
   // Check that the file has both strings.
   shared_ptr<RandomAccessFile> reader;
   ASSERT_OK(env_util::OpenFileForRandom(env_, "some file", &reader));
-  uint64_t size;
-  ASSERT_OK(reader->Size(&size));
+  uint64_t size = ASSERT_RESULT(reader->Size());
   ASSERT_EQ(first.length() + second.length(), size);
   Slice s;
-  uint8_t scratch[size];
-  ASSERT_OK(env_util::ReadFully(reader.get(), 0, size, &s, scratch));
+  std::vector<uint8_t> scratch(size);
+  ASSERT_OK(env_util::ReadFully(reader.get(), 0, size, &s, scratch.data()));
   ASSERT_EQ(first + second, s.ToString());
 }
 

@@ -91,14 +91,14 @@ struct SstFileWriter::Rep {
       const Comparator* _user_comparator)
       : env_options(_env_options),
         ioptions(_ioptions),
-        internal_comparator(_user_comparator) {}
+        internal_comparator(std::make_shared<InternalKeyComparator>(_user_comparator)) {}
 
   std::unique_ptr<WritableFileWriter> base_file_writer;
   std::unique_ptr<WritableFileWriter> data_file_writer;
   std::unique_ptr<TableBuilder> builder;
   EnvOptions env_options;
   ImmutableCFOptions ioptions;
-  InternalKeyComparator internal_comparator;
+  InternalKeyComparatorPtr internal_comparator;
   ExternalSstFileInfo file_info;
 };
 
@@ -173,7 +173,7 @@ Status SstFileWriter::Add(const Slice& user_key, const Slice& value) {
   if (r->file_info.num_entries == 0) {
     r->file_info.smallest_key = user_key.ToString();
   } else {
-    if (r->internal_comparator.user_comparator()->Compare(
+    if (r->internal_comparator->user_comparator()->Compare(
             user_key, r->file_info.largest_key) <= 0) {
       // Make sure that keys are added in order
       return STATUS(InvalidArgument, "Keys must be added in order");

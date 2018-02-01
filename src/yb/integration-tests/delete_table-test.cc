@@ -264,7 +264,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   const string& tablet_id = tablets[0];
 
   // Delete it and wait for the replicas to get deleted.
-  ASSERT_NO_FATALS(DeleteTable(TestWorkload::kDefaultTableName));
+  ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
   for (int i = 0; i < 3; i++) {
     ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
   }
@@ -284,7 +284,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
   PartitionSchema partition_schema;
-  Status s = client_->GetTableSchema(TestWorkload::kDefaultTableName, &schema, &partition_schema);
+  Status s = client_->GetTableSchema(
+      TestWorkloadOptions::kDefaultTableName, &schema, &partition_schema);
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 
   // 3) Should return an error for GetTabletLocations RPCs.
@@ -308,7 +309,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
                                   cluster_->master()->bound_http_hostport().ToString()),
                        &entities_buf));
   ASSERT_TRUE(entities_buf.ToString().find(
-      TestWorkload::kDefaultTableName.table_name()) == std::string::npos);
+      TestWorkloadOptions::kDefaultTableName.table_name()) == std::string::npos);
 }
 
 // Test that a DeleteTable RPC is rejected without a matching destination UUID.
@@ -941,7 +942,7 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
   // Delete it and wait for the tablet servers to crash.
   // The DeleteTable() call can be blocking, so it should be called in a separate thread.
   std::thread delete_table_thread([&]() {
-        ASSERT_NO_FATALS(DeleteTable(TestWorkload::kDefaultTableName));
+        ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
       });
 
   SleepFor(MonoDelta::FromMilliseconds(50));
@@ -993,12 +994,12 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   // injecting any faults, then we delete the second tablet while exercising
   // several fault injection points.
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
-      TestWorkload::kDefaultTableName.namespace_name()));
+      TestWorkloadOptions::kDefaultTableName.namespace_name()));
   const int kNumTablets = 2;
   Schema schema(GetSimpleTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  ASSERT_OK(table_creator->table_name(TestWorkload::kDefaultTableName)
+  ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
                           .num_tablets(kNumTablets)
                           .schema(&client_schema)
                           .num_replicas(3)

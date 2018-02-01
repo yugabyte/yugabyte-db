@@ -17,6 +17,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#ifndef YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H
+#define YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H
+
 #pragma once
 #ifndef ROCKSDB_LITE
 
@@ -81,10 +85,12 @@ class SstFileReader {
   // ReadSequential internally (specifically, seek-related operations)
   Options options_;
   const ImmutableCFOptions ioptions_;
-  InternalKeyComparator internal_comparator_;
+  std::shared_ptr<InternalKeyComparator> internal_comparator_;
   unique_ptr<TableProperties> table_properties_;
 };
 
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
+
+#endif // YB_ROCKSDB_TOOLS_SST_DUMP_TOOL_IMP_H

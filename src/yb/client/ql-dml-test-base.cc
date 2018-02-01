@@ -32,7 +32,7 @@ void QLDmlTestBase::SetUp() {
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.
-  ASSERT_OK(cluster_->CreateClient(nullptr, &client_));
+  ASSERT_OK(cluster_->CreateClient(&client_));
 
   // Create test table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));

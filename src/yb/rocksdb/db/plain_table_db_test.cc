@@ -270,7 +270,7 @@ extern const uint64_t kPlainTableMagicNumber;
 class TestPlainTableReader : public PlainTableReader {
  public:
   TestPlainTableReader(const EnvOptions& env_options,
-                       const InternalKeyComparator& icomparator,
+                       const InternalKeyComparatorPtr& icomparator,
                        EncodingType encoding_type, uint64_t file_size,
                        int bloom_bits_per_key, double hash_table_ratio,
                        size_t index_sparseness,

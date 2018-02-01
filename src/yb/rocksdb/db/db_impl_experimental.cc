@@ -96,7 +96,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
     }
 
     // Sort L0 files by range.
-    const InternalKeyComparator* icmp = &cfd->internal_comparator();
+    const InternalKeyComparator* icmp = cfd->internal_comparator().get();
     auto l0_files = vstorage->LevelFiles(0);
     std::sort(l0_files.begin(), l0_files.end(),
               [icmp](FileMetaData* f1, FileMetaData* f2) {

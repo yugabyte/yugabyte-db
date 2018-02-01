@@ -1043,6 +1043,12 @@ void TSTabletManager::GetTabletPeers(vector<scoped_refptr<TabletPeer> >* tablet_
   AppendValuesFromMap(tablet_map_, tablet_peers);
 }
 
+std::vector<scoped_refptr<tablet::TabletPeer>> TSTabletManager::GetTabletPeers() const {
+  std::vector<scoped_refptr<tablet::TabletPeer>> result;
+  GetTabletPeers(&result);
+  return result;
+}
+
 void TSTabletManager::ApplyChange(const string& tablet_id,
                                   shared_ptr<consensus::StateChangeContext> context) {
   WARN_NOT_OK(

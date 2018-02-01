@@ -74,7 +74,7 @@ class TableCache {
   // @param skip_filters Disables loading/accessing the filter block
   InternalIterator* NewIterator(
       const ReadOptions& options, const EnvOptions& toptions,
-      const InternalKeyComparator& internal_comparator,
+      const InternalKeyComparatorPtr& internal_comparator,
       const FileDescriptor& file_fd, TableReader** table_reader_ptr = nullptr,
       HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
       Arena* arena = nullptr, bool skip_filters = false);
@@ -83,7 +83,7 @@ class TableCache {
   // Parameters meaning is the same as for NewIterator function above.
   Status GetTableReaderForIterator(
       const ReadOptions& options, const EnvOptions& toptions,
-      const InternalKeyComparator& internal_comparator,
+      const InternalKeyComparatorPtr& internal_comparator,
       const FileDescriptor& file_fd, TableReaderWithHandle* trwh,
       HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
       bool skip_filters = false);
@@ -99,7 +99,7 @@ class TableCache {
   // it returns false.
   // @param skip_filters Disables loading/accessing the filter block
   Status Get(const ReadOptions& options,
-             const InternalKeyComparator& internal_comparator,
+             const InternalKeyComparatorPtr& internal_comparator,
              const FileDescriptor& file_fd, const Slice& k,
              GetContext* get_context, HistogramImpl* file_read_hist = nullptr,
              bool skip_filters = false);
@@ -110,7 +110,7 @@ class TableCache {
   // Find table reader
   // @param skip_filters Disables loading/accessing the filter block
   Status FindTable(const EnvOptions& toptions,
-                   const InternalKeyComparator& internal_comparator,
+                   const InternalKeyComparatorPtr& internal_comparator,
                    const FileDescriptor& file_fd, Cache::Handle**,
                    const QueryId query_id,
                    const bool no_io = false, bool record_read_stats = true,
@@ -127,7 +127,7 @@ class TableCache {
   //            return STATUS(Incomplete, ) if table is not present in cache and
   //            we set `no_io` to be true.
   Status GetTableProperties(const EnvOptions& toptions,
-                            const InternalKeyComparator& internal_comparator,
+                            const InternalKeyComparatorPtr& internal_comparator,
                             const FileDescriptor& file_meta,
                             std::shared_ptr<const TableProperties>* properties,
                             bool no_io = false);
@@ -136,7 +136,7 @@ class TableCache {
   // 0 if table reader of the file is not loaded.
   size_t GetMemoryUsageByTableReader(
       const EnvOptions& toptions,
-      const InternalKeyComparator& internal_comparator,
+      const InternalKeyComparatorPtr& internal_comparator,
       const FileDescriptor& fd);
 
   // Release the handle from a cache
@@ -145,7 +145,7 @@ class TableCache {
  private:
   // Build a table reader
   Status GetTableReader(const EnvOptions& env_options,
-                        const InternalKeyComparator& internal_comparator,
+                        const InternalKeyComparatorPtr& internal_comparator,
                         const FileDescriptor& fd, bool sequential_mode,
                         bool record_read_stats, HistogramImpl* file_read_hist,
                         unique_ptr<TableReader>* table_reader,
@@ -154,7 +154,7 @@ class TableCache {
   // Versions of corresponding public functions, but without performance metrics.
   Status DoGetTableReaderForIterator(
       const ReadOptions& options, const EnvOptions& toptions,
-      const InternalKeyComparator& internal_comparator,
+      const InternalKeyComparatorPtr& internal_comparator,
       const FileDescriptor& file_fd, TableReaderWithHandle* trwh,
       HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
       bool skip_filters = false);
