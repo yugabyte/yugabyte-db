@@ -41,6 +41,8 @@ Status RemoteBootstrapClient::DownloadSnapshotFiles() {
                         Substitute("Failed to create & sync top snapshots directory $0",
                                    top_snapshots_dir));
 
+  DataIdPB data_id;
+  data_id.set_type(DataIdPB::SNAPSHOT_FILE);
   for (auto const& file_pb : new_superblock_->snapshot_files()) {
     const string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
 
@@ -48,20 +50,9 @@ Status RemoteBootstrapClient::DownloadSnapshotFiles() {
                           Substitute("Failed to create & sync snapshot directory $0",
                                      snapshot_dir));
 
-    WritableFileOptions opts;
-    opts.sync_on_close = true;
-    gscoped_ptr<WritableFile> rocksdb_file;
-    const string file_path = JoinPathSegments(snapshot_dir, file_pb.name());
-
-    VLOG_WITH_PREFIX(2) << "Downloading snapshot file " << file_path;
-    RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(opts, file_path, &rocksdb_file));
-
-    DataIdPB data_id;
-    data_id.set_type(DataIdPB::SNAPSHOT_FILE);
+    const string file_path = JoinPathSegments(snapshot_dir, file_pb.file().name());
     data_id.set_snapshot_id(file_pb.snapshot_id());
-    data_id.set_file_name(file_pb.name());
-    RETURN_NOT_OK_PREPEND(DownloadFile(data_id, rocksdb_file.get()),
-                          Substitute("Unable to download snapshot file $0", file_path));
+    RETURN_NOT_OK(DownloadFile(file_pb.file(), snapshot_dir, &data_id));
   }
 
   downloaded_snapshot_files_ = true;
