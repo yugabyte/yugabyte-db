@@ -200,6 +200,7 @@ set(UTIL_SRCS
   subprocess.cc
   sync_point.cc
   test_graph.cc
+  taskstream.cc
   thread.cc
   thread_restrictions.cc
   threadlocal.cc
@@ -370,6 +371,7 @@ ADD_YB_TEST(string_case-test)
 ADD_YB_TEST(striped64-test)
 ADD_YB_TEST(subprocess-test)
 ADD_YB_TEST(sync_point-test)
+ADD_YB_TEST(taskstream-test)
 ADD_YB_TEST(thread-test)
 ADD_YB_TEST(threadpool-test)
 ADD_YB_TEST(tostring-test)
