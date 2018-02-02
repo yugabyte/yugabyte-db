@@ -84,7 +84,7 @@ Status RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   //
   // If the delay causes us to miss our deadline, RetryCb will fail the
   // RPC on our behalf.
-  int num_ms = ++attempt_num_ + RandomUniformInt(0, 4);
+  int num_ms = attempt_num_++ + RandomUniformInt(0, 4);
 
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
   while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kWaiting)) {

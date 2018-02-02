@@ -102,6 +102,11 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 // ============================================================================
 //  Class RetryingTSRpcTask.
 // ============================================================================
+
+namespace {
+constexpr int64_t kUnscheduledTaskId = -1;
+} // anonymous namespace
+
 RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
                                      ThreadPool* callback_pool,
                                      gscoped_ptr<TSPicker> replica_picker,
@@ -112,7 +117,7 @@ RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
     table_(table),
     start_ts_(MonoTime::Now()),
     attempt_(0),
-    reactor_task_id_(-1),
+    reactor_task_id_(kUnscheduledTaskId),
     state_(kStateWaiting) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms));
@@ -159,10 +164,7 @@ RetryingTSRpcTask::State RetryingTSRpcTask::AbortAndReturnPrevState() {
          prev_state == MonitoredTask::kStateWaiting) {
     auto expected = prev_state;
     if (state_.compare_exchange_strong(expected, kStateAborted)) {
-      // Only abort this task on reactor if it has been scheduled.
-      if (reactor_task_id_ != -1) {
-        master_->messenger()->AbortOnReactor(reactor_task_id_);
-      }
+      AbortIfScheduled();
       return prev_state;
     }
     prev_state = state();
@@ -172,10 +174,7 @@ RetryingTSRpcTask::State RetryingTSRpcTask::AbortAndReturnPrevState() {
 
 void RetryingTSRpcTask::AbortTask() {
   if (PerformStateTransition(kStateRunning, kStateAborted)) {
-    // Only abort this task on reactor if it has been scheduled.
-    if (reactor_task_id_ != -1) {
-      master_->messenger()->AbortOnReactor(reactor_task_id_);
-    }
+    AbortIfScheduled();
   }
 }
 
@@ -297,6 +296,12 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   end_ts_ = MonoTime::Now();
   if (table_ != nullptr) {
     table_->RemoveTask(shared_from_this());
+  }
+}
+
+void RetryingTSRpcTask::AbortIfScheduled() {
+  if (reactor_task_id_ != kUnscheduledTaskId) {
+    master_->messenger()->AbortOnReactor(reactor_task_id_);
   }
 }
 

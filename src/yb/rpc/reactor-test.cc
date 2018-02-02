@@ -32,15 +32,16 @@
 
 #include "yb/rpc/reactor.h"
 
+#include <thread>
+
 #include "yb/rpc/rpc-test-base.h"
 #include "yb/util/countdown_latch.h"
 
+using std::shared_ptr;
+using namespace std::placeholders;
 
 namespace yb {
 namespace rpc {
-
-using std::shared_ptr;
-using namespace std::placeholders;
 
 MessengerOptions MakeMessengerOptions() {
   auto result = kDefaultClientMessengerOptions;

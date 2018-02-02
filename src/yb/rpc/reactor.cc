@@ -104,6 +104,10 @@ void DoInitLibEv() {
 
 } // anonymous namespace
 
+// ------------------------------------------------------------------------------------------------
+// Reactor class members
+// ------------------------------------------------------------------------------------------------
+
 Reactor::Reactor(const shared_ptr<Messenger>& messenger,
                  int index,
                  const MessengerBuilder &bld)
@@ -460,7 +464,6 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   // No connection to this remote. Need to create one.
   VLOG(2) << name() << " FindOrStartConnection: creating new connection for " << conn_id.ToString();
 
-
   // Create a new socket and start connecting to the remote.
   auto sock = CreateClientSocket(conn_id.remote());
   RETURN_NOT_OK(sock);
@@ -621,6 +624,10 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
   TRACE_TO(call->trace(), "Scheduled.");
 }
 
+// ------------------------------------------------------------------------------------------------
+// DelayedTask class members
+// ------------------------------------------------------------------------------------------------
+
 DelayedTask::DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
                          std::shared_ptr<Messenger> messenger)
     : func_(std::move(func)),
@@ -632,7 +639,7 @@ void DelayedTask::Run(Reactor* reactor) {
   DCHECK(reactor_ == nullptr) << "Task has already been scheduled";
   DCHECK(reactor->IsCurrentThread());
 
-  // Aquire lock to prevent task from being aborted in the middle of scheduling, in case abort
+  // Acquire lock to prevent task from being aborted in the middle of scheduling, in case abort
   // will be requested in the middle of scheduling - task will be aborted right after return
   // from this method.
   std::lock_guard<LockType> l(lock_);
@@ -666,23 +673,30 @@ bool DelayedTask::MarkAsDone() {
 
 void DelayedTask::AbortTask(const Status& abort_status) {
   if (MarkAsDone()) {
-    timer_.stop();
+    if (reactor_->IsCurrentThread()) {
+      timer_.stop();
+    } else {
+      // Must call timer_.stop() on the reactor thread. Keep a refcount to prevent this DelayedTask
+      // from being deleted. If the reactor thread has already been shut down, this will be a no-op.
+      reactor_->ScheduleReactorFunctor([this, holder = shared_from(this)](Reactor* reactor) {
+        timer_.stop();
+      });
+    }
     func_(abort_status);
   }
 }
 
 void DelayedTask::Abort(const Status& abort_status) {
-  // We are just calling lock-protected AbortTask here to avoid concurrent execution of func_ due
-  // to AbortTasks execution from non-reactor threads prior to reactor shutdown.
   AbortTask(abort_status);
 }
 
 void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
+  DCHECK(reactor_->IsCurrentThread());
   if (!MarkAsDone()) {
     // The task has been already executed by Abort/AbortTask.
     return;
   }
-  // Hold shared_ptr, so this task wouldn't be destroyed upon removal below until func_ is called
+  // Hold shared_ptr, so this task wouldn't be destroyed upon removal below until func_ is called.
   auto holder = shared_from_this();
 
   reactor_->scheduled_tasks_.erase(shared_from(this));
@@ -698,6 +712,10 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
     func_(Status::OK());
   }
 }
+
+// ------------------------------------------------------------------------------------------------
+// More Reactor class members
+// ------------------------------------------------------------------------------------------------
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
@@ -718,7 +736,7 @@ void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {
     if (closing_) {
       // We guarantee the reactor lock is not taken when calling Abort().
       l.unlock();
-      task->Abort(ShutdownError(false));
+      task->Abort(ShutdownError(/* aborted */ false));
       return;
     }
     was_empty = pending_tasks_.empty();
@@ -752,8 +770,7 @@ class RunFunctionTask : public ReactorTask {
     latch_.CountDown();
   }
 
-  // Wait until the function has completed, and return the Status
-  // returned by the function.
+  // Wait until the function has completed, and return the Status returned by the function.
   Status Wait() {
     latch_.Wait();
     return status_;

@@ -187,6 +187,7 @@ void Connection::Shutdown(const Status& status) {
   outbound_data_being_processed_.clear();
 
   io_.stop();
+  timer_.stop();
   is_epoll_registered_ = false;
   WARN_NOT_OK(socket_.Close(), "Error closing socket");
 }

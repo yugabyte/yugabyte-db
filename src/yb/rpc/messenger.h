@@ -85,8 +85,7 @@ class MessengerBuilder {
   // Set the length of time we will keep a TCP connection will alive with no traffic.
   MessengerBuilder &set_connection_keepalive_time(CoarseMonoClock::Duration keepalive);
 
-  // Set the number of reactor threads that will be used for sending and
-  // receiving.
+  // Set the number of reactor threads that will be used for sending and receiving.
   MessengerBuilder &set_num_reactors(int num_reactors);
 
   // Set the granularity with which connections are checked for keepalive.
@@ -120,14 +119,13 @@ class MessengerBuilder {
   ConnectionContextFactory connection_context_factory_;
 };
 
-// A Messenger is a container for the reactor threads which run event loops
-// for the RPC services.
-// If the process is a server, a Messenger will also have an Acceptor.
-// In this case, calls received over the connection are enqueued into the messenger's service_queue
-// for processing by a ServicePool.
+// A Messenger is a container for the reactor threads which run event loops for the RPC services.
+// If the process is a server, a Messenger will also have an Acceptor.  In this case, calls received
+// over the connection are enqueued into the messenger's service_queue for processing by a
+// ServicePool.
 //
-// Users do not typically interact with the Messenger directly except to create
-// one as a singleton, and then make calls using Proxy objects.
+// Users do not typically interact with the Messenger directly except to create one as a singleton,
+// and then make calls using Proxy objects.
 //
 // See rpc-test.cc and rpc-bench.cc for example usages.
 class Messenger {
@@ -137,13 +135,10 @@ class Messenger {
   friend class Reactor;
   typedef std::unordered_map<std::string, scoped_refptr<RpcService> > RpcServicesMap;
 
-  static const uint64_t UNKNOWN_CALL_ID = 0;
-
   ~Messenger();
 
-  // Stop all communication and prevent further use.
-  // It's not required to call this -- dropping the shared_ptr provided
-  // from MessengerBuilder::Build will automatically call this method.
+  // Stop all communication and prevent further use.  It's not required to call this -- dropping the
+  // shared_ptr provided from MessengerBuilder::Build will automatically call this method.
   void Shutdown();
 
   // Setup messenger to listen connections on given address.
@@ -164,8 +159,8 @@ class Messenger {
 
   CHECKED_STATUS UnregisterAllServices();
 
-  // Queue a call for transmission. This will pick the appropriate reactor,
-  // and enqueue a task on that reactor to assign and send the call.
+  // Queue a call for transmission. This will pick the appropriate reactor, and enqueue a task on
+  // that reactor to assign and send the call.
   void QueueOutboundCall(OutboundCallPtr call);
 
   // Enqueue a call for processing on the server.
@@ -181,7 +176,7 @@ class Messenger {
 
   // Dump the current RPCs into the given protobuf.
   CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
-                         DumpRunningRpcsResponsePB* resp);
+                                 DumpRunningRpcsResponsePB* resp);
 
   void RemoveScheduledTask(int64_t task_id);
 
@@ -191,8 +186,8 @@ class Messenger {
 
   // Run 'func' on a reactor thread after 'when' time elapses.
   //
-  // The status argument conveys whether 'func' was run correctly (i.e.
-  // after the elapsed time) or not.
+  // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
+  // not.
   int64_t ScheduleOnReactor(const std::function<void(const Status&)>& func,
                             MonoDelta when,
                             const std::shared_ptr<Messenger>& msgr = nullptr);
@@ -205,9 +200,6 @@ class Messenger {
 
   scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
 
-  scoped_refptr<Histogram> outgoing_queue_time() { return outgoing_queue_time_; }
-
-  size_t number_of_reactors() const { return reactors_.size(); }
   size_t max_concurrent_requests() const;
 
   const IpAddress& outbound_address_v4() const { return outbound_address_v4_; }
@@ -230,8 +222,8 @@ class Messenger {
   CHECKED_STATUS Init();
   void UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard);
 
-  // Called by external-facing shared_ptr when the user no longer holds
-  // any references. See 'retain_self_' for more info.
+  // Called by external-facing shared_ptr when the user no longer holds any references. See
+  // 'retain_self_' for more info.
   void AllExternalReferencesDropped();
 
   bool IsArtificiallyDisconnectedFrom(const IpAddress& remote);
@@ -259,8 +251,7 @@ class Messenger {
   IpAddress outbound_address_v4_;
   IpAddress outbound_address_v6_;
 
-  // The ownership of the Messenger object is somewhat subtle. The pointer graph
-  // looks like this:
+  // The ownership of the Messenger object is somewhat subtle. The pointer graph looks like this:
   //
   //    [User Code ]             |      [ Internal code ]
   //                             |
@@ -273,33 +264,32 @@ class Messenger {
   //     shared_ptr[2]
   //     (retain_self_)
   //
-  // shared_ptr[1] instances use Messenger::AllExternalReferencesDropped()
-  //   as a deleter.
-  // shared_ptr[2] are "traditional" shared_ptrs which call 'delete' on the
-  //   object.
+  // shared_ptr[1] instances use Messenger::AllExternalReferencesDropped() as a deleter.
+  // shared_ptr[2] are "traditional" shared_ptrs which call 'delete' on the object.
   //
   // The teardown sequence is as follows:
-  // Option 1): User calls "Shutdown()" explicitly:
-  //  - Messenger::Shutdown tells Reactors to shut down
-  //  - When each reactor thread finishes, it drops its shared_ptr[2]
-  //  - the Messenger::retain_self instance remains, keeping the Messenger
-  //    alive.
-  //  - The user eventually drops its shared_ptr[1], which calls
-  //    Messenger::AllExternalReferencesDropped. This drops retain_self_
-  //    and results in object destruction.
-  // Option 2): User drops all of its shared_ptr[1] references
-  //  - Though the Reactors still reference the Messenger, AllExternalReferencesDropped
-  //    will get called, which triggers Messenger::Shutdown.
-  //  - AllExternalReferencesDropped drops retain_self_, so the only remaining
-  //    references are from Reactor threads. But the reactor threads are shutting down.
-  //  - When the last Reactor thread dies, there will be no more shared_ptr[1] references
-  //    and the Messenger will be destroyed.
   //
-  // The main goal of all of this confusion is that the reactor threads need to be able
-  // to shut down asynchronously, and we need to keep the Messenger alive until they
-  // do so. So, handing out a normal shared_ptr to users would force the Messenger
-  // destructor to Join() the reactor threads, which causes a problem if the user
-  // tries to destruct the Messenger from within a Reactor thread itself.
+  // Option 1): User calls "Shutdown()" explicitly:
+  //  - Messenger::Shutdown tells Reactors to shut down.
+  //  - When each reactor thread finishes, it drops its shared_ptr[2].
+  //  - The Messenger::retain_self instance remains, keeping the Messenger alive.
+  //  - The user eventually drops its shared_ptr[1], which calls
+  //    Messenger::AllExternalReferencesDropped. This drops retain_self_ and results in object
+  //    destruction.
+  //
+  // Option 2): User drops all of its shared_ptr[1] references
+  //  - Though the Reactors still reference the Messenger, AllExternalReferencesDropped will get
+  //    called, which triggers Messenger::Shutdown.
+  //  - AllExternalReferencesDropped drops retain_self_, so the only remaining references are from
+  //    Reactor threads. But the reactor threads are shutting down.
+  //  - When the last Reactor thread dies, there will be no more shared_ptr[1] references and the
+  //    Messenger will be destroyed.
+  //
+  // The main goal of all of this confusion is that the reactor threads need to be able to shut down
+  // asynchronously, and we need to keep the Messenger alive until they do so. So, handing out a
+  // normal shared_ptr to users would force the Messenger destructor to Join() the reactor threads,
+  // which causes a problem if the user tries to destruct the Messenger from within a Reactor thread
+  // itself.
   std::shared_ptr<Messenger> retain_self_;
 
   // Id that will be assigned to the next task that is scheduled on the reactor.
