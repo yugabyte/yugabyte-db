@@ -26,6 +26,7 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
+#include <sstream>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/merge_context.h"
@@ -46,6 +47,8 @@
 #include "yb/rocksdb/util/stop_watch.h"
 
 #include "yb/gutil/macros.h"
+
+using std::ostringstream;
 
 namespace rocksdb {
 
@@ -94,7 +97,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
                  ? moptions_.inplace_update_num_locks
                  : 0),
       prefix_extractor_(ioptions.prefix_extractor),
-      flush_state_(FLUSH_NOT_REQUESTED),
+      flush_state_(FlushState::kNotRequested),
       env_(ioptions.env) {
   UpdateFlushState();
   // something went wrong if we need to flush before inserting anything
@@ -185,10 +188,10 @@ bool MemTable::ShouldFlushNow() const {
 
 void MemTable::UpdateFlushState() {
   auto state = flush_state_.load(std::memory_order_relaxed);
-  if (state == FLUSH_NOT_REQUESTED && ShouldFlushNow()) {
+  if (state == FlushState::kNotRequested && ShouldFlushNow()) {
     // ignore CAS failure, because that means somebody else requested
     // a flush
-    flush_state_.compare_exchange_strong(state, FLUSH_REQUESTED,
+    flush_state_.compare_exchange_strong(state, FlushState::kRequested,
                                          std::memory_order_relaxed,
                                          std::memory_order_relaxed);
   }
@@ -338,6 +341,26 @@ InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
 port::RWMutex* MemTable::GetLock(const Slice& key) {
   static murmur_hash hash;
   return &locks_[hash(key) % locks_.size()];
+}
+
+std::string MemTable::ToString() const {
+  ostringstream ss;
+  auto* frontiers = Frontiers();
+  ss << "MemTable {"
+     << " num_entries: " << num_entries()
+     << " num_deletes: " << num_deletes()
+     << " IsEmpty: " << IsEmpty()
+     << " flush_state: " << flush_state_
+     << " first_seqno: " << GetFirstSequenceNumber()
+     << " eariest_seqno: " << GetEarliestSequenceNumber()
+     << " frontiers: ";
+  if (frontiers) {
+    ss << frontiers->ToString();
+  } else {
+    ss << "N/A";
+  }
+  ss << " }";
+  return ss.str();
 }
 
 uint64_t MemTable::ApproximateSize(const Slice& start_ikey,

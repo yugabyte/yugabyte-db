@@ -869,6 +869,9 @@ class DB {
     return STATUS(NotSupported, "");
   }
 
+  // Used in testing to make the old memtable immutable and start writing to a new one.
+  virtual void TEST_SwitchMemtable() {}
+
  private:
   // No copying allowed
   DB(const DB&);

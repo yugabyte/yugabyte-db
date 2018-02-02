@@ -131,8 +131,8 @@ ADD_YB_LIBRARY(master_util
 # Tests
 set(YB_TEST_LINK_LIBS master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_manager-test)
-ADD_YB_TEST(master-test RESOURCE_LOCK "master-web-port")
-ADD_YB_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")
+ADD_YB_TEST(master-test)
+ADD_YB_TEST(sys_catalog-test)
 
 if(YB_ENT_CURRENT_SOURCE_DIR)
   # Set the test source file folder.

@@ -13,11 +13,12 @@
 
 #include "yb/integration-tests/load_generator.h"
 
-#include <gflags/gflags_declare.h>
 #include <memory>
 #include <queue>
 #include <random>
 #include <thread>
+
+#include <gflags/gflags_declare.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_handle.h"
@@ -284,6 +285,7 @@ void MultiThreadedWriter::WaitForCompletion() {
 
 void MultiThreadedWriter::RunActionThread(int writer_index) {
   unique_ptr<SingleThreadedWriter> writer(session_factory_->GetWriter(this, writer_index));
+  writer->set_pause_flag(pause_flag_);
   writer->Run();
 
   LOG(INFO) << "Writer thread " << writer_index << " finished";
@@ -294,6 +296,10 @@ void SingleThreadedWriter::Run() {
   LOG(INFO) << "Writer thread " << writer_index_ << " started";
   ConfigureSession();
   while (!multi_threaded_writer_->IsStopRequested()) {
+    if (pause_flag_ && pause_flag_->load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(10ms);
+      continue;
+    }
     int64_t key_index = multi_threaded_writer_->next_key_++;
     if (key_index >= multi_threaded_writer_->num_keys_) {
       break;
@@ -690,31 +696,31 @@ int64_t SingleThreadedReader::NextKeyIndexToRead(std::mt19937_64* random_number_
   VLOG(3) << "Reader thread " << reader_index_ << " waiting to load insertion point";
   int64_t written_up_to = multi_threaded_reader_->insertion_point_->load();
   do {
-        VLOG(3) << "Reader thread " << reader_index_ << " coin toss";
-        switch ((*random_number_generator)() % 3) {
-          case 0:
-            // Read the latest value that the insertion tracker knows we've written up to.
-            key_index = written_up_to;
-            break;
-          case 1:
-            // Read one of the keys that have been successfully inserted but have not been processed
-            // by the insertion tracker thread yet.
-            key_index =
-                multi_threaded_reader_->inserted_keys_->GetRandomKey(random_number_generator);
-            if (key_index == -1) {
-              // The set is empty.
-              key_index = written_up_to;
-            }
-            break;
-
-          default:
-            // We're assuming the total number of keys is < RAND_MAX (~2 billion) here.
-            key_index = (*random_number_generator)() % (written_up_to + 1);
-            break;
+    VLOG(3) << "Reader thread " << reader_index_ << " coin toss";
+    switch ((*random_number_generator)() % 3) {
+      case 0:
+        // Read the latest value that the insertion tracker knows we've written up to.
+        key_index = written_up_to;
+        break;
+      case 1:
+        // Read one of the keys that have been successfully inserted but have not been processed
+        // by the insertion tracker thread yet.
+        key_index =
+            multi_threaded_reader_->inserted_keys_->GetRandomKey(random_number_generator);
+        if (key_index == -1) {
+          // The set is empty.
+          key_index = written_up_to;
         }
-        // Ensure we don't try to read a key for which a write failed.
-      } while (multi_threaded_reader_->failed_keys_->Contains(key_index) &&
-               !multi_threaded_reader_->IsStopRequested());
+        break;
+
+      default:
+        // We're assuming the total number of keys is < RAND_MAX (~2 billion) here.
+        key_index = (*random_number_generator)() % (written_up_to + 1);
+        break;
+    }
+    // Ensure we don't try to read a key for which a write failed.
+  } while (multi_threaded_reader_->failed_keys_->Contains(key_index) &&
+           !multi_threaded_reader_->IsStopRequested());
 
   VLOG(1) << "Reader thread " << reader_index_ << " saw written_up_to=" << written_up_to
           << " and picked key #" << key_index;

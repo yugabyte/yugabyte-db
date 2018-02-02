@@ -302,7 +302,7 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
                               RandomValueAt(idx)));
     }
     LOG(WARNING) << "Preliminary check done";
-    cluster_->FlushTablets();
+    ASSERT_OK(cluster_->FlushTablets());
     std::this_thread::sleep_for(1s);
   }
   FLAGS_db_block_cache_size_bytes = -2;

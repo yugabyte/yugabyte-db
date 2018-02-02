@@ -174,10 +174,21 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto index = log->GetLatestEntryOpId().index;
-      return [index] (const rocksdb::MemTable& memtable) {
-        const auto& largest = down_cast<const docdb::ConsensusFrontier&>(
-            memtable.Frontiers()->Largest());
-        return largest.op_id().index <= index;
+      return [index] (const rocksdb::MemTable& memtable) -> Result<bool> {
+        auto frontiers = memtable.Frontiers();
+        if (frontiers) {
+          const auto& largest = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
+          // We can only flush this memtable if all operations written to it have also been written
+          // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
+          return largest.op_id().index <= index;
+        }
+        // This is a degenerate case that should ideally never occur. An empty memtable got into the
+        // list of immutable memtables. We say it is OK to flush it and move on.
+        static const char* error_msg =
+            "A memtable with no frontiers set found when deciding what memtables to "
+            "flush! This should not happen.";
+        LOG(ERROR) << error_msg << " Stack trace:\n" << GetStackTrace();
+        return STATUS(IllegalState, error_msg);
       };
     });
 

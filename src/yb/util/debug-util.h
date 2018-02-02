@@ -208,6 +208,8 @@ class ScopeLogger {
   std::function<void()> on_scope_bounds_;
 };
 
+std::string GetClassNameStr(void* p);
+
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H

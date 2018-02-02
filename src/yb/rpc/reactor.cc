@@ -362,10 +362,6 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
   ScanIdleConnections();
 }
 
-void Reactor::RegisterTimeout(ev::timer *watcher) {
-  watcher->set(loop_);
-}
-
 void Reactor::ScanIdleConnections() {
   DCHECK(IsCurrentThread());
   if (connection_keepalive_time_ == CoarseMonoClock::Duration::zero()) {

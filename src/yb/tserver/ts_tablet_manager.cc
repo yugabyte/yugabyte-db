@@ -1043,10 +1043,10 @@ void TSTabletManager::GetTabletPeers(vector<scoped_refptr<TabletPeer> >* tablet_
   AppendValuesFromMap(tablet_map_, tablet_peers);
 }
 
-std::vector<scoped_refptr<tablet::TabletPeer>> TSTabletManager::GetTabletPeers() const {
-  std::vector<scoped_refptr<tablet::TabletPeer>> result;
-  GetTabletPeers(&result);
-  return result;
+TSTabletManager::TabletPeers TSTabletManager::GetTabletPeers() const {
+  TabletPeers peers;
+  GetTabletPeers(&peers);
+  return peers;
 }
 
 void TSTabletManager::ApplyChange(const string& tablet_id,

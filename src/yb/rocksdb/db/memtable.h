@@ -76,6 +76,8 @@ struct MemTableOptions {
   Logger* info_log;
 };
 
+YB_DEFINE_ENUM(FlushState, (kNotRequested)(kRequested)(kScheduled));
+
 // Note:  Many of the methods in this class have comments indicating that
 // external synchromization is required as these methods are not thread-safe.
 // It is up to higher layers of code to decide how to prevent concurrent
@@ -145,14 +147,15 @@ class MemTable {
   // This method heuristically determines if the memtable should continue to
   // host more data.
   bool ShouldScheduleFlush() const {
-    return flush_state_.load(std::memory_order_relaxed) == FLUSH_REQUESTED;
+    return flush_state_.load(std::memory_order_relaxed) == FlushState::kRequested;
   }
 
   // Returns true if a flush should be scheduled and the caller should
   // be the one to schedule it
   bool MarkFlushScheduled() {
-    auto before = FLUSH_REQUESTED;
-    return flush_state_.compare_exchange_strong(before, FLUSH_SCHEDULED,
+    auto before = FlushState::kRequested;
+    return flush_state_.compare_exchange_strong(before,
+                                                FlushState::kScheduled,
                                                 std::memory_order_relaxed,
                                                 std::memory_order_relaxed);
   }
@@ -263,7 +266,7 @@ class MemTable {
   // into the memtable.
   // REQUIRES: external synchronization to prevent simultaneous
   // operations on the same MemTable (unless this Memtable is immutable).
-  SequenceNumber GetFirstSequenceNumber() {
+  SequenceNumber GetFirstSequenceNumber() const {
     return first_seqno_.load(std::memory_order_relaxed);
   }
 
@@ -274,7 +277,7 @@ class MemTable {
   //
   // If the earliest sequence number could not be determined,
   // kMaxSequenceNumber will be returned.
-  SequenceNumber GetEarliestSequenceNumber() {
+  SequenceNumber GetEarliestSequenceNumber() const {
     return earliest_seqno_.load(std::memory_order_relaxed);
   }
 
@@ -282,7 +285,7 @@ class MemTable {
   // be flushed to storage
   // REQUIRES: external synchronization to prevent simultaneous
   // operations on the same MemTable.
-  uint64_t GetNextLogNumber() { return mem_next_logfile_number_; }
+  uint64_t GetNextLogNumber() const { return mem_next_logfile_number_; }
 
   // Sets the next active logfile number when this memtable is about to
   // be flushed to storage
@@ -331,8 +334,9 @@ class MemTable {
   }
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }
 
+  std::string ToString() const;
+
  private:
-  enum FlushStateEnum { FLUSH_NOT_REQUESTED, FLUSH_REQUESTED, FLUSH_SCHEDULED };
 
   friend class MemTableIterator;
   friend class MemTableBackwardIterator;
@@ -376,7 +380,7 @@ class MemTable {
   const SliceTransform* const prefix_extractor_;
   std::unique_ptr<DynamicBloom> prefix_bloom_;
 
-  std::atomic<FlushStateEnum> flush_state_;
+  std::atomic<FlushState> flush_state_;
 
   Env* env_;
 

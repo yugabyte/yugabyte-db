@@ -257,7 +257,7 @@ class QLTabletTest : public QLDmlTestBase {
 
   CHECKED_STATUS Import() {
     std::this_thread::sleep_for(1s); // Wait until all tablets a synced and flushed.
-    cluster_->FlushTablets();
+    EXPECT_OK(cluster_->FlushTablets());
 
     auto source_infos = GetTabletInfos(kTable1Name);
     auto dest_infos = GetTabletInfos(kTable2Name);
@@ -425,7 +425,7 @@ TEST_F(QLTabletTest, GCLogWithoutWrites) {
   FillTable(0, kTotalKeys, &table);
 
   std::this_thread::sleep_for(5s);
-  cluster_->FlushTablets();
+  ASSERT_OK(cluster_->FlushTablets());
   DoStepDowns(cluster_.get());
   VerifyLogIndicies(cluster_.get());
 }
@@ -437,7 +437,7 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
   FillTable(0, kTotalKeys, &table);
 
   std::this_thread::sleep_for(5s);
-  cluster_->FlushTablets();
+  ASSERT_OK(cluster_->FlushTablets());
 
   ASSERT_OK(cluster_->RestartSync());
 
@@ -562,10 +562,10 @@ TEST_F(QLTabletTest, BoundaryValues) {
   const auto kSleepTime = NonTsanVsTsan(5s, 1s);
   std::this_thread::sleep_for(kSleepTime);
   LOG(INFO) << "Flushing tablets";
-  cluster_->FlushTablets();
+  ASSERT_OK(cluster_->FlushTablets());
   std::this_thread::sleep_for(kSleepTime);
   LOG(INFO) << "GC logs";
-  cluster_->CleanTabletLogs();
+  ASSERT_OK(cluster_->CleanTabletLogs());
   LOG(INFO) << "Wait for threads";
   for (auto& thread : threads) {
     thread.join();
@@ -580,7 +580,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
   }
   ASSERT_EQ(kTotalRows, total_rows);
 
-  cluster_->FlushTablets();
+  ASSERT_OK(cluster_->FlushTablets());
   std::this_thread::sleep_for(kSleepTime);
 
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {

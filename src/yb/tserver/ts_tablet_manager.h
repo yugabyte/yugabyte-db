@@ -120,6 +120,8 @@ class TransitionInProgressDeleter;
 // as re-opening all the tablets at startup, etc.
 class TSTabletManager : public tserver::TabletPeerLookupIf {
  public:
+  typedef std::vector<scoped_refptr<tablet::TabletPeer>> TabletPeers;
+
   // Construct the tablet manager.
   // 'fs_manager' must remain valid until this object is destructed.
   TSTabletManager(FsManager* fs_manager,
@@ -219,9 +221,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void MarkTabletReportAcknowledged(const master::TabletReportPB& report);
 
   // Get all of the tablets currently hosted on this server.
-  void GetTabletPeers(std::vector<scoped_refptr<tablet::TabletPeer>>* tablet_peers) const;
-
-  std::vector<scoped_refptr<tablet::TabletPeer>> GetTabletPeers() const;
+  void GetTabletPeers(TabletPeers* tablet_peers) const;
+  TabletPeers GetTabletPeers() const;
 
   // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
   // role change. They are applied asynchronously internally.

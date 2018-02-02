@@ -36,6 +36,7 @@
 #include "yb/rocksdb/version.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/util/slice.h"
+#include "yb/util/result.h"
 #include "yb/rocksdb/universal_compaction.h"
 
 #ifdef max
@@ -815,7 +816,7 @@ struct ColumnFamilyOptions {
   void Dump(Logger* log) const;
 };
 
-typedef std::function<bool(const MemTable&)> MemTableFilter;
+typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
 
 struct DBOptions {
   // Some functions that make it easier to optimize RocksDB

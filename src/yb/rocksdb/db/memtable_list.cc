@@ -24,7 +24,10 @@
 #endif
 
 #include <inttypes.h>
+
 #include <string>
+#include <sstream>
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -34,6 +37,9 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/thread_status_util.h"
+
+using yb::Result;
+using std::ostringstream;
 
 namespace rocksdb {
 
@@ -254,9 +260,35 @@ void MemTableList::PickMemtablesToFlush(autovector<MemTable*>* ret, const MemTab
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_PICK_MEMTABLES_TO_FLUSH);
   const auto& memlist = current_->memlist_;
+  LOG(INFO) << "Number of memtables: " << memlist.size();
+  bool all_memtables_logged = false;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
-    if (!m->flush_in_progress_ && (!filter || filter(*m))) {
+    if (!m->flush_in_progress_) {
+      if (filter) {
+        Result<bool> filter_result = filter(*m);
+        if (filter_result.ok()) {
+          if (!filter_result.get()) {
+            // The filter succeeded and said that this memtable cannot be flushed yet.
+            continue;
+          }
+        } else {
+          // This failure usually means that there is an empty immutable memtable. We need to output
+          // additional diagnostics in that case.
+          ostringstream ss;
+          if (!all_memtables_logged) {
+            ss << ". All memtables:\n";
+            for (const MemTable* memtable_for_logging : memlist) {
+              ss << "  " << memtable_for_logging->ToString() << "\n";
+            }
+            all_memtables_logged = true;
+          }
+          LOG(ERROR) << "Failed when checking if memtable can be flushed (will still flush it): "
+                     << filter_result.status() << ". Memtable: " << m->ToString()
+                     << ss.str();
+          // Still flush the memtable so that this error does not keep occurring.
+        }
+      }
       assert(!m->flush_completed_);
       num_flush_not_started_--;
       if (num_flush_not_started_ == 0) {

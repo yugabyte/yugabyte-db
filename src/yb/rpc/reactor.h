@@ -178,7 +178,7 @@ class DelayedTask : public ReactorTask {
   bool MarkAsDone();
 
   // libev callback for when the registered timer fires.
-  void TimerHandler(ev::timer& watcher, int revents); // NOLINT
+  void TimerHandler(ev::timer& rwatcher, int revents); // NOLINT
 
   // User function to invoke when timer fires or when task is aborted.
   const std::function<void(const Status&)> func_;
@@ -239,10 +239,6 @@ class Reactor {
   // libev callback for handling timer events in our epoll thread.
   void TimerHandler(ev::timer &watcher, int revents); // NOLINT
 
-  // Register an epoll timer watcher with our event loop.
-  // Does not set a timeout or start it.
-  void RegisterTimeout(ev::timer *watcher);
-
   // This may be called from another thread.
   const std::string &name() const { return name_; }
 
@@ -261,10 +257,6 @@ class Reactor {
   //
   // This method is thread-safe.
   bool closing() const;
-
-  // Begin the process of connection negotiation.
-  // Must be called from the reactor thread.
-  CHECKED_STATUS StartConnection(const ConnectionPtr& conn);
 
   // Shut down the given connection, removing it from the connection tracking
   // structures of this reactor.

@@ -5216,6 +5216,12 @@ Status DBImpl::Import(const std::string& source_dir) {
   return ApplyVersionEdit(&edit);
 }
 
+void DBImpl::TEST_SwitchMemtable() {
+  std::lock_guard<InstrumentedMutex> lock(mutex_);
+  WriteContext context;
+  SwitchMemtable(default_cf_handle_->cfd(), &context);
+}
+
 void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
                                  const Range* range, int n, uint64_t* sizes,
                                  bool include_memtable) {

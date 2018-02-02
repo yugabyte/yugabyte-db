@@ -76,6 +76,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
 
 namespace rocksdb {
 class DB;
@@ -149,10 +150,7 @@ class TabletFlushStats : public rocksdb::EventListener {
   std::atomic<uint64_t> oldest_write_in_memstore_{std::numeric_limits<uint64_t>::max()};
 };
 
-enum class FlushMode {
-  kSync,
-  kAsync,
-};
+YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 
 struct WriteOperationData;
 
@@ -409,13 +407,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return rocksdb_.get();
   }
 
+  CHECKED_STATUS TEST_SwitchMemtable();
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
   friend class ScopedReadOperation;
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
-
-  CHECKED_STATUS FlushUnlocked(FlushMode mode);
 
   CHECKED_STATUS StartDocWriteOperation(
       const docdb::DocOperations &doc_ops,
