@@ -406,8 +406,8 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
 
   workload.StopAndJoin();
 
-  cluster_->FlushTablets();
-  cluster_->CleanTabletLogs();
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->CleanTabletLogs());
 
   ASSERT_OK(ts0->Start());
   ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
