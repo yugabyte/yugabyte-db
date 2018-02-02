@@ -92,6 +92,9 @@ POST   /api/customers/:cUUID/zones/:azUUID/nodes                       com.yugab
 DELETE /api/customers/:cUUID/universes/:universeUUID/nodes/:nodeName   com.yugabyte.yw.controllers.NodeInstanceController.deleteNode(cUUID: java.util.UUID, universeUUID: java.util.UUID, nodeName: String)
 DELETE /api/customers/:cUUID/providers/:pUUID/instances/:instanceIP    com.yugabyte.yw.controllers.NodeInstanceController.deleteInstance(cUUID: java.util.UUID, pUUID: java.util.UUID, instanceIP: String)
 
+GET    /api/customers/:cUUID/universes/:universeUUID/nodes/:nodeName/start  com.yugabyte.yw.controllers.NodeInstanceController.startNode(cUUID: java.util.UUID, universeUUID: java.util.UUID, nodeName: String)
+GET    /api/customers/:cUUID/universes/:universeUUID/nodes/:nodeName/stop   com.yugabyte.yw.controllers.NodeInstanceController.stopNode(cUUID: java.util.UUID, universeUUID: java.util.UUID, nodeName: String)
+
 # Metadata API
 GET    /api/metadata/column_types                     com.yugabyte.yw.controllers.TablesController.getColumnTypes()
 GET    /api/metadata/ebs_types                        com.yugabyte.yw.controllers.InstanceTypeController.getEBSTypes()
