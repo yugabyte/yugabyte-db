@@ -72,13 +72,6 @@ static_assert(to_underlying(TableType::REDIS_TABLE_TYPE) ==
 template<class SETUP>
 class TestTablet : public TabletTestBase<SETUP> {
   typedef SETUP Type;
-
- public:
-  // Verify that iteration doesn't fail
-  void CheckCanIterate() {
-    vector<string> out_rows;
-    ASSERT_OK(this->IterateToStringList(&out_rows));
-  }
 };
 TYPED_TEST_CASE(TestTablet, TabletTestHelperTypes);
 

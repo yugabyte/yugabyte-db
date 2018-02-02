@@ -563,7 +563,7 @@ TEST_F(QLTransactionTest, Expire) {
   });
   latch.Wait();
   std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_transaction_heartbeat_usec * 2));
-  cluster_->CleanTabletLogs();
+  ASSERT_OK(cluster_->CleanTabletLogs());
   ASSERT_EQ(0, CountTransactions());
 }
 
@@ -581,7 +581,7 @@ TEST_F(QLTransactionTest, PreserveLogs) {
     std::this_thread::sleep_for(100ms);
   }
   LOG(INFO) << "Request clean";
-  cluster_->CleanTabletLogs();
+  ASSERT_OK(cluster_->CleanTabletLogs());
   ASSERT_OK(cluster_->RestartSync());
   CountDownLatch latch(kTransactions);
   for (auto& transaction : transactions) {

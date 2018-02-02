@@ -297,16 +297,25 @@ void MiniCluster::Shutdown() {
   running_ = false;
 }
 
-void MiniCluster::FlushTablets() {
+Status MiniCluster::FlushTablets() {
   for (const auto& tablet_server : mini_tablet_servers_) {
-    tablet_server->FlushTablets();
+    RETURN_NOT_OK(tablet_server->FlushTablets());
   }
+  return Status::OK();
 }
 
-void MiniCluster::CleanTabletLogs() {
+Status MiniCluster::SwitchMemtables() {
   for (const auto& tablet_server : mini_tablet_servers_) {
-    tablet_server->CleanTabletLogs();
+    RETURN_NOT_OK(tablet_server->SwitchMemtables());
   }
+  return Status::OK();
+}
+
+Status MiniCluster::CleanTabletLogs() {
+  for (const auto& tablet_server : mini_tablet_servers_) {
+    RETURN_NOT_OK(tablet_server->CleanTabletLogs());
+  }
+  return Status::OK();
 }
 
 void MiniCluster::ShutdownMasters() {

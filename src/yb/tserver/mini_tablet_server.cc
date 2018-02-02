@@ -33,6 +33,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include <utility>
+#include <functional>
 
 #include <glog/logging.h>
 
@@ -65,6 +66,7 @@ using yb::consensus::RaftConfigPB;
 using yb::log::Log;
 using yb::log::LogOptions;
 using strings::Substitute;
+using yb::tablet::TabletPeer;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 
@@ -121,26 +123,43 @@ void MiniTabletServer::Shutdown() {
   started_ = false;
 }
 
-void MiniTabletServer::FlushTablets() {
-  if (!server_) {
-    return;
+namespace {
+
+CHECKED_STATUS ForAllTablets(
+    MiniTabletServer* mts,
+    std::function<Status(TabletPeer* tablet_peer)> action) {
+  if (!mts->server()) {
+    return STATUS(IllegalState, "Server is not running");
   }
-  std::vector<tablet::TabletPeerPtr> tablets;
-  server_->tablet_manager()->GetTabletPeers(&tablets);
+  auto tablets = mts->server()->tablet_manager()->GetTabletPeers();
   for (const auto& tablet : tablets) {
-    CHECK_OK(tablet->tablet()->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(action(tablet.get()));
   }
+  return Status::OK();
 }
 
-void MiniTabletServer::CleanTabletLogs() {
+}  // namespace
+
+Status MiniTabletServer::FlushTablets() {
+  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
+    return tablet_peer->tablet()->Flush(tablet::FlushMode::kSync);
+  });
+}
+
+Status MiniTabletServer::SwitchMemtables() {
+  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
+    return tablet_peer->tablet()->TEST_SwitchMemtable();
+  });
+}
+
+Status MiniTabletServer::CleanTabletLogs() {
   if (!server_) {
-    return;
+    // Nothing to clean.
+    return Status::OK();
   }
-  std::vector<tablet::TabletPeerPtr> tablets;
-  server_->tablet_manager()->GetTabletPeers(&tablets);
-  for (const auto& tablet : tablets) {
-    CHECK_OK(tablet->RunLogGC());
-  }
+  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
+    return tablet_peer->RunLogGC();
+  });
 }
 
 Status MiniTabletServer::Restart() {

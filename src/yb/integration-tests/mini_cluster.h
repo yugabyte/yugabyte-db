@@ -85,6 +85,10 @@ struct MiniClusterOptions {
 // number of MiniTabletServers for use in tests.
 class MiniCluster : public MiniClusterBase {
  public:
+  typedef std::vector<std::shared_ptr<master::MiniMaster> > MiniMasters;
+  typedef std::vector<std::shared_ptr<tserver::MiniTabletServer> > MiniTabletServers;
+  typedef std::vector<uint16_t> Ports;
+
   MiniCluster(Env* env, const MiniClusterOptions& options);
   ~MiniCluster();
 
@@ -103,8 +107,9 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS RestartSync();
 
   void Shutdown();
-  void FlushTablets();
-  void CleanTabletLogs();
+  CHECKED_STATUS FlushTablets();
+  CHECKED_STATUS SwitchMemtables();
+  CHECKED_STATUS CleanTabletLogs();
 
   // Shuts down masters only.
   void ShutdownMasters();
@@ -145,9 +150,11 @@ class MiniCluster : public MiniClusterBase {
 
   tserver::MiniTabletServer* find_tablet_server(const std::string& uuid);
 
+  const MiniTabletServers& mini_tablet_servers() { return mini_tablet_servers_; }
+
   int num_tablet_servers() const { return mini_tablet_servers_.size(); }
 
-  const std::vector<uint16_t>& tserver_web_ports() const { return tserver_web_ports_;}
+  const Ports& tserver_web_ports() const { return tserver_web_ports_; }
 
   std::string GetMasterFsRoot(int indx);
 
@@ -199,21 +206,21 @@ class MiniCluster : public MiniClusterBase {
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
 
-  bool running_;
+  bool running_ = false;
 
-  Env* const env_;
+  Env* const env_ = nullptr;
   const std::string fs_root_;
   const int num_masters_initial_;
   const int num_ts_initial_;
 
-  std::vector<uint16_t> master_rpc_ports_;
-  std::vector<uint16_t> master_web_ports_;
-  std::vector<uint16_t> tserver_rpc_ports_;
-  std::vector<uint16_t> tserver_web_ports_;
-  uint16_t next_port_;
+  Ports master_rpc_ports_;
+  Ports master_web_ports_;
+  Ports tserver_rpc_ports_;
+  Ports tserver_web_ports_;
+  uint16_t next_port_ = 0;
 
-  std::vector<std::shared_ptr<master::MiniMaster> > mini_masters_;
-  std::vector<std::shared_ptr<tserver::MiniTabletServer> > mini_tablet_servers_;
+  MiniMasters mini_masters_;
+  MiniTabletServers mini_tablet_servers_;
 
   PortPicker port_picker_;
 };

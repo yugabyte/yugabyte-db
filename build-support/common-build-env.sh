@@ -971,6 +971,7 @@ popd() {
 
 detect_linuxbrew() {
   YB_USING_LINUXBREW=false
+  local user_specified_linuxbrew_dir=${YB_LINUXBREW_DIR:-}
   unset YB_LINUXBREW_DIR
   unset YB_LINUXBREW_LIB_DIR
   if ! is_linux; then
@@ -999,6 +1000,10 @@ detect_linuxbrew() {
     fi
   elif is_jenkins; then
     log "Warning: '$version_for_jenkins_file' does not exist"
+  fi
+
+  if [[ -n $user_specified_linuxbrew_dir ]]; then
+    candidates=( "$user_specified_linuxbrew_dir" "${candidates[@]}" )
   fi
 
   local linuxbrew_dir

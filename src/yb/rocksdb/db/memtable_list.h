@@ -109,6 +109,8 @@ class MemTableListVersion {
   // History.
   SequenceNumber GetEarliestSequenceNumber(bool include_history = false) const;
 
+  std::string ToString() const;
+
  private:
   // REQUIRE: m is an immutable memtable
   void Add(MemTable* m, autovector<MemTable*>* to_delete);
@@ -232,6 +234,8 @@ class MemTableList {
   // void operator=(const MemTableList&);
 
   size_t* current_memory_usage() { return &current_memory_usage_; }
+
+  std::string ToString();
 
  private:
   // DB mutex held

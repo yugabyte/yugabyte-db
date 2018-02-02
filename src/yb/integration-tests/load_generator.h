@@ -124,6 +124,7 @@ class MultiThreadedAction {
   void Stop() { stop_requested_->store(true); }
   bool IsStopRequested() { return stop_requested_->load(); }
   void set_client_id(const std::string& client_id) { client_id_ = client_id; }
+  bool IsRunning() { return running_threads_latch_.count() > 0; }
 
  protected:
   friend class SingleThreadedReader;
@@ -148,6 +149,7 @@ class MultiThreadedAction {
   yb::CountDownLatch running_threads_latch_;
 
   std::atomic_bool* const stop_requested_;
+  std::atomic<bool> paused_ { false };
 
   const int value_size_;
 };
@@ -175,6 +177,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
   int num_write_errors() { return failed_keys_.NumElements(); }
   void AssertSucceeded() { ASSERT_EQ(num_write_errors(), 0); }
 
+  void set_pause_flag(std::atomic<bool>* pause_flag) { pause_flag_ = pause_flag; }
+
  private:
   friend class SingleThreadedWriter;
   friend class RedisSingleThreadedWriter;
@@ -193,7 +197,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
   std::atomic<int64_t> next_key_;
   std::atomic<int64_t> inserted_up_to_inclusive_;
 
-  int max_num_write_errors_;
+  int max_num_write_errors_ = 0;
+  std::atomic<bool>* pause_flag_ = nullptr;
 };
 
 class SingleThreadedWriter {
@@ -201,7 +206,7 @@ class SingleThreadedWriter {
   SingleThreadedWriter(MultiThreadedWriter* writer, int writer_index)
       : multi_threaded_writer_(writer), writer_index_(writer_index) {}
   virtual ~SingleThreadedWriter() {}
-
+  void set_pause_flag(std::atomic<bool>* pause_flag) { pause_flag_ = pause_flag; }
   void Run();
 
  protected:
@@ -215,6 +220,8 @@ class SingleThreadedWriter {
 
   // Returns true if the calling writer thread should stop.
   virtual void HandleInsertionFailure(int64_t key_index, const string& key_str) = 0;
+
+  std::atomic<bool>* pause_flag_ = nullptr;
 };
 
 class YBSingleThreadedWriter : public SingleThreadedWriter {
@@ -295,12 +302,12 @@ enum class ReadStatus { OK, NO_ROWS, OTHER_ERROR };
 class MultiThreadedReader : public MultiThreadedAction {
  public:
   MultiThreadedReader(int64_t num_keys, int num_reader_threads,
-                        SessionFactory* session_factory,
-                        std::atomic<int64_t>* insertion_point,
-                        const KeyIndexSet* inserted_keys,
-                        const KeyIndexSet* failed_keys,
-                        std::atomic_bool* stop_flag, int value_size,
-                        int max_num_read_errors, bool stop_on_empty_read);
+                      SessionFactory* session_factory,
+                      std::atomic<int64_t>* insertion_point,
+                      const KeyIndexSet* inserted_keys,
+                      const KeyIndexSet* failed_keys,
+                      std::atomic_bool* stop_flag, int value_size,
+                      int max_num_read_errors, bool stop_on_empty_read);
 
   void IncrementReadErrorCount(ReadStatus read_status);
 

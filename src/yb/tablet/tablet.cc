@@ -803,14 +803,8 @@ Status Tablet::AcquireLocksAndPerformDocOperations(
 }
 
 Status Tablet::Flush(FlushMode mode) {
-  return FlushUnlocked(mode);
-}
+  TRACE_EVENT0("tablet", "Tablet::Flush");
 
-Status Tablet::FlushUnlocked(FlushMode mode) {
-  TRACE_EVENT0("tablet", "Tablet::FlushUnlocked");
-
-  // TODO(bojanserafimov): Can raise null pointer exception if
-  // the tablet just got shutdown. Acquire a read lock on component_lock_?
   rocksdb::FlushOptions options;
   options.wait = mode == FlushMode::kSync;
   rocksdb_->Flush(options);
@@ -1125,6 +1119,14 @@ Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch
 }
 
 } // namespace
+
+Status Tablet::TEST_SwitchMemtable() {
+  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_operation);
+
+  rocksdb_->TEST_SwitchMemtable();
+  return Status::OK();
+}
 
 Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
                                       const WriteOperationData& data) {
