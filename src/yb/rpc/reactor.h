@@ -94,13 +94,11 @@ class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
   // Run the task. 'reactor' is guaranteed to be the current thread.
   virtual void Run(Reactor *reactor) = 0;
 
-  // Abort the task, in the case that the reactor shut down before the
-  // task could be processed. This may or may not run on the reactor thread
-  // itself.
-  // If this is run not on reactor thread, then reactor thread should be already shut down.
+  // Abort the task, in the case that the reactor shut down before the task could be processed. This
+  // may or may not run on the reactor thread itself.  If this is run not on the reactor thread,
+  // then reactor thread should have already been shut down.
   //
-  // The Reactor guarantees that the Reactor lock is free when this
-  // method is called.
+  // The Reactor guarantees that the Reactor lock is free when this method is called.
   virtual void Abort(const Status &abort_status) {}
 
   virtual ~ReactorTask();
@@ -174,7 +172,7 @@ class DelayedTask : public ReactorTask {
   void AbortTask(const Status& abort_status);
 
  private:
-  // Set done_ to true if not set and return true. If done_ is already set, return false;
+  // Set done_ to true if not set and return true. If done_ is already set, return false.
   bool MarkAsDone();
 
   // libev callback for when the registered timer fires.
@@ -367,9 +365,6 @@ class Reactor {
   ev::timer timer_;
 
   // Scheduled (but not yet run) delayed tasks.
-  //
-  // Each task owns its own memory and must be freed by its TaskRun and
-  // Abort members, provided it was allocated on the heap.
   std::set<std::shared_ptr<DelayedTask>> scheduled_tasks_;
 
   std::vector<std::shared_ptr<ReactorTask>> async_handler_tasks_;

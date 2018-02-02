@@ -165,7 +165,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   // pool, rather than a reactor thread, so it may do blocking IO operations.
   void DoRpcCallback();
 
-  Master * const master_;
+  Master* const master_;
   ThreadPool* const callback_pool_;
   const gscoped_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
@@ -202,6 +202,9 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Clean up request and release resources. May call 'delete this'.
   void UnregisterAsyncTask();
+
+  // Only abort this task on reactor if it has been scheduled.
+  void AbortIfScheduled();
 
   // Use state() and MarkX() accessors.
   std::atomic<State> state_;

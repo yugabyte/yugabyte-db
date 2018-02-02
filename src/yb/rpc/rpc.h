@@ -84,8 +84,7 @@ YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kWaiting)(kFinished));
 class RpcRetrier {
  public:
   RpcRetrier(MonoTime deadline, std::shared_ptr<rpc::Messenger> messenger)
-      : attempt_num_(1),
-        deadline_(std::move(deadline)),
+      : deadline_(std::move(deadline)),
         messenger_(std::move(messenger)) {
     if (deadline_.Initialized()) {
       controller_.set_deadline(deadline_);
@@ -139,7 +138,7 @@ class RpcRetrier {
   void DoRetry(RpcCommand* rpc, const Status& status);
 
   // The next sent rpc will be the nth attempt (indexed from 1).
-  int attempt_num_;
+  int attempt_num_ = 1;
 
   // If the remote end is busy, the RPC will be retried (with a small
   // delay) until this deadline is reached.
@@ -169,8 +168,8 @@ class Rpc : public RpcCommand {
  public:
   Rpc(const MonoTime& deadline,
       const std::shared_ptr<rpc::Messenger>& messenger)
-  : retrier_(deadline, messenger) {
-  }
+      : retrier_(deadline, messenger) {
+      }
 
   virtual ~Rpc() {}
 
