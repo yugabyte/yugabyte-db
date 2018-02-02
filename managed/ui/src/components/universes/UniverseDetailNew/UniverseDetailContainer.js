@@ -6,7 +6,7 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchU
   fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
   getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader
 } from '../../../actions/universe';
-import {deleteNode, deleteNodeResponse} from '../../../actions/cloud';
+import {deleteNode, deleteNodeResponse} from '../../../actions/node';
 
 const mapDispatchToProps = (dispatch) => {
   return {

@@ -60,6 +60,18 @@ export default class NodeDetails extends Component {
     this.props.deleteNode(node.name, universeUUID);
   }
 
+  stopNode(node) {
+    const {universe: {currentUniverse}} = this.props;
+    const universeUUID = currentUniverse.data.universeUUID;
+    this.props.stopNodeInUniverse(node.name, universeUUID);
+  }
+
+  startNode(node) {
+    const {universe: {currentUniverse}} = this.props;
+    const universeUUID = currentUniverse.data.universeUUID;
+    this.props.startNodeInUniverse(node.name, universeUUID);
+  }
+
   render() {
     const { universe: {currentUniverse, universePerNodeStatus, universeMasterLeader}} = this.props;
     const self = this;
@@ -77,7 +89,7 @@ export default class NodeDetails extends Component {
       let nodeStatus = "-";
 
       if (!inLoadingOrInitState && isNonEmptyObject(universePerNodeStatus.data)
-          && isNonEmptyObject(universePerNodeStatus.data[nodeDetail.nodeName])) {
+        && isNonEmptyObject(universePerNodeStatus.data[nodeDetail.nodeName])) {
         nodeStatus = insertSpacesFromCamelCase(universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]);
       }
       return {
@@ -100,16 +112,16 @@ export default class NodeDetails extends Component {
       }
       const isMaster = type === "master";
       if (isMaster && isDefinedNotNull(universeMasterLeader) && getPromiseState(universeMasterLeader).isSuccess()
-          && universeMasterLeader.data.privateIP === row.privateIP) {
+        && universeMasterLeader.data.privateIP === row.privateIP) {
         cell += " (Leader)";
       }
       const href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
       let statusDisplay = (!self.state.universeCreated || inLoadingOrInitState) ? loadingIcon : warningIcon;
       if (self.state.universeCreated && isDefinedNotNull(currentUniverse.data) && !inLoadingOrInitState) {
         if (isDefinedNotNull(universePerNodeStatus.data) &&
-            universePerNodeStatus.data.universe_uuid === currentUniverse.data.universeUUID &&
-            isDefinedNotNull(universePerNodeStatus.data[row.name]) &&
-            universePerNodeStatus.data[row.name][isMaster ? "master_alive" : "tserver_alive"]) {
+          universePerNodeStatus.data.universe_uuid === currentUniverse.data.universeUUID &&
+          isDefinedNotNull(universePerNodeStatus.data[row.name]) &&
+          universePerNodeStatus.data[row.name][isMaster ? "master_alive" : "tserver_alive"]) {
           statusDisplay = successIcon;
         }
         return <span>{statusDisplay}&nbsp;<a href={href} target="_blank" rel="noopener noreferrer">{cell}</a></span>;
@@ -134,6 +146,12 @@ export default class NodeDetails extends Component {
     const getNodeAction = function(cell, row, type) {
       if (isNodeRemovable(row.nodeStatus)) {
         return <YBButton btnText="Delete" onClick={self.deleteNode.bind(self, row)}/>;
+      }
+      if (row.nodeStatus === "Running") {
+       // return <YBButton btnText="Stop" onClick={self.stopNode.bind(self, row)}/>;
+      }
+      if (row.nodeStatus === "Stopped") {
+       // return <YBButton btnText="Start" onClick={self.startNode.bind(self, row)}/>;
       }
     };
 

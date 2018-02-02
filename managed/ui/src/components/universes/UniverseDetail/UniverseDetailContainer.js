@@ -6,15 +6,16 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchU
   fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
   getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader
 } from '../../../actions/universe';
-import {deleteNode, deleteNodeResponse} from '../../../actions/cloud';
+
+import {stopNode, stopNodeResponse, startNode, startNodeResponse, deleteNode, deleteNodeResponse} from '../../../actions/node';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     getUniverseInfo: (uuid) => {
       dispatch(fetchUniverseInfo(uuid))
-      .then((response) => {
-        dispatch(fetchUniverseInfoResponse(response.payload));
-      });
+        .then((response) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
     },
 
     getMasterLeader: (uuid) => {
@@ -43,9 +44,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     fetchUniverseTasks: (uuid) => {
       dispatch(fetchUniverseTasks(uuid))
-      .then((response) => {
-        dispatch(fetchUniverseTasksResponse(response.payload));
-      });
+        .then((response) => {
+          dispatch(fetchUniverseTasksResponse(response.payload));
+        });
     },
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
@@ -80,6 +81,18 @@ const mapDispatchToProps = (dispatch) => {
 
           }
         });
+    },
+
+    stopNodeInUniverse: (nodeName, universeUUID) => {
+      dispatch(stopNode(nodeName, universeUUID)).then((response) => {
+        dispatch(stopNodeResponse(response.payload));
+      });
+    },
+
+    startNodeInUniverse: (nodeName, universeUUID) => {
+      dispatch(startNode(nodeName, universeUUID)).then((response) => {
+        dispatch(startNodeResponse(response.payload));
+      });
     }
   };
 };
