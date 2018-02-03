@@ -1,0 +1,197 @@
+# 
+# Overall Design:
+#   There are two Kubernetes StatefulSets in this yaml file - yb-master and yb-tserver. Each of
+#   these has the following:
+#    - a headless service to expose a DNS entry for discovery
+#    - a service to expose end-points to the outside world
+#    - the stateful set itself
+#
+# Using YB with k8s
+#    - Create cluster    : kubectl apply -f yugabyte-statefulset.yaml
+#    - List the pods     : kubectl get pods
+#    - Run cqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
+#    - Run Redis cli     : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
+#    - Connect to the ui : kubectl port-forward yb-master-0 7000
+#                          You can now view the UI at http://localhost:7000
+#    - Destroy cluster   : kubectl delete -f yugabyte-statefulset.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  # This is a "headless" service for the yb-master which exists to allow discovery of the set of
+  # member pods (masters). The CNAME of this service points to SRV records - one for each Pod that
+  # is Running and Ready). Read more in the Kubernetes docs:
+  # https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/
+  name: yb-masters
+  labels:
+    app: yb-master
+spec:
+  clusterIP: None
+  ports:
+  - name: ui
+    port: 7000
+  - name: rpc-port
+    port: 7100
+  selector:
+    app: yb-master
+---
+apiVersion: apps/v1beta2
+kind: StatefulSet
+metadata:
+  name: yb-master
+  labels:
+    app: yb-master
+spec:
+  serviceName: yb-masters
+  podManagementPolicy: "Parallel"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: yb-master
+  template:
+    metadata:
+      labels:
+        app: yb-master
+    spec:
+      affinity:
+        # Set the anti-affinity selector scope to YB masters.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - yb-master
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: yb-master
+        image: yugabytedb/yugabyte:latest
+        imagePullPolicy: Always
+        command:
+          - "/home/yugabyte/bin/yb-master"
+          - "--fs_data_dirs=/mnt/data0"
+          - "--master_addresses=yb-masters.default.svc.cluster.local:7100"
+          - "--master_replication_factor=3"
+        ports:
+        - containerPort: 7000
+          name: master-ui
+        - containerPort: 7100
+          name: master-rpc
+#        readinessProbe:
+#          tcpSocket:
+#            port: 7100
+#          initialDelaySeconds: 5
+#          periodSeconds: 10
+#        livenessProbe:
+#          tcpSocket:
+#            port: 7100
+#          initialDelaySeconds: 15
+#          periodSeconds: 10
+
+        # These volume mounts are persistent. They are like inline claims,
+        # but not exactly because the names need to match exactly one of
+        # the stateful pod volumes.
+#        volumeMounts:
+#        - name: datadir
+#          mountPath: /mnt/data0
+  updateStrategy:
+    type: RollingUpdate
+  # These are converted to volume claims by the controller
+  # and mounted at the paths mentioned above.
+  # do not use these in production until ssd GCEPersistentDisk or other ssd pd
+#  volumeClaimTemplates:
+#  - metadata:
+#      name: datadir
+#    spec:
+#      accessModes: [ "ReadWriteOnce" ]
+#      resources:
+#        requests:
+#          storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # This is a "headless" service for the yb-tserver which exists to allow discovery of the set of
+  # member pods (tservers).
+  name: yb-tservers
+  labels:
+    app: yb-tserver
+spec:
+  clusterIP: None
+  ports:
+  - name: ui
+    port: 7000
+  - name: rpc-port
+    port: 7100
+  selector:
+    app: yb-tserver
+---
+apiVersion: apps/v1beta2
+kind: StatefulSet
+metadata:
+  name: yb-tserver
+  labels:
+    app: yb-tserver
+spec:
+  serviceName: yb-tservers
+  podManagementPolicy: "Parallel"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: yb-tserver
+  template:
+    metadata:
+      labels:
+        app: yb-tserver
+    spec:
+      affinity:
+        # Set the anti-affinity selector scope to YB tservers here.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - yb-tserver
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: yb-tserver
+        image: yugabytedb/yugabyte:latest
+        imagePullPolicy: Always
+        command:
+          - "/home/yugabyte/bin/yb-tserver"
+          - "--fs_data_dirs=/mnt/data0"
+          - "--tserver_master_addrs=yb-masters.default.svc.cluster.local:7100"
+        ports:
+        - containerPort: 9000
+          name: tserver-ui
+        - containerPort: 9100
+          name: tserver-rpc
+        - containerPort: 9042
+          name: cql
+        # These volume mounts are persistent. They are like inline claims,
+        # but not exactly because the names need to match exactly one of
+        # the stateful pod volumes.
+#        volumeMounts:
+#        - name: datadir
+#          mountPath: /mnt/data0
+  updateStrategy:
+    type: RollingUpdate
+  # These are converted to volume claims by the controller
+  # and mounted at the paths mentioned above.
+  # do not use these in production until ssd GCEPersistentDisk or other ssd pd
+#  volumeClaimTemplates:
+#  - metadata:
+#      name: datadir
+#    spec:
+#      accessModes: [ "ReadWriteOnce" ]
+#      resources:
+#        requests:
+#          storage: 10Gi
