@@ -301,3 +301,14 @@ message TruncateResponsePB {
   optional TabletServerErrorPB error = 1;
   optional fixed64 propagated_hybrid_time = 2;
 }
+
+// Tablet's status request
+message GetTabletStatusRequestPB {
+  optional bytes tablet_id = 1;
+}
+
+// Tablet's status response
+message GetTabletStatusResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional tablet.TabletStatusPB tablet_status = 2;
+}

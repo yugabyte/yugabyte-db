@@ -60,6 +60,7 @@ service TabletServerService {
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
   rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
+  rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
 }
 
 message GetLogLocationRequestPB {

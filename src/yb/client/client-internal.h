@@ -158,12 +158,16 @@ class YBClient::Data {
   // Returns a non-failed replica of the specified tablet based on the provided selection criteria
   // and tablet server blacklist.
   //
+  // In case a local tablet server was marked as failed because the tablet was not in the RUNNING
+  // state, we will update the internal state of the local tablet server if the tablet is in the
+  // RUNNING state.
+  //
   // Returns NULL if there are no valid tablet servers.
   internal::RemoteTabletServer* SelectTServer(
-      const internal::RemoteTablet* rt,
+      internal::RemoteTablet* rt,
       const ReplicaSelection selection,
       const std::set<std::string>& blacklist,
-      std::vector<internal::RemoteTabletServer*>* candidates) const;
+      std::vector<internal::RemoteTabletServer*>* candidates);
 
   // Sets 'master_proxy_' from the address specified by
   // 'leader_master_hostport_'.  Called by

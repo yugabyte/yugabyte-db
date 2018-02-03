@@ -145,6 +145,7 @@ namespace client {
 using internal::GetTableSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
+using internal::UpdateLocalTsState;
 
 Status RetryFunc(
     const MonoTime& deadline, const string& retry_msg, const string& timeout_msg,
@@ -385,10 +386,10 @@ YBClient::Data::~Data() {
   rpcs_.Shutdown();
 }
 
-RemoteTabletServer* YBClient::Data::SelectTServer(const RemoteTablet* rt,
+RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
                                                   const ReplicaSelection selection,
                                                   const set<string>& blacklist,
-                                                  vector<RemoteTabletServer*>* candidates) const {
+                                                  vector<RemoteTabletServer*>* candidates) {
   RemoteTabletServer* ret = nullptr;
   candidates->clear();
   switch (selection) {
@@ -404,7 +405,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(const RemoteTablet* rt,
     }
     case CLOSEST_REPLICA:
     case FIRST_REPLICA: {
-      rt->GetRemoteTabletServers(candidates);
+      rt->GetRemoteTabletServers(candidates, UpdateLocalTsState::kTrue);
       // Filter out all the blacklisted candidates.
       vector<RemoteTabletServer*> filtered;
       for (RemoteTabletServer* rts : *candidates) {
