@@ -1314,6 +1314,21 @@ void TabletServiceImpl::ImportData(const ImportDataRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetTabletStatus(const GetTabletStatusRequestPB* req,
+                                        GetTabletStatusResponsePB* resp,
+                                        rpc::RpcContext context) {
+  VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
+  tablet::TabletPeerPtr peer;
+  if (!server_->tablet_manager()->LookupTablet(req->tablet_id(), &peer)) {
+    TabletServerErrorPB::Code code = TabletServerErrorPB::TABLET_NOT_FOUND;
+    auto status = STATUS(NotFound, "Tablet not found", req->tablet_id());
+    SetupErrorAndRespond(resp->mutable_error(), status, code, &context);
+    return;
+  }
+  peer->GetTabletStatusPB(resp->mutable_tablet_status());
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Shutdown() {
 }
 

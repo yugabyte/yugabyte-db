@@ -68,6 +68,7 @@ using master::TabletLocationsPB_ReplicaPB;
 using master::TSInfoPB;
 using rpc::Messenger;
 using rpc::Rpc;
+using tablet::TabletStatePB;
 using tserver::TabletServerServiceProxy;
 
 namespace client {
@@ -157,6 +158,10 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   cloud_info_pb_ = pb.cloud_info();
 }
 
+bool RemoteTabletServer::IsLocal() const {
+  return proxy_ != nullptr && proxy_->IsServiceLocal();
+}
+
 const std::string& RemoteTabletServer::permanent_uuid() const {
   return uuid_;
 }
@@ -167,7 +172,6 @@ const CloudInfoPB& RemoteTabletServer::cloud_info() const {
 
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
   std::lock_guard<simple_spinlock> l(lock_);
-  CHECK(proxy_);
   return proxy_;
 }
 
@@ -258,13 +262,81 @@ bool RemoteTablet::HasLeader() const {
   return LeaderTServer() != nullptr;
 }
 
-void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) const {
+void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers,
+                                          UpdateLocalTsState update_local_ts_state) {
+  DCHECK(servers->empty());
   std::lock_guard<simple_spinlock> l(lock_);
-  for (const RemoteReplica& replica : replicas_) {
+  for (RemoteReplica& replica : replicas_) {
     if (replica.failed) {
       continue;
     }
     servers->push_back(replica.ts);
+  }
+
+  if (!update_local_ts_state || servers->size() == replicas_.size()) {
+    return;
+  }
+
+  RemoteReplica* local_failed_replica = nullptr;
+  for (RemoteReplica& replica : replicas_) {
+    if (replica.failed && replica.ts->IsLocal()) {
+      local_failed_replica = &replica;
+      break;
+    }
+  }
+
+  if (local_failed_replica == nullptr) {
+    return;
+  }
+
+  const auto& local_ts_uuid = local_failed_replica->ts->permanent_uuid();
+
+  // If this is the local tablet server, then we will issue an RPC to find out if the state of
+  // the tablet has changed, but only if the tablet wasn't in a terminal state.
+  auto it = replica_tablet_state_map_.find(local_ts_uuid);
+
+  if (it != replica_tablet_state_map_.end()) {
+    switch(it->second) {
+      case TabletStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
+      case TabletStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
+      case TabletStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
+      case TabletStatePB::RUNNING:
+        break;
+      case TabletStatePB::FAILED: FALLTHROUGH_INTENDED;
+      case TabletStatePB::QUIESCING: FALLTHROUGH_INTENDED;
+      case TabletStatePB::SHUTDOWN:
+        // These are terminal states, so we won't call GetTabletStatus.
+        return;
+    }
+  }
+
+  tserver::GetTabletStatusRequestPB req;
+  tserver::GetTabletStatusResponsePB resp;
+  rpc::RpcController rpc;
+  req.set_tablet_id(tablet_id_);
+  auto status = local_failed_replica->ts->proxy()->GetTabletStatus(req, &resp, &rpc);
+  if (!status.ok() || resp.has_error()) {
+    LOG(ERROR) << "Received error from GetTabletStatus: "
+               << !status.ok() ? status.ToString() :
+                                 StatusFromPB(resp.error().status()).ToString();
+    return;
+  }
+
+  replica_tablet_state_map_[local_ts_uuid] = resp.tablet_status().state();
+  DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
+  VLOG(3) << "GetTabletStatus returned status: "
+          << tablet::TabletStatePB_Name(resp.tablet_status().state())
+          << " for tablet " << tablet_id_;
+  if (resp.tablet_status().state() == tablet::TabletStatePB::RUNNING) {
+    VLOG(3) << "Changing state of replica " << local_failed_replica->ts->ToString()
+            << " for tablet " << tablet_id_ << " from failed to not failed";
+
+    local_failed_replica->failed = false;
+    servers->push_back(local_failed_replica->ts);
+  } else {
+    VLOG(3) << "Replica " << local_failed_replica->ts->ToString() << " state for tablet "
+            << tablet_id_ << " is "
+            << tablet::TabletStatePB_Name(resp.tablet_status().state());
   }
 }
 
@@ -333,8 +405,12 @@ void MetaCache::Shutdown() {
 
 void MetaCache::AddTabletServerProxy(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy) {
-  CHECK(ts_cache_.emplace(
-      permanent_uuid, std::make_unique<RemoteTabletServer>(permanent_uuid, proxy)).second);
+  const auto entry = ts_cache_.emplace(permanent_uuid,
+                                       std::make_unique<RemoteTabletServer>(permanent_uuid, proxy));
+  CHECK(entry.second);
+  if (entry.first->second->IsLocal()) {
+    local_tserver_ = entry.first->second.get();
+  }
 }
 
 void MetaCache::UpdateTabletServer(const master::TSInfoPB& pb) {

@@ -104,6 +104,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
 
+  void GetTabletStatus(const GetTabletStatusRequestPB* req,
+                       GetTabletStatusResponsePB* resp,
+                       rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

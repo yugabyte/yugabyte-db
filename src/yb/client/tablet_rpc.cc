@@ -86,7 +86,7 @@ void TabletInvoker::SelectTabletServer()  {
   if (!current_ts_) {
     // Try to "guess" the next leader.
     vector<RemoteTabletServer*> replicas;
-    tablet_->GetRemoteTabletServers(&replicas);
+    tablet_->GetRemoteTabletServers(&replicas, UpdateLocalTsState::kFalse);
     for (RemoteTabletServer* ts : replicas) {
       if (!ContainsKey(followers_, ts)) {
         current_ts_ = ts;

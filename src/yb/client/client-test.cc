@@ -660,7 +660,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
     ASSERT_OK(sync.Wait());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
-    rt->GetRemoteTabletServers(&tservers);
+    rt->GetRemoteTabletServers(&tservers, internal::UpdateLocalTsState::kFalse);
     if (tservers.size() == 3) {
       break;
     }

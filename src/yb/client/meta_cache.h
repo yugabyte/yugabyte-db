@@ -51,6 +51,8 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
+#include "yb/tablet/metadata.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -88,6 +90,8 @@ class LookupByIdRpc;
 
 // The information cached about a given tablet server in the cluster.
 //
+// A RemoteTabletServer could be the local tablet server.
+//
 // This class is thread-safe.
 class RemoteTabletServer {
  public:
@@ -103,6 +107,9 @@ class RemoteTabletServer {
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
   void Update(const master::TSInfoPB& pb);
+
+  // Is this tablet server local?
+  bool IsLocal() const;
 
   // Return the current proxy to this tablet server. Requires that InitProxy()
   // be called prior to this.
@@ -142,6 +149,8 @@ struct RemoteReplica {
 };
 
 typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
+
+YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 
 // The client's view of a given tablet. This object manages lookups of
 // the tablet's locations, status, etc.
@@ -191,7 +200,11 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   // Writes this tablet's TSes (across all replicas) to 'servers'. Skips
   // failed replicas.
-  void GetRemoteTabletServers(std::vector<RemoteTabletServer*>* servers) const;
+  //
+  // If 'update_local_ts' is kTrue and the failed replica is the local tserver, then mark this
+  // replica as available and add it to 'servers' if the state of the tablet has changed to RUNNING.
+  void GetRemoteTabletServers(std::vector<RemoteTabletServer*>* servers,
+                              UpdateLocalTsState update_local_ts_state);
 
   // Return true if the tablet currently has a known LEADER replica
   // (i.e the next call to LeaderTServer() is likely to return non-NULL)
@@ -223,6 +236,9 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable simple_spinlock lock_;
   bool stale_;
   std::vector<RemoteReplica> replicas_;
+
+  // The state of this tablet at each specific replica. Only updated after calling GetTabletStatus.
+  std::unordered_map<std::string, tablet::TabletStatePB> replica_tablet_state_map_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTablet);
 };
@@ -314,6 +330,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   //
   // Protected by lock_.
   TabletServerMap ts_cache_;
+
+  // Local tablet server.
+  RemoteTabletServer* local_tserver_ = nullptr;
 
   // Cache of tablets, keyed by table ID, then by start partition key.
   //
