@@ -8,6 +8,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/string_util.h"
 
 namespace yb {
 namespace tools {
@@ -64,13 +65,14 @@ Status ClusterAdminClient::ListSnapshots() {
   }
 
   if (resp.snapshots_size()) {
-    cout << "\tSnapshot UUID\t\t  State" << endl;
+    cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep
+         << "State" << endl;
   } else {
     cout << "No snapshots" << endl;
   }
 
   for (int i = 0; i < resp.snapshots_size(); ++i) {
-    cout << resp.snapshots(i).id() << "  "
+    cout << resp.snapshots(i).id() << kColumnSep
          << resp.snapshots(i).entry().state() << endl;
   }
 
@@ -123,15 +125,28 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
     return StatusFromPB(resp.error().status());
   }
 
-  DCHECK_EQ(resp.snapshots_size(), 1);
-  const SnapshotInfoPB& snapshot = resp.snapshots(0);
+  const SnapshotInfoPB* snapshot = nullptr;
+  for (const auto& snapshot_entry : resp.snapshots()) {
+    if (snapshot_entry.id() == snapshot_id) {
+      snapshot = &snapshot_entry;
+      break;
+    }
+  }
+  if (!snapshot) {
+    return STATUS_FORMAT(
+        InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
+        resp.snapshots_size(), snapshot_id);
+  }
+  if (resp.snapshots_size() > 1) {
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
+  }
 
-  DCHECK_EQ(snapshot.id(), snapshot_id);
   cout << "Exporting snapshot " << snapshot_id << " ("
-       << snapshot.entry().state() << ") to file " << file_name << endl;
+       << snapshot->entry().state() << ") to file " << file_name << endl;
 
   string str;
-  if (!snapshot.SerializeToString(&str)) {
+  if (!snapshot->SerializeToString(&str)) {
     return STATUS_FORMAT(
         InternalError, "Failed snapshot serialization to string: $0", snapshot_id);
   }
@@ -169,8 +184,15 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
     return StatusFromPB(resp.error().status());
   }
 
+  const int kObjectColumnWidth = 16;
+  const auto pad_object_type = [](const string& s) {
+    return RightPadToWidth(s, kObjectColumnWidth);
+  };
+
   cout << "Successfully applied snapshot." << endl
-       << "Object\t\t Old ID\t\t\t\t\t New ID" << endl;
+       << pad_object_type("Object") << kColumnSep
+       << RightPadToUuidWidth("Old ID") << kColumnSep
+       << RightPadToUuidWidth("New ID") << endl;
 
   const RepeatedPtrField<ImportSnapshotMetaResponsePB_TableMetaPB>& tables_meta =
       resp.tables_meta();
@@ -183,14 +205,20 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
     const ImportSnapshotMetaResponsePB_TableMetaPB& table_meta = tables_meta.Get(i);
     const string& new_table_id = table_meta.table_ids().new_id();
 
-    cout << "Keyspace\t " << table_meta.namespace_ids().old_id() << "\t "
-         << table_meta.namespace_ids().new_id() << endl
-         << "Table\t\t " << table_meta.table_ids().old_id()  << "\t " << new_table_id << endl;
+    cout << pad_object_type("Keyspace") << kColumnSep
+         << table_meta.namespace_ids().old_id() << kColumnSep
+         << table_meta.namespace_ids().new_id() << endl;
+
+    cout << pad_object_type("Table") << kColumnSep
+         << table_meta.table_ids().old_id() << kColumnSep
+         << new_table_id << endl;
 
     const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
     for (int j = 0; j < tablets_map.size(); ++j) {
       const IdPairPB& pair = tablets_map.Get(j);
-      cout << "Tablet" << j << "  \t " << pair.old_id() << "\t " << pair.new_id() << endl;
+      cout << pad_object_type(Format("Tablet $0", j)) << kColumnSep
+           << pair.old_id() << kColumnSep
+           << pair.new_id() << endl;
     }
 
     // Wait for table creation.
@@ -219,7 +247,8 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
   // Create new snapshot.
   rpc.Reset();
   RETURN_NOT_OK(master_backup_proxy_->CreateSnapshot(snapshot_req, &snapshot_resp, &rpc));
-  cout << "Snapshot\t " << snapshot_info->id() << "\t "
+  cout << pad_object_type("Snapshot") << kColumnSep
+       << snapshot_info->id() << kColumnSep
        << snapshot_resp.snapshot_id() << endl;
 
   return Status::OK();
