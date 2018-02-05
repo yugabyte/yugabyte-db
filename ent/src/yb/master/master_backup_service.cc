@@ -12,8 +12,8 @@ namespace master {
 using rpc::RpcContext;
 
 MasterBackupServiceImpl::MasterBackupServiceImpl(Master* server)
-  : MasterBackupServiceIf(server->metric_entity()),
-    MasterServiceBase(server) {
+    : MasterBackupServiceIf(server->metric_entity()),
+      MasterServiceBase(server) {
 }
 
 void MasterBackupServiceImpl::CreateSnapshot(const CreateSnapshotRequestPB* req,
