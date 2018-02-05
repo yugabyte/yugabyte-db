@@ -1266,9 +1266,9 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
     }
     master_server_addrs_.clear();
     master_server_addrs_.push_back(FLAGS_tserver_master_addrs);
-    LOG (INFO) << "New master addresses: " << FLAGS_tserver_master_addrs;
+    LOG(INFO) << "New master addresses: " << FLAGS_tserver_master_addrs;
   } else {
-    LOG(INFO) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
+    VLOG(1) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
   }
   return Status::OK();
 }

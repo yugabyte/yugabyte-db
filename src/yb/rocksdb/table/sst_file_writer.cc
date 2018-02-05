@@ -26,7 +26,7 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

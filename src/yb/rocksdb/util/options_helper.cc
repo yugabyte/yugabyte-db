@@ -37,7 +37,7 @@
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

@@ -116,33 +116,36 @@ else ()
 endif()
 
 set(UTIL_SRCS
+  ${SEMAPHORE_CC}
   allocation_tracker.cc
   atomic.cc
   bitmap.cc
-  bloom_filter.cc
   bitmap.cc
+  bloom_filter.cc
+  bytes_formatter.cc
   cache.cc
   cache_metrics.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
   crc.cc
+  cross_thread_mutex.cc
   crypt.cc
   curl_util.cc
   date_time.cc
-  timestamp.cc
   debug-util.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
+  decimal.cc
   env.cc env_posix.cc env_util.cc
   errno.cc
-  faststring.cc
   failure_detector.cc
+  fast_varint.cc
+  faststring.cc
   fault_injection.cc
-  flags.cc
   flag_tags.cc
-  pstack_watcher.cc
+  flags.cc
   hdr_histogram.cc
   hexdump.cc
   init.cc
@@ -151,67 +154,64 @@ set(UTIL_SRCS
   kernel_stack_watchdog.cc
   locks.cc
   logging.cc
+  main_util.cc
   malloc.cc
   math_util.cc
+  mem_tracker.cc
   memcmpable_varint.cc
+  memenv/memenv.cc
   memory/arena.cc
   memory/mc_types.cc
   memory/memory.cc
-  memenv/memenv.cc
-  mem_tracker.cc
   metrics.cc
   monotime.cc
   mutex.cc
   net/dns_resolver.cc
+  net/inetaddress.cc
   net/net_util.cc
   net/sockaddr.cc
-  net/inetaddress.cc
   net/socket.cc
   oid_generator.cc
   once.cc
   opid.cc
   os-util.cc
   path_util.cc
-  pb_util.cc
   pb_util-internal.cc
-  ref_cnt_buffer.cc
+  pb_util.cc
+  pending_op_counter.cc
+  port_picker.cc
+  pstack_watcher.cc
   random_util.cc
+  ref_cnt_buffer.cc
   resettable_heartbeater.cc
   rolling_log.cc
   rw_mutex.cc
   rwc_lock.cc
-  ${SEMAPHORE_CC}
   slice.cc
-  split.cc
   spinlock_profiling.cc
+  split.cc
   status.cc
   status_callback.cc
   stol_utils.cc
   string_case.cc
+  string_trim.cc
+  string_util.cc
   striped64.cc
   subprocess.cc
   sync_point.cc
   test_graph.cc
   thread.cc
+  thread_restrictions.cc
   threadlocal.cc
   threadpool.cc
-  thread_restrictions.cc
+  timestamp.cc
   trace.cc
-  user.cc
-  url-coding.cc
-  version_info.cc
-  string_packer.cc
-  bytes_formatter.cc
-  cross_thread_mutex.cc
-  string_trim.cc
   trilean.cc
-  pending_op_counter.cc
-  varint.cc
-  decimal.cc
-  port_picker.cc
+  url-coding.cc
+  user.cc
   uuid.cc
-  fast_varint.cc
-  main_util.cc
+  varint.cc
+  version_info.cc
   )
 
 if(NOT APPLE)
@@ -376,7 +376,6 @@ ADD_YB_TEST(tostring-test)
 ADD_YB_TEST(trace-test)
 ADD_YB_TEST(url-coding-test)
 ADD_YB_TEST(user-test)
-ADD_YB_TEST(string_packer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(varint-test)

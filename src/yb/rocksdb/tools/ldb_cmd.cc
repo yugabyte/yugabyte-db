@@ -46,7 +46,7 @@
 #include "yb/rocksdb/port/dirent.h"
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 
 namespace rocksdb {

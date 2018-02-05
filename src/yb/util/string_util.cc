@@ -17,21 +17,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include "yb/util/string_util.h"
+
 #include <sstream>
-#include <string>
-#include <vector>
-#include "yb/rocksdb/util/string_util.h"
 
-namespace rocksdb {
+using std::vector;
+using std::string;
+using std::stringstream;
 
-std::vector<std::string> StringSplit(const std::string& arg, char delim) {
-  std::vector<std::string> splits;
-  std::stringstream ss(arg);
-  std::string item;
-  while (std::getline(ss, item, delim)) {
+namespace yb {
+
+vector<string> StringSplit(const string& arg, char delim) {
+  vector<string> splits;
+  stringstream ss(arg);
+  string item;
+  while (getline(ss, item, delim)) {
     splits.push_back(item);
   }
   return splits;
 }
 
-}  // namespace rocksdb
+std::string RightPadToWidth(const string& s, int w) {
+  int padding = w - s.size();
+  if (padding <= 0)
+    return s;
+  return s + string(padding, ' ');
+}
+
+}  // namespace yb

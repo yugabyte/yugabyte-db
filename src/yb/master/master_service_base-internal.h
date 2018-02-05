@@ -21,7 +21,7 @@
 namespace yb {
 namespace master {
 
-// Template method defintions must go into a header file.
+// Template member function definitions must go into a header file.
 
 template<class RespClass>
 void MasterServiceBase::CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp) {

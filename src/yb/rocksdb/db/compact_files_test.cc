@@ -27,7 +27,7 @@
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 

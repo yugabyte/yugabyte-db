@@ -228,8 +228,11 @@ message SysRowEntry {
   // This is optional.
   optional string id = 2;
 
-  // This is the serialized format of the proto we store.
-  optional string data = 3;
+  // This is the serialized format of the proto we store. This used to be of the "string" type, but
+  // was giving warnings due to non-UTF8 data. This is safe, because "bytes" and "string" are
+  // encoded the same way in Protobuf.
+  // https://groups.google.com/forum/#!msg/protobuf/au6eQBkRT5s/Bhpctql7Q5sJ
+  optional bytes data = 3;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

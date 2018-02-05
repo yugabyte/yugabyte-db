@@ -109,7 +109,7 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_status_updater.h"
 #include "yb/rocksdb/util/thread_status_util.h"

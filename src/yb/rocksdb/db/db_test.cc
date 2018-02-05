@@ -85,7 +85,7 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/util/tsan_util.h"

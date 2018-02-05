@@ -30,7 +30,7 @@
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/port/port.h"

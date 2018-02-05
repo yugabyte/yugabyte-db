@@ -35,6 +35,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
@@ -196,8 +197,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
   }
 
-  std::vector<TSDescriptor*> locs;
-  for (const string& tablet_id : req->tablet_ids()) {
+  for (const TabletId& tablet_id : req->tablet_ids()) {
     // TODO: once we have catalog data. ACL checks would also go here, probably.
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     Status s = server_->catalog_manager()->GetTabletLocations(tablet_id, locs_pb);
@@ -448,7 +448,7 @@ void MasterServiceImpl::DumpState(
     }
 
     if (!found) {
-      CHECK(found) << "Did not find leader in raft config";
+      CHECK(found) << "Did not find leader in Raft config";
     }
 
     masters_raft.erase(it);

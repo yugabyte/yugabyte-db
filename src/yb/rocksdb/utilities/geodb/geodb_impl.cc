@@ -31,7 +31,7 @@
 #include <limits>
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 
 //

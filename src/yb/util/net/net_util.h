@@ -72,9 +72,10 @@ class HostPort {
   // HostPort objects. If no port is specified for an entry in the
   // comma separated list, 'default_port' is used for that entry's
   // pair.
-  static CHECKED_STATUS ParseStrings(const std::string& comma_sep_addrs,
-                             uint16_t default_port,
-                             std::vector<HostPort>* res);
+  static CHECKED_STATUS ParseStrings(
+      const std::string& comma_sep_addrs,
+      uint16_t default_port,
+      std::vector<HostPort>* res);
 
   // Takes a vector of HostPort objects and returns a comma separated
   // string containing of "host:port" pairs. This method is the
@@ -87,10 +88,10 @@ class HostPort {
   // Remove a given host/port from a vector of comma separated server multiple addresses, each in
   // [host:port,]+ format and returns a final list as a remaining vector of hostports.
   static CHECKED_STATUS RemoveAndGetHostPortList(
-    const Endpoint& remove,
-    const std::vector<std::string>& multiple_server_addresses,
-    uint16_t default_port,
-    std::vector<HostPort> *res);
+      const Endpoint& remove,
+      const std::vector<std::string>& multiple_server_addresses,
+      uint16_t default_port,
+      std::vector<HostPort> *res);
 
   bool operator==(const HostPort& other) const {
     return host() == other.host() && port() == other.port();
@@ -157,6 +158,9 @@ enum class AddressFilter {
   EXTERNAL, // don't list local loopbacks
 };
 Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter);
+
+// Convert the given host/port pair to a string of the host:port format.
+std::string HostPortToString(const std::string& host, int port);
 
 } // namespace yb
 #endif  // YB_UTIL_NET_NET_UTIL_H

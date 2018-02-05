@@ -488,4 +488,10 @@ bool HostPort::equals(const Endpoint& endpoint) const {
   return endpoint.address().to_string() == host() && endpoint.port() == port();
 }
 
+std::string HostPortToString(const std::string& host, int port) {
+  DCHECK_GE(port, 0);
+  DCHECK_LE(port, 65535);
+  return Format("$0:$1", host, port);
+}
+
 } // namespace yb

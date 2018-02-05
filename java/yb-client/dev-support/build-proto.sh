@@ -44,7 +44,8 @@ if [[ ! -f $PROTOC_BIN ]]; then
   if which protoc > /dev/null; then
     PROTOC_BIN=$( which protoc )
   else
-    fatal 'Error: protoc is missing from the 3rd party folder and on the PATH'
+    fatal "Error: protoc is missing at '$PROTOC_BIN' (YB_THIRDPARTY_DIR=$YB_THIRDPARTY_DIR) and " \
+          "on the PATH"
   fi
 fi
 

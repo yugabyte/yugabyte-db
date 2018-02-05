@@ -21,7 +21,7 @@
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
 
 namespace rocksdb {

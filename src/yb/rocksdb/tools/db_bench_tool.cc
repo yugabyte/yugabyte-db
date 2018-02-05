@@ -73,7 +73,7 @@
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/xxhash.h"

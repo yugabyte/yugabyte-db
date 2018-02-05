@@ -33,7 +33,7 @@
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

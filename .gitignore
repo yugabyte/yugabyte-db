@@ -69,6 +69,6 @@ cscope.out
 build/python_virtual_env
 *.versionsBackup
 
-# We can put this file into a "shared third-party" directory on NFS while it is being built to avoid
-# picking it up during Jenkins tests.
+# We can use this for marking the thirdparty directory inside a working directory as "unusable" so
+# that a shared thirdparty directory would be picked automatically instead.
 .yb_thirdparty_do_not_use

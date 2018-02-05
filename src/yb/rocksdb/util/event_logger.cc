@@ -29,7 +29,7 @@
 #include <sstream>
 #include <string>
 
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

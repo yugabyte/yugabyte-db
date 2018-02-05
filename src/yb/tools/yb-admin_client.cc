@@ -36,12 +36,19 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
+#include "yb/util/protobuf_util.h"
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
+
+PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
+PB_ENUM_FORMATTERS(yb::consensus::RaftPeerPB::Role);
+PB_ENUM_FORMATTERS(yb::AppStatusPB::ErrorCode);
+PB_ENUM_FORMATTERS(yb::tablet::TabletStatePB);
 
 namespace yb {
 namespace tools {
@@ -71,6 +78,30 @@ using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
+
+namespace {
+
+static constexpr const char* kRpcHostPortHeading = "RPC Host/Port";
+
+string FormatHostPort(const HostPortPB& host_port) {
+  return Format("$0:$1", host_port.host(), host_port.port());
+}
+
+string FormatFirstHostPort(
+    const google::protobuf::RepeatedPtrField<yb::HostPortPB>& rpc_addresses) {
+  if (rpc_addresses.empty()) {
+    return "N/A";
+  } else {
+    return FormatHostPort(rpc_addresses.Get(0));
+  }
+}
+
+const int kPartitionRangeColWidth = 56;
+const int kHostPortColWidth = 20;
+const int kTableNameColWidth = 48;
+const int kNumCharactersInUuid = 32;
+
+}  // anonymous namespace
 
 ClusterAdminClient::ClusterAdminClient(string addrs, int64_t timeout_millis)
     : master_addr_list_(std::move(addrs)),
@@ -105,8 +136,8 @@ Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
 }
 
 Status ClusterAdminClient::LeaderStepDown(
-    const string& leader_uuid,
-    const string& tablet_id,
+    const PeerId& leader_uuid,
+    const TabletId& tablet_id,
     std::unique_ptr<ConsensusServiceProxy>* leader_proxy) {
   LeaderStepDownRequestPB req;
   req.set_dest_uuid(leader_uuid);
@@ -124,7 +155,7 @@ Status ClusterAdminClient::LeaderStepDown(
 }
 
 // Force start an election on a randomly chosen non-leader peer of this tablet's raft quorum.
-Status ClusterAdminClient::StartElection(const string& tablet_id) {
+Status ClusterAdminClient::StartElection(const TabletId& tablet_id) {
   Endpoint non_leader_addr;
   string non_leader_uuid;
   RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, FOLLOWER, &non_leader_uuid, &non_leader_addr));
@@ -146,9 +177,9 @@ Status ClusterAdminClient::StartElection(const string& tablet_id) {
 
 // Look up the location of the tablet server leader or non-leader peer from the leader master
 Status ClusterAdminClient::SetTabletPeerInfo(
-    const string& tablet_id,
+    const TabletId& tablet_id,
     PeerMode mode,
-    string* peer_uuid,
+    PeerId* peer_uuid,
     Endpoint* peer_socket) {
   TSInfoPB peer_ts_info;
   RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
@@ -187,9 +218,9 @@ Status ClusterAdminClient::ParseChangeType(
 }
 
 Status ClusterAdminClient::ChangeConfig(
-    const string& tablet_id,
+    const TabletId& tablet_id,
     const string& change_type,
-    const string& peer_uuid,
+    const PeerId& peer_uuid,
     const boost::optional<string>& member_type) {
   CHECK(initted_);
 
@@ -264,7 +295,7 @@ Status ClusterAdminClient::ChangeConfig(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetMasterLeaderInfo(string* leader_uuid) {
+Status ClusterAdminClient::GetMasterLeaderInfo(PeerId* leader_uuid) {
   master::ListMastersRequestPB list_req;
   master::ListMastersResponsePB list_resp;
 
@@ -360,9 +391,9 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   //   Standard deviation:    1.24722
   //   Adjusted deviation %:  10.9717%
   vector<double> leader_dist, best_case, worst_case;
-  std::cout << "\tServer UUID\t\t  Leader Count" << std::endl;
+  std::cout << RightPadToUuidWidth("Server UUID") << kColumnSep << "Leader Count" << std::endl;
   for (const auto& leader_count : leader_counts) {
-    std::cout << leader_count.first << "\t" << leader_count.second << std::endl;
+    std::cout << leader_count.first << kColumnSep << leader_count.second << std::endl;
     leader_dist.push_back(leader_count.second);
   }
 
@@ -499,7 +530,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTabletLocations(const string& tablet_id,
+Status ClusterAdminClient::GetTabletLocations(const TabletId& tablet_id,
                                               TabletLocationsPB* locations) {
   rpc::RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -525,7 +556,8 @@ Status ClusterAdminClient::GetTabletLocations(const string& tablet_id,
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTabletPeer(const string& tablet_id, PeerMode mode,
+Status ClusterAdminClient::GetTabletPeer(const TabletId& tablet_id,
+                                         PeerMode mode,
                                          TSInfoPB* ts_info) {
   TabletLocationsPB locations;
   RETURN_NOT_OK(GetTabletLocations(tablet_id, &locations));
@@ -569,7 +601,7 @@ Status ClusterAdminClient::ListTabletServers(
 }
 
 Status ClusterAdminClient::GetFirstRpcAddressForTS(
-    const std::string& uuid,
+    const PeerId& uuid,
     HostPort* hp) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
@@ -592,12 +624,13 @@ Status ClusterAdminClient::ListAllTabletServers() {
   RETURN_NOT_OK(ListTabletServers(&servers));
 
   if (!servers.empty()) {
-    std::cout << "\tAll Server UUIDs\t  RPC Host/Port" << std::endl;
+    std::cout << RightPadToUuidWidth("Tablet Server UUID") << kColumnSep
+              << kRpcHostPortHeading << std::endl;
   }
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    std::cout << server.instance_id().permanent_uuid() << "  "
-              << server.registration().common().rpc_addresses(0).host() << "/"
-              << server.registration().common().rpc_addresses(0).port() << std::endl;
+    std::cout << server.instance_id().permanent_uuid() << kColumnSep
+              << FormatFirstHostPort(server.registration().common().rpc_addresses())
+              << std::endl;
   }
 
   return Status::OK();
@@ -613,19 +646,24 @@ Status ClusterAdminClient::ListAllMasters() {
     return StatusFromPB(lresp.error().status());
   }
   if (!lresp.masters().empty()) {
-    std::cout << "\tMaster UUID\t\t  RPC Host/Port\t   State \tRole" << std::endl;
+    std::cout << RightPadToUuidWidth("Master UUID") << kColumnSep
+              << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
+              << "State" << kColumnSep
+              << "Role" << std::endl;
   }
   for (int i = 0; i < lresp.masters_size(); i++) {
     if (lresp.masters(i).role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
       auto master_reg =
           lresp.masters(i).has_registration() ? &lresp.masters(i).registration() : nullptr;
-      std::cout << (master_reg ? lresp.masters(i).instance_id().permanent_uuid() :
-                    "UNKNOWN_UUID\t\t\t") << "  "
-        << (master_reg ? master_reg->rpc_addresses(0).host() : "UNKNOWN") << "/"
-        << (master_reg ? master_reg->rpc_addresses(0).port() : 0) << "    "
-        << (lresp.masters(i).has_error() ?
-            AppStatusPB::ErrorCode_Name(lresp.masters(i).error().code()) : "ALIVE") << "    "
-        << RaftPeerPB::Role_Name(lresp.masters(i).role()) << std::endl;
+      std::cout
+          << (master_reg ? lresp.masters(i).instance_id().permanent_uuid() :
+              RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep
+          << RightPadToWidth(
+              (master_reg ? FormatFirstHostPort(master_reg->rpc_addresses()) : "UNKNOWN"),
+              kHostPortColWidth) << kColumnSep
+          << (lresp.masters(i).has_error() ?
+              PBEnumToString(lresp.masters(i).error().code()) : "ALIVE") << kColumnSep
+          << PBEnumToString(lresp.masters(i).role()) << std::endl;
     } else {
       std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
     }
@@ -663,7 +701,10 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   RETURN_NOT_OK(ListTabletServers(&servers));
 
   if (!servers.empty()) {
-    std::cout << "\tTS UUID\t\t\t\tHost:Port\t\tLogLocation" << std::endl;
+    std::cout << RightPadToUuidWidth("TS UUID") << kColumnSep
+              << kRpcHostPortHeading << kColumnSep
+              << "LogLocation"
+              << std::endl;
   }
 
   for (const ListTabletServersResponsePB::Entry& server : servers) {
@@ -681,7 +722,9 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
     tserver::GetLogLocationResponsePB resp;
     ts_proxy.get()->GetLogLocation(req, &resp, &rpc);
 
-    std::cout << ts_uuid << "\t" << ts_addr << "\t" << resp.log_location() << std::endl;
+    std::cout << ts_uuid << kColumnSep
+              << ts_addr << kColumnSep
+              << resp.log_location() << std::endl;
   }
 
   return Status::OK();
@@ -698,17 +741,34 @@ Status ClusterAdminClient::ListTables() {
 
 Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int max_tablets) {
   vector<string> tablet_uuids, ranges;
-  RETURN_NOT_OK(yb_client_->GetTablets(table_name, max_tablets, &tablet_uuids, &ranges));
-  const string header = "Tablet UUID\t\t\t\tRange";
-  std::cout << header << std::endl;
+  std::vector<master::TabletLocationsPB> locations;
+  RETURN_NOT_OK(yb_client_->GetTablets(
+      table_name, max_tablets, &tablet_uuids, &ranges, &locations));
+  std::cout << RightPadToUuidWidth("Tablet UUID") << kColumnSep
+            << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
+            << "Leader" << std::endl;
   for (int i = 0; i < tablet_uuids.size(); i++) {
-    string uuid = tablet_uuids[i];
-    std::cout << uuid << "\t" << ranges[i] << std::endl;
+    string tablet_uuid = tablet_uuids[i];
+    string leader_host_port;
+    const auto& locations_of_this_tablet = locations[i];
+    for (const auto& replica : locations_of_this_tablet.replicas()) {
+      if (replica.role() == RaftPeerPB::Role::RaftPeerPB_Role_LEADER) {
+        if (leader_host_port.empty()) {
+          leader_host_port = FormatHostPort(replica.ts_info().rpc_addresses(0));
+        } else {
+          LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
+                     << ": " << locations_of_this_tablet.ShortDebugString();
+        }
+      }
+    }
+    std::cout << tablet_uuid << kColumnSep
+              << RightPadToWidth(ranges[i], kPartitionRangeColWidth) << kColumnSep
+              << leader_host_port << std::endl;
   }
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
+Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id) {
   rpc::RpcController rpc;
   rpc.set_timeout(timeout_);
   master::GetTabletLocationsRequestPB req;
@@ -722,7 +782,7 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
   if (resp.tablet_locations_size() != 1) {
     if (resp.tablet_locations_size() > 0) {
       std::cerr << "List of all incorrect locations - " << resp.tablet_locations_size()
-        << " : " << std::endl;
+                << " : " << std::endl;
       for (int i = 0; i < resp.tablet_locations_size(); i++) {
         std::cerr << i << " : " << resp.tablet_locations(i).DebugString();
         if (i >= MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR) {
@@ -731,19 +791,22 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
       }
       std::cerr << std::endl;
     }
-    return STATUS(IllegalState, Substitute("Incorrect number of locations $0 for tablet $1.",
-      resp.tablet_locations_size(), tablet_id));
+    return STATUS_FORMAT(IllegalState,
+                         "Incorrect number of locations $0 for tablet $1.",
+                         resp.tablet_locations_size(), tablet_id);
   }
 
   TabletLocationsPB locs = resp.tablet_locations(0);
   if (!locs.replicas().empty()) {
-    std::cout << "\tServer UUID\t\t  RPC Host/Port\tRole" << std::endl;
+    std::cout << RightPadToUuidWidth("Server UUID") << kColumnSep
+              << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
+              << "Role" << std::endl;
   }
-  for (int i = 0; i < locs.replicas_size(); i++) {
-    std::cout << locs.replicas(i).ts_info().permanent_uuid() << "  "
-      << locs.replicas(i).ts_info().rpc_addresses(0).host() << "/"
-      << locs.replicas(i).ts_info().rpc_addresses(0).port() << "   "
-      << locs.replicas(i).role() << std::endl;
+  for (const auto& replica : locs.replicas()) {
+    std::cout << replica.ts_info().permanent_uuid() << kColumnSep
+              << RightPadToWidth(FormatHostPort(replica.ts_info().rpc_addresses(0)),
+                            kHostPortColWidth) << kColumnSep
+              << PBEnumToString(replica.role()) << std::endl;
   }
 
   return Status::OK();
@@ -772,7 +835,7 @@ Status ClusterAdminClient::GetEndpointForHostPort(const HostPort& hp, Endpoint* 
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr) {
+Status ClusterAdminClient::GetEndpointForTS(const PeerId& ts_uuid, Endpoint* ts_addr) {
   HostPort hp;
   RETURN_NOT_OK(GetFirstRpcAddressForTS(ts_uuid, &hp));
   RETURN_NOT_OK(GetEndpointForHostPort(hp, ts_addr));
@@ -780,7 +843,7 @@ Status ClusterAdminClient::GetEndpointForTS(const std::string& ts_uuid, Endpoint
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTabletsForTabletServer(const std::string& ts_uuid) {
+Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   Endpoint ts_addr;
   RETURN_NOT_OK(GetEndpointForTS(ts_uuid, &ts_addr));
 
@@ -794,10 +857,15 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const std::string& ts_uuid
   tserver::ListTabletsForTabletServerResponsePB resp;
   RETURN_NOT_OK(ts_proxy.get()->ListTabletsForTabletServer(req, &resp, &rpc));
 
-  std::cout << "Table name\t\tTablet ID\t\t\tIs Leader\t\tState" << std::endl;
+  std::cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
+            << RightPadToUuidWidth("Tablet ID") << kColumnSep
+            << "Is Leader" << kColumnSep
+            << "State" << std::endl;
   for (const auto& entry : resp.entries()) {
-    std::cout << entry.table_name() << "\t" << entry.tablet_id() << "\t" << entry.is_leader()
-              << "\t" << tablet::TabletStatePB_Name(entry.state()) << std::endl;
+    std::cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
+              << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
+              << entry.is_leader() << kColumnSep
+              << PBEnumToString(entry.state()) << std::endl;
   }
   return Status::OK();
 }
@@ -839,6 +907,10 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
   }
 
   return Status::OK();
+}
+
+string RightPadToUuidWidth(const string &s) {
+  return RightPadToWidth(s, kNumCharactersInUuid);
 }
 
 }  // namespace tools

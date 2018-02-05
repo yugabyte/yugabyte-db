@@ -31,7 +31,7 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/thread_status_util.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 
 bool FLAGS_random_key = false;
@@ -616,7 +616,7 @@ TEST_F(PerfContextTest, ToString) {
   ASSERT_EQ(std::string::npos, zero_excluded.find("= 0"));
   ASSERT_NE(std::string::npos, zero_excluded.find("= 12345"));
 }
-}
+}  // namespace rocksdb
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

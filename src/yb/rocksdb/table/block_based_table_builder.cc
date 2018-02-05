@@ -55,7 +55,7 @@
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/table_builder.h"
 
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"

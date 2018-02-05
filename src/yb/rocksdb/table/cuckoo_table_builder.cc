@@ -37,7 +37,7 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 const char CuckooTablePropertyNames::kEmptyKey[] =

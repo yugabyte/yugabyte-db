@@ -59,7 +59,7 @@
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/enums.h"

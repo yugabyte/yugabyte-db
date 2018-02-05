@@ -29,7 +29,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 
 namespace rocksdb {

@@ -120,6 +120,8 @@ Options:
     Run various Python tests (doctest, unit test)
   --cotire
     Enable precompiled headers using cotire.
+  --cmake-args
+    Additional CMake arguments
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -214,6 +216,7 @@ java_only=false
 cmake_only=false
 use_shared_thirdparty=false
 run_python_tests=false
+cmake_extra_args=""
 
 export YB_EXTRA_GTEST_FLAGS=""
 unset BUILD_ROOT
@@ -437,6 +440,13 @@ while [ $# -gt 0 ]; do
       export YB_USE_COTIRE=1
       force_run_cmake=true
     ;;
+    --cmake-args)
+      if [[ -n $cmake_extra_args ]]; then
+        cmake_extra_args+=" "
+      fi
+      cmake_extra_args+=$2
+      shift
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -505,7 +515,7 @@ if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
   set_flags_to_skip_build
 fi
 
-if "$use_shared_thirdparty"; then
+if "$use_shared_thirdparty" || [[ -f $YB_SRC_ROOT/thirdparty/.yb_thirdparty_do_not_use ]]; then
   find_shared_thirdparty_dir
 fi
 
@@ -622,7 +632,7 @@ if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
     log "Using cmake binary: $( which cmake )"
     log "Running cmake in $PWD"
     cmake_start_time_sec=$(date +%s)
-    ( set -x; cmake "${cmake_opts[@]}" "$YB_SRC_ROOT" )
+    ( set -x; cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT" )
     cmake_end_time_sec=$(date +%s)
   fi
 
