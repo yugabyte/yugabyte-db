@@ -216,7 +216,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
 
   TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
-  virtual const std::string& id() const override { return tablet_id_; }
+  virtual const TabletId& id() const override { return tablet_id_; }
 
   const TabletId& tablet_id() const { return tablet_id_; }
   const scoped_refptr<TableInfo>& table() const { return table_; }
@@ -284,6 +284,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 };
 
 typedef scoped_refptr<TabletInfo> TabletInfoPtr;
+typedef std::vector<TabletInfoPtr> TabletInfos;
 
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
@@ -366,9 +367,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req,
-                         std::vector<scoped_refptr<TabletInfo> > *ret) const;
+                         TabletInfos *ret) const;
 
-  void GetAllTablets(std::vector<scoped_refptr<TabletInfo> > *ret) const;
+  void GetAllTablets(TabletInfos *ret) const;
 
   // Get info of the specified index.
   IndexInfo GetIndexInfo(const TableId& index_id) const;
@@ -1163,12 +1164,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Extract the set of tablets that can be deleted and the set of tablets
   // that must be processed because not running yet.
-  void ExtractTabletsToProcess(std::vector<scoped_refptr<TabletInfo> > *tablets_to_delete,
-                               std::vector<scoped_refptr<TabletInfo> > *tablets_to_process);
+  void ExtractTabletsToProcess(TabletInfos *tablets_to_delete,
+                               TabletInfos *tablets_to_process);
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
-  CHECKED_STATUS ProcessPendingAssignments(const std::vector<scoped_refptr<TabletInfo> >& tablets);
+  CHECKED_STATUS ProcessPendingAssignments(const TabletInfos& tablets);
 
   // Given 'two_choices', which should be a vector of exactly two elements, select which
   // one is the better choice for a new replica.
@@ -1206,7 +1207,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // objects appended to it.
   void HandleAssignCreatingTablet(TabletInfo* tablet,
                                   DeferredAssignmentActions* deferred,
-                                  std::vector<scoped_refptr<TabletInfo> >* new_tablets);
+                                  TabletInfos* new_tablets);
 
   CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version);
 

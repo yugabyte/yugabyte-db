@@ -24,7 +24,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

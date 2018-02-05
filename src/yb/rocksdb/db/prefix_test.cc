@@ -42,7 +42,7 @@ int main() {
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 
 using GFLAGS::ParseCommandLineFlags;
@@ -564,7 +564,7 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
   }
 }
 
-}
+}  // namespace rocksdb
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

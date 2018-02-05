@@ -14,7 +14,7 @@
 //
 #include "yb/rocksdb/slice_transform.h"
 
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

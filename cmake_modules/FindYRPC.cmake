@@ -110,18 +110,12 @@ function(YRPC_GENERATE SRCS HDRS TGTS)
       COMMENT "Running C++ protocol buffer compiler with YRPC plugin on ${FIL}"
       VERBATIM)
 
-    # This custom target enforces that there's just one invocation of protoc
-    # when there are multiple consumers of the generated files. The target name
-    # must be unique; adding parts of the filename helps ensure this.
-    set(TGT_NAME "gen_${PROTO_REL_TO_YB_SRC_ROOT}")
-    string(REPLACE "@" "_" TGT_NAME ${TGT_NAME})
-    string(REPLACE "." "_" TGT_NAME ${TGT_NAME})
-    string(REPLACE "-" "_" TGT_NAME ${TGT_NAME})
-    string(REPLACE "/" "_" TGT_NAME ${TGT_NAME})
+    GET_PROTOBUF_GENERATION_TARGET_NAME("${PROTO_REL_TO_YB_SRC_ROOT}" TGT_NAME)
     add_custom_target(${TGT_NAME}
       DEPENDS "${SERVICE_CC}" "${SERVICE_H}"
       "${PROXY_CC}" "${PROXY_H}"
       "${PROTO_CC_OUT}" "${PROTO_H_OUT}")
+    add_dependencies(gen_proto ${TGT_NAME})
     list(APPEND ${TGTS} "${TGT_NAME}")
   endforeach()
 

@@ -611,8 +611,8 @@ void CatalogManagerBgTasks::Run() {
       // Report metrics.
       catalog_manager_->ReportMetrics();
 
-      std::vector<scoped_refptr<TabletInfo>> to_delete;
-      std::vector<scoped_refptr<TabletInfo>> to_process;
+      TabletInfos to_delete;
+      TabletInfos to_process;
 
       // Get list of tablets not yet running or already replaced.
       catalog_manager_->ExtractTabletsToProcess(&to_delete, &to_process);
@@ -1408,7 +1408,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
 
   scoped_refptr<TableInfo> this_table_info;
   std::vector<TabletInfo *> tablets;
-  std::vector<scoped_refptr<TabletInfo>> scoped_ref_tablets;
+  TabletInfos scoped_ref_tablets;
   // Verify that the table does not exist.
   this_table_info = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
 
@@ -4180,8 +4180,8 @@ void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,
 }
 
 void CatalogManager::ExtractTabletsToProcess(
-    std::vector<scoped_refptr<TabletInfo>> *tablets_to_delete,
-    std::vector<scoped_refptr<TabletInfo>> *tablets_to_process) {
+    TabletInfos *tablets_to_delete,
+    TabletInfos *tablets_to_process) {
   boost::shared_lock<LockType> l(lock_);
 
   // TODO: At the moment we loop through all the tablets
@@ -4326,7 +4326,7 @@ namespace {
 
 class ScopedTabletInfoCommitter {
  public:
-  explicit ScopedTabletInfoCommitter(const std::vector<scoped_refptr<TabletInfo>>* tablets)
+  explicit ScopedTabletInfoCommitter(const TabletInfos* tablets)
     : tablets_(DCHECK_NOTNULL(tablets)),
       aborted_(false) {
   }
@@ -4350,13 +4350,12 @@ class ScopedTabletInfoCommitter {
   }
 
  private:
-  const std::vector<scoped_refptr<TabletInfo>>* tablets_;
+  const TabletInfos* tablets_;
   bool aborted_;
 };
 }  // anonymous namespace
 
-Status CatalogManager::ProcessPendingAssignments(
-    const std::vector<scoped_refptr<TabletInfo>>& tablets) {
+Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   VLOG(1) << "Processing pending assignments";
 
   // Take write locks on all tablets to be processed, and ensure that they are
@@ -4369,7 +4368,7 @@ Status CatalogManager::ProcessPendingAssignments(
   // Any tablets created by the helper functions will also be created in a
   // locked state, so we must ensure they are unlocked before we return to
   // avoid deadlocks.
-  std::vector<scoped_refptr<TabletInfo>> new_tablets;
+  TabletInfos new_tablets;
   ScopedTabletInfoCommitter unlocker_out(&new_tablets);
 
   DeferredAssignmentActions deferred;

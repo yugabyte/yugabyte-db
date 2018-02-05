@@ -34,7 +34,7 @@
 #include <sstream>
 
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 #define HDFS_EXISTS 0
 #define HDFS_DOESNT_EXIST -1

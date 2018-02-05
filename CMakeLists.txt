@@ -1224,6 +1224,7 @@ ADD_THIRDPARTY_LIB(gmock
   SHARED_LIB ${GMOCK_SHARED_LIBRARY})
 
 ## Protobuf
+add_custom_target(gen_proto)
 find_package(Protobuf REQUIRED)
 include_directories(SYSTEM ${PROTOBUF_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(protobuf

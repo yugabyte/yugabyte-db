@@ -45,7 +45,7 @@ int main() {
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 

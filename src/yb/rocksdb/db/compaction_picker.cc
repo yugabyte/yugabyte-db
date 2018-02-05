@@ -40,7 +40,7 @@
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"

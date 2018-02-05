@@ -34,7 +34,7 @@
 #include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/merger.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 namespace rocksdb {

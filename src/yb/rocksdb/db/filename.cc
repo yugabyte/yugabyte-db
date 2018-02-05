@@ -35,7 +35,7 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 namespace rocksdb {

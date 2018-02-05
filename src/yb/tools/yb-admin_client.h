@@ -39,6 +39,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/common/entity_ids.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/master.pb.h"
@@ -79,21 +80,21 @@ class ClusterAdminClient {
 
   // Parse the user-specified change type to consensus change type
   CHECKED_STATUS ParseChangeType(
-    const std::string& change_type,
-    consensus::ChangeConfigType* cc_type);
+      const std::string& change_type,
+      consensus::ChangeConfigType* cc_type);
 
     // Change the configuration of the specified tablet.
   CHECKED_STATUS ChangeConfig(
-    const std::string& tablet_id,
-    const std::string& change_type,
-    const std::string& peer_uuid,
-    const boost::optional<std::string>& member_type);
+      const TabletId& tablet_id,
+      const std::string& change_type,
+      const PeerId& peer_uuid,
+      const boost::optional<std::string>& member_type);
 
   // Change the configuration of the master tablet.
   CHECKED_STATUS ChangeMasterConfig(
-    const std::string& change_type,
-    const std::string& peer_host,
-    int16 peer_port);
+      const std::string& change_type,
+      const std::string& peer_host,
+      int16 peer_port);
 
   CHECKED_STATUS DumpMasterState();
 
@@ -104,7 +105,7 @@ class ClusterAdminClient {
   CHECKED_STATUS ListTablets(const client::YBTableName& table_name, const int max_tablets);
 
   // Per Tablet list of all tablet servers
-  CHECKED_STATUS ListPerTabletTabletServers(const std::string& tablet_id);
+  CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);
 
   // Delete a single table by name.
   CHECKED_STATUS DeleteTable(const client::YBTableName& table_name);
@@ -119,7 +120,7 @@ class ClusterAdminClient {
   CHECKED_STATUS ListTabletServersLogLocations();
 
   // List all the tablets a certain tablet server is serving
-  CHECKED_STATUS ListTabletsForTabletServer(const std::string& ts_uuid);
+  CHECKED_STATUS ListTabletsForTabletServer(const PeerId& ts_uuid);
 
   CHECKED_STATUS SetLoadBalancerEnabled(const bool is_enabled);
 
@@ -133,21 +134,21 @@ class ClusterAdminClient {
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
-  CHECKED_STATUS GetTabletLocations(const std::string& tablet_id,
-                            master::TabletLocationsPB* locations);
+  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
+                                    master::TabletLocationsPB* locations);
 
   // Fetch information about the location of a tablet peer from the leader master.
   CHECKED_STATUS GetTabletPeer(
-    const std::string& tablet_id,
-    PeerMode mode,
-    master::TSInfoPB* ts_info);
+      const TabletId& tablet_id,
+      PeerMode mode,
+      master::TSInfoPB* ts_info);
 
   // Set the uuid and the socket information for a peer of this tablet.
   CHECKED_STATUS SetTabletPeerInfo(
-    const std::string& tablet_id,
-    PeerMode mode,
-    std::string* peer_uuid,
-    Endpoint* peer_socket);
+      const TabletId& tablet_id,
+      PeerMode mode,
+      PeerId* peer_uuid,
+      Endpoint* peer_socket);
 
   // Fetch the latest list of tablet servers from the Master.
   CHECKED_STATUS ListTabletServers(
@@ -161,9 +162,9 @@ class ClusterAdminClient {
   CHECKED_STATUS GetEndpointForTS(const std::string& ts_uuid, Endpoint* ts_addr);
 
   CHECKED_STATUS LeaderStepDown(
-    const std::string& leader_uuid,
-    const std::string& tablet_id,
-    std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
+      const PeerId& leader_uuid,
+      const std::string& tablet_id,
+      std::unique_ptr<consensus::ConsensusServiceProxy>* leader_proxy);
 
   CHECKED_STATUS StartElection(const std::string& tablet_id);
 
@@ -173,7 +174,7 @@ class ClusterAdminClient {
   const std::string master_addr_list_;
   const MonoDelta timeout_;
   Endpoint leader_sock_;
-  bool initted_;
+  bool initted_ = false;
   std::shared_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<master::MasterServiceProxy> master_proxy_;
   std::shared_ptr<client::YBClient> yb_client_;
@@ -181,6 +182,10 @@ class ClusterAdminClient {
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
+
+static constexpr const char* kColumnSep = " \t";
+
+std::string RightPadToUuidWidth(const std::string &s);
 
 }  // namespace tools
 }  // namespace yb

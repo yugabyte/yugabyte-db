@@ -65,7 +65,7 @@
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
 
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 // SyncPoint is not supported in Released Windows Mode.
 #if !(defined NDEBUG) || !defined(OS_WIN)
 #include "yb/rocksdb/util/sync_point.h"

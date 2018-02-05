@@ -33,7 +33,7 @@
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

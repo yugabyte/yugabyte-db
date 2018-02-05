@@ -43,7 +43,7 @@
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/tools/ldb_cmd_execute_result.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 
 using std::string;

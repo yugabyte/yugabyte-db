@@ -32,8 +32,8 @@ using TableId = std::string;
 using UDTypeId = std::string;
 using RoleName = std::string;
 
-using TabletServerId = std::string;
 using PeerId = std::string;
+using TabletServerId = PeerId;
 using TabletId = std::string;
 
 using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;

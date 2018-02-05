@@ -27,7 +27,7 @@
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

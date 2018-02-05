@@ -29,7 +29,7 @@
 #include <iostream>
 #include <gflags/gflags.h>
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 
 DECLARE_double(cache_single_touch_ratio);

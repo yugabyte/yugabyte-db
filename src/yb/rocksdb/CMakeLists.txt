@@ -13,8 +13,6 @@
 
 # RocksDB build.
 
-include(PrecompiledHeader)
-
 PROTOBUF_GENERATE_CPP(
   ROCKSDB_PROTO_SRCS ROCKSDB_PROTO_HDRS ROCKSDB_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -184,7 +182,6 @@ set(ROCKSDB_SRCS
     util/rate_limiter.cc
     util/slice_transform.cc
     util/statistics.cc
-    util/string_util.cc
     util/sync_point.cc
     util/thread_local.cc
     util/thread_status_impl.cc

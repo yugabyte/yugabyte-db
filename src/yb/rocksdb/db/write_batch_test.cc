@@ -34,7 +34,7 @@
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 
 namespace rocksdb {

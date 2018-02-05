@@ -98,7 +98,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/string_packer.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
 

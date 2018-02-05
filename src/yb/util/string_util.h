@@ -18,8 +18,8 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_STRING_UTIL_H
-#define YB_ROCKSDB_UTIL_STRING_UTIL_H
+#ifndef YB_UTIL_STRING_UTIL_H
+#define YB_UTIL_STRING_UTIL_H
 
 #pragma once
 
@@ -29,11 +29,9 @@
 
 #include "yb/util/tostring.h"
 
-namespace rocksdb {
+namespace yb {
 
-extern std::vector<std::string> StringSplit(const std::string& arg, char delim);
-
-using yb::ToString;
+std::vector<std::string> StringSplit(const std::string& arg, char delim);
 
 template <typename T>
 inline std::string VectorToString(const std::vector<T>& vec) {
@@ -51,6 +49,14 @@ inline std::string VectorToString(const std::vector<T>& vec) {
   return os.str();
 }
 
-}  // namespace rocksdb
+std::string RightPadToWidth(const string& s, int w);
 
-#endif // YB_ROCKSDB_UTIL_STRING_UTIL_H
+}  // namespace yb
+
+namespace rocksdb {
+using yb::ToString;
+using yb::StringSplit;
+using yb::VectorToString;
+}
+
+#endif // YB_UTIL_STRING_UTIL_H

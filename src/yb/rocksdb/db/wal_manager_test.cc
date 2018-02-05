@@ -33,7 +33,7 @@
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/table/mock_table.h"
@@ -142,8 +142,7 @@ TEST_F(WalManagerTest, ReadFirstRecordCache) {
 
   unique_ptr<WritableFileWriter> file_writer(
       new WritableFileWriter(std::move(file), EnvOptions()));
-  log::Writer writer(std::move(file_writer), 1,
-		     db_options_.recycle_log_file_num > 0);
+  log::Writer writer(std::move(file_writer), 1, db_options_.recycle_log_file_num > 0);
   WriteBatch batch;
   batch.Put("foo", "bar");
   WriteBatchInternal::SetSequence(&batch, 10);

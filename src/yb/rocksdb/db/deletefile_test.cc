@@ -34,7 +34,7 @@
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/env.h"

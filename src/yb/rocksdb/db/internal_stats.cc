@@ -34,7 +34,7 @@
 #include "yb/rocksdb/db/column_family.h"
 
 #include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

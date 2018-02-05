@@ -438,12 +438,24 @@ TEST_F(TestPBUtil, TestOverwriteExistingPB) {
 PB_ENUM_FORMATTERS(TestPBEnum)
 
 TEST_F(TestPBUtil, TestEnumToString) {
-  std::stringstream ss;
-  ss << TestPBEnum::FOO;
-  ASSERT_EQ("FOO", ss.str());
-  ASSERT_EQ("FOO", ToString(TestPBEnum::FOO));
+  {
+    std::stringstream ss;
+    ss << TestPBEnum::FOO;
+    ASSERT_EQ("FOO", ss.str());
+    ASSERT_EQ("FOO", PBEnumToString(TestPBEnum::FOO));
+    ASSERT_EQ("FOO", ToString(TestPBEnum::FOO));
+  }
+
 #if !defined(ADDRESS_SANITIZER)
-  ASSERT_EQ("<unknown TestPBEnum : 10>", ToString(static_cast<TestPBEnum>(10)));
+  {
+    std::stringstream ss;
+    const auto kInvalidValue = static_cast<TestPBEnum>(10);
+    ss << kInvalidValue;
+    const char* kExpectedStr = "<unknown TestPBEnum : 10>";
+    ASSERT_EQ(kExpectedStr, ss.str());
+    ASSERT_EQ(kExpectedStr, PBEnumToString(kInvalidValue));
+    ASSERT_EQ(kExpectedStr, ToString(kInvalidValue));
+  }
 #endif
 }
 

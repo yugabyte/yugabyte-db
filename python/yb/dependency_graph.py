@@ -45,7 +45,7 @@ EXECUTABLE_FILE_NAME_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
 # Ignore some special-case CMake targets that do not have a one-to-one match with executables or
 # libraries.
-IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink']
+IGNORED_CMAKE_TARGETS = ['gen_version_info', 'latest_symlink', 'gen_proto']
 
 LIST_DEPS_CMD = 'deps'
 LIST_REVERSE_DEPS_CMD = 'rev-deps'

@@ -32,7 +32,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/utilities/optimistic_transaction_db.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/utilities/transactions/transaction_util.h"
 
 namespace rocksdb {

@@ -24,16 +24,18 @@
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/autovector.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-using namespace std;
+// TODO(mbautin): if we decide to keep autovector, get rid of "using namespace std".
+// But we'll probably replace it with boost::small_vector.
+using namespace std; // NOLINT
 
 class AutoVectorTest : public testing::Test {};
-const unsigned long kSize = 8;
+const size_t kSize = 8;
 
 namespace {
 template <class T>

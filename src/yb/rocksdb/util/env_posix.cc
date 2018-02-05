@@ -61,7 +61,7 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/string_util.h"
+#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
 #include "yb/rocksdb/util/thread_status_updater.h"
