@@ -37,10 +37,10 @@ After [installing YugaByte DB](/quick-start/install/), follow the instructions b
     {{% includeMarkdown "/quick-start/docker/create-local-cluster.md" /%}}
   </div>
   <div id="kubernetes" class="tab-pane fade">
-   {{% includeMarkdown "/quick-start/kubernetes/create-local-cluster.md" /%}}
+    {{% includeMarkdown "/quick-start/kubernetes/create-local-cluster.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
-   {{% includeMarkdown "/quick-start/binary/create-local-cluster.md" /%}}
+    {{% includeMarkdown "/quick-start/binary/create-local-cluster.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade">
     {{% includeMarkdown "/quick-start/binary/create-local-cluster.md" /%}}
