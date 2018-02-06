@@ -24,6 +24,8 @@ a {
 }
 
 .article {
+  flex-grow: 1;
+  margin-left: 0 !important;
   font-size: 16px;
   line-height: 1.9;
   padding-top: 4px;
@@ -36,8 +38,8 @@ a {
 }
 
 .article .wrapper {
-  padding-top: 120px !important;
-  padding-bottom: 180px !important;
+  padding-top: 36px !important;
+  padding-bottom: 70px !important;
 }
 
 @media screen and (max-width: 799px) {
@@ -51,14 +53,33 @@ a {
   background: transparent !important;
 }
 
-.drawer {
-  position: fixed !important;
-  top: 0 !important;
-  bottom: 0 !important;
-  overflow: auto;
-  margin-bottom: 0;
-  padding-top: 90px;
+body {
+  position: absolute;
+  width: 100%;
+  top: 0;
+  bottom: 0;
+  overflow-x: hidden;
+}
+
+#root {
+  position: relative;
+  min-height: 100%;
   padding-bottom: 120px;
+}
+
+.main {
+  display: flex;
+  flex-wrap: nowrap;
+  padding-top: 74px;
+}
+
+.drawer {
+  float: none;
+  position: relative !important;
+  margin-bottom: 0;
+  padding: 0 0 40px;
+  width: 250px;
+  flex-basis: auto;
 }
 .drawer h3 {
   margin: 29px 23px 15px;
