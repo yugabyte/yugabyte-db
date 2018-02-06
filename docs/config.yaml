@@ -81,14 +81,22 @@ menu:
       parent: explore
       url: explore/fault-tolerance/
       weight: 220
-    - name: 3. Auto Rebalancing
+    - name: 3. Auto Sharding
+      parent: explore
+      url: explore/auto-sharding/
+      weight: 230
+    - name: 4. Auto Rebalancing
       parent: explore
       url: explore/auto-rebalancing/
       weight: 240
-    - name: 4. Tunable Reads
+    - name: 5. Tunable Reads
       parent: explore
       url: explore/tunable-reads/
       weight: 260
+    - name: 6. Transactions
+      parent: explore
+      url: explore/transactions/
+      weight: 270
     - name: Develop
       identifier: develop
       url: develop/
