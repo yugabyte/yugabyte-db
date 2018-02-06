@@ -66,20 +66,25 @@ public class RedisKeyValue extends AppBase {
   @Override
   public long doWrite() {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
-    String retVal;
-    if (appConfig.valueSize == 0) {
-      String value = key.getValueStr();
-      retVal = getRedisClient().set(key.asString(), value);
-    } else {
-      retVal = getRedisClient().set(key.asString().getBytes(), getRandomValue(key));
-    }
-    if (retVal == null) {
+    try {
+      String retVal;
+      if (appConfig.valueSize == 0) {
+        String value = key.getValueStr();
+        retVal = getRedisClient().set(key.asString(), value);
+      } else {
+        retVal = getRedisClient().set(key.asString().getBytes(), getRandomValue(key));
+      }
+      if (retVal == null) {
+        getSimpleLoadGenerator().recordWriteFailure(key);
+        return 0;
+      }
+      LOG.debug("Wrote key: " + key.toString() + ", return code: " + retVal);
+      getSimpleLoadGenerator().recordWriteSuccess(key);
+      return 1;
+    } catch (Exception e) {
       getSimpleLoadGenerator().recordWriteFailure(key);
-      return 0;
+      throw e;
     }
-    LOG.debug("Wrote key: " + key.toString() + ", return code: " + retVal);
-    getSimpleLoadGenerator().recordWriteSuccess(key);
-    return 1;
   }
 
   @Override

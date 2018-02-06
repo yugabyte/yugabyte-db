@@ -74,9 +74,9 @@ public class SimpleLoadGenerator {
   // The max key that has been generated and handed out so far.
   AtomicLong maxGeneratedKey;
   // Set of keys that failed to write.
-  Set<Long> failedKeys;
+  final Set<Long> failedKeys;
   // Keys that have been written above maxWrittenKey.
-  Set<Long> writtenKeys;
+  final Set<Long> writtenKeys;
   // A background thread to track keys written and increment maxWrittenKey.
   Thread writtenKeysTracker;
   // The prefix for the key.
@@ -137,17 +137,32 @@ public class SimpleLoadGenerator {
 
   public void recordWriteFailure(Key key) {
     synchronized (writtenKeysTracker) {
-      failedKeys.add(key.asNumber());
-      writtenKeysTracker.notify();
+      if (key != null) {
+        failedKeys.add(key.asNumber());
+        writtenKeysTracker.notify();
+      }
     }
   }
 
+  // Always returns a non-null key.
   public Key getKeyToWrite() {
-    // Return a random key to update if we have already written all keys.
-    if (maxGeneratedKey.get() != -1 && maxGeneratedKey.get() == endKey - 1) {
-      return getKeyToRead();
-    }
-    return generateKey(maxGeneratedKey.incrementAndGet());
+    Key retKey = null;
+    do {
+      // Return a random key to update if we have already written all keys.
+      if (maxGeneratedKey.get() != -1 && maxGeneratedKey.get() == endKey - 1) {
+        retKey = getKeyToRead();
+      } else {
+        retKey = generateKey(maxGeneratedKey.incrementAndGet());
+      }
+
+      if (retKey == null) {
+        try {
+          Thread.sleep(1 /* millisecs */);
+        } catch (InterruptedException e) { /*Ignore */ }
+      }
+    } while (retKey == null);
+
+    return retKey;
   }
 
   public Key getKeyToRead() {

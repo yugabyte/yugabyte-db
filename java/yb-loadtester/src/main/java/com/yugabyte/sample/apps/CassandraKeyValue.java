@@ -184,6 +184,10 @@ public class CassandraKeyValue extends AppBase {
   @Override
   public long doWrite() {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
+    if (key == null) {
+      return 0;
+    }
+
     try {
       // Do the write to Cassandra.
       BoundStatement insert = null;
