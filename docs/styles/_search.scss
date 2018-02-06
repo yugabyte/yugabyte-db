@@ -1,0 +1,94 @@
+// Copyright (c) YugaByte, Inc.
+
+.algolia-docsearch-suggestion--highlight {
+  color: inherit !important;
+  font-weight: bold;
+  box-shadow: none !important;
+}
+
+.search-results-container {
+  .search-result {
+    margin-bottom: 24px;
+  }
+
+  .search-title a {
+    font-family: Montserrat, "Open Sans", sans-serif !important;
+    font-size: 18px;
+    color: $YB_DARK_BLUE !important;
+  }
+
+  .search-text {
+    font-size: 14px;
+    margin-left: 20px;
+    line-height: 1.4;
+
+    p {
+      margin: 6px 0 10px;
+    }
+  }
+
+  .search-title .algolia-docsearch-suggestion--highlight {
+    padding: .1em .05em;
+  }
+  .search-text .algolia-docsearch-suggestion--highlight {
+    padding: 0 0 1px;
+    background: inherit;
+    box-shadow: inset 0 -2px 0 0 rgba(69,142,225,.8);
+    color: inherit;
+  }
+}
+
+.search-container {
+  position: relative;
+  padding-bottom: 20px;
+  margin: -20px 0 0 15px;
+  width: 150px !important;
+
+  .search-icon {
+    position: absolute;
+    top: 11px;
+    left: 15px;
+    font-size: 18px;
+    z-index: 1000;
+    color: $YB_ORANGE;
+  }
+  .search-input {
+    text-indent: 20px;
+    background: $YB_LIGHT_GRAY;
+    width: 200px;
+    padding: 20px;
+  }
+  .search-input::-webkit-input-placeholder {
+     font-size: 16px;
+     text-align: center;
+  }
+
+  .algolia-autocomplete {
+    font-family: Montserrat, sans-serif !important;
+  }
+
+  .algolia-autocomplete .aa-hint {
+    color: $YB_ORANGE;
+  }
+
+  .algolia-autocomplete .aa-dropdown-menu {
+    min-width: 250px;
+    width: 200px;
+    background-color: #fff;
+    border: 1px solid $YB_GRAY;
+    border-top: none;
+    margin-top: 2px;
+  }
+  .algolia-autocomplete .aa-dropdown-menu .aa-suggestion {
+    cursor: pointer;
+    padding: 5px 4px;
+  }
+  .algolia-autocomplete .aa-dropdown-menu .aa-suggestion.aa-cursor {
+    background-color: #B2D7FF;
+  }
+  .algolia-autocomplete .aa-dropdown-menu .aa-suggestion em {
+    font-weight: bold;
+    font-style: normal;
+    color: $YB_ORANGE;
+  }
+}
