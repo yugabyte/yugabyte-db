@@ -4,7 +4,7 @@ type: page
 weight: 1200
 ---
 
-YugaByte DB is currently in a wire-compatible with Apache Cassandra and Redis APIs. PostgreSQL API is in the works.
+YugaByte DB is currently wire-compatible with Apache Cassandra and Redis APIs. PostgreSQL API is in the works.
 
 <div>
   <a class="section-link icon-offset" href="cassandra/">

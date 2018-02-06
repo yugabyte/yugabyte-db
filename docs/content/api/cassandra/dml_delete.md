@@ -59,10 +59,10 @@ cqlsh:example> SELECT * FROM employees;
 
  department_id | employee_id | name
 ---------------+-------------+------
-             2 |           1 |  Joe
              1 |           1 | John
              1 |           2 | Jane
-             
+             2 |           1 |  Joe
+
 cqlsh:example> -- Delete statements identify rows by the primary key columns.
 cqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
 cqlsh:example> -- Deletes on non-existent rows are no-ops.
@@ -71,8 +71,8 @@ cqlsh:example> SELECT * FROM employees;
 
  department_id | employee_id | name
 ---------------+-------------+------
-             2 |           1 |  Joe
              1 |           2 | Jane
+             2 |           1 |  Joe
 ```
 ### Conditional delete using the `IF` clause
 
@@ -94,6 +94,43 @@ cqlsh:example> SELECT * FROM employees;
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           2 | Jane
+```
+
+### Delete several rows with the same partition key
+
+``` sql
+cqlsh:example> -- Insert some more values
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack');
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             1 |           1 | John
+             1 |           2 | Jane
+             2 |           1 |  Joe
+             2 |           2 | Jack
+
+
+cqlsh:example> -- Delete all entries for a partition key
+cqlsh:example> DELETE FROM employees WHERE department_id = 1;
+cqlsh:example> DELETE FROM employees WHERE department_id = 1;
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+             2 |           2 | Jack
+
+cqlsh:example> -- Delete a range of entries within a partition key
+cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >= 2 AND employee_id < 4;
+cqlsh:example> SELECT * FROM employees;
+
+ department_id | employee_id | name
+---------------+-------------+------
+             2 |           1 |  Joe
+
 ```
 
 ## See Also
