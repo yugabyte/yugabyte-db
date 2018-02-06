@@ -20,16 +20,19 @@ DocDB is a persistent “**key to object/document**” store rather than just a 
 
 This model allows multiple levels of nesting, and corresponds to a JSON-like format. Other data
 structures like lists, sorted sets etc. are implemented using DocDB’s object type with special key
-encodings. In DocDB, timestamps of each update are recorded carefully, so that it is possible to
-recover the state of any document at some point in the past.
+encodings. In DocDB, [hybrid timestamps](/architecture/concepts/transactions/#hybrid-time-as-an-mvcc-timestamp)
+of each update are recorded carefully, so that it is possible to
+recover the state of any document at some point in the past. Overwritten or deleted versions
+of data are garbage-collected as soon as there are no transactions reading at a snapshot at which
+the old value would be visible.
 
 YugaByte’s DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a
 log-structured merge tree (LSM) based key-value store. The primary motivation behind the
 enhancements or customizations to RocksDB are described below:
 
 * **Efficient implementation of a row/document model on top of a KV store**: To implement a flexible data
-  model- such as a row (comprising of columns), or collections types (such as list, map, set) with
-  arbitrary nesting - on top of a key-value store, but more importantly to implement efficient
+  model---such as a row (comprising of columns), or collections types (such as list, map, set) with
+  arbitrary nesting---on top of a key-value store, but, more importantly, to implement efficient
   operations on this data model such as:
   * fine-grained updates to a part of the row or collection without incurring a read-modify-write
     penalty of the entire row or collection
@@ -84,7 +87,10 @@ enhancements or customizations to RocksDB are described below:
         WHERE user_id = 17
           AND message_id > 50
           AND message_id < 100;
-        or,
+    ```
+
+    Or, in the context of a time-series application:
+    ```sql
         SELECT metric_value
           FROM metrics
         WHERE metric_name = ’system.cpu’
@@ -120,7 +126,7 @@ The documents are stored using a key-value store based on RocksDB, which is type
 are converted to multiple key-value pairs along with timestamps. Because documents are spread across
 many different key-values, it’s possible to partially modify them cheaply.
 
-For example, consider the following document stored in DocDB: 
+For example, consider the following document stored in DocDB:
 
 ```
 DocumentKey1 = {

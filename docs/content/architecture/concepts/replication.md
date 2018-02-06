@@ -50,7 +50,7 @@ leader fails.
 
 ## Async replication
 
-In addition to the core distributed consensus based replication, YugaByte extends Raft to add
+In addition to the core distributed consensus based replication, YugaByte DB extends Raft to add
 observer nodes that do not participate in writes but get a timeline consistent copy of the data in
 an asynchronous manner. Nodes in remote  datacenters can thus be added in "async" mode. This is
 primarily for cases where latency of doing a distributed consensus based write is not tolerable for

@@ -9,5 +9,5 @@ static/css/site.css
 static/js/site.js
 
 .session.vim*
-.sw?
-*.md.sw?
+
+*.sw?

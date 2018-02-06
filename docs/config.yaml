@@ -282,6 +282,10 @@ menu:
       parent: concepts
       url: architecture/concepts/transactions/
       weight: 971
+    - name: Distributed ACID Transactions
+      parent: concepts
+      url: architecture/concepts/distributed-txns/
+      weight: 975
     - name: Acknowledgements
       parent: concepts
       url: architecture/concepts/acknowledgements/
@@ -307,6 +311,10 @@ menu:
       parent: core-functions
       url: architecture/core-functions/read-path/
       weight: 1030
+    - name: IO Path with Distributed Transactions
+      parent: core-functions
+      url: architecture/core-functions/transactional-io-path/
+      weight: 1035
     - name: High Availability
       parent: core-functions
       url: architecture/core-functions/high-availability/
