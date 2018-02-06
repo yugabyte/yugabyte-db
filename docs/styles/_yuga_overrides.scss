@@ -170,20 +170,17 @@ a {
 }
 .palette-primary-orange .article h1,
 .palette-primary-orange .article h2,
-.palette-primary-orange .article h3 {
-  padding-top: 0 !important;
+.palette-primary-orange .article h3,
+.palette-primary-orange .article h4 {
   font-family: Montserrat, "Open Sans", sans-serif !important;
   color: $YB_DARK_BLUE !important;
 }
 .palette-primary-orange .article h1 {
+  padding-top: 0 !important;
   margin: 16px 0 10px;
   font-size: 36px;
   font-weight: 700;
 }
-.drawer h3 {
-  display: none;
-}
-
 .palette-primary-orange .article h2 {
   margin-top: -52px;
   padding-top: 100px !important;
@@ -195,11 +192,20 @@ a {
   padding-top: 100px !important;
   font-size: 20px;
   font-weight: 500;
-  color: $YB_DARK_BLUE;
+}
+.palette-primary-orange .article h4 {
+  margin-top: -56px;
+  font-size: 17px;
+  font-weight: 500;
+  font-style: normal;
 }
 
-.drawer h3 a {
-  text-decoration: none !important;
+.drawer h3 {
+  display: none;
+
+  a {
+    text-decoration: none !important;
+  }
 }
 
 .palette-primary-orange .article a.headerlink {
