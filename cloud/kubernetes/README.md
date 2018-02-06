@@ -37,7 +37,7 @@ yb-tserver-1   1/1       Running   1          12s
 yb-tserver-2   1/1       Running   1          12s
 ```
 
-### Using Redis API
+### Using the Redis API
 
 The Cassandra query layer is automatically initialized. The Redis API has to be initialized by creating a Redis table.
 You can do this as follows
@@ -69,8 +69,7 @@ cqlsh> describe keyspaces;
 system_schema  system_auth  system
 ```
 
-## Read More
-
-You can see all the above and more details on our website docs:
-- [Quick start](https://docs.yugabyte.com/quick-start/install/)
-- [Explore core features](https://docs.yugabyte.com/quick-start/install/)
+## Next Steps
+- [Try some Redis commands](https://docs.yugabyte.com/quick-start/test-redis/) - YugaByte offers Redis as a true database.
+- [Try some Cassandra commands](https://docs.yugabyte.com/quick-start/test-cassandra/) - YugaByte has added distributed transactions on top of Cassandra.
+- [Explore some of the core features](https://docs.yugabyte.com/explore/) - linear scalability, auto-rebalancing, tunable reads, etc.
