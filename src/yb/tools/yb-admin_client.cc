@@ -45,7 +45,6 @@
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
-PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 PB_ENUM_FORMATTERS(yb::consensus::RaftPeerPB::Role);
 PB_ENUM_FORMATTERS(yb::AppStatusPB::ErrorCode);
 PB_ENUM_FORMATTERS(yb::tablet::TabletStatePB);
