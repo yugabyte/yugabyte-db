@@ -231,21 +231,19 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   CHECK_OK(cluster_->CreateClient(&client_builder, &client_));
   CHECK_OK(client_->CreateNamespaceIfNotExists(options.table_name.namespace_name()));
 
-  bool table_exists = false;
-
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.
   MonoTime deadline(MonoTime::Now());
   deadline.AddDelta(MonoDelta::FromSeconds(10));
-  Status s;
+  Result<bool> table_exists(false);
   while (true) {
-    s = client_->TableExists(options.table_name, &table_exists);
-    if (s.ok() || deadline.ComesBefore(MonoTime::Now())) break;
+    table_exists = client_->TableExists(options.table_name);
+    if (table_exists.ok() || deadline.ComesBefore(MonoTime::Now())) break;
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  CHECK_OK(s);
+  CHECK_OK(table_exists);
 
-  if (!table_exists) {
+  if (!table_exists.get()) {
     YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
 
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

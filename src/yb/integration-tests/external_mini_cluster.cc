@@ -1056,8 +1056,8 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy() {
 
 std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
   CHECK_LT(idx, masters_.size());
-  return std::shared_ptr<MasterServiceProxy>(
-      new MasterServiceProxy(messenger_, CHECK_NOTNULL(master(idx))->bound_rpc_addr()));
+  return std::make_shared<MasterServiceProxy>(
+      messenger_, CHECK_NOTNULL(master(idx))->bound_rpc_addr());
 }
 
 Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,

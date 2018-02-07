@@ -288,10 +288,10 @@ Status QLEnv::DeleteKeyspace(const string& keyspace_name) {
 
 Status QLEnv::UseKeyspace(const string& keyspace_name) {
   // Check if a keyspace with the specified name exists.
-  bool exists = false;
-  RETURN_NOT_OK(client_->NamespaceExists(keyspace_name, &exists));
+  Result<bool> exists = client_->NamespaceExists(keyspace_name);
+  RETURN_NOT_OK(exists);
 
-  if (!exists) {
+  if (!exists.get()) {
     return STATUS(NotFound, "Cannot use unknown keyspace");
   }
 

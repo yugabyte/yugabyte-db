@@ -161,3 +161,13 @@ add_executable(run-with-timeout run-with-timeout.cc)
 # If ${YB_BASE_LIBS} is removed below, there is an error in static linking mode
 # (but no error with dynamic linking!)
 target_link_libraries(run-with-timeout yb_util ${YB_BASE_LIBS})
+
+# Additional tests
+if(YB_ENT_CURRENT_SOURCE_DIR)
+  # Set the test source file folder.
+  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
+
+  foreach(test ${TOOLS_EXTENSIONS_TESTS})
+    ADD_YB_TEST(${test})
+  endforeach()
+endif()

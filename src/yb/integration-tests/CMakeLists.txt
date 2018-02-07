@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
   cluster_verifier.cc
@@ -41,6 +43,7 @@ set(INTEGRATION_TESTS_SRCS
   yb_table_test_base.cc
   yb_mini_cluster_test_base.cc
   redis_table_test_base.cc
+  ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
 )
 
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
@@ -104,4 +107,11 @@ ADD_YB_TEST(redis_table-test)
 ADD_YB_TEST(update_scan_delta_compact-test)
 
 # Additional tests
-YB_INCLUDE_EXTENSIONS()
+if(YB_ENT_CURRENT_SOURCE_DIR)
+  # Set the test source file folder.
+  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
+
+  foreach(test ${INTEGRATION_TESTS_EXTENSIONS_TESTS})
+    ADD_YB_TEST(${test})
+  endforeach()
+endif()
