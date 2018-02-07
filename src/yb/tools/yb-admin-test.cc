@@ -180,9 +180,9 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
   shared_ptr<YBClient> client;
-  CHECK_OK(YBClientBuilder()
-        .add_master_server_addr(master_address)
-        .Build(&client));
+  ASSERT_OK(YBClientBuilder()
+            .add_master_server_addr(master_address)
+            .Build(&client));
 
   // Default table that gets created;
   string table_name = kTableName.table_name();

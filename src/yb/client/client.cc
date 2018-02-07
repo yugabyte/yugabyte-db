@@ -411,10 +411,10 @@ Status YBClient::CreateNamespace(const std::string& namespace_name) {
 }
 
 Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name) {
-  bool namespace_exists = false;
-  RETURN_NOT_OK(NamespaceExists(namespace_name, &namespace_exists));
-  return namespace_exists ? Status::OK()
-                          : CreateNamespace(namespace_name);
+  Result<bool> namespace_exists = NamespaceExists(namespace_name);
+  RETURN_NOT_OK(namespace_exists);
+  return namespace_exists.get() ? Status::OK()
+                                : CreateNamespace(namespace_name);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name) {
@@ -488,20 +488,16 @@ CHECKED_STATUS YBClient::GrantPermission(const PermissionType& permission,
   return Status::OK();
 }
 
-Status YBClient::NamespaceExists(const std::string& namespace_name, bool* exists) {
-  CHECK_NOTNULL(exists);
-
+Result<bool> YBClient::NamespaceExists(const std::string& namespace_name) {
   std::vector<std::string> namespaces;
   RETURN_NOT_OK(ListNamespaces(&namespaces));
 
   for (const string& name : namespaces) {
     if (name == namespace_name) {
-      *exists = true;
-      return Status::OK();
+      return true;
     }
   }
-  *exists = false;
-  return Status::OK();
+  return false;
 }
 
 CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
@@ -933,17 +929,15 @@ Status YBClient::ListTables(vector<YBTableName>* tables,
   return Status::OK();
 }
 
-Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
+Result<bool> YBClient::TableExists(const YBTableName& table_name) {
   vector<YBTableName> tables;
   RETURN_NOT_OK(ListTables(&tables, table_name.table_name()));
   for (const YBTableName& table : tables) {
     if (table == table_name) {
-      *exists = true;
-      return Status::OK();
+      return true;
     }
   }
-  *exists = false;
-  return Status::OK();
+  return false;
 }
 
 Status YBMetaDataCache::GetTable(const YBTableName& table_name,

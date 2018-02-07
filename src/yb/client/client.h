@@ -63,6 +63,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/net/net_fwd.h"
@@ -306,8 +307,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces);
 
   // Check if the namespace given by 'namespace_name' exists.
-  // 'exists' is set only on success.
-  CHECKED_STATUS NamespaceExists(const std::string& namespace_name, bool* exists);
+  // Result value is set only on success.
+  Result<bool> NamespaceExists(const std::string& namespace_name);
 
 
   // Authentication and Authorization
@@ -375,9 +376,8 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
     std::vector<std::string>* master_uuids);
 
   // Check if the table given by 'table_name' exists.
-  //
-  // 'exists' is set only on success.
-  CHECKED_STATUS TableExists(const YBTableName& table_name, bool* exists);
+  // Result value is set only on success.
+  Result<bool> TableExists(const YBTableName& table_name);
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.

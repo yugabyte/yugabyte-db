@@ -322,7 +322,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Start a leader election on this master.
   CHECKED_STATUS StartElection(ExternalMaster* master);
 
- private:
+ protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
   // Create a client configured to talk to this cluster.  Builder may contain override options for
@@ -389,6 +389,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
 };
 
