@@ -4,7 +4,10 @@ import React, { Component } from 'react';
 import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 import PropTypes from 'prop-types';
 
-const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
+const graphPanelTypes = {
+  "universe": ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
+  "table": ['lsmdb_table', 'tserver_table']
+};
 
 export default class CustomerMetricsPanel extends Component {
   static propTypes = {
@@ -22,7 +25,7 @@ export default class CustomerMetricsPanel extends Component {
 
   render() {
     const { origin, nodePrefixes, width, tableName } = this.props;
-    const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
+    const graphPanelContainers = graphPanelTypes[origin].map(function (type, idx) {
       return (<GraphPanelContainer key={idx} type={type} width={width}
                   nodePrefixes={nodePrefixes} tableName={tableName} />);
     });
