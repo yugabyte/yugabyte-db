@@ -11,3 +11,12 @@ set(YB_ADMIN_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/yb-admin_cli_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/yb-admin_client_ent.cc
   PARENT_SCOPE)
+
+# Additional tests support.
+set(YB_ENT_CURRENT_SOURCE_DIR
+  ${YB_ENT_CURRENT_SOURCE_DIR}
+  PARENT_SCOPE)
+
+set(TOOLS_EXTENSIONS_TESTS
+  yb-admin-test_ent
+  PARENT_SCOPE)
