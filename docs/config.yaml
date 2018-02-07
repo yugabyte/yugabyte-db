@@ -257,7 +257,7 @@ menu:
       identifier: architecture
       url: architecture/
       weight: 900
-    - name: Concepts
+    - name: Basics
       parent: architecture
       identifier: concepts
       url: architecture/concepts/
@@ -286,14 +286,6 @@ menu:
       parent: concepts
       url: architecture/concepts/yql/
       weight: 970
-    - name: ACID Transactions
-      parent: concepts
-      url: architecture/concepts/transactions/
-      weight: 971
-    - name: Distributed ACID Transactions
-      parent: concepts
-      url: architecture/concepts/distributed-txns/
-      weight: 975
     - name: Acknowledgements
       parent: concepts
       url: architecture/concepts/acknowledgements/
@@ -319,14 +311,35 @@ menu:
       parent: core-functions
       url: architecture/core-functions/read-path/
       weight: 1030
-    - name: IO Path with Distributed Transactions
-      parent: core-functions
-      url: architecture/core-functions/transactional-io-path/
-      weight: 1035
     - name: High Availability
       parent: core-functions
       url: architecture/core-functions/high-availability/
       weight: 1040
+    - name: Transactions
+      parent: architecture
+      identifier: transactions
+      url: architecture/transactions/
+      weight: 1050
+    - name: Isolation Levels
+      parent: transactions
+      identifier: isolation-levels
+      url: architecture/transactions/isolation-levels/
+      weight: 1051
+    - name: Single Row Transactions
+      parent: transactions
+      identifier: single-row-transactions
+      url: architecture/transactions/single-row-transactions/
+      weight: 1052
+    - name: Distributed Transactions
+      parent: transactions
+      identifier: distributed-txns
+      url: architecture/transactions/distributed-txns/
+      weight: 1053
+    - name: Transactional IO Path
+      parent: transactions
+      identifier: transactional-io-path
+      url: architecture/transactions/transactional-io-path/
+      weight: 1054
     - name: Comparisons
       identifier: comparisons
       url: comparisons/

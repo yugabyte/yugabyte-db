@@ -1,41 +1,7 @@
 ---
-title: ACID Transactions
-weight: 971
+title: Single Row ACID Transactions
+weight: 1052
 ---
-
-YugaByte DB's transaction models are inspired by [Google Spanner](https://cloud.google.com/spanner/docs/transactions).
-
-## Replication model
-
-### Strong consistency at the core
-
-As detailed in the [Replication](/architecture/concepts/replication/) section, mutations (such as
-inserts and updates) in YugaByte DB are replicated using using [Raft](https://raft.github.io/), a
-distributed consensus algorithm that is proven to be theoretically correct under various failure
-conditions. Google Spanner uses a similar consensus algorithm called
-[Paxos](https://cloud.google.com/spanner/docs/whitepapers/life-of-reads-and-writes). Raft was
-[designed](https://ramcloud.stanford.edu/~ongaro/userstudy/) to be easier to understand and hence
-easier implement in practice as compared to Paxos. Today, many popular highly reliable distributed
-systems including [etcd](https://coreos.com/etcd/) and
-[consul](https://www.consul.io/docs/internals/consensus.html) are based on Raft.
-
-Raft is used to achieve strong consistency between replicas when mutations occur. This guarantees
-zero data loss if the failures are within the limits tolerated by the system. For example, if
-Replication Factor is 5, then YugaByte DB can tolerate failure of up to two nodes without any data
-loss. The system doesn't have to resort to a stale copy of the data (unlike eventually consistent or
-async replication solutions).
-
-### Tunable read consistency
-
-YugaByte DB's read semantics are "strongly consistent" by default. Reads are routed to the leaders
-of the Raft group to ensure the latest values are returned. However, an application may override
-this setting for individual requests. For example, this is a useful mode if an app can tolerate
-slightly stale reads from a follower, in exchange for much lower latencies in geo-distributed use
-cases.
-
-## Transaction model
-
-### Single row and single shard ACID transactions
 
 YugaByte DB currently offers ACID semantics for mutations involving a single row or rows that fall
 within the same shard (partition, tablet). These mutations incur only one network roundtrip between
@@ -54,7 +20,7 @@ This is unlike Apache Cassandra, which uses a concept called lightweight transac
 correctness for these read-modify-write operations and incurs [4-network round trip
 latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransactions.html).
 
-### Hybrid time as an MVCC timestamp
+## Hybrid time as an MVCC timestamp
 
 YugaByte DB implements [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control)
 (multiversion concurrency control) and internally keeps track of multiple versions of values
@@ -92,7 +58,7 @@ these properties of Hybrid Time, e.g.:
   timestamp to get replicated and applied to RocksDB, and it can proceed with processing the read
   request after that.
 
-### Reading the latest data from a recently elected leader
+## Reading the latest data from a recently elected leader
 
 In a steady state, when the leader is appending and replicating log entries, the latest
 majority-replicated entry is exactly the committed one.  However, it is a bit more complicated right
@@ -104,7 +70,7 @@ that all previous Raft-committed entries are applied to RocksDB and other persis
 data structures, and it is only possible after we know that all entries in the new leader's log are
 committed.
 
-### Leader leases: reading the latest data in case of a network partition
+## Leader leases: reading the latest data in case of a network partition
 
 Leader leases are a mechanism for a tablet leader to establish its authority for a certain short
 time period in order to avoid the following inconsistency:
@@ -164,7 +130,7 @@ The leader lease mechanism guarantees that at any point in time there is at most
 tablet's Raft group that considers itself to be an up-to-date leader that is allowed to service
 consistent reads or accept write requests.
 
-### Safe timestamp assignment for a read request
+## Safe timestamp assignment for a read request
 
 Every read request is assigned a particular MVCC timestamp / hybrid time (let's call it
 **ht_read**), which allows write operations to the same set of keys to happen in parallel with
@@ -202,7 +168,7 @@ expiration if it sent that or a higher **ht_lease_exp** value to a majority of R
 For this purpose, the leader is always considered to have replicated an infinite leader lease to
 itself.
 
-#### Definition of safe time
+### Definition of safe time
 Now, suppose the current majority-replicated hybrid time leader lease expiration is
 **replicated_ht_lease_exp**. Then the safe timestamp for a read request can be computed as the
 maximum of:
@@ -228,144 +194,3 @@ typically happen very quickly, as the hybrid time on the second tablet's leader 
 updated with the propagated hybrid time from the first tablet's leader, and in the common case we
 will just have to wait for pending Raft log entries with hybrid times less than **ht_read** to be
 committed.
-
-### Isolation levels
-
-YugaByte DB currently implements [Snapshot
-Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation), also known as SI, which is an
-transaction isolation level that guarantees that all reads made in a transaction will see a
-consistent snapshot of the database, and the transaction itself will successfully commit only if no
-updates it has made conflict with any concurrent updates made by transactions that committed since
-that snapshot.  We are also working on supporting the
-[Serializable](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable) isolation
-level, which would by definition guarantee that transactions run in a way equivalent to a serial
-(sequential) schedule.
-
-In order to support these two isolation levels, the lock manager internally supports three types
-of locks:
-
-  - **Snapshot Isolation Write Lock**. This type of a lock is taken by a snapshot isolation
-    transaction on values that it modifies.
-  - **Serializable Read Lock**. This type of a lock is taken by serializable read-modify-write
-    transactions on values that they read in order to guarantee they are not modified until the
-    transaciton commits.
-  - **Serializable Write Lock**. This type of a lock is taken by serializable transactions on values
-    they write, as well as by pure-write snapshot isolation transactions. Multiple snapshot-isolation
-    transactions writing the same item can thus proceed in parallel.
-
-The following matrix shows conflicts between locks of different types at a high level.
-
-<table>
-  <tbody>
-    <tr>
-      <th></th>
-      <th>Snapshot Isolation Write</th>
-      <th>Serializable Write</th>
-      <th>Serializable Read</th>
-    </tr>
-    <tr>
-      <th>Snapshot Isolation Write</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-    </tr>
-    <tr>
-      <th>Serializable Write</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-    </tr>
-    <tr>
-      <th>Serializable Read</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-    </tr>
-  </tbody>
-</table>
-
-We make further distinction between locks acquired on a DocDB node that is being written to by any
-transaction or read by a read-modify-write serializable transaction, and locks acquired on its
-parent nodes. We call the former types of locks "strong locks" and the latter "weak locks". For
-example, if an SI transaction is setting column `col1` to a new value in row `row1`, it will
-acquiire a weak SI write lock on `row1` but a strong SI write lock on `row1.col1`. Because of this
-distinction, the full conflict matrix actually looks a bit more complex:
-
-<table>
-  <tbody>
-    <tr>
-      <th></th>
-      <th>Strong SI Write</th>
-      <th>Weak SI Write</th>
-      <th>Strong Serializable Write</th>
-      <th>Weak Serializable Write</th>
-      <th>Strong Serializable Read</th>
-      <th>Weak Serializable Read</th>
-    </tr>
-    <tr>
-      <th>Strong SI Write</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-    </tr>
-    <tr>
-      <th>Weak SI Write</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-    </tr>
-    <tr>
-      <th>Strong Serializable Write</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-    </tr>
-    <tr>
-      <th>Weak Serializable Write</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-    </tr>
-    <tr>
-      <th>Strong Serializable Read</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td>&#x2714; No conflict</td>
-    </tr>
-    <tr>
-      <th>Weak Serializable Read</th>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td class="txn-conflict">&#x2718; Conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td>&#x2714; No conflict</td>
-      <td>&#x2714; No conflict</td>
-    </tr>
-  </tbody>
-</table>
-
-Here are a couple of examples explaining possible concurrency scenarious from the above matrix:
-
-  - Multiple SI transactions could be modifying different columns in the same row concurrently. They
-    acquire weak SI locks on the row key, and  strong SI locks on the individual columns they are
-    writing to. The weak SI locks on the row do not conflict with each other.
-  - Multiple write-only transactions can write to the same column, and the strong serializable write
-    locks that they acquire on this column do not conflict. The final value is determined using the
-    hybrid timestamp (the latest hybrid timestamp wins). Note that pure-write SI and serializable
-    write operations use the same lock type, because they share the same pattern of conflicts with
-    other lock types.

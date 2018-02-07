@@ -1,6 +1,6 @@
 ---
 title: Distributed ACID Transactions
-weight: 975
+weight: 1053
 ---
 
 ## Introduction
