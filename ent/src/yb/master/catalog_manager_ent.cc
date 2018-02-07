@@ -516,6 +516,11 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
   TRACE("Looking up table");
   scoped_refptr<TableInfo> table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
 
+  // Check table is active.
+  if (table != nullptr && !table->is_running()) {
+    table.reset();
+  }
+
   if (table == nullptr) {
     SysTablesEntryPB meta;
     const string& data = entry.data();
@@ -575,17 +580,20 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
 Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
                                          ExternalTableSnapshotData* s_data) {
   DCHECK_EQ(entry.type(), SysRowEntry::TABLET);
-  // Create tablets IDs map.
-  TRACE("Looking up tablet");
-  scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(tablet_map_, entry.id());
 
-  if (tablet != nullptr) {
-    IdPairPB* const pair = s_data->tablet_id_map->Add();
-    pair->set_old_id(entry.id());
-    pair->set_new_id(entry.id());
-    return Status::OK();
+  if (s_data->new_table_id == s_data->old_table_id) {
+    TRACE("Looking up tablet");
+    scoped_refptr<TabletInfo> tablet = LockAndFindPtrOrNull(tablet_map_, entry.id());
+
+    if (tablet != nullptr) {
+      IdPairPB* const pair = s_data->tablet_id_map->Add();
+      pair->set_old_id(entry.id());
+      pair->set_new_id(entry.id());
+      return Status::OK();
+    }
   }
 
+  // Update tablets IDs map.
   SysTabletsEntryPB meta;
   const string& data = entry.data();
   RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
