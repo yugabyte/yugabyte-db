@@ -21,6 +21,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/cast.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -37,28 +39,46 @@ using std::tuple;
 using std::set;
 using std::vector;
 
-using master::CreateSnapshotRequestPB;
-using master::CreateSnapshotResponsePB;
-using master::IsSnapshotOpDoneRequestPB;
-using master::IsSnapshotOpDoneResponsePB;
-using master::ListTablesRequestPB;
-using master::ListTablesResponsePB;
-using master::ListSnapshotsRequestPB;
-using master::ListSnapshotsResponsePB;
+using google::protobuf::RepeatedPtrField;
+
+using client::YBTableName;
 using master::MasterBackupServiceProxy;
 using master::MasterServiceProxy;
-using master::RestoreSnapshotRequestPB;
-using master::RestoreSnapshotResponsePB;
-using master::SysSnapshotEntryPB;
-using master::TableIdentifierPB;
+using master::SysRowEntry;
+using master::TableInfo;
+using master::TabletInfo;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
 using rpc::RpcController;
 using tablet::enterprise::Tablet;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
+using util::to_uchar_ptr;
 
-const client::YBTableName kTableName("my_keyspace", "snapshot_test_table");
+using master::CreateSnapshotRequestPB;
+using master::CreateSnapshotResponsePB;
+using master::IdPairPB;
+using master::ImportSnapshotMetaRequestPB;
+using master::ImportSnapshotMetaResponsePB;
+using master::ImportSnapshotMetaResponsePB_TableMetaPB;
+using master::IsCreateTableDoneRequestPB;
+using master::IsCreateTableDoneResponsePB;
+using master::IsSnapshotOpDoneRequestPB;
+using master::IsSnapshotOpDoneResponsePB;
+using master::ListTablesRequestPB;
+using master::ListTablesResponsePB;
+using master::ListSnapshotsRequestPB;
+using master::ListSnapshotsResponsePB;
+using master::MasterServiceProxy;
+using master::RestoreSnapshotRequestPB;
+using master::RestoreSnapshotResponsePB;
+using master::SnapshotInfoPB;
+using master::SysNamespaceEntryPB;
+using master::SysTablesEntryPB;
+using master::SysSnapshotEntryPB;
+using master::TableIdentifierPB;
+
+const YBTableName kTableName("my_keyspace", "snapshot_test_table");
 
 class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -84,11 +104,13 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
-    bool exist = false;
-    ASSERT_OK(client_->TableExists(kTableName, &exist));
-    if (exist) {
+    Result<bool> exist = client_->TableExists(kTableName);
+    ASSERT_OK(exist);
+
+    if (exist.get()) {
       ASSERT_OK(client_->DeleteTable(kTableName));
     }
+
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
@@ -167,6 +189,17 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         op_name, ProxyCallLambda(
             &is_snapshot_done_req, &is_snapshot_done_resp,
             proxy_backup_.get(), &MasterBackupServiceProxy::IsSnapshotOpDone));
+  }
+
+  void WaitForCreateTableDone(const YBTableName& table_name) {
+    IsCreateTableDoneRequestPB is_create_done_req;
+    IsCreateTableDoneResponsePB is_create_done_resp;
+    table_name.SetIntoTableIdentifierPB(is_create_done_req.mutable_table());
+
+    WaitTillComplete(
+        "IsCreateTableDone", ProxyCallLambda(
+            &is_create_done_req, &is_create_done_resp,
+            proxy_.get(), &MasterServiceProxy::IsCreateTableDone));
   }
 
   string CreateSnapshot() {
@@ -411,6 +444,145 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
 
   ASSERT_OK(ts0->Start());
   ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+}
+
+TEST_F(SnapshotTest, ImportSnapshotMeta) {
+  TestWorkload workload = SetupWorkload();
+  workload.Start();
+  workload.WaitInserted(100);
+
+  CheckAllSnapshots({});
+
+  Result<bool> result_exist = client_->TableExists(kTableName);
+  ASSERT_OK(result_exist);
+  ASSERT_TRUE(result_exist.get());
+
+  // Check CreateSnapshot().
+  const auto snapshot_id = CreateSnapshot();
+
+  workload.StopAndJoin();
+
+  // Check the snapshot creating is complete.
+  WaitForSnapshotOpDone("IsCreateSnapshotDone", snapshot_id);
+
+  CheckAllSnapshots(
+      {
+          std::make_tuple(snapshot_id, SysSnapshotEntryPB::COMPLETE)
+      });
+
+  ListSnapshotsRequestPB list_req;
+  ListSnapshotsResponsePB list_resp;
+  list_req.set_snapshot_id(snapshot_id);
+  ASSERT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
+  LOG(INFO) << "Requested available snapshots.";
+  SCOPED_TRACE(list_resp.DebugString());
+  ASSERT_FALSE(list_resp.has_error());
+
+  ASSERT_EQ(list_resp.snapshots_size(), 1);
+  const SnapshotInfoPB& snapshot = list_resp.snapshots(0);
+
+  // Get snapshot items names.
+  const SysSnapshotEntryPB& snapshot_pb = snapshot.entry();
+  const int old_table_num_tablets = snapshot_pb.tablet_snapshots_size();
+  string old_table_name, old_namespace_name;
+
+  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+    switch (entry.type()) {
+      case SysRowEntry::NAMESPACE: { // Get NAMESPACE name.
+        SysNamespaceEntryPB meta;
+        const string& data = entry.data();
+        ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+        ASSERT_TRUE(old_namespace_name.empty()); // One namespace allowed.
+        old_namespace_name = meta.name();
+        break;
+      }
+      case SysRowEntry::TABLE: { // Recreate TABLE.
+        SysTablesEntryPB meta;
+        const string& data = entry.data();
+        ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+        ASSERT_TRUE(old_table_name.empty()); // One table allowed.
+        old_table_name = meta.name();
+        break;
+      }
+      case SysRowEntry::TABLET: // No need to get tablet info. Ignore.
+        break;
+      default:
+        ASSERT_OK(STATUS_SUBSTITUTE(
+            IllegalState, "Unexpected snapshot entry type $0", entry.type()));
+    }
+  }
+
+  LOG(INFO) << "Deleting table & namespace: " << kTableName.ToString();
+  ASSERT_OK(client_->DeleteTable(kTableName));
+  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
+
+  result_exist = client_->TableExists(kTableName);
+  ASSERT_OK(result_exist);
+  ASSERT_FALSE(result_exist.get());
+
+  result_exist = client_->NamespaceExists(kTableName.namespace_name());
+  ASSERT_OK(result_exist);
+  ASSERT_FALSE(result_exist.get());
+
+  // Check ImportSnapshotMeta().
+  {
+    ImportSnapshotMetaRequestPB req;
+    ImportSnapshotMetaResponsePB resp;
+    *req.mutable_snapshot() = snapshot;
+
+    // Check the request.
+    ASSERT_OK(proxy_backup_->ImportSnapshotMeta(req, &resp, ResetAndGetController()));
+
+    // Check the response.
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+    LOG(INFO) << "Imported snapshot: ID=" << snapshot_id << ". ID map:";
+
+    const RepeatedPtrField<ImportSnapshotMetaResponsePB_TableMetaPB>& tables_meta =
+        resp.tables_meta();
+
+    for (int i = 0; i < tables_meta.size(); ++i) {
+      const ImportSnapshotMetaResponsePB_TableMetaPB& table_meta = tables_meta.Get(i);
+
+      const IdPairPB& ns_pair = table_meta.namespace_ids();
+      LOG(INFO) << "Keyspace: " << ns_pair.old_id() << " -> " << ns_pair.new_id();
+      ASSERT_NE(ns_pair.old_id(), ns_pair.new_id());
+
+      const string new_namespace_name = cluster_->mini_master()->master()->catalog_manager()->
+          GetNamespaceName(ns_pair.new_id());
+      ASSERT_EQ(old_namespace_name, new_namespace_name);
+
+      const IdPairPB& table_pair = table_meta.table_ids();
+      LOG(INFO) << "Table: " << table_pair.old_id() << " -> " << table_pair.new_id();
+      ASSERT_NE(table_pair.old_id(), table_pair.new_id());
+      scoped_refptr<TableInfo> info = cluster_->mini_master()->master()->catalog_manager()->
+          GetTableInfo(table_pair.new_id());
+      ASSERT_EQ(old_table_name, info->name());
+      vector<scoped_refptr<TabletInfo>> tablets;
+      info->GetAllTablets(&tablets);
+      ASSERT_EQ(old_table_num_tablets, tablets.size());
+
+      const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
+      for (int j = 0; j < tablets_map.size(); ++j) {
+        const IdPairPB& pair = tablets_map.Get(j);
+        LOG(INFO) << "Tablet " << j << ": " << pair.old_id() << " -> " << pair.new_id();
+        ASSERT_NE(pair.old_id(), pair.new_id());
+      }
+    }
+  }
+
+  // Check imported table creating is complete.
+  WaitForCreateTableDone(kTableName);
+
+  result_exist = client_->TableExists(kTableName);
+  ASSERT_OK(result_exist);
+  ASSERT_TRUE(result_exist.get());
+
+  result_exist = client_->NamespaceExists(kTableName.namespace_name());
+  ASSERT_OK(result_exist);
+  ASSERT_TRUE(result_exist.get());
+
+  LOG(INFO) << "Test ImportSnapshotMeta finished.";
 }
 
 } // namespace yb
