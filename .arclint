@@ -14,7 +14,7 @@
     },
     "pycodestyle": {
       "type": "pep8",
-      "include": "(\\.py$)",
+      "include": "(\\.py$|yb-ctl$)",
       "exclude": "(^thirdparty/|^[.]ycm_extra_conf[.]py$)",
       "bin": "pycodestyle"
     },
