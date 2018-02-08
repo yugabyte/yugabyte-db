@@ -196,7 +196,7 @@ void RedisInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
     trace_->Dump(&LOG(INFO), /* include_time_deltas */ true);
   }
