@@ -24,6 +24,12 @@ import com.datastax.driver.core.PreparedStatement;
 
 public class TestTransaction extends BaseCQLTest {
 
+  @override
+  public int getTestMethodTimeoutSec() {
+    // Extend timeout for testBasicReadWrite stress test.
+    return 300;
+  }
+
   private void createTable(String name, String columns, boolean transactional) {
     session.execute(String.format("create table %s (%s) with transactions = { 'enabled' : %b };",
                                   name, columns, transactional));
@@ -224,5 +230,67 @@ public class TestTransaction extends BaseCQLTest {
                    "insert into test_static (h, s) values (1, 1);" +
                    "insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
                    "end transaction;");
+  }
+
+  @Test
+  public void testBasicReadWrite() throws Exception {
+
+    // Stress-test multi-key insert in a loop. Each time insert keys in a transaction and read them
+    // back immediately to verify the content and writetime are identical for all keys.
+    session.execute("create table test_read_write (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true};");
+
+    final int BATCH_SIZE = 10;
+    final int KEY_COUNT = 5000;
+
+    String insert = "begin transaction;";
+    for (int j = 0; j < BATCH_SIZE; j++) {
+      insert += "insert into test_read_write (k, v) values (?, ?);";
+    }
+    insert +=  "end transaction;";
+
+    String select = "select v, writetime(v) from test_read_write where k in ?;";
+
+    PreparedStatement insertStmt = session.prepare(insert);
+    PreparedStatement selectStmt = session.prepare(select);
+
+    int failedReadCount = 0;
+    for (int i = 0; i < KEY_COUNT; i += BATCH_SIZE) {
+      Object[] values = new Object[BATCH_SIZE * 2];
+      for (int j = 0; j < BATCH_SIZE; j++) {
+        values[j * 2] = Integer.valueOf(i + j); // column k
+        values[j * 2 + 1] = Integer.valueOf(i); // column v
+      }
+      session.execute(insertStmt.bind(values));
+
+      values = new Object[BATCH_SIZE];
+      for (int j = 0; j < BATCH_SIZE; j++) {
+        values[j] = Integer.valueOf(i + j);
+      }
+      List<Row> rows = session.execute(selectStmt.bind(Arrays.asList(values))).all();
+
+      boolean match = true;
+      if (rows.size() == BATCH_SIZE) {
+        Row r0 = rows.get(0);
+        for (int j = 1; j < BATCH_SIZE; j++) {
+          Row rj = rows.get(j);
+          if (r0.getInt("v") != rj.getInt("v") ||
+              r0.getLong("writetime(v)") != rj.getLong("writetime(v)")) {
+            match = false;
+            break;
+          }
+        }
+
+        if (r0.getInt("v") == i && match)
+          continue;
+      }
+
+      LOG.info(String.format("Iteration %d: row count = %d", i, rows.size()));
+      for (Row row : rows) {
+        LOG.info(row.toString());
+      }
+      failedReadCount++;
+    }
+    assertEquals("Failed read count", 0, failedReadCount);
   }
 }

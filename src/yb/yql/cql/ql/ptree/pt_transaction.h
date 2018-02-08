@@ -63,7 +63,7 @@ class PTStartTransaction : public TreeNode {
   }
 
  private:
-  IsolationLevel isolation_level_ = SERIALIZABLE_ISOLATION;
+  IsolationLevel isolation_level_ = SNAPSHOT_ISOLATION;
 };
 
 class PTCommit : public TreeNode {

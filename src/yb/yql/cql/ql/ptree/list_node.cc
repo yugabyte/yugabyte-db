@@ -76,11 +76,6 @@ Status PTListNode::AnalyzeStatementBlock(SemContext *sem_context) {
                                   "Conditional DML not supported in a statement batch yet",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
-      // Isolation level needs to be SNAPSHOT_ISOLATION if any of the DML requires a read.
-      if (!dml->column_refs().empty() || !dml->static_column_refs().empty()) {
-        const auto txn = std::static_pointer_cast<PTStartTransaction>(front);
-        txn->set_isolation_level(SNAPSHOT_ISOLATION);
-      }
     }
   }
   return Status::OK();
