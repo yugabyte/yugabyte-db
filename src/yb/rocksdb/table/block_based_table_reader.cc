@@ -276,7 +276,7 @@ BlockBasedTable::FileReaderWithCachePrefix* BlockBasedTable::GetBlockReader(Bloc
 
 BloomFilterAwareFileFilter::BloomFilterAwareFileFilter(
     const ReadOptions& read_options, const Slice& user_key)
-    : read_options_(read_options), user_key_(user_key) {}
+    : read_options_(read_options), user_key_(user_key.ToBuffer()) {}
 
 bool BloomFilterAwareFileFilter::Filter(TableReader* reader) const {
   auto table = down_cast<BlockBasedTable*>(reader);

@@ -131,18 +131,20 @@ message RedisKeyValueSubKeyPB {
 //   - SortedSet : Set key, subkey, value (value is interpreted as score).
 //   - Timeseries: Set key, subkey, value (timestamp_subkey in RedisKeyValueSubKeyPB is interpreted
 //                 as timestamp).
-// - Value is not present in case of an append, get, exists, etc. For multiple inserts into
-//   a container, the subkey and value fields have one or more items.
+// - Value is not present in case of an append, get, exists, etc. For multiple inserts into a
+// container, the subkey and value fields have one or more items.
 message RedisKeyValuePB {
-  // Note: the hash_code is the hash of the 'key' below. Technically, this can be
-  // recomputed by tserver also, but since the client already calculates this to look up the
-  // correct tablet server, it is passed in.
+  // Note: the hash_code is the hash of the 'key' below. Technically, this can be recomputed by
+  // tserver also, but since the client already calculates this to look up the correct tablet
+  // server, it is passed in.
   optional uint32 hash_code = 1;
+
   optional bytes key = 2;                   // Required
   optional RedisDataType type = 3 [ default = REDIS_TYPE_NONE ];
-  // It is assumed that all subkeys are distinct for HMSET and SADD.
-  // For collection range requests, we would have exactly two subkeys denoting the lower bound
-  // and upper bound for the range request.
+
+  // It is assumed that all subkeys are distinct for HMSET and SADD.  For collection range requests,
+  // we would have exactly two subkeys denoting the lower bound and upper bound for the range
+  // request.
   repeated RedisKeyValueSubKeyPB subkey = 4;
   optional int32 index = 5;
   repeated bytes value = 6;

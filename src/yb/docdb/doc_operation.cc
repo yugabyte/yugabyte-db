@@ -16,13 +16,14 @@
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_expr.h"
-#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_expr.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
@@ -46,6 +47,7 @@ namespace docdb {
 using std::set;
 using std::list;
 using std::make_shared;
+using std::unique_ptr;
 using strings::Substitute;
 
 void RedisWriteOperation::GetDocPathsToLock(list<DocPath> *paths, IsolationLevel *level) const {
@@ -116,17 +118,15 @@ CHECKED_STATUS PrimitiveValueFromSubKeyStrict(const RedisKeyValueSubKeyPB &subke
 }
 
 Result<RedisDataType> GetRedisValueType(
-    rocksdb::DB* rocksdb,
-    const ReadHybridTime& read_time,
+    IntentAwareIterator* iterator,
     const RedisKeyValuePB &key_value_pb,
-    rocksdb::QueryId redis_query_id,
     DocWriteBatch* doc_write_batch = nullptr,
-    int subkey_index = -1) {
+    int subkey_index = kNilSubkeyIndex) {
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
   SubDocKey subdoc_key;
-  if (subkey_index < 0) {
+  if (subkey_index == kNilSubkeyIndex) {
     subdoc_key = SubDocKey(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()));
   } else {
     if (subkey_index >= key_value_pb.subkey_size()) {
@@ -156,8 +156,9 @@ Result<RedisDataType> GetRedisValueType(
     // support for Redis.
     GetSubDocumentData data = { &subdoc_key, &doc, &doc_found };
     data.return_type_only = true;
-    RETURN_NOT_OK(GetSubDocument(
-        rocksdb, data, redis_query_id, boost::none /* txn_op_context */, read_time));
+
+    RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr,
+        SeekFwdSuffices::kFalse));
   }
 
   if (!doc_found) {
@@ -187,24 +188,22 @@ Result<RedisDataType> GetRedisValueType(
 }
 
 Result<RedisValue> GetRedisValue(
-    rocksdb::DB *rocksdb,
-    const ReadHybridTime& read_time,
+    IntentAwareIterator* iterator,
     const RedisKeyValuePB &key_value_pb,
-    rocksdb::QueryId redis_query_id,
-    int subkey_index = -1) {
+    int subkey_index = kNilSubkeyIndex) {
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
   SubDocKey doc_key(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()));
 
   if (!key_value_pb.subkey().empty()) {
-    if (key_value_pb.subkey().size() != 1 && subkey_index == -1) {
+    if (key_value_pb.subkey().size() != 1 && subkey_index == kNilSubkeyIndex) {
       return STATUS_SUBSTITUTE(Corruption,
                                "Expected at most one subkey, got $0", key_value_pb.subkey().size());
     }
     PrimitiveValue subkey_primitive;
     RETURN_NOT_OK(PrimitiveValueFromSubKey(
-        key_value_pb.subkey(subkey_index == -1 ? 0 : subkey_index),
+        key_value_pb.subkey(subkey_index == kNilSubkeyIndex ? 0 : subkey_index),
         &subkey_primitive));
     doc_key.AppendSubKeysAndMaybeHybridTime(subkey_primitive);
   }
@@ -215,8 +214,8 @@ Result<RedisValue> GetRedisValue(
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
   GetSubDocumentData data = { &doc_key, &doc, &doc_found };
-  RETURN_NOT_OK(GetSubDocument(
-      rocksdb, data, redis_query_id, boost::none /* txn_op_context */, read_time));
+
+  RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
   if (!doc_found) {
     return RedisValue{REDIS_TYPE_NONE};
@@ -400,9 +399,7 @@ void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response
   SetOptionalInt(type, value, 0, response);
 }
 
-CHECKED_STATUS GetCardinality(rocksdb::DB *rocksdb,
-                              rocksdb::QueryId query_id,
-                              ReadHybridTime hybrid_time,
+CHECKED_STATUS GetCardinality(IntentAwareIterator* iterator,
                               const RedisKeyValuePB& kv,
                               int64_t *result) {
   SubDocKey key_card = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
@@ -411,8 +408,9 @@ CHECKED_STATUS GetCardinality(rocksdb::DB *rocksdb,
 
   bool subdoc_card_found = false;
   GetSubDocumentData data = { &key_card, &subdoc_card, &subdoc_card_found };
-  RETURN_NOT_OK(GetSubDocument(
-  rocksdb, data, query_id, boost::none /* txn_op_context */, hybrid_time));
+
+  RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
+
   if (subdoc_card_found) {
     *result = subdoc_card.GetInt64();
   } else {
@@ -423,9 +421,7 @@ CHECKED_STATUS GetCardinality(rocksdb::DB *rocksdb,
 
 template <typename AddResponseValues>
 CHECKED_STATUS GetAndPopulateResponseValues(
-    rocksdb::DB* rocksdb,
-    rocksdb::QueryId query_id,
-    ReadHybridTime hybrid_time,
+    IntentAwareIterator* iterator,
     AddResponseValues add_response_values,
     const GetSubDocumentData& data,
     ValueType expected_type,
@@ -433,8 +429,7 @@ CHECKED_STATUS GetAndPopulateResponseValues(
     RedisResponsePB* response,
     bool add_keys, bool add_values, bool reverse) {
 
-  RETURN_NOT_OK(GetSubDocument(
-  rocksdb, data, query_id, boost::none /* txn_op_context */, hybrid_time));
+  RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
   // Validate and populate response.
   response->set_allocated_array_response(new RedisArrayPB());
@@ -477,6 +472,18 @@ void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card,
 
 } // anonymous namespace
 
+void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) {
+  auto subdoc_key = SubDocKey(DocKey::FromRedisKey(
+      request_.key_value().hash_code(), request_.key_value().key()));
+
+  auto iter = yb::docdb::CreateIntentAwareIterator(
+      data.doc_write_batch->rocksdb(), BloomFilterMode::USE_BLOOM_FILTER,
+      subdoc_key.Encode().AsSlice(),
+      redis_query_id(), /* txn_op_context */ boost::none, data.read_time);
+
+  iterator_ = std::move(iter);
+}
+
 Status RedisWriteOperation::Apply(const DocOperationApplyData& data) {
   switch (request_.request_case()) {
     case RedisWriteRequestPB::RequestCase::kSetRequest:
@@ -507,15 +514,19 @@ Status RedisWriteOperation::Apply(const DocOperationApplyData& data) {
 
 Result<RedisDataType> RedisWriteOperation::GetValueType(
     const DocOperationApplyData& data, int subkey_index) {
+  if (!iterator_) {
+    InitializeIterator(data);
+  }
   return GetRedisValueType(
-      data.doc_write_batch->rocksdb(), data.read_time, request_.key_value(),
-      redis_query_id(), data.doc_write_batch, subkey_index);
+      iterator_.get(), request_.key_value(), data.doc_write_batch, subkey_index);
 }
 
 Result<RedisValue> RedisWriteOperation::GetValue(
     const DocOperationApplyData& data, int subkey_index) {
-  return GetRedisValue(data.doc_write_batch->rocksdb(), data.read_time,
-                       request_.key_value(), redis_query_id(), subkey_index);
+  if (!iterator_) {
+    InitializeIterator(data);
+  }
+  return GetRedisValue(iterator_.get(), request_.key_value(), subkey_index);
 }
 
 Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
@@ -675,8 +686,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 
         if (new_elements_added > 0) {
           int64_t card;
-          RETURN_NOT_OK(GetCardinality(data.doc_write_batch->rocksdb(), redis_query_id(),
-                                       data.read_time, kv, &card));
+          RETURN_NOT_OK(GetCardinality(iterator_.get(), kv, &card));
           // Insert card + new_elements_added back into the document for the updated card.
           kv_entries_card = SubDocument(PrimitiveValue(card + new_elements_added));
           kv_entries.SetChild(PrimitiveValue(ValueType::kCounter), SubDocument(kv_entries_card));
@@ -860,8 +870,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         }
       }
       int64_t card;
-      RETURN_NOT_OK(GetCardinality(data.doc_write_batch->rocksdb(), redis_query_id(),
-                                   data.read_time, kv, &card));
+      RETURN_NOT_OK(GetCardinality(iterator_.get(), kv, &card));
       // The new cardinality is card - num_keys.
       values_card = SubDocument(PrimitiveValue(card - num_keys));
 
@@ -916,7 +925,7 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
   RETURN_NOT_OK(value);
 
   if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
-                            VerifySuccessIfMissing::kTrue)) {
+        VerifySuccessIfMissing::kTrue)) {
     // We've already set the error code in the response.
     return Status::OK();
   }
@@ -1059,6 +1068,14 @@ Status RedisWriteOperation::ApplyRemove(const DocOperationApplyData& data) {
 }
 
 Status RedisReadOperation::Execute() {
+  SubDocKey doc_key(
+      DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+  auto iter = yb::docdb::CreateIntentAwareIterator(
+      db_, BloomFilterMode::USE_BLOOM_FILTER,
+      doc_key.Encode().AsSlice(),
+      redis_query_id(), /* txn_op_context */ boost::none, read_time_);
+  iterator_ = std::move(iter);
+
   switch (request_.request_case()) {
     case RedisReadRequestPB::RequestCase::kGetRequest:
       return ExecuteGet();
@@ -1096,8 +1113,8 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   switch (value_type) {
     case ValueType::kRedisSortedSet: {
       if (add_keys || add_values) {
-        RETURN_NOT_OK(GetSubDocument(
-        db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
+        RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
+            SeekFwdSuffices::kFalse));
         response_.set_allocated_array_response(new RedisArrayPB());
         if (!doc_found) {
           response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -1110,23 +1127,22 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
       } else {
         int64_t card;
         data.return_type_only = true;
-        RETURN_NOT_OK(GetSubDocument(
-            db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
+        RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
+            SeekFwdSuffices::kFalse));
         if (*data.doc_found && data.result->value_type() != ValueType::kRedisSortedSet) {
           response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
           response_.set_error_message(wrong_type_message);
           return Status::OK();
         }
-        RETURN_NOT_OK(GetCardinality(db_, redis_query_id(), read_time_,
-                                     request_.key_value(), &card));
+        RETURN_NOT_OK(GetCardinality(iterator_.get(), request_.key_value(), &card));
         response_.set_int_response(card);
         response_.set_code(RedisResponsePB_RedisStatusCode_OK);
       }
       break;
     }
     default: {
-      RETURN_NOT_OK(GetSubDocument(
-      db_, data, redis_query_id(), boost::none /* txn_op_context */, read_time_));
+      RETURN_NOT_OK(GetSubDocument(iterator_.get(), data, /* projection */ nullptr,
+          SeekFwdSuffices::kFalse));
       if (add_keys || add_values) {
         response_.set_allocated_array_response(new RedisArrayPB());
       }
@@ -1208,9 +1224,8 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         GetSubDocumentData data = { &doc_key, &doc, &doc_found };
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
-        RETURN_NOT_OK(GetAndPopulateResponseValues(
-            db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, data,
-            ValueType::kObject, request_, &response_,
+        RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesSortedSets,
+            data, ValueType::kObject, request_, &response_,
             /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
       } else {
         SubDocKey doc_key(
@@ -1235,8 +1250,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
         GetSubDocumentData data = { &doc_key, &doc, &doc_found };
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
-        RETURN_NOT_OK(GetAndPopulateResponseValues(
-            db_, redis_query_id(), read_time_, AddResponseValuesGeneric, data,
+        RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesGeneric, data,
             ValueType::kRedisTS, request_, &response_,
             /* add_keys */ true, /* add_values */ true, /* reverse */ true));
       }
@@ -1257,8 +1271,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       }
 
       int64_t card;
-      RETURN_NOT_OK(GetCardinality(db_, redis_query_id(), read_time_,
-                                   request_.key_value(), &card));
+      RETURN_NOT_OK(GetCardinality(iterator_.get(), request_.key_value(), &card));
 
       const RedisIndexBoundPB& low_index_bound = request_.index_range().lower_bound();
       const RedisIndexBoundPB& high_index_bound = request_.index_range().upper_bound();
@@ -1299,8 +1312,7 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       data.low_index = &low_bound;
       data.high_index = &high_bound;
 
-      RETURN_NOT_OK(GetAndPopulateResponseValues(
-      db_, redis_query_id(), read_time_, AddResponseValuesSortedSets, data,
+      RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesSortedSets, data,
       ValueType::kObject, request_, &response_,
       /* add_keys */ add_keys, /* add_values */ true, /* reverse */ true));
       break;
@@ -1312,13 +1324,12 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 }
 
 Result<RedisDataType> RedisReadOperation::GetValueType(int subkey_index) {
-  return GetRedisValueType(db_, read_time_, request_.key_value(), redis_query_id(),
+  return GetRedisValueType(iterator_.get(), request_.key_value(),
                            nullptr /* doc_write_batch */, subkey_index);
-
 }
 
 Result<RedisValue> RedisReadOperation::GetValue(int subkey_index) {
-  return GetRedisValue(db_, read_time_, request_.key_value(), redis_query_id(), subkey_index);
+  return GetRedisValue(iterator_.get(), request_.key_value(), subkey_index);
 }
 
 Status RedisReadOperation::ExecuteGet() {
@@ -1390,17 +1401,38 @@ Status RedisReadOperation::ExecuteGet() {
       }
 
       response_.set_allocated_array_response(new RedisArrayPB());
-      for (int i = 0; i < request_.key_value().subkey_size(); i++) {
-        // TODO: ENG-1803: It is inefficient to create a new iterator for each subkey causing a
-        // new seek. Consider reusing the same iterator.
-        auto value = GetValue(i);
-        RETURN_NOT_OK(value);
-        if (value->type == REDIS_TYPE_STRING) {
-          response_.mutable_array_response()->add_elements(value->value);
-        } else {
-          response_.mutable_array_response()->add_elements(""); // Empty is nil response.
-        }
+      const auto& req_kv = request_.key_value();
+      size_t num_subkeys = req_kv.subkey_size();
+      vector<int> indices(num_subkeys);
+      for (int i = 0; i < num_subkeys; ++i) {
+        indices[i] = i;
       }
+      std::sort(indices.begin(), indices.end(), [req_kv](int i, int j) {
+            return req_kv.subkey(i).string_subkey() < req_kv.subkey(j).string_subkey();
+          });
+
+      string current_value = "";
+      response_.mutable_array_response()->mutable_elements()->Reserve(num_subkeys);
+      for (int i = 0; i < num_subkeys; ++i) {
+        response_.mutable_array_response()->add_elements();
+      }
+      for (int i = 0; i < num_subkeys; ++i) {
+        if (i == 0 ||
+            req_kv.subkey(indices[i]).string_subkey() !=
+            req_kv.subkey(indices[i - 1]).string_subkey()) {
+          // If the condition above is false, we encountered the same key again, no need to call
+          // GetValue() once more, current_value is already correct.
+          auto value = GetValue(indices[i]);
+          RETURN_NOT_OK(value);
+          if (value->type == REDIS_TYPE_STRING) {
+            current_value = std::move(value->value);
+          } else {
+            current_value = ""; // Empty string is nil response.
+          }
+        }
+        *response_.mutable_array_response()->mutable_elements(indices[i]) = current_value;
+      }
+
       response_.set_code(RedisResponsePB_RedisStatusCode_OK);
       return Status::OK();
     }
@@ -1431,7 +1463,7 @@ Status RedisReadOperation::ExecuteStrLen() {
   RETURN_NOT_OK(value);
 
   if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
-                           VerifySuccessIfMissing::kTrue)) {
+        VerifySuccessIfMissing::kTrue)) {
     SetOptionalInt(value->type, value->value.length(), &response_);
   }
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);

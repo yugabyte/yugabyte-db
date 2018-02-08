@@ -42,6 +42,7 @@
 #include "yb/docdb/subdocument.h"
 
 #include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
 // <document_key> <hybrid_time> -> <doc_type>
@@ -260,7 +261,9 @@ class IndexBound {
 struct GetSubDocumentData {
   GetSubDocumentData(
       const SubDocKey* subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr)
-      : subdocument_key(subdoc_key), result(result_), doc_found(doc_found_) {}
+      : subdocument_key(subdoc_key),
+        result(result_),
+        doc_found(doc_found_) {}
 
   const SubDocKey* subdocument_key;
   SubDocument* result;
@@ -268,9 +271,11 @@ struct GetSubDocumentData {
 
   MonoDelta table_ttl = Value::kMaxTtl;
   bool return_type_only = false;
+
   // Represent bounds on the first and last subkey to be considered.
   const SubDocKeyBound* low_subkey = &SubDocKeyBound::Empty();
   const SubDocKeyBound* high_subkey = &SubDocKeyBound::Empty();
+
   // Represent bounds on the first and last ranks to be considered.
   const IndexBound* low_index = &IndexBound::Empty();
   const IndexBound* high_index = &IndexBound::Empty();
@@ -298,9 +303,12 @@ inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& dat
   return out << data.ToString();
 }
 
+// Indicates if we can get away by only seeking forward, or if we must do a regular seek.
+YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
+
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
-// Before the function is called, if is_iter_valid == true, the iterator is expected to be
+// Before the function is called, if seek_fwd_suffices is true, the iterator is expected to be
 // positioned on or before the first key.
 // After this, the iter should be positioned just outside the SubDocument (unless high_subkey is
 // specified, see below for details).
@@ -316,10 +324,10 @@ yb::Status GetSubDocument(
     IntentAwareIterator *db_iter,
     const GetSubDocumentData& data,
     const std::vector<PrimitiveValue>* projection = nullptr,
-    const bool is_iter_valid = true);
+    SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
-// multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
+// multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
 // low_subkey and high_subkey are optional ranges that we can specify for the subkeys to ensure
 // that we include only a particular set of subkeys for the first level of the subdocument that
 // we're looking for.
