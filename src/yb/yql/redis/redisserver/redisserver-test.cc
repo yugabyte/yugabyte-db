@@ -1960,8 +1960,64 @@ TEST_F(TestRedisService, TestEmulateFlagFalse) {
   SyncClient();
 
   VerifyCallbacks();
-
 }
+
+TEST_F(TestRedisService, TestHMGetTiming) {
+  const int num_keys = 50;
+  // For small hset size will not get consistent result.
+  const int size_hset = 1000;
+  const int num_subkeys = 1000;
+  const int num_hmgets = 10;
+  const bool is_random = true;
+  const bool is_serial = true; // Sequentially sync client to measure latency
+  const bool test_nonexisting = true;
+
+  auto start = std::chrono::steady_clock::now();
+
+  for (int i = 0; i < num_keys; i++) {
+    for (int j = 0; j < size_hset; j++) {
+      string si = std::to_string(i);
+      string sj = std::to_string(j);
+      DoRedisTestInt(__LINE__, {"HSET", "parent_" + si, "subkey_" + sj, "value_" + sj}, 1);
+    }
+  }
+
+  SyncClient();
+
+  auto mid = std::chrono::steady_clock::now();
+
+  int max_query_subkey = test_nonexisting ? size_hset * 2 : size_hset;
+
+  for (int i = 0; i < num_hmgets; i++) {
+    string si = std::to_string(i % num_keys);
+    vector<string> command = {"HMGET", "parent_" + si};
+    vector<string> expected;
+    for (int j = 0; j < num_subkeys; j++) {
+      int idx = is_random ?
+          RandomUniformInt(0, max_query_subkey) :
+          (j * max_query_subkey) / num_subkeys;
+      string sj = std::to_string(idx);
+      command.push_back("subkey_" + sj);
+      expected.push_back(idx >= size_hset ? "" : "value_" + sj);
+    }
+    DoRedisTestArray(__LINE__, command, expected);
+    if (is_serial) {
+      SyncClient();
+    }
+  }
+
+  SyncClient();
+
+  auto end = std::chrono::steady_clock::now();
+
+  auto set_time = std::chrono::duration_cast<std::chrono::milliseconds>(mid - start).count();
+  auto get_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - mid).count();
+
+  LOG(INFO) << yb::Format("Total HSET time: $0ms Total HMGET time: $1ms",  set_time, get_time);
+
+  VerifyCallbacks();
+}
+
 
 TEST_F(TestRedisService, TestQuit) {
   DoRedisTestOk(__LINE__, {"SET", "key", "value"});

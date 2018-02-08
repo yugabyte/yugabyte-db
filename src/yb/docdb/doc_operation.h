@@ -30,6 +30,7 @@
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/doc_expr.h"
+#include "yb/docdb/intent_aware_iterator.h"
 
 namespace yb {
 namespace docdb {
@@ -41,6 +42,9 @@ struct DocOperationApplyData {
   ReadHybridTime read_time;
   HybridTime* restart_read_ht;
 };
+
+// When specifiying the parent key, the constant -1 is used for the subkey index.
+const int kNilSubkeyIndex = -1;
 
 class DocOperation {
  public:
@@ -80,8 +84,11 @@ class RedisWriteOperation : public DocOperation {
   RedisResponsePB &response() { return response_; }
 
  private:
-  Result<RedisDataType> GetValueType(const DocOperationApplyData& data, int subkey_index = -1);
-  Result<RedisValue> GetValue(const DocOperationApplyData& data, int subkey_index = -1);
+  void InitializeIterator(const DocOperationApplyData& data);
+  Result<RedisDataType> GetValueType(const DocOperationApplyData& data,
+      int subkey_index = kNilSubkeyIndex);
+  Result<RedisValue> GetValue(const DocOperationApplyData& data,
+      int subkey_index = kNilSubkeyIndex);
 
   CHECKED_STATUS ApplySet(const DocOperationApplyData& data);
   CHECKED_STATUS ApplyGetSet(const DocOperationApplyData& data);
@@ -97,6 +104,9 @@ class RedisWriteOperation : public DocOperation {
 
   RedisWriteRequestPB request_;
   RedisResponsePB response_;
+  // TODO: Currently we have a separate iterator per operation, but in future, we leave the option
+  // open for operations to share iterators.
+  std::unique_ptr<IntentAwareIterator> iterator_;
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId > (&request_); }
 };
@@ -105,16 +115,16 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
                               rocksdb::DB* db,
-                              const ReadHybridTime& read_time)
-      : request_(request), db_(db), read_time_(read_time) {}
+      const ReadHybridTime& read_time) : request_(request), db_(db), read_time_(read_time) {}
 
   CHECKED_STATUS Execute();
 
   const RedisResponsePB &response();
 
  private:
-  Result<RedisDataType> GetValueType(int subkey_index = -1);
-  Result<RedisValue> GetValue(int subkey_index = -1);
+  Result<RedisDataType> GetValueType(int subkey_index = kNilSubkeyIndex);
+
+  Result<RedisValue> GetValue(int subkey_index = kNilSubkeyIndex);
 
   int ApplyIndex(int32_t index, const int32_t len);
   CHECKED_STATUS ExecuteGet();
@@ -127,7 +137,6 @@ class RedisReadOperation {
   CHECKED_STATUS ExecuteExists();
   CHECKED_STATUS ExecuteGetRange();
   CHECKED_STATUS ExecuteCollectionGetRange();
-  CHECKED_STATUS ExecuteGetCard(rocksdb::DB *rocksdb, HybridTime hybrid_time);
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 
@@ -135,6 +144,11 @@ class RedisReadOperation {
   RedisResponsePB response_;
   rocksdb::DB* db_;
   ReadHybridTime read_time_;
+  // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation
+  // Make these two classes similar in terms of how rocksdb state is passed to them.
+  // Currently ReadOperations get the state during construction, but Write operations get them when
+  // calling Apply(). Apply() and Execute() should be more similar() in definition.
+  std::unique_ptr<IntentAwareIterator> iterator_;
 };
 
 class QLWriteOperation : public DocOperation, public DocExprExecutor {

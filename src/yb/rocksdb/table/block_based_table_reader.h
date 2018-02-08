@@ -95,7 +95,7 @@ class BloomFilterAwareFileFilter : public TableAwareReadFileFilter {
 
  private:
   const ReadOptions read_options_;
-  const Slice user_key_;
+  const std::string user_key_;
 };
 
 // A Table is a sorted map from strings to strings.  Tables are

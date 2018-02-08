@@ -363,9 +363,10 @@ void SeekToLowerBound(const SubDocKeyBound& lower_bound, IntentAwareIterator* it
   }
 }
 
-// This works similar to the ScanSubDocument function, but doesn't assume that object init_markers
-// are present. If no init marker is present, or if a tombstone is found at some level,
-// it still looks for subkeys inside it if they have larger timestamps.
+// This function does not assume that object init_markers are present. If no init marker is present,
+// or if a tombstone is found at some level, it still looks for subkeys inside it if they have
+// larger timestamps.
+//
 // TODO(akashnil): ENG-1152: If object init markers were required, this read path may be optimized.
 // We look at all rocksdb keys with prefix = subdocument_key, and construct a subdocument out of
 // them, between the timestamp range high_ts and low_ts.
@@ -577,14 +578,14 @@ yb::Status GetSubDocument(
   auto iter = CreateIntentAwareIterator(
       db, BloomFilterMode::USE_BLOOM_FILTER, doc_key_encoded.AsSlice(), query_id, txn_op_context,
       read_time);
-  return GetSubDocument(iter.get(), data, nullptr /* projection */, false /* is_iter_valid */);
+  return GetSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
 
 yb::Status GetSubDocument(
     IntentAwareIterator *db_iter,
     const GetSubDocumentData& data,
     const vector<PrimitiveValue>* projection,
-    const bool is_iter_valid) {
+    const SeekFwdSuffices seek_fwd_suffices) {
   // TODO(dtxn) scan through all involved first transactions to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
   // TODO(dtxn) we need to restart read with scan_ht = commit_ht if some transaction was committed
@@ -609,7 +610,7 @@ yb::Status GetSubDocument(
   auto doc_key_bytes = key_bytes;
   IntentAwareIteratorPrefixScope prefix_scope(doc_key_bytes, db_iter);
 
-  if (is_iter_valid) {
+  if (seek_fwd_suffices) {
     db_iter->SeekForwardWithoutHt(key_bytes);
   } else {
     db_iter->SeekWithoutHt(key_bytes);
