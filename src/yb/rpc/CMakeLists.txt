@@ -65,6 +65,7 @@ set(YRPC_SRCS
     outbound_call.cc
     local_call.cc
     rpc_call.cc
+    periodic.cc
     proxy.cc
     reactor.cc
     remote_method.cc
@@ -126,6 +127,7 @@ target_link_libraries(rtest_yrpc
 set(YB_TEST_LINK_LIBS rtest_yrpc yrpc ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(growable_buffer-test)
 ADD_YB_TEST(mt-rpc-test RUN_SERIAL true)
+ADD_YB_TEST(periodic-test)
 ADD_YB_TEST(reactor-test)
 ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
