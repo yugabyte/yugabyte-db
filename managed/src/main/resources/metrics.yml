@@ -370,7 +370,7 @@ redis_rpcs_per_sec_local:
     service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- Local"
+    title: "Total Redis Ops / Sec -- Others"
     xaxis:
       type: "date"
     yaxis:
@@ -598,7 +598,7 @@ redis_ops_latency_local:
     service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- Local"
+    title: "Redis Op Latency -- Others"
     xaxis:
       type: "date"
     yaxis:
