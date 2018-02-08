@@ -93,8 +93,6 @@ public class CassandraTransactionalKeyValue extends AppBase {
           if (localReads) {
             LOG.debug("Doing local reads");
             preparedSelect.setConsistencyLevel(ConsistencyLevel.ONE);
-          } else {
-            preparedSelect.setConsistencyLevel(ConsistencyLevel.QUORUM);
           }
         }
       }
