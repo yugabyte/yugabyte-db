@@ -174,7 +174,8 @@ TaskStream<T>::TaskStream(std::function<void(T *)> process_item, ThreadPool* thr
 }
 
 template <typename T>
-TaskStream<T>::~TaskStream() = default;
+TaskStream<T>::~TaskStream() {
+}
 
 template <typename T>
 Status TaskStream<T>::Start() {
