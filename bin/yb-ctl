@@ -17,22 +17,46 @@
 Example use cases:
 
 Creating a cluster with default settings
-  yugabyte.py create
+  yb-ctl start (yb-ctl create)
 
 Creating a cluster with replication factor 5
-  yugabyte.py --rf 5 create
+  yb-ctl --rf 5 start
 
-Checking the status of your cluster
-  yugabyte.py status
+Creating a cluster with placement_info
+  yb-ctl start
+  --placement_info "cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3"
 
-Adding a node to a running cluster
-  yugabyte.py add_node
+Creating a cluster with custom_flags
+  yb-ctl start --master_flags "flag1=value,flag2=value,flag3=value"
+  --tserver_flags "flag1=value,flag2=value,flag3=value"
 
-Stopping node #2 from your cluster
-  yugabyte.py remove_node 2
+Destroying a cluster
+  yb-ctl destroy
+
+Restart the cluster
+  yb-ctl restart
+
+Wipe restart
+  yb-ctl wipe_restart
 
 Destroying your local cluster and its data
-  yugabyte.py destroy
+  yb-ctl destroy
+
+Add node
+  yb-ctl add_node (--placement_info "cloud1.region1.zone1")
+
+Stopping node #X from your cluster
+  yb-ctl remove_node <node_id>
+
+Start node
+  yb-ctl start_node <node_id> (--placement_info "cloud1.region1.zone1")
+
+Stop node
+  yb-ctl stop_node <node_id>
+
+Restart node
+  yb-ctl restart_node <node_id>
+
 """
 
 import argparse
@@ -87,7 +111,7 @@ class ClusterOptions:
     def __init__(self):
         self.max_daemon_index = 20
         self.num_shards_per_tserver = None
-        self.replication_factor = None
+        self.replication_factor = 3
 
         self.cluster_base_dir = None
 
@@ -129,6 +153,9 @@ class ClusterOptions:
         self.master_flags = []
         self.tserver_flags = []
         self.placement_info = []
+        self.verbose_level = 0
+        self.use_cassandra_authentication = False
+        self.node_type = DAEMON_TYPE_TSERVER
 
     def parse_flag_args(self, flag_args):
         flags = [] if flag_args is None else flag_args.split(",")
@@ -140,6 +167,12 @@ class ClusterOptions:
         self.cluster_base_dir = args.data_dir
         self.require_clock_sync = args.require_clock_sync
         self.num_shards_per_tserver = args.num_shards_per_tserver
+
+        if hasattr(args, "v"):
+            self.verbose_level = args.v
+
+        if hasattr(args, "use_cassandra_authentication"):
+            self.use_cassandra_authentication = args.use_cassandra_authentication
 
         for arg in ["master_flags", "tserver_flags"]:
             try:
@@ -160,6 +193,9 @@ class ClusterOptions:
                                    "specify cloud, region and zone as cloud.region.zone, "
                                    "seperated by commas")
             self.placement_info.append(t_item)
+
+        if hasattr(args, "master") and args.master:
+            self.node_type = DAEMON_TYPE_MASTER
 
     def validate_daemon_type(self, daemon_type):
         if daemon_type not in DAEMON_TYPES:
@@ -224,13 +260,13 @@ class ClusterControl:
     def add_extra_flags_arguments(subparser):
         subparser.add_argument(
             "--master_flags", default=None,
-           help="Specify extra master flags as a set of key value pairs. "
-                "Format (key=value,key=value)")
+            help="Specify extra master flags as a set of key value pairs. "
+                 "Format (key=value,key=value)")
 
         subparser.add_argument(
             "--tserver_flags", default=None,
-           help="Specify extra tserver flags as a set of key value pairs. "
-                "Format (key=value,key=value)")
+            help="Specify extra tserver flags as a set of key value pairs. "
+                 "Format (key=value,key=value)")
 
     def setup_parsing(self):
         self.parser.add_argument(
@@ -247,48 +283,66 @@ class ClusterControl:
             help="Use ntpd for clock syncronization. Needed for real time dependent use-cases.")
         self.parser.add_argument(
             "--num_shards_per_tserver", default=2, type=int,
-            help="Number of shards (tablets) to create per tablet server for each table.")
+            help="Number of shards (tablets) to start per tablet server for each table.")
 
         subparsers = {}
         for cmd_name, help in (
                 ("create", "Create a new cluster"),
+                ("start", "Create a new cluster, or start existing cluster if it already exists."),
+                ("stop", "Stops the cluster"),
                 ("destroy", "Destroy the current cluster"),
-                ("recreate", "Destroy the cluster and create it again"),
                 ("restart", "Restart the current cluster all at once"),
-                ("rolling_restart", "Restart the current cluster in a rolling fashion"),
+                ("wipe_restart", "Stop the cluster, wipe all data files and start the cluster as"
+                                 "before. Will lose all the flags though."),
+                ("add_node", "Add a new node to the current cluster"),
+                ("remove_node", "Stop a particular node in the cluster."),
+                ("start_node", "Start a particular node with flags."),
+                # Adding this to keep the start_node/stop_node nomenclature symmetric.
+                ("stop_node", "Stop a particular node in the cluster"),
+                ("restart_node", "Restart the node specified."),
                 ("status", "Get info on the current cluster processes"),
-                ("add_node", "Add a new tserver to the current cluster"),
-                ("setup_redis", "Setup YugaByte to support Redis queries"),
-                ("remove_node", "Remove a tserver from the current cluster")
-            ):
+                ("setup_redis", "Setup YugaByte to support Redis queries")):
 
             subparsers[cmd_name] = self.setup_base_parser(cmd_name, help=help)
 
-        subparsers["create"].add_argument("--placement_info",
-                    help="Specify the placement info in the following format: "
-                    "cloud.region.zone,cloud.region.zone,cloud.region.zone")
+        # commands that take --master
+        per_daemon_commands = ["remove_node", "restart_node", "add_node", "start_node", "stop_node"]
+        # commands that take node_id
+        node_id_commands = ["remove_node", "restart_node", "start_node", "stop_node"]
+        # commands that take placement_info/cassandra auth/verbosity flags.
+        startup_commands = ["start", "create", "restart", "wipe_restart",
+                            "add_node", "start_node", "restart_node"]
 
-        subparsers["add_node"].add_argument("--placement_info",
-                    help="Specify the placement info in the following format:"
-                    "cloud.region.zone")
+        for cmd in node_id_commands:
+            subparsers[cmd].add_argument("node_id", type=int,
+                                         help="The id of the tserver/master in range: 1-{}".
+                                         format(self.options.max_daemon_index))
 
-        subparsers["remove_node"].add_argument("node_id", type=int,
-               help="The id of the tserver to remove in range: 1-{}".format(
-                  self.options.max_daemon_index))
+        for cmd in per_daemon_commands:
+            subparsers[cmd].add_argument(
+                "--master", action='store_true', help="Specifies the node type.")
 
-        for cmd in ["create", "add_node"]:
+        for cmd in startup_commands:
+            subparsers[cmd].add_argument("--placement_info",
+                                         help="Specify the placement info in the following format:"
+                                         "cloud.region.zone . Can be comma seperated "
+                                         "in case you would want to pass more than one value.")
+
+            subparsers[cmd].add_argument("--v", default=0, choices=[i for i in range(5)],
+                                         help="Specify the verbosity which dictates "
+                                         "the amount of logging on servers trace files."
+                                         "Default is 0 and maximum is 4.")
+
+            subparsers[cmd].add_argument("--use_cassandra_authentication",
+                                         action='store_true',
+                                         help="If specified, this flag will be "
+                                         "passed down to tservers as true.")
             ClusterControl.add_extra_flags_arguments(subparsers[cmd])
-
 
     def run(self):
         self.args = self.parser.parse_args()
         self.options.update_options_from_args(self.args)
         self.args.func()
-
-    def set_master_addresses(self, server_counts):
-        self.options.master_addresses = ",".join(
-            [self.options.get_address(DaemonId(DAEMON_TYPE_MASTER, i), "rpc", True)
-             for i in range(1, server_counts + 1)])
 
     def get_number_of_servers(self, daemon_type):
         return len(glob.glob("{}/*/{}/yb-data/{}".format(
@@ -322,7 +376,8 @@ class ClusterControl:
             # Add in all the shared flags
             "--fs_data_dirs \"{}\"".format(",".join(node_base_dirs)),
             "--webserver_interface {}".format(daemon_id.get_ip_address()),
-            "--rpc_bind_addresses {}".format(daemon_id.get_ip_address())
+            "--rpc_bind_addresses {}".format(daemon_id.get_ip_address()),
+            "--v {}".format(self.options.verbose_level)
         ]
         binary_path = self.options.get_server_binary_path(daemon_id.daemon_type)
         www_path = os.path.realpath(os.path.join(os.path.dirname(binary_path), "..", "www"))
@@ -358,7 +413,10 @@ class ClusterControl:
             "--yb_num_shards_per_tserver {}".format(self.options.num_shards_per_tserver),
             "--redis_proxy_bind_address {}".format(daemon_id.get_ip_address()),
             "--cql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
-            "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address())
+            "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address()),
+            # TODO ENG-2876: Enable this in master as well.
+            "--use_cassandra_authentication={}".format(
+                str(self.options.use_cassandra_authentication).lower())
         ]
         return self.customize_flags(command_list, self.options.tserver_flags)
 
@@ -369,10 +427,23 @@ class ClusterControl:
             "--placement_zone {}".format(placement_flags[2])
         ]
 
+    # Expects two arguments
+    # 1. on_create which if true means that we are starting the cluster.
+    # 2. running_only which if true means that we only set running master addresses.
+    def set_master_addresses(self, on_create=False, running_only=False):
+        num_servers = self.options.replication_factor if on_create \
+            else self.get_number_of_servers(DAEMON_TYPE_MASTER)
+        self.options.master_addresses = ",".join(
+            [self.options.get_address(DaemonId(DAEMON_TYPE_MASTER, i), "rpc", True)
+             for i in range(1, num_servers + 1)
+             if not running_only or self.get_pid(DaemonId(DAEMON_TYPE_MASTER, i)) > 0])
+
     def start_daemon(self, daemon_id):
         self.options.validate_daemon_type(daemon_id.daemon_type)
         self.options.validate_daemon_index(daemon_id.index)
-
+        if self.get_pid(daemon_id) > 0:
+            logging.info("Server {} already running".format(daemon_id))
+            return
         if not os.path.isdir(self.options.cluster_base_dir):
             raise ExitWithError("Found no cluster data at {}, cannot add node...".format(
                 self.options.cluster_base_dir))
@@ -395,6 +466,7 @@ class ClusterControl:
         os.system(command)
 
     def stop_daemon(self, daemon_id):
+        self.options.validate_daemon_index(daemon_id.index)
         pid = self.get_pid(daemon_id)
         if pid == 0:
             logging.info("Server {} already stopped".format(daemon_id))
@@ -416,49 +488,43 @@ class ClusterControl:
         self.stop_daemon(daemon_id)
         self.start_daemon(daemon_id)
 
-    def create(self):
-        server_counts = self.options.replication_factor
-        self.set_master_addresses(server_counts)
+    def start_all_daemons(self, server_counts_map):
+        for daemon_type in DAEMON_TYPES:
+            for daemon_index in range(1, server_counts_map[daemon_type] + 1):
+                daemon_id = DaemonId(daemon_type, daemon_index)
+                self.start_daemon(daemon_id)
 
-        if len(self.options.placement_info) > server_counts:
+    def start_helper(self, server_counts_map):
+        if len(self.options.placement_info) > self.options.replication_factor:
             raise RuntimeError("Number of placement info fields is larger than "
                                "the replication factor and hence the number of servers.")
 
         if os.path.isdir(self.options.cluster_base_dir):
             raise ExitWithError(
-                ("Found cluster data at {}, cannot create new cluster. Use --data_dir to "
-                 "specify a different data directory if necessary, or 'destroy' / 'recreate'."
-                 "commands to wipe out the old directory.").format(
+                ("Found cluster data at {}, cannot start new cluster. "
+                 "Use --data_dir to specify a different data directory "
+                 "if necessary, or 'destroy' / 'wipe_restart'."
+                 "Commands to wipe out the old directory.").format(
                     self.options.cluster_base_dir))
+
         os.makedirs(self.options.cluster_base_dir)
+        self.for_all_daemons(self.start_daemon, server_counts_map)
 
-        for daemon_type in DAEMON_TYPES:
-            for daemon_index in range(1, server_counts + 1):
-                daemon_id = DaemonId(daemon_type, daemon_index)
-                pid = self.get_pid(daemon_id)
-                if pid > 0:
-                    logging.info("Server {} is running on PID={}".format(daemon_id, pid))
-                else:
-                    self.start_daemon(daemon_id)
+    def change_config_if_master(self, daemon_id, cmd_type):
+        if daemon_id.daemon_type == DAEMON_TYPE_TSERVER:
+            return
+        yb_admin_binary_path = self.options.get_binary_path("yb-admin")
+        cmd = [yb_admin_binary_path, "--master_addresses", self.options.master_addresses,
+               "change_master_config", cmd_type, daemon_id.get_ip_address(),
+               str(self.options.base_ports[DAEMON_TYPE_MASTER]["rpc"])]
 
-    def set_running_master_addresses(self):
-        self.set_master_addresses(self.get_number_of_servers(DAEMON_TYPE_MASTER))
-
-    def add_node(self):
-        self.set_running_master_addresses()
-        daemon_type = DAEMON_TYPE_TSERVER
-        num_servers = self.get_number_of_servers(daemon_type)
-        if len(self.options.placement_info) > 1:
-            raise RuntimeError("Please specify exactly one placement_info value.")
-        self.start_daemon(DaemonId(daemon_type, num_servers + 1))
-
-    def remove_node(self):
-        # Note: remove_node in its current implementation would be more appropriately called
-        # "stop_node". To properly decommission a local "node", we'll need to remove it from the
-        # master's metadata and also delete the data directory.
-        daemon_id = DaemonId(DAEMON_TYPE_TSERVER, self.args.node_id)
-        logging.info("Stopping server {}".format(daemon_id))
-        self.stop_daemon(daemon_id)
+        retry_count = 0
+        while retry_count < 20:
+            time.sleep(1)
+            retry_count = retry_count + 1
+            err = subprocess.call(cmd)
+            if err == 0:
+                break
 
     def show_node_status(self, daemon_id):
         pid = self.get_pid(daemon_id)
@@ -483,17 +549,35 @@ class ClusterControl:
             logging.info("Server is running: {}".format(
                 ", ".join(["{}={}".format(k, v) for k, v in info_list])))
 
-    def status(self):
-        self.for_all_daemons(self.show_node_status)
-
-    def for_all_daemons(self, fn):
+    def for_all_daemons(self, fn, server_counts_map=None):
         """
         Run the given function for all daemons.
         """
         for daemon_type in DAEMON_TYPES:
-            num_servers = self.get_number_of_servers(daemon_type)
+            num_servers = self.get_number_of_servers(daemon_type) \
+                if not server_counts_map else server_counts_map[daemon_type]
             for daemon_index in range(1, num_servers + 1):
                 fn(DaemonId(daemon_type, daemon_index))
+
+    def create(self):
+        server_counts = self.options.replication_factor
+        self.set_master_addresses(on_create=True)
+
+        self.start_helper({DAEMON_TYPE_MASTER: server_counts,
+                           DAEMON_TYPE_TSERVER: server_counts})
+
+    # Starts as well as creates. Check if the cluster exists.
+    # If it does not create it else start the individual daemons.
+    def start(self):
+        if os.path.isdir(self.options.cluster_base_dir):
+            self.set_master_addresses()
+            self.for_all_daemons(self.start_daemon)
+        else:
+            self.create()
+
+    # Stops the cluster.
+    def stop(self):
+        self.for_all_daemons(self.stop_daemon)
 
     def destroy(self):
         self.for_all_daemons(self.stop_daemon)
@@ -505,23 +589,60 @@ class ClusterControl:
             shutil.rmtree(self.options.cluster_base_dir)
 
     def restart(self):
-        self.set_running_master_addresses()
+        self.set_master_addresses()
         self.for_all_daemons(self.stop_daemon)
         self.for_all_daemons(self.start_daemon)
 
-    def rolling_restart(self):
-        self.set_running_master_addresses()
-        self.for_all_daemons(self.restart_daemon)
+    def wipe_restart(self):
+        num_servers_map = {DAEMON_TYPE_MASTER: self.get_number_of_servers(DAEMON_TYPE_MASTER),
+                           DAEMON_TYPE_TSERVER: self.get_number_of_servers(DAEMON_TYPE_TSERVER)}
+        self.set_master_addresses()
+        self.destroy()
+        self.start_helper(num_servers_map)
+
+    def add_node(self):
+        self.set_master_addresses(running_only=True)
+        num_servers = self.get_number_of_servers(self.options.node_type)
+        if len(self.options.placement_info) > 1:
+            raise RuntimeError("Please specify exactly one placement_info value.")
+
+        daemon_id = DaemonId(self.options.node_type, num_servers + 1)
+        self.start_daemon(daemon_id)
+        self.change_config_if_master(daemon_id, "ADD_SERVER")
+
+    def remove_node(self):
+        # Note: remove_node in its current implementation just stops a node and does not
+        # decommission it. To properly decommission a local "node", we'll need
+        # to remove it from the master's metadata and also delete the data directory.
+        daemon_id = DaemonId(self.options.node_type, self.args.node_id)
+        logging.info("Stopping server {}".format(daemon_id))
+        self.stop_daemon(daemon_id)
+
+    def start_node(self):
+        daemon_id = DaemonId(self.options.node_type, self.args.node_id)
+        self.set_master_addresses()
+        self.start_daemon(daemon_id)
+
+    def stop_node(self):
+        self.remove_node()
+
+    def restart_node(self):
+        daemon_id = DaemonId(self.options.node_type, self.args.node_id)
+        self.stop_daemon(daemon_id)
+        self.set_master_addresses()
+        if len(self.options.placement_info) > 1:
+            raise RuntimeError("Please specify exactly one placement_info value.")
+        self.start_daemon(daemon_id)
+
+    def status(self):
+        self.for_all_daemons(self.show_node_status)
 
     def setup_redis(self):
-        self.set_running_master_addresses()
+        self.set_master_addresses()
         yb_admin_binary_path = self.options.get_binary_path("yb-admin")
         os.system("{} --master_addresses {} setup_redis_table".format(
             yb_admin_binary_path, self.options.master_addresses))
 
-    def recreate(self):
-        self.destroy()
-        self.create()
 
 if __name__ == "__main__":
     logging.basicConfig(
