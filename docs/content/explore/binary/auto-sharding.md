@@ -3,7 +3,7 @@
 If you have a previously running local universe, destroy it using the following.
 
 ```sh
-./bin/yb-ctl destroy
+$ ./bin/yb-ctl destroy
 ```
 
 
@@ -14,7 +14,7 @@ Start a new local universe with a replication factor of 1 (rf=1). We are passing
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to 1MB. We do this in order to force a flush of the data to disk when we insert a value more than 1MB, so that we can observe which tablets the data gets written to.
 
 ```sh
-./bin/yb-ctl --replication_factor 1 --num_shards_per_tserver 4 create \
+$ ./bin/yb-ctl --replication_factor 1 --num_shards_per_tserver 4 create \
              --tserver_flags "memstore_size_mb=1"
 ```
 
@@ -22,14 +22,18 @@ Start a new local universe with a replication factor of 1 (rf=1). We are passing
 The above command creates a universe with one node. Let us add 2 more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each new tserver we add. You can do that by running the following:
 
 ```sh
-./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
-./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+$ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+```
+```sh
+$ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
 We can check the status of the cluster to confirm that we have 3 tservers.
 
 ```sh
 $ ./bin/yb-ctl status
+```
+```sh
 2018-02-03 21:33:05,455 INFO: Server is running: type=master, node_id=1, PID=18967, admin service=http://127.0.0.1:7000
 2018-02-03 21:33:05,477 INFO: Server is running: type=tserver, node_id=1, PID=18970, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
 2018-02-03 21:33:05,499 INFO: Server is running: type=tserver, node_id=2, PID=19299, admin service=http://127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
@@ -43,8 +47,12 @@ $ ./bin/yb-ctl status
 Create a Cassandra table. The keyspace and table name below must created exactly as shown below, since we will be using the sample application to write data into this table.
 
 ```sh
-./bin/cqlsh
+$ ./bin/cqlsh
+```
+```sql
 cqlsh> CREATE KEYSPACE ybdemo_keyspace;
+```
+```sql
 cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
@@ -58,7 +66,7 @@ For each table, we have instructed YugaByte DB to create 4 shards per tserver pr
 
 You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to the [table details page](http://127.0.0.1:7000/tablet-servers). The page should look something like the image below.
 
-![Number of tablets in the Cassandra table](/images/explore/auto-sharding-cassandra-table-1.png)
+![Number of tablets in the Cassandra table](/images/ce/auto-sharding-cassandra-table-1.png)
 
 We see that each node has 4 tablets, and the total number of tablets is 12 as we expected.
 
@@ -66,7 +74,7 @@ We see that each node has 4 tablets, and the total number of tablets is 12 as we
 
 Let us navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine the various tablets. This page should look as follows.
 
-![Tablet details of the Cassandra table](/images/explore/auto-sharding-cassandra-tablets.png)
+![Tablet details of the Cassandra table](/images/ce/auto-sharding-cassandra-tablets.png)
 
 What we see here is that there are 12 tablets as expected, and the key ranges owned by each tablet are shown. This page also shows which node that is currently hosting (and is the leader for) each of these tablets. Note here that the tablets balancing across nodes happens on a per-table basis, so that each table is scaled out to an appropriate number of nodes.
 
@@ -76,7 +84,8 @@ Let us list out all the tablet directories and see their sizes. This can be done
 
 ```sh
 $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
-
+```
+```sh
  20K    /tmp/yugabyte-local-cluster/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-439ae3bde90049d6812e198e76ad29a4
  20K    /tmp/yugabyte-local-cluster/node-1/disk-1/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-eecd01f0a7cd4537ba571bdb85d0c094
  20K    /tmp/yugabyte-local-cluster/node-1/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4ea334056a3845518cc6614baef96966
@@ -110,6 +119,8 @@ $ java -jar java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --num_threads_read 0 \
                                     --num_threads_write 1 \
                                     --value_size 10000000
+```
+```sh
 
 2018-02-05 07:33:33,525 [INFO|...] Num unique keys to insert: 1
 ...
@@ -119,9 +130,12 @@ $ java -jar java/yb-sample-apps.jar --workload CassandraKeyValue \
 Let us check what we have inserted using `cqlsh`.
 
 ```sh
-./bin/cqlsh
+$ ./bin/cqlsh
+```
+```sh
 cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
-
+```
+```sh
  k
 -------
  key:0
@@ -133,6 +147,8 @@ Now let us check the sizes of the various tablets:
 
 ```sh
 $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
+```
+```sh
  20K    .../rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-439ae3bde90049d6812e198e76ad29a4
 9.6M    .../rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-eecd01f0a7cd4537ba571bdb85d0c094
  20K    .../rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-4ea334056a3845518cc6614baef96966
@@ -141,11 +157,11 @@ $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/ta
 
 We see that the key has been written to one of the tablets, in the case of this experiment the UUID of the tablet is `eecd01f0a7cd4537ba571bdb85d0c094`. We can find out from the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) which node this tablet belongs to - it is `node-1` in this case. Here is the relevant screenshot.
 
-![Tablet ownership with auto-sharding](/images/explore/auto-sharding-tablet-ownership.png)
+![Tablet ownership with auto-sharding](/images/ce/auto-sharding-tablet-ownership.png)
 
 We can also easily confirm that the `node-1` indeed has about 10MB of storage being used.
 
-![Inserting values with auto-sharding](/images/explore/auto-sharding-single-kv-insert.png)
+![Inserting values with auto-sharding](/images/ce/auto-sharding-single-kv-insert.png)
 
 
 ## 5. Automatic sharding when add nodes
@@ -154,24 +170,26 @@ We can also easily confirm that the `node-1` indeed has about 10MB of storage be
 Let us add one more node to the universe for a total of 4 nodes, by running the following command.
 
 ```sh
-./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+$ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
 
 By looking at the tablet servers page, we find that the tablets are re-distributed evenly among the 4 nodes and each node now has 3 shards.
 
-![Auto sharding when adding one node](/images/explore/auto-sharding-add-1-node.png)
+![Auto sharding when adding one node](/images/ce/auto-sharding-add-1-node.png)
 
 Next, let us add 2 more nodes to the universe, making it a total of 6 nodes. We can do this by running the following.
 
 ```sh
-./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
-./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+$ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
+```
+```sh
+$ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
 We can verify that the tablets are evenly distributed across the 6 nodes. Each node now has 2 tablets.
 
-![Auto sharding when adding three nodes](/images/explore/auto-sharding-add-3-node.png)
+![Auto sharding when adding three nodes](/images/ce/auto-sharding-add-3-node.png)
 
 
 ## 6. Clean up (optional)

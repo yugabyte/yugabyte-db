@@ -14,6 +14,12 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
       Docker
     </a>
   </li>
+  <li>
+    <a data-toggle="tab" href="#kubernetes">
+      <i class="fa fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
   <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
@@ -31,6 +37,9 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 <div class="tab-content">
   <div id="docker" class="tab-pane fade in active">
     {{% includeMarkdown "/explore/docker/linear-scalability.md" /%}}
+  </div>
+  <div id="kubernetes" class="tab-pane fade">
+    {{% includeMarkdown "/explore/kubernetes/linear-scalability.md" /%}}
   </div>
   <div id="macos" class="tab-pane fade">
     {{% includeMarkdown "/explore/binary/linear-scalability.md" /%}}

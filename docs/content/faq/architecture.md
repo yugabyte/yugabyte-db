@@ -13,9 +13,11 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 
 - The above approach obviates the need for any unpredictable background anti-entropy operations as well as need to establish quorum at read time. As shown in the [YCSB benchmarks against Apache Cassandra](https://forum.yugabyte.com/t/ycsb-benchmark-results-for-yugabyte-and-apache-cassandra-again-with-p99-latencies/99), YugaByte DB delivers predictable p99 latencies as well as 3x read throughput that is also timeline-consistent (given no quorum is needed at read time).
 
-YugaByte DB's architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users.
+On one hand, YugaByte DB's storage and replication architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users. On the other hand, YugaByte DB's multi-model, multi-API and tunable read latency approach is similar to that of [Azure Cosmos DB](https://azure.microsoft.com/en-us/blog/a-technical-overview-of-azure-cosmos-db/).
 
-## Why is a group of YugaByte DB nodes called a `universe` instead of the more commonly used term `clusters`?
+A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugaByte DB](https://medium.com/p/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db-ce720e07c0fd) goes through the above tradeoffs in more detail.
+
+## Why is a group of YugaByte DB nodes called a universe instead of the more commonly used term clusters?
 
 The YugaByte universe packs a lot more functionality that what people think of when referring to a cluster. In fact, in certain deployment choices, the universe subsumes the equivalent of multiple clusters and some of the operational work needed to run these. Here are just a few concrete differences, which made us feel like giving it a different name would help earmark the differences and avoid confusion.
 

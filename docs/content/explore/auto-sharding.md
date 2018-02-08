@@ -1,11 +1,11 @@
 ---
 title: Auto Sharding
-weight: 230
+weight: 240
 ---
 
-YugaByte DB automatically splits user tables into multiple shards, called **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](/architecture/concepts/sharding/) in YugaByte.
+YugaByte DB automatically splits user tables into multiple shards, called **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. For data distribution purposes, a hash based partitioning scheme is used. Read more about [how sharding works](/architecture/concepts/sharding/) in YugaByte DB.
 
-By default, YugaByte creates 8 tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for both Cassandra tables. The internal Redis table works in an identical manner.
+By default, YugaByte creates 8 tablets per node in the cluster for each table and automatically distributes the data across the various tablets, which in turn are distributed evenly across the nodes. In this tutorial, we will explore how automatic sharding is done internally for Cassandra tables. The system Redis table works in an identical manner.
 
 We will explore automatic sharding inside YugaByte DB by creating these tables:
 
@@ -16,12 +16,6 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 
 <ul class="nav nav-tabs">
   <li class="active">
-    <a data-toggle="tab" href="#docker">
-      <i class="icon-docker"></i>
-      Docker
-    </a>
-  </li>
-  <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
@@ -36,10 +30,13 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 </ul>
 
 <div class="tab-content">
-  <div id="docker" class="tab-pane fade in active">
+  <div id="docker" class="tab-pane fade">
     {{% includeMarkdown "/explore/docker/auto-sharding.md" /%}}
   </div>
-  <div id="macos" class="tab-pane fade">
+  <div id="kubernetes" class="tab-pane fade">
+    {{% includeMarkdown "/explore/kubernetes/auto-sharding.md" /%}}
+  </div>
+  <div id="macos" class="tab-pane fade in active">
     {{% includeMarkdown "/explore/binary/auto-sharding.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade">

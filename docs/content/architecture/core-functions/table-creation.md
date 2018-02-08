@@ -43,11 +43,11 @@ process is illustrated below. First, the YB-Master leader validates the schema, 
 tablets (48 tablet-peers because of the replication factor of 3) and replicates this data needed for
 table creation across a majority of YB-Masters using RAFT.
 
-![create_table_masters](/images/create_table_masters.png)
+![create_table_masters](/images/architecture/create_table_masters.png)
 
 Then, the tablets that were created above are assigned to the various YB-TServers.
 
-![tserver_tablet_assignment](/images/tserver_tablet_assignment.png)
+![tserver_tablet_assignment](/images/architecture/tserver_tablet_assignment.png)
 
 The tablet-peers hosted on different YB-TServers form a RAFT group and elect a leader. For all reads
 and writes of keys belonging to this tablet, the tablet-peer leader and the RAFT group are
@@ -57,7 +57,7 @@ event.
 
 For our example, this step is illustrated below.
 
-![tablet_peer_raft_groups](/images/tablet_peer_raft_groups.png)
+![tablet_peer_raft_groups](/images/architecture/tablet_peer_raft_groups.png)
 
 Note that henceforth, if one of the YB-TServers hosting the tablet leader fails, the tablet RAFT
 group quickly re-elects a leader (in a matter of seconds) for purposes of handling IO. Therefore,

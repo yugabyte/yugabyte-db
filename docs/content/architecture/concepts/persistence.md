@@ -183,7 +183,7 @@ this difference (and row level TTLs) using a "liveness column", a special system
 the user. It is added for inserts, but not updates: making sure the row is present even if all
 non-primary key columns are deleted only in the case of inserts.
 
-![cql_row_encoding](/images/cql_row_encoding.png)
+![cql_row_encoding](/images/architecture/cql_row_encoding.png)
 
 **CQL Example: Rows with primitive and collection types**
 
@@ -341,7 +341,7 @@ with empty values, and Lists have indexes as keys. For non-primitive values (e.g
 we store the type in parent level initial value, which is sorted before the subkeys. Any redis value
 can have a TTL, which is stored in the RocksDB-value.
 
-![redis_docdb_overview](/images/redis_docdb_overview.png)
+![redis_docdb_overview](/images/architecture/redis_docdb_overview.png)
 
 **Redis Example**
 

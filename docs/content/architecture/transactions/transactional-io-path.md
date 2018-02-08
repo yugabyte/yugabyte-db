@@ -22,7 +22,7 @@ tablets, and that is what we'll assume from this point on.
 The diagram below shows the high-level steps of a distributed write-only transaction, not including
 any conflict resolution.
 
-![distributed_txn_write_path](/images/txn/distributed_txn_write_path.svg)
+![distributed_txn_write_path](/images/architecture/txn/distributed_txn_write_path.svg)
 
 ### 1. Client's request
 The client sends a request to a YB tablet server that requires a distributed transaction. We
@@ -139,7 +139,7 @@ of these two properties of the snapshot we have to choose:
     higher than the currently chosen **ht_read**.
 
 
-![Distributed transaction read path diagram](/images/txn/distributed_txn_read_path.svg)
+![Distributed transaction read path diagram](/images/architecture/txn/distributed_txn_read_path.svg)
 
 ### 1. Client's request handling and read transaction initialization
 

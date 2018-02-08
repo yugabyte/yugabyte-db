@@ -29,7 +29,7 @@ handled by the leader of the Raft group of the tablet owning the key.
 
 ## Step 2. Tablet leader prepares the operation for replication
 
-![single_shard_txns_insert_if_not_exists](/images/txn/single_shard_txns_insert_if_not_exists.svg)
+![single_shard_txns_insert_if_not_exists](/images/architecture/txn/single_shard_txns_insert_if_not_exists.svg)
 
 The leader of the tablet's Raft group performs the following sequence:
 
@@ -69,7 +69,7 @@ subsequent RPCs.
 As an example, let us assume the user wants to insert into a table T1 that had a key column K and a
 value column V the values (k, v). The write flow is depicted below.
 
-![write_path_io](/images/write_path_io.png)
+![write_path_io](/images/architecture/write_path_io.png)
 
 Note that the above scenario has been greatly simplified by assuming that the user application sends
 the write query to a random YugaByte server, which then routes the request appropriately. In

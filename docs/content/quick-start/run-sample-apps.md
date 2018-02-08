@@ -9,7 +9,6 @@ We will show how to run a sample key-value workload against both the CQL service
 
 ## Prerequisites
 
-
 - Verify that Java is installed on your localhost. You need Java 1.8 installed on your system in order to run sample applications. You can install Java 1.8 from [here](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html).
 
 ```sh
@@ -18,27 +17,36 @@ $ java -version
 
 - Make sure you have `yb-sample-apps.jar` in a convenient location.
 
-The YugaByte install comes pre-packaged with the sample apps and the corresponding source code bundled as a self-contained JAR. For binary installs, this is located in the `java` subdirectory of the install. For docker based installs, you can copy it from one of the YB containers into the `yugabyte` install directory.
+The YugaByte DB install comes pre-packaged with the sample apps and the corresponding source code bundled as a self-contained JAR. 
+
+For binary installs, this is located in the `java` subdirectory of the install. 
+
+For docker based installs, you can copy it from one of the YB containers into the `yugabyte` install directory.
 
 ```sh
-cd <yugabyte install directory>
-docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
+$ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
+```
+
+For Kubernetes based installs, you can copy it from one of the YB pods into the `yugabyte` install directory.
+
+```sh
+$ kubectl cp yb-master-0:/home/yugabyte/java/yb-sample-apps.jar .
 ```
 
 
-## Running Key-Value Workload against Cassandra API
+## Key-Value Workload using Cassandra API
 
-- Run the app.
+### 1. Run the app
 
 You can run the CQL `CassandraKeyValue` sample app using the following command.
 
 ```sh
-java -jar yb-sample-apps.jar --workload CassandraKeyValue --nodes 127.0.0.1:9042
+$ java -jar yb-sample-apps.jar --workload CassandraKeyValue --nodes 127.0.0.1:9042
 ```
 
 It first creates a keyspace `ybdemo_keyspace` and a table `CassandraKeyValue`, then starts multiple writer and reader threads to generate the load. The read/write ops count and latency metrics observed should not be used for performance testing purposes. Below is a short description of the output logs, which will help in understanding what the workload is doing.
 
-- Number of reader and writer threads.
+### 2. Configure number of reader and writer threads
 
 The number of reader and writer threads can be tuned in the sample app using the `--num_threads_read <num>` and the `--num_threads_write <num>` flags.
 
@@ -49,7 +57,7 @@ The number of reader and writer threads can be tuned in the sample app using the
 This log line prints out how many threads are performing reads and writes. By default, 24 threads perform 1 outstanding read each and 2 threads perform 1 outstanding write each.
 
 
-- Time to Live (TTL)
+### 3. Configure Time to Live (TTL)
 
 You can specify the time after which you want the data to get automatically expired and purged out from the database usint the `--table_ttl_seconds <num seconds>` option. Setting this to -1 implies no TTL and the data to never expires.
 
@@ -59,8 +67,7 @@ You can specify the time after which you want the data to get automatically expi
 
 By default, the sample app creates a table with no TTL.
 
-
-- Creating a key-value table
+### 4. Create a key-value table
 
 The sample app creates a table which has two columns - a key column of type `VARCHAR` and a value column of type `BLOB`.
 
@@ -71,8 +78,7 @@ Created a Cassandra table using query:
   [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
 ```
 
-
-- Runtime read and write stats
+### 5. Review runtime read and write stats
 
 The sample app prints out its read and write stats every 5 seconds. The log lines would look like the following.
 
@@ -90,9 +96,7 @@ The first portion of each log line (shown below) says that the sample app is cur
 Read: 7104.28 ops/sec (3.37 ms/op), 65435 total ops
 ```
 
-
 The second portion of the log line (again shown below) says that the sample app is currently doing 427 writes/sec, each taking 4.68ms. It has done 6K ops total thus far, using the 2 (or speficied number of) writer threads. Note that if you are running the default configuration, each write has a replication factor of 3.
-
 
 The last portion of each log line gives an idea of how long the sample app has been running for (15013 ms in this example),  6220 and the number of unique keys written into the database so far (6220 keys in this example). Keys after that upto 6225 are currently being worked on.
 
@@ -101,15 +105,18 @@ Uptime: 15013 ms | maxWrittenKey: 6220 | maxGeneratedKey: 6225
 ```
 
 
-- Verify using cqlsh
+### 6. Verify using cqlsh
 
 You can inspect the table created by the sample app using cqlsh. Connect to the local cluster [as before](quick-start/test-cassandra/). The sample app creates the `cassandrakeyvalue` table in the keyspace `ybdemo_keyspace`.
 
 ```sql
 cqlsh> use ybdemo_keyspace;
+```
+```sql
 cqlsh:ybdemo_keyspace> DESCRIBE cassandrakeyvalue;
-
-CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
+```
+```sql
+cqlsh:ybdemo_keyspace> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
     k text PRIMARY KEY,
     v blob
 ) WITH default_time_to_live = 0;
@@ -120,7 +127,8 @@ You can select a few rows and examine what gets written.
 
 ```sql
 cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
-
+```
+```sql
  k                                         | v
 -------------------------------------------+--------------------
  19870fdc-bb5f-4d31-8afa-fc6c60153c28:1508 | 0x76616c3a31353038
@@ -133,9 +141,9 @@ cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 ```
 
 
-## Running Key-Value Workload against Redis API
+## Key-Value Workload using Redis API
 
-- Run the app.
+### 1. Run the app
 
 You can run the Redis sample app `RedisKeyValue` using the following command.
 
@@ -147,7 +155,7 @@ $ java -jar yb-sample-apps.jar --workload RedisKeyValue --nodes localhost:6379 -
 It starts multiple writer and reader threads to generate the load. Below is a short description of the output logs, which will help in understanding what the workload is doing.
 
 
-- Number of reader and writer threads.
+### 2. Configure number of reader and writer threads.
 
 The number of reader and writer threads can be tuned in the sample app using the `--num_threads_read <num>` and the `--num_threads_write <num>` flags.
 
@@ -158,7 +166,7 @@ The number of reader and writer threads can be tuned in the sample app using the
 This log line prints out how many threads are performing reads and writes. By default, 24 threads perform 1 outstanding read each and 1 thread performs 1 outstanding write.
 
 
-- Runtime read and write stats
+### 3. Review runtime read and write stats
 
 The sample app prints out its read and write stats every 5 seconds. The log lines would look like the following.
 
@@ -180,15 +188,26 @@ The second portion of the log line (again shown below) says that the sample app 
 Write: 129.13 ops/sec (7.72 ms/op), 2454 total ops
 ```
 
-
-- Verify with redis-cli
+### 4. Verify using redis-cli
 
 ```sh
 $ ./bin/redis-cli
+```
+```sh
 127.0.0.1:6379> get key:1  
+```
+```sh
 "val:1"  
+```
+```sh
 127.0.0.1:6379> get key:2  
-"val:2"  
-127.0.0.1:6379> get key:1000  
+```
+```sh
+"val:2"
+```
+```sh
+127.0.0.1:6379> get key:1000 
+```
+```sh
 "val:1000"  
 ```

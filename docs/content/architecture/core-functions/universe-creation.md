@@ -20,12 +20,12 @@ replication factor of 3. In order to do so, first the three masters are started 
 instructing them to that this is a brand new universe create. This is done explicitly to prevent
 accidental errors in creating a universe while it is already running.
 
-![create_universe_masters](/images/create_universe_masters.png)
+![create_universe_masters](/images/architecture/create_universe_masters.png)
 
 The next step, the masters learn about each other and elect one leader.
 
-![create_universe_master_election](/images/create_universe_master_election.png)
+![create_universe_master_election](/images/architecture/create_universe_master_election.png)
 
 The YB-TServers are then started, and they all heartbeat to the YB-Master.
 
-![create_universe_tserver_heartbeat](/images/create_universe_tserver_heartbeat.png)
+![create_universe_tserver_heartbeat](/images/architecture/create_universe_tserver_heartbeat.png)

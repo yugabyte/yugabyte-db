@@ -14,7 +14,7 @@ After [installing YugaByte DB](/quick-start/install/), follow the instructions b
   </li>
   <li >
     <a data-toggle="tab" href="#kubernetes">
-      <i class="fa fa-apple" aria-hidden="true"></i>
+      <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

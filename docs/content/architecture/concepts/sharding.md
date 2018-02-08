@@ -21,7 +21,7 @@ value, and determining what tablet the operation should be routed to.
 
 The figure below illustrates this.
 
-![tablet_overview](/images/tablet_overview.png)
+![tablet_overview](/images/architecture/tablet_overview.png)
 
 For every given key, there is exactly one tablet that owns it. The insert/update/upsert by the end
 user is processed by serializing and hashing the primary key into byte-sequences and determining the
@@ -29,6 +29,6 @@ tablet they belong to. Let us assume that the user is trying to insert a key k w
 table T. The figure below illustrates how the tablet owning the key for the above table is
 determined.
 
-![tablet_hash](/images/tablet_hash.png)
-![tablet_hash_2](/images/tablet_hash_2.png)
+![tablet_hash](/images/architecture/tablet_hash.png)
+![tablet_hash_2](/images/architecture/tablet_hash_2.png)
 

@@ -20,8 +20,7 @@ Download the [yb-docker-ctl](/admin/yb-docker-ctl/) utility. This utility has a 
 
 ```sh
 $ mkdir ~/yugabyte && cd ~/yugabyte
-$ wget https://downloads.yugabyte.com/yb-docker-ctl
-$ chmod +x yb-docker-ctl
+$ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
 ## Install
@@ -36,6 +35,5 @@ $ python --version
 Pull the YugaByte DB container.
 
 ```sh
-# pull the container from docker hub registry
 $ docker pull yugabytedb/yugabyte
 ```

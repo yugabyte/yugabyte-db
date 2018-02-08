@@ -3,7 +3,7 @@ title: Test YugaByte DB Cassandra API
 weight: 130
 ---
 
-After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte DB's Cassandra API service.
+After [creating a local cluster](/quick-start/create-local-cluster/), follow the instructions below to test YugaByte DB's Cassandra API.
 
 [**cqlsh**](http://cassandra.apache.org/doc/latest/tools/cqlsh.html) is a command line shell for interacting with Apache Cassandra through [CQL (the Cassandra Query Language)](http://cassandra.apache.org/doc/latest/cql/index.html). It utilizes the Python CQL driver, and connects to the single node specified on the command line. For ease of use, YugaByte DB ships with the 3.10 version of cqlsh in its bin directory.
 
@@ -18,7 +18,7 @@ After [creating a local cluster](/quick-start/create-local-cluster/), follow the
   </li>
   <li >
     <a data-toggle="tab" href="#kubernetes">
-      <i class="fa fa-apple" aria-hidden="true"></i>
+      <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -64,7 +64,7 @@ cqlsh> CREATE KEYSPACE myapp;
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
 
 ```sql
-CREATE TABLE myapp.stock_market (
+cqlsh> CREATE TABLE myapp.stock_market (
   stock_symbol text,
   ts text,
   current_price float,
@@ -79,16 +79,15 @@ CREATE TABLE myapp.stock_market (
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
 
 ```sql
--- Insert some values for the AAPL stock symbol
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
+cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
-
--- Next insert some values for the FB stock symbol
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
+```
+```sql
+cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
-
--- Next insert some values for the GOOG stock symbol
-INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
+```
+```sql
+cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
 
@@ -98,7 +97,8 @@ Query all the values we have inserted into the database for the stock symbol 'AA
 
 ```sql
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
-
+```
+```sql
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
          AAPL | 2017-10-26 09:00:00 |        157.41
@@ -112,7 +112,8 @@ Query all the values for 'FB' and 'GOOG' as follows.
 
 ```sql
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
-
+```
+```sql
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
            FB | 2017-10-26 09:00:00 |        170.63

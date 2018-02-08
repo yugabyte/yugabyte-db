@@ -1,20 +1,14 @@
 ---
-title: Tunable Reads
+title: Tunable Read Latency
 weight: 260
 ---
 
-With YugaByte DB, you can choose different consistency levels for performing reads. This includes reading from the tablet leader or the followers. Reading from the followers is similar to a reading from a cache, which can give more read IOPS with low latency. In this tutorial, we will update a single key-value over and over, and read it from the tablet leader. While that workload is running, we will start another workload to read from a follower and verify that we are able to read from a tablet follower.
+With YugaByte DB, you can choose different consistency levels for performing reads. Relaxed consistency levels lead to lower latencies since the DB now has less work to do at read time including serving the read from the tablet followers. Reading from the followers is similar to a reading from a cache, which can give more read IOPS with low latency. In this tutorial, we will update a single key-value over and over, and read it from the tablet leader. While that workload is running, we will start another workload to read from a follower and verify that we are able to read from a tablet follower.
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](/quick-start/install/) guide.
 
 <ul class="nav nav-tabs">
   <li class="active">
-    <a data-toggle="tab" href="#docker">
-      <i class="icon-docker"></i>
-      Docker
-    </a>
-  </li>
-  <li >
     <a data-toggle="tab" href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
@@ -29,10 +23,13 @@ If you haven't installed YugaByte DB yet, do so first by following the [Quick St
 </ul>
 
 <div class="tab-content">
-  <div id="docker" class="tab-pane fade in active">
+  <div id="docker" class="tab-pane fade">
     {{% includeMarkdown "/explore/docker/tunable-reads.md" /%}}
   </div>
-  <div id="macos" class="tab-pane fade">
+  <div id="kubernetes" class="tab-pane fade">
+    {{% includeMarkdown "/explore/kubernetes/tunable-reads.md" /%}}
+  </div>
+  <div id="macos" class="tab-pane fade in active">
     {{% includeMarkdown "/explore/binary/tunable-reads.md" /%}}
   </div>
   <div id="linux" class="tab-pane fade">

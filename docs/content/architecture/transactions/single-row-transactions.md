@@ -81,7 +81,7 @@ time period in order to avoid the following inconsistency:
   * The client reads a stale value from the old leader.
 
 ![A diagram showing a potential inconsistency in case of a network partition if leader leases are
-not present](/images/txn/leader_leases_network_partition.svg)
+not present](/images/architecture/txn/leader_leases_network_partition.svg)
 
 The leader lease mechanism in YugaByte prevents this inconsistency. It works as follows:
 

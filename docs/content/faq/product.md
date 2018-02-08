@@ -13,7 +13,7 @@ YugaByte DB is a good fit for cloud-native applications needing to serve mission
 
 3. Streaming applications needing to efficiently ingest, analyze and store ever-growing data. E.g. IoT sensor analytics, time series metrics, real time monitoring.
 
-A few such use cases are detailed [here](https://www.yugabyte.com/use-cases/).
+A few such use cases are detailed [here](https://www.yugabyte.com/solutions/).
 
 ## When is YugaByte DB not a good fit?
 
@@ -25,9 +25,11 @@ YugaByte DB is currently in 0.9 beta release with multiple pre-production deploy
 
 ## Any performance benchmarks available?
 
-[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked YugaByte Cassandra against the standard Apache Cassandra using YCSB. YugaByte outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. Complete results are available on the [YugaByte Forum](https://forum.yugabyte.com/t/ycsb-benchmark-results-for-yugabyte-and-apache-cassandra/59). 
+[Yahoo Cloud Serving Benchmark (YCSB)](https://github.com/brianfrankcooper/YCSB/wiki) is a popular benchmarking framework for NoSQL databases. We benchmarked YugaByte Cassandra API against the standard Apache Cassandra using YCSB. YugaByte outperformed Apache Cassandra by increasing margins as the number of keys (data density) increased across all the 6 YCSB workload configurations. 
 
-[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugaByte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. Details are available on the [YugaByte Forum](https://forum.yugabyte.com/t/ndbench-results-for-yugabyte-db/94).
+[Netflix Data Benchmark (NDBench)](https://github.com/Netflix/ndbench) is another publicly available, cloud-enabled benchmark tool for data store systems. We ran NDBench against YugaByte DB for 7 days and observed P99 and P995 latencies that were orders of magnitude less than that of Apache Cassandra. 
+
+Details for both the above benchhmarks are published in [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 ## What about correctness testing?
 

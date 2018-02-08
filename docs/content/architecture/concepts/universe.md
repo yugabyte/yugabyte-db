@@ -32,7 +32,7 @@ High Availability (HA) of the YB-Master’s functionalities and of the user-tabl
 
 Below is an illustration of a simple 4-node YugaByte universe:
 
-![4 node cluster](/images/4_node_cluster.png)
+![4 node cluster](/images/architecture/4_node_cluster.png)
 
 Before we dive into the roles of these processes, it is useful to introduce the idea behind how data is sharded, replicated and persisted.
 
@@ -50,7 +50,7 @@ YB-TServer”.
 Below is a pictorial illustration of this in the case of a 4 node YugaByte universe, with one table
 that has 16 tablets and a replication factor of 3.
 
-![tserver_overview](/images/tserver_overview.png)
+![tserver_overview](/images/architecture/tserver_overview.png)
 
 The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and
 replicate data between each other. The system shown above comprises of 16 independent Raft groups.
@@ -100,7 +100,7 @@ It is also responsible for coordinating background operations (such as load-bala
 
 Note that the YB-Master is highly available as it forms a Raft group with its peers, and it is not in the critical path of IO against user tables.
 
-![master_overview](/images/master_overview.png)
+![master_overview](/images/architecture/master_overview.png)
 
 Here are some of the functions of the YB-Master.
 

@@ -45,7 +45,7 @@ instance altogether, the approach we have chosen has the following benefits:
 There are three types of RocksDB key/value pairs corresponding to provisional records, omitting
 the one-byte prefix that puts these records before all regular records in RocksDB.
 
-![DocDB storage, including provisional records](/images/txn/provisional_record_storage.svg)
+![DocDB storage, including provisional records](/images/architecture/txn/provisional_record_storage.svg)
 
   * **Primary provisional records**
 
@@ -145,5 +145,4 @@ After a transaction is committed, two more fields are set:
 ## See also
 
 To continue exploring the architecture of YugaByte DB's distributed transaction implementation,
-please take a look at the [Core Functions / IO Path with Distributed
-Transactions](/architecture/core-functions/transactional-io-path/) section next.
+please take a look at the [Core Functions / IO Path with Distributed Transactions](/architecture/core-functions/transactional-io-path/) section next.

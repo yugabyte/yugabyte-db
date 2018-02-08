@@ -8,7 +8,7 @@ This page highlights how YugaByte DB compares against other operational database
 
 ## NoSQL Databases
 
-Feature | [Apache Cassandra](/comparisons/cassandra/) | [Redis](/comparisons/redis/) | [MongoDB](/comparisons/mongodb/) | [Apache HBase](/comparisons/hbase/) |AWS DynamoDB | MS Azure CosmosDB| YugaByte DB
+Feature | [Apache Cassandra](/comparisons/cassandra/) | [Redis](/comparisons/redis/) | [MongoDB](/comparisons/mongodb/) | [Apache HBase](/comparisons/hbase/) |AWS DynamoDB | [MS Azure CosmosDB](/comparisons/azure-cosmos/)| YugaByte DB
 --------|-----------|-------|---------|--------|-------------|--------------|-----------------
 Linear Read &amp; Write Scalability | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>| <i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Automated Failover &amp; Repair | <i class="fa fa-check"></i> |<i class="fa fa-times"></i>| <i class="fa fa-check"></i> |<i class="fa fa-check"></i>|<i class="fa fa-check"></i> | <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
@@ -27,7 +27,7 @@ Open Source | Apache 2.0 | 3-Clause BSD| AGPL 3.0 | Apache 2.0| <i class="fa fa-
 
 ## Distributed SQL Databases
 
-Feature |  Clustrix | CockroachDB | AWS Aurora | MS Azure CosmosDB | Google Spanner | YugaByte DB
+Feature |  Clustrix | CockroachDB | AWS Aurora | [MS Azure CosmosDB](/comparisons/azure-cosmos/) | [Google Spanner](/comparisons/google-spanner/) | YugaByte DB
 --------|---------|-------------|------------|----------------|----------------|-------------
 Linear Write Scalability | <i class="fa fa-check"></i> |  <i class="fa fa-check"></i> | <i class="fa fa-times"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>
 Linear Read Scalability | <i class="fa fa-check"></i> |  <i class="fa fa-check"></i> | <i class="fa fa-check"></i> |<i class="fa fa-check">| <i class="fa fa-check"></i> | <i class="fa fa-check"></i>

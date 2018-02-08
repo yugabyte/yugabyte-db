@@ -81,22 +81,22 @@ menu:
       parent: explore
       url: explore/fault-tolerance/
       weight: 220
-    - name: 3. Auto Sharding
+    - name: 3. ACID Transactions
+      parent: explore
+      url: explore/transactions/
+      weight: 230
+    - name: 4. Auto Sharding
       parent: explore
       url: explore/auto-sharding/
-      weight: 230
-    - name: 4. Auto Rebalancing
+      weight: 240
+    - name: 5. Auto Rebalancing
       parent: explore
       url: explore/auto-rebalancing/
-      weight: 240
-    - name: 5. Tunable Reads
+      weight: 250
+    - name: 6. Tunable Read Latency
       parent: explore
       url: explore/tunable-reads/
       weight: 260
-    - name: 6. Transactions
-      parent: explore
-      url: explore/transactions/
-      weight: 270
     - name: Develop
       identifier: develop
       url: develop/
@@ -315,7 +315,7 @@ menu:
       parent: core-functions
       url: architecture/core-functions/high-availability/
       weight: 1040
-    - name: Transactions
+    - name: ACID Transactions
       parent: architecture
       identifier: transactions
       url: architecture/transactions/
@@ -356,10 +356,18 @@ menu:
       parent: comparisons
       url: comparisons/redis/
       weight: 1100
+    - name: Azure Cosmos DB
+      parent: comparisons
+      url: comparisons/azure-cosmos/
+      weight: 1110
+    - name: Google Cloud Spanner
+      parent: comparisons
+      url: comparisons/google-spanner/
+      weight: 1120
     - name: Apache HBase
       parent: comparisons
       url: comparisons/hbase/
-      weight: 1110
+      weight: 1130
     - name: API Reference
       identifier: API
       url: api/

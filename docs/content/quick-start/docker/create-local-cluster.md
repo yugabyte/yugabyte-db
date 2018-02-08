@@ -14,6 +14,8 @@ Run the command below to see that we now have 3 `yb-master` (yb-master-n1,yb-mas
 
 ```sh
 $ ./yb-docker-ctl status
+```
+```sh
 PID        Type       Node       URL                       Status          Started At          
 26132      tserver    n3         http://172.18.0.7:9000    Running         2017-10-20T17:54:54.99459154Z
 25965      tserver    n2         http://172.18.0.6:9000    Running         2017-10-20T17:54:54.412377451Z

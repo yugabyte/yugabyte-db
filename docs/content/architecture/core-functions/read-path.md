@@ -26,7 +26,7 @@ Continuing our previous example, let us assume the user wants to read the value 
 key column K has a value k from table T1. From the previous example, the table T1 has a key column K
 and a value column V. The read flow is depicted below.
 
-![read_path_io](/images/read_path_io.png)
+![read_path_io](/images/architecture/read_path_io.png)
 
 Note that the read queries can be quite complex - even though the example here talks about a simple
 key-value like table lookup. The YQL query layer has a fully optimized query engine to handle

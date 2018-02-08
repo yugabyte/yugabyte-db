@@ -1,6 +1,6 @@
 ---
 title: Apache HBase
-weight: 1110
+weight: 1130
 ---
 
 Following are the key areas of differences between YugaByte DB and [Apache HBase](http://hbase.apache.org/).

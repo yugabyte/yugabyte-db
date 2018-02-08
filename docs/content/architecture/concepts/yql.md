@@ -23,4 +23,4 @@ the sub-components in YQL are:
 - A Redis command parser and execution layer
 - Support for language specific builtin operations, data type encodings, etc.
 
-![cluster_overview](/images/cluster_overview.png)
+![cluster_overview](/images/architecture/cluster_overview.png)

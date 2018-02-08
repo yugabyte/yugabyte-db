@@ -2,6 +2,8 @@
 
 ```sh
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
+```
+```sh
 127.0.0.1:6379> 
 ```
 
@@ -9,5 +11,7 @@ $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
 
 ```sh
 127.0.0.1:6379> PING
+```
+```sh
 "PONG"
 ```

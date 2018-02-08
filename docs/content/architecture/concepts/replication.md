@@ -22,7 +22,7 @@ The figure below illustrates three tablet-peers that belong to a tablet (tablet 
 are hosted on different YB-TServers and form a Raft group for leader election, failure detection and
 replication of the write-ahead logs.
 
-![raft_replication](/images/raft_replication.png)
+![raft_replication](/images/architecture/raft_replication.png)
 
 The first thing that happens when a tablet starts up is to elect one of the tablet-peers as the
 **leader** using the [Raft](https://raft.github.io/) protocol. This tablet leader now becomes

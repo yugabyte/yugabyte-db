@@ -23,6 +23,13 @@ You can use your [local cluster](/quick-start/) to explore all the core features
     </div>
   </a>
 
+  <a class="section-link icon-offset" href="/explore/transactions">
+    <div class="icon">
+      <img src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
+    </div>
+    <div class="text">Distributed ACID Transactions</div>
+  </a>
+  
   <a class="section-link icon-offset" href="/explore/auto-sharding">
     <div class="icon">
       <img src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
@@ -43,7 +50,7 @@ You can use your [local cluster](/quick-start/) to explore all the core features
     <div class="icon">
       <img src="/images/section_icons/explore/tunable_reads.png" aria-hidden="true" />
     </div>
-    <div class="text">Tunable Reads</div>
+    <div class="text">Tunable Read Latency</div>
   </a>
 
 <!--
@@ -55,11 +62,5 @@ You can use your [local cluster](/quick-start/) to explore all the core features
   </a>
 -->
 
-  <a class="section-link icon-offset" href="/explore/transactions">
-    <div class="icon">
-      <img src="/images/section_icons/explore/zero_downtime.png" aria-hidden="true" />
-    </div>
-    Transactions
-  </a>
 
 </div>

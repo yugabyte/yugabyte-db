@@ -14,6 +14,8 @@ Run the command below to see that we now have 3 `yb-master` processes and 3 `yb-
 
 ```sh
 $ ./bin/yb-ctl status
+```
+```sh
 2017-10-16 22:19:52,363 INFO: Server is running: type=master, node_id=1, PID=31926, admin service=127.0.0.1:7000
 2017-10-16 22:19:52,438 INFO: Server is running: type=master, node_id=2, PID=31929, admin service=127.0.0.2:7000
 2017-10-16 22:19:52,448 INFO: Server is running: type=master, node_id=3, PID=31932, admin service=127.0.0.3:7000
