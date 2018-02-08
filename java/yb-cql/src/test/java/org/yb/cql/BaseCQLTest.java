@@ -22,8 +22,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
@@ -111,9 +109,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   public Cluster.Builder getDefaultClusterBuilder() {
-    // Set default consistency level to strong consistency
-    QueryOptions queryOptions = new QueryOptions();
-    queryOptions.setConsistencyLevel(ConsistencyLevel.YB_STRONG);
     // Set a long timeout for CQL queries since build servers might be really slow (especially Mac
     // Mini).
     SocketOptions socketOptions = new SocketOptions();
@@ -121,7 +116,6 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     socketOptions.setConnectTimeoutMillis(60 * 1000);
     return Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-              .withQueryOptions(queryOptions)
               .withSocketOptions(socketOptions);
   }
 
