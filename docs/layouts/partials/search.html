@@ -4,14 +4,8 @@
 </form>
 
 <script>
-if(localStorage.getItem("search-input") != null)
-    {
-      $('#search-input').val(localStorage.getItem("search-input"));
-    }
-
-    $('#search-input').change(function()
-    {
-      localStorage.setItem("search-input", $('#search-input').val());
-    });
-
+var urlParams = new URLSearchParams(window.location.search)
+if (urlParams.has('q')) {
+  $('#search-input').val(urlParams.get('q'))
+}
 </script>
