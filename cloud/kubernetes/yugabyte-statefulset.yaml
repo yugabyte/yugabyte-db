@@ -124,9 +124,13 @@ spec:
   clusterIP: None
   ports:
   - name: ui
-    port: 7000
+    port: 9000
   - name: rpc-port
-    port: 7100
+    port: 9100
+  - name: cassandra
+    port: 9042
+  - name: redis
+    port: 6379
   selector:
     app: yb-tserver
 ---
@@ -175,7 +179,9 @@ spec:
         - containerPort: 9100
           name: tserver-rpc
         - containerPort: 9042
-          name: cql
+          name: cassandra
+        - containerPort: 6379
+          name: redis
         # These volume mounts are persistent. They are like inline claims,
         # but not exactly because the names need to match exactly one of
         # the stateful pod volumes.
