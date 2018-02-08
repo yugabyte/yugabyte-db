@@ -44,12 +44,14 @@
 #ifndef YB_UTIL_LOGGING_H
 #define YB_UTIL_LOGGING_H
 
+#include <fcntl.h>
 #include <string>
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging_callback.h"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -276,6 +278,30 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
     LOG(FATAL) << (msg); \
     abort(); \
   } while (false)
+
+void DisableCoreDumps();
+
+class DisableDumpLogSink : public google::LogSink {
+ public:
+
+  DisableDumpLogSink() {
+    AddLogSink(this);
+  }
+  ~DisableDumpLogSink() {
+    RemoveLogSink(this);
+  }
+
+  // (Re)define LogSink interface.
+
+  void send(google::LogSeverity severity, const char* /* full_filename */,
+                    const char* base_filename, int line,
+                    const struct tm* tm_time,
+                    const char* message, size_t message_len) override {
+    if (severity == SEVERITY_FATAL) {
+      DisableCoreDumps();
+    }
+  }
+};
 
 } // namespace yb
 

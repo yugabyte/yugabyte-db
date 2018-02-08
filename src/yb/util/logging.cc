@@ -78,6 +78,10 @@ using base::SpinLockHolder;
 
 namespace yb {
 
+// Sink which disables core dump for log(fatal).
+unique_ptr<DisableDumpLogSink> disable_dump;
+
+
 namespace {
 
 class SimpleSink : public google::LogSink {
@@ -159,6 +163,16 @@ void DumpStackTraceAndExit() {
   abort();
 }
 
+void InitializeGoogleLogging(const char *arg) {
+
+  google::InitGoogleLogging(arg);
+
+  google::InstallFailureFunction(DumpStackTraceAndExit);
+
+  disable_dump = std::make_unique<DisableDumpLogSink>();
+
+}
+
 } // anonymous namespace
 
 void InitGoogleLoggingSafe(const char* arg) {
@@ -202,9 +216,7 @@ void InitGoogleLoggingSafe(const char* arg) {
     remove(file_name.c_str());
   }
 
-  google::InitGoogleLogging(arg);
-
-  google::InstallFailureFunction(DumpStackTraceAndExit);
+  InitializeGoogleLogging(arg);
 
   // Needs to be done after InitGoogleLogging
   if (FLAGS_log_filename.empty()) {
@@ -224,9 +236,7 @@ void InitGoogleLoggingSafeBasic(const char* arg) {
   SpinLockHolder l(&logging_mutex);
   if (logging_initialized) return;
 
-  google::InitGoogleLogging(arg);
-
-  google::InstallFailureFunction(DumpStackTraceAndExit);
+  InitializeGoogleLogging(arg);
 
   // This also disables file-based logging.
   google::LogToStderr();
@@ -322,6 +332,23 @@ ostream& operator<<(ostream &os, const PRIVATE_ThrottleMsg&) {
     os << " [suppressed " << ctr << " similar messages]";
   }
   return os;
+}
+
+void DisableCoreDumps() {
+  struct rlimit lim;
+  PCHECK(getrlimit(RLIMIT_CORE, &lim) == 0);
+  lim.rlim_cur = 0;
+  PCHECK(setrlimit(RLIMIT_CORE, &lim) == 0);
+
+  // Set coredump_filter to not dump any parts of the address space.  Although the above disables
+  // core dumps to files, if core_pattern is set to a pipe rather than a file, it's not sufficient.
+  // Setting this pattern results in piping a very minimal dump into the core processor (eg abrtd),
+  // thus speeding up the crash.
+  int f = open("/proc/self/coredump_filter", O_WRONLY);
+  if (f >= 0) {
+    write(f, "00000000", 8);
+    close(f);
+  }
 }
 
 } // namespace yb
