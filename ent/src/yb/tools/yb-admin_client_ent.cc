@@ -7,6 +7,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/string_util.h"
 
@@ -33,9 +34,13 @@ using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::SnapshotInfoPB;
+using master::SysNamespaceEntryPB;
+using master::SysRowEntry;
+using master::SysTablesEntryPB;
 using master::IdPairPB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
+using yb::util::to_uchar_ptr;
 
 using namespace std::literals;
 
@@ -175,6 +180,36 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
 
   cout << "Importing snapshot " << snapshot_info->id()
        << " (" << snapshot_info->entry().state() << ")" << endl;
+
+  string keyspace_name;
+  string table_name;
+  for (const SysRowEntry& entry : snapshot_info->entry().entries()) {
+    switch (entry.type()) {
+      case SysRowEntry::NAMESPACE: {
+        SysNamespaceEntryPB meta;
+        const string &data = entry.data();
+        RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+        keyspace_name = meta.name();
+        break;
+      }
+      case SysRowEntry::TABLE: {
+        SysTablesEntryPB meta;
+        const string &data = entry.data();
+        RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+        table_name = meta.name();
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  if (keyspace_name.empty() || table_name.empty()) {
+    return STATUS(IllegalState,
+                  "Could not find table name or keyspace name from snapshot metadata");
+  }
+
+  cout << "Table being imported: " << keyspace_name << "." << table_name << endl;
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
