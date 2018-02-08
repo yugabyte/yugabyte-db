@@ -47,6 +47,11 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
+#define ASSERT_EVENTUALLY(expr) do { \
+  AssertEventually(expr); \
+  NO_PENDING_FATALS(); \
+} while (0)
+
 namespace yb {
 
 // Our test string literals contain "\x00" that is treated as a C-string null-terminator.
@@ -106,6 +111,22 @@ int SeedRandom();
 //
 // May only be called from within a gtest unit test.
 std::string GetTestDataDirectory();
+
+// Wait until 'f()' succeeds without adding any GTest 'fatal failures'.
+// For example:
+//
+//   AssertEventually([]() {
+//     ASSERT_GT(ReadValueOfMetric(), 10);
+//   });
+//
+// The function is run in a loop with exponential backoff, capped at once
+// a second.
+//
+// To check whether AssertEventually() eventually succeeded, call
+// NO_PENDING_FATALS() afterward, or use ASSERT_EVENTUALLY() which performs
+// this check automatically.
+void AssertEventually(const std::function<void(void)>& f,
+                      const MonoDelta& timeout = MonoDelta::FromSeconds(30));
 
 // Logs some of the differences between the two given vectors. This can be used immediately before
 // asserting that two vectors are equal to make debugging easier.
