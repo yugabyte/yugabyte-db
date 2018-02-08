@@ -55,15 +55,6 @@ const panelTypes = {
   proxies: {title: "Apache Cassandra and Redis",
     metrics: ["cql_server_rpc_per_second",
       "cql_sql_latency",
-      "redis_yb_local_vs_remote_ops",
-      "redis_yb_local_vs_remote_latency",
-      "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all"]},
-
-  redis:  {title: "Redis Advanced Graphs",
-    metrics: ["redis_yb_local_vs_remote_ops",
-      "redis_yb_local_vs_remote_latency",
-      "redis_reactor_latency",
       "redis_rpcs_per_sec_all",
       "redis_rpcs_per_sec_hash",
       "redis_rpcs_per_sec_ts",
@@ -78,6 +69,12 @@ const panelTypes = {
       "redis_ops_latency_sorted_set",
       "redis_ops_latency_str",
       "redis_ops_latency_local",
+    ]},
+
+  redis:  {title: "Redis Advanced Graphs",
+    metrics: ["redis_yb_local_vs_remote_ops",
+      "redis_yb_local_vs_remote_latency",
+      "redis_reactor_latency",
     ]},
 
   cql:  {title: "Apache Cassandra Advanced Graphs",
