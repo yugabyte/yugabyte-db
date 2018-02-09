@@ -8,7 +8,6 @@
   bottom: 0;
   z-index: 1040;
   position: fixed;
-  overflow: hidden;
   width: 90px;
   min-height: 322px;
   background: $YB_VIOLET;
@@ -59,7 +58,7 @@
     display: block;
     cursor: pointer;
 
-    a {
+    & > a {
       & {
         color: $YB_SIDEBAR_TEXT;
         font-weight: 500 !important;
@@ -95,7 +94,7 @@
     }
 
     &.active {
-      a {
+      & > a {
         &, &:hover {
           text-shadow: rgba(0, 0, 0, 0.25) 0 -1px 0;
           color: #fff;
@@ -106,6 +105,9 @@
           }
         }
       }
+    }
+    & > a[aria-expanded=true] {
+      background: $YB_SIDEBAR_ACTIVE;
     }
   }   
 }
@@ -153,6 +155,12 @@
   position: absolute;
   bottom: 0;
   width: 100%;
+  .dropdown-menu {
+    left: 75px;
+    min-width: 250px;
+    bottom: calc( 100% - 2px );
+    text-align: left;
+  }
 }
 .nav.side-menu.position-bottom > li > a{
   i {
@@ -171,6 +179,23 @@
       height: 20px;
       font-size: 18px !important;
       line-height: 22px;
+    }
+  }
+}
+
+#help-dropdown{
+  .caret {
+    display: none;
+  }
+  & + ul {
+    overflow: hidden;
+    h4 {
+      padding: 20px 22px 10px 22px;
+    }
+    object {
+      display: inline-block;
+      margin-right: 20px;
+      vertical-align: middle;
     }
   }
 }

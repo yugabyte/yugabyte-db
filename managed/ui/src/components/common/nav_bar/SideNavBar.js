@@ -2,6 +2,8 @@
 
 import React, { Component } from 'react';
 import { Link, IndexLink, withRouter } from 'react-router';
+import { NavDropdown } from 'react-bootstrap';
+import gitterIcon from '../../help/HelpItem/images/gitter.svg';
 import './stylesheets/SideNavBar.scss';
 
 class NavLink extends Component {
@@ -44,7 +46,33 @@ export default class SideNavBar extends Component {
                   <NavLink to="/config" icon="fa fa-cloud-upload" text="Configuration" />
                 </ul>
                 <ul className="nav side-menu position-bottom">
-                  <NavLink to="/help" icon="fa fa-question" text="Help" />
+                  <NavDropdown dropup eventKey="2" title={<div><i className="fa fa-question"></i><span>Help</span></div>} id="help-dropdown">
+                    <h4>Resources</h4>
+                    <li>
+                      <a href="https://docs.yugabyte.com/" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-book"></i> Documentation
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://github.com/yugabyte" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-github"></i> GitHub
+                      </a>
+                    </li>
+                    <h4>Support</h4>
+                    <li>
+                      <a href="https://gitter.im/YugaByte/Lobby" target="_blank" rel="noopener noreferrer">
+                        <object data={gitterIcon} type="image/svg+xml" width="16">Icon</object> Gitter
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-youtube"></i> YouTube
+                      </a>
+                    </li>
+                    <li>
+                      <a href="mailto:support@yugabyte.com"><i className="fa fa-envelope-o"></i> Email</a>
+                    </li>
+                  </NavDropdown>
                 </ul>
               </div>
             </div>
