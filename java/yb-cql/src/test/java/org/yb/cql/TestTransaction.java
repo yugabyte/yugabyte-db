@@ -24,7 +24,6 @@ import com.datastax.driver.core.PreparedStatement;
 
 public class TestTransaction extends BaseCQLTest {
 
-  @override
   public int getTestMethodTimeoutSec() {
     // Extend timeout for testBasicReadWrite stress test.
     return 300;
