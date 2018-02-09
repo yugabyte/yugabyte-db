@@ -11,12 +11,12 @@ secondary indexes and multi-table/row ACID operations in both the Cassandra (CQL
 in the PostgreSQL context (which is the 3rd API that YugaByte DB intends to support). This section
 provides some common concepts and notions used in YugaByte's approach to implementing distributed
 transactions.  Once you are familiar with these concepts, please see the [Core Functions / IO Path
-with Distributed Transactions](/architecture/core-functions/transactional-io-path/) section for a
+with Distributed Transactions](/architecture/transactions/transactional-io-path/) section for a
 walk-through of a distributed transaction lifecycle.
 
 ## Provisional records
 
-Just as YugaByte DB stores values writen by single-shard ACID transactions into
+Just as YugaByte DB stores values written by single-shard ACID transactions into
 [DocDB](/architecture/concepts/persistence/), it needs to store uncommitted values written by
 distributed transactions in a similar persistent data structure. However, we cannot just write them
 to DocDB as regular values, because they would then become visible at different times to clients
@@ -115,10 +115,7 @@ TxnId, HybridTime -> primary provisional record key
 Atomicity (the "A" in "ACID") means that either all values written by a transaction are visible, or
 none are visible at all. YugaByte DB already provides atomicity of single-shard updates by
 replicating them via Raft and applying them as one write batch to the underlying RocksDB / DocDB
-storage engine. The same approach could be reused to make *transaction status* changes atomic.  By
-storing the status of each distributed transaction in a special key in one shard, we can atomically
-make all values written as part of that transaction visible by setting the status to "committed" in
-one place.
+storage engine. The same approach could be reused to make *transaction status* changes atomic.  The status of transactions is tracked in a "transaction status" table. This table, under the covers, is just another elastic/sharded table in the system. The transaction id (a globally unique id) serves as the key in the table, and updates to a transaction's status are simple single-shard ACID operations. This allows us to atomically make all values written as part of that transaction visible by setting the status to "committed" in that transaction's status record in the table.
 
 A transaction status record contains the following fields for a particular transaction id:
 
@@ -145,4 +142,4 @@ After a transaction is committed, two more fields are set:
 ## See also
 
 To continue exploring the architecture of YugaByte DB's distributed transaction implementation,
-please take a look at the [Core Functions / IO Path with Distributed Transactions](/architecture/core-functions/transactional-io-path/) section next.
+please take a look at the [Core Functions / IO Path with Distributed Transactions](/architecture/transactions/transactional-io-path/) section next.

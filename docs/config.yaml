@@ -10,7 +10,7 @@ algolia:
   appID: 4LBMOWH4F9
 params:
   author: Team YugaByte
-  description: 'YugaByte, a cloud-native DB for mission-critical applications'
+  description: 'YugaByte DB, a transactional, high performance, planet-scale operational database'
   copyright: 'YugaByte, Inc.'
   block_indexing: false
   version: Beta
