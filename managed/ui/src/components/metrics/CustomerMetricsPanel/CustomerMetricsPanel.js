@@ -6,6 +6,7 @@ import PropTypes from 'prop-types';
 
 const graphPanelTypes = {
   "universe": ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
+  "customer": ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'],
   "table": ['lsmdb_table', 'tserver_table']
 };
 
