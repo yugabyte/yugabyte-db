@@ -100,6 +100,12 @@ DEFINE_int32(scanner_batch_size_rows, 100,
 TAG_FLAG(scanner_batch_size_rows, advanced);
 TAG_FLAG(scanner_batch_size_rows, runtime);
 
+DEFINE_bool(parallelize_read_ops, true,
+             "Controls weather multiple (Redis) read ops that are present in a operation "
+                 "should be executed in parallel.");
+TAG_FLAG(parallelize_read_ops, advanced);
+TAG_FLAG(parallelize_read_ops, runtime);
+
 // Fault injection flags.
 DEFINE_int32(scanner_inject_latency_on_each_batch_ms, 0,
              "If set, the scanner will pause the specified number of milliesconds "
@@ -879,6 +885,16 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   TRACE("Done Read");
 }
 
+void HandleRedisReadRequestAsync(
+    tablet::AbstractTablet* tablet,
+    const ReadHybridTime& read_time,
+    const RedisReadRequestPB& redis_read_request,
+    RedisResponsePB* response,
+    const std::function<void(const Status& s)>& status_cb
+) {
+  status_cb(tablet->HandleRedisReadRequest(read_time, redis_read_request, response));
+}
+
 Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
                                                  const ReadRequestPB* req,
                                                  ReadHybridTime read_time,
@@ -890,15 +906,49 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
   tablet::ScopedReadOperation read_tx(tablet, require_lease, read_time);
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
-      for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
-        RedisResponsePB redis_response;
-        RETURN_NOT_OK(tablet->HandleRedisReadRequest(
-            read_tx.read_time(), redis_read_req, &redis_response));
-        resp->add_redis_batch()->Swap(&redis_response);
-      }
+      size_t count = req->redis_batch_size();
+      std::vector<Status> rets(count);
+      CountDownLatch latch(count);
+      for (int idx = 0; idx < count; idx++) {
+        const RedisReadRequestPB& redis_read_req = req->redis_batch(idx);
+        Status &failed_status_ = rets[idx];
+        auto cb = [&latch, &failed_status_] (const Status &status) -> void {
+          if (!status.ok())
+            failed_status_ = status;
+          latch.CountDown(1);
+        };
+        auto func = Bind(&HandleRedisReadRequestAsync,
+                  Unretained(tablet),
+                  read_tx.read_time(),
+                  redis_read_req,
+                  Unretained(resp->add_redis_batch()),
+                  cb);
 
-      // TODO(dtxn) implement read restart for Redis.
-      return ReadHybridTime();
+        Status s;
+        bool run_async = FLAGS_parallelize_read_ops && (idx != count - 1);
+        if (run_async) {
+          s = server_->tablet_manager()->read_pool()->SubmitClosure(func);
+        }
+
+        if (!s.ok() || !run_async) {
+          func.Run();
+        }
+      }
+      latch.Wait();
+      std::vector<Status> failed;
+      for (auto& status : rets) {
+        if (!status.ok()) {
+          failed.push_back(status);
+        }
+      }
+      if (failed.size() == 0) {
+        // TODO(dtxn) implement read restart for Redis.
+        return ReadHybridTime();
+      } else if (failed.size() == 1) {
+        return failed[0];
+      } else {
+        return STATUS(Combined, VectorToString(failed));
+      }
     }
     case TableType::YQL_TABLE_TYPE: {
       ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req);

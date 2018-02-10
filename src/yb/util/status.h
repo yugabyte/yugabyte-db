@@ -153,6 +153,7 @@ namespace yb {
     ((TryAgain, 26, "Operation failed. Try again.")) \
     ((LeaderNotReadyToServe, 27, "Leader not ready to serve requests.")) \
     ((LeaderHasNoLease, 28, "Leader does not have a valid lease.")) \
+    ((Combined, 29, "Combined status representing multiple status failures.")) \
     /**/
 
 #define YB_STATUS_CODE_DECLARE(name, value, message) \

@@ -155,6 +155,15 @@ DEFINE_int32(db_block_cache_size_percentage, 50,
              "Default percentage of total available memory to use as block cache size, if not "
              "asking for a raw number, through FLAGS_db_block_cache_size_bytes.");
 
+DEFINE_int32(read_pool_max_threads, std::numeric_limits<int32_t>::max(),
+             "The maximum number of threads allowed for read_pool_. This pool is used "
+                 "to run multiple read operations, that are part of the same tablet rpc, "
+                 "in parallel.");
+DEFINE_int32(read_pool_max_queue_size, std::numeric_limits<int32_t>::max(),
+             "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
+                 "is used to run multiple read operations, that are part of the same tablet rpc, "
+                 "in parallel.");
+
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
@@ -186,6 +195,27 @@ METRIC_DEFINE_histogram(server, op_apply_run_time, "Operation Apply Run Time",
                         "Time that operations spent being applied to the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations consist of very large batches.",
+                        10000000, 2);
+
+METRIC_DEFINE_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
+                        MetricUnit::kTasks,
+                        "Number of operations waiting to be applied to the tablet. "
+                            "High queue lengths indicate that the server is unable to process "
+                            "operations as fast as they are being written to the WAL.",
+                        10000, 2);
+
+METRIC_DEFINE_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
+                        MetricUnit::kMicroseconds,
+                        "Time that operations spent waiting in the read queue before being "
+                            "processed. High queue times indicate that the server is unable to "
+                            "process operations as fast as they are being written to the WAL.",
+                        10000000, 2);
+
+METRIC_DEFINE_histogram(server, op_read_run_time, "Operation Read op Run Time",
+                        MetricUnit::kMicroseconds,
+                        "Time that operations spent being applied to the tablet. "
+                            "High values may indicate that the server is under-provisioned or "
+                            "that operations consist of very large batches.",
                         10000000, 2);
 
 using consensus::ConsensusMetadata;
@@ -284,6 +314,16 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   CHECK_OK(ThreadPoolBuilder("prepare")
                .set_max_threads(std::numeric_limits<int>::max())
                .Build(&tablet_prepare_pool_));
+  ThreadPoolMetrics read_metrics = {
+      METRIC_op_read_queue_length.Instantiate(server_->metric_entity()),
+      METRIC_op_read_queue_time.Instantiate(server_->metric_entity()),
+      METRIC_op_read_run_time.Instantiate(server_->metric_entity())
+  };
+  CHECK_OK(ThreadPoolBuilder("read-parallel")
+               .set_max_threads(FLAGS_read_pool_max_threads)
+               .set_max_queue_size(FLAGS_read_pool_max_queue_size)
+               .set_metrics(std::move(read_metrics))
+               .Build(&read_pool_));
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   int64_t total_ram_avail = MemTracker::GetRootTracker()->limit();
