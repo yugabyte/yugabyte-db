@@ -38,9 +38,6 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  // Prevent any concurrent flushes.
-  std::lock_guard<Semaphore> lock(rowsets_flush_sem_);
-
   // The table type must be checked on the Master side.
   DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
 
@@ -72,9 +69,6 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
 }
 
 Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
-  // Prevent any concurrent flushes.
-  std::lock_guard<Semaphore> lock(rowsets_flush_sem_);
-
   // The table type must be checked on the Master side.
   DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
 
