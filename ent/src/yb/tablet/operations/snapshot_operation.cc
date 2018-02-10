@@ -46,7 +46,7 @@ void SnapshotOperationState::ReleaseSchemaLock() {
 
 SnapshotOperation::SnapshotOperation(std::unique_ptr<SnapshotOperationState> state,
                                      DriverType type)
-    : Operation(std::move(state), type, Operation::SNAPSHOT_TXN) {}
+    : Operation(std::move(state), type, OperationType::kSnapshot) {}
 
 consensus::ReplicateMsgPtr SnapshotOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();
