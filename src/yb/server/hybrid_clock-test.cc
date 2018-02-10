@@ -64,6 +64,7 @@ class HybridClockTest : public YBTest {
 };
 
 TEST(MockHybridClockTest, TestMockedSystemClock) {
+  ASSERT_EQ(kMaxHybridTimePhysicalMicros, HybridTime::kMax.GetPhysicalValueMicros());
   google::FlagSaver saver;
   FLAGS_use_mock_wall_clock = true;
   scoped_refptr<HybridClock> clock(new HybridClock());

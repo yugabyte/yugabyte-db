@@ -54,10 +54,8 @@ using HybridTimeRepr = uint64_t;
 // An alias for the in-memory representation of the logical component of a HybridTime.
 using LogicalTimeComponent = uint32_t;
 
-constexpr HybridTimeRepr kMinHybridTimeValue =
-    std::numeric_limits<HybridTimeRepr>::min();
-constexpr HybridTimeRepr kMaxHybridTimeValue =
-    std::numeric_limits<HybridTimeRepr>::max();
+constexpr HybridTimeRepr kMinHybridTimeValue = std::numeric_limits<HybridTimeRepr>::min();
+constexpr HybridTimeRepr kMaxHybridTimeValue = std::numeric_limits<HybridTimeRepr>::max();
 constexpr HybridTimeRepr kInitialHybridTimeValue = kMinHybridTimeValue + 1;
 constexpr HybridTimeRepr kInvalidHybridTimeValue = kMaxHybridTimeValue - 1;
 
@@ -212,6 +210,12 @@ class HybridTime {
 
   HybridTimeRepr v;
 };
+
+// The maximum microsecond value possible so that the corresponding HybridTime can still fit into a
+// uint64_t.
+constexpr MicrosTime kMaxHybridTimePhysicalMicros{
+    kMaxHybridTimeValue >> HybridTime::kBitsForLogicalComponent};
+
 class faststring;
 
 class Slice;

@@ -160,6 +160,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   class FlushCompactCommonHooks;
   class FlushFaultHooks;
 
+  // A function that returns the current majority-replicated hybrid time leader lease, or waits
+  // until a hybrid time leader lease with at least the given microsecond component is acquired
+  // (first argument), or a timeout occurs (second argument). HybridTime::kInvalid is returned
+  // in case of a timeout.
+  using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, MonoTime)>;
+
   // Create a new tablet.
   //
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
@@ -395,7 +401,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetTotalSSTFileSizes() const;
 
-  void SetHybridTimeLeaseProvider(std::function<HybridTime(MicrosTime, MonoTime)> provider) {
+  void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);
   }
 
@@ -576,7 +582,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // be flushed in RocksDB.
   std::shared_ptr<TabletFlushStats> flush_stats_;
 
-  std::function<HybridTime(MicrosTime, MonoTime)> ht_lease_provider_;
+  HybridTimeLeaseProvider ht_lease_provider_;
 
  private:
   HybridTime DoGetSafeTime(

@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "yb/server/clock.h"
+#include "yb/util/debug-util.h"
 
 namespace yb {
 namespace tablet {
@@ -57,12 +58,14 @@ class MvccManager {
   // Sets time of last replicated operation, used after bootstrap.
   void SetLastReplicated(HybridTime ht);
 
-  // Sets safe time to read propagated by leader. Should be called on followers.
-  void SetPropagatedSafeTime(HybridTime ht);
+  // Sets safe time that was sent to us by the leader. Should be called on followers.
+  void SetPropagatedSafeTimeOnFollower(HybridTime ht);
 
-  // Updates propagated safe time to read, so that it becomes equal to safe time to read.
-  // Should be called on leader to maintain it's own safe time for follower.
-  void UpdatePropagatedSafeTime(HybridTime max_allowed);
+  // Updates the propagated_safe_time field to the current safe time. This should be called in the
+  // majority-replicated watermark callback from Raft. If we have some read requests that were
+  // initiated when this server was a follower and are waiting for the safe time to advance past
+  // a certain point, they can also get unblocked by this update of propagated_safe_time.
+  void UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease);
 
   // Adds time of new tracked operation.
   // `ht` is in-out parameter.
@@ -79,24 +82,26 @@ class MvccManager {
   // Notifies that operation with appropriate time was aborted.
   void Aborted(HybridTime ht);
 
-  // Returns maximum allowed timestamp to read at. I.e. no operations that are initiated after this
-  // call will receive hybrid time less than returned.
+  // Returns maximum allowed timestamp to read at. No operations that are initiated after this call
+  // will receive hybrid time less than what's returned, provided that `ht_lease` is set to the
+  // hybrid time leader lease expiration.
   //
-  // `min_allowed` - result should be greater than or equal to `min_allowed`, otherwise
-  // it tries to wait until safe hybrid time to read at reaches this value or `deadline` happens.
-  // Should be before now.
+  // `min_allowed` - result should be greater than or equal to `min_allowed`, otherwise it tries to
+  // wait until safe hybrid time to read at reaches this value or `deadline` happens. Should be
+  // less than the current hybrid time.
   //
-  // `max_allowed` - result should be less than of equal to `max_allowed`, unless we have replicated
-  // records past it.
-  // Should be past `min_allowed`. Usually used to pass ht leader lease.
+  // `ht_lease` - result should be less than or equal to `ht_lease`, unless we have replicated
+  // records past it. Should be past `min_allowed`. This is normally used to pass in the hybrid time
+  // leader lease expiration, which limits the range of hybrid times that the current leader has
+  // authority over, and thus imposes an upper bound on the safe time.
   //
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
   // because of timeout.
   HybridTime SafeTime(
-      HybridTime min_allowed, MonoTime deadline, HybridTime max_allowed) const;
+      HybridTime min_allowed, MonoTime deadline, HybridTime ht_lease) const;
 
-  HybridTime SafeTime(HybridTime limit) const {
-    return SafeTime(HybridTime::kMin, MonoTime::kMax, limit);
+  HybridTime SafeTime(HybridTime ht_lease) const {
+    return SafeTime(HybridTime::kMin /* min_allowed */, MonoTime::kMax /* deadline */, ht_lease);
   }
 
   HybridTime SafeTime() const {
@@ -111,7 +116,7 @@ class MvccManager {
  private:
   HybridTime DoGetSafeTime(HybridTime min_allowed,
                            MonoTime deadline,
-                           HybridTime max_allowed,
+                           HybridTime ht_lease,
                            std::unique_lock<std::mutex>* lock) const;
 
   const std::string& LogPrefix() const { return prefix_; }
@@ -121,14 +126,28 @@ class MvccManager {
   server::ClockPtr clock_;
   mutable std::mutex mutex_;
   mutable std::condition_variable cond_;
-  // Queue of times of tracked operations. It is ordered.
+
+  // An ordered queue of times of tracked operations.
   std::deque<HybridTime> queue_;
+
   // Priority queue of aborted operations. Required because we could abort operations from the
   // middle of the queue.
   std::priority_queue<HybridTime, std::vector<HybridTime>, std::greater<>> aborted_;
+
   HybridTime last_replicated_ = HybridTime::kMin;
+
+  // If we are a follower, this is the latest safe time sent by the leader to us. If we are the
+  // leader, this is a safe time that gets updated every time the majority-replicated watermarks
+  // change
   HybridTime propagated_safe_time_ = HybridTime::kMin;
-  mutable HybridTime max_safe_time_returned_ = HybridTime::kMin;
+
+  // Because different calls that have current hybrid time leader lease as an argument can come to
+  // us out of order, we might see an older value of hybrid time leader lease expiration after a
+  // newer value. We mitigate this by always using the highest value we've seen.
+  mutable HybridTime max_ht_lease_seen_ = HybridTime::kMin;
+
+  mutable HybridTime max_safe_time_returned_with_lease_ = HybridTime::kMin;
+  mutable HybridTime max_safe_time_returned_without_lease_ = HybridTime::kMin;
   mutable HybridTime max_safe_time_returned_for_follower_ = HybridTime::kMin;
 };
 

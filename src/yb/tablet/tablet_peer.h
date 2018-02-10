@@ -80,14 +80,6 @@ class MaintenanceOp;
 class ThreadPool;
 
 namespace tablet {
-class LeaderOperationDriver;
-class ReplicaOperationDriver;
-class TabletPeer;
-class TabletStatusPB;
-class TabletStatusListener;
-class OperationDriver;
-class UpdateTxnOperationState;
-class WriteOperationState;
 
 // A peer in a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
@@ -160,6 +152,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
       const scoped_refptr<consensus::ConsensusRound>& round,
       HybridTime propagated_safe_time) override;
 
+  // This is an override of a ReplicaOperationFactory method. This is called from
+  // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
   consensus::Consensus* consensus() const;
@@ -265,19 +259,11 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Convenience method to return the permanent_uuid of this peer.
   const std::string& permanent_uuid() const;
 
-  CHECKED_STATUS NewOperationDriver(std::unique_ptr<Operation> operation,
-                                    consensus::DriverType type,
-                                    scoped_refptr<OperationDriver>* driver);
+  Result<OperationDriverPtr> NewOperationDriver(std::unique_ptr<Operation> operation,
+                                                consensus::DriverType type);
 
-  CHECKED_STATUS NewLeaderOperationDriver(std::unique_ptr<Operation> operation,
-                                          scoped_refptr<OperationDriver>* driver) {
-    return NewOperationDriver(std::move(operation), consensus::LEADER, driver);
-  }
-
-  CHECKED_STATUS NewReplicaOperationDriver(std::unique_ptr<Operation> operation,
-                                           scoped_refptr<OperationDriver>* driver) {
-    return NewOperationDriver(std::move(operation), consensus::REPLICA, driver);
-  }
+  Result<OperationDriverPtr> NewLeaderOperationDriver(std::unique_ptr<Operation> operation);
+  Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation> operation);
 
   // Tells the tablet's log to garbage collect.
   CHECKED_STATUS RunLogGC();

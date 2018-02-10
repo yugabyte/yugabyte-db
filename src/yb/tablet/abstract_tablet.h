@@ -60,12 +60,13 @@ class AbstractTablet {
   virtual void UnregisterReader(HybridTime read_point) = 0;
 
   // Returns safe timestamp to read.
-  // `require_lease` - whether this read requires ht leader lease.
+  // `require_lease` - whether this read requires a hybrid time leader lease. Typically, strongly
+  //    consistent reads require a lease, while eventually consistent reads don't.
   // `min_allowed` - result should be greater or equal to `min_allowed`, otherwise
-  // it tries to wait until safe timestamp to read reaches this value or `deadline` happens.
+  //    this function tries to wait until the safe time reaches this value or `deadline` happens.
   //
-  // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
-  // because of timeout.
+  // Returns invalid hybrid time in case it cannot satisfy provided requirements, e.g. because of
+  // a timeout.
   HybridTime SafeTime(RequireLease require_lease = RequireLease::kTrue,
                       HybridTime min_allowed = HybridTime::kMin,
                       MonoTime deadline = MonoTime::kMax) const {

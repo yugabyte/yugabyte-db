@@ -23,6 +23,10 @@ class TabletMetadata;
 class TabletPeer;
 class TabletStatusPB;
 class TabletStatusListener;
+class WriteOperationState;
+
+class OperationDriver;
+typedef scoped_refptr<OperationDriver> OperationDriverPtr;
 
 class Tablet;
 typedef std::shared_ptr<Tablet> TabletPtr;

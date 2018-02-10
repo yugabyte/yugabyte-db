@@ -50,9 +50,6 @@ Operation::Operation(std::unique_ptr<OperationState> state,
 
 void Operation::Start() {
   DoStart();
-  if (propagated_safe_time_) {
-    state()->tablet()->mvcc_manager()->SetPropagatedSafeTime(propagated_safe_time_);
-  }
 }
 
 OperationState::OperationState(Tablet* tablet)

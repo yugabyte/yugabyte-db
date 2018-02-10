@@ -71,7 +71,7 @@ using tserver::WriteResponsePB;
 using strings::Substitute;
 
 WriteOperation::WriteOperation(std::unique_ptr<WriteOperationState> state, DriverType type)
-  : Operation(std::move(state), type, Operation::WRITE_TXN),
+  : Operation(std::move(state), type, OperationType::kWrite),
     start_time_(MonoTime::Now()) {
 }
 

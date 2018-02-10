@@ -218,9 +218,10 @@ class RaftConsensus : public Consensus,
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
+  // Set a function returning the current safe time, so we can send it from leaders to followers.
   void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider);
 
-  void SetPropagatedSafeTimeUpdater(std::function<void()> updater);
+  void SetMajorityReplicatedListener(std::function<void()> updater);
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
@@ -615,7 +616,11 @@ class RaftConsensus : public Consensus,
   ConditionVariable leader_lease_wait_cond_{&leader_lease_wait_mtx_};
 
   std::function<void()> lost_leadership_listener_;
-  std::function<void()> propagated_safe_time_updater_;
+
+  // This is called every time majority-replicated watermarks (OpId / leader leases) change. This is
+  // used for updating the "propagated safe time" value in MvccManager and unblocking readers
+  // waiting for it to advance.
+  std::function<void()> majority_replicated_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

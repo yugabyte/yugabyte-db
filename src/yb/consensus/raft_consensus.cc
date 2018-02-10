@@ -1002,8 +1002,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   bool committed_index_changed = false;
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_index, &committed_index_changed);
-  if (propagated_safe_time_updater_) {
-    propagated_safe_time_updater_();
+  if (majority_replicated_listener_) {
+    majority_replicated_listener_();
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("Unable to mark committed up to $0: $1",
@@ -1388,6 +1388,11 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
   TRACE_EVENT2("consensus", "RaftConsensus::UpdateReplica",
                "peer", peer_uuid(),
                "tablet", tablet_id());
+
+  if (request->has_propagated_hybrid_time()) {
+    clock_->Update(HybridTime(request->propagated_hybrid_time()));
+  }
+
   Synchronizer log_synchronizer;
   StatusCallback sync_status_cb = log_synchronizer.AsStatusCallback();
 
@@ -2858,8 +2863,8 @@ void RaftConsensus::SetPropagatedSafeTimeProvider(std::function<HybridTime()> pr
   queue_->SetPropagatedSafeTimeProvider(std::move(provider));
 }
 
-void RaftConsensus::SetPropagatedSafeTimeUpdater(std::function<void()> updater) {
-  propagated_safe_time_updater_ = std::move(updater);
+void RaftConsensus::SetMajorityReplicatedListener(std::function<void()> updater) {
+  majority_replicated_listener_ = std::move(updater);
 }
 
 }  // namespace consensus

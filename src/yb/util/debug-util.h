@@ -109,8 +109,7 @@ void HexStackTraceToString(char* buf, size_t size);
 // Requires external synchronization.
 class StackTrace {
  public:
-  StackTrace()
-    : num_frames_(0) {
+  StackTrace() : num_frames_(0) {
   }
 
   void Reset() {
@@ -138,7 +137,6 @@ class StackTrace {
   // very early in the application lifecycle, so for now, this is considered "async safe" until
   // it proves to be a problem.
   void Collect(int skip_frames = 1);
-
 
   enum Flags {
     // Do not fix up the addresses on the stack to try to point to the 'call'

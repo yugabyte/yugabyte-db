@@ -288,7 +288,7 @@ Tablet::Tablet(
           MemTracker::CreateTracker(-1, Substitute("tablet-$0", tablet_id()), parent_mem_tracker)),
       dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
-      mvcc_(Format("T $0 ", static_cast<void*>(this)), clock),
+      mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
       tablet_options_(tablet_options) {
   CHECK(schema()->has_column_ids());
 
@@ -936,12 +936,6 @@ Status Tablet::CreatePreparedAlterSchema(AlterSchemaOperationState *operation_st
 Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
-
-  // Prevent any concurrent flushes. Otherwise, we run into issues where
-  // we have an MRS in the rowset tree, and we can't alter its schema
-  // in-place.
-  std::lock_guard<Semaphore> lock(rowsets_flush_sem_);
-
   {
     bool same_schema = schema()->Equals(*operation_state->schema());
 
@@ -1183,30 +1177,32 @@ Status Tablet::StartDocWriteOperation(const docdb::DocOperations &doc_ops,
 
 HybridTime Tablet::DoGetSafeTime(
     tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
-  HybridTime max_allowed;
+  HybridTime ht_lease;
   if (!require_lease) {
     return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   if (require_lease && ht_lease_provider_) {
     // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
-    // max_allowed >= min_allowed.
+    // the resulting ht_lease is at least min_allowed.
     auto min_allowed_lease = min_allowed.GetPhysicalValueMicros();
     if (min_allowed.GetLogicalValue()) {
       ++min_allowed_lease;
     }
-    max_allowed = ht_lease_provider_(min_allowed_lease, deadline);
-    if (!max_allowed) {
+    // This will block until a leader lease reaches the given value or a timeout occurs.
+    ht_lease = ht_lease_provider_(min_allowed_lease, deadline);
+    if (!ht_lease) {
+      // This could happen in case of timeout.
       return HybridTime::kInvalid;
     }
   } else {
-    max_allowed = HybridTime::kMax;
+    ht_lease = HybridTime::kMax;
   }
-  if (min_allowed > max_allowed) {
+  if (min_allowed > ht_lease) {
     LOG(DFATAL) << "Read request hybrid time after leader lease: " << min_allowed << ", "
-                << max_allowed;
+                << ht_lease;
     return HybridTime::kInvalid;
   }
-  return mvcc_.SafeTime(min_allowed, deadline, max_allowed);
+  return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
 HybridTime Tablet::OldestReadPoint() const {
@@ -1269,6 +1265,8 @@ uint64_t Tablet::GetTotalSSTFileSizes() const {
   return rocksdb_->GetTotalSSTFileSize();
 }
 
+// ------------------------------------------------------------------------------------------------
+
 Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata) const {
   if (metadata_->schema().table_properties().is_transactional()) {
@@ -1303,6 +1301,8 @@ TransactionOperationContextOpt Tablet::CreateTransactionOperationContext(
     return boost::none;
   }
 }
+
+// ------------------------------------------------------------------------------------------------
 
 ScopedReadOperation::ScopedReadOperation(
     AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time)

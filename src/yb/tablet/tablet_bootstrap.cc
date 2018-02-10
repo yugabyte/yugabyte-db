@@ -74,7 +74,6 @@ using consensus::RaftConfigPB;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
-using consensus::OperationType;
 using consensus::OpId;
 using consensus::OpIdEquals;
 using consensus::OpIdToString;
@@ -597,7 +596,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state,
   return Status::OK();
 }
 
-Status TabletBootstrap::HandleOperation(OperationType op_type,
+Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
                                         ReplicateMsg* replicate) {
   switch (op_type) {
     case consensus::WRITE_OP:
@@ -634,7 +633,7 @@ Status TabletBootstrap::HandleOperation(OperationType op_type,
 // Never deletes 'replicate_entry' or 'commit_entry'.
 Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry) {
   ReplicateMsg* replicate = replicate_entry->mutable_replicate();
-  const OperationType op_type = replicate_entry->replicate().op_type();
+  const auto op_type = replicate_entry->replicate().op_type();
 
   {
     const auto status = HandleOperation(op_type, replicate);

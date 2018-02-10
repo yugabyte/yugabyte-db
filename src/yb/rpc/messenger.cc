@@ -88,6 +88,10 @@ namespace rpc {
 class Messenger;
 class ServerBuilder;
 
+// ------------------------------------------------------------------------------------------------
+// MessengerBuilder
+// ------------------------------------------------------------------------------------------------
+
 MessengerBuilder::MessengerBuilder(std::string name)
     : name_(std::move(name)),
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
@@ -127,6 +131,10 @@ Result<std::shared_ptr<Messenger>> MessengerBuilder::Build() {
   return shared_ptr<Messenger>(
     messenger.release(), std::mem_fun(&Messenger::AllExternalReferencesDropped));
 }
+
+// ------------------------------------------------------------------------------------------------
+// Messenger
+// ------------------------------------------------------------------------------------------------
 
 // See comment on Messenger::retain_self_ member.
 void Messenger::AllExternalReferencesDropped() {
@@ -358,12 +366,16 @@ void Messenger::RegisterInboundSocket(Socket *new_socket, const Endpoint& remote
 }
 
 Messenger::Messenger(const MessengerBuilder &bld)
-  : name_(bld.name_),
-    connection_context_factory_(bld.connection_context_factory_),
-    metric_entity_(bld.metric_entity_),
-    retain_self_(this),
-    io_thread_pool_(FLAGS_io_thread_pool_size),
-    scheduler_(&io_thread_pool_.io_service()) {
+    : name_(bld.name_),
+      connection_context_factory_(bld.connection_context_factory_),
+      metric_entity_(bld.metric_entity_),
+      retain_self_(this),
+      io_thread_pool_(FLAGS_io_thread_pool_size),
+      scheduler_(&io_thread_pool_.io_service()) {
+#ifndef NDEBUG
+  creation_stack_trace_.Collect(/* skip_frames */ 1);
+#endif
+  VLOG(1) << "Messenger constructor for " << this << " called at:\n" << GetStackTrace();
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.push_back(new Reactor(retain_self_, i, bld));
   }
@@ -371,6 +383,14 @@ Messenger::Messenger(const MessengerBuilder &bld)
 
 Messenger::~Messenger() {
   std::lock_guard<percpu_rwlock> guard(lock_);
+  // This logging and the corresponding logging in the constructor is here to track down the
+  // occasional CHECK(closing_) failure below in some tests (ENG-2838).
+  VLOG(1) << "Messenger destructor for " << this << " called at:\n" << GetStackTrace();
+#ifndef NDEBUG
+  if (!closing_) {
+    LOG(ERROR) << "Messenger created here:\n" << creation_stack_trace_.Symbolize();
+  }
+#endif
   CHECK(closing_) << "Should have already shut down";
   STLDeleteElements(&reactors_);
 }
