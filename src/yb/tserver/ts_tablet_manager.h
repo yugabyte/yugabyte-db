@@ -146,6 +146,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* read_pool() const { return read_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -422,16 +423,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   TSTabletManagerStatePB state_;
 
   // Thread pool used to open the tablets async, whether bootstrap is required or not.
-  gscoped_ptr<ThreadPool> open_tablet_pool_;
+  std::unique_ptr<ThreadPool> open_tablet_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
-  gscoped_ptr<ThreadPool> tablet_prepare_pool_;
+  std::unique_ptr<ThreadPool> tablet_prepare_pool_;
 
   // Thread pool for apply transactions, shared between all tablets.
-  gscoped_ptr<ThreadPool> apply_pool_;
+  std::unique_ptr<ThreadPool> apply_pool_;
 
   // Thread pool for Raft-related operations, shared between all tablets.
   std::unique_ptr<ThreadPool> raft_pool_;
+
+  // Thread pool for read ops, that are run in parallel, shared between all tablets.
+  std::unique_ptr<ThreadPool> read_pool_;
 
   // Used for scheduling flushes
   std::unique_ptr<BackgroundTask> background_task_;
