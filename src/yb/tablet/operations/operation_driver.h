@@ -50,6 +50,7 @@ class Log;
 } // namespace log
 
 namespace tablet {
+class MvccManager;
 class OperationOrderVerifier;
 class OperationTracker;
 class OperationDriver;
@@ -157,7 +158,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   std::string LogPrefix() const;
 
   // Returns the type of the operation being executed by this driver.
-  Operation::OperationType operation_type() const;
+  OperationType operation_type() const;
 
   // Returns the state of the operation being executed by this driver.
   const OperationState* state() const;
@@ -199,6 +200,15 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
     return mutable_state()->consensus_round();
   }
 
+  void SetPropagatedSafeTime(HybridTime safe_time, MvccManager* mvcc) {
+    propagated_safe_time_ = safe_time;
+    mvcc_ = mvcc;
+  }
+
+  int64_t SpaceUsed() {
+    return operation_ ? state()->request()->SpaceUsed() : 0;
+  }
+
  private:
   friend class RefCountedThreadSafe<OperationDriver>;
   enum ReplicationState {
@@ -224,6 +234,9 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   };
 
   ~OperationDriver() override {}
+
+  // Starts operation, returns false is we should NOT continue processing the operation.
+  bool StartOperation();
 
   // Submits ApplyTask to the apply pool.
   CHECKED_STATUS ApplyAsync();
@@ -285,6 +298,9 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   MicrosecondsInt64 prepare_physical_hybrid_time_;
 
   TableType table_type_;
+
+  MvccManager* mvcc_ = nullptr;
+  HybridTime propagated_safe_time_;
 
   DISALLOW_COPY_AND_ASSIGN(OperationDriver);
 };

@@ -54,23 +54,14 @@ class Tablet;
 class OperationCompletionCallback;
 class OperationState;
 
-// Base class for transactions.
-// There are different implementations for different types (Write, AlterSchema, etc.).
-// OperationDriver implementations use Operations along with Consensus to execute
+YB_DEFINE_ENUM(OperationType,
+               (kWrite)(kAlterSchema)(kUpdateTransaction)(kSnapshot)(kTruncate)(kEmpty));
+
+// Base class for transactions.  There are different implementations for different types (Write,
+// AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
 // and replicate operations in a consensus configuration.
 class Operation {
  public:
-
-  enum OperationType {
-    WRITE_TXN,
-    ALTER_SCHEMA_TXN,
-    UPDATE_TRANSACTION_TXN,
-    SNAPSHOT_TXN,
-    TRUNCATE_TXN,
-
-    kOperationTypes // Must be the last one (number of types above).
-  };
-
   enum TraceType {
     NO_TRACE_TXNS = 0,
     TRACE_TXNS = 1
@@ -89,12 +80,7 @@ class Operation {
   virtual OperationState* state() { return state_.get(); }
   virtual const OperationState* state() const { return state_.get(); }
 
-  void SetPropagatedSafeTime(HybridTime ht) {
-    propagated_safe_time_ = ht;
-  }
-
-  // Returns whether this transaction is being executed on the leader or on a
-  // replica.
+  // Returns whether this transaction is being executed on the leader or on a replica.
   consensus::DriverType type() const { return type_; }
 
   // Returns this transaction's type.
@@ -108,31 +94,26 @@ class Operation {
   // data structures (such as the RocksDB memtable) and without side-effects.
   virtual CHECKED_STATUS Prepare() = 0;
 
-  // Actually starts a transaction, assigning a hybrid_time to the transaction.
-  // LEADER replicas execute this in or right after Prepare(), while FOLLOWER/LEARNER
-  // replicas execute this right before the Apply() phase as the transaction's
-  // hybrid_time is only available on the LEADER's commit message.
-  // Once Started(), state might have leaked to other replicas/local log and the
+  // Actually starts an operation, assigning a hybrid_time to the transaction.  LEADER replicas
+  // execute this in or right after Prepare(), while FOLLOWER/LEARNER replicas execute this right
+  // before the Apply() phase as the transaction's hybrid_time is only available on the LEADER's
+  // commit message.  Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
   void Start();
 
-  // Executes the Apply() phase of the transaction, the actual actions of
-  // this phase depend on the transaction type, but usually this is the
-  // method where data-structures are changed.
+  // Executes the Apply() phase of the transaction, the actual actions of this phase depend on the
+  // transaction type, but usually this is the method where data-structures are changed.
   virtual CHECKED_STATUS Apply() = 0;
 
-  // Executed after Apply() but before the commit is submitted to consensus.
-  // Some transactions use this to perform pre-commit actions (e.g. write
-  // transactions perform early lock release on this hook).
-  // Default implementation does nothing.
+  // Executed after Apply() but before the commit is submitted to consensus.  Some transactions use
+  // this to perform pre-commit actions (e.g. write transactions perform early lock release on this
+  // hook).  Default implementation does nothing.
   virtual void PreCommit() {}
 
-  // Executed after the transaction has been applied and the commit message has
-  // been appended to the log (though it might not be durable yet), or if the
-  // transaction was aborted.
-  // Implementations are expected to perform cleanup on this method, the driver
-  // will reply to the client after this method call returns.
-  // 'result' will be either COMMITTED or ABORTED, letting implementations
+  // Executed after the transaction has been applied and the commit message has been appended to the
+  // log (though it might not be durable yet), or if the transaction was aborted.  Implementations
+  // are expected to perform cleanup on this method, the driver will reply to the client after this
+  // method call returns.  'result' will be either COMMITTED or ABORTED, letting implementations
   // know what was the final status of the transaction.
   virtual void Finish(OperationResult result) {}
 
@@ -144,12 +125,11 @@ class Operation {
  private:
   virtual void DoStart() = 0;
 
-  // A private version of this transaction's transaction state so that
-  // we can use base OperationState methods on destructors.
+  // A private version of this transaction's transaction state so that we can use base
+  // OperationState methods on destructors.
   std::unique_ptr<OperationState> state_;
   const consensus::DriverType type_;
   const OperationType operation_type_;
-  HybridTime propagated_safe_time_;
 };
 
 class OperationState {
@@ -157,24 +137,24 @@ class OperationState {
   OperationState(const OperationState&) = delete;
   void operator=(const OperationState&) = delete;
 
-  // Returns the request PB associated with this transaction. May be NULL if
-  // the transaction's state has been reset.
+  // Returns the request PB associated with this transaction. May be NULL if the transaction's state
+  // has been reset.
   virtual const google::protobuf::Message* request() const { return nullptr; }
 
-  // Sets the ConsensusRound for this transaction, if this transaction is
-  // being executed through the consensus system.
+  // Sets the ConsensusRound for this transaction, if this transaction is being executed through the
+  // consensus system.
   void set_consensus_round(const scoped_refptr<consensus::ConsensusRound>& consensus_round) {
     consensus_round_ = consensus_round;
     op_id_ = consensus_round_->id();
     UpdateRequestFromConsensusRound();
   }
 
-  // Each subclass should provide a way to update the internal reference to the Message* request,
-  // so we can avoid copying the request object all the time.
+  // Each subclass should provide a way to update the internal reference to the Message* request, so
+  // we can avoid copying the request object all the time.
   virtual void UpdateRequestFromConsensusRound() = 0;
 
-  // Returns the ConsensusRound being used, if this transaction is being
-  // executed through the consensus system or NULL if it's not.
+  // Returns the ConsensusRound being used, if this transaction is being executed through the
+  // consensus system or NULL if it's not.
   consensus::ConsensusRound* consensus_round() {
     return consensus_round_.get();
   }
@@ -204,8 +184,7 @@ class OperationState {
     return pool_.AddArray(t);
   }
 
-  // Return the arena associated with this transaction.
-  // NOTE: this is not a thread-safe arena!
+  // Return the arena associated with this transaction.  NOTE: this is not a thread-safe arena!
   Arena* arena();
 
   // Each implementation should have its own ToString() method.
@@ -271,22 +250,21 @@ class OperationState {
   mutable simple_spinlock mutex_;
 };
 
-// A parent class for the callback that gets called when transactions
-// complete.
+// A parent class for the callback that gets called when transactions complete.
 //
-// This must be set in the OperationState if the transaction initiator is to
-// be notified of when a transaction completes. The callback belongs to the
-// transaction context and is deleted along with it.
+// This must be set in the OperationState if the transaction initiator is to be notified of when a
+// transaction completes. The callback belongs to the transaction context and is deleted along with
+// it.
 //
-// NOTE: this is a concrete class so that we can use it as a default implementation
-// which avoids callers having to keep checking for NULL.
+// NOTE: this is a concrete class so that we can use it as a default implementation which avoids
+// callers having to keep checking for NULL.
 class OperationCompletionCallback {
  public:
 
   OperationCompletionCallback();
 
-  // Allows to set an error for this transaction and a mapping to a server level code.
-  // Calling this method does not mean the transaction is completed.
+  // Allows to set an error for this transaction and a mapping to a server level code.  Calling this
+  // method does not mean the transaction is completed.
   void set_error(const Status& status, tserver::TabletServerErrorPB::Code code);
 
   void set_error(const Status& status);
@@ -312,11 +290,10 @@ class OperationCompletionCallback {
   tserver::TabletServerErrorPB::Code code_;
 };
 
-// OperationCompletionCallback implementation that can be waited on.
-// Helper to make async transactions, sync.
-// This is templated to accept any response PB that has a TabletServerError
-// 'error' field and to set the error before performing the latch countdown.
-// The callback does *not* take ownership of either latch or response.
+// OperationCompletionCallback implementation that can be waited on.  Helper to make async
+// transactions, sync.  This is templated to accept any response PB that has a TabletServerError
+// 'error' field and to set the error before performing the latch countdown.  The callback does
+// *not* take ownership of either latch or response.
 template<class ResponsePB>
 class LatchOperationCompletionCallback : public OperationCompletionCallback {
  public:

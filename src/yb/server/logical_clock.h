@@ -62,6 +62,9 @@ class LogicalClock : public Clock {
 
   virtual HybridTime Now() override;
 
+  // Returns the current value of the clock without incrementing it.
+  HybridTime Peek();
+
   // In the logical clock this call is equivalent to Now();
   virtual HybridTime NowLatest() override;
 
@@ -84,12 +87,13 @@ class LogicalClock : public Clock {
 
  private:
   // Should use LogicalClock::CreatingStartingAt()
-  explicit LogicalClock(HybridTime::val_type initial_time) : now_(initial_time) {}
+  explicit LogicalClock(HybridTime::val_type initial_time)
+      : now_(initial_time) {}
 
   // Used to get the hybrid_time for metrics.
   uint64_t NowForMetrics();
 
-  base::subtle::Atomic64 now_;
+  std::atomic<uint64_t> now_;
 
   FunctionGaugeDetacher metric_detacher_;
 };

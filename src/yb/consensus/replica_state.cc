@@ -1139,7 +1139,7 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
 MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
     MicrosTime min_allowed, MonoTime deadline) const {
   if (FLAGS_ht_lease_duration_ms == 0) {
-    return HybridTime::kMax.GetPhysicalValueMicros();
+    return kMaxHybridTimePhysicalMicros;
   }
 
   auto result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
@@ -1164,8 +1164,8 @@ MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
 void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
     const MajorityReplicatedData& majority_replicated_data) {
   majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
-  majority_replicated_ht_lease_expiration_ = majority_replicated_data.ht_lease_expiration;
-
+  majority_replicated_ht_lease_expiration_.store(majority_replicated_data.ht_lease_expiration,
+                                                 std::memory_order_release);
   cond_.notify_all();
 }
 

@@ -86,7 +86,7 @@ void AlterSchemaOperationState::ReleaseSchemaLock() {
 
 AlterSchemaOperation::AlterSchemaOperation(std::unique_ptr<AlterSchemaOperationState> state,
                                            DriverType type)
-    : Operation(std::move(state), type, Operation::ALTER_SCHEMA_TXN) {}
+    : Operation(std::move(state), type, OperationType::kAlterSchema) {}
 
 consensus::ReplicateMsgPtr AlterSchemaOperation::NewReplicateMsg() {
   auto result = std::make_shared<ReplicateMsg>();

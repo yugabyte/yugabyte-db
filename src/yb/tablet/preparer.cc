@@ -190,25 +190,25 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
   CHECK_NOTNULL(item);
 
   if (item->is_leader_side()) {
-    const int64_t bound_term = item->consensus_round()->bound_term();
-
     // AlterSchemaOperation::Prepare calls Tablet::CreatePreparedAlterSchema, which acquires the
     // schema lock. Because of this, we must not attempt to process two AlterSchemaOperations in
     // one batch, otherwise we'll deadlock. Furthermore, for simplicity, we choose to process each
     // AlterSchemaOperation in a batch of its own.
-    const bool is_alter = item->operation_type() == Operation::ALTER_SCHEMA_TXN;
+    auto operation_type = item->operation_type();
+    const bool apply_separately = operation_type == OperationType::kAlterSchema ||
+                                  operation_type == OperationType::kEmpty;
+    const int64_t bound_term = apply_separately ? -1 : item->consensus_round()->bound_term();
 
     // Don't add more than the max number of operations to a batch, and also don't add
     // operations bound to different terms, so as not to fail unrelated operations
     // unnecessarily in case of a bound term mismatch.
     if (leader_side_batch_.size() >= FLAGS_max_group_replicate_batch_size ||
         !leader_side_batch_.empty() &&
-            bound_term != leader_side_batch_.back()->consensus_round()->bound_term() ||
-        is_alter) {
+            bound_term != leader_side_batch_.back()->consensus_round()->bound_term()) {
       ProcessAndClearLeaderSideBatch();
     }
     leader_side_batch_.push_back(item);
-    if (is_alter) {
+    if (apply_separately) {
       ProcessAndClearLeaderSideBatch();
     }
   } else {

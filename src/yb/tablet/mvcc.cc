@@ -32,22 +32,22 @@
 
 #include "yb/tablet/mvcc.h"
 
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 
 namespace yb {
 namespace tablet {
 
 MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
-    : prefix_(std::move(prefix)), clock_(std::move(clock)) {}
+    : prefix_(std::move(prefix)),
+      clock_(std::move(clock)) {}
 
 void MvccManager::Replicated(HybridTime ht) {
-  VLOG_WITH_PREFIX(1) << "Replicated(" << ht << ")";
+  VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    CHECK(!queue_.empty());
-    CHECK_EQ(queue_.front(), ht);
+    CHECK(!queue_.empty()) << LogPrefix();
+    CHECK_EQ(queue_.front(), ht) << LogPrefix();
     PopFront(&lock);
     last_replicated_ = ht;
   }
@@ -55,11 +55,11 @@ void MvccManager::Replicated(HybridTime ht) {
 }
 
 void MvccManager::Aborted(HybridTime ht) {
-  VLOG_WITH_PREFIX(1) << "Aborted(" << ht << ")";
+  VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    CHECK(!queue_.empty());
+    CHECK(!queue_.empty()) << LogPrefix();
     if (queue_.front() == ht) {
       PopFront(&lock);
     } else {
@@ -72,10 +72,10 @@ void MvccManager::Aborted(HybridTime ht) {
 
 void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
   queue_.pop_front();
-  CHECK_GE(queue_.size(), aborted_.size());
+  CHECK_GE(queue_.size(), aborted_.size()) << LogPrefix();
   while (!aborted_.empty()) {
     if (queue_.front() != aborted_.top()) {
-      CHECK_LT(queue_.front(), aborted_.top());
+      CHECK_LT(queue_.front(), aborted_.top()) << LogPrefix();
       break;
     }
     queue_.pop_front();
@@ -85,25 +85,27 @@ void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
 
 void MvccManager::AddPending(HybridTime* ht) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!ht->is_valid()) {
-    // ... otherwise this is a new transaction and we must assign a new hybrid_time. We assign
-    // one in the present.
+  if (ht->is_valid()) {
+    // This must be a follower-side transaction with already known hybrid time.
+    VLOG_WITH_PREFIX(1) << "AddPending(" << *ht << ")";
+  } else {
+    // Otherwise this is a new transaction and we must assign a new hybrid_time. We assign one in
+    // the present.
     *ht = clock_->Now();
     VLOG_WITH_PREFIX(1) << "AddPending(<invalid>), time from clock: " << *ht;
-  } else {
-    VLOG_WITH_PREFIX(1) << "AddPending(" << *ht << ")";
   }
-  CHECK_GT(*ht, max_safe_time_returned_) << LogPrefix();
+  CHECK_GT(*ht, max_safe_time_returned_with_lease_) << LogPrefix();
+  CHECK_GT(*ht, max_safe_time_returned_without_lease_) << LogPrefix();
   CHECK_GT(*ht, max_safe_time_returned_for_follower_) << LogPrefix();
   if (!queue_.empty()) {
-    CHECK_GT(*ht, queue_.back());
+    CHECK_GT(*ht, queue_.back()) << LogPrefix();
   }
-  CHECK_GT(*ht, last_replicated_);
+  CHECK_GT(*ht, last_replicated_) << LogPrefix();
   queue_.push_back(*ht);
 }
 
 void MvccManager::SetLastReplicated(HybridTime ht) {
-  VLOG_WITH_PREFIX(1) << "SetLastReplicated(" << ht << ")";
+  VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -112,22 +114,33 @@ void MvccManager::SetLastReplicated(HybridTime ht) {
   cond_.notify_all();
 }
 
-void MvccManager::SetPropagatedSafeTime(HybridTime ht) {
-  VLOG_WITH_PREFIX(1) << "SetPropagatedSafeTime(" << ht << ")";
+void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
+  VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ")";
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    propagated_safe_time_ = ht;
+    if (ht > propagated_safe_time_) {
+      propagated_safe_time_ = ht;
+    } else {
+      LOG(WARNING) << "Received propagated safe time " << ht << " less than the old value: "
+                   << propagated_safe_time_ << ". This could happen on followers when a new leader "
+                   << "is elected.";
+    }
   }
   cond_.notify_all();
 }
 
-void MvccManager::UpdatePropagatedSafeTime(HybridTime max_allowed) {
-  VLOG_WITH_PREFIX(1) << "UpdatePropagatedSafeTime(" << max_allowed << ")";
+void MvccManager::UpdatePropagatedSafeTimeOnLeader(HybridTime ht_lease) {
+  VLOG_WITH_PREFIX(1) << __func__ << "(" << ht_lease << ")";
 
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    propagated_safe_time_ = DoGetSafeTime(HybridTime::kMin, MonoTime::kMax, max_allowed, &lock);
+    auto ht = DoGetSafeTime(HybridTime::kMin,  // min_allowed
+                            MonoTime::kMax,    // deadline
+                            ht_lease,
+                            &lock);
+    CHECK_GE(ht, propagated_safe_time_) << LogPrefix();
+    propagated_safe_time_ = ht;
   }
   cond_.notify_all();
 }
@@ -137,8 +150,8 @@ HybridTime MvccManager::SafeTimeForFollower(
   std::unique_lock<std::mutex> lock(mutex_);
   HybridTime result;
   auto predicate = [this, &result, min_allowed] {
-    // last_replicated_ is updated earlier than propagated_safe_time_, so because of
-    // concurrency it could be greater than propagated_safe_time_.
+    // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
+    // could be greater than propagated_safe_time_.
     result = std::max(propagated_safe_time_, last_replicated_);
     return result >= min_allowed;
   };
@@ -156,51 +169,75 @@ HybridTime MvccManager::SafeTimeForFollower(
 
 HybridTime MvccManager::SafeTime(HybridTime min_allowed,
                                  MonoTime deadline,
-                                 HybridTime max_allowed) const {
+                                 HybridTime ht_lease) const {
   std::unique_lock<std::mutex> lock(mutex_);
-  return DoGetSafeTime(min_allowed, deadline, max_allowed, &lock);
+  return DoGetSafeTime(min_allowed, deadline, ht_lease, &lock);
 }
 
-HybridTime MvccManager::DoGetSafeTime(HybridTime min_allowed,
-                                      MonoTime deadline,
-                                      HybridTime max_allowed,
+HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
+                                      const MonoTime deadline,
+                                      const HybridTime ht_lease,
                                       std::unique_lock<std::mutex>* lock) const {
   DCHECK_ONLY_NOTNULL(lock);
-  CHECK_LE(min_allowed, max_allowed);
+  CHECK(ht_lease.is_valid());
+  CHECK_LE(min_allowed, ht_lease) << LogPrefix();
+
+  bool has_lease = false;
+  if (ht_lease.GetPhysicalValueMicros() < kMaxHybridTimePhysicalMicros) {
+    max_ht_lease_seen_ = std::max(ht_lease, max_ht_lease_seen_);
+    has_lease = true;
+  }
+
   HybridTime result;
-  auto predicate = [this, &result, min_allowed, max_allowed] {
+  auto predicate = [this, &result, min_allowed, has_lease] {
     if (queue_.empty()) {
       result = clock_->Now();
-      CHECK_GE(result, min_allowed);
+      CHECK_GE(result, min_allowed) << LogPrefix();
       VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Now: " << result;
     } else {
       result = queue_.front().Decremented();
-      VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Queue front: " << result;
+      VLOG_WITH_PREFIX(2) << "DoGetSafeTime, Queue front (decremented): " << result;
     }
 
-    result = std::min(result, max_allowed);
-    // This function could be invoked at a follower, so it has a very old max_allowed.
-    // In this case it is safe to read at last_replicated_ at least.
+    if (has_lease) {
+      result = std::min(result, max_ht_lease_seen_);
+    }
+
+    // This function could be invoked at a follower, so it has a very old ht_lease. In this case it
+    // is safe to read at least at last_replicated_.
     result = std::max(result, last_replicated_);
+
     return result >= min_allowed;
   };
+
   // In the case of an empty queue, the safe hybrid time to read at is only limited by hybrid time
-  // max_allowed, which is by definition higher than min_allowed, so we would not get blocked.
+  // ht_lease, which is by definition higher than min_allowed, so we would not get blocked.
   if (deadline == MonoTime::kMax) {
     cond_.wait(*lock, predicate);
   } else if (!cond_.wait_until(*lock, deadline.ToSteadyTimePoint(), predicate)) {
     return HybridTime::kInvalid;
   }
   VLOG_WITH_PREFIX(1) << "DoGetSafeTime(" << min_allowed << ", "
-                      << max_allowed << "), result = " << result;
-  CHECK_GE(result, max_safe_time_returned_) << LogPrefix();
-  max_safe_time_returned_ = result;
+                      << ht_lease << "), result = " << result;
+
+  CHECK_GE(result, has_lease ? max_safe_time_returned_with_lease_
+                             : max_safe_time_returned_without_lease_) << LogPrefix()
+      << "has_lease=" << has_lease
+      << ", ht_lease=" << ht_lease
+      << ", max_ht_lease_seen_=" << max_ht_lease_seen_
+      << ", last_replicated=" << last_replicated_
+      << ", clock_->Now()=" << clock_->Now();
+  if (has_lease) {
+    max_safe_time_returned_with_lease_ = result;
+  } else {
+    max_safe_time_returned_without_lease_ = result;
+  }
   return result;
 }
 
 HybridTime MvccManager::LastReplicatedHybridTime() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  VLOG_WITH_PREFIX(1) << "LastReplicatedHybridTime(), result = " << last_replicated_;
+  VLOG_WITH_PREFIX(1) << __func__ << "(), result = " << last_replicated_;
   return last_replicated_;
 }
 

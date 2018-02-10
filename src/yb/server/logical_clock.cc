@@ -32,12 +32,11 @@
 
 #include "yb/server/logical_clock.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/atomic.h"
 
 namespace yb {
 namespace server {
@@ -52,7 +51,11 @@ using base::subtle::Barrier_AtomicIncrement;
 using base::subtle::NoBarrier_CompareAndSwap;
 
 HybridTime LogicalClock::Now() {
-  return HybridTime(Barrier_AtomicIncrement(&now_, 1));
+  return HybridTime(++now_);
+}
+
+HybridTime LogicalClock::Peek() {
+  return HybridTime(now_.load(std::memory_order_acquire));
 }
 
 HybridTime LogicalClock::NowLatest() {
@@ -60,23 +63,8 @@ HybridTime LogicalClock::NowLatest() {
 }
 
 void LogicalClock::Update(const HybridTime& to_update) {
-  if (!to_update.is_valid()) {
-    return;
-  }
-  Atomic64 new_value = to_update.value();
-
-  for (;;) {
-    Atomic64 current_value = NoBarrier_Load(&now_);
-    // if the incoming value is less than the current one, or we've failed the
-    // CAS because the current clock increased to higher than the incoming value,
-    // we can stop the loop now.
-    if (new_value <= current_value) {
-      break;
-    }
-    // otherwise try a CAS
-    if (PREDICT_TRUE(NoBarrier_CompareAndSwap(&now_, current_value, new_value)
-        == current_value))
-      break;
+  if (to_update.is_valid()) {
+    UpdateAtomicMax(&now_, to_update.value());
   }
 }
 
@@ -94,7 +82,7 @@ Status LogicalClock::WaitUntilAfterLocally(const HybridTime& then,
 }
 
 bool LogicalClock::IsAfter(HybridTime t) {
-  return base::subtle::Acquire_Load(&now_) >= t.value();
+  return now_.load(std::memory_order_acquire) >= t.value();
 }
 
 LogicalClock* LogicalClock::CreateStartingAt(const HybridTime& hybrid_time) {
@@ -104,7 +92,7 @@ LogicalClock* LogicalClock::CreateStartingAt(const HybridTime& hybrid_time) {
 
 uint64_t LogicalClock::NowForMetrics() {
   // We don't want reading metrics to change the clock.
-  return NoBarrier_Load(&now_);
+  return now_.load(std::memory_order_acquire);
 }
 
 

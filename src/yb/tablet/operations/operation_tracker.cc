@@ -80,6 +80,10 @@ METRIC_DEFINE_gauge_uint64(tablet, truncate_operations_inflight,
                            "Truncate Operations In Flight",
                            yb::MetricUnit::kOperations,
                            "Number of truncate operations currently in-flight");
+METRIC_DEFINE_gauge_uint64(tablet, empty_operations_inflight,
+                           "Empty Operations In Flight",
+                           yb::MetricUnit::kOperations,
+                           "Number of none operations currently in-flight");
 
 METRIC_DEFINE_counter(tablet, operation_memory_pressure_rejections,
                       "Operation Memory Pressure Rejections",
@@ -97,21 +101,21 @@ using strings::Substitute;
 
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
+#define INSTANTIATE(upper, lower) \
+  operations_inflight[util::to_underlying(OperationType::BOOST_PP_CAT(k, upper))] = \
+      BOOST_PP_CAT(BOOST_PP_CAT(METRIC_, lower), _operations_inflight).Instantiate(entity, 0);
 OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
     : GINIT(all_operations_inflight),
       MINIT(operation_memory_pressure_rejections) {
-  operations_inflight[Operation::WRITE_TXN] =
-      METRIC_write_operations_inflight.Instantiate(entity, 0);
-  operations_inflight[Operation::ALTER_SCHEMA_TXN] =
-      METRIC_alter_schema_operations_inflight.Instantiate(entity, 0);
-  operations_inflight[Operation::UPDATE_TRANSACTION_TXN] =
-      METRIC_update_transaction_operations_inflight.Instantiate(entity, 0);
-  operations_inflight[Operation::SNAPSHOT_TXN] =
-      METRIC_snapshot_operations_inflight.Instantiate(entity, 0);
-  operations_inflight[Operation::TRUNCATE_TXN] =
-      METRIC_truncate_operations_inflight.Instantiate(entity, 0);
-  static_assert(5 == Operation::kOperationTypes, "Init metrics for all operation types");
+  INSTANTIATE(Write, write);
+  INSTANTIATE(AlterSchema, alter_schema);
+  INSTANTIATE(UpdateTransaction, update_transaction);
+  INSTANTIATE(Snapshot, snapshot);
+  INSTANTIATE(Truncate, truncate);
+  INSTANTIATE(Empty, empty);
+  static_assert(6 == kElementsInOperationType, "Init metrics for all operation types");
 }
+#undef INSTANTIATE
 #undef GINIT
 #undef MINIT
 
@@ -131,7 +135,7 @@ OperationTracker::~OperationTracker() {
 }
 
 Status OperationTracker::Add(OperationDriver* driver) {
-  int64_t driver_mem_footprint = driver->state()->request()->SpaceUsed();
+  int64_t driver_mem_footprint = driver->SpaceUsed();
   if (mem_tracker_ && !mem_tracker_->TryConsume(driver_mem_footprint)) {
     if (metrics_) {
       metrics_->operation_memory_pressure_rejections->Increment();
@@ -168,7 +172,7 @@ void OperationTracker::IncrementCounters(const OperationDriver& driver) const {
   }
 
   metrics_->all_operations_inflight->Increment();
-  metrics_->operations_inflight[driver.operation_type()]->Increment();
+  metrics_->operations_inflight[util::to_underlying(driver.operation_type())]->Increment();
 }
 
 void OperationTracker::DecrementCounters(const OperationDriver& driver) const {
@@ -178,8 +182,9 @@ void OperationTracker::DecrementCounters(const OperationDriver& driver) const {
 
   DCHECK_GT(metrics_->all_operations_inflight->value(), 0);
   metrics_->all_operations_inflight->Decrement();
-  DCHECK_GT(metrics_->operations_inflight[driver.operation_type()]->value(), 0);
-  metrics_->operations_inflight[driver.operation_type()]->Decrement();
+  auto index = util::to_underlying(driver.operation_type());
+  DCHECK_GT(metrics_->operations_inflight[index]->value(), 0);
+  metrics_->operations_inflight[index]->Decrement();
 }
 
 void OperationTracker::Release(OperationDriver* driver) {

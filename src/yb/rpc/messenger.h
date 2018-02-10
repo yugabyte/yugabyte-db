@@ -58,6 +58,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/util/debug-util.h"
 
 namespace yb {
 
@@ -309,6 +310,11 @@ class Messenger {
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;
 
+#ifndef NDEBUG
+  // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK
+  // failure in the destructor (ENG-2838). This can be removed when that is fixed.
+  StackTrace creation_stack_trace_;
+#endif
   DISALLOW_COPY_AND_ASSIGN(Messenger);
 };
 

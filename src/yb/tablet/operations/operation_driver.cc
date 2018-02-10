@@ -90,8 +90,10 @@ Status OperationDriver::Init(std::unique_ptr<Operation> operation, DriverType ty
 
   if (type == consensus::REPLICA) {
     std::lock_guard<simple_spinlock> lock(opid_lock_);
-    op_id_copy_ = operation_->state()->op_id();
-    DCHECK(op_id_copy_.IsInitialized());
+    if (operation_) {
+      op_id_copy_ = operation_->state()->op_id();
+      DCHECK(op_id_copy_.IsInitialized());
+    }
     replication_state_ = REPLICATING;
   } else {
     DCHECK_EQ(type, consensus::LEADER);
@@ -123,8 +125,8 @@ OperationState* OperationDriver::mutable_state() {
   return operation_ != nullptr ? operation_->state() : nullptr;
 }
 
-Operation::OperationType OperationDriver::operation_type() const {
-  return operation_->operation_type();
+OperationType OperationDriver::operation_type() const {
+  return operation_ ? operation_->operation_type() : OperationType::kEmpty;
 }
 
 string OperationDriver::ToString() const {
@@ -165,9 +167,10 @@ void OperationDriver::ExecuteAsync() {
 }
 
 void OperationDriver::HandleConsensusAppend() {
-  // YB tables only.
+  if (!StartOperation()) {
+    return;
+  }
   ADOPT_TRACE(trace());
-  operation_->Start();
   auto* const replicate_msg = operation_->state()->consensus_round()->replicate_msg().get();
   CHECK(!replicate_msg->has_hybrid_time());
   replicate_msg->set_hybrid_time(operation_->state()->hybrid_time().ToUint64());
@@ -183,13 +186,29 @@ void OperationDriver::PrepareAndStartTask() {
   }
 }
 
+bool OperationDriver::StartOperation() {
+  if (operation_) {
+    operation_->Start();
+  }
+  if (propagated_safe_time_) {
+    mvcc_->SetPropagatedSafeTimeOnFollower(propagated_safe_time_);
+  }
+  if (!operation_) {
+    operation_tracker_->Release(this);
+    return false;
+  }
+  return true;
+}
+
 Status OperationDriver::PrepareAndStart() {
   ADOPT_TRACE(trace());
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the operation.
   prepare_physical_hybrid_time_ = GetMonoTimeMicros();
-  RETURN_NOT_OK(operation_->Prepare());
+  if (operation_) {
+    RETURN_NOT_OK(operation_->Prepare());
+  }
 
   // Only take the lock long enough to take a local copy of the
   // replication state and set our prepare state. This ensures that
@@ -205,7 +224,9 @@ Status OperationDriver::PrepareAndStart() {
   if (repl_state_copy != NOT_REPLICATING) {
     // We want to call Start() as soon as possible, because the operation already has the
     // hybrid_time assigned.
-    operation_->Start();
+    if (!StartOperation()) {
+      return Status::OK();
+    }
   }
 
   {
@@ -463,7 +484,8 @@ std::string OperationDriver::LogPrefix() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     repl_state_copy = replication_state_;
     prep_state_copy = prepare_state_;
-    ts_string = state()->has_hybrid_time() ? state()->hybrid_time().ToString() : "No hybrid_time";
+    ts_string = state() && state()->has_hybrid_time()
+        ? state()->hybrid_time().ToString() : "No hybrid_time";
   }
 
   string state_str = StateString(repl_state_copy, prep_state_copy);

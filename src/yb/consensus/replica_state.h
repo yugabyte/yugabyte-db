@@ -381,8 +381,13 @@ class ReplicaState {
 
   bool MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const;
 
-  MicrosTime MajorityReplicatedHtLeaseExpiration(
-      MicrosTime min_allowed, MonoTime deadline) const;
+  // Get the current majority-replicated hybrid time leader lease expiration time as a microsecond
+  // timestamp.
+  // @param min_allowed - will wait until the majority-replicated hybrid time leader lease reaches
+  //                      at least this microsecond timestamp.
+  // @param deadline - won't wait past this deadline.
+  // @return leader lease or 0 if timed out.
+  MicrosTime MajorityReplicatedHtLeaseExpiration(MicrosTime min_allowed, MonoTime deadline) const;
 
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;

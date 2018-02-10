@@ -33,6 +33,8 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus_queue.h"
@@ -42,6 +44,7 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log-test-base.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/metrics.h"
@@ -130,8 +133,8 @@ class ConsensusQueueTest : public YBTest {
     queue_->TrackPeer(kPeerUuid);
     response->set_responder_uuid(kPeerUuid);
 
-    // Ask for a request. The queue assumes the peer is up-to-date so
-    // this should contain no operations.
+    // Ask for a request. The queue assumes the peer is up-to-date so this should contain no
+    // operations.
     ReplicateMsgs refs;
     bool needs_remote_bootstrap;
     ASSERT_OK(queue_->RequestForPeer(kPeerUuid, request, &refs, &needs_remote_bootstrap));
@@ -259,23 +262,26 @@ TEST_F(ConsensusQueueTest, TestStartTrackingAfterStart) {
   request.mutable_ops()->ExtractSubrange(0, request.ops_size(), nullptr);
 }
 
-// Tests that the peers gets the messages pages, with the size of a page
-// being 'consensus_max_batch_size_bytes'
+// Tests that the peers gets the messages pages, with the size of a page being
+// 'consensus_max_batch_size_bytes'
 TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   queue_->Init(MinimumOpId());
   queue_->SetLeaderMode(MinimumOpId(), MinimumOpId().term(), BuildRaftConfigPBForTests(2));
 
   const int kOpsPerRequest = 9;
-  int32_t page_size_estimate;
+  int32_t page_size_estimate = 0;
   {
-    // helper to estimate request size so that we can set the max batch size appropriately
+    // Helper to estimate request size so that we can set the max batch size appropriately.
     ConsensusRequestPB page_size_estimator;
     page_size_estimator.set_caller_term(14);
     OpId* committed_index = page_size_estimator.mutable_committed_index();
     OpId* preceding_id = page_size_estimator.mutable_preceding_id();
+
     // The actual leader lease duration does not matter here, we just want it to be set.
     page_size_estimator.set_leader_lease_duration_ms(kDefaultLeaderLeaseDurationMs);
     page_size_estimator.set_ht_lease_expiration(1000);
+    const HybridTime ht = clock_->Now();
+    page_size_estimator.set_propagated_hybrid_time(ht.ToUint64());
     committed_index->CopyFrom(MinimumOpId());
     preceding_id->CopyFrom(MinimumOpId());
 
@@ -283,19 +289,21 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     // for a total of 12 pages. The last page should have a single op.
     ReplicateMsgs replicates;
     for (int i = 0; i < kOpsPerRequest; i++) {
-      replicates.push_back(CreateDummyReplicate(0, 0, clock_->Now(), 0));
+      replicates.push_back(CreateDummyReplicate(
+          0 /* term */, 0 /* index */, ht, 0 /* payload_size */));
       page_size_estimator.mutable_ops()->AddAllocated(replicates.back().get());
     }
 
     page_size_estimate = page_size_estimator.ByteSize();
+    LOG(INFO) << "page_size_estimate=" << page_size_estimate;
     page_size_estimator.mutable_ops()->ExtractSubrange(0,
                                                        page_size_estimator.ops_size(),
                                                        /* elements */ nullptr);
   }
+
   // Save the current flag state.
   google::FlagSaver saver;
   FLAGS_consensus_max_batch_size_bytes = page_size_estimate;
-
 
   ConsensusRequestPB request;
   ConsensusResponsePB response;
@@ -316,9 +324,15 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
     ReplicateMsgs refs;
     bool needs_remote_bootstrap;
     ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+    BOOST_SCOPE_EXIT(&request) {
+      // Extract the ops from the request to avoid double free.
+      request.mutable_ops()->ExtractSubrange(0, request.ops_size(), /* elements */ nullptr);
+    } BOOST_SCOPE_EXIT_END;
+
     ASSERT_FALSE(needs_remote_bootstrap);
+    LOG(INFO) << "Number of ops in request: " << request.ops_size();
     ASSERT_EQ(kOpsPerRequest, request.ops_size());
-    last = request.ops(request.ops_size() -1).id();
+    last = request.ops(request.ops_size() - 1).id();
     SetLastReceivedAndLastCommitted(&response, last);
     VLOG(1) << "Faking received up through " << last;
     queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
@@ -327,15 +341,16 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
   ReplicateMsgs refs;
   bool needs_remote_bootstrap;
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+  BOOST_SCOPE_EXIT(&request) {
+    // Extract the ops from the request to avoid double free.
+    request.mutable_ops()->ExtractSubrange(0, request.ops_size(), /* elements */ nullptr);
+  } BOOST_SCOPE_EXIT_END;
   ASSERT_FALSE(needs_remote_bootstrap);
   ASSERT_EQ(1, request.ops_size());
-  last = request.ops(request.ops_size() -1).id();
+  last = request.ops(request.ops_size() - 1).id();
   SetLastReceivedAndLastCommitted(&response, last);
   queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
   ASSERT_FALSE(more_pending);
-
-  // extract the ops from the request to avoid double free
-  request.mutable_ops()->ExtractSubrange(0, request.ops_size(), nullptr);
 }
 
 TEST_F(ConsensusQueueTest, TestPeersDontAckBeyondWatermarks) {

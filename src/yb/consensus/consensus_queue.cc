@@ -330,7 +330,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
-    auto ht_lease_expiration_micros = clock_->Now().GetPhysicalValueMicros() +
+    const HybridTime now_ht = clock_->Now();
+    auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
                                       FLAGS_ht_lease_duration_ms * 1000;
     auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
     request->set_leader_lease_duration_ms(leader_lease_duration_ms);
@@ -340,11 +341,18 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
 
     if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
-      request->set_propagated_safe_time(
-          propagated_safe_time_provider_().ToUint64());
+      auto propagated_safe_time = propagated_safe_time_provider_();
+      if (propagated_safe_time) {
+        // Get the current local safe time on the leader and propagate it to the follower.
+        request->set_propagated_safe_time(propagated_safe_time.ToUint64());
+      } else {
+        request->clear_propagated_safe_time();
+      }
     } else {
       request->clear_propagated_safe_time();
     }
+
+    request->set_propagated_hybrid_time(now_ht.ToUint64());
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
     request->mutable_ops()->ExtractSubrange(0, request->ops_size(), nullptr);

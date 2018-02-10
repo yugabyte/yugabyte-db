@@ -36,7 +36,7 @@ string TruncateOperationState::ToString() const {
 }
 
 TruncateOperation::TruncateOperation(std::unique_ptr<TruncateOperationState> state, DriverType type)
-    : Operation(std::move(state), type, Operation::TRUNCATE_TXN) {
+    : Operation(std::move(state), type, OperationType::kTruncate) {
 }
 
 consensus::ReplicateMsgPtr TruncateOperation::NewReplicateMsg() {

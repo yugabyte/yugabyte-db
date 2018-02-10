@@ -217,23 +217,33 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         raft_pool);
 
     auto ht_lease_provider = [this](MicrosTime min_allowed, MonoTime deadline) {
-      auto lease = consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline);
-      if (!lease) {
+      MicrosTime lease_micros {
+          consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
+      if (!lease_micros) {
         return HybridTime::kInvalid;
       }
-      return HybridTime(lease, 0);
+      if (lease_micros >= kMaxHybridTimePhysicalMicros) {
+        // This could happen when leader leases are disabled.
+        return HybridTime::kMax;
+      }
+      return HybridTime(lease_micros, /* logical */ 0);
     };
     tablet_->SetHybridTimeLeaseProvider(ht_lease_provider);
 
     auto* mvcc_manager = tablet_->mvcc_manager();
     consensus_->SetPropagatedSafeTimeProvider([mvcc_manager, ht_lease_provider] {
-      return mvcc_manager->SafeTime(ht_lease_provider(0, MonoTime::kMax));
+      // Get the current majority-replicated HT leader lease without any waiting.
+      auto ht_lease = ht_lease_provider(/* min_allowed */ 0, /* deadline */ MonoTime::kMax);
+      if (!ht_lease) {
+        return HybridTime::kInvalid;
+      }
+      return mvcc_manager->SafeTime(ht_lease);
     });
 
-    consensus_->SetPropagatedSafeTimeUpdater([mvcc_manager, ht_lease_provider] {
+    consensus_->SetMajorityReplicatedListener([mvcc_manager, ht_lease_provider] {
       auto ht_lease = ht_lease_provider(0, MonoTime::kMax);
       if (ht_lease) {
-        mvcc_manager->UpdatePropagatedSafeTime(ht_lease);
+        mvcc_manager->UpdatePropagatedSafeTimeOnLeader(ht_lease);
       }
     });
 
@@ -432,8 +442,7 @@ Status TabletPeer::SubmitWrite(std::unique_ptr<WriteOperationState> state) {
     operation->state()->completion_callback()->OperationCompleted();
     return Status::OK();
   }
-  scoped_refptr<OperationDriver> driver;
-  RETURN_NOT_OK(NewLeaderOperationDriver(std::move(operation), &driver));
+  auto driver = VERIFY_RESULT(NewLeaderOperationDriver(std::move(operation)));
   driver->ExecuteAsync();
   return Status::OK();
 }
@@ -442,10 +451,11 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation) {
   auto status = CheckRunning();
 
   if (status.ok()) {
-    scoped_refptr<OperationDriver> driver;
-    status = NewLeaderOperationDriver(std::move(operation), &driver);
-    if (status.ok()) {
-      driver->ExecuteAsync();
+    auto driver = NewLeaderOperationDriver(std::move(operation));
+    if (driver.ok()) {
+      (**driver).ExecuteAsync();
+    } else {
+      status = driver.status();
     }
   }
   if (!status.ok()) {
@@ -513,38 +523,57 @@ string TabletPeer::HumanReadableState() const {
   return TabletStatePB_Name(state_);
 }
 
+namespace {
+
+consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
+  switch (operation_type) {
+    case OperationType::kWrite:
+      return consensus::WRITE_OP;
+
+    case OperationType::kAlterSchema:
+      return consensus::ALTER_SCHEMA_OP;
+
+    case OperationType::kUpdateTransaction:
+      return consensus::UPDATE_TRANSACTION_OP;
+
+    case OperationType::kSnapshot:
+      return consensus::SNAPSHOT_OP;
+
+    case OperationType::kTruncate:
+      return consensus::TRUNCATE_OP;
+
+    case OperationType::kEmpty:
+      LOG(FATAL) << "OperationType::kEmpty cannot be converted to consensus::OperationType";
+  }
+  FATAL_INVALID_ENUM_VALUE(OperationType, operation_type);
+}
+
+} // namespace
+
 void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
                                        vector<consensus::OperationStatusPB>* out) const {
   for (const auto& driver : operation_tracker_.GetPendingOperations()) {
-    if (driver->state() != nullptr) {
-      consensus::OperationStatusPB status_pb;
-      status_pb.mutable_op_id()->CopyFrom(driver->GetOpId());
-      switch (driver->operation_type()) {
-        case Operation::WRITE_TXN:
-          status_pb.set_operation_type(consensus::WRITE_OP);
-          break;
-        case Operation::ALTER_SCHEMA_TXN:
-          status_pb.set_operation_type(consensus::ALTER_SCHEMA_OP);
-          break;
-        case Operation::UPDATE_TRANSACTION_TXN:
-          status_pb.set_operation_type(consensus::UPDATE_TRANSACTION_OP);
-          break;
-        case Operation::SNAPSHOT_TXN:
-          status_pb.set_operation_type(consensus::SNAPSHOT_OP);
-          break;
-
-        default:
-          FATAL_INVALID_ENUM_VALUE(Operation::OperationType, driver->operation_type());
-      }
-      status_pb.set_description(driver->ToString());
-      int64_t running_for_micros =
-          MonoTime::Now().GetDeltaSince(driver->start_time()).ToMicroseconds();
-      status_pb.set_running_for_micros(running_for_micros);
-      if (trace_type == Operation::TRACE_TXNS) {
-        status_pb.set_trace_buffer(driver->trace()->DumpToString(true));
-      }
-      out->push_back(status_pb);
+    if (driver->state() == nullptr) {
+      continue;
     }
+    auto op_type = driver->operation_type();
+    if (op_type == OperationType::kEmpty) {
+      // This is a special-purpose in-memory-only operation for updating propagated safe time on
+      // a follower.
+      continue;
+    }
+
+    consensus::OperationStatusPB status_pb;
+    status_pb.mutable_op_id()->CopyFrom(driver->GetOpId());
+    status_pb.set_operation_type(MapOperationTypeToPB(op_type));
+    status_pb.set_description(driver->ToString());
+    int64_t running_for_micros =
+        MonoTime::Now().GetDeltaSince(driver->start_time()).ToMicroseconds();
+    status_pb.set_running_for_micros(running_for_micros);
+    if (trace_type == Operation::TRACE_TXNS) {
+      status_pb.set_trace_buffer(driver->trace()->DumpToString(true));
+    }
+    out->push_back(status_pb);
   }
 }
 
@@ -675,9 +704,6 @@ Status TabletPeer::StartReplicaOperation(
   consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   auto operation = CreateOperation(replicate_msg);
-  if (propagated_safe_time) {
-    operation->SetPropagatedSafeTime(propagated_safe_time);
-  }
 
   // TODO(todd) Look at wiring the stuff below on the driver
   OperationState* state = operation->state();
@@ -691,19 +717,27 @@ Status TabletPeer::StartReplicaOperation(
   // This sets the monotonic counter to at least replicate_msg.monotonic_counter() atomically.
   tablet_->UpdateMonotonicCounter(replicate_msg->monotonic_counter());
 
-  scoped_refptr<OperationDriver> driver;
-  RETURN_NOT_OK(NewReplicaOperationDriver(std::move(operation), &driver));
+  OperationDriverPtr driver = VERIFY_RESULT(NewReplicaOperationDriver(std::move(operation)));
 
   // Unretained is required to avoid a refcount cycle.
   state->consensus_round()->SetConsensusReplicatedCallback(
       Bind(&OperationDriver::ReplicationFinished, Unretained(driver.get())));
 
+  if (propagated_safe_time) {
+    driver->SetPropagatedSafeTime(propagated_safe_time, tablet_->mvcc_manager());
+  }
   driver->ExecuteAsync();
   return Status::OK();
 }
 
 void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
-  tablet_->mvcc_manager()->SetPropagatedSafeTime(ht);
+  auto driver = NewReplicaOperationDriver(nullptr);
+  if (!driver.ok()) {
+    LOG(ERROR) << "Failed to create operation driver to set propagated hybrid time";
+    return;
+  }
+  (**driver).SetPropagatedSafeTime(ht, tablet_->mvcc_manager());
+  (**driver).ExecuteAsync();
 }
 
 const std::string& TabletPeer::permanent_uuid() const {
@@ -733,14 +767,21 @@ scoped_refptr<consensus::Consensus> TabletPeer::shared_consensus() const {
   return consensus_;
 }
 
-Status TabletPeer::NewOperationDriver(std::unique_ptr<Operation> operation,
-                                      consensus::DriverType type,
-                                      scoped_refptr<OperationDriver>* driver) {
+Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
+    std::unique_ptr<Operation> operation) {
+  return NewOperationDriver(std::move(operation), consensus::LEADER);
+}
+
+Result<OperationDriverPtr> TabletPeer::NewReplicaOperationDriver(
+    std::unique_ptr<Operation> operation) {
+  return NewOperationDriver(std::move(operation), consensus::REPLICA);
+}
+
+Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operation> operation,
+                                                          consensus::DriverType type) {
   auto operation_driver = CreateOperationDriver();
   RETURN_NOT_OK(operation_driver->Init(std::move(operation), type));
-  driver->swap(operation_driver);
-
-  return Status::OK();
+  return operation_driver;
 }
 
 void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {

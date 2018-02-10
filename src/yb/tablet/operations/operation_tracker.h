@@ -89,7 +89,7 @@ class OperationTracker {
     explicit Metrics(const scoped_refptr<MetricEntity>& entity);
 
     scoped_refptr<AtomicGauge<uint64_t> > all_operations_inflight;
-    scoped_refptr<AtomicGauge<uint64_t> > operations_inflight[Operation::kOperationTypes];
+    scoped_refptr<AtomicGauge<uint64_t> > operations_inflight[kOperationTypeMapSize];
 
     scoped_refptr<Counter> operation_memory_pressure_rejections;
   };

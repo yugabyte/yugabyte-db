@@ -89,7 +89,8 @@ int main(int argc, char **argv) {
   // InitGoogleTest() must precede ParseCommandLineFlags(), as the former
   // removes gtest-related flags from argv that would trip up the latter.
   ::testing::InitGoogleTest(&argc, argv);
-  yb::ParseCommandLineFlags(&argc, &argv, true);
+
+  yb::ParseCommandLineFlags(&argc, &argv, /* remove_flags */ true);
 
   // Create the test-timeout timer.
   CreateAndStartTimer();

@@ -56,7 +56,7 @@ class UpdateTxnOperationState : public OperationState {
 class UpdateTxnOperation : public Operation {
  public:
   UpdateTxnOperation(std::unique_ptr<UpdateTxnOperationState> state, consensus::DriverType type)
-      : Operation(std::move(state), type, Operation::UPDATE_TRANSACTION_TXN) {}
+      : Operation(std::move(state), type, OperationType::kUpdateTransaction) {}
 
   UpdateTxnOperationState* state() override {
     return down_cast<UpdateTxnOperationState*>(Operation::state());

@@ -379,5 +379,11 @@ T GetAtomicFlag(T* flag) {
   return atomic_flag.load(std::memory_order::memory_order_relaxed);
 }
 
+template<typename T>
+void UpdateAtomicMax(std::atomic<T>* max_holder, T new_value) {
+  auto current_max = max_holder->load(std::memory_order_acquire);
+  while (new_value > current_max && !max_holder->compare_exchange_weak(current_max, new_value)) {}
+}
+
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */
