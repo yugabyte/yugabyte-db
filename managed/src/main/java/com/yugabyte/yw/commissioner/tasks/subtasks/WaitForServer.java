@@ -24,7 +24,7 @@ public class WaitForServer extends AbstractTaskBase {
   public YBClientService ybService = null;
 
   // Timeout for failing to respond to pings.
-  private static final long TIMEOUT_SERVER_WAIT_MS = 60000;
+  private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
   public static class Params extends UniverseTaskParams {
     // The name of the node which contains the server process.

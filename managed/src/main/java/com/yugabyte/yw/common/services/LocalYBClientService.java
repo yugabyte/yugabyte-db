@@ -37,7 +37,7 @@ public class LocalYBClientService implements YBClientService {
 
   private YBClient getNewClient(String masterHPs) {
     return new YBClient.YBClientBuilder(masterHPs)
-                       .defaultAdminOperationTimeoutMs(60000)
+                       .defaultAdminOperationTimeoutMs(120000)
                        .build();
   }
 }
