@@ -24,7 +24,7 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   private YBClientService ybService = null;
 
   // Timeout when minimum number of tservers have not heartbeatean to master leader.
-  private static final long TIMEOUT_SERVER_WAIT_MS = 60000;
+  private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
   // Time to wait (in millisec) during each iteration of check.
   private static final int WAIT_EACH_ATTEMPT_MS = 250;
