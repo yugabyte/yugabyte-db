@@ -173,8 +173,12 @@ DateTimeInputFormat DateTime::CqlDateTimeInputFormat = []() -> DateTimeInputForm
   string time_fmt_no_sec = "(\\d{1,2}):(\\d{1,2})" + fmt_empty;
   string time_empty = fmt_empty + fmt_empty + fmt_empty;
   string frac_fmt = "\\.(\\d{1,3})";
-  string tzX_fmt = "((?:\\+|-).+)";
-  string tzZ_fmt = " (.+)";
+  // Offset, i.e. +/-xx:xx
+  string tzX_fmt = "((?:\\+|-)\\d{2}:\\d{2})";
+  // Timezone name, abbreviation, or offset (preceded by space), e.g. PDT, UDT+/-xx:xx, etc..
+  // At this point this allows anything that starts with a letter or '+' (after space), and leaves
+  // further processing to the timezone parser.
+  string tzZ_fmt = " ([a-zA-Z\\+].+)";
 
   // These cases match the valid Cassandra input formats
   vector<std::regex> regexes {

@@ -118,6 +118,10 @@ public class TestTimestampDataType extends BaseCQLTest {
     runInvalidInsert(tableName, "1992-13-12");
     runInvalidInsert(tableName, "1992-12-12 14:23:30:31");
     runInvalidInsert(tableName, "1992-12-12 14:23:30.12.32");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01+0000");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000+123:30");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.0000");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000000+0000");
   }
 
   @Test
