@@ -35,6 +35,7 @@
 
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
+#include <gperftools/malloc_extension.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
@@ -47,11 +48,14 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/util/size_literals.h"
 
 using yb::redisserver::RedisServer;
 using yb::redisserver::RedisServerOptions;
 using yb::cqlserver::CQLServer;
 using yb::cqlserver::CQLServerOptions;
+
+using namespace yb::size_literals;
 
 DEFINE_bool(start_redis_proxy, true, "Starts a redis proxy along with the tablet server");
 DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
@@ -63,6 +67,8 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
                   " system.local table");
 DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
+DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total number of bytes to "
+             "use for the thread cache for tcmalloc across all threads in the tserver.");
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
@@ -80,6 +86,13 @@ static int TabletServerMain(int argc, char** argv) {
   FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
   FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
+
+#ifdef TCMALLOC_ENABLED
+  if (!MallocExtension::instance()->SetNumericProperty(kTcMallocMaxThreadCacheBytes,
+      FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes)) {
+    LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
+  }
+#endif
 
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
