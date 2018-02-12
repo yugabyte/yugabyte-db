@@ -72,22 +72,49 @@ body {
   padding-bottom: 120px;
 }
 
-.main {
-  display: flex;
-  flex-wrap: nowrap;
-  padding-top: 74px;
-  min-width: 0;
-  max-width: 100%;
+@media only screen and (max-width: 959px) {
+  .drawer {
+    top: 68px !important;
+    bottom: 0 !important;
+    height: auto;
+    z-index: 1000;
+
+    .scrollable {
+      top: 0px !important;
+      padding-top: 22px;
+      padding-bottom: 20px !important;
+    }
+  }
+  .main {
+    padding-top: 40px;
+  }
 }
 
-.drawer {
-  float: none;
-  position: relative !important;
-  margin-bottom: 0;
-  padding: 0 0 40px;
-  width: 250px;
-  flex-basis: auto;
+@media only screen and (max-width: 839px) {
+  .drawer {
+    top: 59px !important;
+  }
 }
+
+@media only screen and (min-width: 960px) {
+  .main {
+    display: flex;
+    flex-wrap: nowrap;
+    padding-top: 68px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .drawer {
+    float: none;
+    position: relative !important;
+    margin-bottom: 0;
+    padding: 0 0 40px;
+    width: 250px;
+    flex-basis: auto;
+  }
+}
+
 .drawer h3 {
   margin: 29px 23px 15px;
   font-size: 24px;
