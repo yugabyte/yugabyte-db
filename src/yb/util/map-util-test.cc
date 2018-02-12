@@ -34,10 +34,13 @@
 // part of util.
 #include "yb/gutil/map-util.h"
 
-#include <gtest/gtest.h>
 #include <map>
 
+#include <gtest/gtest.h>
+
 using std::map;
+using std::string;
+using std::unique_ptr;
 
 namespace yb {
 
@@ -58,6 +61,16 @@ TEST(FloorTest, TestMapUtil) {
   ASSERT_EQ(1, *FindFloorOrNull(my_map, 1));
   ASSERT_EQ(nullptr, FindFloorOrNull(my_map, 0));
 
+}
+
+TEST(EmplaceTest, TestEmplace) {
+  // Map with move-only value type.
+  map<string, unique_ptr<string>> my_map;
+  unique_ptr<string> val(new string("foo"));
+  ASSERT_TRUE(EmplaceIfNotPresent(&my_map, "k", std::move(val)));
+  ASSERT_TRUE(ContainsKey(my_map, "k"));
+  ASSERT_FALSE(EmplaceIfNotPresent(&my_map, "k", nullptr))
+      << "Should return false for already-present";
 }
 
 } // namespace yb
