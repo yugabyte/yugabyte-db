@@ -31,11 +31,11 @@
 //
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
 #include <vector>
-#include <chrono>
 
 #include <gtest/gtest.h>
 #include <boost/scope_exit.hpp>
@@ -50,9 +50,12 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
 
+using std::atomic;
 using std::shared_ptr;
+using std::thread;
 
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
