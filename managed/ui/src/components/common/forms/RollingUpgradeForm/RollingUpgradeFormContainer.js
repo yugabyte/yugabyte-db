@@ -79,8 +79,8 @@ function mapStateToProps(state, ownProps) {
     }
   }
   initalGFlagValues.ybSoftwareVersion = state.customer.softwareVersions[0];
-  initalGFlagValues.timeDelay = 180;
-  initalGFlagValues.rollingUpgrade = false;
+  initalGFlagValues.timeDelay = 60;
+  initalGFlagValues.rollingUpgrade = true;
   return {
     universe: state.universe,
     softwareVersions: state.customer.softwareVersions,
