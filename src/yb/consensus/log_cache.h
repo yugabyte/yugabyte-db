@@ -149,6 +149,14 @@ class LogCache {
   FRIEND_TEST(LogCacheTest, TestReplaceMessages);
   friend class LogCacheTest;
 
+  // An entry in the cache.
+  struct CacheEntry {
+    ReplicateMsgPtr msg;
+    // The cached value of msg->SpaceUsedLong(). This method is expensive
+    // to compute, so we compute it only once upon insertion.
+    int64_t mem_usage;
+  };
+
   // Try to evict the oldest operations from the queue, stopping either when
   // 'bytes_to_evict' bytes have been evicted, or the op with index
   // 'stop_after_index' has been evicted, whichever comes first.
@@ -156,7 +164,7 @@ class LogCache {
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.
-  void AccountForMessageRemovalUnlocked(const ReplicateMsgPtr& msg);
+  void AccountForMessageRemovalUnlocked(const CacheEntry& entry);
 
   // Return a string with stats
   std::string StatsStringUnlocked() const;
@@ -180,9 +188,11 @@ class LogCache {
 
   mutable simple_spinlock lock_;
 
+  // An ordered map that serves as the buffer for the cached messages.
+  // Maps from log index -> ReplicateMsg
   // An ordered map that serves as the buffer for the cached messages.  Maps from log index ->
-  // ReplicateMsg
-  typedef std::map<uint64_t, ReplicateMsgPtr> MessageCache;
+  // CacheEntry
+  typedef std::map<uint64_t, CacheEntry> MessageCache;
   MessageCache cache_;
 
   // The next log index to append. Each append operation must either start with this log index, or

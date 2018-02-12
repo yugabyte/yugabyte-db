@@ -74,16 +74,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef UTIL_GTL_MAP_UTIL_H_
-#define UTIL_GTL_MAP_UTIL_H_
+#ifndef YB_GUTIL_MAP_UTIL_H
+#define YB_GUTIL_MAP_UTIL_H
 
 #include <stddef.h>
 #include <string>
-using std::string;
 #include <utility>
+#include <tuple>
+#include <vector>
+
 using std::make_pair;
 using std::pair;
-#include <vector>
+using std::string;
 using std::vector;
 
 #include <glog/logging.h>
@@ -418,6 +420,22 @@ typename Collection::value_type::second_type& InsertKeyOrDie(
       collection->insert(value_type(key, typename value_type::second_type()));
   CHECK(res.second) << "duplicate key: " << key;
   return res.first->second;
+}
+
+//
+// Emplace*()
+//
+template <class Collection, class... Args>
+bool EmplaceIfNotPresent(Collection* const collection,
+                         Args&&... args) {
+  return collection->emplace(std::forward<Args>(args)...).second;
+}
+
+template <class Collection, class... Args>
+void EmplaceOrDie(Collection* const collection,
+                  Args&&... args) {
+  CHECK(EmplaceIfNotPresent(collection, std::forward<Args>(args)...))
+      << "duplicate value";
 }
 
 //
@@ -782,4 +800,4 @@ void AppendValuesFromMap(const MapContainer& map_container,
   }
 }
 
-#endif  // UTIL_GTL_MAP_UTIL_H_
+#endif  // YB_GUTIL_MAP_UTIL_H
