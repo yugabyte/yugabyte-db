@@ -8,13 +8,7 @@ import { trimString, normalizeToPositiveInt, isDefinedNotNull, isNonEmptyObject 
 import { getPrimaryCluster } from "../../../utils/UniverseUtils";
 
 export default class BulkImport extends Component {
-
-  constructor(props) {
-    super(props);
-    this.confirmBulkImport = this.confirmBulkImport.bind(this);
-  }
-
-  confirmBulkImport(values) {
+  confirmBulkImport = values => {
     const {
       currentTableDetail: { tableDetails: { tableName, keyspace }, tableUUID, universeUUID },
       universeDetails: { clusters },
@@ -33,7 +27,7 @@ export default class BulkImport extends Component {
     };
     onHide();
     bulkImport(universeUUID, tableUUID, payload);
-  }
+  };
 
   render() {
     const { visible, onHide, currentTableDetail, handleSubmit, universeDetails } = this.props;

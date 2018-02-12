@@ -9,17 +9,10 @@ import { YBAddRowButton, YBRemoveRowButton } from '../../common/forms/fields';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 
 export default class GFlagArrayComponent extends Component {
-
   static propTypes = {
     flagType: PropTypes.oneOf(['master', 'tserver']).isRequired,
     operationType: PropTypes.oneOf(['Create', 'Edit']).isRequired
   };
-
-  constructor(props) {
-    super(props);
-    this.addRow = this.addRow.bind(this);
-    this.removeRow = this.removeRow.bind(this);
-  }
 
   componentWillMount() {
     if (this.props.fields.length === 0) {
@@ -27,19 +20,19 @@ export default class GFlagArrayComponent extends Component {
     }
   }
 
-  addRow() {
+  addRow = () => {
     const {operationType} = this.props;
     if (operationType !== "Edit") {
       this.props.fields.push({});
     }
-  }
+  };
 
-  removeRow(idx) {
+  removeRow = idx => {
     const {operationType} = this.props;
     if (operationType !== "Edit") {
       this.props.fields.remove(idx);
     }
-  }
+  };
 
   render() {
     const {fields, flagType, operationType} = this.props;

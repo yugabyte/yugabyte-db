@@ -7,12 +7,6 @@ import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
 
 class OnPremListRegionsAndZones extends Component {
-  constructor(props) {
-    super(props);
-    this.addRegionZoneTypeRow = this.addRegionZoneTypeRow.bind(this);
-    this.isFieldReadOnly = this.isFieldReadOnly.bind(this);
-  }
-
   componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
@@ -20,13 +14,13 @@ class OnPremListRegionsAndZones extends Component {
     }
   }
 
-  addRegionZoneTypeRow() {
+  addRegionZoneTypeRow = () => {
     if (this.props.isEditProvider) {
       this.props.fields.push({isBeingEdited: true});
     } else {
       this.props.fields.push({});
     }
-  }
+  };
 
   removeRegionZoneTypeRow(idx) {
     if (!this.isFieldReadOnly(idx)) {
@@ -34,11 +28,11 @@ class OnPremListRegionsAndZones extends Component {
     }
   }
 
-  isFieldReadOnly(fieldIdx) {
+  isFieldReadOnly = fieldIdx => {
     const {fields, isEditProvider} = this.props;
     return isEditProvider && (!isDefinedNotNull(fields.get(fieldIdx).isBeingEdited) ||
       !fields.get(fieldIdx).isBeingEdited);
-  }
+  };
 
   render() {
     const {fields} = this.props;
@@ -99,13 +93,9 @@ class OnPremListRegionsAndZones extends Component {
 }
 
 export default class OnPremRegionsAndZones extends Component {
-  constructor(props) {
-    super(props);
-    this.createOnPremRegionsAndZones = this.createOnPremRegionsAndZones.bind(this);
-  }
-  createOnPremRegionsAndZones(vals) {
+  createOnPremRegionsAndZones = vals => {
     this.props.setOnPremRegionsAndZones(vals);
-  }
+  };
 
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;

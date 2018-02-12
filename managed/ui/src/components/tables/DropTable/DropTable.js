@@ -6,18 +6,12 @@ import { isValidObject } from '../../../utils/ObjectUtils';
 import { browserHistory } from 'react-router';
 
 export default class DropTable extends Component {
-
-  constructor(props) {
-    super(props);
-    this.confirmDropTable = this.confirmDropTable.bind(this);
-  }
-
-  confirmDropTable() {
+  confirmDropTable = () => {
     const { currentTableDetail: { universeUUID, tableUUID }, dropTable, onHide } = this.props;
     dropTable(universeUUID, tableUUID);
     onHide();
     browserHistory.push('/universes/' + universeUUID + "?tab=tables");
-  }
+  };
 
   render() {
     const { visible, onHide, currentTableDetail } = this.props;

@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 
 import './stylesheets/DescriptionItem.scss';
 
-export default class DescriptionItem extends Component {
+export default class DescriptionItem extends PureComponent {
   static propTypes = {
     children: PropTypes.element.isRequired
   };

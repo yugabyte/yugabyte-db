@@ -11,8 +11,6 @@ import {reduxForm} from 'redux-form';
 class ProviderResultView extends Component {
   constructor(props) {
     super(props);
-    this.refreshPricingData = this.refreshPricingData.bind(this);
-    this.showDeleteProviderModal = this.showDeleteProviderModal.bind(this);
     this.state = {refreshing: false};
   }
 
@@ -20,19 +18,19 @@ class ProviderResultView extends Component {
     this.props.deleteProviderConfig(provider.uuid);
   }
 
-  refreshPricingData(provider) {
+  refreshPricingData = provider => {
     this.props.initializeMetadata(provider.uuid);
     this.setState({refreshing: true});
-  }
+  };
 
-  showDeleteProviderModal() {
+  showDeleteProviderModal = () => {
     const {providerType, showDeleteProviderModal} = this.props;
     if (providerType === "aws") {
       showDeleteProviderModal("deleteAWSProvider");
     } else {
       showDeleteProviderModal("deleteGCPProvider");
     }
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     if (nextProps.refreshSucceeded === true && this.props.refreshSucceeded === false) {

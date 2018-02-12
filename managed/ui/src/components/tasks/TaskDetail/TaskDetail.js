@@ -17,16 +17,17 @@ import "highlight.js/styles/github.css";
 class TaskDetail extends Component {
   constructor(props) {
     super(props);
-    this.gotoTaskList = this.gotoTaskList.bind(this);
-    this.toggleErrorStringDisplay = this.toggleErrorStringDisplay.bind(this);
     this.state = {errorStringDisplay: false};
-  };
-  gotoTaskList() {
+  }
+
+  gotoTaskList = () => {
     browserHistory.push(this.context.prevPath);
   };
-  toggleErrorStringDisplay() {
+
+  toggleErrorStringDisplay = () => {
     this.setState({errorStringDisplay: !this.state.errorStringDisplay});
   };
+
   componentWillMount() {
     const {params} = this.props;
     const currentTaskUUID = params.taskUUID;

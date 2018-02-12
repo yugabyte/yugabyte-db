@@ -28,8 +28,6 @@ import './UniverseDetail.scss';
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
-    this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
-    this.getUniverseInfo = this.getUniverseInfo.bind(this);
     this.state = {
       dimensions: {},
     };
@@ -59,17 +57,17 @@ class UniverseDetail extends Component {
     this.setState({dimensions});
   }
 
-  onEditUniverseButtonClick() {
+  onEditUniverseButtonClick = () => {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     const query = {edit: true};
     Object.assign(location.query, query);
     browserHistory.push(location);
-  }
+  };
 
-  getUniverseInfo() {
+  getUniverseInfo = () => {
     const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
     this.props.getUniverseInfo(universeUUID);
-  }
+  };
 
   render() {
     const {

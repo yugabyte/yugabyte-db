@@ -9,16 +9,17 @@ import {Row, Col} from 'react-bootstrap';
 export default class OnPremConfigWizard extends Component {
   constructor(props) {
     super(props);
-    this.nextPage = this.nextPage.bind(this);
-    this.prevPage = this.prevPage.bind(this);
     this.state = {currentStep: 0};
   }
-  nextPage() {
+
+  nextPage = () => {
     this.setState({currentStep: this.state.currentStep + 1});
-  }
-  prevPage() {
+  };
+
+  prevPage = () => {
     this.setState({currentStep: this.state.currentStep - 1});
-  }
+  };
+
   render() {
     let currentWizardStepContainer = <span/>;
     if (this.state.currentStep === 0) {

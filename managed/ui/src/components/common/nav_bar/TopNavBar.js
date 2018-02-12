@@ -10,15 +10,10 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import {LinkContainer} from 'react-router-bootstrap';
 
 export default class TopNavBar extends Component {
-  constructor(props) {
-    super(props);
-    this.handleLogout = this.handleLogout.bind(this);
-  }
-
-  handleLogout(event) {
+  handleLogout = event => {
     localStorage.clear();
     this.props.logoutProfile();
-  }
+  };
 
   render() {
     const { customer: { currentCustomer } } = this.props;

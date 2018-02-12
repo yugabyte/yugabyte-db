@@ -10,12 +10,7 @@ import { getPrimaryCluster } from "../../utils/UniverseUtils";
 import { isDefinedNotNull } from "../../utils/ObjectUtils";
 
 export default class UniverseRegionMarkerLayer extends Component {
-  constructor(props) {
-    super(props);
-    this.getCurrentRegion = this.getCurrentRegion.bind(this);
-  }
-
-  getCurrentRegion(regionUUID) {
+  getCurrentRegion = regionUUID => {
     const {universe: {universeDetails: {clusters}}} = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
     if (isDefinedNotNull(primaryCluster)) {
@@ -23,7 +18,7 @@ export default class UniverseRegionMarkerLayer extends Component {
       return markerData.find((markerItem) => markerItem.uuid === regionUUID);
     }
     return null;
-  }
+  };
 
   render() {
     const self = this;

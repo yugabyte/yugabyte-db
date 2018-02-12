@@ -52,37 +52,10 @@ class UniverseForm extends Component {
 
   constructor(props, context) {
     super(props);
-    this.providerChanged = this.providerChanged.bind(this);
-    this.regionListChanged = this.regionListChanged.bind(this);
-    this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
-    this.numNodesChanged = this.numNodesChanged.bind(this);
-    this.createUniverse = this.createUniverse.bind(this);
-    this.editUniverse = this.editUniverse.bind(this);
-    this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
-    this.azChanged = this.azChanged.bind(this);
-    this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
-    this.numNodesClicked = this.numNodesClicked.bind(this);
-    this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
-    this.ebsTypeChanged = this.ebsTypeChanged.bind(this);
-    this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
-    this.numVolumesChanged = this.numVolumesChanged.bind(this);
-    this.diskIopsChanged = this.diskIopsChanged.bind(this);
-    this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
-    this.handleSubmitButtonClick = this.handleSubmitButtonClick.bind(this);
-    this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
-    this.handleUniverseConfigure = this.handleUniverseConfigure.bind(this);
-    this.getCurrentProvider = this.getCurrentProvider.bind(this);
-    this.hasFieldChanged = this.hasFieldChanged.bind(this);
-    this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
-    this.setDeviceInfo = this.setDeviceInfo.bind(this);
-    this.getFormPayload = this.getFormPayload.bind(this);
-    this.toggleSpotPrice = this.toggleSpotPrice.bind(this);
-    this.spotPriceChanged = this.spotPriceChanged.bind(this);
-    this.getSuggestedSpotPrice = this.getSuggestedSpotPrice.bind(this);
     this.state = initialState;
   }
 
-  handleCancelButtonClick() {
+  handleCancelButtonClick = () => {
     this.setState(initialState);
     this.props.reset();
     if (this.props.type === "Create") {
@@ -96,22 +69,22 @@ class UniverseForm extends Component {
         browserHistory.push(this.props.location.pathname);
       }
     }
-  }
+  };
 
-  handleSubmitButtonClick() {
+  handleSubmitButtonClick = () => {
     const {type} = this.props;
     if (type === "Create") {
       this.createUniverse();
     } else {
       this.editUniverse();
     }
-  }
+  };
 
-  getCurrentProvider(providerUUID) {
+  getCurrentProvider = providerUUID => {
     return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
-  }
+  };
 
-  getCurrentUserIntent() {
+  getCurrentUserIntent = () => {
     const {formValues} = this.props;
     return {
       universeName: formValues.universeName,
@@ -126,9 +99,9 @@ class UniverseForm extends Component {
       gflags: this.state.gflags,
       spotPrice: this.state.spotPrice
     };
-  }
+  };
 
-  setDeviceInfo(instanceTypeCode, instanceTypeList) {
+  setDeviceInfo = (instanceTypeCode, instanceTypeList) => {
     const instanceTypeSelectedData = instanceTypeList.find(function (item) {
       return item.instanceTypeCode === instanceTypeCode;
     });
@@ -150,9 +123,9 @@ class UniverseForm extends Component {
       };
       this.setState({nodeSetViaAZList: false, deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
     }
-  }
+  };
 
-  configureUniverseNodeList() {
+  configureUniverseNodeList = () => {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues} = this.props;
 
     let universeTaskParams = {};
@@ -199,9 +172,9 @@ class UniverseForm extends Component {
       }
       this.handleUniverseConfigure(universeTaskParams);
     }
-  }
+  };
 
-  handleUniverseConfigure(universeTaskParams) {
+  handleUniverseConfigure = universeTaskParams => {
     const {universe: {currentUniverse}, type} = this.props;
     const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
     if (!isNonEmptyObject(primaryCluster)) return;
@@ -221,16 +194,16 @@ class UniverseForm extends Component {
         this.props.submitConfigureUniverse(universeTaskParams);
       }
     }
-  }
+  };
 
-  createUniverse() {
+  createUniverse = () => {
     this.props.submitCreateUniverse(this.getFormPayload());
-  }
+  };
 
-  editUniverse() {
+  editUniverse = () => {
     const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
     this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
-  }
+  };
 
   componentWillMount() {
     this.props.resetConfig();
@@ -269,7 +242,7 @@ class UniverseForm extends Component {
     }
   }
 
-  providerChanged(value) {
+  providerChanged = value => {
     const providerUUID = value;
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.props.resetConfig();
@@ -291,9 +264,9 @@ class UniverseForm extends Component {
     if (currentProviderData && currentProviderData.code === "onprem") {
       this.props.fetchNodeInstanceList(value);
     }
-  }
+  };
 
-  getSuggestedSpotPrice(instanceType, regions) {
+  getSuggestedSpotPrice = (instanceType, regions) => {
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     const regionUUIDs = regions.map(region => region.value);
     if (this.props.type !== "Edit" && isDefinedNotNull(currentProvider) && currentProvider.code === "aws"
@@ -301,18 +274,18 @@ class UniverseForm extends Component {
       this.props.getSuggestedSpotPrice(this.state.providerSelected, instanceType, regionUUIDs);
       this.setState({gettingSuggestedSpotPrice: true});
     }
-  }
+  };
 
-  regionListChanged(value) {
+  regionListChanged = value => {
     this.setState({nodeSetViaAZList: false, regionList: value});
     if (this.state.useSpotPrice) {
       this.getSuggestedSpotPrice(this.state.instanceTypeSelected, value);
     } else {
       this.props.resetSuggestedSpotPrice();
     }
-  }
+  };
 
-  instanceTypeChanged(event) {
+  instanceTypeChanged = event => {
     const instanceTypeValue = event.target.value;
     this.setState({instanceTypeSelected: instanceTypeValue});
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
@@ -321,29 +294,29 @@ class UniverseForm extends Component {
     } else {
       this.props.resetSuggestedSpotPrice();
     }
-  }
+  };
 
-  numNodesChanged(value) {
+  numNodesChanged = value => {
     this.setState({numNodes: value});
-  }
+  };
 
-  numNodesChangedViaAzList(value) {
+  numNodesChangedViaAzList = value => {
     this.setState({nodeSetViaAZList: true, numNodes: value});
-  }
+  };
 
-  numNodesClicked() {
+  numNodesClicked = () => {
     this.setState({nodeSetViaAZList: false});
-  }
+  };
 
-  azChanged(event) {
+  azChanged = event => {
     this.setState({azCheckState: !this.state.azCheckState});
-  }
+  };
 
-  softwareVersionChanged(version) {
+  softwareVersionChanged = version => {
     this.setState({ybSoftwareVersion: version, nodeSetViaAZList: false});
-  }
+  };
 
-  replicationFactorChanged(value) {
+  replicationFactorChanged = value => {
     const self = this;
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.setState({nodeSetViaAZList: false, replicationFactor: value}, function () {
@@ -352,7 +325,7 @@ class UniverseForm extends Component {
         }
       });
     }
-  }
+  };
 
   componentWillUpdate(newProps) {
     if (newProps.universe.formSubmitSuccess) {
@@ -361,7 +334,7 @@ class UniverseForm extends Component {
   }
 
   // Compare state variables against existing user intent
-  hasFieldChanged() {
+  hasFieldChanged = () => {
     const {universe: {currentUniverse}} = this.props;
     if (isEmptyObject(currentUniverse.data) || isEmptyObject(currentUniverse.data.universeDetails)) {
       return true;
@@ -371,7 +344,7 @@ class UniverseForm extends Component {
       _.clone(primaryCluster.userIntent, true) : null;
     const currentIntent = this.getCurrentUserIntent();
     return !areIntentsEqual(existingIntent, currentIntent);
-  }
+  };
 
   componentDidUpdate(prevProps, prevState) {
     const {universe: {currentUniverse}} = this.props;
@@ -411,7 +384,7 @@ class UniverseForm extends Component {
     }
   }
 
-  ebsTypeChanged(event) {
+  ebsTypeChanged = event => {
     const currentDeviceInfo = _.clone(this.state.deviceInfo);
     currentDeviceInfo.ebsType = event.target.value;
     if (currentDeviceInfo.ebsType === "IO1" && currentDeviceInfo.diskIops == null) {
@@ -420,23 +393,23 @@ class UniverseForm extends Component {
       currentDeviceInfo.diskIops = null;
     }
     this.setState({deviceInfo: currentDeviceInfo, ebsType: event.target.value});
-  }
+  };
 
-  numVolumesChanged(val) {
+  numVolumesChanged = val => {
     this.setState({deviceInfo: {...this.state.deviceInfo, numVolumes: val}});
-  }
+  };
 
-  volumeSizeChanged(val) {
+  volumeSizeChanged = val => {
     this.setState({deviceInfo: {...this.state.deviceInfo, volumeSize: val}});
-  }
+  };
 
-  diskIopsChanged(val) {
+  diskIopsChanged = val => {
     if (this.state.deviceInfo.ebsType === "IO1") {
       this.setState({deviceInfo: {...this.state.deviceInfo, diskIops: val}});
     }
-  }
+  };
 
-  getFormPayload() {
+  getFormPayload = () => {
     const {formValues, universe: {universeConfigTemplate}} = this.props;
     const submitPayload = _.clone(universeConfigTemplate.data, true);
     submitPayload.clusters.forEach((cluster) => {
@@ -460,9 +433,9 @@ class UniverseForm extends Component {
     });
 
     return submitPayload;
-  }
+  };
 
-  toggleSpotPrice(event) {
+  toggleSpotPrice = event => {
     const nextState = {useSpotPrice: event.target.checked};
     if (event.target.checked) {
       this.getSuggestedSpotPrice(this.state.instanceTypeSelected, this.state.regionList);
@@ -471,11 +444,11 @@ class UniverseForm extends Component {
       this.props.resetSuggestedSpotPrice();
     }
     this.setState(nextState);
-  }
+  };
 
-  spotPriceChanged(val, normalize) {
+  spotPriceChanged = (val, normalize) => {
     this.setState({spotPrice: normalize ? normalizeToPositiveFloat(val) : val});
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const {

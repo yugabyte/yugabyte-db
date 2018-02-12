@@ -13,16 +13,11 @@ import dockerLogo from './images/docker.png';
 import gcpLogo from './images/gcp.png';
 
 class DataCenterConfiguration extends Component {
-  constructor(props) {
-    super(props);
-    this.configProviderSelect = this.configProviderSelect.bind(this);
-  }
-
-  configProviderSelect(item) {
+  configProviderSelect = item => {
     const currentLocation = this.props.location;
     currentLocation.query = { provider: item };
     this.props.router.push(currentLocation);
-  }
+  };
 
   render() {
     const onPremiseTabContent = (
