@@ -45,6 +45,7 @@
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
 DECLARE_double(default_memory_limit_to_ram_ratio);
+DECLARE_int32(logbuflevel);
 DECLARE_int32(webserver_port);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(durable_wal_write);
@@ -65,6 +66,9 @@ static int MasterMain(int argc, char** argv) {
   // the desired replication factor. (It's not turtles all the way down!)
   FLAGS_evict_failed_followers = false;
 
+  // Do not sync GLOG to disk for INFO, WARNING.
+  // ERRORs, and FATALs will still cause a sync to disk.
+  FLAGS_logbuflevel = google::GLOG_WARNING;
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;

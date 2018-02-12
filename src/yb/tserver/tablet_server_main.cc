@@ -73,6 +73,7 @@ DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total numbe
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
+DECLARE_int32(logbuflevel);
 
 namespace yb {
 namespace tserver {
@@ -86,6 +87,9 @@ static int TabletServerMain(int argc, char** argv) {
   FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
   FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
+  // Do not sync GLOG to disk for INFO, WARNING.
+  // ERRORs, and FATALs will still cause a sync to disk.
+  FLAGS_logbuflevel = google::GLOG_WARNING;
 
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
