@@ -115,8 +115,7 @@ HybridClock::HybridClock()
       divisor_(1),
 #endif
       tolerance_adjustment_(1),
-      last_usec_(0),
-      next_logical_(0),
+      components_({0, 0}),
       state_(kNotInitialized) {
 }
 
@@ -215,8 +214,7 @@ HybridTime HybridClock::Now() {
   HybridTime now;
   uint64_t error;
 
-  std::lock_guard<simple_spinlock> lock(lock_);
-  NowWithErrorUnlocked(&now, &error);
+  NowWithError(&now, &error);
   return now;
 }
 
@@ -224,10 +222,7 @@ HybridTime HybridClock::NowLatest() {
   HybridTime now;
   uint64_t error;
 
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    NowWithErrorUnlocked(&now, &error);
-  }
+  NowWithError(&now, &error);
 
   uint64_t now_latest = GetPhysicalValueMicros(now) + error;
   uint64_t now_logical = GetLogicalValue(now);
@@ -244,13 +239,6 @@ Status HybridClock::GetGlobalLatest(HybridTime* t) {
 }
 
 void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec) {
-  std::lock_guard<simple_spinlock> lock(lock_);
-  NowWithErrorUnlocked(hybrid_time, max_error_usec);
-}
-
-void HybridClock::NowWithErrorUnlocked(HybridTime *hybrid_time, uint64_t *max_error_usec) {
-
-  DCHECK(lock_.is_locked());
   DCHECK_EQ(state_, kInitialized) << "Clock not initialized. Must call Init() first.";
 
   uint64_t now_usec;
@@ -262,16 +250,19 @@ void HybridClock::NowWithErrorUnlocked(HybridTime *hybrid_time, uint64_t *max_er
   }
 
   // If the current time surpasses the last update just return it
-  if (PREDICT_TRUE(now_usec > last_usec_)) {
-    last_usec_ = now_usec;
-    next_logical_ = 1;
-    *hybrid_time = HybridTimeFromMicroseconds(last_usec_);
-    *max_error_usec = error_usec;
-    if (PREDICT_FALSE(VLOG_IS_ON(2))) {
-      VLOG(2) << "Current clock is higher than the last one. Resetting logical values."
-          << " Time: " << HybridTime(now_usec, 0) << ", Error: " << error_usec;
+  HybridClockComponents current_components = components_.load(std::memory_order_acquire);
+  HybridClockComponents new_components = { now_usec, 1 };
+  // Loop over the check in case of concurrent updates making the CAS fail.
+  while (now_usec > current_components.last_usec) {
+    if (components_.compare_exchange_weak(current_components, new_components)) {
+      *hybrid_time = HybridTimeFromMicroseconds(new_components.last_usec);
+      *max_error_usec = error_usec;
+      if (PREDICT_FALSE(VLOG_IS_ON(2))) {
+        VLOG(2) << "Current clock is higher than the last one. Resetting logical values."
+            << " Time: " << HybridTime(now_usec, 0) << ", Error: " << error_usec;
+      }
+      return;
     }
-    return;
   }
 
   // We don't have the last time read max error since it might have originated
@@ -292,14 +283,21 @@ void HybridClock::NowWithErrorUnlocked(HybridTime *hybrid_time, uint64_t *max_er
   // This broadens the error interval for both cases but always returns
   // a correct error interval.
 
-  *max_error_usec = last_usec_ - (now_usec - error_usec);
-  *hybrid_time = HybridTimeFromMicrosecondsAndLogicalValue(last_usec_, next_logical_);
+  do {
+    new_components.last_usec = current_components.last_usec;
+    new_components.logical = current_components.logical + 1;
+    // Loop over the check until the CAS succeeds, in case there's concurrent updates.
+  } while (!components_.compare_exchange_weak(current_components, new_components));
+  *max_error_usec = new_components.last_usec - (now_usec - error_usec);
+  // We've already atomically incremented the logical, so subtract 1.
+  auto logical_time = new_components.logical - 1;
+  *hybrid_time = HybridTimeFromMicrosecondsAndLogicalValue(
+      new_components.last_usec, logical_time);
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG(2) << "Current clock is lower than the last one. Returning last read and incrementing"
         " logical values. Physical Value: " << now_usec << " usec Logical Value: "
-        << next_logical_ << " Error: " << *max_error_usec;
+        << logical_time  << " Error: " << *max_error_usec;
   }
-  next_logical_++;
 }
 
 void HybridClock::Update(const HybridTime& to_update) {
@@ -307,17 +305,13 @@ void HybridClock::Update(const HybridTime& to_update) {
     return;
   }
 
-  std::lock_guard<simple_spinlock> lock(lock_);
-  HybridTime now;
-  uint64_t error_ignored;
-  NowWithErrorUnlocked(&now, &error_ignored);
-
-  if (PREDICT_TRUE(now.CompareTo(to_update) > 0)) {
-    return;
-  }
-
-  last_usec_ = GetPhysicalValueMicros(to_update);
-  next_logical_ = GetLogicalValue(to_update) + 1;
+  HybridClockComponents current_components = components_.load(std::memory_order_acquire);
+  HybridClockComponents new_components = {
+    GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
+  };
+  // Keep trying to CAS until it works or until HT has advanced past this update.
+  while (current_components < new_components &&
+      !components_.compare_exchange_weak(current_components, new_components)) {}
 }
 
 Status HybridClock::WaitUntilAfter(const HybridTime& then_latest,
@@ -325,10 +319,7 @@ Status HybridClock::WaitUntilAfter(const HybridTime& then_latest,
   TRACE_EVENT0("clock", "HybridClock::WaitUntilAfter");
   HybridTime now;
   uint64_t error;
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    NowWithErrorUnlocked(&now, &error);
-  }
+  NowWithError(&now, &error);
 
   // "unshift" the hybrid_times so that we can measure actual time
   uint64_t now_usec = GetPhysicalValueMicros(now);
@@ -369,10 +360,7 @@ Status HybridClock::WaitUntilAfterLocally(const HybridTime& then,
   while (true) {
     HybridTime now;
     uint64_t error;
-    {
-      std::lock_guard<simple_spinlock> lock(lock_);
-      NowWithErrorUnlocked(&now, &error);
-    }
+    NowWithError(&now, &error);
     if (now.CompareTo(then) > 0) {
       return Status::OK();
     }
@@ -384,25 +372,32 @@ Status HybridClock::WaitUntilAfterLocally(const HybridTime& then,
 }
 
 bool HybridClock::IsAfter(HybridTime t) {
+  HybridClockComponents current_components = components_.load(std::memory_order_acquire);
+  HybridClockComponents given_components = { GetPhysicalValueMicros(t), GetLogicalValue(t) };
+  // If the time has already passed, we can bypass getting the clock.
+  if (given_components < current_components) {
+    return true;
+  }
+
   // Manually get the time, rather than using Now(), so we don't end up causing
   // a time update.
   uint64_t now_usec;
   uint64_t error_usec;
   CHECK_OK(WalltimeWithError(&now_usec, &error_usec));
 
-  std::lock_guard<simple_spinlock> lock(lock_);
-  now_usec = std::max(now_usec, last_usec_);
-
-  HybridTime now;
-  if (now_usec > last_usec_) {
-    now = HybridTimeFromMicroseconds(now_usec);
+  HybridClockComponents now_components;
+  if (now_usec > current_components.last_usec) {
+    now_components.last_usec = now_usec;
+    now_components.logical = 1;
+    // This is an opportunistic update. It is not required that this succeeds.
+    components_.compare_exchange_strong(current_components, now_components);
   } else {
-    // last_usec_ may be in the future if we were updated from a remote
+    // last_usec may be in the future if we were updated from a remote
     // node.
-    now = HybridTimeFromMicrosecondsAndLogicalValue(last_usec_, next_logical_);
+    now_components = current_components;
   }
 
-  return t.value() < now.value();
+  return given_components < now_components;
 }
 
 yb::Status HybridClock::CheckClockSyncError(uint64_t error_usec) {
@@ -416,11 +411,13 @@ yb::Status HybridClock::CheckClockSyncError(uint64_t error_usec) {
 
 yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec) {
   if (PREDICT_FALSE(FLAGS_use_mock_wall_clock)) {
-    VLOG(1) << "Current clock time: " << mock_clock_time_usec_ << " error: "
-            << mock_clock_max_error_usec_ << ". Updating to time: " << now_usec
+    auto mock_clock_time_usec = mock_clock_time_usec_.load(std::memory_order_acquire);
+    auto mock_clock_max_error_usec = mock_clock_max_error_usec_.load(std::memory_order_acquire);
+    VLOG(1) << "Current clock time: " << mock_clock_time_usec << " error: "
+            << mock_clock_max_error_usec << ". Updating to time: " << now_usec
             << " and error: " << error_usec;
-    *now_usec = mock_clock_time_usec_;
-    *error_usec = mock_clock_max_error_usec_;
+    *now_usec = mock_clock_time_usec;
+    *error_usec = mock_clock_max_error_usec;
   } else {
 #if defined(__APPLE__)
     *now_usec = GetCurrentTimeMicros();
@@ -444,15 +441,13 @@ yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_us
 
 void HybridClock::SetMockClockWallTimeForTests(uint64_t now_usec) {
   CHECK(FLAGS_use_mock_wall_clock);
-  std::lock_guard<simple_spinlock> lock(lock_);
   CHECK_GE(now_usec, mock_clock_time_usec_);
-  mock_clock_time_usec_ = now_usec;
+  mock_clock_time_usec_.store(now_usec, std::memory_order_release);
 }
 
 void HybridClock::SetMockMaxClockErrorForTests(uint64_t max_error_usec) {
   CHECK(FLAGS_use_mock_wall_clock);
-  std::lock_guard<simple_spinlock> lock(lock_);
-  mock_clock_max_error_usec_ = max_error_usec;
+  mock_clock_max_error_usec_.store(max_error_usec, std::memory_order_release);
 }
 
 // Used to get the hybrid_time for metrics.
@@ -465,8 +460,7 @@ uint64_t HybridClock::ErrorForMetrics() {
   HybridTime now;
   uint64_t error;
 
-  std::lock_guard<simple_spinlock> lock(lock_);
-  NowWithErrorUnlocked(&now, &error);
+  NowWithError(&now, &error);
   return error;
 }
 

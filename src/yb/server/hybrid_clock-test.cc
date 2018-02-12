@@ -112,8 +112,8 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   // one, 200 msecs should be more than enough.
   now_micros += 200000;
 
-  HybridTime now_increased = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(now_micros,
-                                                                                  logical);
+  HybridTime now_increased = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
+      now_micros, logical);
 
   clock_->Update(now_increased);
 
