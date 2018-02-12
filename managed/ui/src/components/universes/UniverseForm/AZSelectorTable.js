@@ -17,22 +17,19 @@ export default class AZSelectorTable extends Component {
   constructor(props) {
     super(props);
     this.state = {azItemState: {}};
-    this.getGroupWithCounts = this.getGroupWithCounts.bind(this);
-    this.updatePlacementInfo = this.updatePlacementInfo.bind(this);
-    this.resetAZSelectionConfig = this.resetAZSelectionConfig.bind(this);
   }
   static propTypes = {
     universe: PropTypes.object,
   };
 
-  resetAZSelectionConfig() {
+  resetAZSelectionConfig = () => {
     const {universe: {universeConfigTemplate}} = this.props;
     const clusters = _.clone(universeConfigTemplate.data.clusters);
     if (isNonEmptyArray(clusters)) {
       clusters.forEach((cluster) => delete cluster["placementInfo"]);
     }
     this.props.submitConfigureUniverse({clusters: clusters});
-  }
+  };
 
   handleAZChange(listKey, event) {
     const {universe: {universeConfigTemplate}} = this.props;
@@ -60,7 +57,7 @@ export default class AZSelectorTable extends Component {
     this.updatePlacementInfo(currentAZState, universeTemplate);
   }
 
-  updatePlacementInfo(currentAZState, universeConfigTemplate) {
+  updatePlacementInfo = (currentAZState, universeConfigTemplate) => {
     const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes, minNumNodes} = this.props;
     this.setState({azItemState: currentAZState});
     let totalNodesInConfig = 0;
@@ -146,9 +143,9 @@ export default class AZSelectorTable extends Component {
       };
       this.props.setPlacementStatus(placementStatusObject);
     }
-  }
+  };
 
-  getGroupWithCounts(universeConfigTemplate) {
+  getGroupWithCounts = universeConfigTemplate => {
     const uniConfigArray = [];
     if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
       universeConfigTemplate.nodeDetailsSet.forEach(function (nodeItem) {

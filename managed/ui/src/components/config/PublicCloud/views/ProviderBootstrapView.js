@@ -8,24 +8,18 @@ import {TaskProgressContainer} from '../../../tasks';
 import { reduxForm } from 'redux-form';
 
 class ProviderBootstrapView extends Component {
-  constructor(props) {
-    super(props);
-    this.deleteProviderConfig = this.deleteProviderConfig.bind(this);
-    this.showDeleteProviderModal = this.showDeleteProviderModal.bind(this);
-  }
-
-  deleteProviderConfig(provider) {
+  deleteProviderConfig = provider => {
     this.props.deleteProviderConfig(provider.uuid);
-  }
+  };
 
-  showDeleteProviderModal() {
+  showDeleteProviderModal = () => {
     const {providerType, showDeleteProviderModal} = this.props;
     if (providerType === "aws") {
       showDeleteProviderModal("deleteAWSProvider");
     } else {
       showDeleteProviderModal("deleteGCPProvider");
     }
-  }
+  };
 
   render() {
     const {currentProvider, handleSubmit, providerType, currentModal, visibleModal} = this.props;

@@ -15,9 +15,6 @@ import { getPrimaryCluster, isNodeRemovable } from '../../../utils/UniverseUtils
 export default class NodeDetails extends Component {
   constructor(props) {
     super(props);
-    this.deleteNode = this.deleteNode.bind(this);
-    this.isNodeStatusLoadingOrInit = this.isNodeStatusLoadingOrInit.bind(this);
-    this.checkTasksForUniverseCreated = this.checkTasksForUniverseCreated.bind(this);
     this.state = { universeCreated: false };
   }
 
@@ -41,24 +38,24 @@ export default class NodeDetails extends Component {
     this.props.getUniversePerNodeStatus(uuid);
   }
 
-  isNodeStatusLoadingOrInit() {
+  isNodeStatusLoadingOrInit = () => {
     const { universe: { universePerNodeStatus } } = this.props;
     const promiseState = getPromiseState(universePerNodeStatus);
     return (promiseState.isLoading() || promiseState.isInit());
-  }
+  };
 
-  checkTasksForUniverseCreated() {
+  checkTasksForUniverseCreated = () => {
     const { universe: { universeTasks }, uuid } = this.props;
     return isNonEmptyArray(universeTasks.data[uuid]) ? universeTasks.data[uuid].some((task) => {
       return task.type === 'Create' && task.target === 'Universe' && task.status === 'Success';
     }) : false;
-  }
+  };
 
-  deleteNode(node) {
+  deleteNode = node => {
     const {universe: {currentUniverse}} = this.props;
     const universeUUID = currentUniverse.data.universeUUID;
     this.props.deleteNode(node.name, universeUUID);
-  }
+  };
 
   stopNode(node) {
     const {universe: {currentUniverse}} = this.props;

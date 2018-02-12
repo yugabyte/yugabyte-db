@@ -27,13 +27,12 @@ export default class RegionMap extends Component {
 
   constructor(props) {
     super(props);
-    this.onMapZoomEnd = this.onMapZoomEnd.bind(this);
     this.state = {loadMarkers: false};
   }
 
-  onMapZoomEnd() {
+  onMapZoomEnd = () => {
     this.setState({loadMarkers: true});
-  }
+  };
 
   render() {
     const { regions, type, showLabels, showRegionLabels, universe } = this.props;

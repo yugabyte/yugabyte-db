@@ -6,11 +6,6 @@ import { YBSelect, YBInputField } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
 
 export default class InstanceTypeForRegion extends Component {
-  constructor(props) {
-    super(props);
-    this.addRow = this.addRow.bind(this);
-  }
-
   componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
@@ -18,9 +13,9 @@ export default class InstanceTypeForRegion extends Component {
     }
   }
 
-  addRow() {
+  addRow = () => {
     this.props.fields.push({});
-  }
+  };
 
   removeRow(instanceTypeIdx) {
     this.props.fields.remove(instanceTypeIdx);

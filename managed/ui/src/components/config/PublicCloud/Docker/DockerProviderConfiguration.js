@@ -12,21 +12,15 @@ import { RegionMap, YBMapLegend } from '../../../maps';
 const PROVIDER_TYPE = "docker";
 
 class DockerProviderConfiguration extends Component {
-  constructor(props) {
-    super(props);
-    this.createProviderConfig = this.createProviderConfig.bind(this);
-    this.deleteProviderConfig = this.deleteProviderConfig.bind(this);
-  }
-
-  createProviderConfig() {
+  createProviderConfig = () => {
     this.props.createProvider();
-  }
+  };
 
-  deleteProviderConfig() {
+  deleteProviderConfig = () => {
     const { configuredProviders } = this.props;
     const dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
     this.props.deleteProviderConfig(dockerProvider.uuid);
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const { dockerBootstrap, cloudBootstrap } = nextProps;

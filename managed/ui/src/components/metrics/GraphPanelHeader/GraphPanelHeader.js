@@ -49,23 +49,13 @@ class GraphPanelHeader extends Component {
   constructor(props) {
     super(props);
     momentLocalizer(moment);
-    this.handleFilterChange = this.handleFilterChange.bind(this);
-    this.handleStartDateChange = this.handleStartDateChange.bind(this);
-    this.handleEndDateChange = this.handleEndDateChange.bind(this);
-    this.applyCustomFilter = this.applyCustomFilter.bind(this);
-    this.updateGraphQueryParams = this.updateGraphQueryParams.bind(this);
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
-    this.universeItemChanged = this.universeItemChanged.bind(this);
-    this.nodeItemChanged = this.nodeItemChanged.bind(this);
-    this.submitGraphFilters = this.submitGraphFilters.bind(this);
-    this.refreshGraphQuery = this.refreshGraphQuery.bind(this);
     let currentUniverse = "all";
     let currentUniversePrefix  = "all";
     if (this.props.origin === "universe") {
       currentUniverse = this.props.universe.currentUniverse.data;
       currentUniversePrefix = currentUniverse.universeDetails.nodePrefix;
     }
-    this.updateUrlQueryParams = this.updateUrlQueryParams.bind(this);
     this.state = {
       showDatePicker: false,
       filterLabel: defaultFilter.label,
@@ -135,23 +125,23 @@ class GraphPanelHeader extends Component {
     }
   }
 
-  submitGraphFilters(type, val) {
+  submitGraphFilters = (type, val) => {
     const queryObject = this.state.filterParams;
     queryObject[type] = val;
     this.props.changeGraphQueryFilters(queryObject);
     this.updateUrlQueryParams(queryObject);
-  }
+  };
 
-  refreshGraphQuery() {
+  refreshGraphQuery = () => {
     const newParams = this.state;
     if (newParams.filterLabel !== "Custom") {
       newParams.startMoment = moment().subtract(newParams.filterValue, newParams.filterType);
       newParams.endMoment = moment();
       this.props.changeGraphQueryFilters(newParams);
     }
-  }
+  };
 
-  handleFilterChange(eventKey, event) {
+  handleFilterChange = (eventKey, event) => {
     const filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
     const newParams = this.state;
     newParams.filterLabel = filterInfo.label;
@@ -171,9 +161,9 @@ class GraphPanelHeader extends Component {
       this.props.changeGraphQueryFilters(newParams);
       this.updateUrlQueryParams(newParams);
     }
-  }
+  };
 
-  universeItemChanged(event) {
+  universeItemChanged = event => {
     const {universe: {universeList}} = this.props;
     const self = this;
     let universeFound = false;
@@ -193,29 +183,29 @@ class GraphPanelHeader extends Component {
     newParams.nodeName = "all";
     this.props.changeGraphQueryFilters(newParams);
     this.updateUrlQueryParams(newParams);
-  }
+  };
 
-  nodeItemChanged(event) {
+  nodeItemChanged = event => {
     const newParams = this.state;
     newParams.nodeName = event.target.value;
     this.props.changeGraphQueryFilters(newParams);
     this.setState({nodeName: event.target.value});
     this.updateUrlQueryParams(newParams);
-  }
+  };
 
-  handleStartDateChange(dateStr) {
+  handleStartDateChange = dateStr => {
     this.setState({startMoment: moment(dateStr)});
-  }
+  };
 
-  handleEndDateChange(dateStr) {
+  handleEndDateChange = dateStr => {
     this.setState({endMoment: moment(dateStr)});
-  }
+  };
 
-  applyCustomFilter() {
+  applyCustomFilter = () => {
     this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment);
-  }
+  };
 
-  updateGraphQueryParams(startMoment, endMoment) {
+  updateGraphQueryParams = (startMoment, endMoment) => {
     const newFilterParams = this.state;
     if (isValidObject(startMoment) && isValidObject(endMoment)) {
       newFilterParams.startMoment = startMoment;
@@ -223,9 +213,9 @@ class GraphPanelHeader extends Component {
       this.props.changeGraphQueryFilters(this.state);
       this.updateUrlQueryParams(newFilterParams);
     }
-  }
+  };
 
-  updateUrlQueryParams(filterParams) {
+  updateUrlQueryParams = filterParams => {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     const queryParams = location.query;
     queryParams.nodePrefix = filterParams.nodePrefix;
@@ -239,7 +229,7 @@ class GraphPanelHeader extends Component {
     Object.assign(location.query, queryParams);
     browserHistory.push(location);
     this.props.changeGraphQueryFilters(filterParams);
-  }
+  };
 
   render() {
     const { origin } = this.props;

@@ -14,7 +14,6 @@ import { reduxForm } from 'redux-form';
 class GCPProviderInitView extends Component {
   constructor(props) {
     super(props);
-    this.createProviderConfig = this.createProviderConfig.bind(this);
     this.state = {
       gcpConfig: {},
       accountName: "Google Cloud Provider",
@@ -23,7 +22,7 @@ class GCPProviderInitView extends Component {
     };
   }
 
-  createProviderConfig(vals) {
+  createProviderConfig = vals => {
     const self = this;
     const configText = this.state.gcpConfig;
     if(isNonEmptyObject(configText)) {
@@ -43,7 +42,7 @@ class GCPProviderInitView extends Component {
     } else {
       this.setState({"error": "GCP Config JSON is required"});
     }
-  }
+  };
 
   uploadGCPConfig(uploadFile) {
     this.setState({gcpConfig: uploadFile[0]});

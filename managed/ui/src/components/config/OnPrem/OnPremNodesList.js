@@ -18,34 +18,29 @@ import {YBConfirmModal} from '../../modals';
 class OnPremNodesList extends Component {
   constructor(props) {
     super(props);
-    this.addNodeToList = this.addNodeToList.bind(this);
-    this.hideAddNodeModal = this.hideAddNodeModal.bind(this);
-    this.hideDeleteNodeModal = this.hideDeleteNodeModal.bind(this);
-    this.submitAddNodesForm = this.submitAddNodesForm.bind(this);
-    this.deleteInstance = this.deleteInstance.bind(this);
     this.state = {nodeToBeDeleted: {}};
   }
 
-  addNodeToList() {
+  addNodeToList = () => {
     this.props.showAddNodesDialog();
-  }
+  };
 
-  hideAddNodeModal() {
+  hideAddNodeModal = () => {
     this.props.reset();
     this.props.hideDialog();
-  }
+  };
 
   showConfirmDeleteModal(row) {
     this.setState({nodeToBeDeleted: row});
     this.props.showConfirmDeleteModal();
   }
 
-  hideDeleteNodeModal() {
+  hideDeleteNodeModal = () => {
     this.setState({nodeToBeDeleted: {}});
     this.props.hideDialog();
-  }
+  };
 
-  deleteInstance() {
+  deleteInstance = () => {
     const {cloud: { providers }} = this.props;
     const onPremProvider = providers.data.find((provider) => provider.code === "onprem");
     const row = this.state.nodeToBeDeleted;
@@ -53,9 +48,9 @@ class OnPremNodesList extends Component {
       this.props.deleteInstance(onPremProvider.uuid, row.ip);
     }
     this.hideDeleteNodeModal();
-  }
+  };
 
-  submitAddNodesForm(vals) {
+  submitAddNodesForm = vals => {
     const {cloud: { supportedRegionList, accessKeys, providers }} = this.props;
     const onPremProvider = providers.data.find((provider) => provider.code === "onprem");
     const self = this;
@@ -112,7 +107,7 @@ class OnPremNodesList extends Component {
       }
     }
     this.props.reset();
-  }
+  };
 
   componentWillMount() {
     // Get OnPrem provider if provider list is already loaded during component load

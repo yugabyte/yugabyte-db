@@ -12,13 +12,7 @@ import {reduxForm} from 'redux-form';
 const PROVIDER_TYPE = "aws";
 
 class AWSProviderInitView extends Component {
-  constructor(props) {
-    super(props);
-    this.createProviderConfig = this.createProviderConfig.bind(this);
-    this.isHostInAWS = this.isHostInAWS.bind(this);
-  }
-
-  createProviderConfig(formValues) {
+  createProviderConfig = formValues => {
     const {hostInfo} = this.props;
     const awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
@@ -37,12 +31,12 @@ class AWSProviderInitView extends Component {
       regionFormVals = {"regionList": ["us-west-2"], "hostVpcId": ""};
     }
     this.props.createAWSProvider(PROVIDER_TYPE, formValues.accountName, awsProviderConfig, regionFormVals);
-  }
+  };
 
-  isHostInAWS() {
+  isHostInAWS = () => {
     const { hostInfo } = this.props;
     return !IN_DEVELOPMENT_MODE && (isValidObject(hostInfo) && hostInfo["error"] === undefined);
-  }
+  };
 
   render() {
     const { handleSubmit, submitting, error} = this.props;

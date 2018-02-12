@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { PureComponent } from 'react';
 import { DescriptionItem } from './';
 
 import './stylesheets/YBStatsBlock.scss';
 
-export default class YBStatsBlock extends Component {
+export default class YBStatsBlock extends PureComponent {
   render() {
     const {value, label} = this.props;
     return (

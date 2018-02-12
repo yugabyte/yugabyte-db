@@ -19,12 +19,11 @@ class NodeConnectModal extends Component {
   constructor(props) {
     super(props);
     this.state = { showConnectModal: false };
-    this.toggleConnectModal = this.toggleConnectModal.bind(this);
   }
 
-  toggleConnectModal() {
+  toggleConnectModal = () => {
     this.setState({showConnectModal: !this.state.showConnectModal});
-  }
+  };
 
   render() {
     const { nodeIPs, hostInfo, accessKeys, providerUUID } = this.props;

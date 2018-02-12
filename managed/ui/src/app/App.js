@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
-import { Component } from 'react';
+import React, { Component }  from 'react';
 import 'babel-polyfill';
 import 'bootstrap/dist/css/bootstrap.css';
 import './stylesheets/App.scss';

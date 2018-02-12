@@ -17,12 +17,6 @@ import OnPremNodesListContainer from './OnPremNodesListContainer';
 const PROVIDER_TYPE = "onprem";
 
 class OnPremSuccess extends Component {
-  constructor(props) {
-    super(props);
-    this.getReadyState = this.getReadyState.bind(this);
-    this.handleManageNodesClick = this.handleManageNodesClick.bind(this);
-  }
-
   deleteProvider(uuid) {
     this.props.deleteProviderConfig(uuid);
   }
@@ -39,13 +33,13 @@ class OnPremSuccess extends Component {
     this.manageNodesLocation.pathname = '/config/onprem/instances';
   }
 
-  getReadyState(dataObject) {
+  getReadyState = dataObject => {
     return getPromiseState(dataObject).isSuccess() || getPromiseState(dataObject).isEmpty();
-  }
+  };
 
-  handleManageNodesClick() {
+  handleManageNodesClick = () => {
     browserHistory.push(this.manageNodesLocation);
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const {

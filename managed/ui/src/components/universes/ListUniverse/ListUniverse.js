@@ -9,14 +9,9 @@ import { HighlightedStatsPanelContainer } from '../../panels';
 import './ListUniverse.css';
 
 export default class ListUniverse extends Component {
-  constructor(props) {
-    super(props);
-    this.createNewUniverse = this.createNewUniverse.bind(this);
-  }
-
-  createNewUniverse() {
+  createNewUniverse = () => {
     browserHistory.push("/universes/create");
-  }
+  };
 
   render() {
     return (

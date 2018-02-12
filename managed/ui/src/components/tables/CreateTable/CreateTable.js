@@ -15,22 +15,17 @@ import { YBPanelItem } from '../../panels';
 class CreateTable extends Component {
   constructor(props) {
     super(props);
-    this.createTable = this.createTable.bind(this);
-    this.radioClicked = this.radioClicked.bind(this);
-    this.cancelCreateTableForm = this.cancelCreateTableForm.bind(this);
-    this.hideCancelCreateModal = this.hideCancelCreateModal.bind(this);
-    this.confirmCancelCreateModal = this.confirmCancelCreateModal.bind(this);
     this.state = {nextTab: ''};
   }
 
-  radioClicked(event) {
+  radioClicked = event => {
     this.setState({'activeTable': event.target.value});
-  }
+  };
 
-  createTable(values) {
+  createTable = values => {
     const {universe: {currentUniverse}} = this.props;
     this.props.submitCreateTable(currentUniverse.data, values);
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     if (this.props.location.query !== nextProps.location.query && nextProps.location.query.tab !== "tables") {
@@ -46,11 +41,11 @@ class CreateTable extends Component {
     }
   }
 
-  hideCancelCreateModal() {
+  hideCancelCreateModal = () => {
     this.props.hideModal();
-  }
+  };
 
-  confirmCancelCreateModal() {
+  confirmCancelCreateModal = () => {
     this.props.hideModal();
     this.props.showListTables();
     if (isValidObject(this.state.nextTab) && this.state.nextTab.length > 0) {
@@ -58,15 +53,15 @@ class CreateTable extends Component {
       currentLocation.query = { tab: this.state.nextTab };
       this.props.router.push(currentLocation);
     }
-  }
+  };
 
-  cancelCreateTableForm() {
+  cancelCreateTableForm = () => {
     if (this.props.anyTouched && this.props.dirty) {
       this.props.showCancelCreateModal();
     } else {
       this.props.showListTables();
     }
-  }
+  };
 
   render() {
     const {handleSubmit} = this.props;

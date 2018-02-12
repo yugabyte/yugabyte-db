@@ -10,13 +10,12 @@ import {getPrimaryCluster} from 'utils/UniverseUtils';
 export default class UniverseRegionLocationPanel extends Component {
   constructor(props) {
     super(props);
-    this.onProviderSelect = this.onProviderSelect.bind(this);
     this.state = {selectedProviders: []};
   }
 
-  onProviderSelect(selectedProviders) {
+  onProviderSelect = selectedProviders => {
     this.setState({selectedProviders: selectedProviders.map(provider => provider.code)});
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     if (isNonEmptyArray(nextProps.cloud.providers.data) && (nextProps.cloud.providers !== this.props.cloud.providers

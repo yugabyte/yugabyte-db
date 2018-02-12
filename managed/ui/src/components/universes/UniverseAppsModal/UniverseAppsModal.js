@@ -53,12 +53,11 @@ export default class UniverseAppsModal extends Component {
   constructor(props) {
     super(props);
     this.state = { showAppsModal: false };
-    this.toggleAppsModal = this.toggleAppsModal.bind(this);
   }
 
-  toggleAppsModal() {
+  toggleAppsModal = () => {
     this.setState({showAppsModal: !this.state.showAppsModal});
-  }
+  };
 
   render() {
     const { nodeDetails } = this.props;

@@ -11,17 +11,15 @@ export default class OnPremProviderAndAccessKey extends Component {
   constructor(props) {
     super(props);
     this.state  = {privateKeyFile: {}};
-    this.privateKeyUpload = this.privateKeyUpload.bind(this);
-    this.submitProviderKeyForm = this.submitProviderKeyForm.bind(this);
   }
 
-  submitProviderKeyForm(vals) {
+  submitProviderKeyForm = vals => {
     this.props.setOnPremProviderAndAccessKey(vals);
-  }
+  };
 
-  privateKeyUpload(val) {
+  privateKeyUpload = val => {
     this.setState({privateKeyFile: val[0]});
-  }
+  };
 
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;

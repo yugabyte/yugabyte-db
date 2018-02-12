@@ -9,15 +9,10 @@ import YBLogo from '../../YBLogo/YBLogo';
 import {browserHistory} from 'react-router';
 
 class LoginForm extends Component {
-  constructor(props) {
-    super(props);
-    this.submitLogin = this.submitLogin.bind(this);
-  }
-
-  submitLogin(formValues) {
+  submitLogin = formValues => {
     const {loginCustomer} = this.props;
     loginCustomer(formValues);
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const {customer: {authToken}} =  nextProps;

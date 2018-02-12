@@ -45,7 +45,7 @@ export default class UniverseResources extends Component {
   }
 }
 
-UniverseResources.PropTypes = {
+UniverseResources.propTypes = {
   renderType: PropTypes.oneOf(["Display", "Configure"])
 };
 

@@ -13,8 +13,6 @@ class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
     this.state = { showKeyboardShortcuts: false };
-    this._toggleShortcutsHelp = this._toggleShortcutsHelp.bind(this);
-    this._keyEvent = this._keyEvent.bind(this);
   }
 
   componentWillMount() {
@@ -24,11 +22,11 @@ class AuthenticatedComponent extends Component {
     this.props.bindShortcut('?', this._toggleShortcutsHelp);
   }
 
-  _toggleShortcutsHelp() {
+  _toggleShortcutsHelp = () => {
     this.setState({showKeyboardShortcuts: !this.state.showKeyboardShortcuts});
-  }
+  };
 
-  _keyEvent(param) {
+  _keyEvent = param => {
     switch(param.key) {
       case 'N':
         browserHistory.push("/universes/create");
@@ -51,7 +49,7 @@ class AuthenticatedComponent extends Component {
       default:
         break;
     }
-  }
+  };
 
   render() {
     return (

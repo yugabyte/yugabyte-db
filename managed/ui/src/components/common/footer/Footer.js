@@ -1,12 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { PureComponent } from 'react';
 import './stylesheets/Footer.scss';
 import YBLogo from '../YBLogo/YBLogo';
 import * as moment from 'moment';
 import { getPromiseState } from 'utils/PromiseUtils';
 
-class Footer extends React.PureComponent {
+class Footer extends PureComponent {
   render() {
     const { customer: { yugawareVersion } } = this.props;
     const version = getPromiseState(yugawareVersion).isSuccess()

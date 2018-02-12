@@ -7,19 +7,13 @@ import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from '../../../ut
 import { YBLoadingIcon } from '../../common/indicators';
 
 export default class UniverseStatus extends Component {
-
-  constructor(props) {
-    super(props);
-    this.hasPendingTasksForUniverse = this.hasPendingTasksForUniverse.bind(this);
-  }
-
-  hasPendingTasksForUniverse(customerTaskList) {
+  hasPendingTasksForUniverse = customerTaskList => {
     const {currentUniverse: { universeUUID}} = this.props;
     return isNonEmptyArray(customerTaskList) ? customerTaskList.some(function(taskItem) {
       return (taskItem.targetUUID === universeUUID && (taskItem.status === "Running" ||
       taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
     }) : false;
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const { tasks: {customerTaskList}, refreshUniverseData} = nextProps;
