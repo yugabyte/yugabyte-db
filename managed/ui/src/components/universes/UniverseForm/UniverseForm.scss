@@ -137,7 +137,6 @@
   background-color: white;
   padding: 15px 25px 0;
   border-radius: 4px;
-  border: 1px solid $YB_GRAY_HOVER;
 
   h4 {
     margin-bottom: 20px;
@@ -156,18 +155,25 @@
   .form-action-button-container {
     position: static;
     margin: 0 -25px;
+    padding: 14px 0;
 
     .flex-cnt {
       @media (max-width: 991px) {
         flex-direction: column;
       }
       .flex-shrink {
-        padding: 15px 15px 3px;
+        padding: 5px 0 5px 3px;
         text-align: right;
 
-        @media (max-width: 767px) {
+        @media (max-width: 991px) {
           text-align: center;
         }
+      }
+    }
+    .universe-resources {
+      .btn {
+        margin: 0;
+        margin-left: 12px;
       }
     }
   }

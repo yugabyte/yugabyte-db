@@ -1,5 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 /* TODO: Do we still use the .h1, .h2, .h3 classes? */
 h1, .h1, h2, .h2, h3, .h3 {
   margin-top: 0px;
@@ -7,6 +9,7 @@ h1, .h1, h2, .h2, h3, .h3 {
   font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
   font-weight: 500;
   letter-spacing: -.01em;
+  color: $YB_TEXT_COLOR;
 }
 
 h1 {

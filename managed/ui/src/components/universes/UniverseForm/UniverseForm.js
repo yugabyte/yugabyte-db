@@ -13,7 +13,7 @@ import { YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInpu
           YBButton, YBToggle } from 'components/common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
-import { UniverseResources } from '../UniverseResources';
+import { UniverseResourcesNew as UniverseResources } from '../UniverseResources';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
@@ -789,7 +789,7 @@ class UniverseForm extends Component {
                isReadOnly={isFieldReadOnly || this.state.gettingSuggestedSpotPrice}/>
       );
     }
-    const pageTitle = this.props.type === "Create" ? <h2 className="content-title"><span>{this.props.type} universe</span></h2> : <h2 className="content-title">{this.props.formValues.universeName}<span> - {this.props.type.toLowerCase()} universe </span></h2>;
+    const pageTitle = this.props.type === "Create" ? <h2 className="content-title">{this.props.type.toLowerCase()} universe</h2> : <h2 className="content-title">{this.props.formValues.universeName}<span> - {this.props.type.toLowerCase()} universe </span></h2>;
     return (
 
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">

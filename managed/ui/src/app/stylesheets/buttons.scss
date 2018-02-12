@@ -21,60 +21,60 @@
   }
 }
 
-  .btn-orange {
-    background: $YB_ORANGE;
+.btn-orange {
+  background: $YB_ORANGE;
+  color: white;
+  font-weight: 600;
+  @include transition(0.35s);
+  i {
+    color: #fff;
+    margin-left: 0;
+    @include transition(0.35s);
+  }
+  &:hover {
+    @include transition(0.125s);
+    background-color: $YB_ORANGE_HOVER;
     color: white;
-    font-weight: 600;
-    @include transition(0.35s);
     i {
-      color: #fff;
-      margin-left: 0;
-      @include transition(0.35s);
-    }
-    &:hover {
       @include transition(0.125s);
-      background-color: $YB_ORANGE_HOVER;
-      color: white;
-      i {
-        @include transition(0.125s);
-        color: rgba(white, 0.5);
-      }
-    }
-    &:active:focus, &:focus, &:active {
-      background-color: darken($YB_ORANGE_HOVER, 2%);
-      color: #fff;
-      box-shadow: none;
-      i {
-        color: rgba(white, 0.5);
-      }
+      color: rgba(white, 0.5);
     }
   }
+  &:active:focus, &:focus, &:active {
+    background-color: darken($YB_ORANGE_HOVER, 2%);
+    color: #fff;
+    box-shadow: none;
+    i {
+      color: rgba(white, 0.5);
+    }
+  }
+}
 
-  .btn-default {
-    color: $YB_TEXT_COLOR;
-    background-color: #fff;
-    font-weight: 300;
-    border: 1px solid $YB_GRAY;
-    @include transition(0.35s);
-    .caret {
-      border-top-color: #44518b;
-    }
-    i {
-      color: $YB_ORANGE;
-      font-size: 16px;
-      line-height: 1;
-    }
-    &:hover {
-      @include transition(0.125s);
-      border-color: $YB_GRAY_HOVER;
-      background-color: $YB_GRAY_HOVER;
-    }
-    &:active:focus, &:focus, &:active, &.active {
-      border-color: darken($YB_GRAY, 2%);
-      background-color: darken($YB_GRAY, 2%);
-      box-shadow: none;
-    }
+.btn-default {
+  color: $YB_TEXT_COLOR;
+  background-color: #fff;
+  font-weight: 300;
+  border: 1px solid $YB_GRAY;
+  @include transition(0.35s);
+  .caret {
+    border-top-color: #44518b;
   }
+  i {
+    color: $YB_ORANGE;
+    font-size: 16px;
+    line-height: 1;
+  }
+  &:hover {
+    @include transition(0.125s);
+    border-color: $YB_GRAY_HOVER;
+    background-color: $YB_GRAY_HOVER;
+  }
+  &:active:focus, &:focus, &:active, &.active {
+    border-color: darken($YB_GRAY, 2%);
+    background-color: darken($YB_GRAY, 2%);
+    box-shadow: none;
+  }
+}
 
 
 .btn-grey {
@@ -107,6 +107,61 @@
 .btn-center {
   width: 33%;
   margin-left: 33%;
+}
+
+.btn-small {
+  display: inline-block;
+  padding: 0px 4px;
+  margin-bottom: 0;
+  font-size: 11px;
+  line-height: 14px;
+  border-radius: 2px;
+}
+
+.btn-copy {
+  text-transform: uppercase;
+  vertical-align: baseline;
+  width: 40px;
+  font-size: 10px;
+  line-height: 16px;
+  height: 17px;
+  border: none;
+  overflow: hidden;
+  position: relative;
+  top: -1px;
+  margin-left: 5px;
+  &, &:active, &:hover, &:focus {
+    background-color: $YB_SUCCESS_COLOR !important;
+    color: $YB_ORANGE;
+  }
+  &:after {
+    position: absolute;
+    top: 0;
+    left: 0;    
+    font: normal normal normal 14px/1 FontAwesome;
+    content: '\F00C';
+    color: #fff;
+    text-align: center;
+    border-radius: 2px;
+    width: 40px;
+    height: 17px;
+    line-height: 16px;
+    opacity: 1;
+    background-color: $YB_SUCCESS_COLOR !important;
+  }
+}
+
+.btn-copy-inactive {
+  @include transition-property(0.35s, color, 0.3s);
+  &, &:active, &:hover, &:focus {
+    background-color: $YB_ORANGE !important;
+    color: #fff;
+  }
+  &:after {
+    content: '';
+    opacity: 0;
+    @include transition-property(0.6s, opacity, 0s);
+  }
 }
 
 .btn-group {
