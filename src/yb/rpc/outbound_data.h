@@ -28,15 +28,24 @@ namespace rpc {
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 
-// Interface for outbound transfers from the RPC framework.
+// Interface for outbound transfers from the RPC framework. Implementations include:
+// - RpcCall
+// - LocalOutboundCall
+// - ConnectionHeader
+// - ServerEventList
 class OutboundData : public std::enable_shared_from_this<OutboundData> {
  public:
   virtual void Transferred(const Status& status, Connection* conn) = 0;
 
   virtual ~OutboundData() {}
+
   // Serializes the data to be sent out via the RPC framework.
   virtual void Serialize(std::deque<RefCntBuffer> *output) const = 0;
-  virtual std::string ToString() const = 0;
+
+  virtual std::string ToString() const {
+    return "<ToStringNotImplemented>";
+  }
+
   virtual bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 };
 

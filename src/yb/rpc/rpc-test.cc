@@ -343,13 +343,16 @@ TEST_F(TestRpc, TestCallTimeout) {
   shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
   Proxy p(client_messenger, server_addr, GenericCalculatorService::static_service_name());
 
+  uint64_t delay_ns = 1;
+
   // Test a very short timeout - we expect this will time out while the
   // call is still trying to connect, or in the send queue. This was triggering ASAN failures
   // before.
-  ASSERT_NO_FATALS(DoTestExpectTimeout(p, MonoDelta::FromNanoseconds(1)));
 
-  // Test a longer timeout - expect this will time out after we send the request.
-  ASSERT_NO_FATALS(DoTestExpectTimeout(p, MonoDelta::FromMilliseconds(10)));
+  while (delay_ns < 100ul * 1000 * 1000) {
+    ASSERT_NO_FATALS(DoTestExpectTimeout(p, MonoDelta::FromNanoseconds(delay_ns)));
+    delay_ns *= 2;
+  }
 }
 
 static void AcceptAndReadForever(Socket* listen_sock) {

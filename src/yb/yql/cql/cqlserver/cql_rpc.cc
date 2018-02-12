@@ -199,7 +199,7 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
   }
   response_msg_buf_ = RefCntBuffer(msg);
 
-  QueueResponse(false);
+  QueueResponse(/* is_success */ false);
 }
 
 void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
@@ -207,7 +207,7 @@ void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
   RecordHandlingCompleted(metrics.handler_latency);
   response_msg_buf_ = buffer;
 
-  QueueResponse(true);
+  QueueResponse(/* is_success */ true);
 }
 
 void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) {

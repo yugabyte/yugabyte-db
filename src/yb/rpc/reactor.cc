@@ -82,9 +82,8 @@ namespace {
 
 Status ShutdownError(bool aborted) {
   const char* msg = "reactor is shutting down";
-  return aborted ?
-      STATUS(Aborted, msg, "", ESHUTDOWN) :
-      STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
+  return aborted ? STATUS(Aborted, msg, "", ESHUTDOWN)
+                 : STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
 }
 
 // Callback for libev fatal errors (eg running out of file descriptors).

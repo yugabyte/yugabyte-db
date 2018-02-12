@@ -139,8 +139,8 @@ RedisInboundCall::~RedisInboundCall() {
                                          status),
                                conn));
   }
-
 }
+
 Status RedisInboundCall::ParseFrom(size_t commands, Slice source) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
@@ -306,7 +306,7 @@ void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* res
     // Did we get all responses and ready to send data.
     size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
-      RecordHandlingCompleted(nullptr);
+      RecordHandlingCompleted(/* handler_run_time */ nullptr);
       QueueResponse(!had_failures_.load(std::memory_order_acquire));
     }
   }

@@ -213,23 +213,37 @@ const char kUnknownSymbol[] = "(unknown)";
 
 #ifdef __linux__
 
-// Remove path prefixes up to what looks like the root of the YB source tree.
+// Remove path prefixes up to what looks like the root of the YB source tree, or the source tree
+// of other recognizable codebases.
 const char* NormalizeSourceFilePath(const char* file_path) {
   if (file_path == nullptr) {
     return file_path;
   }
+
+  // This could be called arbitrarily early or late in program execution as part of backtrace,
+  // so we're only using basic C features here.
+
   const char* const src_yb_subpath = strstr(file_path, "/src/yb/");
   if (src_yb_subpath != nullptr) {
     return src_yb_subpath + 5;
   }
+
   const char* const src_rocksdb_subpath = strstr(file_path, "/src/rocksdb/");
   if (src_rocksdb_subpath != nullptr) {
     return src_rocksdb_subpath + 5;
   }
-  const char* const thirdparty_subpath = strstr(file_path, "/thirdparty/");
+
+  const char* const thirdparty_subpath = strstr(file_path, "/thirdparty/build/");
   if (thirdparty_subpath != nullptr) {
     return thirdparty_subpath + 1;
   }
+
+  const char* const cellar_gcc_subpath = strstr(file_path, "/Cellar/gcc/");
+  if (cellar_gcc_subpath != nullptr) {
+    // These are Linuxbrew gcc's standard headers. Keep the path starting from "gcc/...".
+    return cellar_gcc_subpath + 8;
+  }
+
   return file_path;
 }
 
