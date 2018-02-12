@@ -87,13 +87,6 @@ static int TabletServerMain(int argc, char** argv) {
   FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   FLAGS_cql_proxy_webserver_port = CQLServer::kDefaultWebPort;
 
-#ifdef TCMALLOC_ENABLED
-  if (!MallocExtension::instance()->SetNumericProperty(kTcMallocMaxThreadCacheBytes,
-      FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes)) {
-    LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
-  }
-#endif
-
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;
@@ -101,6 +94,15 @@ static int TabletServerMain(int argc, char** argv) {
   }
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType));
   InitGoogleLoggingSafe(argv[0]);
+
+#ifdef TCMALLOC_ENABLED
+  LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<
+    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes;
+  if (!MallocExtension::instance()->SetNumericProperty(kTcMallocMaxThreadCacheBytes,
+      FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes)) {
+    LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
+  }
+#endif
 
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
