@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include "yb/client/meta_cache.h"
 #include "yb/client/table-internal.h"
 #include "yb/common/index.h"
@@ -80,61 +82,7 @@ using strings::Substitute;
 using namespace std::placeholders;
 
 using consensus::RaftPeerPB;
-using master::AlterTableRequestPB;
-using master::AlterTableResponsePB;
-using master::ChangeMasterClusterConfigRequestPB;
-using master::ChangeMasterClusterConfigResponsePB;
-using master::CreateTableRequestPB;
-using master::CreateTableResponsePB;
-using master::TruncateTableRequestPB;
-using master::TruncateTableResponsePB;
-using master::DeleteTableRequestPB;
-using master::DeleteTableResponsePB;
-using master::GetMasterClusterConfigRequestPB;
-using master::GetMasterClusterConfigResponsePB;
 using master::GetLeaderMasterRpc;
-using master::GetTableSchemaRequestPB;
-using master::GetTableSchemaResponsePB;
-using master::IsAlterTableDoneRequestPB;
-using master::IsAlterTableDoneResponsePB;
-using master::IsCreateTableDoneRequestPB;
-using master::IsCreateTableDoneResponsePB;
-using master::IsTruncateTableDoneRequestPB;
-using master::IsTruncateTableDoneResponsePB;
-using master::IsDeleteTableDoneRequestPB;
-using master::IsDeleteTableDoneResponsePB;
-using master::GetTableLocationsRequestPB;
-using master::GetTableLocationsResponsePB;
-using master::GetTabletLocationsRequestPB;
-using master::GetTabletLocationsResponsePB;
-using master::ListMastersRequestPB;
-using master::ListMastersResponsePB;
-using master::ListTablesRequestPB;
-using master::ListTablesResponsePB;
-using master::ListTabletServersRequestPB;
-using master::ListTabletServersResponsePB;
-using yb::master::CreateNamespaceRequestPB;
-using yb::master::CreateNamespaceResponsePB;
-using yb::master::DeleteNamespaceRequestPB;
-using yb::master::DeleteNamespaceResponsePB;
-using yb::master::ListNamespacesRequestPB;
-using yb::master::ListNamespacesResponsePB;
-using yb::master::CreateUDTypeRequestPB;
-using yb::master::CreateUDTypeResponsePB;
-using yb::master::CreateRoleRequestPB;
-using yb::master::CreateRoleResponsePB;
-using yb::master::DeleteRoleRequestPB;
-using yb::master::DeleteRoleResponsePB;
-using yb::master::GrantRoleRequestPB;
-using yb::master::GrantRoleResponsePB;
-using yb::master::DeleteUDTypeRequestPB;
-using yb::master::DeleteUDTypeResponsePB;
-using yb::master::GrantPermissionRequestPB;
-using yb::master::GrantPermissionResponsePB;
-using yb::master::ListUDTypesRequestPB;
-using yb::master::ListUDTypesResponsePB;
-using yb::master::GetUDTypeInfoRequestPB;
-using yb::master::GetUDTypeInfoResponsePB;
 using master::MasterServiceProxy;
 using master::MasterErrorPB;
 using rpc::Rpc;
@@ -269,106 +217,48 @@ Status YBClient::Data::SyncLeaderMasterRpc(
   }
 }
 
+#define YB_CLIENT_SPECIALIZE(RequestTypePB, ResponseTypePB) \
+    using yb::master::RequestTypePB; \
+    using yb::master::ResponseTypePB; \
+    template Status YBClient::Data::SyncLeaderMasterRpc( \
+        const MonoTime& deadline, YBClient* client, const RequestTypePB& req, \
+        ResponseTypePB* resp, int* num_attempts, const char* func_name, \
+        const std::function<Status( \
+            MasterServiceProxy*, const RequestTypePB&, ResponseTypePB*, RpcController*)>& \
+            func);
+
+#define YB_CLIENT_SPECIALIZE_SIMPLE(prefix) \
+    YB_CLIENT_SPECIALIZE(BOOST_PP_CAT(prefix, RequestPB), BOOST_PP_CAT(prefix, ResponsePB))
+
 // Explicit specialization for callers outside this compilation unit.
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const ListTablesRequestPB& req,
-    ListTablesResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const ListTablesRequestPB&, ListTablesResponsePB*, RpcController*)>&
-        func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const ListTabletServersRequestPB& req,
-    ListTabletServersResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const ListTabletServersRequestPB&, ListTabletServersResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const GetTableLocationsRequestPB& req,
-    GetTableLocationsResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const GetTableLocationsRequestPB&, GetTableLocationsResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const GetTabletLocationsRequestPB& req,
-    GetTabletLocationsResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const GetTabletLocationsRequestPB&, GetTabletLocationsResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const ListMastersRequestPB& req,
-    ListMastersResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const ListMastersRequestPB&, ListMastersResponsePB*, RpcController*)>&
-        func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const CreateNamespaceRequestPB& req,
-    CreateNamespaceResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const CreateNamespaceRequestPB&, CreateNamespaceResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const DeleteNamespaceRequestPB& req,
-    DeleteNamespaceResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const DeleteNamespaceRequestPB&, DeleteNamespaceResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const ListNamespacesRequestPB& req,
-    ListNamespacesResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const ListNamespacesRequestPB&, ListNamespacesResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const CreateUDTypeRequestPB& req,
-    CreateUDTypeResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const CreateUDTypeRequestPB&, CreateUDTypeResponsePB*,
-        RpcController*)>& func);
-
-template Status YBClient::Data::SyncLeaderMasterRpc(
-        const MonoTime& deadline, YBClient* client, const CreateRoleRequestPB& req,
-        CreateRoleResponsePB* resp, int* num_attempts, const char* func_name,
-        const std::function<Status(
-                MasterServiceProxy*, const CreateRoleRequestPB&, CreateRoleResponsePB*,
-                RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const DeleteRoleRequestPB& req,
-    DeleteRoleResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const DeleteRoleRequestPB&, DeleteRoleResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const GrantRoleRequestPB& req,
-    GrantRoleResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const GrantRoleRequestPB&, GrantRoleResponsePB*,
-        RpcController*)>& func);
-
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const DeleteUDTypeRequestPB& req,
-    DeleteUDTypeResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const DeleteUDTypeRequestPB&, DeleteUDTypeResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const GrantPermissionRequestPB& req,
-    GrantPermissionResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const GrantPermissionRequestPB&, GrantPermissionResponsePB*,
-        RpcController*)>& func);
-
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const ListUDTypesRequestPB& req,
-    ListUDTypesResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const ListUDTypesRequestPB&, ListUDTypesResponsePB*,
-        RpcController*)>& func);
-template Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const GetUDTypeInfoRequestPB& req,
-    GetUDTypeInfoResponsePB* resp, int* num_attempts, const char* func_name,
-    const std::function<Status(
-        MasterServiceProxy*, const GetUDTypeInfoRequestPB&, GetUDTypeInfoResponsePB*,
-        RpcController*)>& func);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListTabletServers);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetTableLocations);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetTabletLocations);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
+YB_CLIENT_SPECIALIZE_SIMPLE(CreateNamespace);
+YB_CLIENT_SPECIALIZE_SIMPLE(DeleteNamespace);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
+YB_CLIENT_SPECIALIZE_SIMPLE(CreateUDType);
+YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetUDTypeInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE(CreateRole);
+YB_CLIENT_SPECIALIZE_SIMPLE(DeleteRole);
+YB_CLIENT_SPECIALIZE_SIMPLE(GrantRole);
+YB_CLIENT_SPECIALIZE_SIMPLE(GrantPermission);
+// These are not actually exposed outside, but it's nice to auto-add using directive.
+YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
+YB_CLIENT_SPECIALIZE_SIMPLE(ChangeMasterClusterConfig);
+YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
+YB_CLIENT_SPECIALIZE_SIMPLE(CreateTable);
+YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTable);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetMasterClusterConfig);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetTableSchema);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsAlterTableDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),

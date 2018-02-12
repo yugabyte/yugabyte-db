@@ -145,6 +145,29 @@ using internal::MetaCache;
 using internal::RemoteTabletServer;
 using std::shared_ptr;
 
+#define CALL_SYNC_LEADER_MASTER_RPC(req, resp, method) \
+  do { \
+    MonoTime deadline = MonoTime::Now() + default_admin_operation_timeout(); \
+    CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(req, resp, deadline, method); \
+  } while(0);
+
+#define CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(req, resp, deadline, method) \
+  do { \
+    Status s = data_->SyncLeaderMasterRpc<BOOST_PP_CAT(method, RequestPB), \
+                                          BOOST_PP_CAT(method, ResponsePB)>( \
+        deadline, \
+        this, \
+        req, \
+        &resp, \
+        nullptr, \
+        BOOST_PP_STRINGIZE(method), \
+        &MasterServiceProxy::method); \
+    RETURN_NOT_OK(s); \
+    if (resp.has_error()) { \
+      return StatusFromPB(resp.error().status()); \
+    } \
+  } while(0);
+
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
@@ -396,20 +419,10 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
-  Status s =
-      data_->SyncLeaderMasterRpc<CreateNamespaceRequestPB, CreateNamespaceResponsePB>(
-          deadline, this, req, &resp, nullptr,
-          "CreateNamespace", &MasterServiceProxy::CreateNamespace);
-  RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
   return Status::OK();
 }
 
@@ -421,37 +434,17 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name) {
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
-  Status s =
-      data_->SyncLeaderMasterRpc<DeleteNamespaceRequestPB, DeleteNamespaceResponsePB>(
-          deadline, this, req, &resp, nullptr,
-          "DeleteNamespace", &MasterServiceProxy::DeleteNamespace);
-  RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();
 }
 
 Status YBClient::ListNamespaces(std::vector<std::string>* namespaces) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
-  Status s =
-      data_->SyncLeaderMasterRpc<ListNamespacesRequestPB, ListNamespacesResponsePB>(
-          deadline, this, req, &resp, nullptr,
-          "ListNamespaces", &MasterServiceProxy::ListNamespaces);
-  RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
 
   CHECK_NOTNULL(namespaces);
   for (auto ns : resp.namespaces()) {
@@ -480,14 +473,7 @@ CHECKED_STATUS YBClient::GrantPermission(const PermissionType& permission,
   req.set_permission(permission);
 
   GrantPermissionResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<GrantPermissionRequestPB, GrantPermissionResponsePB>(
-      deadline, this, req, &resp, nullptr, "GrantPermission", &MasterServiceProxy::GrantPermission);
-      RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GrantPermission);
   return Status::OK();
 }
 
@@ -513,14 +499,7 @@ CHECKED_STATUS YBClient::GetUDType(const std::string &namespace_name,
 
   // Sending request
   GetUDTypeInfoResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<GetUDTypeInfoRequestPB, GetUDTypeInfoResponsePB>(
-      deadline, this, req, &resp, nullptr, "GetUDTypeInfo", &MasterServiceProxy::GetUDTypeInfo);
-  RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetUDTypeInfo);
 
   // Filling in return values
   std::vector<string> field_names;
@@ -550,17 +529,7 @@ CHECKED_STATUS YBClient::CreateRole(const std::string& role_name,
   req.set_salted_hash(salted_hash);
 
   CreateRoleResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<CreateRoleRequestPB, CreateRoleResponsePB>(
-      deadline, this, req, &resp, nullptr, "CreateRole", &MasterServiceProxy::CreateRole);
-
-  RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateRole);
   return Status::OK();
 }
 
@@ -570,14 +539,7 @@ CHECKED_STATUS YBClient::DeleteRole(const std::string& role_name) {
   req.set_name(role_name);
 
   DeleteRoleResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<DeleteRoleRequestPB, DeleteRoleResponsePB>(
-      deadline, this, req, &resp, nullptr, "DeleteRole", &MasterServiceProxy::DeleteRole);
-      RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteRole);
   return Status::OK();
 }
 
@@ -589,14 +551,7 @@ CHECKED_STATUS YBClient::GrantRole(const std::string& granted_role_name,
   req.set_recipient_role(recipient_role_name);
 
   GrantRoleResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<GrantRoleRequestPB, GrantRoleResponsePB>(
-      deadline, this, req, &resp, nullptr, "GrantRole", &MasterServiceProxy::GrantRole);
-      RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GrantRole);
   return Status::OK();
 }
 
@@ -616,14 +571,7 @@ CHECKED_STATUS YBClient::CreateUDType(const std::string &namespace_name,
   }
 
   CreateUDTypeResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<CreateUDTypeRequestPB, CreateUDTypeResponsePB>(
-      deadline, this, req, &resp, nullptr, "CreateUDType", &MasterServiceProxy::CreateUDType);
-  RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateUDType);
   return Status::OK();
 }
 
@@ -637,38 +585,14 @@ CHECKED_STATUS YBClient::DeleteUDType(const std::string &namespace_name,
   req.mutable_type()->set_type_name(type_name);
 
   DeleteUDTypeResponsePB resp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status st = data_->SyncLeaderMasterRpc<DeleteUDTypeRequestPB, DeleteUDTypeResponsePB>(
-      deadline, this, req, &resp, nullptr, "DeleteUDType", &MasterServiceProxy::DeleteUDType);
-  RETURN_NOT_OK(st);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteUDType);
   return Status::OK();
 }
 
 Status YBClient::TabletServerCount(int *tserver_count) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
-
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status s =
-      data_->SyncLeaderMasterRpc<ListTabletServersRequestPB, ListTabletServersResponsePB>(
-          deadline,
-          this,
-          req,
-          &resp,
-          nullptr,
-          "ListTabletServers",
-          &MasterServiceProxy::ListTabletServers);
-  RETURN_NOT_OK(s);
-
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
   *tserver_count = resp.servers_size();
   return Status::OK();
 }
@@ -676,22 +600,7 @@ Status YBClient::TabletServerCount(int *tserver_count) {
 Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tablet_servers) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
-
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status s =
-      data_->SyncLeaderMasterRpc<ListTabletServersRequestPB, ListTabletServersResponsePB>(
-          deadline,
-          this,
-          req,
-          &resp,
-          nullptr,
-          "ListTabletServers",
-          &MasterServiceProxy::ListTabletServers);
-  RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
     std::unique_ptr<YBTabletServer> ts(new YBTabletServer());
@@ -719,22 +628,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   } else if (max_tablets > 0) {
     req.set_max_returned_locations(max_tablets);
   }
-
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status s =
-      data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
-          deadline,
-          this,
-          req,
-          &resp,
-          nullptr,
-          "GetTableLocations",
-          &MasterServiceProxy::GetTableLocations);
-      RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
   return Status::OK();
 }
@@ -744,22 +638,7 @@ Status YBClient::GetTabletLocation(const TabletId& tablet_id,
   GetTabletLocationsRequestPB req;
   GetTabletLocationsResponsePB resp;
   req.add_tablet_ids(tablet_id);
-
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status s =
-      data_->SyncLeaderMasterRpc<GetTabletLocationsRequestPB, GetTabletLocationsResponsePB>(
-          deadline,
-          this,
-          req,
-          &resp,
-          nullptr,
-          "GetTabletLocation",
-          &MasterServiceProxy::GetTabletLocations);
-  RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTabletLocations);
 
   if (resp.tablet_locations_size() != 1) {
     return STATUS_SUBSTITUTE(IllegalState, "Expected single tablet for $0, received $1",
@@ -830,24 +709,12 @@ Status YBClient::SetMasterLeaderSocket(Endpoint* leader_socket) {
 Status YBClient::ListMasters(
     MonoTime deadline,
     std::vector<std::string>* master_uuids) {
-  ListMastersRequestPB list_req;
-  ListMastersResponsePB list_resp;
-  Status s =
-    data_->SyncLeaderMasterRpc<ListMastersRequestPB, ListMastersResponsePB>(
-      deadline,
-      this,
-      list_req,
-      &list_resp,
-      nullptr,
-      "ListMasters",
-      &MasterServiceProxy::ListMasters);
-  RETURN_NOT_OK(s);
-  if (list_resp.has_error()) {
-    return StatusFromPB(list_resp.error().status());
-  }
+  ListMastersRequestPB req;
+  ListMastersResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(req, resp, deadline, ListMasters);
 
   master_uuids->clear();
-  for (ServerEntryPB master : list_resp.masters()) {
+  for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
       LOG(ERROR) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
@@ -908,21 +775,7 @@ Status YBClient::ListTables(vector<YBTableName>* tables,
   if (!filter.empty()) {
     req.set_name_filter(filter);
   }
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
-  Status s =
-      data_->SyncLeaderMasterRpc<ListTablesRequestPB, ListTablesResponsePB>(
-          deadline,
-          this,
-          req,
-          &resp,
-          nullptr,
-          "ListTables",
-          &MasterServiceProxy::ListTables);
-  RETURN_NOT_OK(s);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
   for (int i = 0; i < resp.tables_size(); i++) {
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
