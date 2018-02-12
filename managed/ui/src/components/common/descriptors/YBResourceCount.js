@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 
 import './stylesheets/YBResourceCount.scss';
 
-export default class YBResourceCount extends Component {
+export default class YBResourceCount extends PureComponent {
   static propTypes = {
     kind: PropTypes.string.isRequired,
     unit: PropTypes.string,

@@ -14,19 +14,19 @@ export default class YBRadioButtonBar extends Component {
   constructor(props) {
     super(props);
     this.state = {fieldValue: 0};
-    this.radioButtonChecked = this.radioButtonChecked.bind(this);
   }
   componentWillMount() {
     this.setState({fieldValue: this.props.initialValue});
   }
 
-  radioButtonChecked(event) {
+  radioButtonChecked = event => {
     const {onSelect, isReadOnly} = this.props;
     if (!isReadOnly) {
       this.setState({fieldValue: Number(event.target.value)});
       onSelect(event.target.value);
     }
-  }
+  };
+
   render() {
     const { input, options } = this.props;
     const self = this;

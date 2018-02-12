@@ -112,10 +112,6 @@ const panelTypes = {
 };
 
 class GraphPanel extends Component {
-  constructor(props) {
-    super(props);
-    this.queryMetricsType = this.queryMetricsType.bind(this);
-  }
   static propTypes = {
     type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
     nodePrefixes: PropTypes.array
@@ -138,7 +134,7 @@ class GraphPanel extends Component {
     }
   }
 
-  queryMetricsType(graphFilter) {
+  queryMetricsType = graphFilter => {
     const {startMoment, endMoment, nodeName, nodePrefix} = graphFilter;
     const {type} = this.props;
     const params = {
@@ -161,7 +157,7 @@ class GraphPanel extends Component {
     }
 
     this.props.queryMetrics(params, type);
-  }
+  };
 
   componentWillUnmount() {
     this.props.resetMetrics();

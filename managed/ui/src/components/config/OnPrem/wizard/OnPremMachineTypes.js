@@ -7,11 +7,6 @@ import { YBInputField, YBButton } from '../../../common/forms/fields';
 import {isDefinedNotNull} from 'utils/ObjectUtils';
 
 class OnPremListMachineTypes extends Component {
-  constructor(props) {
-    super(props);
-    this.addMachineTypeRow = this.addMachineTypeRow.bind(this);
-  }
-
   componentWillMount() {
     const {fields} = this.props;
     if (fields.length === 0) {
@@ -19,13 +14,13 @@ class OnPremListMachineTypes extends Component {
     }
   }
 
-  addMachineTypeRow() {
+  addMachineTypeRow = () => {
     if (this.props.isEditProvider) {
       this.props.fields.push({isBeingEdited: true});
     } else {
       this.props.fields.push({});
     }
-  }
+  };
 
   removeMachineTypeRow(idx) {
     if (!this.isFieldReadOnly(idx)) {
@@ -89,13 +84,9 @@ class OnPremListMachineTypes extends Component {
 }
 
 export default class OnPremMachineTypes extends Component {
-  constructor(props) {
-    super(props);
-    this.submitOnPremForm = this.submitOnPremForm.bind(this);
-  }
-  submitOnPremForm(values) {
+  submitOnPremForm = values => {
     this.props.submitOnPremMachineTypes(values);
-  }
+  };
 
   render() {
     const {handleSubmit, switchToJsonEntry, isEditProvider} = this.props;

@@ -9,27 +9,16 @@ import { isValidArray } from '../../../utils/ObjectUtils';
 import CollectionSubtypeRow from './CollectionSubtypeRow';
 
 export default class KeyColumnList extends Component {
-
   static propTypes = {
     columnType: PropTypes.oneOf(['partitionKey', 'clustering', 'other'])
   };
 
-  constructor(props) {
-    super(props);
-    this.addKeyItem = this.addKeyItem.bind(this);
-    this.columnListSort = this.columnListSort.bind(this);
-    this.columnTypeChanged = this.columnTypeChanged.bind(this);
-    this.getAllDataTypes = this.getAllDataTypes.bind(this);
-    this.removeKeyItem = this.removeKeyItem.bind(this);
-    this.removeRowItem = this.removeRowItem.bind(this);
-  }
-
-  addKeyItem() {
+  addKeyItem = () => {
     const {fields} = this.props;
     fields.push({});
-  }
+  };
 
-  columnListSort(item) {
+  columnListSort = item => {
     const {columnType} = this.props;
 
     if (columnType === "clustering") {
@@ -44,31 +33,31 @@ export default class KeyColumnList extends Component {
         </Col>
       );
     }
-  }
+  };
 
-  columnTypeChanged(columnTypeValue, index) {
+  columnTypeChanged = (columnTypeValue, index) => {
     const nextState = this.state;
     nextState.selectedTypes[index] = columnTypeValue;
     this.setState(nextState);
-  }
+  };
 
-  getAllDataTypes() {
+  getAllDataTypes = () => {
     const {tables: {columnDataTypes: {collections, primitives}}} = this.props;
     if (isValidArray(primitives) && isValidArray(collections)) {
       return primitives.concat(collections);
     }
     return [];
-  }
+  };
 
-  removeKeyItem(indexToRemove) {
+  removeKeyItem = indexToRemove => {
     const {fields} = this.props;
     const nextState = this.state;
     nextState.selectedTypes.splice(indexToRemove, 1);
     this.setState(nextState);
     fields.remove(indexToRemove);
-  }
+  };
 
-  removeRowItem(index) {
+  removeRowItem = index => {
     const {columnType} = this.props;
     if (columnType !== "partitionKey" || index > 0) {
       return (
@@ -77,7 +66,7 @@ export default class KeyColumnList extends Component {
     } else {
       return <span/>;
     }
-  }
+  };
 
   componentDidMount() {
     const {fields} = this.props;

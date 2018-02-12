@@ -6,12 +6,7 @@ import { withRouter } from 'react-router';
 import { Tabs } from 'react-bootstrap';
 
 class YBTabsPanel extends Component {
-  constructor(props) {
-    super(props);
-    this.tabSelect = this.tabSelect.bind(this);
-  }
-
-  tabSelect(selectedKey) {
+  tabSelect = selectedKey => {
     const currentLocation = this.props.location;
     if (this.props.routePrefix) {
       currentLocation.pathname = this.props.routePrefix + selectedKey;
@@ -20,7 +15,7 @@ class YBTabsPanel extends Component {
       currentLocation.query.tab = selectedKey;
     }
     this.props.router.push(currentLocation);
-  }
+  };
 
   static propTypes = {
     id: PropTypes.string.isRequired,

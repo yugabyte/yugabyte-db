@@ -7,14 +7,9 @@ import { Field } from 'redux-form';
 import _ from 'lodash';
 
 export default class CustomerProfile extends Component {
-  constructor(props) {
-    super(props);
-    this.updateCustomerProfile = this.updateCustomerProfile.bind(this);
-  }
-
-  updateCustomerProfile(values) {
+  updateCustomerProfile = values => {
     this.props.updateCustomerDetails(values);
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     if (!_.isEqual(this.props.customer, nextProps.customer)) {

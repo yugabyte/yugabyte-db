@@ -34,27 +34,16 @@ const initialState = {
 };
 
 export default class OnPremConfiguration extends Component {
-
   constructor(props) {
     super(props);
     this.state = _.clone(initialState, true);
-    this.toggleJsonEntry = this.toggleJsonEntry.bind(this);
-    this.toggleAdditionalOptionsModal = this.toggleAdditionalOptionsModal.bind(this);
-    this.submitJson = this.submitJson.bind(this);
-    this.updateConfigJsonVal = this.updateConfigJsonVal.bind(this);
-    this.submitWizardJson = this.submitWizardJson.bind(this);
-    this.serializeStringToJson = this.serializeStringToJson.bind(this);
-    this.showEditProviderForm = this.showEditProviderForm.bind(this);
-    this.submitEditProvider = this.submitEditProvider.bind(this);
-    this.resetEdit = this.resetEdit.bind(this);
-    this.cancelEdit = this.cancelEdit.bind(this);
   }
 
   componentWillMount() {
     this.props.resetConfigForm();
   }
 
-  serializeStringToJson(payloadString) {
+  serializeStringToJson = payloadString => {
     if (!_.isString(payloadString)) {
       return payloadString;
     }
@@ -72,11 +61,11 @@ export default class OnPremConfiguration extends Component {
     // Add sshUser to Node Payload, if not added
     jsonPayload.nodes.map( (node) => node.sshUser = node.sshUser || jsonPayload.key.sshUser );
     return jsonPayload;
-  }
+  };
 
-  showEditProviderForm() {
+  showEditProviderForm = () => {
     this.setState({isEditProvider: true});
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const { cloudBootstrap: {data: { response, type }, error, promiseState}, accessKeys, cloud: {providers}} = nextProps;
@@ -185,35 +174,35 @@ export default class OnPremConfiguration extends Component {
     }
   }
 
-  resetEdit() {
+  resetEdit = () => {
     this.setState(_.clone(initialState, true));
     this.props.resetConfigForm();
     this.props.onPremConfigSuccess();
-  }
+  };
 
-  toggleJsonEntry() {
+  toggleJsonEntry = () => {
     this.setState({'isJsonEntry': !this.state.isJsonEntry});
-  }
+  };
 
-  toggleAdditionalOptionsModal() {
+  toggleAdditionalOptionsModal = () => {
     this.setState({isAdditionalHostOptionsOpen: !this.state.isAdditionalHostOptionsOpen});
-  }
+  };
 
-  updateConfigJsonVal(newConfigJsonVal) {
+  updateConfigJsonVal = newConfigJsonVal => {
     this.setState({configJsonVal: newConfigJsonVal});
-  }
+  };
 
-  submitJson() {
+  submitJson = () => {
     if (this.state.isJsonEntry) {
       this.props.createOnPremProvider(PROVIDER_TYPE, this.serializeStringToJson(this.state.configJsonVal));
     }
-  }
+  };
 
-  cancelEdit() {
+  cancelEdit = () => {
     this.setState({isEditProvider: false});
-  }
+  };
 
-  submitEditProvider(payloadData) {
+  submitEditProvider = payloadData => {
     const {cloud: {providers}} = this.props;
     const self = this;
     const currentProvider = providers.data.find((provider)=>(provider.code === "onprem"));
@@ -248,12 +237,12 @@ export default class OnPremConfiguration extends Component {
         }
       });
     }
-  }
+  };
 
-  submitWizardJson(payloadData) {
+  submitWizardJson = payloadData => {
     this.setState({configJsonVal: payloadData});
     this.props.createOnPremProvider(PROVIDER_TYPE, payloadData);
-  }
+  };
 
   render() {
     const { configuredProviders, params } = this.props;

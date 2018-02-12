@@ -19,10 +19,6 @@ const panelTypes = {
 };
 
 class OverviewMetrics extends Component {
-  constructor(props) {
-    super(props);
-    this.queryMetricsType = this.queryMetricsType.bind(this);
-  }
   static propTypes = {
     type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
     nodePrefixes: PropTypes.array
@@ -45,7 +41,7 @@ class OverviewMetrics extends Component {
     }
   }
 
-  queryMetricsType(graphFilter) {
+  queryMetricsType = graphFilter => {
     const {startMoment, endMoment, nodeName, nodePrefix} = graphFilter;
     const {type} = this.props;
     const params = {
@@ -68,7 +64,7 @@ class OverviewMetrics extends Component {
     }
 
     this.props.queryMetrics(params, type);
-  }
+  };
 
   componentWillUnmount() {
     this.props.resetMetrics();
@@ -129,11 +125,7 @@ class OverviewMetrics extends Component {
     if (isEmptyArray(panelItem)) {
       panelData = "Error receiving response from Graph Server";
     }
-    return (
-      <div>
-        {panelData}
-      </div>
-    );
+    return panelData;
   }
 }
 

@@ -8,8 +8,6 @@ const PropTypes = require('prop-types');
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
-    this.hasPendingCustomerTasks = this.hasPendingCustomerTasks.bind(this);
-    this.scheduleFetch = this.scheduleFetch.bind(this);
     this.state = {prevPath: ""};
   }
 
@@ -33,10 +31,10 @@ class AuthenticatedComponent extends Component {
     this.props.resetUniverseList();
   }
 
-  hasPendingCustomerTasks(taskList) {
+  hasPendingCustomerTasks = taskList => {
     return isNonEmptyArray(taskList) ? taskList.some((task) => ((task.status === "Running" ||
     task.status === "Initializing") && (Number(task.percentComplete) !== 100))) : false;
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     const {tasks} = nextProps;
@@ -64,12 +62,12 @@ class AuthenticatedComponent extends Component {
     }
   }
 
-  scheduleFetch() {
+  scheduleFetch = () => {
     const self = this;
     this.timeout = setInterval(function(){
       self.props.fetchCustomerTasks();
     }, 6000);
-  }
+  };
 
   render() {
     return (

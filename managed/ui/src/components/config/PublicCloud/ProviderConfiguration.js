@@ -19,23 +19,20 @@ class ProviderConfiguration extends Component {
       currentTaskUUID: '',
       refreshSucceeded: false
     };
-    this.getResultView = this.getResultView.bind(this);
-    this.getBootstrapView = this.getBootstrapView.bind(this);
-    this.getInitView = this.getInitView.bind(this);
   }
 
   componentWillMount() {
     this.props.fetchCustomerTasksList();
   }
 
-  getInitView() {
+  getInitView = () => {
     const {providerType} = this.props;
     if (providerType === "gcp") {
       return <GCPProviderInitView {...this.props}/>;
     } else if (providerType === "aws") {
       return <AWSProviderInitView {...this.props}/>;
     }
-  }
+  };
 
   componentDidMount() {
     const {configuredProviders, tasks: {customerTaskList}, providerType, getCurrentTaskData} = this.props;
@@ -99,7 +96,7 @@ class ProviderConfiguration extends Component {
   }
 
 
-  getResultView() {
+  getResultView = () => {
     const { configuredProviders, visibleModal, configuredRegions, universeList,
             accessKeys, hideDeleteProviderModal, initializeProvider, showDeleteProviderModal,
             deleteProviderConfig, providerType, hostInfo } = this.props;
@@ -152,9 +149,9 @@ class ProviderConfiguration extends Component {
                                  currentModal={currentModal} providerType={providerType}
                                  deleteButtonDisabled={deleteButtonDisabled} refreshSucceeded={this.state.refreshSucceeded}/>);
     }
-  }
+  };
 
-  getBootstrapView() {
+  getBootstrapView = () => {
     const {configuredProviders, reloadCloudMetadata, cloud: {createProvider}, providerType, showDeleteProviderModal,
            visibleModal, deleteProviderConfig, hideDeleteProviderModal} = this.props;
     let currentModal = "";
@@ -181,7 +178,7 @@ class ProviderConfiguration extends Component {
                                   currentModal={currentModal}
                                   deleteProviderConfig={deleteProviderConfig}
                                   hideDeleteProviderModal={hideDeleteProviderModal}/>);
-  }
+  };
 
   render() {
     let currentProviderView = <span/>;

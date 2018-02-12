@@ -9,11 +9,6 @@ import {browserHistory} from 'react-router';
 import {getPromiseState} from 'utils/PromiseUtils';
 
 class RegisterForm extends Component {
-  constructor(props) {
-    super(props);
-    this.submitRegister = this.submitRegister.bind(this);
-  }
-
   componentWillReceiveProps(nextProps) {
     const {customer: {authToken}} =  nextProps;
     if (getPromiseState(authToken).isSuccess()) {
@@ -21,10 +16,10 @@ class RegisterForm extends Component {
     }
   }
 
-  submitRegister(formValues) {
+  submitRegister = formValues => {
     const {registerCustomer} = this.props;
     registerCustomer(formValues);
-  }
+  };
 
   render() {
     const { handleSubmit, submitting, customer: {authToken} } = this.props;

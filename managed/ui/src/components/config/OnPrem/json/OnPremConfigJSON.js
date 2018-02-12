@@ -28,21 +28,18 @@ class ConfigFormTitle extends Component {
 }
 
 export default class OnPremConfigJSON extends Component {
-
   constructor(props) {
     super(props);
     this.sampleJsonPretty = JSON.stringify(JSON.parse(JSON.stringify(sampleDataCenterConfig)), null, 2);
-    this.onChange = this.onChange.bind(this);
-    this.copyTextToForm = this.copyTextToForm.bind(this);
   }
 
-  onChange(newValue) {
+  onChange = newValue => {
     this.props.updateConfigJsonVal(newValue);
-  }
+  };
 
-  copyTextToForm() {
+  copyTextToForm = () => {
     this.props.updateConfigJsonVal(this.sampleJsonPretty);
-  }
+  };
 
   render() {
     // Using Inline Styles because AceEditor is an SVG component

@@ -9,24 +9,21 @@ import { YBButton } from '../../common/forms/fields';
 export default class DeleteUniverse extends Component {
   constructor(props) {
     super(props);
-    this.closeDeleteModal = this.closeDeleteModal.bind(this);
-    this.confirmDelete = this.confirmDelete.bind(this);
-    this.toggleForceDelete = this.toggleForceDelete.bind(this);
     this.state = {isForceDelete: false};
   }
 
-  toggleForceDelete() {
+  toggleForceDelete = () => {
     this.setState({isForceDelete: !this.state.isForceDelete});
-  }
+  };
 
-  closeDeleteModal() {
+  closeDeleteModal = () => {
     this.props.onHide();
-  }
+  };
 
-  confirmDelete() {
+  confirmDelete = () => {
     this.props.onHide();
     this.props.deleteUniverse(this.props.universe.currentUniverse.data.universeUUID, this.state.isForceDelete);
-  }
+  };
 
   componentWillReceiveProps(nextProps) {
     if (getPromiseState(this.props.universe.deleteUniverse).isLoading() && getPromiseState(nextProps.universe.deleteUniverse).isSuccess()) {

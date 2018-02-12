@@ -5,11 +5,6 @@ import PropTypes from 'prop-types';
 import { YBModal } from '../common/forms/fields';
 
 export default class YBConfirmModal extends Component {
-  constructor(props) {
-    super(props);
-    this.submitConfirmModal = this.submitConfirmModal.bind(this);
-  }
-
   static propTypes = {
     name: PropTypes.string.isRequired,
     title: PropTypes.string.isRequired,
@@ -23,13 +18,13 @@ export default class YBConfirmModal extends Component {
     cancelLabel: 'Cancel'
   };
 
-  submitConfirmModal() {
+  submitConfirmModal = () => {
     const { onConfirm, hideConfirmModal } = this.props;
     if (onConfirm) {
       onConfirm();
     }
     hideConfirmModal();
-  }
+  };
 
   render() {
     const { name, title, confirmLabel, cancelLabel, hideConfirmModal } = this.props;

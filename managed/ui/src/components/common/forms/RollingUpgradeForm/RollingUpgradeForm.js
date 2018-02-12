@@ -59,11 +59,6 @@ class FlagItems extends Component {
 
 
 export default class RollingUpgradeForm extends Component {
-  constructor(props) {
-    super(props);
-    this.setRollingUpgradeProperties = this.setRollingUpgradeProperties.bind(this);
-  }
-
   componentWillReceiveProps(nextProps) {
     const {universe: {rollingUpgrade, currentUniverse: {data: {universeUUID}}}} = nextProps;
     if (getPromiseState(rollingUpgrade).isSuccess() && getPromiseState(this.props.universe.rollingUpgrade).isLoading()) {
@@ -74,7 +69,7 @@ export default class RollingUpgradeForm extends Component {
     }
   }
 
-  setRollingUpgradeProperties(values) {
+  setRollingUpgradeProperties = values => {
     const {
       reset,
       universe: {
@@ -130,7 +125,7 @@ export default class RollingUpgradeForm extends Component {
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     this.props.submitRollingUpgradeForm(payload, universeUUID, reset);
-  }
+  };
 
   render() {
     const self = this;
