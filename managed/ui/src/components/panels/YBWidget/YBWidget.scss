@@ -25,7 +25,7 @@
     font-size: 14px;
 
     .left {
-      color: $YB_SUBTITLE_COLOR;
+      color: $YB_TEXT_COLOR;
       text-align: left;
     }
 
@@ -64,7 +64,7 @@
     padding: 0;
   
     dd, dt {
-      font-weight: 300;
+      font-weight: 400;
       white-space: nowrap;
       text-overflow: ellipsis;
       overflow: hidden;
@@ -73,6 +73,7 @@
 
     dt {
       color: $YB_SUBTITLE_COLOR;
+      font-weight: 300;
       float: left;
       overflow: hidden;
       clear: left;
