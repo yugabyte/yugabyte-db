@@ -167,7 +167,7 @@ Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice ca
     case ConnectionDirection::SERVER:
       return HandleInboundCall(connection, call_data);
   }
-  LOG(FATAL) << "Invalid direction: " << direction;
+  FATAL_INVALID_ENUM_VALUE(ConnectionDirection, direction);
 }
 
 Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice call_data) {
@@ -211,7 +211,7 @@ YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_proc
     : InboundCall(std::move(conn), std::move(call_processed_listener)) {}
 
 YBInboundCall::YBInboundCall(const RemoteMethod& remote_method)
-    : YBInboundCall(nullptr /* conn */, nullptr /*call_processed_listener  */) {
+    : YBInboundCall(nullptr /* conn */, nullptr /* call_processed_listener */) {
   remote_method_ = remote_method;
 }
 

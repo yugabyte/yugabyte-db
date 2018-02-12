@@ -119,7 +119,7 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (ht > propagated_safe_time_) {
+    if (ht >= propagated_safe_time_) {
       propagated_safe_time_ = ht;
     } else {
       LOG(WARNING) << "Received propagated safe time " << ht << " less than the old value: "

@@ -84,7 +84,9 @@ struct ReactorMetrics {
   int32_t num_server_connections_;
 };
 
+// ------------------------------------------------------------------------------------------------
 // A task which can be enqueued to run on the reactor thread.
+
 class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
  public:
   ReactorTask();
@@ -104,6 +106,10 @@ class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
   virtual ~ReactorTask();
 };
 
+
+// ------------------------------------------------------------------------------------------------
+// A task that runs the given user functor on success. Abort is ignored.
+
 template <class F>
 class FunctorReactorTask : public ReactorTask {
  public:
@@ -120,6 +126,34 @@ template <class F>
 std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f) {
   return std::make_shared<FunctorReactorTask<F>>(f);
 }
+
+// ------------------------------------------------------------------------------------------------
+// A task that runs the given user functor on success or abort.
+
+template <class F>
+class FunctorReactorTaskWithAbort : public ReactorTask {
+ public:
+  explicit FunctorReactorTaskWithAbort(const F& f) : f_(f) {}
+
+  void Run(Reactor* reactor) override  {
+    f_(reactor, Status::OK());
+  }
+
+  void Abort(const Status &abort_status) override  {
+    f_(nullptr, abort_status);
+  }
+ private:
+  F f_;
+};
+
+template <class F>
+std::shared_ptr<ReactorTask> MakeFunctorReactorTaskWithAbort(const F& f) {
+  return std::make_shared<FunctorReactorTaskWithAbort<F>>(f);
+}
+
+// ------------------------------------------------------------------------------------------------
+// A task that runs the user functor if the given weak pointer is still valid by the time the
+// reactor runs the task.
 
 template <class F, class Object>
 class FunctorReactorTaskWithWeakPtr : public ReactorTask {
@@ -153,10 +187,10 @@ std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f,
 // A ReactorTask that is scheduled to run at some point in the future.
 //
 // Semantically it works like RunFunctionTask with a few key differences:
-// 1. The user function is called during Abort. Put another way, the
-//    user function is _always_ invoked, even during reactor shutdown.
-// 2. To differentiate between Abort and non-Abort, the user function
-//    receives a Status as its first argument.
+// 1. The user function is called during Abort. Put another way, the user function is _always_
+//    invoked, even during reactor shutdown.
+// 2. To differentiate between Abort and non-Abort, the user function receives a Status as its first
+//    argument.
 class DelayedTask : public ReactorTask {
  public:
   DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
@@ -282,10 +316,8 @@ class Reactor {
   // If the reactor is already shut down, takes care of closing the socket.
   void RegisterInboundSocket(Socket *socket, const Endpoint& remote);
 
-  // Schedule the given task's Run() method to be called on the
-  // reactor thread.
-  // If the reactor shuts down before it is run, the Abort method will be
-  // called.
+  // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
+  // down before it is run, the Abort method will be called.
   void ScheduleReactorTask(std::shared_ptr<ReactorTask> task);
 
   template<class F>
