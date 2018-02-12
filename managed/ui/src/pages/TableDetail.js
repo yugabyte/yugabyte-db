@@ -9,7 +9,7 @@ export default class TableDetail extends Component {
     return (
       <Universes>
         <TableDetailContainer universeUUID={this.props.params.uuid}
-                              tableUUID={this.props.params.tableUUID}/>
+          tableUUID={this.props.params.tableUUID}/>
       </Universes>
     );
   }

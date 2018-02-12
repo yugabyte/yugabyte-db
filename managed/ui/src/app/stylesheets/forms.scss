@@ -31,6 +31,7 @@
       display: block;
     }
     span {
+      color: #fff;
       display: inline-block;
       font-size: 0.8em;
     }
@@ -163,7 +164,8 @@
     line-height: 42px;
   }
   .Select-control {
-    height: 42px;
+    min-height: 42px;
+    padding-bottom: 4px;
     border-color: $YB_GRAY;
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
   }

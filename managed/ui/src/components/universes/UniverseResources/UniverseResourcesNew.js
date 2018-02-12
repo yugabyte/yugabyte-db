@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { isNonEmptyObject } from 'utils/ObjectUtils';
 import { YBResourceCount, YBCost } from 'components/common/descriptors';
 import PropTypes from 'prop-types';
+import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import './UniverseResources.scss';
 
 export default class UniverseResources extends Component {
@@ -31,27 +32,43 @@ export default class UniverseResources extends Component {
     }
     
     return (
-      this.props.split && this.props.split==='left' ?
-        <div className={(empty ? "universe-resources empty" : "universe-resources")}>
-          {universeNodes}
-          <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
-          <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
-          <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
-          <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
-          {this.props.children}
-          <YBResourceCount className="hidden-costs" size={costPerDay} kind="/day" />
-          <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
-        </div>
-      :
-        <div className={(empty ? "universe-resources empty" : "universe-resources")}>
-          <YBResourceCount size={costPerDay} kind="/day" />
-          <YBResourceCount size={costPerMonth} kind="/month" />
-        </div>
+      this.props.split ? (
+        this.props.split==='left' ? 
+          <div className={(empty ? "universe-resources empty" : "universe-resources")}>
+            {universeNodes}
+            <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
+            <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
+            <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
+            <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
+            <YBResourceCount className="hidden-costs" size={costPerDay} kind="/day" />
+            <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
+            {this.props.children}
+          </div>
+        :
+          <div className={(empty ? "universe-resources empty" : "universe-resources")}>
+            <YBResourceCount size={costPerDay} kind="/day" />
+            <YBResourceCount size={costPerMonth} kind="/month" />
+          </div>
+      ) :
+          <FlexContainer className={(empty ? "universe-resources empty" : "universe-resources")}>
+            <FlexGrow>
+              {universeNodes}
+              <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
+              <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
+              <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
+              <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
+              <YBResourceCount className="hidden-costs" size={costPerDay} kind="/day" />
+              <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
+            </FlexGrow>
+            <FlexShrink>
+              {this.props.children}
+            </FlexShrink>
+          </FlexContainer>
     );
   }
 }
 
-UniverseResources.PropTypes = {
+UniverseResources.propTypes = {
   renderType: PropTypes.oneOf(["Display", "Configure"])
 };
 

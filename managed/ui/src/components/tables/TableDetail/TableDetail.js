@@ -117,7 +117,7 @@ export default class TableDetail extends Component {
         <Col lg={10} sm={8} xs={6}>
           {/* UNIVERSE NAME */}
           <div className="universe-detail-status-container">
-          {currentBreadCrumb}
+            {currentBreadCrumb}
             <h2>
               { tableName }
             </h2>

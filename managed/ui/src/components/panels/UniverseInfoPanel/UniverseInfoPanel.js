@@ -4,7 +4,8 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { FormattedDate } from 'react-intl';
 import { ROOT_URL } from '../../../config';
-import { DescriptionList } from '../../common/descriptors';
+import { DescriptionList, YBCopyButton } from '../../common/descriptors';
+import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { getPrimaryCluster } from "../../../utils/UniverseUtils";
 
 export default class UniverseInfoPanel extends Component {
@@ -21,6 +22,8 @@ export default class UniverseInfoPanel extends Component {
       <FormattedDate value={universeInfo.creationDate} year='numeric' month='long' day='2-digit'
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
     );
+    const universeIdData = <FlexContainer><FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>{universeId}</FlexGrow><FlexShrink><YBCopyButton text={universeId}/></FlexShrink></FlexContainer>;
+    const customerIdData = <FlexContainer><FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>{customerId}</FlexGrow><FlexShrink><YBCopyButton text={customerId}/></FlexShrink></FlexContainer>;
     const endpointUrl = ROOT_URL + "/customers/" + customerId +
                         "/universes/" + universeId + "/yqlservers";
     const endpoint = (
@@ -29,8 +32,8 @@ export default class UniverseInfoPanel extends Component {
       </a>
     );
     const universeInfoItems = [
-      {name: "Universe ID", data: universeId},
-      {name: "Customer ID", data: customerId},
+      {name: "Universe ID", data: universeIdData},
+      {name: "Customer ID", data: customerIdData},
       {name: "Launch Time", data: formattedCreationDate},
       {name: "CQL Service", data: endpoint},
       {name: "YugaByte Version", data: userIntent.ybSoftwareVersion || 'n/a'},

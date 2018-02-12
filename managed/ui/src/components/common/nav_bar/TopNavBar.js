@@ -42,12 +42,12 @@ export default class TopNavBar extends Component {
             <LinkContainer to="/profile">
               <MenuItem eventKey="2.1">
                 <i className="fa fa-user fa-fw"></i>Profile
-            </MenuItem>
+              </MenuItem>
             </LinkContainer>
             <LinkContainer to="/login">
               <MenuItem eventKey="2.2" id="logoutLink" onClick={this.handleLogout}>
                 <i className="fa fa-sign-out fa-fw"></i>Logout
-            </MenuItem>
+              </MenuItem>
             </LinkContainer>
           </NavDropdown>
         </Nav>
