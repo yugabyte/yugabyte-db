@@ -33,6 +33,7 @@
 #ifndef YB_SERVER_HYBRID_CLOCK_H_
 #define YB_SERVER_HYBRID_CLOCK_H_
 
+#include <atomic>
 #include <string>
 #if !defined(__APPLE__)
 #include <sys/timex.h>
@@ -130,9 +131,6 @@ class HybridClock : public Clock {
   // error in micros. This may fail if the clock is unsynchronized or synchronized
   // but the error is too high and, since we can't do anything about it,
   // LOG(FATAL)'s in that case.
-  void NowWithErrorUnlocked(HybridTime* hybrid_time, uint64_t* max_error_usec);
-
-  // Variation of above method with locking.
   void NowWithError(HybridTime* hybrid_time, uint64_t* max_error_usec);
 
   virtual std::string Stringify(HybridTime hybrid_time) override;
@@ -217,11 +215,11 @@ class HybridClock : public Clock {
 
   // Set by calls to SetMockClockWallTimeForTests().
   // For testing purposes only.
-  uint64_t mock_clock_time_usec_;
+  std::atomic<uint64_t> mock_clock_time_usec_;
 
   // Set by calls to SetMockClockErrorForTests().
   // For testing purposes only.
-  uint64_t mock_clock_max_error_usec_;
+  std::atomic<uint64_t> mock_clock_max_error_usec_;
 
 #if !defined(__APPLE__)
   uint64_t divisor_;
@@ -229,12 +227,21 @@ class HybridClock : public Clock {
 
   double tolerance_adjustment_;
 
-  mutable simple_spinlock lock_;
+  struct HybridClockComponents {
+    // the last clock read/update, in microseconds.
+    uint64_t last_usec;
+    // the next logical value to be assigned to a hybrid_time
+    uint64_t logical;
 
-  // the last clock read/update, in microseconds.
-  uint64_t last_usec_;
-  // the next logical value to be assigned to a hybrid_time
-  uint64_t next_logical_;
+    bool operator< (const HybridClockComponents& o) const {
+      return last_usec < o.last_usec || last_usec == o.last_usec && logical < o.logical;
+    }
+
+    bool operator<= (const HybridClockComponents& o) const {
+      return last_usec < o.last_usec || last_usec == o.last_usec && logical <= o.logical;
+    }
+  };
+  std::atomic<HybridClockComponents> components_;
 
   // How many bits to left shift a microseconds clock read. The remainder
   // of the hybrid_time will be reserved for logical values.
