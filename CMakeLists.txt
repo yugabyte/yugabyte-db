@@ -133,6 +133,26 @@ endfunction()
 # Also makes sure that we are using a supported compiler family. Finally, this sets the convienience
 # variables IS_GCC and IS_CLANG.
 function(VALIDATE_COMPILER_TYPE)
+  get_filename_component(BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
+
+  if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
+    # TODO: deduplicate this. Also might want to detect edition based on dir name, etc.
+    string(REGEX MATCH "^.*-zapcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
+    if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
+      set(ENV{YB_COMPILER_TYPE} "zapcc")
+    else()
+      string(REGEX MATCH "^.*-gcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
+      if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
+        set(ENV{YB_COMPILER_TYPE} "zapcc")
+      else()
+        string(REGEX MATCH "^.*-clang-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
+        if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
+          set(ENV{YB_COMPILER_TYPE} "zapcc")
+        endif()
+      endif()
+    endif()
+  endif()
+
   if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
     if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
         NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
@@ -259,6 +279,8 @@ function(YB_INCLUDE_EXTENSIONS)
   endif()
 endfunction()
 
+set(YB_NUM_TESTS "0" CACHE INTERNAL "Number of tests" FORCE)
+set(YB_NUM_INCLUDED_TESTS "0" CACHE INTERNAL "Number of included tests" FORCE)
 set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
 
 # Wrap add_dependencies so that we can capture dependencies for external processing. We use this
@@ -266,8 +288,16 @@ set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
 function(add_dependencies target)
   # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
   # of CMake can't parse their own cache in case some values have newlines.
-  set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
-  _add_dependencies(${target} ${ARGN})
+  if ("${YB_TEST_FILTER_RE}" STREQUAL "" OR TARGET "${target}")
+    set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
+    _add_dependencies(${target} ${ARGN})
+  endif()
+endfunction()
+
+function(target_link_libraries target)
+  if ("${YB_TEST_FILTER_RE}" STREQUAL "" OR TARGET "${target}")
+    _target_link_libraries(${target} ${ARGN})
+  endif()
 endfunction()
 
 # ------------------------------------------------------------------------------------------------
@@ -371,6 +401,12 @@ set(BUILD_SUPPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build-support)
 #
 # Must be declared in the top-level CMakeLists.txt.
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
+
+# Also allow specifying -DNO_REBUILD_THIRDPARTY, because CLion does not always pass user-specified
+# environment variables correctly.
+if ("${YB_NO_REBUILD_THIRDPARTY}" STREQUAL "1")
+  set(ENV{NO_REBUILD_THIRDPARTY} "1")
+endif()
 
 # Make sure thirdparty stuff is up-to-date.
 if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
@@ -1037,9 +1073,23 @@ endfunction()
 #
 # Arguments after the test name will be passed to set_tests_properties().
 function(ADD_YB_TEST REL_TEST_NAME)
+  math(EXPR NEW_YB_NUM_TESTS "${YB_NUM_TESTS} + 1")
+  set(YB_NUM_TESTS "${NEW_YB_NUM_TESTS}" CACHE INTERNAL "Number of tests" FORCE)
   if(NO_TESTS)
     return()
   endif()
+  if(NOT "${YB_TEST_FILTER_RE}" STREQUAL "")
+    string(REGEX MATCH "${YB_TEST_FILTER_RE}" TEST_FILTER_MATCH_RESULT "${REL_TEST_NAME}")
+    if ("${TEST_FILTER_MATCH_RESULT}" STREQUAL "")
+      return()
+    endif()
+    message("Test program matched the filter: ${REL_TEST_NAME}")
+  endif()
+
+  math(EXPR NEW_YB_NUM_INCLUDED_TESTS "${YB_NUM_INCLUDED_TESTS} + 1")
+  set(YB_NUM_INCLUDED_TESTS "${NEW_YB_NUM_INCLUDED_TESTS}" CACHE INTERNAL
+      "Number of included tests" FORCE)
+
   GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
   SET(TEST_BINARY_DIR "${YB_BUILD_ROOT}/tests-${CTEST_PREFIX}")
   SET(CTEST_TEST_NAME "${CTEST_PREFIX}_${TEST_BINARY_NAME}")
@@ -1532,7 +1582,6 @@ if ("${YB_EDITION}" STREQUAL "enterprise")
   include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
 endif()
 
-
 # We could not accumulate multiple lines in YB_ALL_DEPS due to a CMake bug with cache variables,
 # but we can write multiple lines in the output file.
 string(REPLACE "\\n" "\n" YB_ALL_DEPS_FINAL "${YB_ALL_DEPS}")
@@ -1540,3 +1589,8 @@ string(REPLACE "\\n" "\n" YB_ALL_DEPS_FINAL "${YB_ALL_DEPS}")
 # target: dep1;dep2;..;depN
 # The same target can appear on the left hand side of multiple such lines.
 file(WRITE "${YB_BUILD_ROOT}/yb_cmake_deps.txt" "${YB_ALL_DEPS_FINAL}")
+
+math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
+message("Total tests: ${YB_NUM_TESTS}, "
+        "included: ${YB_NUM_INCLUDED_TESTS}, "
+        "skipped: ${YB_NUM_EXCLUDED_TESTS}")
