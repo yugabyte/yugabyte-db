@@ -50,8 +50,10 @@
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/stol_utils.h"
 
 using yb::operator"" _MB;
+using namespace std::literals;
 
 #define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
   METRIC_DEFINE_histogram( \
@@ -155,8 +157,9 @@ DEFINE_bool(redis_safe_batch, true, "Use safe batching with Redis service");
     ((ping, Ping, -1, LOCAL)) \
     ((command, Command, -1, LOCAL)) \
     ((quit, Quit, 1, LOCAL)) \
-    ((flushdb, FlushDB, 1, TRUNCATE)) \
-    ((flushall, FlushAll, 1, TRUNCATE))
+    ((flushdb, FlushDB, 1, LOCAL)) \
+    ((flushall, FlushAll, 1, LOCAL)) \
+    ((debugsleep, DebugSleep, 2, LOCAL)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
@@ -183,7 +186,6 @@ typedef boost::container::small_vector_base<Slice> RedisKeyList;
 #define READ_OP YBRedisReadOp
 #define WRITE_OP YBRedisWriteOp
 #define LOCAL_OP RedisResponsePB
-#define TRUNCATE_OP void
 
 #define DO_PARSER_FORWARD(name, cname, arity, type) \
     CHECKED_STATUS BOOST_PP_CAT(Parse, cname)( \
@@ -194,6 +196,8 @@ typedef boost::container::small_vector_base<Slice> RedisKeyList;
 BOOST_PP_SEQ_FOR_EACH(PARSER_FORWARD, ~, REDIS_COMMANDS)
 
 namespace {
+
+typedef boost::function<void(const Status&)> StatusFunctor;
 
 class Operation {
  public:
@@ -211,6 +215,19 @@ class Operation {
     if (!status.ok()) {
       Respond(status);
     }
+  }
+
+  Operation(const std::shared_ptr<RedisInboundCall>& call,
+            size_t index,
+            std::function<bool(const StatusFunctor&)> functor,
+            std::string partition_key,
+            const rpc::RpcMethodMetrics& metrics)
+    : read_(true),
+      call_(call),
+      index_(index),
+      functor_(std::move(functor)),
+      partition_key_(std::move(partition_key)),
+      metrics_(metrics) {
   }
 
   bool responded() const {
@@ -255,11 +272,19 @@ class Operation {
 
   void GetKeys(RedisKeyList* keys) const {
     if (FLAGS_redis_safe_batch) {
-      keys->emplace_back(operation_->GetKey());
+      keys->emplace_back(operation_ ? operation_->GetKey() : Slice());
     }
   }
 
-  bool Apply(client::YBSession* session) {
+  bool Apply(client::YBSession* session, const StatusFunctor& callback) {
+    if (call_->aborted()) {
+      Respond(STATUS(Aborted, ""));
+      return false;
+    }
+    // Used for DebugSleep
+    if (functor_) {
+      return functor_(callback);
+    }
     if (tablet_) {
       operation_->SetTablet(tablet_);
     }
@@ -274,7 +299,12 @@ class Operation {
   void Respond(const Status& status) {
     responded_.store(true, std::memory_order_release);
     if (status.ok()) {
-      call_->RespondSuccess(index_, metrics_, &response());
+      if (operation_) {
+        call_->RespondSuccess(index_, metrics_, &response());
+      } else {
+        RedisResponsePB resp;
+        call_->RespondSuccess(index_, metrics_, &resp);
+      }
     } else {
       call_->RespondFailure(index_, status);
     }
@@ -284,8 +314,9 @@ class Operation {
   std::shared_ptr<RedisInboundCall> call_;
   size_t index_;
   std::shared_ptr<YBRedisOp> operation_;
-  rpc::RpcMethodMetrics metrics_;
+  std::function<bool(const StatusFunctor&)> functor_;
   std::string partition_key_;
+  rpc::RpcMethodMetrics metrics_;
   scoped_refptr<client::internal::RemoteTablet> tablet_;
   std::atomic<bool> responded_{false};
 };
@@ -353,14 +384,18 @@ class Block : public std::enable_shared_from_this<Block> {
     session_pool_ = session_pool;
     session_ = session_pool->Take();
     bool has_ok = false;
+    // Supposed to be called only once.
+    boost::function<void(const Status&)> callback = BlockCallback(shared_from_this());
     for (auto* op : ops_) {
-      has_ok = op->Apply(session_.get()) || has_ok;
+      has_ok = op->Apply(session_.get(), callback) || has_ok;
     }
     if (has_ok) {
-      // Allow local calls in this thread only if no one is waiting behind us.
-      session_->set_allow_local_calls_in_curr_thread(
-          allow_local_calls_in_curr_thread && this->next_ == nullptr);
-      session_->FlushAsync(BlockCallback(shared_from_this()));
+      if (session_->HasPendingOperations()) {
+        // Allow local calls in this thread only if no one is waiting behind us.
+        session_->set_allow_local_calls_in_curr_thread(
+            allow_local_calls_in_curr_thread && this->next_ == nullptr);
+        session_->FlushAsync(std::move(callback));
+      }
     } else {
       Processed();
     }
@@ -371,6 +406,7 @@ class Block : public std::enable_shared_from_this<Block> {
     next_ = next;
     return result;
   }
+
  private:
   class BlockCallback {
    public:
@@ -407,14 +443,18 @@ class Block : public std::enable_shared_from_this<Block> {
   }
 
   void Processed() {
-    auto allow_local_calls_in_curr_thread = session_->allow_local_calls_in_curr_thread();
-    session_pool_->Release(session_);
-    session_.reset();
+    auto allow_local_calls_in_curr_thread = false;
+    if (session_) {
+      session_->allow_local_calls_in_curr_thread();
+      session_pool_->Release(session_);
+      session_.reset();
+    }
     if (next_) {
       next_->Launch(session_pool_, allow_local_calls_in_curr_thread);
     }
     context_.reset();
   }
+
  private:
   BatchContextPtr context_;
   Ops ops_;
@@ -502,6 +542,7 @@ class TabletOperations {
     auto& opposite = data(!read);
     bool conflict = false;
     for (const auto& key : keys) {
+      LOG(INFO) << "Checking: " << key.ToBuffer();
       if (opposite.used_keys.count(key)) {
         conflict = true;
         break;
@@ -532,10 +573,12 @@ class TabletOperations {
 class BatchContext : public RefCountedThreadSafe<BatchContext> {
  public:
   BatchContext(const std::shared_ptr<client::YBClient>& client,
+               client::YBTable* table,
                SessionPool* session_pool,
                const std::shared_ptr<RedisInboundCall>& call,
                rpc::RpcMethodMetrics* metrics_internal)
       : client_(client),
+        table_(table),
         session_pool_(session_pool),
         call_(call),
         metrics_internal_(metrics_internal),
@@ -550,6 +593,14 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
     return call_;
   }
 
+  const std::shared_ptr<client::YBClient>& client() const {
+    return client_;
+  }
+
+  client::YBTable* table() const {
+    return table_;
+  }
+
   void Commit() {
     if (operations_.empty()) {
       return;
@@ -560,7 +611,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
     lookups_left_.store(operations_.size(), std::memory_order_release);
     for (auto& operation : operations_) {
       client_->LookupTabletByKey(
-          operation.operation().table(),
+          table_,
           operation.partition_key(),
           deadline,
           &operation.tablet(),
@@ -568,11 +619,9 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
     }
   }
 
-  template <class Op>
-  void Apply(size_t idx,
-             std::shared_ptr<Op> op,
-             const rpc::RpcMethodMetrics& metrics) {
-    operations_.emplace_back(call_, idx, std::move(op), metrics);
+  template <class... Args>
+  void Apply(Args&&... args) {
+    operations_.emplace_back(call_, std::forward<Args>(args)...);
     if (PREDICT_FALSE(operations_.back().responded())) {
       operations_.pop_back();
     }
@@ -591,14 +640,10 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
     for (auto& operation : operations_) {
       if (!operation.responded()) {
         auto it = tablets_.find(operation.tablet()->tablet_id());
-        TabletOperations* operations;
         if (it == tablets_.end()) {
           it = tablets_.emplace(operation.tablet()->tablet_id(), TabletOperations(&arena_)).first;
-          operations = &it->second;
-        } else {
-          operations = &it->second;
         }
-        operations->Process(self, &arena_, &operation, metrics_internal_);
+        it->second.Process(self, &arena_, &operation, metrics_internal_);
       }
     }
 
@@ -609,6 +654,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
   }
 
   std::shared_ptr<client::YBClient> client_;
+  client::YBTable* table_;
   SessionPool* session_pool_;
   std::shared_ptr<RedisInboundCall> call_;
   rpc::RpcMethodMetrics* metrics_internal_;
@@ -638,6 +684,61 @@ struct RedisCommandInfo {
 };
 
 typedef std::shared_ptr<RedisCommandInfo> RedisCommandInfoPtr;
+
+class LocalCommandData {
+ public:
+  LocalCommandData(const RedisCommandInfo& info,
+                   size_t idx,
+                   BatchContext* context)
+      : info_(info), idx_(idx), context_(context) {}
+
+  const RedisClientCommand& command() const {
+    return context_->command(idx_);
+  }
+
+  Slice arg(size_t i) const {
+    return command()[i];
+  }
+
+  size_t arg_size() const {
+    return command().size();
+  }
+
+  RedisInboundCall& call() const {
+    return *context_->call();
+  }
+
+  const std::shared_ptr<client::YBClient>& client() const {
+    return context_->client();
+  }
+
+  client::YBTable* table() const {
+    return context_->table();
+  }
+
+  template<class Functor>
+  void Apply(const Functor& functor, const std::string& partition_key) {
+    context_->Apply(idx_, functor, partition_key, info_.metrics);
+  }
+
+  void Respond(RedisResponsePB* response = nullptr) const {
+    if (response == nullptr) {
+      RedisResponsePB temp;
+      Respond(&temp);
+      return;
+    }
+    const auto& cmd = command();
+    VLOG_IF(4, response->has_string_response()) << "Responding to " << cmd[0].ToBuffer()
+                                                << " with " << response->string_response();
+    context_->call()->RespondSuccess(idx_, info_.metrics, response);
+    VLOG(4) << "Done responding to " << cmd[0].ToBuffer();
+  }
+
+ private:
+  const RedisCommandInfo& info_;
+  size_t idx_;
+  BatchContext* context_;
+};
 
 } // namespace
 
@@ -672,23 +773,11 @@ class RedisServiceImpl::Impl {
     return true;
   }
 
-  void LocalCommand(
-      const RedisCommandInfo& info,
-      size_t idx,
-      RedisResponsePB (*parse)(const RedisClientCommand&),
-      BatchContext* context);
-
   template<class Op>
   void Command(
       const RedisCommandInfo& info,
       size_t idx,
       Parser<Op> parser,
-      BatchContext* context);
-
-  void TruncateCommand(
-      const RedisCommandInfo& info,
-      size_t idx,
-      void (*parse)(const RedisClientCommand&),
       BatchContext* context);
 
   constexpr static int kRpcTimeoutSec = 5;
@@ -716,85 +805,121 @@ class RedisServiceImpl::Impl {
   RedisServer* server_;
 };
 
-RedisResponsePB ParseEcho(const RedisClientCommand& command) {
-  RedisResponsePB responsePB;
-  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
-  responsePB.set_string_response(command[1].ToBuffer());
-  return responsePB;
+void HandleEcho(LocalCommandData data) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+  response.set_string_response(data.arg(1).ToBuffer());
+  data.Respond(&response);
 }
 
-RedisResponsePB ParseAuth(const RedisClientCommand& command) {
-  return RedisResponsePB();
+void HandleAuth(LocalCommandData data) {
+  data.Respond();
 }
 
-RedisResponsePB ParseConfig(const RedisClientCommand& command) {
-  return RedisResponsePB();
+void HandleConfig(LocalCommandData data) {
+  data.Respond();
 }
 
 void AddElements(const RefCntBuffer& buffer, RedisArrayPB* array) {
   array->add_elements(buffer.data(), buffer.size());
 }
 
-RedisResponsePB ParseRole(const RedisClientCommand& command) {
-  RedisResponsePB responsePB;
-  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
-  auto array_response = responsePB.mutable_array_response();
+void HandleRole(LocalCommandData data) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+  auto array_response = response.mutable_array_response();
   AddElements(redisserver::EncodeAsBulkString("master"), array_response);
   AddElements(redisserver::EncodeAsInteger(0), array_response);
   array_response->add_elements(
       redisserver::EncodeAsArrayOfEncodedElements(std::initializer_list<std::string>()));
   array_response->set_encoded(true);
-  return responsePB;
+  data.Respond(&response);
 }
 
-RedisResponsePB ParseInfo(const RedisClientCommand& command) {
-  RedisResponsePB responsePB;
-  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
-  responsePB.set_string_response(kInfoResponse);
-  return responsePB;
+void HandleInfo(LocalCommandData data) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+  response.set_string_response(kInfoResponse);
+  data.Respond(&response);
 }
 
-RedisResponsePB ParsePing(const RedisClientCommand& command) {
-  RedisResponsePB responsePB;
-  responsePB.set_code(RedisResponsePB_RedisStatusCode_OK);
-  if (command.size() > 1) {
-    responsePB.set_string_response(command[1].cdata(), command[1].size());
+void HandlePing(LocalCommandData data) {
+  RedisResponsePB response;
+  response.set_code(RedisResponsePB::OK);
+  if (data.arg_size() > 1) {
+    response.set_string_response(data.arg(1).cdata(), data.arg(1).size());
   } else {
-    responsePB.set_string_response("PONG");
+    response.set_string_response("PONG");
   }
-  return responsePB;
+  data.Respond(&response);
 }
 
-RedisResponsePB ParseCommand(const RedisClientCommand& command) {
-  return RedisResponsePB();
+void HandleCommand(LocalCommandData data) {
+  data.Respond();
 }
 
-RedisResponsePB ParseQuit(const RedisClientCommand& command) {
-  return RedisResponsePB();
+void HandleQuit(LocalCommandData data) {
+  data.call().MarkForClose();
+  data.Respond();
 }
 
-void ParseFlushDB(const RedisClientCommand& command) {
-  // NOOP
+void HandleFlushDB(LocalCommandData data) {
+  RedisResponsePB resp;
+  const Status s = data.client()->TruncateTable(data.table()->id());
+  if (s.ok()) {
+    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
+  } else {
+    const Slice message = s.message();
+    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    resp.set_error_message(message.data(), message.size());
+  }
+  data.Respond(&resp);
 }
 
-void ParseFlushAll(const RedisClientCommand& command) {
-  // NOOP
+void HandleFlushAll(LocalCommandData data) {
+  HandleFlushDB(data);
+}
+
+void HandleDebugSleep(LocalCommandData data) {
+  auto time_ms = util::CheckedStoll(data.arg(1));
+  if (!time_ms.ok()) {
+    RedisResponsePB resp;
+    resp.set_code(RedisResponsePB::PARSING_ERROR);
+    const Slice message = time_ms.status().message();
+    resp.set_error_message(message.data(), message.size());
+    data.Respond(&resp);
+  }
+
+  auto functor = [delay = std::chrono::milliseconds(*time_ms)](const StatusFunctor& callback) {
+    std::thread thread([delay, callback] {
+      std::this_thread::sleep_for(delay);
+      callback(Status::OK());
+    });
+    thread.detach();
+    return true;
+  };
+  data.Apply(functor, std::string());
 }
 
 #define REDIS_METRIC(name) \
     BOOST_PP_CAT(METRIC_handler_latency_yb_redisserver_RedisServerService_, name)
 
-#define READ_COMMAND Command<YBRedisReadOp>
-#define WRITE_COMMAND Command<YBRedisWriteOp>
-#define LOCAL_COMMAND LocalCommand
-#define TRUNCATE_COMMAND TruncateCommand
+#define READ_COMMAND(cname) \
+    Command<YBRedisReadOp>(info, idx, &BOOST_PP_CAT(Parse, cname), context)
+#define WRITE_COMMAND(cname) \
+    Command<YBRedisWriteOp>(info, idx, &BOOST_PP_CAT(Parse, cname), context)
+#define LOCAL_COMMAND(cname) \
+    BOOST_PP_CAT(Handle, cname)({info, idx, context}); \
 
+// dummy_this below is used to silence the warning about "this" lambda capture not being used
+// in some invocations of this macro.
 #define DO_POPULATE_HANDLER(name, cname, arity, type) \
   { \
     auto functor = [this](const RedisCommandInfo& info, \
                           size_t idx, \
                           BatchContext* context) { \
-      BOOST_PP_CAT(type, _COMMAND)(info, idx, &BOOST_PP_CAT(Parse, cname), context); \
+      auto* dummy_this __attribute__((__unused__)) = this; \
+      BOOST_PP_CAT(type, _COMMAND)(cname); \
     }; \
     yb::rpc::RpcMethodMetrics metrics(REDIS_METRIC(name).Instantiate(metric_entity)); \
     SetupMethod({BOOST_PP_STRINGIZE(name), functor, arity, std::move(metrics)}); \
@@ -892,10 +1017,8 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // We process them as follows:
   // Each read commands are processed individually.
   // Sequential write commands use single session and the same batcher.
-  auto context = make_scoped_refptr(new BatchContext(client_,
-                                                     &session_pool_,
-                                                     call,
-                                                     metrics_internal_.data()));
+  auto context = make_scoped_refptr<BatchContext>(
+      client_, table_.get(), &session_pool_, call, metrics_internal_.data());
   const auto& batch = call->client_batch();
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];
@@ -905,16 +1028,23 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
     // Handle the current redis command.
     if (cmd_info == nullptr) {
       RespondWithFailure(call, idx, "Unsupported call.");
-    } else if (cmd_info->arity < 0 && c.size() < static_cast<size_t>(-1 * cmd_info->arity)) {
+      continue;
+    }
+
+    size_t arity = static_cast<size_t>(std::abs(cmd_info->arity) - 1);
+    bool exact_count = cmd_info->arity > 0;
+    size_t passed_arguments = c.size() - 1;
+    if (!exact_count && passed_arguments < arity) {
       // -X means that the command needs >= X arguments.
       YB_LOG_EVERY_N_SECS(ERROR, 60)
           << "Requested command " << c[0] << " does not have enough arguments."
-          << " At least " << -cmd_info->arity << " expected, but " << c.size() << " found.";
+          << " At least " << arity << " expected, but " << passed_arguments << " found.";
       RespondWithFailure(call, idx, "Too few arguments.");
-    } else if (cmd_info->arity > 0 && c.size() != cmd_info->arity) {
+    } else if (exact_count && passed_arguments != arity) {
       // X (> 0) means that the command needs exactly X arguments.
-      YB_LOG_EVERY_N_SECS(ERROR, 60) << "Requested command " << c[0]
-                                     << " has wrong number of arguments.";
+      YB_LOG_EVERY_N_SECS(ERROR, 60)
+          << "Requested command " << c[0] << " has wrong number of arguments. "
+          << arity << " expected, but " << passed_arguments << " found.";
       RespondWithFailure(call, idx, "Wrong number of arguments.");
     } else if (!CheckArgumentSizeOK(c)) {
       RespondWithFailure(call, idx, "Redis argument too long.");
@@ -924,22 +1054,6 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
     }
   }
   context->Commit();
-}
-
-void RedisServiceImpl::Impl::LocalCommand(
-    const RedisCommandInfo& info,
-    size_t idx,
-    RedisResponsePB (*parse)(const RedisClientCommand&),
-    BatchContext* context) {
-  const auto& command = context->command(idx);
-  RedisResponsePB local_response = parse(command);
-  VLOG_IF(4, local_response.has_string_response()) << "Responding to " << command[0].ToBuffer()
-                                                   << " with " << local_response.string_response();
-  if (!info.name.compare("quit")) {
-    context->call()->MarkForClose();
-  }
-  context->call()->RespondSuccess(idx, info.metrics, &local_response);
-  VLOG(4) << "Done responding to " << command[0].ToBuffer();
 }
 
 template<class Op>
@@ -958,26 +1072,6 @@ void RedisServiceImpl::Impl::Command(
     return;
   }
   context->Apply(idx, std::move(op), info.metrics);
-}
-
-void RedisServiceImpl::Impl::TruncateCommand(
-    const RedisCommandInfo& info,
-    size_t idx,
-    void (*parse)(const RedisClientCommand&),
-    BatchContext* context) {
-  VLOG(1) << "Processing " << info.name << ".";
-  const auto& command = context->command(idx);
-  RedisResponsePB resp;
-  const Status s = client_->TruncateTable(table_->id());
-  if (s.ok()) {
-    resp.set_code(RedisResponsePB_RedisStatusCode_OK);
-  } else {
-    const Slice message = s.message();
-    resp.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-    resp.set_error_message(message.data(), message.size());
-  }
-  context->call()->RespondSuccess(idx, info.metrics, &resp);
-  VLOG(4) << "Done responding to " << command[0].ToBuffer();
 }
 
 void RedisServiceImpl::Impl::RespondWithFailure(

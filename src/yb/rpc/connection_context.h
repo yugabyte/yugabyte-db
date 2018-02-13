@@ -22,6 +22,8 @@
 namespace yb {
 namespace rpc {
 
+typedef std::function<void()> IdleListener;
+
 // ConnectionContext class is used by connection for doing protocol
 // specific logic.
 class ConnectionContext {
@@ -39,6 +41,12 @@ class ConnectionContext {
 
   // Checks whether this connection context is idle.
   virtual bool Idle() = 0;
+
+  // Listen when context becomes idle.
+  virtual void ListenIdle(IdleListener listener) = 0;
+
+  // Shutdown this context.
+  virtual void Shutdown(const Status& status) = 0;
 
   // Reading buffer limit for this connection context.
   // The reading buffer will never be larger than this limit.

@@ -80,10 +80,16 @@ namespace rpc {
 
 namespace {
 
-Status ShutdownError(bool aborted) {
-  const char* msg = "reactor is shutting down";
-  return aborted ? STATUS(Aborted, msg, "", ESHUTDOWN)
-                 : STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
+static const char* kShutdownMessage = "Reactor is shutting down";
+
+const Status& AbortedError() {
+  static Status result = STATUS(Aborted, kShutdownMessage, "", ESHUTDOWN);
+  return result;
+}
+
+const Status& ServiceUnavailableError() {
+  static Status result = STATUS(ServiceUnavailable, kShutdownMessage, "", ESHUTDOWN);
+  return result;
 }
 
 // Callback for libev fatal errors (eg running out of file descriptors).
@@ -161,34 +167,42 @@ void Reactor::Shutdown() {
   WakeThread();
 }
 
+void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
+  DCHECK(IsCurrentThread());
+
+  VLOG(1) << name() << ": shutting down " << conn->ToString();
+  conn->Shutdown(ServiceUnavailableError());
+  if (!conn->context().Idle()) {
+    std::weak_ptr<Connection> weak_conn(conn);
+    conn->context().ListenIdle([this, weak_conn]() {
+      DCHECK(IsCurrentThread());
+      auto conn = weak_conn.lock();
+      if (conn) {
+        VLOG(1) << name() << ": connection become idle " << conn->ToString();
+        waiting_conns_.erase(conn);
+      }
+    });
+    waiting_conns_.insert(conn);
+  }
+}
+
 void Reactor::ShutdownInternal() {
   DCHECK(IsCurrentThread());
 
   stopping_ = true;
 
   // Tear down any outbound TCP connections.
-  Status service_unavailable = ShutdownError(false);
   VLOG(1) << name() << ": tearing down outbound TCP connections...";
   decltype(client_conns_) client_conns = std::move(client_conns_);
   for (auto& pair : client_conns) {
-    const ConnectionPtr& conn = pair.second;
-    VLOG(1) << name() << ": shutting down " << conn->ToString();
-    conn->Shutdown(service_unavailable);
-    if (!conn->context().Idle()) {
-      waiting_conns_.push_back(conn);
-    }
+    ShutdownConnection(pair.second);
   }
   client_conns.clear();
 
   // Tear down any inbound TCP connections.
   VLOG(1) << name() << ": tearing down inbound TCP connections...";
   for (const ConnectionPtr& conn : server_conns_) {
-    VLOG(1) << name() << ": shutting down " << conn->ToString();
-    conn->Shutdown(service_unavailable);
-    if (!conn->context().Idle()) {
-      LOG(INFO) << "Waiting for " << conn.get();
-      waiting_conns_.push_back(conn);
-    }
+    ShutdownConnection(conn);
   }
   server_conns_.clear();
 
@@ -196,7 +210,7 @@ void Reactor::ShutdownInternal() {
   //
   // These won't be found in the Reactor's list of pending tasks
   // because they've been "run" (that is, they've been scheduled).
-  Status aborted = ShutdownError(true); // aborted
+  Status aborted = AbortedError();
   for (const auto& task : scheduled_tasks_) {
     task->Abort(aborted);
   }
@@ -257,12 +271,6 @@ Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
 
 void Reactor::WakeThread() {
   async_.send();
-}
-
-void Reactor::CleanWaitingConnections() {
-  DCHECK(IsCurrentThread());
-
-  waiting_conns_.remove_if([](const ConnectionPtr& conn) { return conn->context().Idle(); });
 }
 
 void Reactor::CheckReadyToStop() {
@@ -350,8 +358,6 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
       "the timer handler.";
     return;
   }
-
-  CleanWaitingConnections();
 
   if (stopping_) {
     CheckReadyToStop();
@@ -568,9 +574,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
     }
   }
 
-  if (!conn->Idle()) {
-    waiting_conns_.push_back(std::move(retained_conn));
-  }
+  ShutdownConnection(retained_conn);
 }
 
 void Reactor::ProcessOutboundQueue() {
@@ -614,7 +618,7 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
     }
   }
   if (closing) {
-    call->Transferred(ShutdownError(true), nullptr);
+    call->Transferred(AbortedError(), nullptr /* conn */);
     return;
   }
   if (was_empty) {
@@ -735,7 +739,7 @@ void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {
     if (closing_) {
       // We guarantee the reactor lock is not taken when calling Abort().
       l.unlock();
-      task->Abort(ShutdownError(/* aborted */ false));
+      task->Abort(ServiceUnavailableError());
       return;
     }
     was_empty = pending_tasks_.empty();

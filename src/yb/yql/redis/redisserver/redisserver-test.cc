@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#include <cpp_redis/cpp_redis>
-
 #include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <cpp_redis/cpp_redis>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -330,6 +330,8 @@ class TestRedisService : public RedisTableTestBase {
     return *test_client_;
   }
 
+  void TestAbort(const std::string& command);
+
  protected:
   std::string int64Max_ = std::to_string(std::numeric_limits<int64_t>::max());
   std::string int64MaxExclusive_ = "(" + int64Max_;
@@ -451,7 +453,7 @@ Status TestRedisService::Send(const std::string& cmd) {
 
 Status TestRedisService::SendCommandAndGetResponse(
     const string& cmd, int expected_resp_length, int timeout_in_millis) {
-      RETURN_NOT_OK(Send(cmd));
+  RETURN_NOT_OK(Send(cmd));
 
   // Receive the response.
   MonoTime deadline = MonoTime::Now();
@@ -537,6 +539,47 @@ void TestRedisService::VerifyCallbacks() {
 
 TEST_F(TestRedisService, SimpleCommandInline) {
   SendCommandAndExpectResponse(__LINE__, "set foo bar\r\n", "+OK\r\n");
+}
+
+void TestRedisService::TestAbort(const std::string& command) {
+  ASSERT_OK(Send(command));
+  std::this_thread::sleep_for(1000ms);
+  StopClient();
+
+  // TODO When reactor is shutting down, we cannot notify it that call is responded.
+  // It is possible that it could happen not only with debug sleep.
+  std::this_thread::sleep_for(2000ms);
+}
+
+TEST_F(TestRedisService, AbortDuringProcessing) {
+  TestAbort("DEBUGSLEEP 2000\r\n");
+}
+
+class TestRedisServiceCleanQueueOnShutdown : public TestRedisService {
+ public:
+  void SetUp() override {
+    saver_.emplace();
+
+    FLAGS_redis_max_concurrent_commands = 1;
+    FLAGS_redis_max_batch = 1;
+    TestRedisService::SetUp();
+  }
+
+  void TearDown() override {
+    TestRedisService::TearDown();
+    saver_.reset();
+  }
+
+ private:
+  boost::optional<google::FlagSaver> saver_;
+};
+
+TEST_F_EX(TestRedisService, AbortQueueOnShutdown, TestRedisServiceCleanQueueOnShutdown) {
+  TestAbort("DEBUGSLEEP 2000\r\nDEBUGSLEEP 999999999\r\n");
+}
+
+TEST_F(TestRedisService, AbortBatches) {
+  TestAbort("DEBUGSLEEP 2000\r\nSET foo 1\r\nGET foo\r\nDEBUGSLEEP 999999999\r\n");
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
