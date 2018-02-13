@@ -448,7 +448,8 @@ Status RaftConsensus::DoStartElection(
       return Status::OK();
     } else if (active_role == RaftPeerPB::LEARNER) {
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- role is LEARNER, pending="
-                                     << state_->IsConfigChangePendingUnlocked();
+                                     << state_->IsConfigChangePendingUnlocked()
+                                     <<", active_role=" << active_role;
       return Status::OK();
     } else if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
       // Avoid excessive election noise while in this state.

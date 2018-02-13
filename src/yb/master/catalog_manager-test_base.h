@@ -57,15 +57,12 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
   ASSERT_EQ(tablets->size(), split_keys.size() + 1);
 }
 
-void NewReplica(TSDescriptor* ts_desc, tablet::TabletStatePB state,
-                bool is_leader, TabletReplica* replica) {
+void NewReplica(
+    TSDescriptor* ts_desc, tablet::TabletStatePB state, consensus::RaftPeerPB::Role role,
+    TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
-  if (is_leader) {
-    replica->role = consensus::RaftPeerPB::LEADER;
-  } else {
-    replica->role = consensus::RaftPeerPB::FOLLOWER;
-  }
+  replica->role = role;
 }
 
 template<class ClusterLoadBalancerMockedClass>
@@ -77,7 +74,7 @@ class TestLoadBalancerBase {
         affinitized_zones_(cb->affinitized_zones_),
         tablet_map_(cb->tablet_map_),
         table_map_(cb->table_map_),
-        cluster_placement_(cb->cluster_placement_),
+        replication_info_(cb->replication_info_),
         pending_add_replica_tasks_(cb->pending_add_replica_tasks_),
         pending_remove_replica_tasks_(cb->pending_remove_replica_tasks_),
         pending_stepdown_leader_tasks_(cb->pending_stepdown_leader_tasks_) {
@@ -185,7 +182,7 @@ class TestLoadBalancerBase {
 
     // There is some opportunity to equalize load across the remaining servers also. However,
     // we cannot do so until the next run since all tablets have just been moved once.
-    ASSERT_FALSE(cb_->HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
 
     // Move tablets off ts0 to ts5.
     for (const auto& tablet : tablets_) {
@@ -205,7 +202,7 @@ class TestLoadBalancerBase {
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
     // Now we should have no more tablets we are able to move.
-    ASSERT_FALSE(cb_->HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
   }
 
   void TestOverReplication() {
@@ -268,7 +265,7 @@ class TestLoadBalancerBase {
     ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
     AnalyzeTablets();
     string placeholder, tablet_id;
-    ASSERT_FALSE(cb_->HandleAddReplicas(&tablet_id, &placeholder, &placeholder));
+    ASSERT_FALSE(HandleAddReplicas(&tablet_id, &placeholder, &placeholder));
 
     // Clear pending_add_replica_tasks_ and reset the state of ClusterLoadBalancer.
     pending_add_replica_tasks_.clear();
@@ -315,7 +312,7 @@ class TestLoadBalancerBase {
 
   void TestLeaderOverReplication() {
     LOG(INFO) << "Skip leader TS being picked with over-replication.";
-    cluster_placement_.set_num_replicas(kNumReplicas);
+    replication_info_.mutable_live_replicas()->set_num_replicas(kNumReplicas);
 
     // Create one more TS.
     ts_descs_.push_back(SetupTS("3333", "a"));
@@ -369,7 +366,7 @@ class TestLoadBalancerBase {
     TestAddLoad(placeholder, placeholder, expected_to_ts);
     // Now registered load should be 4,4,2,2. However, we cannot move load from AZ "a" and "b" to
     // the servers in AZ "c", under normal load conditions, so we should fail the call.
-    ASSERT_FALSE(cb_->HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
   }
 
   void TestWithPlacement() {
@@ -406,7 +403,8 @@ class TestLoadBalancerBase {
 
   void TestNoPlacement() {
     LOG(INFO) << "Testing with no placement information";
-    cluster_placement_.set_num_replicas(kNumReplicas);
+    PlacementInfoPB* cluster_placement = replication_info_.mutable_live_replicas();
+    cluster_placement->set_num_replicas(kNumReplicas);
     // Analyze the tablets into the internal state.
     AnalyzeTablets();
 
@@ -457,7 +455,8 @@ class TestLoadBalancerBase {
 
   void TestMovingMultipleTabletsFromSameServer() {
     LOG(INFO) << "Testing moving multiple tablets from the same tablet server";
-    cluster_placement_.set_num_replicas(kNumReplicas);
+    PlacementInfoPB *cluster_placement = replication_info_.mutable_live_replicas();
+    cluster_placement->set_num_replicas(kNumReplicas);
 
     // Add three more tablet servers
     ts_descs_.push_back(SetupTS("3333", "a"));
@@ -525,7 +524,7 @@ class TestLoadBalancerBase {
 
     // Since we have just filled up the missing placements for all 4 tablets, we cannot rebalance
     // the tablets to the second new TS until the next run.
-    ASSERT_FALSE(cb_->HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
 
     // Add the missing placements to the first new TS.
     AddRunningReplica(tablets_[0].get(), ts_descs_[2]);
@@ -543,7 +542,7 @@ class TestLoadBalancerBase {
     TestAddLoad(placeholder, placeholder, expected_to_ts);
 
     // And the load should now be balanced so no more move is expected.
-    ASSERT_FALSE(cb_->HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
   }
 
   void TestBalancingLeaders() {
@@ -594,11 +593,8 @@ class TestLoadBalancerBase {
 
     // With ts0 blacklisted, the 2 leaders on ts0 should be moved to some undetermined servers.
     // ts1 still has 2 leaders and ts2 has 0 so 1 leader should be moved to ts2.
-    expected_from_ts = ts_descs_[0]->permanent_uuid();
-    expected_tablet_id = tablets_[0]->tablet_id();
-    TestRemoveLoad(expected_tablet_id, expected_from_ts);
-    expected_tablet_id = tablets_[1]->tablet_id();
-    TestRemoveLoad(expected_tablet_id, expected_from_ts);
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    ASSERT_FALSE(cb_->HandleRemoveReplicas(&placeholder, &placeholder));
     expected_from_ts = ts_descs_[1]->permanent_uuid();
     expected_to_ts = ts_descs_[2]->permanent_uuid();
     TestMoveLeader(&placeholder, expected_from_ts, expected_to_ts);
@@ -674,13 +670,6 @@ class TestLoadBalancerBase {
     ResetState();
     AnalyzeTablets();
 
-    // With ts0 blacklisted, the 2 leaders on ts0 should be moved to some undetermined servers.
-    // ts1 still has 2 leaders but is under the threshold so no move is expected.
-    expected_from_ts = ts_descs_[0]->permanent_uuid();
-    expected_tablet_id = tablets_[0]->tablet_id();
-    TestRemoveLoad(expected_tablet_id, expected_from_ts);
-    expected_tablet_id = tablets_[1]->tablet_id();
-    TestRemoveLoad(expected_tablet_id, expected_from_ts);
     ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
 
     // Clear the blacklist.
@@ -708,7 +697,7 @@ class TestLoadBalancerBase {
   void PrepareTestState(const TSDescriptorVector& ts_descs) {
     // Clear old state.
     ResetState();
-    cluster_placement_.Clear();
+    replication_info_.Clear();
     blacklist_.Clear();
     tablet_map_.clear();
     ts_descs_.clear();
@@ -730,7 +719,10 @@ class TestLoadBalancerBase {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
-        NewReplica(ts_desc.get(), state, is_leader, &replica);
+        consensus::RaftPeerPB::Role role = is_leader ?
+            consensus::RaftPeerPB::LEADER :
+            consensus::RaftPeerPB::FOLLOWER;
+        NewReplica(ts_desc.get(), state, role , &replica);
         InsertOrDie(&replica_map, ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.
@@ -748,33 +740,34 @@ class TestLoadBalancerBase {
     hp->set_host(uuid);
     // Same cloud info as cluster config, with modifyable AZ.
     auto ci = reg.mutable_common()->mutable_cloud_info();
-    ci->set_placement_cloud("aws");
-    ci->set_placement_region("us-west-1");
+    ci->set_placement_cloud(default_cloud);
+    ci->set_placement_region(default_region);
     ci->set_placement_zone(az);
 
-    std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
+    std::shared_ptr<TSDescriptor> ts(new YB_EDITION_NS_PREFIX TSDescriptor(node.permanent_uuid()));
     CHECK_OK(ts->Register(node, reg));
     return ts;
   }
 
   void SetupClusterConfig(bool multi_az) {
-    cluster_placement_.set_num_replicas(kNumReplicas);
-    auto pb = cluster_placement_.add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud("aws");
-    pb->mutable_cloud_info()->set_placement_region("us-west-1");
+    PlacementInfoPB* placement_info = replication_info_.mutable_live_replicas();
+    placement_info->set_num_replicas(kNumReplicas);
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
     pb->mutable_cloud_info()->set_placement_zone("a");
     pb->set_min_num_replicas(1);
 
     if (multi_az) {
-      pb = cluster_placement_.add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud("aws");
-      pb->mutable_cloud_info()->set_placement_region("us-west-1");
+      pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+      pb->mutable_cloud_info()->set_placement_region(default_region);
       pb->mutable_cloud_info()->set_placement_zone("b");
       pb->set_min_num_replicas(1);
 
-      pb = cluster_placement_.add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud("aws");
-      pb->mutable_cloud_info()->set_placement_region("us-west-1");
+      pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+      pb->mutable_cloud_info()->set_placement_region(default_region);
       pb->mutable_cloud_info()->set_placement_zone("c");
       pb->set_min_num_replicas(1);
     }
@@ -796,7 +789,7 @@ class TestLoadBalancerBase {
                    const string& expected_from_ts,
                    const string& expected_to_ts) {
     string tablet_id, from_ts, to_ts;
-    ASSERT_TRUE(cb_->HandleAddReplicas(&tablet_id, &from_ts, &to_ts));
+    ASSERT_TRUE(HandleAddReplicas(&tablet_id, &from_ts, &to_ts));
     if (!expected_tablet_id.empty()) {
       ASSERT_EQ(expected_tablet_id, tablet_id);
     }
@@ -821,12 +814,14 @@ class TestLoadBalancerBase {
     }
   }
 
-  void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
+  void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc,
+                         bool is_live = true) {
     TabletInfo::ReplicaMap replicas;
     tablet->GetReplicaLocations(&replicas);
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::TabletStatePB::RUNNING, false, &replica);
+    NewReplica(ts_desc.get(), tablet::TabletStatePB::RUNNING,
+               consensus::RaftPeerPB::FOLLOWER, &replica);
     InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
@@ -853,6 +848,16 @@ class TestLoadBalancerBase {
     tablet->SetReplicaLocations(replicas);
   }
 
+  // Clear the tablets_added_ field from the state, used for testing.
+  void ClearTabletsAddedForTest() {
+    cb_->state_->tablets_added_.clear();
+  }
+
+  bool HandleAddReplicas(
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+    return cb_->HandleAddReplicas(out_tablet_id, out_from_ts, out_to_ts);
+  }
+
   const int kNumReplicas = 3;
 
   ClusterLoadBalancerMockedClass* cb_;
@@ -865,10 +870,13 @@ class TestLoadBalancerBase {
   AffinitizedZonesSet& affinitized_zones_;
   TabletInfoMap& tablet_map_;
   TableInfoMap& table_map_;
-  PlacementInfoPB& cluster_placement_;
+  ReplicationInfoPB& replication_info_;
   vector<TabletId>& pending_add_replica_tasks_;
   vector<TabletId>& pending_remove_replica_tasks_;
   vector<TabletId>& pending_stepdown_leader_tasks_;
+
+  const string default_cloud = "aws";
+  const string default_region = "us-west-1";
 };
 
 } // namespace master

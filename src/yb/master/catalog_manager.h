@@ -184,6 +184,7 @@ struct TabletReplica {
   TSDescriptor* ts_desc;
   tablet::TabletStatePB state;
   consensus::RaftPeerPB::Role role;
+  consensus::RaftPeerPB::MemberType member_type;
 
   std::string ToString() const {
     return Format("{ ts_desc: $0 state: $1 role: $2 }",
@@ -944,7 +945,34 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req)
       override;
 
-  // Set the current committed config.
+  int GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info);
+
+  // Loops through the table's placement infos to make sure the overall replication info is valid.
+  virtual CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
+                                                   const TSDescriptorVector& all_ts_descs,
+                                                   const vector<Partition>& partitions,
+                                                   CreateTableResponsePB* resp);
+
+  // Makes sure the available ts_descs in a placement can accomodate the placement config.
+  CHECKED_STATUS CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
+                                         const TSDescriptorVector& ts_descs,
+                                         const vector<Partition>& partitions,
+                                         CreateTableResponsePB* resp);
+
+  // Loops through the table's placement infos and populates the corresponding config from
+  // each placement.
+  virtual CHECKED_STATUS HandlePlacementUsingReplicationInfo(
+      const ReplicationInfoPB& replication_info,
+      const TSDescriptorVector& all_ts_descs,
+      consensus::RaftConfigPB* config);
+
+  // Handles the config creation for a given placement.
+  CHECKED_STATUS HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
+                                                   const TSDescriptorVector& ts_descs,
+                                                   consensus::RaftPeerPB::MemberType member_type,
+                                                   consensus::RaftConfigPB* config);
+
+    // Set the current committed config.
   CHECKED_STATUS GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
 
   // Return OK if this CatalogManager is a leader in a consensus configuration and if
@@ -1193,11 +1221,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Select N Replicas from the online tablet servers that have been chosen to respect the
   // placement information provided. Populate the consensus configuration object with choices and
   // also update the set of selected tablet servers, to not place several replicas on the same TS.
+  // member_type indicated what type of replica to select for.
   //
   // This method is called by "SelectReplicasForTablet".
   void SelectReplicas(
       const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
-      std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts);
+      std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
+      consensus::RaftPeerPB::MemberType member_type);
 
   void HandleAssignPreparingTablet(TabletInfo* tablet,
                                    DeferredAssignmentActions* deferred);

@@ -22,6 +22,7 @@
 #include <unordered_set>
 #include <vector>
 #include <atomic>
+#include <list>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_descriptor.h"
@@ -77,7 +78,7 @@ class ClusterLoadBalancer {
   // Executes one run of the load balancing algorithm. This currently does not persist any state,
   // so it needs to scan the in-memory tablet and TS data in the CatalogManager on every run and
   // create a new ClusterLoadState object.
-  void RunLoadBalancer();
+  virtual void RunLoadBalancer(Options* options = nullptr);
 
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
@@ -86,43 +87,6 @@ class ClusterLoadBalancer {
   // Catalog manager indirection methods.
   //
  protected:
-  class Options {
-   public:
-    // If variance between load on TS goes past this number, we should try to balance.
-    double kMinLoadVarianceToBalance = 2.0;
-
-    // If variance between leader load on TS goes past this number, we should try to balance.
-    double kMinLeaderLoadVarianceToBalance = 2.0;
-
-    // Whether to limit the number of tablets being spun up on the cluster at any given time.
-    bool kAllowLimitStartingTablets = true;
-
-    // Max number of tablets being remote bootstrapped across the cluster, if we enable limiting
-    // this.
-    int kMaxTabletRemoteBootstraps = FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps;
-
-    // Whether to limit the number of tablets that have more peers than configured at any given
-    // time.
-    bool kAllowLimitOverReplicatedTablets = true;
-
-    // Max number of running tablet replicas that are over the configured limit.
-    int kMaxOverReplicatedTablets = FLAGS_load_balancer_max_over_replicated_tablets;
-
-    // Max number of over-replicated tablet peer removals to do in any one run of the load balancer.
-    int kMaxConcurrentRemovals = FLAGS_load_balancer_max_concurrent_removals;
-
-    // Max number of tablet peer replicas to add in any one run of the load balancer.
-    int kMaxConcurrentAdds = FLAGS_load_balancer_max_concurrent_adds;
-
-    // Max number of tablet leaders on tablet servers to move in any one run of the load balancer.
-    int kMaxConcurrentLeaderMoves = FLAGS_load_balancer_max_concurrent_moves;
-
-    // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
-  };
-
-  // The knobs we use for tweaking the flow of the algorithm.
-  Options options_;
-
   //
   // Indirection methods to CatalogManager that we override in the subclasses (or testing).
   //
@@ -165,17 +129,20 @@ class ClusterLoadBalancer {
   // adding or removing the peer at ts_uuid, based on the is_add argument. Removing the peer
   // is optional. When neither adding nor removing peer, it means just moving a leader from one
   // tablet server to another. If new_leader_ts_uuid is empty, a server will be picked by random
-  // to be the new leader.
+  // to be the new leader. Also takes in the role of the tablet for the creation flow.
   virtual void SendReplicaChanges(
       scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
       const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
+
+  // Returns default member type for newly created replicas (PRE_VOTER).
+  virtual consensus::RaftPeerPB::MemberType GetDefaultMemberType();
 
   //
   // Higher level methods and members.
   //
 
   // Recreates the ClusterLoadState object.
-  void ResetState();
+  virtual void ResetState();
 
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
   // across the tablets for the given table. Returns false if we encounter transient errors that
@@ -200,7 +167,7 @@ class ClusterLoadBalancer {
 
   // Method called when initially analyzing tablets, to build up load and usage information.
   // Returns false only if there are transient errors in updating the internal state.
-  bool UpdateTabletInfo(TabletInfo* tablet);
+  virtual bool UpdateTabletInfo(TabletInfo* tablet);
 
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.
@@ -293,7 +260,7 @@ class ClusterLoadBalancer {
   int get_total_blacklisted_servers() const;
 
   // The state of the load in the cluster, as far as this run of the algorithm is concerned.
-  std::unique_ptr<YB_EDITION_NS_PREFIX ClusterLoadState> state_;
+  std::unique_ptr<ClusterLoadState> state_;
 
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.

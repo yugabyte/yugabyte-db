@@ -10,13 +10,15 @@ namespace master {
 
 class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
  public:
-  ClusterLoadBalancerMocked() : ClusterLoadBalancer(nullptr) {
+  explicit ClusterLoadBalancerMocked(Options* options) : ClusterLoadBalancer(nullptr)  {
     const int kHighNumber = 100;
-    options_.kMaxConcurrentAdds = kHighNumber;
-    options_.kMaxConcurrentRemovals = kHighNumber;
-    options_.kAllowLimitStartingTablets = false;
-    options_.kAllowLimitOverReplicatedTablets = false;
+    options->kMaxConcurrentAdds = kHighNumber;
+    options->kMaxConcurrentRemovals = kHighNumber;
+    options->kAllowLimitStartingTablets = false;
+    options->kAllowLimitOverReplicatedTablets = false;
+    state_->options_ = options;
   }
+
   // Overrides for base class functionality to bypass calling CatalogManager.
   void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const override {
     *ts_descs = ts_descs_;
@@ -30,7 +32,9 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
-  const PlacementInfoPB& GetClusterPlacementInfo() const override { return cluster_placement_; }
+  const PlacementInfoPB& GetClusterPlacementInfo() const override {
+    return replication_info_.live_replicas();
+  }
 
   const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
 
@@ -55,11 +59,20 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     }
   }
 
+  void ResetState() override {
+    Options* options = nullptr;
+    if (state_) {
+      options = state_->options_;
+    }
+    state_ = std::make_unique<ClusterLoadState>();
+    state_->options_ = options;
+  }
+
   TSDescriptorVector ts_descs_;
   AffinitizedZonesSet affinitized_zones_;
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
-  PlacementInfoPB cluster_placement_;
+  ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
   vector<TabletId> pending_add_replica_tasks_;
   vector<TabletId> pending_remove_replica_tasks_;

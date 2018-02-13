@@ -418,6 +418,7 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud);
   reg->mutable_cloud_info()->set_placement_region(options_.placement_region);
   reg->mutable_cloud_info()->set_placement_zone(options_.placement_zone);
+  reg->set_placement_uuid(options_.placement_uuid);
   return Status::OK();
 }
 

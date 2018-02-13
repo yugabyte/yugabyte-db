@@ -51,7 +51,7 @@ namespace master {
 Status TSDescriptor::RegisterNew(const NodeInstancePB& instance,
                                  const TSRegistrationPB& registration,
                                  gscoped_ptr<TSDescriptor>* desc) {
-  gscoped_ptr<TSDescriptor> ret(new TSDescriptor(instance.permanent_uuid()));
+  gscoped_ptr<TSDescriptor> ret(new YB_EDITION_NS_PREFIX TSDescriptor(instance.permanent_uuid()));
   RETURN_NOT_OK(ret->Register(instance, registration));
   desc->swap(ret);
   return Status::OK();

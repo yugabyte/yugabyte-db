@@ -36,6 +36,18 @@ DECLARE_int32(leader_balance_threshold);
 
 DECLARE_int32(leader_balance_unresponsive_timeout_ms);
 
+DECLARE_int32(replication_factor);
+
+DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
+
+DECLARE_int32(load_balancer_max_over_replicated_tablets);
+
+DECLARE_int32(load_balancer_max_concurrent_adds);
+
+DECLARE_int32(load_balancer_max_concurrent_removals);
+
+DECLARE_int32(load_balancer_max_concurrent_moves);
+
 namespace yb {
 namespace master {
 
@@ -120,6 +132,41 @@ struct CBTabletServerMetadata {
   std::set<TabletId> leaders;
 };
 
+struct Options {
+  Options() {}
+  virtual ~Options() {}
+  // If variance between load on TS goes past this number, we should try to balance.
+  double kMinLoadVarianceToBalance = 2.0;
+
+  // If variance between leader load on TS goes past this number, we should try to balance.
+  double kMinLeaderLoadVarianceToBalance = 2.0;
+
+  // Whether to limit the number of tablets being spun up on the cluster at any given time.
+  bool kAllowLimitStartingTablets = true;
+
+  // Max number of tablets being remote bootstrapped across the cluster, if we enable limiting
+  // this.
+  int kMaxTabletRemoteBootstraps = FLAGS_load_balancer_max_concurrent_tablet_remote_bootstraps;
+
+  // Whether to limit the number of tablets that have more peers than configured at any given
+  // time.
+  bool kAllowLimitOverReplicatedTablets = true;
+
+  // Max number of running tablet replicas that are over the configured limit.
+  int kMaxOverReplicatedTablets = FLAGS_load_balancer_max_over_replicated_tablets;
+
+  // Max number of over-replicated tablet peer removals to do in any one run of the load balancer.
+  int kMaxConcurrentRemovals = FLAGS_load_balancer_max_concurrent_removals;
+
+  // Max number of tablet peer replicas to add in any one run of the load balancer.
+  int kMaxConcurrentAdds = FLAGS_load_balancer_max_concurrent_adds;
+
+  // Max number of tablet leaders on tablet servers to move in any one run of the load balancer.
+  int kMaxConcurrentLeaderMoves = FLAGS_load_balancer_max_concurrent_moves;
+
+  // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
+};
+
 class ClusterLoadState {
  public:
   ClusterLoadState()
@@ -190,7 +237,7 @@ class ClusterLoadState {
 
     // Get replicas for this tablet.
     TabletInfo::ReplicaMap replica_map;
-    tablet->GetReplicaLocations(&replica_map);
+    GetReplicaLocations(tablet, &replica_map);
     // Set state information for both the tablet and the tablet server replicas.
     for (const auto& replica : replica_map) {
       const auto& ts_uuid = replica.first;
@@ -234,8 +281,10 @@ class ClusterLoadState {
     }
 
     // Only set the over-replication section if we need to.
-    tablet_meta.is_over_replicated = placement.num_replicas() < replica_map.size();
-    tablet_meta.is_under_replicated = placement.num_replicas() > replica_map.size();
+    int placement_num_replicas = placement.num_replicas() > 0 ?
+        placement.num_replicas() : FLAGS_replication_factor;
+    tablet_meta.is_over_replicated = placement_num_replicas < replica_map.size();
+    tablet_meta.is_under_replicated = placement_num_replicas > replica_map.size();
 
     // If no placement information, we will have already set the over and under replication flags.
     // For under-replication, we cannot use any placement_id, so we just leave the set empty and
@@ -526,6 +575,11 @@ class ClusterLoadState {
       }
     }
   }
+
+  virtual void GetReplicaLocations(TabletInfo* tablet, TabletInfo::ReplicaMap* replica_locations) {
+    tablet->GetReplicaLocations(replica_locations);
+  }
+
   // ClusterLoadState member fields
 
   // Map from tablet ids to the metadata we store for each.
@@ -588,6 +642,9 @@ class ClusterLoadState {
 
   // Time at which we started the current round of load balancing.
   MonoTime current_time_;
+
+  // The knobs we use for tweaking the flow of the algorithm.
+  Options* options_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);

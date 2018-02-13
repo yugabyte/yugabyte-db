@@ -140,6 +140,16 @@ int MajoritySize(int num_voters) {
   return (num_voters / 2) + 1;
 }
 
+RaftPeerPB::MemberType GetConsensusMemberType(const std::string& permanent_uuid,
+                                              const ConsensusStatePB& cstate) {
+  for (const RaftPeerPB& peer : cstate.config().peers()) {
+    if (peer.permanent_uuid() == permanent_uuid) {
+      return peer.member_type();
+    }
+  }
+  return RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+}
+
 RaftPeerPB::Role GetConsensusRole(const std::string& permanent_uuid,
                                   const ConsensusStatePB& cstate) {
   if (cstate.leader_uuid() == permanent_uuid) {

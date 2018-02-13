@@ -665,6 +665,20 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
   {
     auto tablet_lock = tablet_->LockForRead();
     latest_index = tablet_lock->data().pb.committed_consensus_state().config().opid_index();
+    // Adding this logic for a race condition that occurs in this scenario:
+    // 1. CatalogManager receives a DeleteTable request and sends DeleteTablet requests to the
+    // tservers, but doesn't yet update the tablet in memory state to not running.
+    // 2. The CB runs and sees that this tablet is still running, sees that it is over-replicated
+    // (since the placement now dictates it should have 0 replicas),
+    // but before it can send the ChangeConfig RPC to a tserver.
+    // 3. That tserver processes the DeleteTablet request.
+    // 4. The ChangeConfig RPC now returns tablet not found,
+    // which prompts an infinite retry of the RPC.
+    bool tablet_running = tablet_lock->data().is_running();
+    if (!tablet_running) {
+      AbortTask();
+      return false;
+    }
   }
   if (latest_index > cstate_.config().opid_index()) {
     LOG_WITH_PREFIX(INFO) << "Latest config for has opid_index of " << latest_index
@@ -747,8 +761,6 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   req_.set_cas_config_opid_index(cstate_.config().opid_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
-  // Remove this check once support for async replicas is complete.
-  DCHECK_EQ(member_type_, RaftPeerPB::PRE_VOTER);
   peer->set_member_type(member_type_);
   TSRegistrationPB peer_reg;
   replacement_replica->GetRegistration(&peer_reg);

@@ -36,6 +36,7 @@ import com.google.common.net.HostAndPort;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -705,6 +706,70 @@ public class YBClient implements AutoCloseable {
 
     if (errorMessage == null) {
       LOG.error("Timed out waiting for load to balance. Final exception was {}.",
+                finalException != null ? finalException.toString() : "none");
+    } else {
+      LOG.error(errorMessage);
+    }
+
+    LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
+
+    return false;
+  }
+
+  /**
+   * Check if the replica count per ts matches the expected, returns true if it does within
+   * timeoutMs, false otherwise.
+   * TODO(Rahul): follow similar style for this type of function will do with affinitized
+   * leaders tests.
+   * @param timeoutMs number of milliseconds before timing out.
+   * @param table the table to wait for load balancing.
+   * @param replicaMapExpected the expected map between cluster uuid and live, read replica count.
+   * @param deadline for each call to getMemberTypeCountsForEachTSType
+   * @return true if the read only replica count for the table matches the expected within the
+   * expected time frame, false otherwise.
+   */
+  public boolean waitForExpectedReplicaMap(final long timeoutMs, YBTable table,
+                                            Map<String, List<List<Integer>>> replicaMapExpected,
+                                            long deadline) {
+    Exception finalException = null;
+    Map<String, List<List<Integer>>> replicaMap = null;
+    long start = System.currentTimeMillis();
+    int numErrors = 0;
+    int numIters = 0;
+    String errorMessage = null;
+    do {
+      try {
+        replicaMap = table.getMemberTypeCountsForEachTSType(deadline);
+        if (replicaMap.equals(replicaMapExpected)) {
+          return true;
+        }
+      } catch (Exception e) {
+        finalException = e;
+        numErrors++;
+        if (numErrors % LOG_ERRORS_EVERY_NUM_ITERS == 0) {
+          LOG.warn("Hit {} errors so far. Latest is : {}.",
+              numErrors, finalException.toString());
+        }
+        if (numErrors >= MAX_ERRORS_TO_IGNORE) {
+          errorMessage = "Hit too many errors, final exception is " +
+                         finalException.toString();
+          break;
+        }
+      }
+
+      numIters++;
+      if (numIters % LOG_EVERY_NUM_ITERS == 0) {
+        LOG.info("Tried matching replica map {} times so far.", numIters);
+      }
+      // Need to wait even when check has an exception, so sleep is outside the above try block.
+
+      try {
+        Thread.sleep(AsyncYBClient.SLEEP_TIME);
+      } catch (InterruptedException e) {}
+    } while ((timeoutMs == Long.MAX_VALUE) || System.currentTimeMillis() < start + timeoutMs);
+
+    if (errorMessage == null) {
+      LOG.error("Timed out waiting for expected replica map. Final exception was {}.",
                 finalException != null ? finalException.toString() : "none");
     } else {
       LOG.error(errorMessage);

@@ -1822,7 +1822,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
       .Create();
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_STR_CONTAINS(s.ToString(),
-                      "The requested number of tablets is over the permitted maximum (1)");
+                      "The requested number of tablets (2) is over the permitted maximum (1)");
 }
 
 TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {

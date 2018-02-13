@@ -151,6 +151,18 @@ public class LocatedTablet {
     public String toString() {
       return pb.toString();
     }
+
+    public String getMemberType() {
+      return pb.getMemberType().toString();
+    }
+
+    public String getTsUuid() {
+      return pb.getTsInfo().getPermanentUuid().toStringUtf8();
+    }
+
+    public String getTsPlacementUuid() {
+      return pb.getTsInfo().getPlacementUuid().toStringUtf8();
+    }
   }
 
 };

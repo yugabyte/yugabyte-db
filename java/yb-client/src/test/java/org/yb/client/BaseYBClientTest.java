@@ -66,6 +66,7 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
   protected static AsyncYBClient client;
   protected static YBClient syncClient;
   protected static Schema basicSchema = getBasicSchema();
+  protected static Schema hashKeySchema = getHashKeySchema();
   protected static Schema allTypesSchema = getSchemaWithAllTypes();
   protected static Schema redisSchema = getRedisSchema();
 
@@ -162,6 +163,20 @@ public class BaseYBClientTest extends BaseMiniClusterTest {
     columns.add(new ColumnSchema.ColumnSchemaBuilder("column4_b", Type.BOOL).build());
     return new Schema(columns);
   }
+
+  public static Schema getHashKeySchema() {
+    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(5);
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.INT32)
+        .key(true).hashKey(true).build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column1_i", Type.INT32).build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column2_i", Type.INT32).build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column3_s", Type.STRING)
+        .nullable(true)
+        .build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column4_b", Type.BOOL).build());
+    return new Schema(columns);
+  }
+
 
   static Callback<Object, Object> defaultErrorCB = arg -> {
     if (arg == null) return null;
