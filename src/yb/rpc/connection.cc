@@ -191,9 +191,6 @@ void Connection::Shutdown(const Status& status) {
   context_->Shutdown(status);
 
   io_.stop();
-
-  // Last chance to process timeouts before the timer is stopped.
-  HandleTimeout(timer_, 0);
   timer_.stop();
 
   is_epoll_registered_ = false;
