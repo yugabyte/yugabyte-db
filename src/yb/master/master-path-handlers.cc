@@ -442,7 +442,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
 
   // Get all the tables.
   vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables);
+  master_->catalog_manager()->GetAllTables(&tables, true /* includeOnlyRunningTables */);
 
   // Get the list of user tables.
   vector<scoped_refptr<TableInfo> > user_tables;
