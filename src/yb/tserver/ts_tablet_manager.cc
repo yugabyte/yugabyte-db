@@ -474,17 +474,12 @@ Status TSTabletManager::CreateNewTablet(
     RaftConfigPB config,
     scoped_refptr<TabletPeer> *tablet_peer) {
   CHECK_EQ(state(), MANAGER_RUNNING);
+  CHECK(IsRaftConfigMember(server_->instance_pb().permanent_uuid(), config));
 
   for (int i = 0; i < config.peers_size(); ++i) {
-    auto config_peer = config.mutable_peers(i);
-    if (config_peer->has_member_type()) {
-      return STATUS(IllegalState, Substitute("member_type shouldn't be set for config: { $0 }",
-                                             config.ShortDebugString()));
-    }
-    config_peer->set_member_type(RaftPeerPB::VOTER);
+    const auto& config_peer = config.peers(i);
+    CHECK(config_peer.has_member_type());
   }
-
-  CHECK(IsRaftConfigMember(server_->instance_pb().permanent_uuid(), config));
 
   // Set the initial opid_index for a RaftConfigPB to -1.
   config.set_opid_index(consensus::kInvalidOpIdIndex);

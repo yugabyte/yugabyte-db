@@ -176,6 +176,7 @@ RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
   RaftConfigPB config;
   RaftPeerPB* peer = config.add_peers();
   peer->set_permanent_uuid(server_->instance_pb().permanent_uuid());
+  peer->set_member_type(RaftPeerPB::VOTER);
   peer->mutable_last_known_addr()->set_host(bound_rpc_addr().address().to_string());
   peer->mutable_last_known_addr()->set_port(bound_rpc_addr().port());
   return config;

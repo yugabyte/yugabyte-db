@@ -116,7 +116,8 @@ int ClusterLoadBalancer::get_total_running_tablets() const { return state_->tota
 
 // Load balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
-    : options_(), random_(GetRandomSeed32()), is_enabled_(FLAGS_enable_load_balancing) {
+    : random_(GetRandomSeed32()),
+      is_enabled_(FLAGS_enable_load_balancing) {
   ResetState();
 
   catalog_manager_ = cm;
@@ -134,18 +135,24 @@ void set_remaining(int pending_tasks, int* remaining_tasks) {
 
 // Needed as we have a unique_ptr to the forward declared ClusterLoadState class.
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
-void ClusterLoadBalancer::RunLoadBalancer() {
+
+void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   if (!is_enabled_) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
+  }
+  std::unique_ptr<YB_EDITION_NS_PREFIX Options> options_unique_ptr;
+  if (options == nullptr) {
+    options_unique_ptr = std::make_unique<YB_EDITION_NS_PREFIX Options>();
+    options = options_unique_ptr.get();
   }
 
   // Lock the CatalogManager maps for the duration of the load balancer run.
   boost::shared_lock<CatalogManager::LockType> l(catalog_manager_->lock_);
 
-  int remaining_adds = options_.kMaxConcurrentAdds;
-  int remaining_removals = options_.kMaxConcurrentRemovals;
-  int remaining_leader_moves = options_.kMaxConcurrentLeaderMoves;
+  int remaining_adds = options->kMaxConcurrentAdds;
+  int remaining_removals = options->kMaxConcurrentRemovals;
+  int remaining_leader_moves = options->kMaxConcurrentLeaderMoves;
 
   // Loop over all tables to get the count of pending tasks.
   int pending_add_replica_tasks = 0;
@@ -177,6 +184,7 @@ void ClusterLoadBalancer::RunLoadBalancer() {
     }
 
     ResetState();
+    state_->options_ = options;
 
     // Prepare the in-memory structures.
     if (!AnalyzeTablets(table.first)) {
@@ -373,20 +381,20 @@ bool ClusterLoadBalancer::HandleAddIfWrongPlacement(
 
 bool ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
-  if (options_.kAllowLimitStartingTablets &&
-      get_total_starting_tablets() >= options_.kMaxTabletRemoteBootstraps) {
+  if (state_->options_->kAllowLimitStartingTablets &&
+      get_total_starting_tablets() >= state_->options_->kMaxTabletRemoteBootstraps) {
     LOG(INFO) << Substitute(
         "Cannot add replicas. Currently remote bootstrapping $0 tablets, "
         "when our max allowed is $1",
-        get_total_starting_tablets(), options_.kMaxTabletRemoteBootstraps);
+        get_total_starting_tablets(), state_->options_->kMaxTabletRemoteBootstraps);
     return false;
   }
 
-  if (options_.kAllowLimitOverReplicatedTablets &&
-      get_total_over_replication() >= options_.kMaxOverReplicatedTablets) {
+  if (state_->options_->kAllowLimitOverReplicatedTablets &&
+      get_total_over_replication() >= state_->options_->kMaxOverReplicatedTablets) {
     LOG(INFO) << Substitute(
         "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1",
-        get_total_over_replication(), options_.kMaxOverReplicatedTablets);
+        get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets);
     return false;
   }
 
@@ -460,7 +468,7 @@ bool ClusterLoadBalancer::GetLoadToMove(
       int load_variance = state_->GetLoad(high_load_uuid) - state_->GetLoad(low_load_uuid);
 
       // Check for state change or end conditions.
-      if (left == right || load_variance < options_.kMinLoadVarianceToBalance) {
+      if (left == right || load_variance < state_->options_->kMinLoadVarianceToBalance) {
         // Either both left and right are at the end, or our load_variance is already too small,
         // which means it will be too small for any TSs between left and right, so we can return.
         if (right == last_pos) {
@@ -493,7 +501,7 @@ bool ClusterLoadBalancer::SkipLeaderAsVictim(const TabletId& tablet_id) const {
   {
     auto l = tablet->table()->LockForRead();
     // If we have a custom per-table placement policy, use that.
-    if (l->data().pb.replication_info().has_live_replicas()) {
+    if (l->data().pb.has_replication_info()) {
       num_replicas = l->data().pb.replication_info().live_replicas().num_replicas();
     } else {
       // Otherwise, default to cluster policy.
@@ -598,7 +606,7 @@ bool ClusterLoadBalancer::GetLeaderToMove(
           state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
 
       // Check for state change or end conditions.
-      if (left == right || load_variance < options_.kMinLeaderLoadVarianceToBalance) {
+      if (left == right || load_variance < state_->options_->kMinLeaderLoadVarianceToBalance) {
         // Either both left and right are at the end, or our load_variance is already too small,
         // which means it will be too small for any TSs between left and right, so we can return.
         if (right == last_pos) {
@@ -800,8 +808,6 @@ const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
   auto l = catalog_manager_->cluster_config_->LockForRead();
-  // TODO: this is now hardcoded to just the live replicas; this will need to change when we add
-  // support for async replication.
   return l->data().pb.replication_info().live_replicas();
 }
 
@@ -847,7 +853,7 @@ void ClusterLoadBalancer::SendReplicaChanges(
     // always doing the right thing.
     CHECK_EQ(state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
              0);
-    catalog_manager_->SendAddServerRequest(tablet, consensus::RaftPeerPB::PRE_VOTER,
+    catalog_manager_->SendAddServerRequest(tablet, GetDefaultMemberType(),
         l->data().pb.committed_consensus_state(), ts_uuid);
   } else {
     // If the replica is also the leader, first step it down and then remove.
@@ -868,6 +874,10 @@ void ClusterLoadBalancer::SendReplicaChanges(
           tablet, l->data().pb.committed_consensus_state(), ts_uuid);
     }
   }
+}
+
+consensus::RaftPeerPB::MemberType ClusterLoadBalancer::GetDefaultMemberType() {
+  return consensus::RaftPeerPB::PRE_VOTER;
 }
 
 bool ClusterLoadBalancer::ConfigMemberInTransitionMode(const TabletId &tablet_id) const {

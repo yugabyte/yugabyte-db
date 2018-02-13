@@ -54,6 +54,8 @@ DEFINE_string(placement_region, "datacenter1",
               "The cloud region in which this instance is started.");
 DEFINE_string(placement_zone, "rack1",
               "The cloud availability zone in which this instance is started.");
+DEFINE_string(placement_uuid, "",
+              "The uuid of the tservers cluster/placement.");
 
 namespace yb {
 namespace server {
@@ -87,6 +89,7 @@ ServerBaseOptions::ServerBaseOptions()
       placement_cloud(FLAGS_placement_cloud),
       placement_region(FLAGS_placement_region),
       placement_zone(FLAGS_placement_zone),
+      placement_uuid(FLAGS_placement_uuid),
       connection_context_factory(&std::make_unique<rpc::YBConnectionContext>) {}
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
@@ -101,6 +104,7 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       placement_cloud(options.placement_cloud),
       placement_region(options.placement_region),
       placement_zone(options.placement_zone),
+      placement_uuid(options.placement_uuid),
       master_addresses_flag(options.master_addresses_flag),
       connection_context_factory(options.connection_context_factory) {
   SetMasterAddressesNoValidation(options.GetMasterAddresses());

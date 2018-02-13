@@ -117,6 +117,8 @@ message ServerRegistrationPB {
   repeated HostPortPB http_addresses = 2;
 
   optional CloudInfoPB cloud_info = 3;
+  // Placement uuid of the tserver's cluster.
+  optional bytes placement_uuid = 4;
 }
 
 message ServerEntryPB {

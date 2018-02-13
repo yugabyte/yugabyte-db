@@ -47,6 +47,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static final int NUM_TABLET_SERVERS = 3;
   protected static final int DEFAULT_NUM_MASTERS = 3;
   protected static final int STANDARD_DEVIATION_FACTOR = 2;
+  protected static final long DEFAULT_DEADLINE = 100000;
 
   // Number of masters that will be started for this test if we're starting
   // a cluster.
@@ -105,6 +106,32 @@ public class BaseMiniClusterTest extends BaseYBTest {
   }
 
   public void createMiniCluster(int numMasters, List<List<String>> tserverArgs)
+      throws Exception {
+    LOG.info("BaseMiniClusterTest.createMiniCluster is running");
+    int numTservers = tserverArgs.size();
+    miniCluster = new MiniYBClusterBuilder()
+                      .numMasters(numMasters)
+                      .numTservers(numTservers)
+                      .defaultTimeoutMs(DEFAULT_SLEEP)
+                      .testClassName(getClass().getName())
+                      .masterArgs(masterArgs)
+                      .tserverArgs(tserverArgs)
+                      .build();
+    masterAddresses = miniCluster.getMasterAddresses();
+    masterHostPorts = miniCluster.getMasterHostPorts();
+
+    LOG.info("Started cluster with {} masters and {} tservers. " +
+             "Waiting for all tablet servers to hearbeat to masters...",
+             numMasters, numTservers);
+    if (!miniCluster.waitForTabletServers(numTservers)) {
+      fail("Couldn't get " + numTservers + " tablet servers running, aborting.");
+    }
+
+    afterStartingMiniCluster();
+  }
+
+  public void createMiniCluster(int numMasters, List<String> masterArgs,
+                                List<List<String>> tserverArgs)
       throws Exception {
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
     int numTservers = tserverArgs.size();

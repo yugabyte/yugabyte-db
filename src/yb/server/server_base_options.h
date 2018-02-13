@@ -73,6 +73,8 @@ class ServerBaseOptions {
   std::string placement_region;
   std::string placement_zone;
 
+  std::string placement_uuid;
+
   std::string master_addresses_flag;
 
   rpc::ConnectionContextFactory connection_context_factory;

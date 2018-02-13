@@ -124,7 +124,8 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
 
 TEST(TestLoadBalancerCommunity, TestLoadBalancerAlgorithm) {
   const TableId table_id = CURRENT_TEST_NAME();
-  auto cb = make_shared<ClusterLoadBalancerMocked>();
+  auto options = make_shared<yb::master::Options>();
+  auto cb = make_shared<ClusterLoadBalancerMocked>(options.get());
   auto lb = make_shared<TestLoadBalancerCommunity>(cb.get(), table_id);
   lb->TestAlgorithm();
 }

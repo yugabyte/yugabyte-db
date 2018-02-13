@@ -134,11 +134,9 @@ ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
 
-if(YB_ENT_CURRENT_SOURCE_DIR)
-  # Set the test source file folder.
-  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-  ADD_YB_TEST(${CATALOG_MANAGER_EXTENSIONS_TEST1})
-endif()
+foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
+  ADD_YB_TEST(${ADDITIONAL_TEST})
+endforeach(ADDITIONAL_TEST)
 
 # Actual master executable
 add_executable(yb-master master_main.cc)

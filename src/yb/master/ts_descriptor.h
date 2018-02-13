@@ -72,8 +72,8 @@ typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
 class TSDescriptor {
  public:
   static CHECKED_STATUS RegisterNew(const NodeInstancePB& instance,
-                            const TSRegistrationPB& registration,
-                            gscoped_ptr<TSDescriptor>* desc);
+                                            const TSRegistrationPB& registration,
+                                            gscoped_ptr<TSDescriptor>* desc);
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
@@ -87,8 +87,8 @@ class TSDescriptor {
   MonoDelta TimeSinceHeartbeat() const;
 
   // Register this tablet server.
-  CHECKED_STATUS Register(const NodeInstancePB& instance,
-                  const TSRegistrationPB& registration);
+  virtual CHECKED_STATUS Register(const NodeInstancePB& instance,
+                                  const TSRegistrationPB& registration);
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
   int64_t latest_seqno() const;
@@ -209,6 +209,8 @@ class TSDescriptor {
     removed_ = true;
   }
 
+  explicit TSDescriptor(std::string perm_id);
+
  private:
   template <class TProxy>
   CHECKED_STATUS GetOrCreateProxy(const std::shared_ptr<rpc::Messenger>& messenger,
@@ -217,8 +219,6 @@ class TSDescriptor {
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
-
-  explicit TSDescriptor(std::string perm_id);
 
   // Uses DNS to resolve registered hosts to a single endpoint.
   CHECKED_STATUS ResolveEndpoint(Endpoint* addr) const;

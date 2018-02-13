@@ -1388,10 +1388,6 @@ TEST_F(MasterTest, TestGetTableSchema) {
     ASSERT_TRUE(resp.has_partition_schema());
     ASSERT_TRUE(resp.partition_schema().has_range_schema());
     ASSERT_EQ(resp.partition_schema().hash_schema(), PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-    // ReplicationInfoPB replication_info.
-    ASSERT_TRUE(resp.has_replication_info());
-    ASSERT_TRUE(resp.replication_info().has_live_replicas());
-    ASSERT_EQ(3, resp.replication_info().live_replicas().num_replicas());
     // TableIdentifierPB identifier.
     ASSERT_TRUE(resp.has_identifier());
     ASSERT_TRUE(resp.identifier().has_table_name());

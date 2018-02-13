@@ -96,6 +96,13 @@ int MajoritySize(int num_voters);
 RaftPeerPB::Role GetConsensusRole(const std::string& uuid,
                                   const ConsensusStatePB& cstate);
 
+// Determines the member type that the peer with uuid 'uuid' plays in the cluster.
+// If the peer uuid is not a voter in the configuration, this function will return
+// UNKNOWN_MEMBER_TYPE.
+RaftPeerPB::MemberType GetConsensusMemberType(const std::string& uuid,
+                                              const ConsensusStatePB& cstate);
+
+
 // Verifies that the provided configuration is well formed.
 // If type == COMMITTED_QUORUM, we enforce that opid_index is set.
 // If type == UNCOMMITTED_QUORUM, we enforce that opid_index is NOT set.

@@ -176,14 +176,15 @@ message PlacementBlockPB {
 message PlacementInfoPB {
   optional int32 num_replicas = 1;
   repeated PlacementBlockPB placement_blocks = 2;
+  optional bytes placement_uuid = 3;
 }
 
 // Higher level structure to keep track of all types of replicas configured. This will have, at a
 // minimum, the information about the replicas that are supposed to be active members of the raft
-// configs, but can also include extra information, such as async replicas.
+// configs, but can also include extra information, such as read only replicas.
 message ReplicationInfoPB {
   optional PlacementInfoPB live_replicas = 1;
-  optional PlacementInfoPB async_replicas = 2;
+  repeated PlacementInfoPB read_replicas = 2;
   repeated CloudInfoPB affinitized_leaders = 3;
 }
 
@@ -510,6 +511,7 @@ message TabletLocationsPB {
   message ReplicaPB {
     required TSInfoPB ts_info = 1;
     required consensus.RaftPeerPB.Role role = 2;
+    optional consensus.RaftPeerPB.MemberType member_type = 3;
   }
 
   required bytes tablet_id = 1;
@@ -542,6 +544,8 @@ message TSInfoPB {
   repeated HostPortPB rpc_addresses = 2;
 
   optional CloudInfoPB cloud_info = 3;
+
+  optional bytes placement_uuid = 4;
 }
 
 message GetTabletLocationsRequestPB {
