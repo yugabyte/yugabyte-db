@@ -12,12 +12,14 @@ namespace enterprise {
 
 class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
  public:
-  ClusterLoadBalancerMocked() : ClusterLoadBalancer(nullptr) {
+  explicit ClusterLoadBalancerMocked(Options* options) : ClusterLoadBalancer(nullptr) {
     const int kHighNumber = 100;
-    options_.kMaxConcurrentAdds = kHighNumber;
-    options_.kMaxConcurrentRemovals = kHighNumber;
-    options_.kAllowLimitStartingTablets = false;
-    options_.kAllowLimitOverReplicatedTablets = false;
+    options->kMaxConcurrentAdds = kHighNumber;
+    options->kMaxConcurrentRemovals = kHighNumber;
+    options->kAllowLimitStartingTablets = false;
+    options->kAllowLimitOverReplicatedTablets = false;
+    state_->options_ = options;
+    SetEntOptions(LIVE, "");
   }
 
   // Overrides for base class functionality to bypass calling CatalogManager.
@@ -37,7 +39,14 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
-  const PlacementInfoPB& GetClusterPlacementInfo() const override { return cluster_placement_; }
+  const PlacementInfoPB& GetLiveClusterPlacementInfo() const override {
+    return replication_info_.live_replicas();
+  }
+
+  const PlacementInfoPB& GetClusterPlacementInfo() const override {
+    return GetEntState()->GetEntOptions()->type == LIVE ?
+        replication_info_.live_replicas() : replication_info_.read_replicas(0);
+  }
 
   const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
 
@@ -62,15 +71,31 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     }
   }
 
+  void SetEntOptions(ReplicaType type, const string& placement_uuid) {
+    down_cast<Options*>(GetEntState()->options_)->type = type;
+    down_cast<Options*>(GetEntState()->options_)->placement_uuid = placement_uuid;
+  }
+
+  void ResetState() override {
+    yb::master::Options* options = nullptr;
+    if (state_) {
+      options = state_->options_;
+    }
+    state_ = std::make_unique<YB_EDITION_NS_PREFIX ClusterLoadState>();
+    state_->options_ = options;
+  }
+
   TSDescriptorVector ts_descs_;
   AffinitizedZonesSet affinitized_zones_;
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
-  PlacementInfoPB cluster_placement_;
+  ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
   vector<TabletId> pending_add_replica_tasks_;
   vector<TabletId> pending_remove_replica_tasks_;
   vector<TabletId> pending_stepdown_leader_tasks_;
+
+  friend class TestLoadBalancerEnterprise;
 };
 
 } // namespace enterprise
