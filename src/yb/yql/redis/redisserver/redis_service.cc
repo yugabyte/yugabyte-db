@@ -542,7 +542,6 @@ class TabletOperations {
     auto& opposite = data(!read);
     bool conflict = false;
     for (const auto& key : keys) {
-      LOG(INFO) << "Checking: " << key.ToBuffer();
       if (opposite.used_keys.count(key)) {
         conflict = true;
         break;
