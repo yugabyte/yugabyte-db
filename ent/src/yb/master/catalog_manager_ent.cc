@@ -2,6 +2,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/cluster_balance.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/sys_catalog.h"
@@ -796,6 +797,59 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   super::DumpState(out, on_disk_dump);
 
   // TODO: dump snapshots
+}
+
+Status CatalogManager::CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
+                                                 const TSDescriptorVector& all_ts_descs,
+                                                 const vector<Partition>& partitions,
+                                                 CreateTableResponsePB* resp) {
+  TSDescriptorVector ts_descs;
+  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
+  RETURN_NOT_OK(super::CheckValidPlacementInfo(replication_info.live_replicas(), ts_descs,
+                                               partitions, resp));
+  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
+    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
+    RETURN_NOT_OK(super::CheckValidPlacementInfo(replication_info.read_replicas(i), ts_descs,
+                                                 partitions, resp));
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::HandlePlacementUsingReplicationInfo(
+    const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& all_ts_descs,
+    consensus::RaftConfigPB* config) {
+  TSDescriptorVector ts_descs;
+  GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
+  RETURN_NOT_OK(super::HandlePlacementUsingPlacementInfo(replication_info.live_replicas(),
+                                                      ts_descs,
+                                                      consensus::RaftPeerPB::VOTER, config));
+  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
+    GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
+    RETURN_NOT_OK(super::HandlePlacementUsingPlacementInfo(replication_info.read_replicas(i),
+                                                           ts_descs,
+                                                           consensus::RaftPeerPB::OBSERVER,
+                                                           config));
+  }
+  return Status::OK();
+}
+
+void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
+                                                 const TSDescriptorVector& all_ts_descs,
+                                                 TSDescriptorVector* ts_descs) {
+  ts_descs->clear();
+  for (const auto& ts_desc : all_ts_descs) {
+    TSDescriptor* ts_desc_ent = down_cast<TSDescriptor*>(ts_desc.get());
+    if (placement_info.has_placement_uuid()) {
+      string placement_uuid = placement_info.placement_uuid();
+      if (ts_desc_ent->GetPlacementUuid() == placement_uuid) {
+        ts_descs->push_back(ts_desc);
+      }
+    } else if (ts_desc_ent->GetPlacementUuid() == "") {
+      // Since the placement info has no placement id, we know it is live, so we add this ts.
+      ts_descs->push_back(ts_desc);
+    }
+  }
 }
 
 } // namespace enterprise

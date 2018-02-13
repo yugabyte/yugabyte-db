@@ -12,7 +12,9 @@ namespace enterprise {
 class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
   typedef yb::master::ClusterLoadBalancer super;
  public:
-  explicit ClusterLoadBalancer(yb::master::CatalogManager* cm) : super(cm) {}
+  explicit ClusterLoadBalancer(yb::master::CatalogManager* cm)
+      : super(cm) {
+  }
 
   bool HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) override;
@@ -27,6 +29,33 @@ class ClusterLoadBalancer : public yb::master::ClusterLoadBalancer {
   // This is called before normal leader load balancing.
   bool HandleLeaderLoadIfNonAffinitized(
       TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
+
+  bool UpdateTabletInfo(TabletInfo* tablet) override;
+
+  // Runs the load balancer once for the live and all read only clusters, in order
+  // of the cluster config.
+  void RunLoadBalancer(yb::master::Options* options = nullptr) override;
+
+  // Override now gets appropriate live or read only cluster placement,
+  // depending on placement_uuid_.
+  const PlacementInfoPB& GetClusterPlacementInfo() const override;
+
+  // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
+  consensus::RaftPeerPB::MemberType GetDefaultMemberType() override;
+
+  // Returns a pointer to an enterprise ClusterLoadState from the state_ variable.
+  ClusterLoadState* GetEntState() const;
+
+  // Populates pb with the placement info in tablet's config at cluster placement_uuid_.
+  void PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);
+
+  // Returns the read only placement info from placement_uuid_.
+  const PlacementInfoPB& GetReadOnlyPlacementFromUuid(
+      const ReplicationInfoPB& replication_info) const;
+
+  virtual const PlacementInfoPB& GetLiveClusterPlacementInfo() const;
+
+
 };
 
 } // namespace enterprise
