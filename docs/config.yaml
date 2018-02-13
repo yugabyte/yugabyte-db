@@ -10,7 +10,7 @@ algolia:
   appID: 4LBMOWH4F9
 params:
   author: Team YugaByte
-  description: 'YugaByte DB, a transactional, high performance, planet-scale operational database'
+  description: 'YugaByte, a cloud-native DB for mission-critical applications'
   copyright: 'YugaByte, Inc.'
   block_indexing: false
   version: Beta
@@ -81,22 +81,22 @@ menu:
       parent: explore
       url: explore/fault-tolerance/
       weight: 220
-    - name: 3. ACID Transactions
-      parent: explore
-      url: explore/transactions/
-      weight: 230
-    - name: 4. Auto Sharding
+    - name: 3. Auto Sharding
       parent: explore
       url: explore/auto-sharding/
-      weight: 240
-    - name: 5. Auto Rebalancing
+      weight: 230
+    - name: 4. Auto Rebalancing
       parent: explore
       url: explore/auto-rebalancing/
-      weight: 250
-    - name: 6. Tunable Read Latency
+      weight: 240
+    - name: 5. Tunable Reads
       parent: explore
       url: explore/tunable-reads/
       weight: 260
+    - name: 6. Transactions
+      parent: explore
+      url: explore/transactions/
+      weight: 270
     - name: Develop
       identifier: develop
       url: develop/
@@ -170,11 +170,11 @@ menu:
       identifier: deploy-in-aws
       url: deploy/public-clouds/aws/
       weight: 630
-#    - name: GCP
-#      parent: public-clouds
-#      identifier: deploy-in-gcp
-#      url: deploy/public-clouds/gcp/
-#      weight: 640
+    - name: GCP
+      parent: public-clouds
+      identifier: deploy-in-gcp
+      url: deploy/public-clouds/gcp/
+      weight: 640
     - name: Enterprise Edition
       parent: deploy
       identifier: enterprise-edition
@@ -330,7 +330,7 @@ menu:
       parent: core-functions
       url: architecture/core-functions/high-availability/
       weight: 1040
-    - name: ACID Transactions
+    - name: Transactions
       parent: architecture
       identifier: transactions
       url: architecture/transactions/
@@ -371,18 +371,10 @@ menu:
       parent: comparisons
       url: comparisons/redis/
       weight: 1100
-    - name: Azure Cosmos DB
-      parent: comparisons
-      url: comparisons/azure-cosmos/
-      weight: 1110
-    - name: Google Cloud Spanner
-      parent: comparisons
-      url: comparisons/google-spanner/
-      weight: 1120
     - name: Apache HBase
       parent: comparisons
       url: comparisons/hbase/
-      weight: 1130
+      weight: 1110
     - name: API Reference
       identifier: API
       url: api/
