@@ -1407,7 +1407,7 @@ Status RedisReadOperation::ExecuteGet() {
       for (int i = 0; i < num_subkeys; ++i) {
         indices[i] = i;
       }
-      std::sort(indices.begin(), indices.end(), [req_kv](int i, int j) {
+      std::sort(indices.begin(), indices.end(), [&req_kv](int i, int j) {
             return req_kv.subkey(i).string_subkey() < req_kv.subkey(j).string_subkey();
           });
 
