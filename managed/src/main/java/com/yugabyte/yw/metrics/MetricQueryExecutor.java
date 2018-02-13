@@ -51,7 +51,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
    */
   private String getMetricsUrl() {
     String metricsUrl = appConfig.getString("yb.metrics.url");
-    if (metricsUrl == null) {
+    if (metricsUrl == null || metricsUrl.isEmpty()) {
       throw new RuntimeException("yb.metrics.url not set");
     }
     return metricsUrl;
