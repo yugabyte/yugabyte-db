@@ -107,8 +107,23 @@ class CatalogManager : public yb::master::CatalogManager {
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
+  CHECKED_STATUS CheckValidReplicationInfo(const ReplicationInfoPB& replication_info,
+                                           const TSDescriptorVector& all_ts_descs,
+                                           const vector<Partition>& partitions,
+                                           CreateTableResponsePB* resp) override;
+
+  CHECKED_STATUS HandlePlacementUsingReplicationInfo(const ReplicationInfoPB& replication_info,
+                                                     const TSDescriptorVector& all_ts_descs,
+                                                     consensus::RaftConfigPB* config) override;
+
+  // Populates ts_descs with all tservers belonging to a certain placement.
+  void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
+                                   const TSDescriptorVector& all_ts_descs,
+                                   TSDescriptorVector* ts_descs);
+
  private:
   friend class SnapshotLoader;
+  friend class ClusterLoadBalancer;
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
 
@@ -143,6 +158,10 @@ class CatalogManager : public yb::master::CatalogManager {
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
     return FindPtrOrNull(collection, key);
+  }
+
+  scoped_refptr<ClusterConfigInfo> GetClusterConfigInfo() const {
+    return cluster_config_;
   }
 
   // Snapshot map: snapshot-id -> SnapshotInfo

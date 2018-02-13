@@ -21,14 +21,39 @@ namespace master {
 namespace enterprise {
 
 typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
-                             tserver::TabletServerServiceProxy,
-                             tserver::TabletServerBackupServiceProxy,
-                             consensus::ConsensusServiceProxy> ProxyTuple;
+    tserver::TabletServerServiceProxy,
+    tserver::TabletServerBackupServiceProxy,
+    consensus::ConsensusServiceProxy> ProxyTuple;
 
 } // namespace enterprise
 } // namespace master
 } // namespace yb
 
 #include "../../../../src/yb/master/ts_descriptor.h"
+
+namespace yb {
+namespace master {
+namespace enterprise {
+
+class TSDescriptor : public yb::master::TSDescriptor {
+  typedef yb::master::TSDescriptor super;
+ public:
+  explicit TSDescriptor(const std::string& perm_id) : super(perm_id) {}
+  virtual ~TSDescriptor() {}
+
+  const string& GetPlacementUuid() const {
+    return placement_uuid_;
+  }
+
+  CHECKED_STATUS Register(const NodeInstancePB& instance,
+                          const TSRegistrationPB& registration) override;
+
+ private:
+  string placement_uuid_;
+};
+
+} // namespace enterprise
+} // namespace master
+} // namespace yb
 
 #endif // ENT_SRC_YB_MASTER_TS_DESCRIPTOR_H

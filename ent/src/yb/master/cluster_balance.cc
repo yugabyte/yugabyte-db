@@ -20,15 +20,14 @@ bool ClusterLoadBalancer::HandleLeaderMoves(
 }
 
 bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
-  GetAllAffinitizedZones(&state_->affinitized_zones_);
+  ClusterLoadState* ent_state = GetEntState();
+  GetAllAffinitizedZones(&ent_state->affinitized_zones_);
   return super::AnalyzeTablets(table_uuid);
 }
 
 void ClusterLoadBalancer::GetAllAffinitizedZones(AffinitizedZonesSet* affinitized_zones) const {
   SysClusterConfigEntryPB config;
-  if (!catalog_manager_->GetClusterConfig(&config).ok()) {
-    return;
-  }
+  CHECK_OK(catalog_manager_->GetClusterConfig(&config));
   const int num_zones = config.replication_info().affinitized_leaders_size();
   for (int i = 0; i < num_zones; i++) {
     CloudInfoPB ci = config.replication_info().affinitized_leaders(i);
@@ -46,14 +45,15 @@ bool ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tabl
   // If we go through all the node pairs or we see that the current non-affinitized
   // leader load is 0, we know that there is no match from non-affinitized to affinitized nodes
   // and we return false.
-  const int non_affinitized_last_pos = state_->sorted_non_affinitized_leader_load_.size() - 1;
+  ClusterLoadState* ent_state = GetEntState();
+  const int non_affinitized_last_pos = ent_state->sorted_non_affinitized_leader_load_.size() - 1;
 
   for (int non_affinitized_idx = non_affinitized_last_pos;
       non_affinitized_idx >= 0;
       non_affinitized_idx--) {
     for (const auto& affinitized_uuid : state_->sorted_leader_load_) {
       const TabletServerId& non_affinitized_uuid =
-          state_->sorted_non_affinitized_leader_load_[non_affinitized_idx];
+          ent_state->sorted_non_affinitized_leader_load_[non_affinitized_idx];
       if (state_->GetLeaderLoad(non_affinitized_uuid) == 0) {
         // All subsequent non-affinitized nodes have no leaders, no match found.
         return false;
@@ -73,6 +73,107 @@ bool ClusterLoadBalancer::HandleLeaderLoadIfNonAffinitized(TabletId* moving_tabl
     }
   }
   return false;
+}
+
+void ClusterLoadBalancer::PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb) {
+  auto l = tablet->table()->LockForRead();
+  const Options* options_ent = GetEntState()->GetEntOptions();
+  if (options_ent->type == LIVE &&
+      l->data().pb.has_replication_info() &&
+      l->data().pb.replication_info().has_live_replicas()) {
+    pb->CopyFrom(l->data().pb.replication_info().live_replicas());
+  } else if (options_ent->type == READ_ONLY &&
+      l->data().pb.has_replication_info() &&
+      !l->data().pb.replication_info().read_replicas().empty()) {
+    pb->CopyFrom(GetReadOnlyPlacementFromUuid(l->data().pb.replication_info()));
+  } else {
+    pb->CopyFrom(GetClusterPlacementInfo());
+  }
+}
+
+bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
+  const auto& table_id = tablet->table()->id();
+  // Set the placement information on a per-table basis, only once.
+  if (!state_->placement_by_table_.count(table_id)) {
+    PlacementInfoPB pb;
+    {
+      PopulatePlacementInfo(tablet, &pb);
+    }
+    state_->placement_by_table_[table_id] = std::move(pb);
+  }
+
+  return state_->UpdateTablet(tablet);
+}
+
+const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {
+  auto l = down_cast<CatalogManager*>(catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  return l->data().pb.replication_info().live_replicas();
+}
+
+
+const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
+  auto l = down_cast<CatalogManager*>(catalog_manager_)->GetClusterConfigInfo()->LockForRead();
+  if (GetEntState()->GetEntOptions()->type == LIVE) {
+    return l->data().pb.replication_info().live_replicas();
+  } else {
+    return GetReadOnlyPlacementFromUuid(l->data().pb.replication_info());
+  }
+}
+
+
+void ClusterLoadBalancer::RunLoadBalancer(yb::master::Options* options) {
+  SysClusterConfigEntryPB config;
+  CHECK_OK(catalog_manager_->GetClusterConfig(&config));
+
+  std::unique_ptr<YB_EDITION_NS_PREFIX Options> options_unique_ptr =
+      std::make_unique<YB_EDITION_NS_PREFIX Options>();
+  Options* options_ent = options_unique_ptr.get();
+  // First, we load balance the live cluster.
+  options_ent->type = LIVE;
+  if (config.replication_info().live_replicas().has_placement_uuid()) {
+    options_ent->placement_uuid = config.replication_info().live_replicas().placement_uuid();
+    options_ent->live_placement_uuid = options_ent->placement_uuid;
+  } else {
+    options_ent->placement_uuid = "";
+    options_ent->live_placement_uuid = "";
+  }
+  super::RunLoadBalancer(options_ent);
+
+  // Then, we balance all read-only clusters.
+  options_ent->type = READ_ONLY;
+  for (int i = 0; i < config.replication_info().read_replicas_size(); i++) {
+    const PlacementInfoPB& read_only_cluster = config.replication_info().read_replicas(i);
+    options_ent->placement_uuid = read_only_cluster.placement_uuid();
+    super::RunLoadBalancer(options_ent);
+  }
+}
+
+const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
+    const ReplicationInfoPB& replication_info) const {
+  const Options* options_ent = GetEntState()->GetEntOptions();
+  // We assume we have an read replicas field in our replication info.
+  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
+    const PlacementInfoPB& read_only_placement = replication_info.read_replicas(i);
+    if (read_only_placement.placement_uuid() == options_ent->placement_uuid) {
+      return read_only_placement;
+    }
+  }
+  // Should never get here.
+  LOG(ERROR) << "Could not find read only cluster with placement uuid: "
+             << options_ent->placement_uuid;
+  return replication_info.read_replicas(0);
+}
+
+consensus::RaftPeerPB::MemberType ClusterLoadBalancer::GetDefaultMemberType() {
+  if (GetEntState()->GetEntOptions()->type == LIVE) {
+    return consensus::RaftPeerPB::PRE_VOTER;
+  } else {
+    return consensus::RaftPeerPB::PRE_OBSERVER;
+  }
+}
+
+ClusterLoadState* ClusterLoadBalancer::GetEntState() const {
+  return down_cast<ClusterLoadState*>(state_.get());
 }
 
 } // namespace enterprise
