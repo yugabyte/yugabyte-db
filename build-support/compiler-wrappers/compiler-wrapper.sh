@@ -327,6 +327,7 @@ local_build_exit_handler() {
 compiler_args=( "$@" )
 
 YB_SRC="$YB_SRC_ROOT/src"
+handle_build_root_from_current_dir
 
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
@@ -359,6 +360,16 @@ while [[ $# -gt 0 ]]; do
     ;;
     c++-header)
       compiling_pch=true
+    ;;
+    -DYB_COMPILER_TYPE=*)
+      compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
+      if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
+        if [[ $YB_COMPILER_TYPE != $compiler_type_from_cmd_line ]]; then
+          fatal "Compiler command line has '$1', but YB_COMPILER_TYPE is '${YB_COMPILER_TYPE}'"
+        fi
+      else
+        export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
+      fi
     ;;
     *)
     ;;

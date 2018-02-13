@@ -21,20 +21,22 @@ fi
 
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 
-NON_GTEST_TESTS_RE=$( regex_from_list "
+NON_GTEST_TESTS=(
   merge-test
   non_gtest_failures-test
   c_test
   compact_on_deletion_collector_test
   db_sanity_test
   merge_test
-")
+)
 
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
-TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( regex_from_list "
+TEST_BINARIES_TO_RUN_AT_ONCE=(
   tests-rocksdb/thread_local_test
-")
+)
+
+make_regexes_from_lists NON_GTEST_TESTS TEST_BINARIES_TO_RUN_AT_ONCE
 
 VALID_TEST_BINARY_DIRS_PREFIX="tests"
 VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"

@@ -217,6 +217,7 @@ cmake_only=false
 use_shared_thirdparty=false
 run_python_tests=false
 cmake_extra_args=""
+predefined_build_root=""
 
 export YB_EXTRA_GTEST_FLAGS=""
 unset BUILD_ROOT

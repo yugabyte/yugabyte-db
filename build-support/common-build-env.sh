@@ -193,11 +193,12 @@ expect_some_args() {
 # Make a regular expression from a list of possible values. This function takes any non-zero number
 # of arguments, but each argument is further broken down into components separated by whitespace,
 # and those components are treated as separate possible values. Empty values are ignored.
-regex_from_list() {
+make_regex_from_list() {
+  local list_var_name=$1
   expect_some_args "$@"
   local regex=""
-  # no quotes around $@ on purpose: we want to break arguments containing spaces.
-  for item in $@; do
+  local list_var_name_full="$list_var_name[@]"
+  for item in "${!list_var_name_full}"; do
     if [[ -z $item ]]; then
       continue
     fi
@@ -206,7 +207,15 @@ regex_from_list() {
     fi
     regex+="$item"
   done
-  echo "^($regex)$"
+  eval "${list_var_name}_RE=\"^($regex)$\""
+  eval "${list_var_name}_RAW_RE=\"$regex\""
+}
+
+make_regexes_from_lists() {
+  local list_var_name
+  for list_var_name in "$@"; do
+    make_regex_from_list "$list_var_name"
+  done
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -223,7 +232,6 @@ readonly VALID_BUILD_TYPES=(
   tsan
   tsan_slow
 )
-readonly VALID_BUILD_TYPES_RE=$( regex_from_list "${VALID_BUILD_TYPES[@]}" )
 
 # Valid values of CMAKE_BUILD_TYPE passed to the top-level CMake build. This is the same as the
 # above with the exclusion of ASAN/TSAN.
@@ -234,10 +242,26 @@ readonly VALID_CMAKE_BUILD_TYPES=(
   profile_gen
   release
 )
-readonly VALID_CMAKE_BUILD_TYPES_RE=$( regex_from_list "${VALID_CMAKE_BUILD_TYPES[@]}" )
 
 readonly VALID_COMPILER_TYPES=( gcc clang zapcc )
-readonly VALID_COMPILER_TYPES_RE=$( regex_from_list "${VALID_COMPILER_TYPES[@]}" )
+
+readonly VALID_LINKING_TYPES=( static dynamic )
+
+readonly VALID_EDITIONS=( community enterprise )
+
+make_regexes_from_lists \
+  VALID_BUILD_TYPES \
+  VALID_CMAKE_BUILD_TYPES \
+  VALID_COMPILER_TYPES \
+  VALID_LINKING_TYPES \
+  VALID_EDITIONS
+
+readonly BUILD_ROOT_BASENAME_RE=\
+"^($VALID_BUILD_TYPES_RAW_RE)-\
+($VALID_COMPILER_TYPES_RAW_RE)-\
+($VALID_LINKING_TYPES_RAW_RE)-\
+($VALID_EDITIONS_RAW_RE)\
+(-ninja)?$"
 
 readonly YELLOW_COLOR="\033[0;33m"
 readonly RED_COLOR="\033[0;31m"
@@ -417,7 +441,7 @@ determine_linking_type() {
   if [[ -z "${YB_LINK:-}" ]]; then
     YB_LINK=dynamic
   fi
-  if [[ ! "${YB_LINK:-}" =~ ^(static|dynamic)$ ]]; then
+  if [[ ! "${YB_LINK:-}" =~ ^$VALID_LINKING_TYPES_RE$ ]]; then
     fatal "Expected YB_LINK to be set to \"static\" or \"dynamic\", got \"${YB_LINK:-}\""
   fi
   export YB_LINK
@@ -1108,22 +1132,6 @@ compute_sha256sum() {
   ) | awk '{print $1}'
 }
 
-get_aws_key_from_s3cfg() {
-expect_num_args 3 "$@"
-  local s3cfg_path=$1
-  local key_type=$2
-  local expected_length=$3
-
-  set +e
-  local key=$( cat "$s3cfg_path" | egrep "${key_type}_key = " | awk '{print $NF}' )
-  set -e
-  if [[ ${#key} != $expected_length ]]; then
-    fatal "Invalid AWS $key_type key length found in $S3CFG_PATH: ${#key}," \
-          "expected $expected_length (or key not found in the file)"
-  fi
-  get_aws_key_from_s3cfg_rv=$key
-}
-
 validate_thirdparty_dir() {
   ensure_directory_exists "$YB_THIRDPARTY_DIR/build-definitions"
   ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
@@ -1419,7 +1427,10 @@ find_shared_thirdparty_dir() {
       "Falling back to building our own third-party dependencies."
 }
 
+handle_predefined_build_root_quietly=false
+
 handle_predefined_build_root() {
+  expect_num_args 0 "$@"
   if [[ -z ${predefined_build_root:-} ]]; then
     return
   fi
@@ -1428,53 +1439,70 @@ handle_predefined_build_root() {
     predefined_build_root=$( cd "$predefined_build_root" && pwd )
   fi
 
+  if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
+        $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
+    # Sometimes $predefined_build_root contains symlinks on its path.
+    $YB_SRC_ROOT/build-support/validate_build_root.py \
+      "$predefined_build_root" \
+      "$YB_BUILD_INTERNAL_PARENT_DIR" \
+      "$YB_BUILD_EXTERNAL_PARENT_DIR"
+  fi
+
   local basename=${predefined_build_root##*/}
 
-  if [[ $predefined_build_root != $YB_BUILD_PARENT_DIR/* ]]; then
-    # Sometimes $predefined_build_root contains symlinks on its path.
-    predefined_build_root=$(
-      python -c "import os, sys; print os.path.realpath(sys.argv[1])" "$predefined_build_root"
-    )
-    if [[ $predefined_build_root != $YB_BUILD_PARENT_DIR/* ]]; then
-      fatal "Predefined build root '$predefined_build_root' does not start with" \
-            "\"$YB_BUILD_PARENT_DIR/\" ('$YB_BUILD_PARENT_DIR/')"
-    fi
+  if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
+    local _build_type=${BASH_REMATCH[1]}
+    local _compiler_type=${BASH_REMATCH[2]}
+    local _linking_type=${BASH_REMATCH[3]}
+    local _edition=${BASH_REMATCH[4]}
+    local _dash_ninja=${BASH_REMATCH[5]}
+  else
+    fatal "Could not parse build root directory name '$basename'" \
+          "(full path: '$predefined_build_root'). Expected to match '$BUILD_ROOT_BASENAME_RE'."
   fi
 
   if [[ -z ${build_type:-} ]]; then
-    build_type=${basename%%-*}
-    log "Setting build type to '$build_type' based on predefined build root ('$basename')"
+    if ! "$handle_predefined_build_root_quietly"; then
+      log "Setting build type to '$build_type' based on predefined build root ('$basename')"
+    fi
+    build_type=$_build_type
     validate_build_type "$build_type"
+  elif [[ $build_type != $_build_type ]]; then
+    fatal "Build type from the build root ('$_build_type' from '$predefined_build_root') does " \
+          "not match current build type ('$build_type')."
   fi
 
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-    if [[ $basename == *-clang-* ]]; then
-      YB_COMPILER_TYPE=clang
-    elif [[ $basename == *-gcc-* ]]; then
-      YB_COMPILER_TYPE=gcc
-    fi
-
-    if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
+    export YB_COMPILER_TYPE=$_compiler_type
+    if ! "$handle_predefined_build_root_quietly"; then
       log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
+  elif [[ $YB_COMPILER_TYPE != $_compiler_type ]]; then
+    fatal "Compiler type from the build root ('$_compiler_type' from '$predefined_build_root') " \
+          "does not match YB_COMPILER_TYPE ('$YB_COMPILER_TYPE')."
   fi
 
-  if [[ $basename == *-ninja && -z ${YB_USE_NINJA:-} ]]; then
-    log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
-    YB_USE_NINJA=1
+  export YB_USE_NINJA=${YB_USE_NINJA:-}
+  if [[ $_dash_ninja == "-ninja" && -z ${YB_USE_NINJA:-} ]]; then
+    if ! "$handle_predefined_build_root_quietly"; then
+      log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
+    fi
+    export YB_USE_NINJA=1
+  elif [[ $_dash_ninja == "-ninja" && $YB_USE_NINJA != "1" || \
+          $_dash_ninja != "-ninja" && $YB_USE_NINJA == "1" ]]; then
+    fatal "The use of ninja from build root ('$predefined_build_root') does not match that" \
+          "of the YB_USE_NINJA env var ('$YB_USE_NINJA')"
   fi
 
   if [[ -z ${YB_EDITION:-} ]]; then
-    # If BUILD_ROOT is already set, we want to take that into account.
-    if [[ $basename =~ -enterprise(-|$) ]]; then
-      YB_EDITION=enterprise
-    elif [[ $basename =~ -community(-|$) ]]; then
-      YB_EDITION=community
-    fi
-    if [[ -n ${YB_EDITION:-} ]]; then
+    export YB_EDITION=$_edition
+    if ! "$handle_predefined_build_root_quietly"; then
       log "Detected YB_EDITION: '$YB_EDITION' based on predefined build root ('$basename')"
     fi
+  elif [[ $YB_EDITION != $_edition ]]; then
+    fatal "Edition from the build root ('$_edition' from '$predefined_build_root') " \
+          "does not match YB_EDITION ('$YB_EDITION')."
   fi
 }
 
@@ -1517,6 +1545,25 @@ kill_stuck_processes() {
   done
 }
 
+handle_build_root_from_current_dir() {
+  if [[ ${YB_IS_THIRDPARTY_BUILD:-} == "1" ]]; then
+    return
+  fi
+  local handle_predefined_build_root_quietly=true
+  local d=$PWD
+  while [[ $d != "/" && $d != "" ]]; do
+    basename=${d##*/}
+    if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
+      predefined_build_root=$d
+      handle_predefined_build_root
+      return
+    fi
+    d=${d%/*}
+  done
+
+  fatal "Working directory of the compiler '$PWD' is not within a valid YugaByte build root."
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
@@ -1531,10 +1578,12 @@ if [[ $YB_SRC_ROOT == */ ]]; then
 fi
 
 # Parent directory for build directories of all build types.
+YB_BUILD_INTERNAL_PARENT_DIR=$YB_SRC_ROOT/build
+YB_BUILD_EXTERNAL_PARENT_DIR=${YB_SRC_ROOT}__build
 if [[ ${YB_USE_EXTERNAL_BUILD_ROOT:-} == "1" ]]; then
-  YB_BUILD_PARENT_DIR=${YB_SRC_ROOT}__build
+  YB_BUILD_PARENT_DIR=$YB_BUILD_EXTERNAL_PARENT_DIR
 else
-  YB_BUILD_PARENT_DIR=$YB_SRC_ROOT/build
+  YB_BUILD_PARENT_DIR=$YB_BUILD_INTERNAL_PARENT_DIR
 fi
 
 if [[ ! -d $YB_BUILD_SUPPORT_DIR ]]; then
