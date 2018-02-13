@@ -17,9 +17,10 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
   void TestAlgorithm() {
     TestLoadBalancerBase<ClusterLoadBalancerMocked>::TestAlgorithm();
 
-    shared_ptr<TSDescriptor> ts0 = SetupTS("0000", "a");
-    shared_ptr<TSDescriptor> ts1 = SetupTS("1111", "b");
-    shared_ptr<TSDescriptor> ts2 = SetupTS("2222", "c");
+    shared_ptr<TSDescriptor> ts0 =
+        SetupTSEnt("0000", "a", "" /* placement_uuid */);
+    shared_ptr<TSDescriptor> ts1 = SetupTSEnt("1111", "b", "");
+    shared_ptr<TSDescriptor> ts2 = SetupTSEnt("2222", "c", "");
 
     TSDescriptorVector ts_descs = {ts0, ts1, ts2};
 
@@ -34,6 +35,12 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     PrepareTestState(ts_descs);
     PrepareAffinitizedLeaders("bc");
     TestBalancingTwoAffinitizedLeaders();
+
+    PrepareTestState(ts_descs);
+    TestReadOnlyLoadBalancing();
+
+    PrepareTestState(ts_descs);
+    TestLeaderBalancingWithReadOnly();
   }
 
   void TestAlreadyBalancedAffinitizedLeaders() {
@@ -171,20 +178,166 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     LOG(INFO) << "Finishing TestBalancingTwoAffinitizedLeaders";
   }
 
+  void TestReadOnlyLoadBalancing() {
+    LOG(INFO) << "Starting TestBasicBalancingWithReadOnly";
+    // RF = 3 + 1, 4 TS, 3 AZ, 4 tablets.
+    // Normal setup.
+    // then create new node in az1 with all replicas.
+    SetupClusterConfigEnt(true /* multi_az = */, true /* read_only_clusters */);
+    ts_descs_.push_back(SetupTSEnt("3333", "a", read_only_placement_uuid /* placement_uuid */));
+    ts_descs_.push_back(SetupTSEnt("4444", "a", read_only_placement_uuid /* placement_uuid */));
+
+    // Adding all read_only replicas.
+    for (const auto tablet : tablets_) {
+      AddRunningReplicaEnt(tablet.get(), ts_descs_[3], false /* is live */);
+    }
+
+    LOG(INFO) << "The replica count for each read_only tserver is: ts3: 4, ts4: 0";
+    AnalyzeTablets();
+
+    string placeholder;
+
+    // First we make sure that no load balancing happens during the live iteration.
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+
+    ResetState();
+    cb_->SetEntOptions(READ_ONLY, read_only_placement_uuid);
+    AnalyzeTablets();
+    // Now load balance an read_only replica.
+    string expected_from_ts = ts_descs_[3]->permanent_uuid();
+    string expected_to_ts = ts_descs_[4]->permanent_uuid();
+    string expected_tablet_id = tablets_[0]->tablet_id();
+    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+    RemoveReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[3]);
+    AddRunningReplicaEnt(tablet_map_[expected_tablet_id].get(), ts_descs_[4], false);
+
+    ClearTabletsAddedForTest();
+
+    expected_from_ts = ts_descs_[3]->permanent_uuid();
+    expected_to_ts = ts_descs_[4]->permanent_uuid();
+    expected_tablet_id = tablets_[1]->tablet_id();
+    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+    RemoveReplica(tablet_map_[expected_tablet_id].get(), ts_descs_[3]);
+    AddRunningReplicaEnt(tablet_map_[expected_tablet_id].get(), ts_descs_[4], false);
+
+    // Then make sure there is no more balancing, since both ts3 and ts4 have 2 replicas each.
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+    LOG(INFO) << "Finishing TestBasicBalancingWithReadOnly";
+  }
+
+  void TestLeaderBalancingWithReadOnly() {
+    // RF = 3 + 1, 4 TS, 3 AZ, 4 tablets.
+    LOG(INFO) << "Starting TestLeaderBalancingWithReadOnly";
+    SetupClusterConfigEnt(true /* multi_az = */, true /* read_only_clusters */);
+    ts_descs_.push_back(SetupTSEnt("3333", "a", read_only_placement_uuid));
+
+    // Adding all read_only replicas.
+    for (const auto tablet : tablets_) {
+      AddRunningReplicaEnt(tablet.get(), ts_descs_[3], false /* is live */);
+    }
+
+    ResetState();
+    AnalyzeTablets();
+    string placeholder;
+    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+
+    cb_->SetEntOptions(READ_ONLY, read_only_placement_uuid);
+    ResetState();
+    AnalyzeTablets();
+    ASSERT_FALSE(HandleLeaderMoves(&placeholder, &placeholder, &placeholder));
+    LOG(INFO) << "Finishing TestLeaderBalancingWithReadOnly";
+  }
+
   void PrepareAffinitizedLeaders(const string& zones) {
     for (char zone : zones) {
       CloudInfoPB ci;
-      ci.set_placement_cloud("aws");
-      ci.set_placement_region("us-west-1");
+      ci.set_placement_cloud(default_cloud);
+      ci.set_placement_region(default_region);
       ci.set_placement_zone(string(1, zone));
       affinitized_zones_.insert(ci);
     }
   }
+
+  std::shared_ptr<TSDescriptor> SetupTSEnt(const string& uuid,
+                                           const string& az,
+                                           const string& placement_uuid) {
+    NodeInstancePB node;
+    node.set_permanent_uuid(uuid);
+
+    TSRegistrationPB reg;
+    // Set the placement uuid and is live fields for read_only clusters.
+    reg.mutable_common()->set_placement_uuid(placement_uuid);
+    // Fake host:port combo, with uuid as host, for ease of testing.
+    auto hp = reg.mutable_common()->add_rpc_addresses();
+    hp->set_host(uuid);
+    // Same cloud info as cluster config, with modifyable AZ.
+    auto ci = reg.mutable_common()->mutable_cloud_info();
+    ci->set_placement_cloud(default_cloud);
+    ci->set_placement_region(default_region);
+    ci->set_placement_zone(az);
+
+    std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
+    CHECK_OK(ts->Register(node, reg));
+
+    return ts;
+  }
+
+  void SetupClusterConfigEnt(bool multi_az, bool read_only_clusters) {
+    PlacementInfoPB* placement_info = replication_info_.mutable_live_replicas();
+    placement_info->set_num_replicas(kNumReplicas);
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
+    pb->mutable_cloud_info()->set_placement_zone("a");
+    pb->set_min_num_replicas(1);
+
+    if (multi_az) {
+      pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+      pb->mutable_cloud_info()->set_placement_region(default_region);
+      pb->mutable_cloud_info()->set_placement_zone("b");
+      pb->set_min_num_replicas(1);
+
+      pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+      pb->mutable_cloud_info()->set_placement_region(default_region);
+      pb->mutable_cloud_info()->set_placement_zone("c");
+      pb->set_min_num_replicas(1);
+    }
+
+    if (read_only_clusters) {
+      PlacementInfoPB* placement_info = replication_info_.add_read_replicas();
+      placement_info->set_num_replicas(1);
+      auto pb = placement_info->add_placement_blocks();
+      pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+      pb->mutable_cloud_info()->set_placement_region(default_region);
+      pb->mutable_cloud_info()->set_placement_zone("a");
+      placement_info->set_placement_uuid(read_only_placement_uuid);
+      pb->set_min_num_replicas(1);
+    }
+  }
+
+  void AddRunningReplicaEnt(TabletInfo* tablet, std::shared_ptr<yb::master::TSDescriptor> ts_desc,
+                            bool is_live) {
+    TabletInfo::ReplicaMap replicas;
+    tablet->GetReplicaLocations(&replicas);
+
+    TabletReplica replica;
+    consensus::RaftPeerPB::Role role = is_live ?
+        consensus::RaftPeerPB::FOLLOWER :
+        consensus::RaftPeerPB::LEARNER;
+    NewReplica(ts_desc.get(), tablet::TabletStatePB::RUNNING, role, &replica);
+    InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
+    tablet->SetReplicaLocations(replicas);
+  }
+
+  const string read_only_placement_uuid = "read_only";
 };
 
 TEST(TestLoadBalancerEnterprise, TestLoadBalancerAlgorithm) {
   const TableId table_id = CURRENT_TEST_NAME();
-  auto cb = make_shared<yb::master::enterprise::ClusterLoadBalancerMocked>();
+  auto options = make_shared<yb::master::enterprise::Options>();
+  auto cb = make_shared<yb::master::enterprise::ClusterLoadBalancerMocked>(options.get());
   auto lb = make_shared<TestLoadBalancerEnterprise>(cb.get(), table_id);
   lb->TestAlgorithm();
 }
