@@ -368,7 +368,7 @@ class Reactor {
   template<class F>
   CHECKED_STATUS RunOnReactorThread(const F& f);
 
-  void CleanWaitingConnections();
+  void ShutdownConnection(const ConnectionPtr& conn);
 
   // parent messenger
   std::shared_ptr<Messenger> messenger_;
@@ -413,8 +413,8 @@ class Reactor {
   // List of current connections coming into the server.
   ConnectionList server_conns_;
 
-  // List of connections that should be completed before we could stop this thread.
-  ConnectionList waiting_conns_;
+  // Set of connections that should be completed before we can stop this thread.
+  std::unordered_set<ConnectionPtr> waiting_conns_;
 
   // If a connection has been idle for this much time, it is torn down.
   CoarseMonoClock::Duration connection_keepalive_time_;

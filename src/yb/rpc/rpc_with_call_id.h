@@ -40,6 +40,8 @@ class ConnectionContextWithCallId : public ConnectionContext {
 
  private:
   virtual uint64_t ExtractCallId(InboundCall* call) = 0;
+  void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
+  void Shutdown(const Status& status) override;
 
   bool Idle() override;
 
@@ -50,6 +52,7 @@ class ConnectionContextWithCallId : public ConnectionContext {
   // being handled.
   std::unordered_map<uint64_t, InboundCall*> calls_being_handled_;
   std::atomic<uint64_t> processed_call_count_{0};
+  IdleListener idle_listener_;
 };
 
 } // namespace rpc

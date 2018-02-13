@@ -80,7 +80,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   void RespondSuccess(size_t idx,
                       const rpc::RpcMethodMetrics& metrics,
                       RedisResponsePB* resp);
-  void MarkForClose() {quit_.store(true, std::memory_order_release);}
+  void MarkForClose() { quit_.store(true, std::memory_order_release); }
 
  private:
   void Respond(size_t idx, bool is_success, RedisResponsePB* resp);

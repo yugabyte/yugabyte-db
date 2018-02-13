@@ -188,6 +188,8 @@ void Connection::Shutdown(const Status& status) {
   }
   outbound_data_being_processed_.clear();
 
+  context_->Shutdown(status);
+
   io_.stop();
 
   // Last chance to process timeouts before the timer is stopped.

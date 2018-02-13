@@ -55,6 +55,17 @@ void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> c
   }
 }
 
+void ConnectionContextWithQueue::Shutdown(const Status& status) {
+  // Could erase calls, that we did not start to process yet.
+  if (calls_queue_.size() > max_concurrent_calls_) {
+    calls_queue_.erase(calls_queue_.begin() + max_concurrent_calls_, calls_queue_.end());
+  }
+
+  for (auto& call : calls_queue_) {
+    call->Abort(status);
+  }
+}
+
 void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   ++processed_call_count_;
   auto reactor = call->connection()->reactor();
@@ -69,6 +80,9 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   if (calls_queue_.size() >= max_concurrent_calls_) {
     auto call_ptr = calls_queue_[max_concurrent_calls_ - 1];
     reactor->messenger()->QueueInboundCall(call_ptr);
+  }
+  if (Idle() && idle_listener_) {
+    idle_listener_();
   }
 }
 

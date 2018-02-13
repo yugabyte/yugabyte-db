@@ -100,8 +100,9 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
     LOG(WARNING) << "Connection torn down before " << ToString()
                  << " could send its response: " << status.ToString();
   }
-  if (call_processed_listener_)
+  if (call_processed_listener_) {
     call_processed_listener_(this);
+  }
 }
 
 const Endpoint& InboundCall::remote_address() const {

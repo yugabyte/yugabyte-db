@@ -16,6 +16,7 @@
 #include "yb/rpc/rpc_with_call_id.h"
 
 #include "yb/rpc/connection.h"
+#include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 namespace yb {
@@ -42,7 +43,12 @@ Status ConnectionContextWithCallId::Store(InboundCall* call) {
   return Status::OK();
 }
 
+void ConnectionContextWithCallId::Shutdown(const Status& status) {
+}
+
 void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
+  DCHECK(call->connection()->reactor()->IsCurrentThread());
+
   ++processed_call_count_;
   auto id = ExtractCallId(call);
   auto it = calls_being_handled_.find(id);
@@ -53,6 +59,9 @@ void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
     return;
   }
   calls_being_handled_.erase(it);
+  if (Idle() && idle_listener_) {
+    idle_listener_();
+  }
 }
 
 void ConnectionContextWithCallId::QueueResponse(const ConnectionPtr& conn,

@@ -38,8 +38,18 @@ class QueueableInboundCall : public InboundCall {
   bool has_reply() const {
     return has_reply_.load(std::memory_order_acquire);
   }
+
+  void Abort(const Status& status) {
+    aborted_.store(true, std::memory_order_release);
+  }
+
+  bool aborted() const {
+    return aborted_.load(std::memory_order_acquire);
+  }
+
  private:
   std::atomic<bool> has_reply_{false};
+  std::atomic<bool> aborted_{false};
 };
 
 class ConnectionContextWithQueue : public ConnectionContext {
@@ -63,9 +73,12 @@ class ConnectionContextWithQueue : public ConnectionContext {
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
   bool Idle() override;
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
+  void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
+  void Shutdown(const Status& status) override;
 
   void CallProcessed(InboundCall* call);
   void FlushOutboundQueue(Connection* conn);
+  void FlushOutboundQueueAborted(const Status& status);
 
   const size_t max_concurrent_calls_;
   size_t replies_being_sent_ = 0;
@@ -82,6 +95,7 @@ class ConnectionContextWithQueue : public ConnectionContext {
   // First call that does not have reply yet.
   std::atomic<QueueableInboundCall*> first_without_reply_{nullptr};
   std::atomic<uint64_t> processed_call_count_{0};
+  IdleListener idle_listener_;
 };
 
 } // namespace rpc
