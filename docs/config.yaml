@@ -160,19 +160,34 @@ menu:
       identifier: multi-node-cluster
       url: deploy/multi-node-cluster/
       weight: 610
+    - name: Public Clouds
+      parent: deploy
+      identifier: public-clouds
+      url: deploy/public-clouds/
+      weight: 620
+    - name: AWS
+      parent: public-clouds
+      identifier: deploy-in-aws
+      url: deploy/public-clouds/aws/
+      weight: 630
+#    - name: GCP
+#      parent: public-clouds
+#      identifier: deploy-in-gcp
+#      url: deploy/public-clouds/gcp/
+#      weight: 640
     - name: Enterprise Edition
       parent: deploy
       identifier: enterprise-edition
       url: deploy/enterprise-edition/
-      weight: 620
+      weight: 660
     - name: Install Admin Console
       parent: enterprise-edition
       url: deploy/enterprise-edition/admin-console/
-      weight: 630
+      weight: 670
     - name: Configure Cloud Providers
       parent: enterprise-edition
       url: deploy/enterprise-edition/configure-cloud-providers/
-      weight: 640
+      weight: 680
     - name: Manage
       identifier: manage
       url: manage/
