@@ -44,7 +44,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   const string snapshot_id = "00000000000000000000000000000000";
   const string rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
   const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
-  const string tablet_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
 
   TabletSnapshotOpRequestPB req;
   TabletSnapshotOpResponsePB resp;
@@ -65,7 +65,7 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
   req.set_tablet_id(kTabletId);
 
   ASSERT_TRUE(fs->Exists(rocksdb_dir));
-  ASSERT_FALSE(fs->Exists(top_snapshots_dir));
+  ASSERT_TRUE(fs->Exists(top_snapshots_dir));
 
   // Send the call.
   {
@@ -78,10 +78,10 @@ TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
 
   ASSERT_TRUE(fs->Exists(rocksdb_dir));
   ASSERT_TRUE(fs->Exists(top_snapshots_dir));
-  ASSERT_TRUE(fs->Exists(tablet_dir));
+  ASSERT_TRUE(fs->Exists(snapshot_dir));
   // Check existence of snapshot files:
-  ASSERT_TRUE(fs->Exists(JoinPathSegments(tablet_dir, "CURRENT")));
-  ASSERT_TRUE(fs->Exists(JoinPathSegments(tablet_dir, "MANIFEST-000001")));
+  ASSERT_TRUE(fs->Exists(JoinPathSegments(snapshot_dir, "CURRENT")));
+  ASSERT_TRUE(fs->Exists(JoinPathSegments(snapshot_dir, "MANIFEST-000001")));
 }
 
 TEST_F(BackupServiceTest, TestSnapshotData) {

@@ -57,7 +57,7 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFiles) {
   // Download tablet files.
   ASSERT_OK(client_->DownloadRocksDBFiles());
   ASSERT_TRUE(env_->FileExists(rocksdb_dir));
-  ASSERT_FALSE(env_->FileExists(top_snapshots_dir));
+  ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
 
   // Download snapshot files.
   ASSERT_OK(client_->DownloadSnapshotFiles());

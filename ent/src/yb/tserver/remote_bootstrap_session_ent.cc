@@ -23,28 +23,25 @@ Status RemoteBootstrapSession::InitSnapshotFiles() {
 
   // Add snapshot files to tablet superblock.
   const string top_snapshots_dir = Tablet::SnapshotsDirName(tablet_superblock_.rocksdb_dir());
-
   vector<string> snapshots;
+
   if (metadata->fs_manager()->env()->FileExists(top_snapshots_dir)) {
-    RETURN_NOT_OK_PREPEND(metadata->fs_manager()->ListDir(top_snapshots_dir, &snapshots),
-                          Substitute("Unable to list directory $0", top_snapshots_dir));
+    snapshots = VERIFY_RESULT_PREPEND(
+        metadata->fs_manager()->ListDir(top_snapshots_dir),
+        Substitute("Unable to list directory $0", top_snapshots_dir));
   }
 
-  for (const string& snapshot_id : snapshots) {
-    if (snapshot_id == "." || snapshot_id == "..") {
+  for (const string& dir_name : snapshots) {
+    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, dir_name);
+    if (Tablet::IsTempSnapshotDir(snapshot_dir)) {
       continue;
     }
 
-    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
-    vector<string> files;
-    RETURN_NOT_OK_PREPEND(metadata->fs_manager()->ListDir(snapshot_dir, &files),
-                          Substitute("Unable to list directory $0", snapshot_dir));
+    vector<string> files = VERIFY_RESULT_PREPEND(
+        metadata->fs_manager()->ListDir(snapshot_dir),
+        Substitute("Unable to list directory $0", snapshot_dir));
 
     for (const string& file : files) {
-      if (file == "." || file == "..") {
-        continue;
-      }
-
       const string path = JoinPathSegments(snapshot_dir, file);
       const uint64_t file_size = VERIFY_RESULT_PREPEND(
           metadata->fs_manager()->env()->GetFileSize(path),
@@ -52,7 +49,7 @@ Status RemoteBootstrapSession::InitSnapshotFiles() {
 
       auto snapshot_file_pb = tablet_superblock_.mutable_snapshot_files()->Add();
       auto& file_pb = *snapshot_file_pb->mutable_file();
-      snapshot_file_pb->set_snapshot_id(snapshot_id);
+      snapshot_file_pb->set_snapshot_id(dir_name);
       file_pb.set_name(file);
       file_pb.set_size_bytes(file_size);
       file_pb.set_inode(VERIFY_RESULT(metadata->fs_manager()->env()->GetFileINode(path)));
