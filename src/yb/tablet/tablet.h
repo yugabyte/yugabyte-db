@@ -426,6 +426,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const WriteOperationData& data);
 
   CHECKED_STATUS OpenKeyValueTablet();
+  virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
 

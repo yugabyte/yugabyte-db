@@ -284,6 +284,8 @@ class Result<bool> {
     return state_ != State::kFalse;
   }
 
+  bool operator*() const { return get(); }
+
  private:
   enum class State : uint8_t {
     kFalse,

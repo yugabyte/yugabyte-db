@@ -17,6 +17,7 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 
 namespace yb {
 namespace ql {

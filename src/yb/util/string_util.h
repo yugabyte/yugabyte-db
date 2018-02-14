@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -49,7 +50,19 @@ inline std::string VectorToString(const std::vector<T>& vec) {
   return os.str();
 }
 
-std::string RightPadToWidth(const string& s, int w);
+std::string RightPadToWidth(const std::string& s, int w);
+
+// Returns true if s ends with substring end, and s has at least one more character before
+// end. If left is a valid string pointer, it will contain s minus the end substring.
+// Example 1: s = "15ms", end = "ms", then this function will return true and set left to "15".
+// Example 2: s = "ms", end = "ms", this function will return false.
+bool StringEndsWith(
+    const std::string& s, const char* end, size_t end_len, std::string* left = nullptr);
+
+inline bool StringEndsWith(
+    const std::string& s, const std::string end, std::string* left = nullptr) {
+  return StringEndsWith(s, end.c_str(), end.length(), left);
+}
 
 }  // namespace yb
 

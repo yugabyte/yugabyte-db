@@ -288,8 +288,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
     VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
   }
 
-  bool has_blocks;
-  RETURN_NOT_OK(OpenTablet(&has_blocks));
+  bool has_blocks = VERIFY_RESULT(OpenTablet());
 
   bool needs_recovery;
   RETURN_NOT_OK(PrepareRecoveryDir(&needs_recovery));
@@ -339,7 +338,7 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
   return Status::OK();
 }
 
-Status TabletBootstrap::OpenTablet(bool* has_blocks) {
+Result<bool> TabletBootstrap::OpenTablet() {
   auto tablet = std::make_unique<TabletClass>(
       meta_, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_, tablet_options_,
       data_.transaction_participant_context, data_.transaction_coordinator_context);
@@ -353,9 +352,8 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
   // operation like RestoreSnapshot or Truncate. However, those operations can't really be happening
   // concurrently as we haven't opened the tablet yet.
   RETURN_NOT_OK(has_ss_tables);
-  *has_blocks = has_ss_tables.get();
   tablet_ = std::move(tablet);
-  return Status::OK();
+  return has_ss_tables.get();
 }
 
 Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {

@@ -559,6 +559,18 @@ Status RemoteBootstrapClient::DownloadFile(
   return Status::OK();
 }
 
+Status RemoteBootstrapClient::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
+  // Create the directory table-uuid first.
+  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissing(DirName(db_dir)),
+                        Substitute("Failed to create RocksDB table directory $0",
+                                   DirName(db_dir)));
+
+  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissing(db_dir),
+                        Substitute("Failed to create RocksDB tablet directory $0",
+                                   db_dir));
+  return Status::OK();
+}
+
 Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   gscoped_ptr<TabletSuperBlockPB> new_sb(new TabletSuperBlockPB());
   new_sb->CopyFrom(*superblock_);
@@ -566,14 +578,7 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
   // Replace rocksdb_dir with our rocksdb_dir
   new_sb->set_rocksdb_dir(rocksdb_dir);
 
-  // Create the directory table-uuid first.
-  RETURN_NOT_OK_PREPEND(meta_->fs_manager()->CreateDirIfMissing(DirName(rocksdb_dir)),
-                        Substitute("Failed to create RocksDB table directory $0",
-                                   DirName(rocksdb_dir)));
-
-  RETURN_NOT_OK_PREPEND(meta_->fs_manager()->CreateDirIfMissing(rocksdb_dir),
-                        Substitute("Failed to create RocksDB tablet directory $0",
-                                   rocksdb_dir));
+  RETURN_NOT_OK(CreateTabletDirectories(rocksdb_dir, meta_->fs_manager()));
 
   DataIdPB data_id;
   data_id.set_type(DataIdPB::ROCKSDB_FILE);

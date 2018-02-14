@@ -71,8 +71,8 @@ class TabletBootstrap {
 
  protected:
   // Opens the tablet.
-  // Sets '*has_blocks' to true if there was any data on disk for this tablet.
-  CHECKED_STATUS OpenTablet(bool* has_blocks);
+  // Sets result to true if there was any data on disk for this tablet.
+  virtual Result<bool> OpenTablet();
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir
   // and sets 'needs_recovery' to true, meaning that the previous recovery attempt should be retried

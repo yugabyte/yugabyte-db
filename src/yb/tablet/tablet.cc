@@ -362,6 +362,20 @@ Status Tablet::Open() {
   return Status::OK();
 }
 
+Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
+  LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
+
+  // Create the directory table-uuid first.
+  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(DirName(db_dir)),
+                        Substitute("Failed to create RocksDB table directory $0",
+                                   DirName(db_dir)));
+
+  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(db_dir),
+                        Substitute("Failed to create RocksDB tablet directory $0",
+                                   db_dir));
+  return Status::OK();
+}
+
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, tablet_options_);
@@ -384,16 +398,7 @@ Status Tablet::OpenKeyValueTablet() {
       std::make_shared<MemTableFlushFilterFactoryType>(mem_table_flush_filter_factory);
 
   const string db_dir = metadata()->rocksdb_dir();
-  LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
-
-  // Create the directory table-uuid first.
-  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(DirName(db_dir)),
-                        Substitute("Failed to create RocksDB table directory $0",
-                                   DirName(db_dir)));
-
-  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(db_dir),
-                        Substitute("Failed to create RocksDB tablet directory $0",
-                                   db_dir));
+  RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
 
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;
