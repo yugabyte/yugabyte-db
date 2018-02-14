@@ -6,6 +6,9 @@
 - Each key-value is around 64 bytes combined.
 - These tests were done on GCP (Google Cloud).
 
+- Software version: 0.9.5 rc (release candidate)
+- Compiled on: Feb 13, 2018
+
 # Performance Summary
 
 ## Workload CassandraKeyValue with 256 writers and 0 readers: 
@@ -81,8 +84,10 @@
 | Cluster node CPU, user, %      | 61.93     | 0.90      | 68.50     | 13.77     | 66.90     | 0.92      | 25.30     | 49.52     | 67.80     | 68.10     | 68.48     |
 | Cluster node CPU, system, %    | 7.58      | 0.60      | 20.90     | 3.79      | 6.50      | 0.61      | 5.03      | 6.40      | 11.36     | 20.20     | 20.89     |
 +--------------------------------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+
+```
 
 ## Workload RedisKeyValue with 256 writers and 0 readers: 
+```
 +--------------------------------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+-----------+
 | Metric                         | mean      | min       | max       | std.dev   | median    | 1%        | 5%        | 10%       | 90%       | 95%       | 99%       |
 | Read throughput, ops/sec       | 0         | 0         | 0         | 0         | 0         | 0         | 0         | 0         | 0         | 0         | 0         |
