@@ -281,22 +281,66 @@ endfunction()
 
 set(YB_NUM_TESTS "0" CACHE INTERNAL "Number of tests" FORCE)
 set(YB_NUM_INCLUDED_TESTS "0" CACHE INTERNAL "Number of included tests" FORCE)
+set(YB_NUM_EXECUTABLES "0" CACHE INTERNAL "Number of executables" FORCE)
+set(YB_NUM_INCLUDED_EXECUTABLES "0" CACHE INTERNAL "Number of included executables" FORCE)
 set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
+
+# This is used to let the add_executable wrapper know if we're adding a test.
+set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
 
 # Wrap add_dependencies so that we can capture dependencies for external processing. We use this
 # when determining what tests to run for a particular set of changes.
 function(add_dependencies target)
   # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
   # of CMake can't parse their own cache in case some values have newlines.
-  if ("${YB_TEST_FILTER_RE}" STREQUAL "" OR TARGET "${target}")
+  if (TARGET "${target}" OR NOT ${YB_FILTERING_TARGETS})
     set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
     _add_dependencies(${target} ${ARGN})
   endif()
 endfunction()
 
 function(target_link_libraries target)
-  if ("${YB_TEST_FILTER_RE}" STREQUAL "" OR TARGET "${target}")
+  if (TARGET "${target}" OR NOT ${YB_FILTERING_TARGETS})
     _target_link_libraries(${target} ${ARGN})
+  endif()
+endfunction()
+
+# We override add_executable to ensure that whenever any executable is built, the latest symlink is
+# re-created, and also to filter the set of executables if -DYB_EXECUTABLE_FILTER_RE is specified.
+# This filtering is useful to keep CLion responsive when only working on a subset of code including
+# e.g. yb-master / yb-tserver and some tests.
+function(add_executable name)
+  if (NOT ${YB_ADDING_TEST_EXECUTABLE})
+    # Count non-test executables.
+    math(EXPR NEW_NUM_EXECUTABLES "${YB_NUM_EXECUTABLES} + 1")
+    set(YB_NUM_EXECUTABLES "${NEW_NUM_EXECUTABLES}" CACHE INTERNAL "Number of executables" FORCE)
+  endif()
+
+  if (NOT "${YB_EXECUTABLE_FILTER_RE}" STREQUAL "" AND
+      NOT ${YB_ADDING_TEST_EXECUTABLE} AND
+      NOT "${name}" STREQUAL "bfql_codegen" AND
+      NOT "${name}" STREQUAL "run-with-timeout" AND
+      NOT "${name}" STREQUAL "protoc-gen-insertions" AND
+      NOT "${name}" STREQUAL "protoc-gen-yrpc")
+    # Only do this filtering for non-test executables. Tests can be filtered separately using
+    # YB_TEST_FILTER_RE.
+    string(REGEX MATCH "${YB_EXECUTABLE_FILTER_RE}" EXECUTABLE_FILTER_MATCH_RESULT "${name}")
+    if ("${EXECUTABLE_FILTER_MATCH_RESULT}" STREQUAL "")
+      return()
+    endif()
+    message("Executable matched the filter: ${name}")
+  endif()
+
+  if (NOT ${YB_ADDING_TEST_EXECUTABLE})
+    math(EXPR NEW_NUM_INCLUDED_EXECUTABLES "${YB_NUM_INCLUDED_EXECUTABLES} + 1")
+    set(YB_NUM_INCLUDED_EXECUTABLES "${NEW_NUM_INCLUDED_EXECUTABLES}" CACHE INTERNAL
+        "Number of included executables" FORCE)
+  endif()
+
+  # Call through to the original add_executable function.
+  _add_executable("${name}" ${ARGN})
+  if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
+    add_dependencies(${name} latest_symlink)
   endif()
 endfunction()
 
@@ -313,6 +357,11 @@ if (NOT "$ENV{YB_CMAKE_LINK_DEPENDS_NO_SHARED}" STREQUAL "")
   set(CMAKE_LINK_DEPENDS_NO_SHARED $ENV{YB_CMAKE_LINK_DEPENDS_NO_SHARED})
 else()
   set(CMAKE_LINK_DEPENDS_NO_SHARED 1)
+endif()
+
+set(YB_FILTERING_TARGETS FALSE)
+if (NOT "${YB_TEST_FILTER_RE}" STREQUAL "" OR NOT "${YB_EXECUTABLE_FILTER_RE}" STREQUAL "")
+  set(YB_FILTERING_TARGETS TRUE)
 endif()
 
 set(YB_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -358,13 +407,7 @@ CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 # build/<second build directory>
 # ...
 set(LATEST_BUILD_SYMLINK_PATH "${YB_BUILD_ROOT_PARENT}/latest")
-if (("${YB_BUILD_ROOT_PARENT}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build$" OR
-     "${YB_BUILD_ROOT_PARENT}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}__build$") AND
-    # We disable the "latest" symlink on Jenkins, because there it could lead to duplicate test
-    # results. Jenkins JUnit plugin would pick up JUnit-compatible test result XML files from both
-    # the real build directory, e.g. build/release-gcc-dynamic-enterprise, and from the
-    # build/latest directory pointing to the same directory.
-    NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
+if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
   message("LATEST SYMLINK PATH: ${LATEST_BUILD_SYMLINK_PATH}")
   if ("${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${LATEST_BUILD_SYMLINK_PATH}")
     message(FATAL_ERROR "Should not run cmake inside the build/latest symlink. "
@@ -381,15 +424,6 @@ if (("${YB_BUILD_ROOT_PARENT}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build$" OR
   add_custom_target(latest_symlink ALL
     ln ${MORE_ARGS} -sf "${CMAKE_CURRENT_BINARY_DIR}" "${LATEST_BUILD_SYMLINK_PATH}"
     COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
-
-  # 'ALL' above doesn't actually add 'latest_symlink' as a dependency to all targets. So, we
-  # override add_executable to ensure that whenever any executable is built, the symlink is
-  # re-created.
-  function(add_executable name)
-    # Call through to the original add_executable function.
-    _add_executable(${name} ${ARGN})
-    add_dependencies(${name} latest_symlink)
-  endfunction()
 endif()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
@@ -1107,7 +1141,13 @@ function(ADD_YB_TEST REL_TEST_NAME)
   # We need the ${CMAKE_CURRENT_LIST_DIR} prefix, because in case of including a CMakeLists.txt
   # file from a different directory, the test's source might not be in
   # ${CMAKE_CURRENT_SOURCE_DIR}.
-  add_executable(${TEST_BINARY_NAME} "${CMAKE_CURRENT_LIST_DIR}/${REL_TEST_NAME}.cc")
+
+  set(YB_ADDING_TEST_EXECUTABLE "TRUE" CACHE INTERNAL "" FORCE)
+
+  add_executable("${TEST_BINARY_NAME}" "${CMAKE_CURRENT_LIST_DIR}/${REL_TEST_NAME}.cc")
+
+  set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
+
   set_target_properties(${TEST_BINARY_NAME}
     PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${TEST_BINARY_DIR}")
@@ -1593,4 +1633,9 @@ file(WRITE "${YB_BUILD_ROOT}/yb_cmake_deps.txt" "${YB_ALL_DEPS_FINAL}")
 math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "
         "included: ${YB_NUM_INCLUDED_TESTS}, "
-        "skipped: ${YB_NUM_EXCLUDED_TESTS}")
+        "excluded: ${YB_NUM_EXCLUDED_TESTS}")
+
+math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED_EXECUTABLES}")
+message("Total non-test executables: ${YB_NUM_EXECUTABLES}, "
+        "included: ${YB_NUM_INCLUDED_EXECUTABLES}, "
+        "excluded: ${YB_NUM_EXCLUDED_EXECUTABLES}")
