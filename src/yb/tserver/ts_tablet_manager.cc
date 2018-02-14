@@ -155,14 +155,14 @@ DEFINE_int32(db_block_cache_size_percentage, 50,
              "Default percentage of total available memory to use as block cache size, if not "
              "asking for a raw number, through FLAGS_db_block_cache_size_bytes.");
 
-DEFINE_int32(read_pool_max_threads, std::numeric_limits<int32_t>::max(),
+DEFINE_int32(read_pool_max_threads, 128,
              "The maximum number of threads allowed for read_pool_. This pool is used "
-                 "to run multiple read operations, that are part of the same tablet rpc, "
-                 "in parallel.");
-DEFINE_int32(read_pool_max_queue_size, std::numeric_limits<int32_t>::max(),
+             "to run multiple read operations, that are part of the same tablet rpc, "
+             "in parallel.");
+DEFINE_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
-                 "is used to run multiple read operations, that are part of the same tablet rpc, "
-                 "in parallel.");
+             "is used to run multiple read operations, that are part of the same tablet rpc, "
+             "in parallel.");
 
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");

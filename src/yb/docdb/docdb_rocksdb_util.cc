@@ -27,7 +27,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
 
-using namespace yb::size_literals;
+using namespace yb::size_literals;  // NOLINT.
 
 DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
@@ -72,7 +72,7 @@ DEFINE_int64(db_write_buffer_size, -1,
 
 DEFINE_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
-DEFINE_int32(max_nexts_to_avoid_seek, 8,
+DEFINE_int32(max_nexts_to_avoid_seek, 1,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
 // TODO(mli) - switch to true once it is safe (necessary installations are upgraded to a build which
