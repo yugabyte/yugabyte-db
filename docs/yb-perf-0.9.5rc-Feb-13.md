@@ -4,8 +4,9 @@
 - CPU type: Intel(R) Xeon(R) CPU @ 2.30GHz
 - specs: {"memory" : "60GB", "vCPUs" : "16", "numDisks" : "2", "diskSize" : "375GB", "diskType" : "SSD"}
 - Each key-value is around 64 bytes combined.
+- These tests were done on GCP (Google Cloud).
 
-# Performance Summary:
+# Performance Summary
 
 ## Workload CassandraKeyValue with 256 writers and 0 readers: 
 ```
