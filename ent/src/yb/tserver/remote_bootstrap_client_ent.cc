@@ -30,6 +30,17 @@ Status RemoteBootstrapClient::Finish() {
   return super::Finish();
 }
 
+Status RemoteBootstrapClient::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
+  RETURN_NOT_OK(super::CreateTabletDirectories(db_dir, fs));
+
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(db_dir);
+  // Create the snapshots directory.
+  RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(top_snapshots_dir),
+                        Substitute("Failed to create & sync top snapshots directory $0",
+                                   top_snapshots_dir));
+  return Status::OK();
+}
+
 Status RemoteBootstrapClient::DownloadSnapshotFiles() {
   CHECK(started_);
   CHECK(downloaded_rocksdb_files_);
