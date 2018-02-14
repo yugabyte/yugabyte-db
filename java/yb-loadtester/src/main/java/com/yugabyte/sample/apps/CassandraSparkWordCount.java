@@ -125,7 +125,7 @@ public class CassandraSparkWordCount extends AppBase {
     // Setup the local spark master, with the desired parallelism.
     SparkConf conf = new SparkConf().setAppName("yb.wordcount")
         .setMaster("local[" + appConfig.numWriterThreads + "]")
-        .set("spark.cassandra.connection.host", getRandomNode().getHost());
+        .set("spark.cassandra.connection.host", getRandomContactPoint().getHost());
 
     // Create the Java Spark context object.
     JavaSparkContext sc = new JavaSparkContext(conf);
