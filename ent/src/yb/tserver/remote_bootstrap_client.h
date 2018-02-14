@@ -24,6 +24,9 @@ class RemoteBootstrapClient : public yb::tserver::RemoteBootstrapClient {
 
   CHECKED_STATUS Finish() override;
 
+ protected:
+  CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs) override;
+
  private:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFiles);
 

@@ -284,14 +284,14 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         FsManager* const fs = tablet_peer->tablet_metadata()->fs_manager();
         const auto rocksdb_dir = tablet_peer->tablet_metadata()->rocksdb_dir();
         const auto top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
-        const auto tablet_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
+        const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
 
-        LOG(INFO) << "Checking tablet snapshot folder: " << tablet_dir;
+        LOG(INFO) << "Checking tablet snapshot folder: " << snapshot_dir;
         ASSERT_TRUE(fs->Exists(rocksdb_dir));
         ASSERT_TRUE(fs->Exists(top_snapshots_dir));
-        ASSERT_TRUE(fs->Exists(tablet_dir));
+        ASSERT_TRUE(fs->Exists(snapshot_dir));
         // Check existence of snapshot files:
-        auto list = ASSERT_RESULT(fs->ListDir(tablet_dir));
+        auto list = ASSERT_RESULT(fs->ListDir(snapshot_dir));
         ASSERT_TRUE(std::find(list.begin(), list.end(), "CURRENT") != list.end());
         bool has_manifest = false;
         for (const auto& file : list) {
@@ -300,7 +300,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
             has_manifest = true;
           }
           if (file.find(".sst") != std::string::npos) {
-            auto snapshot_path = JoinPathSegments(tablet_dir, file);
+            auto snapshot_path = JoinPathSegments(snapshot_dir, file);
             auto rocksdb_path = JoinPathSegments(rocksdb_dir, file);
             auto snapshot_inode = ASSERT_RESULT(fs->env()->GetFileINode(snapshot_path));
             auto rocksdb_inode = ASSERT_RESULT(fs->env()->GetFileINode(rocksdb_path));
@@ -351,7 +351,7 @@ TEST_F(SnapshotTest, CreateSnapshot) {
       const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
 
       ASSERT_TRUE(fs->Exists(rocksdb_dir));
-      ASSERT_FALSE(fs->Exists(top_snapshots_dir));
+      ASSERT_TRUE(fs->Exists(top_snapshots_dir));
     }
   }
 

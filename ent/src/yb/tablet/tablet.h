@@ -5,6 +5,8 @@
 
 #include "../../../../src/yb/tablet/tablet.h"
 
+#include "yb/util/string_util.h"
+
 namespace yb {
 namespace tablet {
 
@@ -12,7 +14,8 @@ class SnapshotOperationState;
 
 namespace enterprise {
 
-static const char* const kSnapshotsDirSuffix = ".snapshots";
+static const std::string kSnapshotsDirSuffix = ".snapshots";
+static const std::string kTempSnapshotDirSuffix = ".tmp";
 
 class Tablet : public yb::tablet::Tablet {
   typedef yb::tablet::Tablet super;
@@ -47,6 +50,13 @@ class Tablet : public yb::tablet::Tablet {
   static std::string SnapshotsDirName(const std::string& rocksdb_dir) {
     return rocksdb_dir + kSnapshotsDirSuffix;
   }
+
+  static bool IsTempSnapshotDir(const std::string& dir) {
+    return StringEndsWith(dir, kTempSnapshotDirSuffix);
+  }
+
+ protected:
+  CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs) override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Tablet);
