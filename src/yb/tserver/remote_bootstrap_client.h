@@ -177,6 +177,8 @@ class RemoteBootstrapClient {
   template<class Appendable>
   CHECKED_STATUS DownloadFile(const DataIdPB& data_id, Appendable* appendable);
 
+  virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
+
   CHECKED_STATUS DownloadRocksDBFiles();
 
   CHECKED_STATUS VerifyData(uint64_t offset, const DataChunkPB& resp);

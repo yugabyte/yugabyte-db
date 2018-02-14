@@ -45,4 +45,19 @@ std::string RightPadToWidth(const string& s, int w) {
   return s + string(padding, ' ');
 }
 
+bool StringEndsWith(const string& s, const char* end, size_t end_len, string* left) {
+  // For our purpose, s should always have at least one character before the string we are looking
+  // for.
+  if (s.length() <= end_len) {
+    return false;
+  }
+  if (s.find(end, s.length() - end_len) != string::npos) {
+    if (left != nullptr) {
+      *left = s.substr(0, s.length() - end_len);
+    }
+    return true;
+  }
+  return false;
+}
+
 }  // namespace yb

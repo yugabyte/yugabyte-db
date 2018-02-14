@@ -87,12 +87,6 @@ class PTProperty : public TreeNode {
                                                const string& property_name,
                                                string *val);
 
-  // Returns true if s ends with substring end, and s has at least one more character before
-  // end. If left is a valid string pointer, it will contain s minus the end substring.
-  // Example 1: s = "15ms", end = "ms", then this function will return true and set left to "15".
-  // Example 2: s = "ms", end = "ms", this function will return false.
-  static bool StringEndsWith(const string& s, const char *end, size_t end_len, string *left);
-
  protected:
   // Parts of an expression 'lhs_ = rhs_' where lhs stands for left-hand side, and rhs for
   // right-hand side.
