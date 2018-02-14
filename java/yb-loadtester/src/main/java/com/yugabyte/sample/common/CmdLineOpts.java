@@ -60,8 +60,8 @@ public class CmdLineOpts {
 
   // The class type of the app needed to spawn new objects.
   private Class<? extends AppBase> appClass;
-  // List of database nodes.
-  public List<Node> nodes = new ArrayList<>();
+  // List of database contact points. One contact point could be resolved to multiple nodes IPs.
+  public List<ContactPoint> contactPoints = new ArrayList<>();
   // The number of reader threads to spawn for OLTP apps.
   int numReaderThreads;
   // The number of writer threads to spawn for OLTP apps.
@@ -106,11 +106,11 @@ public class CmdLineOpts {
     }
     LOG.info("Run time (seconds): " + AppBase.appConfig.runTimeSeconds);
 
-    // Get the proxy nodes.
+    // Get the proxy contact points.
     List<String> hostPortList = Arrays.asList(commandLine.getOptionValue("nodes").split(","));
     for (String hostPort : hostPortList) {
       LOG.info("Adding node: " + hostPort);
-      this.nodes.add(Node.fromHostPort(hostPort));
+      this.contactPoints.add(ContactPoint.fromHostPort(hostPort));
     }
 
     // This check needs to be done before initializeThreadCount is called.
@@ -242,14 +242,14 @@ public class CmdLineOpts {
     return commandLine;
   }
 
-  public List<Node> getNodes() {
-    return nodes;
+  public List<ContactPoint> getContactPoints() {
+    return contactPoints;
   }
 
-  public Node getRandomNode() {
-    int nodeId = random.nextInt(nodes.size());
-    LOG.debug("Returning random node id " + nodeId);
-    return nodes.get(nodeId);
+  public ContactPoint getRandomContactPoint() {
+    int contactPointId = random.nextInt(contactPoints.size());
+    LOG.debug("Returning random contact point id " + contactPointId);
+    return contactPoints.get(contactPointId);
   }
 
   public int getNumReaderThreads() {
@@ -625,11 +625,15 @@ public class CmdLineOpts {
     System.exit(0);
   }
 
-  public static class Node {
+  /**
+   * One contact point could be resolved to multiple nodes IPs. For example for Kubernetes
+   * yb-tservers.default.svc.cluster.local contact point is resolved to all tservers IPs.
+   */
+  public static class ContactPoint {
     String host;
     int port;
 
-    public Node(String host, int port) {
+    public ContactPoint(String host, int port) {
       this.host = host;
       this.port = port;
     }
@@ -642,11 +646,11 @@ public class CmdLineOpts {
       return port;
     }
 
-    public static Node fromHostPort(String hostPort) {
+    public static ContactPoint fromHostPort(String hostPort) {
       String[] parts = hostPort.split(":");
       String host = parts[0];
       int port = Integer.parseInt(parts[1]);
-      return new Node(host, port);
+      return new ContactPoint(host, port);
     }
 
     public String ToString() { return host + ":" + port; }

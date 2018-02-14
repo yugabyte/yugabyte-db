@@ -85,13 +85,13 @@ public class CassandraSparkKeyValueCopy extends AppBase {
   public void run() {
     StringBuilder sb = new StringBuilder();
     boolean first = true;
-    for (CmdLineOpts.Node node : configuration.getNodes()) {
+    for (CmdLineOpts.ContactPoint contactPoint : configuration.getContactPoints()) {
       if (!first) {
         sb.append(",");
       } else {
         first = false;
       }
-      sb.append(node.getHost());
+      sb.append(contactPoint.getHost());
     }
 
     String nodes = sb.toString();

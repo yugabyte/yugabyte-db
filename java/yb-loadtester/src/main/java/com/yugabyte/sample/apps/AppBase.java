@@ -13,7 +13,9 @@
 
 package com.yugabyte.sample.apps;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -33,9 +35,8 @@ import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 import com.yugabyte.sample.common.CmdLineOpts;
-import com.yugabyte.sample.common.CmdLineOpts.Node;
+import com.yugabyte.sample.common.CmdLineOpts.ContactPoint;
 import com.yugabyte.sample.common.RedisHashLoadGenerator;
-import com.yugabyte.sample.common.RedisHashLoadGenerator.KeySubKey;
 import com.yugabyte.sample.common.SimpleLoadGenerator;
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import com.yugabyte.sample.common.metrics.MetricsTracker;
@@ -76,7 +77,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // The Java redis client.
   private volatile Jedis jedisClient = null;
   private volatile Pipeline jedisPipeline = null;
-  private Node redisServerInUse = null;
+  private ContactPoint redisServerInUse = null;
   // Instances of the load generator.
   private static volatile SimpleLoadGenerator simpleLoadGenerator = null;
   private static volatile RedisHashLoadGenerator redisHashLoadGenerator = null;
@@ -127,6 +128,13 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   private static synchronized void createCassandraClient(List<InetSocketAddress> nodes) {
     if (cassandra_cluster == null) {
+      {
+        List<String> ips = new ArrayList<>(nodes.size());
+        for (InetSocketAddress contactPoint : nodes) {
+          ips.add(contactPoint.getAddress().getHostAddress());
+        }
+        LOG.info("Connecting to nodes: " + String.join(",", ips));
+      }
       Cluster.Builder builder = Cluster.builder().addContactPointsWithPorts(nodes);
       if (appConfig.localDc != null && !appConfig.localDc.isEmpty()) {
         builder.withLoadBalancingPolicy(new PartitionAwarePolicy(
@@ -155,10 +163,11 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   protected synchronized Jedis getRedisClient() {
     if (jedisClient == null) {
-      Node node = getRandomNode();
+      CmdLineOpts.ContactPoint contactPoint = getRandomContactPoint();
       // Set the timeout to something more than the timeout in the proxy layer.
-      jedisClient = new Jedis(node.getHost(), node.getPort(), appConfig.jedisSocketTimeout);
-      redisServerInUse = node;
+      jedisClient = new Jedis(contactPoint.getHost(), contactPoint.getPort(),
+          appConfig.jedisSocketTimeout);
+      redisServerInUse = contactPoint;
     }
     return jedisClient;
   }
@@ -428,23 +437,29 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
   /**
-   * Helper method to get a random proxy-service node to do io against.
+   * Helper method to get a random proxy-service contact point to do io against.
    * @return
    */
-  public Node getRandomNode() {
-    return configuration.getRandomNode();
+  public ContactPoint getRandomContactPoint() {
+    return configuration.getRandomContactPoint();
   }
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public List<InetSocketAddress> getNodesAsInet() {
-    List<InetSocketAddress> inetAddrs = new ArrayList<InetSocketAddress>();
-    for (Node node : configuration.getNodes()) {
-      // Convert Node to InetSocketAddress.
-      inetAddrs.add(new InetSocketAddress(node.getHost(), node.getPort()));
+    List<InetSocketAddress> inetSocketAddresses = new ArrayList<InetSocketAddress>();
+    for (ContactPoint contactPoint : configuration.getContactPoints()) {
+      try {
+        for (InetAddress addr : InetAddress.getAllByName(contactPoint.getHost())) {
+          inetSocketAddresses.add(new InetSocketAddress(addr, contactPoint.getPort()));
+        }
+      } catch (UnknownHostException e) {
+        throw new IllegalArgumentException("Failed to resolve address: " + contactPoint.getHost(),
+            e);
+      }
     }
-    return inetAddrs;
+    return inetSocketAddresses;
   }
 
 
