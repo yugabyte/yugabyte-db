@@ -1,8 +1,9 @@
 # Setup
-Replication factor (num nodes): 3
-Cluster node type: n1-standard-16
-CPU type: Intel(R) Xeon(R) CPU @ 2.30GHz
-specs: {"memory" : "60GB", "vCPUs" : "16", "numDisks" : "2", "diskSize" : "375GB", "diskType" : "SSD"}
+- Replication factor (num nodes): 3
+- Cluster node type: n1-standard-16
+- CPU type: Intel(R) Xeon(R) CPU @ 2.30GHz
+- specs: {"memory" : "60GB", "vCPUs" : "16", "numDisks" : "2", "diskSize" : "375GB", "diskType" : "SSD"}
+- Each key-value is around 64 bytes combined.
 
 # Performance Summary:
 
