@@ -1414,6 +1414,13 @@ if (NOT APPLE)
     SHARED_LIB "${VMEM_SHARED_LIB}")
 endif()
 
+## aws-cpp-sdk
+find_package(AwsCppSdk REQUIRED)
+include_directories(SYSTEM ${AWS_CPP_SDK_INCLUDE_DIRS})
+ADD_THIRDPARTY_LIB(aws-cpp-sdk-route53
+  STATIC_LIB "${AWS_CPP_SDK_ROUTE53_STATIC_LIB}"
+  SHARED_LIB "${AWS_CPP_SDK_ROUTE53_SHARED_LIB}")
+
 ## tacopie
 find_package(Tacopie REQUIRED)
 include_directories(SYSTEM ${TACOPIE_INCLUDE_DIRS})
