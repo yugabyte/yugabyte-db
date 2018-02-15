@@ -77,5 +77,5 @@ class LibCXXDependency(Dependency):
                 "cp projects/libcxx/include/c++build/* {}/include/c++/v1".format(prefix),
                 shell=True)
 
-    def should_build(self, skip_build, instrumented):
-        return True
+    def should_build(self, instrumented):
+        return instrumented
