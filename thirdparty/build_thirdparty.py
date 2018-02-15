@@ -85,6 +85,7 @@ class Builder:
             ]
 
         self.dependencies += [
+            build_definitions.aws_sdk_cpp.AwsSdkCppDependency(),
             build_definitions.protobuf.ProtobufDependency(),
             build_definitions.crypt_blowfish.CryptBlowfishDependency(),
             build_definitions.tacopie.TacopieDependency(),
@@ -463,11 +464,11 @@ class Builder:
             self.add_lib_dir_and_rpath(lib_dir)
 
     def add_lib_dir_and_rpath(self, lib_dir):
-        self.compiler_flags.append("-L{}".format(lib_dir))
+        self.ld_flags.append("-L{}".format(lib_dir))
         self.add_rpath(lib_dir)
 
     def prepend_lib_dir_and_rpath(self, lib_dir):
-        self.compiler_flags.insert(0, "-L{}".format(lib_dir))
+        self.ld_flags.insert(0, "-L{}".format(lib_dir))
         self.prepend_rpath(lib_dir)
 
     def add_rpath(self, path):
@@ -524,6 +525,9 @@ class Builder:
     def set_build_type(self, type):
         self.build_type = type
         self.prefix = os.path.join(self.tp_installed_dir, type)
+        self.find_prefix = self.tp_installed_common_dir
+        if type != BUILD_TYPE_COMMON:
+            self.find_prefix += ';' + self.prefix
         self.prefix_bin = os.path.join(self.prefix, 'bin')
         self.prefix_lib = os.path.join(self.prefix, 'lib')
         self.prefix_include = os.path.join(self.prefix, 'include')
@@ -552,6 +556,9 @@ class Builder:
             self.cxx_flags.insert(0, '-isystem')
             self.cxx_flags.insert(1, stdlib_include)
             self.cxx_flags.insert(0, '-stdlib=libc++')
+            # CLang complains about argument unused during compilation: '-stdlib=libc++' when both
+            # -stdlib=libc++ and -nostdinc++ are specified.
+            self.cxx_flags.insert(0, '-Wno-error=unused-command-line-argument')
             self.prepend_lib_dir_and_rpath(stdlib_lib)
         if self.using_linuxbrew and self.compiler_type == 'clang':
             self.compiler_flags.append('--gcc-toolchain={}'.format(self.linuxbrew_dir))
@@ -611,7 +618,8 @@ class Builder:
     # should have been made local by the caller.
     def get_build_stamp_for_dependency(self, dep):
         input_files_for_stamp = ['build_thirdparty.py',
-                                 os.path.join('build_definitions', '{}.py'.format(dep.name))]
+                                 os.path.join('build_definitions',
+                                              '{}.py'.format(dep.name.replace('-', '_')))]
 
         for path in input_files_for_stamp:
             abs_path = os.path.join(self.tp_dir, path)
