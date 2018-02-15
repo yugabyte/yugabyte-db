@@ -18,7 +18,7 @@ import static play.test.Helpers.route;
 
 public class FakeApiHelper {
   private static String getAuthToken() {
-    Customer customer = Customer.create("Valid Customer", "foo@bar.com", "password");
+    Customer customer = Customer.create("vc", "Valid Customer", "foo@bar.com", "password");
     return customer.createAuthToken();
   }
 

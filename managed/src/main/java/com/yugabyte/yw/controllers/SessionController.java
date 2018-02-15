@@ -71,7 +71,7 @@ public class SessionController extends Controller {
 
     CustomerRegisterFormData data = formData.get();
     try {
-      Customer cust = Customer.create(data.name, data.email, data.password);
+      Customer cust = Customer.create(data.code, data.name, data.email, data.password);
       if (cust == null) {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
       }

@@ -9,6 +9,13 @@ import { connect } from 'react-redux';
 function validate(values) {
   const errors = {};
   let hasErrors = false;
+  if (!values.code || values.code.trim() === '') {
+    errors.code = 'Enter a code';
+    hasErrors = true;
+  } else if (values.code.length > 5) {
+    errors.code = 'Code can be only 5 characters long';
+    hasErrors = true;
+  }
 
   if (!values.name || values.name.trim() === '') {
     errors.name = 'Enter a name';
@@ -62,7 +69,7 @@ function mapStateToProps(state) {
 
 const registerForm = reduxForm({
   form: 'RegisterForm',
-  fields: ['name', 'email', 'password', 'confirmPassword'],
+  fields: ['code', 'name', 'email', 'password', 'confirmPassword'],
   validate
 });
 
