@@ -117,15 +117,27 @@ class ProviderConfiguration extends Component {
         {name: "Name", data: currentProvider.name},
         {name: "SSH Key", data: keyPairName},
       ];
-      if (currentProvider.code === "aws" && isNonEmptyObject(hostInfo)) {
-        if (isNonEmptyString(hostInfo["region"])) {
-          providerInfo.push({name: "Host Region", data: hostInfo["region"]});
+      if (isNonEmptyObject(hostInfo)) {
+        if (currentProvider.code === "aws" && isNonEmptyObject(hostInfo["aws"])) {
+          const awsHostInfo = hostInfo["aws"];
+          if (isNonEmptyString(awsHostInfo["region"])) {
+            providerInfo.push({name: "Host Region", data: awsHostInfo["region"]});
+          }
+          if (isNonEmptyString(awsHostInfo["vpc-id"])) {
+            providerInfo.push({name: "Host VPC ID", data: awsHostInfo["vpc-id"]});
+          }
+          if (isNonEmptyString(awsHostInfo["privateIp"])) {
+            providerInfo.push({name: "Host Private IP", data: awsHostInfo["privateIp"]});
+          }
         }
-        if (isNonEmptyString(hostInfo["vpc-id"])) {
-          providerInfo.push({name: "Host VPC ID", data: hostInfo["vpc-id"]});
-        }
-        if (isNonEmptyString(hostInfo["privateIp"])) {
-          providerInfo.push({name: "Host Private IP", data: hostInfo["privateIp"]});
+        if (currentProvider.code === "gcp" && isNonEmptyObject(hostInfo["gcp"])) {
+          const gcpHostInfo = hostInfo["gcp"];
+          if (isNonEmptyString(gcpHostInfo["network"])) {
+            providerInfo.push({name: "Host Network", data: gcpHostInfo["network"]});
+          }
+          if (isNonEmptyString(gcpHostInfo["project"])) {
+            providerInfo.push({name: "Host Project", data: gcpHostInfo["project"]});
+          }
         }
       }
       let universeExistsForProvider = false;

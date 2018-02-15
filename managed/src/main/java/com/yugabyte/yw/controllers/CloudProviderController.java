@@ -2,6 +2,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -9,6 +10,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.TemplateManager;
@@ -23,6 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
 
+import play.api.Play;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -32,6 +35,7 @@ import javax.persistence.PersistenceException;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -127,21 +131,23 @@ public class CloudProviderController extends AuthenticatedController {
     // parse it from the requestBody
     JsonNode requestBody = request().body().asJson();
     Map<String, String> config = new HashMap<>();
-    if (requestBody.has("config")) {
-      config = Json.fromJson(requestBody.get("config"), Map.class);
+    if (requestBody.has("config") && providerCode.equals(Common.CloudType.gcp)) {
+      JsonNode configNode = requestBody.get("config");
+      config = Json.fromJson(configNode.get("config_file_contents"), Map.class);
     }
     try {
       provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
       if (provider.code.equals("gcp") && !config.isEmpty()) {
-      	String gcpCredentialsFile = accessManager.createCredentialsFile(provider.uuid, requestBody.get("config"));
-      	
-      	Map<String, String> newConfig = new HashMap<String, String>();
-      	newConfig.put("GCE_EMAIL", config.get("client_email"));
-      	newConfig.put("GCE_PROJECT", config.get("project_id"));
-      	newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
-      	
-      	provider.setConfig(newConfig);
-      	provider.save();
+        String gcpCredentialsFile = accessManager.createCredentialsFile(
+            provider.uuid, requestBody.get("config").get("config_file_contents"));
+
+        Map<String, String> newConfig = new HashMap<String, String>();
+        newConfig.put("GCE_EMAIL", config.get("client_email"));
+        newConfig.put("GCE_PROJECT", config.get("project_id"));
+        newConfig.put("GOOGLE_APPLICATION_CREDENTIALS", gcpCredentialsFile);
+
+        provider.setConfig(newConfig);
+        provider.save();
       }
       return ApiResponse.success(provider);
     } catch (PersistenceException e) {
@@ -188,7 +194,7 @@ public class CloudProviderController extends AuthenticatedController {
       ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     if (provider.code.equals("gcp")) {
-    	return gcpInitializer.initialize(customerUUID, providerUUID);
+      return gcpInitializer.initialize(customerUUID, providerUUID);
     }
     return awsInitializer.initialize(customerUUID, providerUUID);
   }
@@ -207,11 +213,36 @@ public class CloudProviderController extends AuthenticatedController {
     if (customer == null) {
       ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
+    // We need to save the destVpcId into the provider config, because we'll need it during
+    // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need to
+    // store it somewhere and the config is the easiest place to put it. As such, since all the
+    // config is loaded up as env vars anyway, might as well use in in devops like that...
+    if (formData.get().destVpcId != null && !formData.get().destVpcId.isEmpty()) {
+      Map<String, String> config = provider.getConfig();
+      config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
+      provider.setConfig(config);
+      provider.save();
+    }
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
+    taskParams.providerCode = Common.CloudType.valueOf(provider.code);
     taskParams.providerUUID = providerUUID;
     taskParams.regionList = formData.get().regionList;
+    // For now, if we send an empty list from the UI it seems to show up in the formData as null.
+    if (taskParams.regionList == null) {
+      taskParams.regionList = new ArrayList<String>();
+    }
+    if (taskParams.regionList.isEmpty()) {
+      CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
+      JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
+      // TODO: validate this is an array!
+      ArrayNode regionListArray = (ArrayNode) regionInfo;
+      for (JsonNode region : regionListArray) {
+        taskParams.regionList.add(region.asText());
+      }
+    }
     taskParams.hostVpcId = formData.get().hostVpcId;
     taskParams.destVpcId = formData.get().destVpcId;
+
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(customer,
       providerUUID,

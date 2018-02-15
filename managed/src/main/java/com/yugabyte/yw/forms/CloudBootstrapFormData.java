@@ -7,7 +7,7 @@ import play.data.validation.Constraints;
 import java.util.List;
 
 public class CloudBootstrapFormData {
-  @Constraints.Required()
+  // If this is empty, we query through ybcloud for all the available regions.
   public List<String> regionList;
 
   // We use hostVpcId to make sure we know where YW is coming from.
