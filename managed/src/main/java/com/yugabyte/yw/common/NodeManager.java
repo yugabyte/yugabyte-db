@@ -287,7 +287,9 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--machine_image");
             commandArgs.add(taskParam.getRegion().ybImage);
           }
-          commandArgs.add("--assign_public_ip");
+          if (taskParam.assignPublicIP) {
+            commandArgs.add("--assign_public_ip");
+          }
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {
