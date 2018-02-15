@@ -1,12 +1,12 @@
 ---
-title: AWS Deployments
+title: Amazon Web Services
 weight: 630
 ---
 
 <ul class="nav nav-tabs">
   <li >
     <a data-toggle="tab" href="#terraform">
-      <i class="icon-redis" aria-hidden="true"></i>
+      <i class="icon-shell"></i>
       Terraform
     </a>
   </li>

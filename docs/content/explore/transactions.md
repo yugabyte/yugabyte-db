@@ -7,8 +7,8 @@ Distributed ACID transactions batch a multi-step, multi-table operation into a s
 
 YugaByte DB is designed to support transactions at the following isolation levels:
 
-- Serializable (currently supported)
-- Snapshot Isolation (work in progress)
+- Snapshot Isolation (currently supported)
+- Serializable (work in progress)
 
 You can [read more about transactions](/architecture/transactions/) in our architecture docs.
 

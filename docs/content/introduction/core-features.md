@@ -29,9 +29,9 @@ In terms of the [CAP theorem](https://blog.yugabyte.com/a-for-apple-b-for-ball-c
 
 YugaByte DB's architecture is similar to that of [Google Cloud Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) which is also a CP database with high write availability. While Google Cloud Spanner leverages Google's proprietary network infrastructure, YugaByte DB is designed work on commodity infrastructure used by most enterprise users.
 
-## 3. Zero data loss writes
+## 3. Distributed ACID transactions
 
-Writes (and background data rebalancing in general) are guaranteed to be zero data loss. This guarantee comes through the use of Raft distributed consensus algorithm for each tablet's replication. Each tablet's Raft consensus group is comprised of a tablet leader and set of tablet-peers (aka tablet followers). Leader owns the interaction with clients for write requests and acknowledges the write as committed only after it synchronously replicates to other node. Loss of the leader makes the remaining members of the group auto-elect a new leader among themselves in a matter of couple seconds. 
+Writes (and background data rebalancing in general) are guaranteed to be zero data loss by virtue of single row ACID transactions. Raft distributed consensus algorithm is used for each tablet's replication. Each tablet's Raft consensus group is comprised of a tablet leader and set of tablet-peers (aka tablet followers). Leader owns the interaction with clients for write requests and acknowledges the write as committed only after it synchronously replicates to other node. Loss of the leader makes the remaining members of the group auto-elect a new leader among themselves in a matter of couple seconds. 
 
 ![Strongly consistent writes](/images/strongly-consistent-writes.png)
 

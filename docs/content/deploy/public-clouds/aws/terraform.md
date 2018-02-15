@@ -20,7 +20,7 @@ Common commands:
 ```
 
 
-## Create a terraform config file
+## 1. Create a terraform config file
 
 Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/YugaByte/terraform-aws-yugabyte).
 
@@ -74,7 +74,7 @@ resource "aws_instance" "yugabyte_nodes" {
 
 ```
 
-## Spinning up the cluster
+## 2. Create a cluster
 
 Init terraform first if you have not already done so.
 
@@ -103,7 +103,7 @@ $ terraform show
 ```
 
 
-## Resources created
+## 3. Verify resources created
 
 The following resources are created by this module:
 
@@ -121,7 +121,7 @@ For cluster named `test-cluster`, this security group will be named `yb-ce-test-
 
 - `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugaByte DB universe.
 
-## Destroy the cluster (optional)
+## 4. Destroy the cluster (optional)
 
 To destroy what we just created, you can run the following command.
 

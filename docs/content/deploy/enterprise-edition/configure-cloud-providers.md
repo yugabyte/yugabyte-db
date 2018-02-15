@@ -1,6 +1,6 @@
 ---
 title: Configure Cloud Providers
-weight: 640
+weight: 680
 ---
 
 This section details how to configure cloud providers for YugaByte DB using the YugaWare Admin Console. If no cloud providers are configured in YugaWare yet, the main Dashboard page highlights the need to configure at least 1 cloud provider.

@@ -1,6 +1,6 @@
 ---
 title: Install Admin Console
-weight: 630
+weight: 670
 ---
 
 YugaWare, the YugaByte Admin Console, is a containerized application that is installed and managed via [Replicated](https://www.replicated.com/) for mission-critical environments (such as production or performance or failure mode testing). Replicated is a purpose-built tool for on-premises deployment and lifecycle management of containerized applications. For environments that are not mission-critical such as those needed for local development or simple functional testing, you can also use the [Community Edition](/quick-start/install).

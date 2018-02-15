@@ -1,13 +1,13 @@
 ---
-title: GCP Deployments
+title: Google Cloud Platform
 weight: 640
 ---
 
 <ul class="nav nav-tabs">
   <li >
     <a data-toggle="tab" href="#gke">
-      <i class="icon-redis" aria-hidden="true"></i>
-      GKE (Kubernetes)
+      <i class="fa fa-cubes" aria-hidden="true"></i>
+      Google Kubernetes Engine (GKE)
     </a>
   </li>
 </ul>
