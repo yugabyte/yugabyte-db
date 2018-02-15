@@ -93,6 +93,7 @@ public class SessionControllerTest {
   public void testRegisterCustomer() {
     startApp(true);
     ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
     registerJson.put("password", "password");
     registerJson.put("name", "Foo");
@@ -104,6 +105,7 @@ public class SessionControllerTest {
     assertNotNull(json.get("authToken"));
 
     ObjectNode loginJson = Json.newObject();
+    registerJson.put("code", "fb");
     loginJson.put("email", "foo2@bar.com");
     loginJson.put("password", "password");
     result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
@@ -114,10 +116,27 @@ public class SessionControllerTest {
   }
 
   @Test
+  public void testRegisterCustomerWithLongerCode() {
+    startApp(true);
+    ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb12345");
+    registerJson.put("email", "foo2@bar.com");
+    registerJson.put("password", "password");
+    registerJson.put("name", "Foo");
+
+    Result result = route(fakeRequest("POST", "/api/register").bodyJson(registerJson));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(BAD_REQUEST, result.status());
+    assertValue(json, "error", "{\"code\":[\"Maximum length is 5\"]}");
+  }
+
+  @Test
   public void testRegisterCustomerExceedingLimit() {
     startApp(false);
     ModelFactory.testCustomer("foo@bar.com");
     ObjectNode registerJson = Json.newObject();
+    registerJson.put("code", "fb");
     registerJson.put("email", "foo2@bar.com");
     registerJson.put("password", "password");
     registerJson.put("name", "Foo");

@@ -36,6 +36,7 @@ class RegisterForm extends Component {
               {<strong>{JSON.stringify(authToken.error)}</strong>}
             </div>
             <div className="form-right-aligned-labels">
+              <Field name="code" type="text" component={YBInputField} label="Code"/>
               <Field name="name" type="text" component={YBInputField} label="Full Name"/>
               <Field name="email" type="email" component={YBInputField} label="Email"/>
               <Field name="password" type="password" component={YBInputField} label="Password"/>
