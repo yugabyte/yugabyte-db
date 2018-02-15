@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
@@ -331,6 +332,27 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
 
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testProvisionNodeCommandWithoutAssignPublicIP() {
+    for (TestData t : testData) {
+      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+              ApiUtils.mockUniverseUpdater(t.cloudType)));
+      addValidDeviceInfo(t, params);
+      params.subnetId = t.zone.subnet;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.assignPublicIP = false;
+      }
+
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
+      Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
+      expectedCommand.removeIf(stringPredicate);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }

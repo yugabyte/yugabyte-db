@@ -418,6 +418,7 @@ class UniverseForm extends Component {
       if (this.state.useSpotPrice) {
         cluster.userIntent.spotPrice = parseFloat(this.state.spotPrice);
       }
+      cluster.userIntent.assignPublicIP = formValues.assignPublicIP;
 
       cluster.userIntent.masterGFlags = formValues.masterGFlags.filter((masterFlag) => {
         return isNonEmptyString(masterFlag.name) && isNonEmptyString(masterFlag.value);
@@ -724,9 +725,19 @@ class UniverseForm extends Component {
 
     let spotPriceToggle = <span />;
     let spotPriceField = <span />;
+    let assignPublicIP = <span />;
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws"
         && isDefinedNotNull(self.props.universe.currentPlacementStatus)) {
+
+      assignPublicIP = (
+        <Field name="assignPublicIP"
+               component={YBToggle}
+               label="Assign Public IP"
+               subLabel="Whether or not to assign a public IP."
+               checkedVal={this.state.assignPublicIP}/>
+      );
+
       if (this.state.gettingSuggestedSpotPrice) {
         spotPriceField = (
           <div className="form-group">
@@ -806,6 +817,7 @@ class UniverseForm extends Component {
                         onInputChanged={this.instanceTypeChanged} isReadOnly={isFieldReadOnly && this.state.useSpotPrice}/>
                   {spotPriceToggle}
                   {spotPriceField}
+                  {assignPublicIP}
                 </div>
               </Col>
               {deviceDetail &&
