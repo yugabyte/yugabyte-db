@@ -527,7 +527,7 @@ build_compiler_if_necessary() {
   # Sometimes we have to build the compiler before we can run CMake.
   if is_clang && is_linux; then
     log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build-thirdparty.sh" llvm
+    "$YB_THIRDPARTY_DIR/build_thirdparty.py" llvm
   fi
 }
 
@@ -1133,9 +1133,9 @@ compute_sha256sum() {
 }
 
 validate_thirdparty_dir() {
-  ensure_directory_exists "$YB_THIRDPARTY_DIR/build-definitions"
+  ensure_directory_exists "$YB_THIRDPARTY_DIR/build_definitions"
   ensure_directory_exists "$YB_THIRDPARTY_DIR/patches"
-  ensure_file_exists "$YB_THIRDPARTY_DIR/build-thirdparty.sh"
+  ensure_file_exists "$YB_THIRDPARTY_DIR/build_thirdparty.py"
 }
 
 # Detect if we're running on Google Compute Platform. We perform this check lazily as there might be

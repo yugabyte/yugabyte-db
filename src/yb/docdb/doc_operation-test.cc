@@ -465,10 +465,10 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 namespace {
 
 int32_t NewInt(std::mt19937_64* rng, std::unordered_set<int32_t>* existing) {
-  std::uniform_int_distribution<int32_t> distribution(std::numeric_limits<int32_t>::min());
+  std::uniform_int_distribution<uint32_t> distribution;
   for (;;) {
     auto result = distribution(*rng);
-    if (existing->insert(result).second) {
+    if (existing->insert(static_cast<int32_t>(result)).second) {
       return result;
     }
   }

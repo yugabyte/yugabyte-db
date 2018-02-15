@@ -32,7 +32,6 @@
 #ifndef YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
 #define YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
 
-#include <gperftools/heap-checker.h>
 #include "yb/gutil/macros.h"
 #include "yb/util/debug/leak_annotations.h"
 

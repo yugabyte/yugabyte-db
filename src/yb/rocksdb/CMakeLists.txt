@@ -218,8 +218,7 @@ endif()
 
 add_library(rocksdb ${ROCKSDB_SRCS})
 cotire(rocksdb)
-target_link_libraries(rocksdb
-    gflags gutil snappy bz2 z yb_common yb_util opid_proto boost_filesystem)
+target_link_libraries(rocksdb gflags gutil snappy bz2 z yb_common yb_util opid_proto)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc

@@ -887,9 +887,9 @@ TEST_F(ClientTest, TestWriteTimeout) {
   // Next time out the actual write on the tablet server.
   {
     google::FlagSaver saver;
-    FLAGS_log_inject_latency = true;
-    FLAGS_log_inject_latency_ms_mean = 110;
-    FLAGS_log_inject_latency_ms_stddev = 0;
+    SetAtomicFlag(true, &FLAGS_log_inject_latency);
+    SetAtomicFlag(110, &FLAGS_log_inject_latency_ms_mean);
+    SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
 
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();

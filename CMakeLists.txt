@@ -344,6 +344,48 @@ function(add_executable name)
   endif()
 endfunction()
 
+
+macro(YB_SETUP_SANITIZER SANITIZER)
+  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
+          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
+    message(SEND_ERROR "Cannot use ${SANITIZER} without clang or gcc >= 4.8")
+  endif()
+
+  string(TOLOWER "${SANITIZER}" LOWER_SANITIZER)
+
+  ADD_CXX_FLAGS("-stdlib=libc++")
+
+  # Disables using the precompiled template specializations for std::string, shared_ptr, etc
+  # so that the annotations in the header actually take effect.
+  add_definitions("-D_GLIBCXX_EXTERN_TEMPLATE=0")
+
+  message("Using ${SANITIZER}-instrumented libc++")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${LOWER_SANITIZER}/libcxx")
+  set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
+  ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
+
+  # This needs to appear before adding third-party dependencies that have their headers in the
+  # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
+  # the Linuxbrew include directory too.
+  include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
+
+  ADD_CXX_FLAGS("-nostdinc++")
+  ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
+
+  # Strictly speaking, TSAN doesn't require dynamic linking. But it does
+  # require all code to be position independent, and the easiest way to
+  # guarantee that is via dynamic linking (not all 3rd party archives are
+  # compiled with -fPIC e.g. boost).
+  if("${YB_LINK}" STREQUAL "a")
+    message("Using dynamic linking for ${SANITIZER}")
+    set(YB_LINK "d")
+  elseif("${YB_LINK}" STREQUAL "s")
+    message(SEND_ERROR "Cannot use ${SANITIZER} with static linking")
+  endif()
+
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE)
+endmacro()
+
 # ------------------------------------------------------------------------------------------------
 # Main build
 
@@ -442,18 +484,21 @@ if ("${YB_NO_REBUILD_THIRDPARTY}" STREQUAL "1")
   set(ENV{NO_REBUILD_THIRDPARTY} "1")
 endif()
 
+# This helps find the right third-party build directory.
+if (YB_USE_TSAN)
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "tsan")
+elseif (YB_USE_ASAN)
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "asan")
+else()
+  set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
+endif()
+
 # Make sure thirdparty stuff is up-to-date.
 if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
-  set(BUILD_THIRDPARTY_ARGS "")
-  if (NOT YB_USE_TSAN)
-    set(BUILD_THIRDPARTY_ARGS ${BUILD_THIRDPARTY_ARGS} --skip-tsan)
-  endif()
-  if (NOT YB_USE_TSAN AND NOT YB_USE_ASAN)
-    set(BUILD_THIRDPARTY_ARGS ${BUILD_THIRDPARTY_ARGS} --skip-llvm)
-  endif()
-  message("Invoking build-thirdparty.sh with these arguments: ${BUILD_THIRDPARTY_ARGS}")
+  set(BUILD_THIRDPARTY_ARGS --build-type ${THIRDPARTY_INSTRUMENTATION_TYPE})
+  message("Invoking build_thirdparty.py with these arguments: ${BUILD_THIRDPARTY_ARGS}")
   execute_process(
-    COMMAND ${YB_THIRDPARTY_DIR}/build-thirdparty.sh ${BUILD_THIRDPARTY_ARGS}
+    COMMAND ${YB_THIRDPARTY_DIR}/build_thirdparty.py ${BUILD_THIRDPARTY_ARGS}
     RESULT_VARIABLE THIRDPARTY_SCRIPT_RESULT)
   if (NOT (${THIRDPARTY_SCRIPT_RESULT} EQUAL 0))
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")
@@ -705,18 +750,11 @@ endif()
 set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
 set(YB_PREFIX_DEPS "${YB_THIRDPARTY_DIR}/installed/uninstrumented")
 set(YB_PREFIX_DEPS_TSAN "${YB_THIRDPARTY_DIR}/installed/tsan")
-
-# This helps find the right third-party build directory.
-set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
+set(YB_PREFIX_DEPS_ASAN "${YB_THIRDPARTY_DIR}/installed/asan")
 
 # Flag to enable thread sanitizer (clang or gcc 4.8)
 if (${YB_USE_TSAN})
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
-          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
-    message(SEND_ERROR "Cannot use TSAN without clang or gcc >= 4.8")
-  endif()
-
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "tsan")
+  YB_SETUP_SANITIZER("TSAN")
   add_definitions("-fsanitize=thread")
 
   # Enables dynamic_annotations.h to actually generate code
@@ -725,45 +763,17 @@ if (${YB_USE_TSAN})
   # changes atomicops to use the tsan implementations
   add_definitions("-DTHREAD_SANITIZER")
 
-  # Disables using the precompiled template specializations for std::string, shared_ptr, etc
-  # so that the annotations in the header actually take effect.
-  add_definitions("-D_GLIBCXX_EXTERN_TEMPLATE=0")
-  ADD_CXX_FLAGS("-stdlib=libc++")
-
   # Compile and link against the thirdparty TSAN instrumented libstdcxx.
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+elseif (${YB_USE_ASAN})
+  YB_SETUP_SANITIZER("ASAN")
 
-  if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND NOT EXISTS "/etc/redhat-release")
-    message("This looks like a non-CentOS Linux platform. Assuming this is Ubuntu, not using "
-            "TSAN-instrumented libstdc++. This can result in some false positive TSAN test "
-            "failures.")
-  else()
-    # TSAN build under RedHat/CentOS Linux.
-    message("Using TSAN-instrumented libc++")
-    set(TSAN_LIBCXX_DIR "${YB_PREFIX_DEPS_TSAN}/libcxx")
-    set(TSAN_LIBCXX_INCLUDE_DIR "${TSAN_LIBCXX_DIR}/include/c++/v1")
-    ADD_GLOBAL_RPATH_ENTRY("${TSAN_LIBCXX_DIR}/lib")
+  add_definitions("-fsanitize=address")
+  add_definitions("-DADDRESS_SANITIZER")
 
-    ADD_CXX_FLAGS("-nostdinc++")
-    ADD_LINKER_FLAGS("-L${TSAN_LIBCXX_DIR}/lib")
-
-    # This needs to appear before adding third-party dependencies that have their headers in the
-    # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
-    # the Linuxbrew include directory too.
-    include_directories(SYSTEM "${TSAN_LIBCXX_INCLUDE_DIR}")
-  endif()
-
-  # Strictly speaking, TSAN doesn't require dynamic linking. But it does
-  # require all code to be position independent, and the easiest way to
-  # guarantee that is via dynamic linking (not all 3rd party archives are
-  # compiled with -fPIC e.g. boost).
-  if("${YB_LINK}" STREQUAL "a")
-    message("Using dynamic linking for TSAN")
-    set(YB_LINK "d")
-  elseif("${YB_LINK}" STREQUAL "s")
-    message(SEND_ERROR "Cannot use TSAN with static linking")
-  endif()
-elseif(USING_LINUXBREW AND IS_CLANG)
+  # Compile and link against the thirdparty ASAN instrumented libstdcxx.
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+elseif (USING_LINUXBREW AND IS_CLANG)
   # Tell clang to use Linuxbrew's libstdc++ instead of the system one.
   ADD_CXX_FLAGS("-nostdinc++")
   ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
@@ -842,30 +852,6 @@ message("YB_USE_ASAN=${YB_USE_ASAN}")
 # Clang does not support using ASAN and TSAN simultaneously.
 if ("${YB_USE_ASAN}" AND "${YB_USE_TSAN}")
   message(SEND_ERROR "Can only enable one of ASAN or TSAN at a time")
-endif()
-
-# Flag to enable clang address sanitizer
-# This will only build if clang or a recent enough gcc is the chosen compiler
-if (${YB_USE_ASAN})
-  message("Using ASAN (Address Sanitizer)")
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
-          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
-    message(SEND_ERROR "Cannot use ASAN without clang or gcc >= 4.8")
-  endif()
-
-  # If UBSAN is also enabled, and we're on clang < 3.5, ensure static linking is
-  # enabled. Otherwise, we run into https://llvm.org/bugs/show_bug.cgi?id=18211
-  if("${YB_USE_UBSAN}" AND
-      "${COMPILER_FAMILY}" STREQUAL "clang" AND
-      "${COMPILER_VERSION}" VERSION_LESS "3.5")
-    if("${YB_LINK}" STREQUAL "a")
-      message("Using static linking for ASAN+UBSAN build")
-      set(YB_LINK "s")
-    elseif("${YB_LINK}" STREQUAL "d")
-      message(SEND_ERROR "Cannot use dynamic linking when ASAN and UBSAN are both enabled")
-    endif()
-  endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -DADDRESS_SANITIZER")
 endif()
 
 # Flag to enable clang undefined behavior sanitizer
@@ -1243,6 +1229,8 @@ set(CMAKE_PREFIX_PATH ${THIRDPARTY_PREFIX} ${CMAKE_PREFIX_PATH})
 
 if (${YB_USE_TSAN})
   set(YB_THIRDPARTY_INSTALLED_DEPS_DIR ${YB_PREFIX_DEPS_TSAN})
+elseif (${YB_USE_ASAN})
+  set(YB_THIRDPARTY_INSTALLED_DEPS_DIR ${YB_PREFIX_DEPS_ASAN})
 else()
   set(YB_THIRDPARTY_INSTALLED_DEPS_DIR ${YB_PREFIX_DEPS})
 endif()
@@ -1250,7 +1238,7 @@ set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
 
 set(YB_THIRDPARTY_INSTALLED_DIR ${YB_PREFIX_COMMON})
 
-# See thirdparty/build-thirdparty.sh for an explanation of differences between installed and
+# See thirdparty/build_thirdparty.py for an explanation of differences between installed and
 # installed-deps.
 ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DIR}/lib")
 ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
@@ -1372,21 +1360,21 @@ include_directories(SYSTEM ${SQUEASEL_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(squeasel
   STATIC_LIB "${SQUEASEL_STATIC_LIB}")
 
-## Google PerfTools
-##
-## Disabled with TSAN/ASAN as well as with gold (see comment
-## near definition of YB_USING_GOLD).
-find_package(GPerf REQUIRED)
-message("Deciding whether to use tcmalloc based on:\
- YB_USE_ASAN=${YB_USE_ASAN},\
- YB_USE_TSAN=${YB_USE_TSAN},\
- YB_USING_GOLD=${YB_USING_GOLD},\
- YB_TCMALLOC_AVAILABLE=${YB_TCMALLOC_AVAILABLE}")
-
 if (NOT "${YB_USE_ASAN}" AND
     NOT "${YB_USE_TSAN}" AND
-    NOT "${YB_USING_GOLD}" AND
-    "${YB_TCMALLOC_AVAILABLE}" STREQUAL "")
+    NOT "${YB_USING_GOLD}")
+  ## Google PerfTools
+  ##
+  ## Disabled with TSAN/ASAN as well as with gold (see comment
+  ## near definition of YB_USING_GOLD).
+  find_package(GPerf REQUIRED)
+  message("Deciding whether to use tcmalloc based on:\
+          YB_TCMALLOC_AVAILABLE=${YB_TCMALLOC_AVAILABLE}")
+else()
+  set(YB_TCMALLOC_AVAILABLE "Ignored")
+endif()
+
+if ("${YB_TCMALLOC_AVAILABLE}" STREQUAL "")
   message("Using tcmalloc")
   ADD_THIRDPARTY_LIB(tcmalloc
     STATIC_LIB "${TCMALLOC_STATIC_LIB}"
@@ -1398,7 +1386,7 @@ if (NOT "${YB_USE_ASAN}" AND
   add_definitions("-DTCMALLOC_ENABLED")
   set(YB_TCMALLOC_AVAILABLE 1)
 else()
-  message("Not using tcmalloc")
+  message("Not using tcmalloc, because of '${YB_TCMALLOC_AVAILABLE}'")
 endif()
 
 # libvmem
@@ -1455,24 +1443,22 @@ endif()
 # thirdparty/installed/include and pulling in the wrong version of other dependencies
 # that might be installed in the system.
 
-if (USING_LINUXBREW)
-  # BOOST_ROOT is used by find_package(Boost ...) below.
-  set(BOOST_ROOT "${LINUXBREW_DIR}")
-endif()
+# BOOST_ROOT is used by find_package(Boost ...) below.
+set(BOOST_ROOT "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}")
 
 ### Workaround for http://stackoverflow.com/questions/9948375/cmake-find-package-succeeds-but-returns-wrong-path
 set(Boost_NO_BOOST_CMAKE ON)
 
 # Find Boost static libraries.
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost COMPONENTS system chrono thread filesystem REQUIRED)
+find_package(Boost COMPONENTS system thread REQUIRED)
 set(BOOST_STATIC_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_STATIC_LIBS BOOST_STATIC_LIBS_LEN)
 list(SORT BOOST_STATIC_LIBS)
 
 # Find Boost shared libraries.
 set(Boost_USE_STATIC_LIBS OFF)
-find_package(Boost COMPONENTS system chrono thread filesystem REQUIRED)
+find_package(Boost COMPONENTS system thread REQUIRED)
 set(BOOST_SHARED_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_SHARED_LIBS BOOST_SHARED_LIBS_LEN)
 list(SORT BOOST_SHARED_LIBS)

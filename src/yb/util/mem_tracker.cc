@@ -39,7 +39,9 @@
 #include <memory>
 #include <mutex>
 
-#include <gperftools/malloc_extension.h> // NOLINT
+#ifdef TCMALLOC_ENABLED
+#include <gperftools/malloc_extension.h>
+#endif
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"

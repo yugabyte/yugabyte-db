@@ -37,8 +37,9 @@
 #include <utility>
 #include <vector>
 
-#include <boost/bind.hpp>
+#ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
+#endif
 
 #include "yb/util/test_util.h"
 

@@ -278,7 +278,7 @@ if "$using_default_thirdparty_dir"; then
       log "Skiping third-party build because NO_REBUILD_THIRDPARTY is set."
     else
       log "Starting third-party dependency build"
-      time thirdparty/build-thirdparty.sh
+      time thirdparty/build_thirdparty.py
       log "Third-party dependency build finished (see timing information above)"
     fi
   fi

@@ -43,9 +43,11 @@
 
 #include "yb/server/pprof-path-handlers.h"
 
+#ifdef TCMALLOC_ENABLED
 #include <gperftools/heap-profiler.h>
 #include <gperftools/malloc_extension.h>
 #include <gperftools/profiler.h>
+#endif
 #include <sys/stat.h>
 
 #include <fstream>

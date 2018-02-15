@@ -35,7 +35,10 @@
 
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
+
+#ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
+#endif
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/redis/redisserver/redis_server.h"

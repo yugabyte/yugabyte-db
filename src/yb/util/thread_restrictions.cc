@@ -31,7 +31,6 @@
 //
 
 #include <glog/logging.h>
-#include <gperftools/heap-checker.h>
 
 #include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"
