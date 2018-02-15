@@ -32,7 +32,12 @@ const mapDispatchToProps = (dispatch) => {
         if (response.payload.status === 200) {
           dispatch(fetchCloudMetadata());
           const providerUUID = response.payload.data.uuid;
-          const params = {"regionList": ["us-west1"], "hostVpcId": ""};
+          const hostNetwork = providerConfig["network"];
+          const params = {
+            "regionList": [],
+            "hostVpcId": hostNetwork,
+            "destVpcId": providerConfig["use_host_vpc"] ? hostNetwork : ""
+          };
           dispatch(bootstrapProvider(providerUUID, params)).then((boostrapResponse) => {
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });

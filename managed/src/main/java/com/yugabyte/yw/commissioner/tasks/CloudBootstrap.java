@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -9,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +21,7 @@ public class CloudBootstrap extends CloudTaskBase {
 
 
   public static class Params extends CloudTaskParams {
+    public Common.CloudType providerCode;
     public List<String> regionList;
     public String hostVpcId;
     public String destVpcId;
@@ -31,6 +34,10 @@ public class CloudBootstrap extends CloudTaskBase {
   public void run() {
     subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
+    if (taskParams().providerCode.equals(Common.CloudType.gcp)) {
+      createCloudSetupTask()
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+    }
     taskParams().regionList.forEach(regionCode -> {
       createRegionSetupTask(regionCode)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
@@ -42,6 +49,20 @@ public class CloudBootstrap extends CloudTaskBase {
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
 
     subTaskGroupQueue.run();
+  }
+
+  public SubTaskGroup createCloudSetupTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud setup task", executor);
+
+    CloudSetup.Params params = new CloudSetup.Params();
+    // TODO: this is needed by the superclass.
+    params.providerUUID = taskParams().providerUUID;
+    params.destVpcId = taskParams().destVpcId;
+    CloudSetup task = new CloudSetup();
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 
   public SubTaskGroup createRegionSetupTask(String regionCode) {

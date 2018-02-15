@@ -63,16 +63,23 @@ public class CloudRegionSetup extends CloudTaskBase {
         break;
       case gcp:
         CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
-        JsonNode zoneInfo = queryHelper.getZones(region);
+        JsonNode zoneInfo = queryHelper.getZones(region, taskParams().destVpcId);
         if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
           region.delete();
           String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
           throw new RuntimeException(errMsg);
         }
-        List<String> zones = Json.fromJson(zoneInfo.get(regionCode), List.class);
+        List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
+        List<String> subnetworks = Json.fromJson(zoneInfo.get(regionCode).get("subnetworks"), List.class);
+        if (subnetworks.size() != 1) {
+          region.delete();
+          throw new RuntimeException(
+              "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
+        }
+        String subnet = subnetworks.get(0);
         region.zones = new HashSet<>();
         zones.forEach(zone -> {
-          region.zones.add(AvailabilityZone.create(region, zone, zone, "subnet-" + regionCode));
+          region.zones.add(AvailabilityZone.create(region, zone, zone, subnet));
         });
         break;
       default:

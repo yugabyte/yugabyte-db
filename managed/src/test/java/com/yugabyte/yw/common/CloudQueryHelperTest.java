@@ -72,7 +72,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     	case instance_types:
     		ArrayList<Region> regionList = new ArrayList<Region>();
     		regionList.add(Region.get(regionUUID));
-    		return cloudQueryHelper.getInstanceTypes(Common.CloudType.valueOf(Region.get(regionUUID).provider.code), regionList);
+    		return cloudQueryHelper.getInstanceTypes(regionList);
     	default:
     		return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
     }

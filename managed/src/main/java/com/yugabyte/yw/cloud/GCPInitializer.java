@@ -115,7 +115,7 @@ public class GCPInitializer extends AbstractInitializer {
       // Get some basic info
       List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
       Common.CloudType cloudType = Common.CloudType.valueOf(provider.code);
-      JsonNode instanceTypes = cloudQueryHelper.getInstanceTypes(cloudType, regionList);
+      JsonNode instanceTypes = cloudQueryHelper.getInstanceTypes(regionList);
 
       // Iterate through each instance type and store their details in the db.
   		Iterator<String> itr = instanceTypes.fieldNames();

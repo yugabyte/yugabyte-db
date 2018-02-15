@@ -38,6 +38,9 @@ public class ModelFactory {
   public static Provider gcpProvider(Customer customer) {
     return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
+  public static Provider onpremProvider(Customer customer) {
+    return Provider.create(customer.uuid, Common.CloudType.onprem, "OnPrem");
+  }
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.uuid, cloud, cloud.toString());
   }

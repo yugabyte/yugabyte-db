@@ -189,21 +189,36 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateProviderWithConfig() {
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("code", "aws");
-    bodyJson.put("name", "Amazon");
-    ObjectNode configJson = Json.newObject();
-    configJson.put("config-1", "Configuration 1");
-    configJson.put("config-2", "Configuration 2");
-    bodyJson.set("config", configJson);
-    Result result = createProvider(bodyJson);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertOk(result);
-    assertValue(json, "name", "Amazon");
-    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
-    Map<String, String> config = provider.getConfig();
-    assertFalse(config.isEmpty());
-    assertEquals(configJson, Json.toJson(config));
+    List<String> providerCodes = ImmutableList.of("aws", "gcp");
+    for (String code : providerCodes) {
+      String providerName = code + "-Provider";
+      ObjectNode bodyJson = Json.newObject();
+      bodyJson.put("code", code);
+      bodyJson.put("name", providerName);
+      ObjectNode configJson = Json.newObject();
+      ObjectNode configFileJson = Json.newObject();
+      if (code.equals("gcp")) {
+        configFileJson.put("GCE_EMAIL", "email");
+        configFileJson.put("GCE_PROJECT", "project");
+        configFileJson.put("GOOGLE_APPLICATION_CREDENTIALS", "credentials");
+      }
+      configJson.put("config_file_contents", configFileJson);
+      bodyJson.set("config", configJson);
+      Result result = createProvider(bodyJson);
+      JsonNode json = Json.parse(contentAsString(result));
+      assertOk(result);
+      assertValue(json, "name", providerName);
+      Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+      Map<String, String> config = provider.getConfig();
+      if (code.equals("gcp")) {
+        assertFalse(config.isEmpty());
+        // We should technically check the actual content, but the keys are different between the
+        // input payload and the saved config.
+        assertEquals(configFileJson.size(), config.size());
+      } else {
+        assertTrue(config.isEmpty());
+      }
+    }
   }
 
   @Test

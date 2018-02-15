@@ -359,7 +359,7 @@ public class NodeManager extends DevopsBase {
 
     commandArgs.add(nodeTaskParam.nodeName);
 
-    return execCommand(nodeTaskParam.getRegion().uuid, type.toString().toLowerCase(),
+    return execCommand(nodeTaskParam.getRegion().uuid, null, null, type.toString().toLowerCase(),
         commandArgs, getCloudArgs(nodeTaskParam));
   }
 }

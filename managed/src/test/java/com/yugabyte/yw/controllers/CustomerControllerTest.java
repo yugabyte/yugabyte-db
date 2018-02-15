@@ -418,9 +418,13 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode response = Json.parse("{\"foo\": \"bar\"}");
     when(mockCloudQueryHelper.currentHostInfo(Common.CloudType.aws,
       ImmutableList.of("instance-id", "vpc-id", "privateIp", "region"))).thenReturn(response);
+    when(mockCloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null)).thenReturn(response);
     Result result = getHostInfo(customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    assertEquals(json, response);
+    ObjectNode responseNode = Json.newObject();
+    responseNode.put("aws", response);
+    responseNode.put("gcp", response);
+    assertEquals(json, responseNode);
   }
 }

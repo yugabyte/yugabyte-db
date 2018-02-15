@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.commissioner.Common;
+
 import javax.inject.Singleton;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,15 +34,25 @@ public class NetworkManager extends DevopsBase {
       commandArgs.add(destVpcId);
     }
 
-    return execAndParseCommand(regionUUID, "bootstrap", commandArgs);
+    return execAndParseCommandRegion(regionUUID, "bootstrap", commandArgs);
+  }
+
+  public JsonNode bootstrapWholeCloud(UUID providerUUID, String destVpcId) {
+    List<String> commandArgs = new ArrayList();
+    if (destVpcId != null && !destVpcId.trim().isEmpty()) {
+      commandArgs.add("--dest_vpc_id");
+      commandArgs.add(destVpcId);
+    }
+
+    return execAndParseCommandCloud(providerUUID, "bootstrap", commandArgs);
   }
 
   public JsonNode query(UUID regionUUID) {
-    return execAndParseCommand(regionUUID, "query", Collections.emptyList());
+    return execAndParseCommandRegion(regionUUID, "query", Collections.emptyList());
   }
 
   public JsonNode cleanup(UUID regionUUID) {
-    JsonNode response = execAndParseCommand(regionUUID, "cleanup", Collections.emptyList());
+    JsonNode response = execAndParseCommandRegion(regionUUID, "cleanup", Collections.emptyList());
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }
