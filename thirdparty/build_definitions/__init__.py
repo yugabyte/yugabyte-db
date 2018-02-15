@@ -169,8 +169,8 @@ class Dependency(object):
         self.archive_name = make_archive_name(name, version, self.download_url)
         self.patch_version = 0
 
-    def should_build(self, skip_build, instrumented):
-        return not skip_build
+    def should_build(self, instrumented):
+        return True
 
 
 class ExtraDownload(object):

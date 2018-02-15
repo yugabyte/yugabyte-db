@@ -509,18 +509,16 @@ class Builder:
             log_output(log_prefix, ['make', 'install'])
 
     def build(self, type):
-        skip_build = False
         if type != BUILD_TYPE_COMMON and self.args.build_type is not None:
             if type != self.args.build_type:
-                skip_build = True
+                return
 
         self.set_build_type(type)
         instrumented = type == BUILD_TYPE_ASAN or type == BUILD_TYPE_TSAN
         self.set_instrumented(instrumented)
-        build_groups = [BUILD_GROUP_COMMON] if type == BUILD_TYPE_COMMON else \
-                       [BUILD_GROUP_INSTRUMENTED]
+        build_group = BUILD_GROUP_COMMON if type == BUILD_TYPE_COMMON else BUILD_GROUP_INSTRUMENTED
         for dep in self.selected_dependencies:
-            if dep.build_group in build_groups and dep.should_build(skip_build, instrumented):
+            if dep.build_group == build_group and dep.should_build(instrumented):
                 self.build_dependency(dep)
 
     def set_build_type(self, type):

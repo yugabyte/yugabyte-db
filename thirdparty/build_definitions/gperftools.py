@@ -43,5 +43,5 @@ class GPerfToolsDependency(Dependency):
         log_output(log_prefix, ['make', 'clean'])
         log_output(log_prefix, ['make', 'install', '-j', '1'])
 
-    def should_build(self, skip_build, instrumented):
-        return not skip_build and not instrumented
+    def should_build(self, instrumented):
+        return not instrumented
