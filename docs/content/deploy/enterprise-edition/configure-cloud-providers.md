@@ -47,7 +47,7 @@ Now we are ready to create a YugaByte universe on AWS.
 
 ## Microsoft Azure
 
-Support for Microsoft Azure in YugaByte Enterprise Edition is currently in the works. You are recommended to treat Microsoft Azure as an [On-Premises Datacenter](/deploy/enterprise-edition/configure-cloud-providers/#on-premises-datacenters) for now.
+Support for Microsoft Azure in YugaByte DB Enterprise Edition is currently in the works. You are recommended to treat Microsoft Azure as an [On-Premises Datacenter](/deploy/enterprise-edition/configure-cloud-providers/#on-premises-datacenters) for now.
 
 ## Docker Platform
 

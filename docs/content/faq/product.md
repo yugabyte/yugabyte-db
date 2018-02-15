@@ -7,7 +7,7 @@ weight: 2470
 
 YugaByte DB is a good fit for cloud-native applications needing to serve mission-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
 
-1. Online Transaction Processing (OLTP) applications needing multi-datacenter availability without compromising strong consistency. E.g. User identity, retail product catalog, financial data service.
+1. Online Transaction Processing (OLTP) applications needing multi-region availability without compromising strong consistency and . E.g. User identity, retail product catalog, financial data service.
 
 2. Hybrid Transactional/Analytical Processing (HTAP), also known as Translytical, applications needing real-time analytics on transactional data. E.g User personalization, fraud detection, machine learning.
 
@@ -43,7 +43,7 @@ Yes, the Community Edition is a completely open source, fully functioning versio
 
 [Community Edition](/quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with tradtional DevOps tools. 
 
-[Enterprise Edition](/deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more datacenters (across both public cloud and on-premises datacenters).
+[Enterprise Edition](/deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud-native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
 A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/product/compare/).
 
@@ -55,6 +55,8 @@ See [YugaByte DB in Comparison](/comparisons/)
 - [MongoDB](/comparisons/mongodb/)
 - [Redis](/comparisons/redis/)
 - [Apache HBase](/comparisons/hbase/)
+- [Google Cloud Spanner](/comparisons/google-spanner/)
+- [Azure Cosmos DB](/comparisons/azure-cosmos/)
 
 ## Why not use a Redis cluser alongside a sharded SQL cluster?
 

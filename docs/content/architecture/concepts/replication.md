@@ -48,12 +48,11 @@ guarantees which is desired in some deployment models]. All other tablet-peers a
 and merely replicate data, and are available as hot standbys that can take over quickly in case the
 leader fails.
 
-## Async replication
+## Read-only replicas
 
 In addition to the core distributed consensus based replication, YugaByte DB extends Raft to add
-observer nodes that do not participate in writes but get a timeline consistent copy of the data in
-an asynchronous manner. Nodes in remote  datacenters can thus be added in "async" mode. This is
+read-only replicas (aks observer nodes) that do not participate in writes but get a timeline consistent copy of the data inan asynchronous manner. Nodes in remote  datacenters can thus be added in "read-only" mode. This is
 primarily for cases where latency of doing a distributed consensus based write is not tolerable for
-some workloads. This "async" mode (or timeline consistent mode) is still strictly better than
+some workloads. This read-only node (or timeline-consistent node) is still strictly better than
 eventual consistency, because with the latter the application's view of the data can move back and
 forth in time and is hard to program to.

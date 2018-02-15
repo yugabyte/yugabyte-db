@@ -3,7 +3,7 @@ title: Multi-Node Cluster
 weight: 610
 ---
 
-Multi-node clusters of YugaByte Community Edition can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.
+Multi-node clusters of YugaByte DB Community Edition can be manually deployed on any cloud provider of choice including major public cloud platforms and private on-premises datacenters.
 
 ## Prerequisites
 

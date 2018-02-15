@@ -5,18 +5,31 @@ weight: 30
 
 ## What is YugaByte DB?
 
-YugaByte DB is an open source, cloud-native database for mission-critical enterprise applications. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+YugaByte DB is an open source, transactional, high performance database for planet-scale applications. It is meant to be a system-of-record/authoritative database that geo-distributed applications can rely on for correctness and availability. It allows applications to easily scale up and scale down across multiple regions in the public cloud, on-premises datacenters or across hybrid environments without creating operational complexity or increasing the risk of outages.
 
-In terms of data model and APIs, YugaByte DB currently supports **Apache Cassandra Query Language** & its client drivers natively. In addition, it also supports an automatically sharded, clustered & elastic **Redis-as-a-Database** in a Redis driver compatible manner. **Distributed transactions** to support **strongly consistent secondary indexes**, multi-table/row ACID operations and SQL support is on the roadmap.
+In terms of data model and APIs, YugaByte DB currently supports Apache Cassandra Query Language (CQL) & its client drivers natively. It extends CQL by adding [distributed ACID transactions](/explore/transactions/) and strongly consistent secondary indexes. PostgreSQL support is on the roadmap.
+
+YugaByte DB also supports an auto-sharded, clustered, elastic Redis-as-a-Database in a Redis driver compatible manner. It also extends Redis with a new native [Time Series](https://blog.yugabyte.com/extending-redis-with-a-native-time-series-data-type-e5483c7116f8) data type.
 
 ## What makes YugaByte DB unique?
 
-### Purpose-built for mission-critical applications
+YugaByte DB is a single operational database that brings together 3 must-have needs of user-facing cloud applications, namely ACID transactions, high performance and multi-region scalability. Monolithic SQL databases offer transactions and performance but do not have ability to scale across multi-regions. Distributed NoSQL databases offer performance and multi-region scalablility but give up on transactional guarantees.
 
-Mission-critical applications have a strong need for data correctness and high availability. They are typically composed of microservices with diverse workloads such as key/value, flexible schema, graph or relational. The access patterns vary as well. SaaS services or mobile/web applications keeping customer records, order history or messages need zero-data loss, geo-replication, low-latency reads/writes and a consistent customer experience. Fast data infrastructure use cases (such as IoT, finance, timeseries data) need near real-time & high-volume ingest, low-latency reads, and native integration with analytics frameworks like Apache Spark.
+### 1. Transactional
 
-YugaByte DB offers polyglot persistence to power these diverse workloads and access patterns in a unified database, while providing strong correctness guarantees and high availability. You are no longer forced to create infrastructure silos for each workload or choose between different flavors SQL and NoSQL databases. YugaByte breaks down the barrier between SQL and NoSQL by offering both.
+- [Distributed acid transactions](/explore/transactions/) that allow multi-row updates across any number of shards at any scale.
+- Adaptive, fault-tolerant [storage system](/architecture/concepts/persistence/) that's backed by a self-healing, strongly consistent [replication](/architecture/concepts/replication/).
 
-### Cloud-native agility
+### 2. High Performance
 
-Another theme common across these microservices is the move to a cloud-native architecture, be it on the public cloud, on-premises or hybrid environment. The primary driver is to make infrastructure agile. Agile infrastructure is linearly scalable, fault-tolerant, geo-distributed, re-configurabile with zero downtime and portable across clouds. While the container ecosystem led by Docker & Kubernetes has enabled enterprises to realize this vision for the stateless tier, the data tier has remained a big challenge.  YugaByte DB is purpose-built to address these challenges, but for the data tier, and serves as the stateful complement to containers.
+- Low latency for geo-distributed OLTP applications with multiple [read consistency levels](/architecture/concepts/replication/#tunable-read-consistency) and [read-only replicas](/architecture/concepts/replication/#read-only-replicas).
+
+- High throughput for ingesting and serving ever-growing datasets.
+
+### 3. Planet-Scale
+
+- [Global data distribution](https://www.yugabyte.com/solutions/deployments/multi-region/) that brings consistent data close to users through multi-region and multi-cloud deployments.
+
+- Built for the container era with highly elastic scaling and infrastructure portability, including [Kubernetes-driven orchestration](/quick-start/install/#kubernetes).
+
+

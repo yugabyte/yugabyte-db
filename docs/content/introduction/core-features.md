@@ -43,17 +43,19 @@ Given the use of distributed consensus where reads are either served only by one
 
 ![Tunably consistent reads](/images/tunably-consistent-reads.png)
 
-## 5. Multi-API
+## 5. Multi-region deployments
 
-YugaByte DB currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. SQL support is in the works.
+YugaByte DB can be easily deployed across multiple region with sync replication for primary data (where replicas act as voting members) and async replication for timeline-consistent data (where replicas act as non-voting/observing members). Note that async replication is a feature restricted to the [Enterprise Edition](https://www.yugabyte.com/product/enterprise/).
 
-## 6. Multi-model
-
-YugaByte DB can be used to model multiple different data workloads such as flexible schema, time-series, key-value. The first 2 models are best built using CQL while the last one lends itself to the Redis command library.
-
-## 7. Multi-datacenter deployments
-
-YugaByte DB can be easily deployed across multiple datacenters with sync replication for primary data (where replicas act as voting members) and async replication for timeline consistent data (where replicas act as non-voting/observing members). Note that async replication is a feature restricted to [YugaByte Enterprise Edition](https://www.yugabyte.com/product/).
-
-## 8. Multi-cloud portability
+## 6. Multi-cloud portability
 YugaByte DB is inspired by [Google Cloud Spanner](https://cloud.google.com/spanner/) from an architectural standpoint but instead of using proprietary infrastructure (such as TrueTime) that Spanner uses, YugaByte is built to run on commodity infrastructure while still remaining decoupled from the exact cloud platform. In other words, there is no cloud lock-in with YugaByte DB and it can be run on any of the public clouds or an on-premises/private datacenter.
+
+## 7. Multi-API
+
+YugaByte DB currently supports 2 popular APIs namely [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands) command library. Additionally, it extends both these APIs with native datatypes and operations with the goal of simplifying geo-distributed, transactional, high performance application development.
+
+PostgreSQL support is in the works.
+
+## 8. Multi-model
+
+YugaByte DB can be used to model multiple different data workloads such as flexible schema, time-series, key-value. The first 2 models are best built using Cassandra Query Language while the last one lends itself to the Redis command library.

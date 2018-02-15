@@ -1,7 +1,10 @@
 
 ## Prerequisites
 
-- Download and install terraform from [here](https://www.terraform.io/downloads.html). Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
+1. Download and install [terraform](https://www.terraform.io/downloads.html). 
+
+
+2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
 
 
 ```sh
@@ -19,35 +22,37 @@ Common commands:
 
 ## Create a terraform config file
 
-Create a working directory, and download the yugabyte
-
 Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/YugaByte/terraform-aws-yugabyte).
 
 ```sh
 provider "aws" {
+  # Configure your AWS account credentials here.
   access_key = "ACCESS_KEY_HERE"
   secret_key = "SECRET_KEY_HERE"
   region     = "us-west-2"
 }
 
 module "yugabyte-db-cluster" {
+  # The source module used for creating AWS clusters.
   source = "github.com/YugaByte/terraform-aws-yugabyte"
 
-  # The name of the cluster to be created.
-  cluster_name = "CLUSTER_NAME_HERE"
+  # The name of the cluster to be created, change as per need.
+  cluster_name = "test-cluster"
 
-  # A custom security group to be passed so that we can connect to the nodes.
+  # Existing custom security group to be passed so that we can connect to the instances.
+  # Make sure this security group allows your local machine to SSH into these instances.
   custom_security_group_id="SECURITY_GROUP_HERE"
 
-  # AWS key pair.
+  # AWS key pair that you want to use to ssh into the instances.
+  # Make sure this key pair is already present in the noted region of your account.
   ssh_keypair = "SSH_KEYPAIR_HERE"
   ssh_key_path = "SSH_KEY_PATH_HERE"
 
-  # The vpc and subnet ids where the nodes should be spawned.
+  # Existing vpc and subnet ids where the instances should be spawned.
   vpc_id = "VPC_ID_HERE"
   subnet_ids = ["SUBNET_ID_HERE"]
 
-  # Replication factor.
+  # Replication factor of the YugaByte DB cluster.
   replication_factor = "3"
 
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
@@ -86,7 +91,7 @@ $ terraform apply
 Once the cluster is created, you can go to the URL `http://<node ip or dns name>:7000` to view the UI. You can find the node's ip or dns by running the following:
 
 ```sh
-terraform state show aws_instance.yugabyte_nodes[0]
+$ terraform state show aws_instance.yugabyte_nodes[0]
 ```
 
 You can access the cluster UI by going to any of the following URLs.
@@ -104,12 +109,17 @@ The following resources are created by this module:
 
 - `module.yugabyte-db-cluster.aws_instance.yugabyte_nodes` The AWS instances.
 
-- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the YugaByte cluster.
+For cluster named `test-cluster`, the instances will be named `yb-ce-test-cluster-n1`, `yb-ce-test-cluster-n2`, `yb-ce-test-cluster-n3`.
+
+- `module.yugabyte-db-cluster.aws_security_group.yugabyte` The security group that allows the various clients to access the YugaByte DB cluster.
+
+For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster` with the ports 7000, 9000, 9042 and 6379 open to all other instances in the same security group.
 
 - `module.yugabyte-db-cluster.aws_security_group.yugabyte_intra` The security group that allows communication internal to the cluster.
 
-- `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that starts the various processes to start the cluster.
+For cluster named `test-cluster`, this security group will be named `yb-ce-test-cluster-intra` with the ports 7100, 9100 open to all other instances in the same security group.
 
+- `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugaByte DB universe.
 
 ## Destroy the cluster (optional)
 
