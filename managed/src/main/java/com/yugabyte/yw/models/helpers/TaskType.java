@@ -93,7 +93,9 @@ public enum TaskType {
 
   CloudRegionCleanup("subtasks.cloud.CloudRegionCleanup"),
 
-  CloudRegionSetup("subtasks.cloud.CloudRegionSetup");
+  CloudRegionSetup("subtasks.cloud.CloudRegionSetup"),
+
+  CloudSetup("subtasks.cloud.CloudSetup");
 
   private String relativeClassPath;
 

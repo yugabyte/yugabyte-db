@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Singleton;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
@@ -25,16 +27,42 @@ public class CloudQueryHelper extends DevopsBase {
 
   public JsonNode currentHostInfo(Common.CloudType cloudType, List<String> metadataTypes) {
     List<String> commandArgs = new ArrayList<String>();
-    commandArgs.add("--metadata_types");
-    commandArgs.addAll(metadataTypes);
-    return execAndParseCommand(cloudType, "current-host", commandArgs);
+    if (metadataTypes != null) {
+      commandArgs.add("--metadata_types");
+      commandArgs.addAll(metadataTypes);
+    }
+    return parseShellResponse(
+        execCommand(null, null, cloudType, "current-host", commandArgs, new ArrayList<String>()),
+        "current-host");
+  }
+
+  public JsonNode getRegions(UUID providerUUID) {
+    Provider p = Provider.get(providerUUID);
+    List<String> commandArgs = new ArrayList<String>();
+    if (p.code.equals("gcp")) {
+      // TODO: ideally we shouldn't have this hardcoded string present in multiple places.
+      String potentialGcpNetwork = p.getConfig().get("CUSTOM_GCE_NETWORK");
+      if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
+        commandArgs.add("--network");
+        commandArgs.add(potentialGcpNetwork);
+      }
+    }
+    return execAndParseCommandCloud(providerUUID, "regions", commandArgs);
   }
 
   public JsonNode getZones(Region region) {
-  	List<String> commandArgs = new ArrayList<String>();
-  	commandArgs.add("--regions");
-  	commandArgs.add(region.code);
-    return execAndParseCommand(region.uuid, "zones", commandArgs);
+    return getZones(region, null);
+  }
+
+  public JsonNode getZones(Region region, String destVpcId) {
+    List<String> commandArgs = new ArrayList<String>();
+    commandArgs.add("--regions");
+    commandArgs.add(region.code);
+    if (destVpcId != null && !destVpcId.isEmpty()) {
+      commandArgs.add("--dest_vpc_id");
+      commandArgs.add(destVpcId);
+    }
+    return execAndParseCommandRegion(region.uuid, "zones", commandArgs);
   }
 
   /*
@@ -63,11 +91,12 @@ public class CloudQueryHelper extends DevopsBase {
    *   ...
    * }
    */
-  public JsonNode getInstanceTypes(Common.CloudType cloudType, List<Region> regionList) {
-  	List<String> commandArgs = new ArrayList<String>();
-  	commandArgs.add("--regions");
-  	regionList.forEach(region -> commandArgs.add(region.code));
-  	return execAndParseCommand(regionList.get(0).uuid, "instance_types", commandArgs);
+  public JsonNode getInstanceTypes(List<Region> regionList) {
+    List<String> commandArgs = new ArrayList<String>();
+    commandArgs.add("--regions");
+    regionList.forEach(region -> commandArgs.add(region.code));
+    return execAndParseCommandRegion(
+        regionList.get(0).uuid, "instance_types", commandArgs);
   }
 
   /**
@@ -85,7 +114,7 @@ public class CloudQueryHelper extends DevopsBase {
       for (AvailabilityZone availabilityZone : AvailabilityZone.getAZsForRegion(region.uuid)) {
         List<String> cloudArgs = ImmutableList.of("--zone", availabilityZone.code);
         List<String> commandArgs = ImmutableList.of("--instance_type", instanceType);
-        JsonNode result = parseShellResponse(execCommand(region.uuid, command, commandArgs, cloudArgs), command);
+        JsonNode result = parseShellResponse(execCommand(region.uuid, null, null, command, commandArgs, cloudArgs), command);
         if (result.has("error")) {
           throw new RuntimeException(result.get("error").asText());
         }

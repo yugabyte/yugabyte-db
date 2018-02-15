@@ -136,7 +136,7 @@ public class AccessManager extends DevopsBase {
       commandArgs.add(accessKey.getKeyInfo().privateKey);
     }
 
-    JsonNode response = execAndParseCommand(regionUUID, "add-key", commandArgs);
+    JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }
@@ -164,11 +164,11 @@ public class AccessManager extends DevopsBase {
     }
     commandArgs.add("--private_key_file");
     commandArgs.add(privateKeyFile);
-    return execAndParseCommand(regionUUID, "create-vault", commandArgs);
+    return execAndParseCommandRegion(regionUUID, "create-vault", commandArgs);
   }
 
   public JsonNode listKeys(UUID regionUUID) {
-    return execAndParseCommand(regionUUID, "list-keys", Collections.emptyList());
+    return execAndParseCommandRegion(regionUUID, "list-keys", Collections.emptyList());
   }
 
   public JsonNode deleteKey(UUID regionUUID, String keyCode) {
@@ -183,7 +183,7 @@ public class AccessManager extends DevopsBase {
     commandArgs.add(keyCode);
     commandArgs.add("--key_file_path");
     commandArgs.add(keyFilePath);
-    JsonNode response = execAndParseCommand(regionUUID, "delete-key", commandArgs);
+    JsonNode response = execAndParseCommandRegion(regionUUID, "delete-key", commandArgs);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

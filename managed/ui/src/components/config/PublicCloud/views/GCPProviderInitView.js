@@ -2,7 +2,7 @@
 
 import React, {Component} from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton } from '../../../common/forms/fields';
+import { YBButton, YBToggle } from '../../../common/forms/fields';
 import { YBTextInput } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
 import { getPromiseState } from 'utils/PromiseUtils';
@@ -25,16 +25,23 @@ class GCPProviderInitView extends Component {
   createProviderConfig = vals => {
     const self = this;
     const configText = this.state.gcpConfig;
-    if(isNonEmptyObject(configText)) {
+    const {hostInfo} = this.props;
+    if (isNonEmptyObject(configText)) {
       const providerName = vals.accountName;
       const reader = new FileReader();
       reader.readAsText(configText);
       // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
       reader.onloadend = function () {
-        let gcpConfig = {};
         try {
-          gcpConfig = JSON.parse(reader.result);
-          self.props.createGCPProvider(providerName, gcpConfig);
+          const gcpCreateConfig = {
+            "config_file_contents": JSON.parse(reader.result)
+          };
+          if (self.isHostInGCP()) {
+            gcpCreateConfig["project"] = hostInfo["gcp"]["project"];
+            gcpCreateConfig["network"] = hostInfo["gcp"]["network"];
+            gcpCreateConfig["use_host_vpc"] = Boolean(vals.useHostVpc);
+          }
+          self.props.createGCPProvider(providerName, gcpCreateConfig);
         } catch (e) {
           self.setState({"error": "Invalid GCP config JSON file"});
         }
@@ -43,6 +50,13 @@ class GCPProviderInitView extends Component {
       this.setState({"error": "GCP Config JSON is required"});
     }
   };
+
+  isHostInGCP() {
+    const { hostInfo } = this.props;
+    // Removed the !IN_DEVELOPMENT_MODE check because GCP bootstrap should not break anything.
+    return isNonEmptyObject(hostInfo) && isNonEmptyObject(hostInfo["gcp"]) &&
+      hostInfo["gcp"]["error"] === undefined;
+  }
 
   uploadGCPConfig(uploadFile) {
     this.setState({gcpConfig: uploadFile[0]});
@@ -57,6 +71,7 @@ class GCPProviderInitView extends Component {
     if (isNonEmptyObject(this.state.gcpConfig)) {
       gcpConfigFileName = this.state.gcpConfig.name;
     }
+    const subLabel = "Disabled if host is not on GCP";
     return (
       <div className="provider-config-container">
         <form name="gcpProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
@@ -83,6 +98,16 @@ class GCPProviderInitView extends Component {
                   </Col>
                   <Col lg={4}>
                     <div className="file-label">{gcpConfigFileName}</div>
+                  </Col>
+                </Row>
+                <Row className="config-provider-row">
+                  <Col lg={2}>
+                    <Field name="useHostVpc"
+                           component={YBToggle}
+                           label="Use Host's VPC"
+                           subLabel={subLabel}
+                           defaultChecked={false}
+                           isReadOnly={!this.isHostInGCP()} />
                   </Col>
                 </Row>
               </Col>

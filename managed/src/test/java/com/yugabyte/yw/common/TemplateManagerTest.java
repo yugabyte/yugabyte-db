@@ -93,7 +93,7 @@ public class TemplateManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
-    testProvider = ModelFactory.awsProvider(testCustomer);
+    testProvider = ModelFactory.onpremProvider(testCustomer);
     when(mockAppConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
     when(mockAppConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
   }

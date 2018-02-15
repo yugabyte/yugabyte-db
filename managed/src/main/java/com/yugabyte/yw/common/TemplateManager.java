@@ -63,7 +63,7 @@ public class TemplateManager extends DevopsBase {
       commandArgs.add("--passwordless_sudo");
     }
 
-    JsonNode result = execAndParseCommand(Common.CloudType.onprem, "template", commandArgs);
+    JsonNode result = execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
 
     if (result.get("error") == null) {
       keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;

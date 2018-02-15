@@ -47,6 +47,7 @@ public class CloudBootstrapTestTest extends CommissionerBaseTest {
 
   private UUID submitTask(List<String> regionList) {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
+    taskParams.providerCode = Common.CloudType.valueOf(defaultProvider.code);
     taskParams.providerUUID = defaultProvider.uuid;
     taskParams.regionList = regionList;
     taskParams.hostVpcId = "host-vpc-id";

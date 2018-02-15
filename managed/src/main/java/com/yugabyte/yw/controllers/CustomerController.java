@@ -144,9 +144,11 @@ public class CustomerController extends AuthenticatedController {
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    // TODO: currently we assume the cloudtype to be AWS for fetching host information.
-    JsonNode hostInfo = cloudQueryHelper.currentHostInfo(
-        Common.CloudType.aws, ImmutableList.of("instance-id", "vpc-id", "privateIp", "region"));
+    ObjectNode hostInfo = Json.newObject();
+    hostInfo.put(Common.CloudType.aws.name(), cloudQueryHelper.currentHostInfo(
+        Common.CloudType.aws, ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")));
+    hostInfo.put(Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(
+        Common.CloudType.gcp, null));
 
     return ApiResponse.success(hostInfo);
   }

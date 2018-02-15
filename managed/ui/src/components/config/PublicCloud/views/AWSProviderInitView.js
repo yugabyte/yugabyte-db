@@ -21,10 +21,11 @@ class AWSProviderInitView extends Component {
     let regionFormVals = {};
 
     if (this.isHostInAWS()) {
+      const awsHostInfo = hostInfo["aws"];
       regionFormVals = {
-        "regionList": [hostInfo["region"]],
-        "hostVpcId": hostInfo["vpc-id"],
-        "destVpcId": isDefinedNotNull(formValues.useHostVpc) ? hostInfo["vpc-id"] : "",
+        "regionList": [awsHostInfo["region"]],
+        "hostVpcId": awsHostInfo["vpc-id"],
+        "destVpcId": isDefinedNotNull(formValues.useHostVpc) ? awsHostInfo["vpc-id"] : "",
       };
     } else {
       // TODO: Temporary change to it work locally.
@@ -35,8 +36,9 @@ class AWSProviderInitView extends Component {
 
   isHostInAWS = () => {
     const { hostInfo } = this.props;
-    return !IN_DEVELOPMENT_MODE && (isValidObject(hostInfo) && hostInfo["error"] === undefined);
-  };
+    return !IN_DEVELOPMENT_MODE && isValidObject(hostInfo) && isValidObject(hostInfo["aws"]) &&
+      hostInfo["aws"]["error"] === undefined;
+  }
 
   render() {
     const { handleSubmit, submitting, error} = this.props;
