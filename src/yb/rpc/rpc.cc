@@ -43,9 +43,17 @@
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
+
+DEFINE_int64(rpcs_shutdown_timeout_ms, 15000 * yb::kTimeMultiplier,
+             "Timeout for a batch of multiple RPCs invoked in parallel to shutdown.");
+DEFINE_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
+             "Extra allowed time for a single RPC command to complete after its deadline.");
+DEFINE_int64(retryable_rpc_single_call_timeout_ms, 5000 * yb::kTimeMultiplier,
+             "Timeout of single RPC call in retryable RPC command.");
 
 namespace yb {
 
@@ -176,6 +184,13 @@ std::string RpcRetrier::ToString() const {
                 deadline_);
 }
 
+RpcController* RpcRetrier::PrepareController() {
+  const auto single_call_timeout =
+      MonoDelta::FromMilliseconds(FLAGS_retryable_rpc_single_call_timeout_ms);
+  controller_.set_deadline(std::min(deadline_, MonoTime::Now() + single_call_timeout));
+  return &controller_;
+}
+
 Rpcs::Rpcs(std::mutex* mutex) {
   if (mutex) {
     mutex_ = mutex;
@@ -195,11 +210,16 @@ void Rpcs::Shutdown() {
       calls.assign(calls_.begin(), calls_.end());
     }
   }
+  auto deadline = std::chrono::steady_clock::now() +
+                  std::chrono::milliseconds(FLAGS_rpcs_shutdown_timeout_ms);
+  // It takes some time to complete rpc command after its deadline has passed.
+  // So we add extra time for it.
+  auto single_call_extra_delay = std::chrono::milliseconds(FLAGS_rpcs_shutdown_extra_delay_ms);
   for (auto& call : calls) {
     CHECK(call);
     call->Abort();
+    deadline = std::max(deadline, call->deadline().ToSteadyTimePoint() + single_call_extra_delay);
   }
-  auto deadline = std::chrono::steady_clock::now() + 15s;
   {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {

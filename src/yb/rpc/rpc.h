@@ -72,6 +72,8 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
 
   virtual void Abort() = 0;
 
+  virtual MonoTime deadline() const = 0;
+
  protected:
   ~RpcCommand() {}
 };
@@ -86,9 +88,6 @@ class RpcRetrier {
   RpcRetrier(MonoTime deadline, std::shared_ptr<rpc::Messenger> messenger)
       : deadline_(std::move(deadline)),
         messenger_(std::move(messenger)) {
-    if (deadline_.Initialized()) {
-      controller_.set_deadline(deadline_);
-    }
     controller_.Reset();
   }
 
@@ -117,7 +116,11 @@ class RpcRetrier {
   RpcController* mutable_controller() { return &controller_; }
   const RpcController& controller() const { return controller_; }
 
-  const MonoTime& deadline() const { return deadline_; }
+  // Sets up deadline and returns controller.
+  // Do not forget that setting deadline in RpcController is NOT thread safe.
+  RpcController* PrepareController();
+
+  MonoTime deadline() const { return deadline_; }
 
   const std::shared_ptr<Messenger>& messenger() const {
     return messenger_;
@@ -176,7 +179,7 @@ class Rpc : public RpcCommand {
   // Returns the number of times this RPC has been sent. Will always be at
   // least one.
   int num_attempts() const { return retrier().attempt_num(); }
-  const MonoTime& deadline() const { return retrier_.deadline(); }
+  MonoTime deadline() const override { return retrier_.deadline(); }
 
   void Abort() override {
     retrier_.Abort();
@@ -185,6 +188,7 @@ class Rpc : public RpcCommand {
  protected:
   const RpcRetrier& retrier() const { return retrier_; }
   RpcRetrier* mutable_retrier() { return &retrier_; }
+  RpcController* PrepareController() { return retrier_.PrepareController(); }
 
  private:
   friend class RpcRetrier;

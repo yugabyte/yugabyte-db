@@ -42,6 +42,8 @@ constexpr bool IsSanitizer() {
   return RegularBuildVsSanitizers(false, true);
 }
 
+const int kTimeMultiplier = RegularBuildVsSanitizers(1, 3);
+
 }  // namespace yb
 
 #endif  // YB_UTIL_TSAN_UTIL_H
