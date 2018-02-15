@@ -68,7 +68,10 @@ public class ColumnDetails {
     LIST("list"),
     MAP("map"),
     SET("set"),
-    UUID("uuid");
+    UUID("uuid"),
+    TIMEUUID ("timeuuid"),
+    FROZEN("frozen"),
+    USER_DEFINED_TYPE("user_defined_type");
 
     static final Set<YQLDataType> COLLECTION_TYPES = ImmutableSet.of(LIST, MAP, SET);
 
@@ -128,6 +131,12 @@ public class ColumnDetails {
           return SET;
         case UUID:
           return UUID;
+        case TIMEUUID:
+          return TIMEUUID;
+        case FROZEN:
+          return FROZEN;
+        case USER_DEFINED_TYPE:
+          return USER_DEFINED_TYPE;
       }
       throw new IllegalArgumentException("Type " + type + " has no YQL equivalent.");
     }
