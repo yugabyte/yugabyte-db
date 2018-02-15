@@ -242,6 +242,7 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
 }
 
 namespace {
+
 void LeaderMasterCallback(HostPort* dst_hostport,
                           Synchronizer* sync,
                           const Status& status,
@@ -251,6 +252,7 @@ void LeaderMasterCallback(HostPort* dst_hostport,
   }
   sync->StatusCB(status);
 }
+
 } // anonymous namespace
 
 Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,

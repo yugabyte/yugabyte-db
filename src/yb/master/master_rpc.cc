@@ -100,7 +100,7 @@ void GetMasterRegistrationRpc::SendRpc() {
   MasterServiceProxy proxy(retrier().messenger(), addr_);
   GetMasterRegistrationRequestPB req;
   proxy.GetMasterRegistrationAsync(
-      req, &resp_, mutable_retrier()->mutable_controller(),
+      req, &resp_, PrepareController(),
       std::bind(&GetMasterRegistrationRpc::Finished, this, Status::OK()));
 }
 

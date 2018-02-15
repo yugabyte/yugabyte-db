@@ -71,7 +71,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
  private:
   void SendRpcToTserver() override {
     InvokeAsync(invoker_.proxy().get(),
-                mutable_retrier()->mutable_controller(),
+                PrepareController(),
                 std::bind(&TransactionRpcBase::Finished, this, Status::OK()));
   }
 

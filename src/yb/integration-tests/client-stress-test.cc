@@ -44,6 +44,10 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/test_workload.h"
 
+#include "yb/master/master_rpc.h"
+
+#include "yb/rpc/rpc.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"
@@ -71,11 +75,6 @@ class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
     YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts = default_opts();
-    if (multi_master()) {
-      opts.num_masters = 3;
-      opts.master_rpc_ports = { 0, 0, 0 };
-    }
-    opts.num_tablet_servers = 3;
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
   }
@@ -87,12 +86,10 @@ class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
   }
 
  protected:
-  virtual bool multi_master() const {
-    return false;
-  }
-
-  virtual ExternalMiniClusterOptions default_opts() const {
-    return ExternalMiniClusterOptions();
+  virtual ExternalMiniClusterOptions default_opts() {
+    ExternalMiniClusterOptions result;
+    result.num_tablet_servers = 3;
+    return result;
   }
 };
 
@@ -112,10 +109,14 @@ TEST_F(ClientStressTest, TestLookupTimeouts) {
 }
 
 // Override the base test to run in multi-master mode.
-class ClientStressTest_MultiMaster : public ClientStressTest {
+class ClientStressTest_MultiMaster: public ClientStressTest {
  protected:
-  bool multi_master() const override {
-    return true;
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_masters = 3;
+    result.master_rpc_ports = {0, 0, 0};
+    result.num_tablet_servers = 3;
+    return result;
   }
 };
 
@@ -159,11 +160,64 @@ TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
   alarm(60);
 }
 
+namespace {
+
+class ClientStressTestSlowMultiMaster: public ClientStressTest {
+ protected:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_masters = 3;
+    result.master_rpc_ports = { 0, 0, 0 };
+    result.extra_master_flags = { "--master_slow_get_registration_probability=0.2"s };
+    result.num_tablet_servers = 0;
+    return result;
+  }
+};
+
+void LeaderMasterCallback(Synchronizer* sync,
+                          const Status& status,
+                          const HostPort& result) {
+  LOG_IF(INFO, status.ok()) << "Leader master host port: " << result.ToString();
+  sync->StatusCB(status);
+}
+
+} // namespace
+
+TEST_F_EX(ClientStressTest, SlowLeaderResolution, ClientStressTestSlowMultiMaster) {
+  DontVerifyClusterBeforeNextTearDown();
+
+  std::vector<Endpoint> master_addrs;
+  for (auto i = 0; i != cluster_->num_masters(); ++i) {
+    master_addrs.push_back(cluster_->master(i)->bound_rpc_addr());
+  }
+  auto stop_time = std::chrono::steady_clock::now() + 60s;
+  std::vector<std::thread> threads;
+  for (auto i = 0; i != 10; ++i) {
+    threads.emplace_back([this, stop_time, master_addrs]() {
+      while (std::chrono::steady_clock::now() < stop_time) {
+        rpc::Rpcs rpcs;
+        Synchronizer sync;
+        auto deadline = MonoTime::Now() + 20s;
+        auto rpc = rpc::StartRpc<master::GetLeaderMasterRpc>(
+            Bind(&LeaderMasterCallback, &sync),
+            master_addrs,
+            deadline,
+            cluster_->messenger(),
+            &rpcs);
+        auto status = sync.Wait();
+        LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
 
 // Override the base test to start a cluster with a low memory limit.
 class ClientStressTest_LowMemory : public ClientStressTest {
  protected:
-  ExternalMiniClusterOptions default_opts() const override {
+  ExternalMiniClusterOptions default_opts() override {
     // There's nothing scientific about this number; it must be low enough to
     // trigger memory pressure request rejection yet high enough for the
     // servers to make forward progress.
@@ -173,9 +227,11 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     // upfront memory overhead was introduced by adding a large lock-free queue in Preparer.
     const int kMemLimitBytes = RegularBuildVsSanitizers(64_MB, 2_MB);
     ExternalMiniClusterOptions opts;
-    opts.extra_tserver_flags.push_back(Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes));
-    opts.extra_tserver_flags.emplace_back("--memory_limit_soft_percentage=0");
 
+    opts.extra_tserver_flags = { Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes),
+                                 "--memory_limit_soft_percentage=0"s };
+
+    opts.num_tablet_servers = 3;
     return opts;
   }
 };

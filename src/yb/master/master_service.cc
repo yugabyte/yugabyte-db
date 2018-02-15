@@ -46,12 +46,18 @@
 #include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/random_util.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, unsafe);
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, hidden);
+
+DEFINE_double(master_slow_get_registration_probability, 0,
+              "Probability of injecting delay in GetMasterRegistration.");
+
+using namespace std::literals;
 
 namespace yb {
 namespace master {
@@ -404,6 +410,9 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
                                               GetMasterRegistrationResponsePB* resp,
                                               RpcContext rpc) {
   // instance_id must always be set in order for status pages to be useful.
+  if (RandomActWithProbability(FLAGS_master_slow_get_registration_probability)) {
+    std::this_thread::sleep_for(20s);
+  }
   resp->mutable_instance_id()->CopyFrom(server_->instance_pb());
   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
   if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
