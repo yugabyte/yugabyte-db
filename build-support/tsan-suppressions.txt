@@ -107,3 +107,12 @@ race:tacopie::utils::thread_pool
 
 # Usages of URCU
 race:yb::internal::ConcurrentValue
+
+# Bugs in glog
+race:google::FlushLogFilesUnsafe
+race:google::GetStackTrace
+race:google::InitVLOG3__
+race:google::RawLog__SetLastTime
+
+# Bug in gflags
+race:google::FlagSaverImpl::RestoreToRegistry

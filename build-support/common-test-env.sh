@@ -979,6 +979,7 @@ set_asan_tsan_runtime_options() {
 
     # Enable stack traces for UBSAN failures
     UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1"
+    UBSAN_OPTIONS="${UBSAN_OPTIONS} suppressions=$YB_SRC_ROOT/build-support/ubsan-suppressions.txt"
     export UBSAN_OPTIONS
   fi
 

@@ -40,13 +40,15 @@
 #include <string>
 #include <vector>
 
+#ifdef TCMALLOC_ENABLED
+#include <gperftools/malloc_extension.h>
+#endif
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/random.h"
-
-#include <gperftools/malloc_extension.h> // NOLINT
 
 namespace yb {
 

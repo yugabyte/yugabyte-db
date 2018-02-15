@@ -118,15 +118,8 @@
           <protoSourceRoot>${project.basedir}/../../src</protoSourceRoot>
           <protocExecutable>${project.basedir}/dev-support/build-proto.sh</protocExecutable>
           <additionalProtoPathElements>
-            <!-- We list directories corresponding to both new and old thirdparty
-                 layout. Both of these directories have to exist. -->
             <additionalProtoPathElement>
               ${yb.thirdparty.dir}/installed/uninstrumented/include
-            </additionalProtoPathElement>
-            <!-- Old location, to be removed after fully migrating to new thirdparty
-                 directory layout. -->
-            <additionalProtoPathElement>
-              ${yb.thirdparty.dir}/installed-deps/include
             </additionalProtoPathElement>
           </additionalProtoPathElements>
           <excludes>

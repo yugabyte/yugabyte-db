@@ -16,8 +16,6 @@
 #include <shared_mutex>
 #include <thread>
 
-#include <boost/filesystem.hpp>
-
 #include <boost/optional/optional.hpp>
 
 #include "yb/client/ql-dml-test-base.h"

@@ -607,8 +607,8 @@ Status Log::Sync() {
   if (!sync_disabled_) {
     if (PREDICT_FALSE(FLAGS_log_inject_latency)) {
       Random r(GetCurrentTimeMicros());
-      int sleep_ms = r.Normal(FLAGS_log_inject_latency_ms_mean,
-                              FLAGS_log_inject_latency_ms_stddev);
+      int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
+                              GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
       if (sleep_ms > 0) {
         LOG(INFO) << "T " << tablet_id_ << ": Injecting "
                   << sleep_ms << "ms of latency in Log::Sync()";

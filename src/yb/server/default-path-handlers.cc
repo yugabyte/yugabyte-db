@@ -54,7 +54,9 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include <gperftools/malloc_extension.h> // NOLINT
+#ifdef TCMALLOC_ENABLED
+#include <gperftools/malloc_extension.h>
+#endif
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"

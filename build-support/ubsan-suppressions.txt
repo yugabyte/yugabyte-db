@@ -1,0 +1,9 @@
+# False positive from libunwind
+alignment:access_mem
+
+# crcutil works with unaligned data
+alignment:crcutil::Crc32cSSE4::Crc32c
+
+# snappy works with unaligned data
+alignment:snappy::internal::CompressFragment
+alignment:snappy::EmitLiteral

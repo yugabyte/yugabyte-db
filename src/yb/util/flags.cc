@@ -32,11 +32,14 @@
 
 #include "yb/util/flags.h"
 
-#include <gperftools/heap-profiler.h>
 #include <iostream>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#ifdef TCMALLOC_ENABLED
+#include <gperftools/heap-profiler.h>
+#endif
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
