@@ -168,6 +168,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     public double spotPrice = 0.0;
 
+    public boolean assignPublicIP = true;
+
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.

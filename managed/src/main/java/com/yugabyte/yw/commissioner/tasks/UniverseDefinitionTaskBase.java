@@ -218,6 +218,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.instanceType = userIntent.instanceType;
       // Set the spot price.
       params.spotPrice = userIntent.spotPrice;
+      // set the assign public ip param
+      params.assignPublicIP = userIntent.assignPublicIP;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);

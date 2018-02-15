@@ -134,7 +134,8 @@ function mapStateToProps(state, ownProps) {
     "formType": "create",
     "accessKeyCode": "yugabyte-default",
     "spotPrice": "0.00",
-    "useSpotPrice": IN_DEVELOPMENT_MODE
+    "useSpotPrice": IN_DEVELOPMENT_MODE,
+    "assignPublicIP":  true
   };
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
@@ -150,6 +151,7 @@ function mapStateToProps(state, ownProps) {
       data.accessKeyCode = userIntent.accessKeyCode;
       data.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
       data.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
+      data.assignPublicIP = userIntent.assignPublicIP;
       data.regionList = primaryCluster.regions.map((item) => {
         return {value: item.uuid, name: item.name, label: item.name};
       });
@@ -174,7 +176,7 @@ function mapStateToProps(state, ownProps) {
     formValues: selector(state,
       'formType', 'universeName', 'provider', 'providerType', 'regionList',
       'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'accessKeyCode',
-      'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
+      'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'assignPublicIP')
   };
 }
 

@@ -25,6 +25,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public String subnetId;
     // Spot-price for universe (If aws and spot-price is desired, the value must be greater than 0).
     public double spotPrice = 0.0;
+
+    public boolean assignPublicIP = true;
   }
 
   @Override
