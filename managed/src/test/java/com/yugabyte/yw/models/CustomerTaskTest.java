@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -21,7 +22,7 @@ public class CustomerTaskTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    defaultCustomer = Customer.create("Test", "test@test.com", "foo");
+    defaultCustomer = ModelFactory.testCustomer();
   }
 
   private CustomerTask createTask(CustomerTask.TargetType targetType,

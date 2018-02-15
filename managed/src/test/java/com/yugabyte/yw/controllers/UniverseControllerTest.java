@@ -163,7 +163,7 @@ public class UniverseControllerTest extends WithApplication {
 
   @Before
   public void setUp() {
-    customer = Customer.create("Valid Customer", "foo@bar.com", "password");
+    customer = ModelFactory.testCustomer();
     authToken = customer.createAuthToken();
   }
 

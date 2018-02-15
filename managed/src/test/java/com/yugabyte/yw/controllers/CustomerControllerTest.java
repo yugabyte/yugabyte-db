@@ -99,6 +99,7 @@ public class CustomerControllerTest extends WithApplication {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();
+    params.put("code", "tc");
     params.put("email", "foo@bar.com");
     params.put("name", "Test Customer");
     params.put("password", "new-password");

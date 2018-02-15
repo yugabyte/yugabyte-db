@@ -24,7 +24,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Customer customer = Customer.create("Test Customer", "foo@bar.com", "password");
+    Customer customer = Customer.create("tc","Test Customer", "foo@bar.com", "password");
     customer.save();
     assertNotNull(customer.uuid);
     assertEquals("foo@bar.com", customer.getEmail());
@@ -35,17 +35,17 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test(expected = PersistenceException.class)
   public void testCreateWithDuplicateEmail() {
-    Customer c1 = Customer.create("C1", "foo@foo.com", "password");
+    Customer c1 = Customer.create("C1", "Customer 1","foo@foo.com", "password");
     c1.save();
-    Customer c2 = Customer.create("C2", "foo@foo.com", "password");
+    Customer c2 = Customer.create("C2", "Customer 2","foo@foo.com", "password");
     c2.save();
   }
 
   @Test
   public void testCreateValidateUniqueIDs() {
-    Customer c1 = Customer.create("C1", "foo1@foo.com", "password");
+    Customer c1 = Customer.create("C1",  "Customer 1","foo1@foo.com", "password");
     c1.save();
-    Customer c2 = Customer.create("C2", "foo2@foo.com", "password");
+    Customer c2 = Customer.create("C2", "Customer 2","foo2@foo.com", "password");
     c2.save();
     assertNotEquals(c1.getCustomerId(), c2.getCustomerId());
     assertTrue(c2.getCustomerId() > c1.getCustomerId());
@@ -54,9 +54,9 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void findAll() {
-    Customer c1 = Customer.create("C1", "foo@foo.com", "password");
+    Customer c1 = Customer.create("C1", "Customer 1", "foo@foo.com", "password");
     c1.save();
-    Customer c2 = Customer.create("C2", "bar@foo.com", "password");
+    Customer c2 = Customer.create("C2", "Customer 2","bar@foo.com", "password");
     c2.save();
 
     List<Customer> customerList = Customer.find.all();
@@ -66,7 +66,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void authenticateWithEmailAndValidPassword() {
-    Customer c = Customer.create("C1", "foo@foo.com", "password");
+    Customer c = Customer.create("C1", "Customer 1","foo@foo.com", "password");
     c.save();
     Customer authCust = Customer.authWithPassword("foo@foo.com", "password");
     assertEquals(authCust.uuid, c.uuid);
@@ -74,7 +74,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void authenticateWithEmailAndInvalidPassword() {
-    Customer c = Customer.create("C1", "foo@foo.com", "password");
+    Customer c = Customer.create("C1", "Customer 2","foo@foo.com", "password");
     c.save();
     Customer authCust = Customer.authWithPassword("foo@foo.com", "password1");
     assertNull(authCust);
@@ -82,7 +82,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAuthToken() {
-    Customer c = Customer.create("C1", "foo@foo.com", "password");
+    Customer c = Customer.create("C1", "Customer 1","foo@foo.com", "password");
     c.save();
 
     assertNotNull(c.uuid);
@@ -96,7 +96,7 @@ public class CustomerTest extends FakeDBApplication {
   }
   @Test
   public void testAuthTokenExpiry() {
-    Customer c1 = Customer.create("C1", "foo@foo.com", "password");
+    Customer c1 = Customer.create("C1", "Customer 1","foo@foo.com", "password");
     c1.save();
     assertNotNull(c1.uuid);
     String authTokenOld = c1.createAuthToken();
@@ -109,7 +109,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteAuthToken() {
-    Customer c = Customer.create("C1", "foo@foo.com", "password");
+    Customer c = Customer.create("C1", "Customer 1", "foo@foo.com", "password");
     c.save();
 
     assertNotNull(c.uuid);
@@ -130,7 +130,7 @@ public class CustomerTest extends FakeDBApplication {
 
   @Test(expected=javax.persistence.PersistenceException.class)
   public void testInvalidCreate() {
-    Customer c = Customer.create(null, "foo@bar.com", "password");
+    Customer c = Customer.create(null, null,"foo@bar.com", "password");
     c.save();
   }
 

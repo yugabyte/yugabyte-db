@@ -22,7 +22,10 @@ public class ModelFactory {
     return testCustomer("test@customer.com");
   }
   public static Customer testCustomer(String email) {
-    return Customer.create("Test customer", email, "password");
+    return testCustomer("tc", email);
+  }
+  public static Customer testCustomer(String code, String email) {
+    return Customer.create(code, "Test customer", email, "password");
   }
 
   /*

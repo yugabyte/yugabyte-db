@@ -137,8 +137,7 @@ public class TablesControllerTest extends WithApplication {
     tableInfoList.add(ti3);
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
-
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
@@ -181,8 +180,7 @@ public class TablesControllerTest extends WithApplication {
 
   @Test
   public void testUniverseListMastersNotQueryable() {
-
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
@@ -194,7 +192,7 @@ public class TablesControllerTest extends WithApplication {
 
   @Test
   public void testCreateCassandraTableWithInvalidUUID() {
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     String authToken = customer.createAuthToken();
     customer.save();
 
@@ -211,7 +209,7 @@ public class TablesControllerTest extends WithApplication {
 
   @Test
   public void testCreateCassandraTableWithInvalidParams() {
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     String authToken = customer.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -234,8 +232,7 @@ public class TablesControllerTest extends WithApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
         Matchers.any(TableDefinitionTaskParams.class))).thenReturn(fakeTaskUUID);
-
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     String authToken = customer.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
@@ -317,7 +314,7 @@ public class TablesControllerTest extends WithApplication {
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
 
     // Creating fake authentication
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
@@ -343,7 +340,7 @@ public class TablesControllerTest extends WithApplication {
     when(mockClient.getTableSchemaByUUID(any(String.class))).thenReturn(mockSchemaResponse);
 
     // Creating fake authentication
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
@@ -394,7 +391,7 @@ public class TablesControllerTest extends WithApplication {
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
         Matchers.any(BulkImportParams.class))).thenReturn(fakeTaskUUID);
 
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     String authToken = customer.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
@@ -419,8 +416,7 @@ public class TablesControllerTest extends WithApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskType.class),
         Matchers.any(BulkImportParams.class))).thenReturn(fakeTaskUUID);
-
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     String authToken = customer.createAuthToken();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(aws));
@@ -459,7 +455,7 @@ public class TablesControllerTest extends WithApplication {
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
 
     // Creating fake authentication
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);
@@ -470,8 +466,8 @@ public class TablesControllerTest extends WithApplication {
   }
 
   @Test
-  public void testDeleteTableWithInvalidparams() throws Exception {
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+  public void testDeleteTableWithInvalidparams() {
+    Customer customer = ModelFactory.testCustomer();
     Universe universe = createUniverse(customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(universe.universeUUID);

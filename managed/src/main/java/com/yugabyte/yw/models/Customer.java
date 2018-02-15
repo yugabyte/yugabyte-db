@@ -44,6 +44,10 @@ public class Customer extends Model {
   private Long id;
   public Long getCustomerId() { return id; }
 
+  @Column(length = 5, unique = true, nullable = false)
+  @Constraints.Required
+  public String code;
+
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
@@ -142,10 +146,11 @@ public class Customer extends Model {
    * @param password
    * @return Newly Created Customer
    */
-  public static Customer create(String name, String email, String password) {
+  public static Customer create(String code, String name, String email, String password) {
     Customer cust = new Customer();
     cust.email = email.toLowerCase();
     cust.setPassword(password);
+    cust.code = code;
     cust.name = name;
     cust.creationDate = new Date();
 

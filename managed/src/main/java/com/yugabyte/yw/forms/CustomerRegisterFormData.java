@@ -12,6 +12,10 @@ import play.data.validation.Constraints;
  */
 public class CustomerRegisterFormData {
   @Constraints.Required()
+  @Constraints.MaxLength(5)
+  public String code;
+
+  @Constraints.Required()
   @Constraints.Email
   @Constraints.MinLength(5)
   public String email;

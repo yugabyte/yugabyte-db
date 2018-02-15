@@ -12,6 +12,7 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Test;
@@ -94,14 +95,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   private void testServerGetWithInvalidUniverse(boolean isYql) {
     String universeUUID = "11111111-2222-3333-4444-555555555555";
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
                                        universeUUID + (isYql ? "/yqlservers" : "/redisservers")));
     assertRestResult(result, false, BAD_REQUEST);
   }
 
   private void testServerGetWithValidUniverse(boolean isYql) {
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse("Universe-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);

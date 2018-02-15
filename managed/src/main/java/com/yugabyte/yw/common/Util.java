@@ -6,6 +6,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -132,6 +133,10 @@ public class Util {
    * @return The custom node prefix name.
    */
   public static String getNodePrefix(Long custId, String univName) {
-    return "yb-" + Long.toString(custId) + "-" + univName;
+    Customer c = Customer.find.where().eq("id", custId).findUnique();
+    if (c == null) {
+      throw new RuntimeException("Invalid Customer Id: " + custId);
+    }
+    return String.format("yb-%s-%s", c.code, univName);
   }
 }
