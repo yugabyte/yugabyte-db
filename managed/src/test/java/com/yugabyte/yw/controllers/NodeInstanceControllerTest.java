@@ -3,29 +3,32 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.mockito.Matchers.any;
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.LinkedList;
 import java.util.UUID;
 
-import com.yugabyte.yw.common.FakeApiHelper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 
+import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -37,12 +40,19 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   private AvailabilityZone zone;
   private NodeInstance node;
 
+  ArgumentCaptor<TaskType> taskType;
+  ArgumentCaptor<NodeTaskParams> taskParams;
+
+
   @Before
   public void setUp() {
-    customer = ModelFactory.testCustomer();
+    customer = ModelFactory.testCustomer("dc", "demo@customer.com");
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+
+    taskType = ArgumentCaptor.forClass(TaskType.class);
+    taskParams = ArgumentCaptor.forClass(NodeTaskParams.class);
 
     NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
     nodeData.ip = FAKE_IP;
@@ -80,9 +90,24 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithBody("POST", uri, body);
   }
 
-  private Result deleteNode(UUID customerUUID, UUID providerUUID, String instanceIP) {
-    String uri= "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/instances/" + instanceIP;
+  private Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
+    String uri= "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/instances/" +
+                instanceIP;
     return FakeApiHelper.doRequest("DELETE", uri);
+  }
+
+  private Result performNodeAction(UUID customerUUID, UUID universeUUID,
+                                   String nodeName, NodeActionType nodeAction, boolean mimicError) {
+    String uri = "/api/customers/" + customerUUID + "/universes/" + universeUUID + "/nodes/" +
+            nodeName;
+    ObjectNode params = Json.newObject();
+    if (mimicError) {
+      params.put("foo", "bar");
+    } else {
+      params.put("nodeAction", nodeAction.name());
+    }
+
+    return FakeApiHelper.doRequestWithBody("PUT", uri, params);
   }
 
   private void checkOk(Result r) { assertEquals(OK, r.status()); }
@@ -192,27 +217,89 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS provider as well
   @Test
   public void testDeleteInstanceWithValidInstanceIP() {
-    Result r = deleteNode(customer.uuid, provider.uuid, FAKE_IP);
+    Result r = deleteInstance(customer.uuid, provider.uuid, FAKE_IP);
     assertOk(r);
   }
-  
+
   @Test
   public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result r = deleteNode(customer.uuid, invalidProviderUUID, FAKE_IP);
+    Result r = deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP);
     assertBadRequest(r, "Invalid Provider UUID: " + invalidProviderUUID);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
-    Result r = deleteNode(customer.uuid, provider.uuid, "abc");
+    Result r = deleteInstance(customer.uuid, provider.uuid, "abc");
     assertBadRequest(r, "Node Not Found");
   }
 
   @Test
   public void testDeleteInstanceWithInvalidCustomerUUID() {
     UUID invalidCustomerUUID = UUID.randomUUID();
-    Result r = deleteNode(invalidCustomerUUID, provider.uuid, "random_ip");
+    Result r = deleteInstance(invalidCustomerUUID, provider.uuid, "random_ip");
     assertBadRequest(r, "Invalid Customer UUID: " + invalidCustomerUUID);
+  }
+
+  @Test
+  public void testDeleteInstance() {
+    Result r = deleteInstance(customer.uuid, provider.uuid, FAKE_IP);
+    assertOk(r);
+  }
+
+  @Test
+  public void testMissingNodeActionParam() {
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    Universe u = ModelFactory.createUniverse();
+    u = Universe.saveDetails(u.universeUUID,
+            ApiUtils.mockUniverseUpdater()
+    );
+    customer.addUniverseUUID(u.universeUUID);
+    customer.save();
+    Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1",
+            NodeActionType.DELETE, true);
+    assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
+  }
+
+  @Test
+  public void testInvalidNodeAction() {
+    for (NodeActionType nodeActionType: NodeActionType.values()) {
+      Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
+      customer.addUniverseUUID(u.universeUUID);
+      customer.save();
+      verify(mockCommissioner, times(0)).submit(any(), any());
+      Result r = performNodeAction(customer.uuid, u.universeUUID, "fake-n1",
+              nodeActionType, true);
+      assertBadRequest(r, "Invalid Node fake-n1 for Universe");
+    }
+  }
+
+  @Test
+  public void testValidNodeAction() {
+    for (NodeActionType nodeActionType: NodeActionType.values()) {
+      UUID fakeTaskUUID = UUID.randomUUID();
+      when(mockCommissioner.submit(any(TaskType.class),
+              any(UniverseDefinitionTaskParams.class)))
+              .thenReturn(fakeTaskUUID);
+      Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
+      u = Universe.saveDetails(u.universeUUID,
+              ApiUtils.mockUniverseUpdater()
+      );
+      customer.addUniverseUUID(u.universeUUID);
+      customer.save();
+      Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1",
+              nodeActionType, false);
+      verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
+      assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());
+      assertOk(r);
+      JsonNode json = Json.parse(contentAsString(r));
+      assertValue(json, "taskUUID", fakeTaskUUID.toString());
+      CustomerTask ct = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+      assertNotNull(ct);
+      assertEquals(CustomerTask.TargetType.Node, ct.getTarget());
+      assertEquals(nodeActionType.getCustomerTask(), ct.getType());
+      assertEquals("host-n1", ct.getTargetName());
+      Mockito.reset(mockCommissioner);
+    }
   }
 }

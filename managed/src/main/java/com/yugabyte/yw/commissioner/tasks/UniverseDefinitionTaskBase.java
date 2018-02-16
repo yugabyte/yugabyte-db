@@ -335,11 +335,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Creates a task list to start the masters of the cluster to be created and adds it to the task
-   * queue.
+   * Creates a task list to start the masters on the given nodes and adds it to the task queue.
    *
-   * @param nodes   : a collection of nodes that need to be created
-   * @param isShell : Determines if the masters should be started in shell mode
+   * @param nodes   : a collection of nodes that need master process started.
+   * @param isShell : Determines if the masters should be started in shell mode.
    */
   public SubTaskGroup createStartMasterTasks(Collection<NodeDetails> nodes,
                                              boolean isShell) {

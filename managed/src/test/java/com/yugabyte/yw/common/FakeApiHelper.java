@@ -13,12 +13,16 @@ import play.mvc.Result;
 import play.test.Helpers;
 
 import java.util.List;
+import java.util.Random;
 
 import static play.test.Helpers.route;
 
 public class FakeApiHelper {
   private static String getAuthToken() {
-    Customer customer = Customer.create("vc", "Valid Customer", "foo@bar.com", "password");
+    Customer customer = Customer.find.where().eq("code", "vc").findUnique();
+    if (customer == null) {
+      customer = Customer.create("vc", "Valid Customer", "foo@bar.com", "password");
+    }
     return customer.createAuthToken();
   }
 

@@ -4,10 +4,9 @@ import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
   fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
-  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader
+  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader,
+  performUniverseNodeAction, performUniverseNodeActionResponse
 } from '../../../actions/universe';
-
-import {stopNode, stopNodeResponse, startNode, startNodeResponse, deleteNode, deleteNodeResponse} from '../../../actions/node';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -66,32 +65,9 @@ const mapDispatchToProps = (dispatch) => {
     closeModal: () => {
       dispatch(closeDialog());
     },
-    deleteNode: (nodeName, universeUUID) => {
-      dispatch(deleteNode(nodeName, universeUUID))
-        .then((response) => {
-          dispatch(deleteNodeResponse(response.payload));
-          if (response.payload.status === 200) {
-            setTimeout(function () {
-              // This is a quick task, we can get the updated universe with a timeout.
-              dispatch(fetchUniverseInfo(universeUUID))
-                .then((universeInfoResponse) => {
-                  dispatch(fetchUniverseInfoResponse(universeInfoResponse.payload));
-                });
-            }, 1000);
-
-          }
-        });
-    },
-
-    stopNodeInUniverse: (nodeName, universeUUID) => {
-      dispatch(stopNode(nodeName, universeUUID)).then((response) => {
-        dispatch(stopNodeResponse(response.payload));
-      });
-    },
-
-    startNodeInUniverse: (nodeName, universeUUID) => {
-      dispatch(startNode(nodeName, universeUUID)).then((response) => {
-        dispatch(startNodeResponse(response.payload));
+    performUniverseNodeAction: (universeUUID, nodeName, actionType) => {
+      dispatch(performUniverseNodeAction(universeUUID, nodeName, actionType)).then((response) => {
+        dispatch(performUniverseNodeActionResponse(response.payload));
       });
     }
   };

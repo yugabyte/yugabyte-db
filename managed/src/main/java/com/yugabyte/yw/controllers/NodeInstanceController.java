@@ -10,7 +10,10 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +84,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
     return ApiResponse.success(regionList);
   }
+
   /**
    * POST endpoint for creating new Node(s)
    * @param customerUuid the customer UUID
@@ -100,47 +104,6 @@ public class NodeInstanceController extends AuthenticatedController {
         nodes.put(node.getDetails().ip, node);
       }
       return ApiResponse.success(nodes);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-  }
-
-
-  public Result deleteNode(UUID customerUUID, UUID universeUUID, String nodeName) {
-    try {
-      // Validate customer UUID and universe UUID and AWS provider.
-      Customer customer = Customer.get(customerUUID);
-      if (customer == null) {
-        String errMsg = "Invalid Customer UUID: " + customerUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      Universe universe = Universe.get(universeUUID);
-      if (universe == null) {
-        String errMsg = "Invalid Universe UUID: " + universeUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      if (nodeName == null || nodeName.trim().equals("")) {
-        String errMsg = "Node Name Cannot be Empty";
-        LOG.error(errMsg);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-      }
-      NodeTaskParams taskParams = new NodeTaskParams();
-      taskParams.universeUUID = universe.universeUUID;
-      taskParams.expectedUniverseVersion = universe.version;
-      taskParams.nodeName = nodeName;
-      LOG.info("Deleting Node {} from  universe {} : name={} at version={}.",
-        nodeName, universe.universeUUID, universe.name, universe.version);
-      UUID taskUUID = commissioner.submit(TaskType.DeleteNodeFromUniverse, taskParams);
-      CustomerTask.create(customer, universe.universeUUID,
-        taskUUID, CustomerTask.TargetType.Node,
-        CustomerTask.TaskType.Delete, nodeName);
-      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
-        taskUUID, universe.universeUUID, universe.name, nodeName);
-      ObjectNode resultNode = Json.newObject();
-      resultNode.put("taskUUID", taskUUID.toString());
-      return Results.status(OK, resultNode);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
@@ -184,56 +147,16 @@ public class NodeInstanceController extends AuthenticatedController {
     }
   }
 
-  /**
-   * Endpoint stops processes on a node with a given nodeName.
-   * The stopped node Master and TServer are terminated and no longer part of quorum.
-   * @param customerUUID UUID of the current customer
-   * @param universeUUID UUID of the universe containing the node
-   * @param nodeName name of the node to be stoppped
-   * @return Result object containing taskUUID
-   */
-  public Result stopNode(UUID customerUUID, UUID universeUUID, String nodeName) {
+  public Result nodeAction(UUID customerUUID, UUID universeUUID, String nodeName) {
     String apiParamsErrorMessage = validateParams(customerUUID, universeUUID, nodeName);
     if (apiParamsErrorMessage != null) {
       return ApiResponse.error(BAD_REQUEST, apiParamsErrorMessage);
     }
-    try {
-      Universe universe = Universe.get(universeUUID);
-      Customer customer =  Customer.get(customerUUID);
-      NodeTaskParams taskParams = new NodeTaskParams();
-      taskParams.universeUUID = universe.universeUUID;
-      taskParams.expectedUniverseVersion = universe.version;
-      taskParams.nodeName = nodeName;
-      LOG.info("Stopping Node {} in  universe {} : name={} at version={}.",
-        nodeName, universe.universeUUID, universe.name, universe.version);
-      // TODO Implement the Tasks and uncomment these lines
-/*      UUID taskUUID = commissioner.submit(TaskType.StopNodeInUniverse, taskParams);
-        CustomerTask.create(customer, universe.universeUUID,
-        taskUUID, CustomerTask.TargetType.Node,
-        CustomerTask.TaskType.Stop, nodeName);
-        LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
-        taskUUID, universe.universeUUID, universe.name, nodeName);
-        ObjectNode resultNode = Json.newObject();
-        resultNode.put("taskUUID", taskUUID.toString());*/
-      return Results.status(OK);
-    } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    Form<NodeActionFormData> formData = formFactory.form(NodeActionFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
-  }
 
-  /**
-   * Endpoint starts processes on a node with a given nodeName.
-   * The Node Tserver is started and Master is started(if adding master completes quorum)
-   * @param customerUUID UUID of the current customer
-   * @param universeUUID UUID of the universe containing the node
-   * @param nodeName name of the node to be stoppped
-   * @return Result object containing taskUUID
-   */
-  public Result startNode(UUID customerUUID, UUID universeUUID, String nodeName) {
-    String apiParamsErrorMessage = validateParams(customerUUID, universeUUID, nodeName);
-    if (apiParamsErrorMessage != null) {
-      return ApiResponse.error(BAD_REQUEST, apiParamsErrorMessage);
-    }
     try {
       Universe universe = Universe.get(universeUUID);
       Customer customer =  Customer.get(customerUUID);
@@ -241,18 +164,20 @@ public class NodeInstanceController extends AuthenticatedController {
       taskParams.universeUUID = universe.universeUUID;
       taskParams.expectedUniverseVersion = universe.version;
       taskParams.nodeName = nodeName;
-      LOG.info("Starting Node {} in  universe {} : name={} at version={}.",
-        nodeName, universe.universeUUID, universe.name, universe.version);
-      // TODO Implement the Tasks and uncomment these lines
-      /* UUID taskUUID = commissioner.submit(TaskType.StartNodeInUniverse, taskParams);
-         CustomerTask.create(customer, universe.universeUUID,
-         taskUUID, CustomerTask.TargetType.Node,
-         CustomerTask.TaskType.Start, nodeName);
-         LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
-         taskUUID, universe.universeUUID, universe.name, nodeName);
-         ObjectNode resultNode = Json.newObject();
-         resultNode.put("taskUUID", taskUUID.toString()); */
-      return Results.status(OK);
+      NodeActionType nodeAction = formData.get().nodeAction;
+      LOG.info("{} Node {} in  universe {} : name={} at version={}.",
+              nodeAction.toString(false), nodeName,
+              universe.universeUUID, universe.name, universe.version);
+
+      UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
+      CustomerTask.create(customer, universe.universeUUID,
+              taskUUID, CustomerTask.TargetType.Node,
+              nodeAction.getCustomerTask(), nodeName);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
+              taskUUID, universe.universeUUID, universe.name, nodeName);
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return ApiResponse.success(resultNode);
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
@@ -273,8 +198,10 @@ public class NodeInstanceController extends AuthenticatedController {
     if (e != null) return e;
     e = validateClassByUuid(Universe.class, universeUUID);
     if (e != null) return e;
-    if (nodeName == null || nodeName.trim().equals("")) {
-      e = "Node Name Cannot be Empty";
+    Universe u = Universe.get(universeUUID);
+    NodeDetails nodeDetails = u.getNode(nodeName);
+    if (nodeDetails == null) {
+      return String.format("Invalid Node %s for Universe", nodeName);
     }
     return e;
   }
