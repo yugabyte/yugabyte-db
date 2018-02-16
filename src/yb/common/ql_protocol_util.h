@@ -83,6 +83,15 @@ void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
 
 std::unique_ptr<QLRowBlock> CreateRowBlock(QLClient client, const Schema& schema, Slice data);
 
+// Does this write request require reading existing data for evaluating expressions before writing?
+bool RequireReadForExpressions(const QLWriteRequestPB& request);
+
+// Does this write request require reading existing data in general before writing?
+bool RequireRead(const QLWriteRequestPB& request, const Schema& schema);
+
+// Does this write request perform a range operation (e.g. range delete)?
+bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema);
+
 } // namespace yb
 
 #endif // YB_COMMON_QL_PROTOCOL_UTIL_H
