@@ -43,6 +43,13 @@ public class NodeDetails {
     // Set after all the services (master, tserver, etc) on a node are started and successfully
     // running.
     Running,
+
+    // Set when node is about to enter the stopped state.
+    Stopping,
+    // Set when node is about to be set to running state.
+    Starting,
+    // Set when node has been stopped and no longer has a master or a tserver running.
+    Stopped,
     // Set when node is unreachable but has not been decommissioned from the universe.
     Unreachable,
     // Set when a node is marked for removal. Note that we will wait to get all its data out during
@@ -54,7 +61,7 @@ public class NodeDetails {
     Destroyed
   }
 
-  // The current state of the node. 
+  // The current state of the node.
   public NodeState state;
 
   // True if this node is a master, along with port info.
@@ -92,18 +99,21 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.Unreachable ||
-             state == NodeState.ToBeDecommissioned ||
-             state == NodeState.BeingDecommissioned ||
-             state == NodeState.Destroyed);
+      state == NodeState.ToBeDecommissioned ||
+      state == NodeState.BeingDecommissioned ||
+      state == NodeState.Destroyed ||
+      state == NodeState.Starting ||
+      state == NodeState.Stopped);
   }
 
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware ||
-            state == NodeState.UpdateGFlags ||
-            state == NodeState.Running ||
-            state == NodeState.ToBeDecommissioned ||
-            state == NodeState.BeingDecommissioned);
+      state == NodeState.UpdateGFlags ||
+      state == NodeState.Running ||
+      state == NodeState.ToBeDecommissioned ||
+      state == NodeState.BeingDecommissioned ||
+      state == NodeState.Stopping);
   }
 
   @JsonIgnore

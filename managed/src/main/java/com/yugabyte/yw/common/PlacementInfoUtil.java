@@ -77,21 +77,21 @@ public class PlacementInfoUtil {
    * returns false.
    * @param universe
    * @param taskParams
-   * @return boolean 
+   * @return boolean
    */
   private static boolean didAffinitizedLeadersChange(
-      Universe universe,
-      UniverseDefinitionTaskParams taskParams) {
+    Universe universe,
+    UniverseDefinitionTaskParams taskParams) {
     boolean isEditUniverse = universe != null;
     if (!isEditUniverse) {
       return false;
     }
     PlacementInfo newPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
     PlacementInfo oldPlacementInfo = universe.getUniverseDetails().retrievePrimaryCluster().placementInfo;
-    
+
     // Map between the old placement's AZs and the affinitized leader info.
     HashMap<UUID, Boolean> oldAZMap = new HashMap<UUID, Boolean>();
-    
+
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
@@ -99,26 +99,26 @@ public class PlacementInfoUtil {
         }
       }
     }
-    
+
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
           if (oldAZMap.containsKey(newAZ.uuid)) {
-             if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
-               // affinitized leader info has changed, return true.
-               return true;
-             }
-           } else {
-             // The AZ config has changed, return false.
-             return false;
-           }
+            if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
+              // affinitized leader info has changed, return true.
+              return true;
+            }
+          } else {
+            // The AZ config has changed, return false.
+            return false;
+          }
         }
       }
     }
     // No affinitized leader info has changed, return false.
     return false;
   }
-  
+
   /**
    * Method to check if the given set of nodes match the placement info AZ to detect pure
    * expand/shrink type.
@@ -137,23 +137,23 @@ public class PlacementInfoUtil {
    *         node count only changes, returns that configure mode. Else defaults to new config.
    */
   private static ConfigureNodesMode getPureExpandOrShrinkMode(
-      Universe universe,
-      UniverseDefinitionTaskParams taskParams) {
+    Universe universe,
+    UniverseDefinitionTaskParams taskParams) {
     Cluster primaryCluster = taskParams.retrievePrimaryCluster();
     boolean isEditUniverse = universe != null;
     PlacementInfo placementInfo = primaryCluster.placementInfo;
     Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
-        taskParams.nodeDetailsSet;
+      taskParams.nodeDetailsSet;
 
     if (isEditUniverse) {
       UserIntent existingIntent = universe.getUniverseDetails().retrievePrimaryCluster().userIntent;
       UserIntent taskIntent = primaryCluster.userIntent;
       LOG.info("Comparing task '{}' and existing '{}' intents.",
-               taskIntent, existingIntent);
+        taskIntent, existingIntent);
       UserIntent tempIntent = taskIntent.clone();
       tempIntent.numNodes = existingIntent.numNodes;
       boolean existingIntentsMatch = tempIntent.equals(existingIntent) &&
-                                     taskIntent.numNodes != existingIntent.numNodes;
+        taskIntent.numNodes != existingIntent.numNodes;
 
       if (!existingIntentsMatch) {
         return ConfigureNodesMode.NEW_CONFIG;
@@ -161,8 +161,8 @@ public class PlacementInfoUtil {
     }
 
     boolean atleastOneCountChanged = false;
-    
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);   
+
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
     for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
       boolean targetAZFound = false;
       for (PlacementCloud cloud : placementInfo.cloudList) {
@@ -172,10 +172,10 @@ public class PlacementInfoUtil {
             if (azUuidToNumNode.getKey().equals(az.uuid)) {
               targetAZFound = true;
               int numTservers = findCountActiveTServerOnlyInAZ(nodeDetailsSet,
-                                                               azUuidToNumNode.getKey());
+                azUuidToNumNode.getKey());
               int azDifference = az.numNodesInAZ - azUuidToNumNode.getValue();
               LOG.info("AZ {} check, azNum={}, azDiff={}, numTservers={}.",
-                       az.name, az.numNodesInAZ, azDifference, numTservers);
+                az.name, az.numNodesInAZ, azDifference, numTservers);
               if (azDifference != 0) {
                 atleastOneCountChanged = true;
               }
@@ -188,7 +188,7 @@ public class PlacementInfoUtil {
       }
       if (!targetAZFound) {
         LOG.info("AZ {} not found in placement, so not pure expand/shrink.",
-                 azUuidToNumNode.getKey());
+          azUuidToNumNode.getKey());
         return ConfigureNodesMode.NEW_CONFIG;
       }
     }
@@ -196,14 +196,14 @@ public class PlacementInfoUtil {
     int placementCount = getNodeCountInPlacement(primaryCluster.placementInfo);
     if (universe != null) {
       LOG.info("Edit taskNumNodes={}, placementNumNodes={}, numNodes={}.",
-          primaryCluster.userIntent.numNodes, placementCount, nodeDetailsSet.size());
+        primaryCluster.userIntent.numNodes, placementCount, nodeDetailsSet.size());
       // The nodeDetailsSet may have modified nodes based on an earlier edit intent, reset it as
       // we want to start from existing configuration.
       taskParams.nodeDetailsSet.clear();
       taskParams.nodeDetailsSet.addAll(nodeDetailsSet);
     } else {
       LOG.info("Create taskNumNodes={}, placementNumNodes={}.", primaryCluster.userIntent.numNodes,
-                placementCount);
+        placementCount);
     }
 
     ConfigureNodesMode mode = ConfigureNodesMode.NEW_CONFIG;
@@ -261,7 +261,7 @@ public class PlacementInfoUtil {
 
     if (!intentProvider.equals(nodeProvider)) {
       LOG.info("Provider in intent {} is different from provider in existing nodes {}.",
-               intentProvider, nodeProvider);
+        intentProvider, nodeProvider);
       return true;
     }
 
@@ -327,7 +327,7 @@ public class PlacementInfoUtil {
         universe = Universe.get(taskParams.universeUUID);
       } catch (Exception e) {
         LOG.info("Universe with UUID {} not found, configuring new universe.",
-                 taskParams.universeUUID);
+          taskParams.universeUUID);
       }
     }
 
@@ -345,7 +345,7 @@ public class PlacementInfoUtil {
     }
 
     LOG.info("Placement={}, nodes={}.", primaryCluster.placementInfo,
-             taskParams.nodeDetailsSet.size());
+      taskParams.nodeDetailsSet.size());
     ConfigureNodesMode mode;
     if (didAffinitizedLeadersChange(universe, taskParams)) {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
@@ -355,8 +355,8 @@ public class PlacementInfoUtil {
     if (mode == ConfigureNodesMode.NEW_CONFIG) {
       // Not a pure expand or shrink.
       boolean providerOrRegionListChanged =
-          isProviderOrRegionChange(taskParams,
-                                   universe != null ? universe.getNodes() : taskParams.nodeDetailsSet);
+        isProviderOrRegionChange(taskParams,
+          universe != null ? universe.getNodes() : taskParams.nodeDetailsSet);
       if (providerOrRegionListChanged) {
         // If the provider or region list changed, we pick a new placement.
         // This could be for a edit (full move) or create universe.
@@ -409,7 +409,7 @@ public class PlacementInfoUtil {
         int numNodesToBeAdded = entry.getValue().intValue();
         if (numNodesToBeAdded > NodeInstance.listByZone(azUUID, instanceType).size()) {
           LOG.error("Not enough nodes configured for given AZ/Instance type combo, " +
-            "required {} found {} in AZ {} for Instance type {}", numNodesToBeAdded, NodeInstance.listByZone(azUUID, instanceType).size(),
+              "required {} found {} in AZ {} for Instance type {}", numNodesToBeAdded, NodeInstance.listByZone(azUUID, instanceType).size(),
             azUUID, instanceType);
           return false;
         }
@@ -458,8 +458,8 @@ public class PlacementInfoUtil {
 
     for (NodeDetails node : nodeDetailsSet) {
       if (node.state == NodeDetails.NodeState.ToBeDecommissioned &&
-          (serverType == ServerType.MASTER && node.isMaster ||
-           serverType == ServerType.TSERVER && node.isTserver)) {
+        (serverType == ServerType.MASTER && node.isMaster ||
+          serverType == ServerType.TSERVER && node.isTserver)) {
         servers.add(node);
       }
     }
@@ -476,7 +476,7 @@ public class PlacementInfoUtil {
       }
     }
 
-   return servers;
+    return servers;
   }
 
   public static Set<NodeDetails> getNodesToProvision(Set<NodeDetails> nodeDetailsSet) {
@@ -510,7 +510,7 @@ public class PlacementInfoUtil {
   private static boolean isSamePlacement(PlacementInfo oldPlacementInfo,
                                          PlacementInfo newPlacementInfo) {
     HashMap<UUID, Pair<Boolean, Integer>> oldAZMap = new HashMap<UUID, Pair<Boolean, Integer>>();
-    
+
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
@@ -518,18 +518,18 @@ public class PlacementInfoUtil {
         }
       }
     }
-    
+
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
           if (oldAZMap.containsKey(newAZ.uuid)) {
-             if (oldAZMap.get(newAZ.uuid).getKey() != newAZ.isAffinitized ||
-                 oldAZMap.get(newAZ.uuid).getValue() != newAZ.numNodesInAZ) {
-               return false;
-             }
-           } else {
-             return false;
-           }
+            if (oldAZMap.get(newAZ.uuid).getKey() != newAZ.isAffinitized ||
+              oldAZMap.get(newAZ.uuid).getValue() != newAZ.numNodesInAZ) {
+              return false;
+            }
+          } else {
+            return false;
+          }
         }
       }
     }
@@ -550,34 +550,34 @@ public class PlacementInfoUtil {
     UserIntent userIntent = newPrimaryCluster.userIntent;
     // Error out if no fields are modified.
     if (userIntent.equals(existingIntent) &&
-        isSamePlacement(oldPrimaryCluster.placementInfo, newPrimaryCluster.placementInfo)) {
+      isSamePlacement(oldPrimaryCluster.placementInfo, newPrimaryCluster.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
-                                         "modified for editing the universe.");
+        "modified for editing the universe.");
     }
 
     // Rule out some of the universe changes that we do not allow (they can be enabled as needed).
     if (existingIntent.replicationFactor != userIntent.replicationFactor) {
       LOG.error("Replication factor cannot be changed from {} to {}",
-                existingIntent.replicationFactor, userIntent.replicationFactor);
+        existingIntent.replicationFactor, userIntent.replicationFactor);
       throw new UnsupportedOperationException("Replication factor cannot be modified.");
     }
 
     if (!existingIntent.universeName.equals(userIntent.universeName)) {
       LOG.error("universeName cannot be changed from {} to {}",
-                existingIntent.universeName, userIntent.universeName);
+        existingIntent.universeName, userIntent.universeName);
       throw new UnsupportedOperationException("Universe name cannot be modified.");
     }
 
     if (!existingIntent.provider.equals(userIntent.provider)) {
       LOG.error("Provider cannot be changed from {} to {}",
-                existingIntent.provider, userIntent.provider);
+        existingIntent.provider, userIntent.provider);
       throw new UnsupportedOperationException("Provider cannot be modified.");
     }
 
     if (existingIntent.providerType != userIntent.providerType) {
       LOG.error("Provider type cannot be changed from {} to {}",
-                existingIntent.providerType, userIntent.providerType);
+        existingIntent.providerType, userIntent.providerType);
       throw new UnsupportedOperationException("providerType cannot be modified.");
     }
 
@@ -589,12 +589,12 @@ public class PlacementInfoUtil {
     // We only support a replication factor of 1,3,5,7. TODO: Make the log output based on the list.
     if (!supportedRFs.contains(replicationFactor)) {
       throw new UnsupportedOperationException("Replication factor " + replicationFactor +
-                                              " not allowed, must be one of 1,3,5 or 7.");
+        " not allowed, must be one of 1,3,5 or 7.");
     }
 
     if (numNodes > 0 && numNodes < replicationFactor) {
       LOG.error("Number of nodes {} cannot be below the replication factor of {}.",
-                numNodes, replicationFactor);
+        numNodes, replicationFactor);
       throw new UnsupportedOperationException("Number of nodes cannot be less than the replication factor.");
     }
   }
@@ -802,7 +802,7 @@ public class PlacementInfoUtil {
    * @return set of indexes in which to provision the nodes.
    */
   private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
-      PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
+    PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
 
@@ -848,14 +848,14 @@ public class PlacementInfoUtil {
                                                        boolean isEditUniverse) {
     PlacementInfo primaryPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
     LinkedHashSet<PlacementIndexes> indexes =
-        getDeltaPlacementIndices(primaryPlacementInfo, taskParams.nodeDetailsSet);
+      getDeltaPlacementIndices(primaryPlacementInfo, taskParams.nodeDetailsSet);
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
     int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
       if (index.action == Action.ADD) {
         NodeDetails nodeDetails =
-            createNodeDetailsWithPlacementIndex(taskParams, index, startIndex + iter);
+          createNodeDetailsWithPlacementIndex(taskParams, index, startIndex + iter);
         deltaNodesSet.add(nodeDetails);
       } else if (index.action == Action.REMOVE) {
         PlacementCloud placementCloud = primaryPlacementInfo.cloudList.get(index.cloudIdx);
@@ -882,7 +882,7 @@ public class PlacementInfoUtil {
     Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(taskParams.nodeDetailsSet);
     LOG.info("Nodes comparing userIntent={} and taskParams={}.",
-        primaryUserIntent.numNodes, taskParams.nodeDetailsSet.size());
+      primaryUserIntent.numNodes, taskParams.nodeDetailsSet.size());
     if (numDeltaNodes < 0) {
       Iterator<NodeDetails> nodeIter = taskParams.nodeDetailsSet.iterator();
       int deleteCounter = 0;
@@ -906,7 +906,7 @@ public class PlacementInfoUtil {
       }
     } else {
       LinkedHashSet<PlacementIndexes> indexes =
-          findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams);
+        findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams);
       int startIndex = getNextIndexToConfigure(taskParams.nodeDetailsSet);
       addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, taskParams, deltaNodesMap);
     }
@@ -966,7 +966,7 @@ public class PlacementInfoUtil {
     }
 
     int numMastersToChoose = primaryCluster.userIntent.replicationFactor -
-        getNumMasters(taskParams.nodeDetailsSet);
+      getNumMasters(taskParams.nodeDetailsSet);
     if (numMastersToChoose > 0 && universe != null) {
       LOG.info("Selecting {} masters.", numMastersToChoose);
       selectMasters(taskParams.nodeDetailsSet, numMastersToChoose);
@@ -984,7 +984,7 @@ public class PlacementInfoUtil {
     NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, targetAZUuid);
     if (nodeDetails == null) {
       LOG.error("Could not find an active node running tservers only in AZ {}. All nodes: {}.",
-                targetAZUuid, nodes);
+        targetAZUuid, nodes);
       throw new IllegalStateException("Should find an active running tserver.");
     } else {
       nodeDetails.state = NodeDetails.NodeState.ToBeDecommissioned;
@@ -1028,7 +1028,7 @@ public class PlacementInfoUtil {
     // We are ready to add this node.
     nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
     LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
-            nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx, nodeDetails.azUuid);
+      nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx, nodeDetails.azUuid);
     return nodeDetails;
   }
 
@@ -1086,7 +1086,7 @@ public class PlacementInfoUtil {
       nodeSet.add(entry.getKey());
     }
     LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
-             subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
+      subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
     // Choose the masters such that we have one master per subnet if there are enough subnets.
     int numMastersChosen = 0;
     if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
@@ -1117,7 +1117,7 @@ public class PlacementInfoUtil {
         }
         node.isMaster = true;
         LOG.info("Chose node {} as a master from subnet {}.",
-                  node.nodeName, node.cloudInfo.subnet_id);
+          node.nodeName, node.cloudInfo.subnet_id);
         numMastersChosen++;
         if (numMastersChosen == numMasters) {
           break;
@@ -1125,7 +1125,7 @@ public class PlacementInfoUtil {
       }
       if (numMastersChosen < numMasters) {
         throw new IllegalStateException("Could not pick " + numMasters + " masters, got only " +
-                                         numMastersChosen + ". Nodes info. " + nodesMap);
+          numMastersChosen + ". Nodes info. " + nodesMap);
       }
     }
   }
@@ -1162,7 +1162,7 @@ public class PlacementInfoUtil {
       return true;
     }
     if (Region.get(regionList.get(0)).zones != null &&
-        Region.get(regionList.get(0)).zones.size() > 1) {
+      Region.get(regionList.get(0)).zones.size() > 1) {
       return true;
     }
     return false;
@@ -1176,9 +1176,9 @@ public class PlacementInfoUtil {
 
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
-        !userIntent.regionList.contains(userIntent.preferredRegion)) {
+      !userIntent.regionList.contains(userIntent.preferredRegion)) {
       throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
-                                 " not in user region list.");
+        " not in user region list.");
     }
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
@@ -1408,9 +1408,9 @@ public class PlacementInfoUtil {
     }
 
     return Json.newObject()
-        .put("tserver_alive", tserverAlive)
-        .put("master_alive", masterAlive)
-        .put("node_status", nodeDetails.state.toString());
+      .put("tserver_alive", tserverAlive)
+      .put("master_alive", masterAlive)
+      .put("node_status", nodeDetails.state.toString());
   }
 
   /**
@@ -1428,9 +1428,9 @@ public class PlacementInfoUtil {
       for (NodeDetails nodeDetails : universe.getNodes()) {
         nodeDetails.state = NodeDetails.NodeState.Unreachable;
         ObjectNode result = Json.newObject()
-            .put("tserver_alive", false)
-            .put("master_alive", false)
-            .put("node_status", nodeDetails.state.toString());
+          .put("tserver_alive", false)
+          .put("master_alive", false)
+          .put("node_status", nodeDetails.state.toString());
         response.put(nodeDetails.nodeName, result);
       }
     } else {
@@ -1455,7 +1455,6 @@ public class PlacementInfoUtil {
    *  }
    */
   public static JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {
-
     List<String> metricKeys = ImmutableList.of(UNIVERSE_ALIVE_METRIC);
 
     // Set up params for metrics query.

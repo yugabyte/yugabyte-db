@@ -65,4 +65,10 @@ public class AssertHelper {
   public static void assertErrorNodeValue(JsonNode json, String value) {
     assertErrorNodeValue(json, null, value);
   }
+
+  public static void assertJsonEqual(JsonNode expectedJson, JsonNode actualJson) {
+    expectedJson.fieldNames().forEachRemaining( field ->
+            assertEquals(expectedJson.get(field), actualJson.get(field))
+    );
+  }
 }
