@@ -2,5 +2,6 @@
 - &customer1 !!com.yugabyte.yw.models.Customer
     name: admin
     email: admin
+    code: admin
     passwordHash: $2a$10$EIEMY/qXEH197zYn3K.4HOYMIIkBRBtNQ4AktpztQRegzIoJxK65W
     uuid: f33e3c9b-75ab-4c30-80ad-cba85646ea39
