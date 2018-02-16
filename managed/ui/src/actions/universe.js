@@ -75,6 +75,9 @@ export const RESET_UNIVERSE_CONFIGURATION = 'RESET_UNIVERSE_CONFIGURATION';
 
 export const FETCH_UNIVERSE_METADATA = 'FETCH_UNIVERSE_METADATA';
 
+export const PERFORM_UNIVERSE_NODE_ACTION = 'PERFORM_UNIVERSE_NODE_ACTION';
+export const PERFORM_UNIVERSE_NODE_ACTION_RESPONSE = 'PERFORM_UNIVERSE_NODE_ACTION_RESPONSE';
+
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -300,6 +303,23 @@ export function getUniversePerNodeStatus(universeUUID) {
 export function getUniversePerNodeStatusResponse(response) {
   return {
     type: GET_UNIVERSE_PER_NODE_STATUS_RESPONSE,
+    payload: response
+  };
+}
+
+export function performUniverseNodeAction(universeUUID, nodeName, actionType) {
+  const requestUrl =
+    `${getCustomerEndpoint()}/universes/${universeUUID}/nodes/${nodeName}`;
+  const request = axios.put(requestUrl, {nodeAction: actionType});
+  return {
+    type: PERFORM_UNIVERSE_NODE_ACTION,
+    payload: request
+  };
+}
+
+export function performUniverseNodeActionResponse(response) {
+  return {
+    type: PERFORM_UNIVERSE_NODE_ACTION_RESPONSE,
     payload: response
   };
 }

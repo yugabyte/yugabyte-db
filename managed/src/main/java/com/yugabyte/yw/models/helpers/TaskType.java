@@ -27,6 +27,10 @@ public enum TaskType {
 
   DeleteNodeFromUniverse("DeleteNodeFromUniverse"),
 
+  StopNodeInUniverse("StopNodeInUniverse"),
+
+  StartNodeInUniverse("StartNodeInUniverse"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -45,6 +49,8 @@ public enum TaskType {
   CreateTable("subtasks.CreateTable"),
 
   DeleteNode("subtasks.DeleteNode"),
+
+  UpdateNodeProcess("subtasks.UpdateNodeProcess"),
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
 

@@ -42,6 +42,18 @@ public class CustomerTask extends Model {
     @EnumValue("Delete")
     Delete,
 
+    @EnumValue("Stop")
+    Stop,
+
+    @EnumValue("Start")
+    Start,
+
+    @EnumValue("Remove")
+    Remove,
+
+    @EnumValue("Add")
+    Add,
+
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 

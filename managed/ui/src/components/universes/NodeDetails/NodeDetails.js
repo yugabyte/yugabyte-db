@@ -51,22 +51,10 @@ export default class NodeDetails extends Component {
     }) : false;
   };
 
-  deleteNode = node => {
+  performNodeAction(node, actionType) {
     const {universe: {currentUniverse}} = this.props;
     const universeUUID = currentUniverse.data.universeUUID;
-    this.props.deleteNode(node.name, universeUUID);
-  };
-
-  stopNode(node) {
-    const {universe: {currentUniverse}} = this.props;
-    const universeUUID = currentUniverse.data.universeUUID;
-    this.props.stopNodeInUniverse(node.name, universeUUID);
-  }
-
-  startNode(node) {
-    const {universe: {currentUniverse}} = this.props;
-    const universeUUID = currentUniverse.data.universeUUID;
-    this.props.startNodeInUniverse(node.name, universeUUID);
+    this.props.performUniverseNodeAction(universeUUID, node.name, actionType);
   }
 
   render() {
@@ -143,13 +131,13 @@ export default class NodeDetails extends Component {
 
     const getNodeAction = function(cell, row, type) {
       if (isNodeRemovable(row.nodeStatus)) {
-        return <YBButton btnText="Delete" onClick={self.deleteNode.bind(self, row)}/>;
+        return <YBButton btnText="Delete" onClick={self.performNodeAction.bind(self, row, 'DELETE')}/>;
       }
       if (row.nodeStatus === "Running") {
-       // return <YBButton btnText="Stop" onClick={self.stopNode.bind(self, row)}/>;
+        return <YBButton btnText="Stop" onClick={self.performNodeAction.bind(self, row, 'STOP')}/>;
       }
       if (row.nodeStatus === "Stopped") {
-       // return <YBButton btnText="Start" onClick={self.startNode.bind(self, row)}/>;
+        return <YBButton btnText="Start" onClick={self.performNodeAction.bind(self, row, 'START')}/>;
       }
     };
 

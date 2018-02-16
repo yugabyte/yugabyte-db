@@ -40,6 +40,7 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.UpgradeSoftware);
     activeStates.add(NodeDetails.NodeState.UpdateGFlags);
     activeStates.add(NodeDetails.NodeState.Running);
+    activeStates.add(NodeDetails.NodeState.Stopping);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (activeStates.contains(state)) {
@@ -58,6 +59,7 @@ public class NodeDetailsTest {
     queryableStates.add(NodeDetails.NodeState.Running);
     queryableStates.add(NodeDetails.NodeState.ToBeDecommissioned);
     queryableStates.add(NodeDetails.NodeState.BeingDecommissioned);
+    queryableStates.add(NodeDetails.NodeState.Stopping);
     for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
       if (queryableStates.contains(state)) {

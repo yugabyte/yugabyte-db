@@ -15,11 +15,12 @@ import static org.mockito.Mockito.mock;
 import static play.inject.Bindings.bind;
 
 public class FakeDBApplication extends WithApplication {
+  public Commissioner mockCommissioner;
 
   @Override
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
-    Commissioner mockCommissioner = mock(Commissioner.class);
+    mockCommissioner = mock(Commissioner.class);
     Executors mockExecutors = mock(Executors.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())

@@ -9,8 +9,11 @@ import java.util.Map;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.forms.BulkImportParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,8 +59,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       public void run(Universe universe) {
         if (expectedUniverseVersion != -1 && expectedUniverseVersion != universe.version) {
           String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
-              ", is different from the expected version of " + expectedUniverseVersion + ". User " +
-              "would have to sumbit the operation from a refreshed top-level universe page.";
+            ", is different from the expected version of " + expectedUniverseVersion + ". User " +
+            "would have to sumbit the operation from a refreshed top-level universe page.";
           LOG.error(msg);
           throw new IllegalStateException(msg);
         }
@@ -87,7 +90,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     universeLocked = true;
     LOG.debug("Locked universe {} at version {}.", taskParams().universeUUID,
-        expectedUniverseVersion);
+      expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
   }
@@ -345,7 +348,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Create a task to create a table.
-   * 
+   *
    * @param tableName name of the table.
    * @param numTablets number of tablets.
    */
@@ -438,6 +441,174 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     DeleteNode task = new DeleteNode();
     task.initialize(params);
     subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Add or Remove Master process on the node
+   * @param node the node to add/remove master process on
+   * @param isAdd whether Master is being added or removed.
+   * @param subTask subtask type
+   */
+  public void createChangeConfigTask(NodeDetails node,
+                                     boolean isAdd,
+                                     UserTaskDetails.SubTaskGroupType subTask) {
+    // Create a new task list for the change config so that it happens one by one.
+    String subtaskGroupName = "ChangeMasterConfig(" + node.nodeName + ", " +
+      (isAdd? "add" : "remove") + ")";
+    SubTaskGroup subTaskGroup = new SubTaskGroup(subtaskGroupName, executor);
+    // Create the task params.
+    ChangeMasterConfig.Params params = new ChangeMasterConfig.Params();
+    // Set the azUUID
+    params.azUuid = node.azUuid;
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // This is an add master.
+    params.opType = isAdd ? ChangeMasterConfig.OpType.AddMaster :
+      ChangeMasterConfig.OpType.RemoveMaster;
+    // Create the task.
+    ChangeMasterConfig changeConfig = new ChangeMasterConfig();
+    changeConfig.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(changeConfig);
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    // Configure the user facing subtask for this task list.
+    subTaskGroup.setSubTaskGroupType(subTask);
+  }
+
+  /**
+   * Start T-Server process on the given node
+   * @param currentNode the node to operate upon
+   * @param taskType Command start/stop
+   * @return Subtask group
+   */
+  public SubTaskGroup createTServerTaskForNode(NodeDetails currentNode, String taskType) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+    // Add the node name.
+    params.nodeName = currentNode.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // Add the az uuid.
+    params.azUuid = currentNode.azUuid;
+    // The service and the command we want to run.
+    params.process = "tserver";
+    params.command = taskType;
+    // Set the InstanceType
+    params.instanceType = currentNode.cloudInfo.instance_type;
+    // Create the Ansible task to get the server info.
+    AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Wait for Master Leader Election
+   * @return subtask group
+   */
+  public SubTaskGroup createWaitForMasterLeaderTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
+    WaitForMasterLeader task = new WaitForMasterLeader();
+    WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Update the node process in Yugaware DB,
+   * @param nodeName    : name of the node where the process task is to be updated.
+   * @param processType : process type: master or tserver.
+   * @param isAdd       : boolean signifying if the process is being added or removed.
+   * @return The subtask group.
+   */
+  public SubTaskGroup createUpdateNodeProcessTask(String nodeName, ServerType processType,
+                                                  Boolean isAdd) {
+    String subtaskGroupName = "Update Node Process";
+    SubTaskGroup subTaskGroup = new SubTaskGroup(subtaskGroupName, executor);
+    // Create the task params.
+    UpdateNodeProcess.Params params = new UpdateNodeProcess.Params();
+    params.processType = processType;
+    params.isAdd = isAdd;
+    params.universeUUID = taskParams().universeUUID;
+    params.nodeName = nodeName;
+    UpdateNodeProcess updateNodeProcess = new UpdateNodeProcess();
+    updateNodeProcess.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(updateNodeProcess);
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task list to start the masters of the cluster to be created and adds it to the task
+   * queue.
+   * @param nodes   : a collection of nodes that need to be created
+   * @param isShell : Determines if the masters should be started in shell mode
+   */
+  public SubTaskGroup createStartMasterTasks(Collection<NodeDetails> nodes,
+                                             boolean isShell) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    for (NodeDetails node : nodes) {
+      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // The service and the command we want to run.
+      params.process = "master";
+      params.command = "start";
+
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      // Create the Ansible task to get the server info.
+      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
+      task.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addTask(task);
+    }
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Creates a task list to stop the masters of the cluster and adds it to the task queue.
+   * @param nodes set of nodes to be stopped as master
+   * @return
+   */
+  public SubTaskGroup createStopMasterTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    for (NodeDetails node : nodes) {
+      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // The service and the command we want to run.
+      params.process = "master";
+      params.command = "stop";
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      // Create the Ansible task to get the server info.
+      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
+      task.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addTask(task);
+    }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }

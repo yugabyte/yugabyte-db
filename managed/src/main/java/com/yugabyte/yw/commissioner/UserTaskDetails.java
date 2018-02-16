@@ -69,6 +69,18 @@ public class UserTaskDetails {
     // Delete Node
     DeletingNode,
 
+    // Stopping Node
+    StoppingNode,
+
+    // Starting Node
+    StartingNode,
+
+    // Start Node Master and T-Server process
+    StartingNodeProcesses,
+
+    // Stop Node Master and T-Server Process
+    StoppingNodeProcesses,
+
     // Deleting Table
     DeletingTable
   }
@@ -83,7 +95,7 @@ public class UserTaskDetails {
       case Provisioning:
         title = "Provisioning";
         description = "Deploying machines of the required config into the desired cloud and" +
-            " fetching information about them.";
+          " fetching information about them.";
         break;
       case UpgradingSoftware:
         title = "Upgrading software";
@@ -92,22 +104,22 @@ public class UserTaskDetails {
       case InstallingSoftware:
         title = "Installing software";
         description = "Configuring mount points, setting up the various directories and installing" +
-            " the YugaByte software on the newly provisioned nodes.";
+          " the YugaByte software on the newly provisioned nodes.";
         break;
       case ConfigureUniverse:
         title = "Configuring the universe";
         description = "Creating and populating the universe config, waiting for the various" +
-            " machines to discover one another.";
+          " machines to discover one another.";
         break;
       case WaitForDataMigration:
         title = "Waiting for data migration";
         description = "Waiting for the data to get copied into the new set of machines to achieve" +
-            " the desired configuration.";
+          " the desired configuration.";
         break;
       case RemovingUnusedServers:
         title = "Removing servers no longer used";
         description = "Removing servers that are no longer needed once the configuration change has" +
-            " been successfully completed";
+          " been successfully completed";
         break;
       case DownloadingSoftware:
         title = "Downloading software";
@@ -148,6 +160,22 @@ public class UserTaskDetails {
       case DeletingNode:
         title = "Deleting Node";
         description = "Remove Node entry from Universe details";
+        break;
+      case StoppingNode:
+        title = "Stopping Node";
+        description = "Waiting for node to stop.";
+        break;
+      case StartingNode:
+        title = "Starting Node";
+        description = "Waiting for node to start.";
+        break;
+      case StartingNodeProcesses:
+        title = "Starting Node Processes";
+        description = "Starting tserver process and master process if required.";
+        break;
+      case StoppingNodeProcesses:
+        title = "Stopping Node Processes";
+        description = "Stopping tserver process and master process on node.";
         break;
       case DeletingTable:
         title = "Deleting Table";
