@@ -446,4 +446,44 @@ public class TestBatchRequest extends BaseCQLTest {
       runInvalidStmt(batch);
     }
   }
+
+  @Test
+  public void testReadWriteSameRow() throws Exception {
+
+    // Create test table.
+    session.execute("CREATE TABLE test_batch (h INT, r TEXT, v INT, PRIMARY KEY ((h), r));");
+
+    // Test writing to the same row twice.
+    BatchStatement batch = new BatchStatement();
+    batch.add(new SimpleStatement("INSERT INTO test_batch (h, r, v) VALUES (1, 'r1', 11);"));
+    batch.add(new SimpleStatement("INSERT INTO test_batch (h, r, v) VALUES (1, 'r2', 12);"));
+    batch.add(new SimpleStatement("INSERT INTO test_batch (h, r, v) VALUES (1, 'r2', 13);"));
+    session.execute(batch);
+
+
+    // Create test table with counter.
+    session.execute("CREATE TABLE test_counter (h INT, r TEXT, c COUNTER, PRIMARY KEY ((h), r));");
+
+    // Test reading and writing different rows are allowed in the same batch.
+    batch.clear();
+    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r1';"));
+    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r2';"));
+    session.execute(batch);
+
+    // Verify the rows are inserted.
+    assertQuery("SELECT * FROM test_counter",
+                new HashSet<String>(Arrays.asList("Row[1, r1, 1]",
+                                                  "Row[1, r2, 1]")));
+
+    // Test reading and writing the same row is not allowed in the same batch.
+    batch.clear();
+    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r1';"));
+    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r1';"));
+    runInvalidStmt(batch);
+
+    // Verify the rows are not modified.
+    assertQuery("SELECT * FROM test_counter",
+                new HashSet<String>(Arrays.asList("Row[1, r1, 1]",
+                                                  "Row[1, r2, 1]")));
+  }
 }

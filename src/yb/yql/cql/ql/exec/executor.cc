@@ -18,6 +18,7 @@
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/util/decimal.h"
 #include "yb/common/common.pb.h"
@@ -1036,12 +1037,13 @@ void Executor::FlushAsyncDone(const Status &s) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ApplyWriteOp(const TreeNode *tnode, const YBqlWriteOpPtr& op) {
-  if (!batched_write_ops_.insert(op).second) {
-    // TODO: defer multiple writes of the same row by separating them into batches and executing
-    // them one after another.
+  if (!batched_write_ops_.insert(op).second &&
+      RequireRead(op->request(), op->table()->InternalSchema())) {
+    // TODO: defer multiple reads and writes of the same row by separating them into batches and
+    // executing them one after another.
     return exec_context_->Error(tnode,
-                                "Multiple inserts, updates or deletes of the same row "
-                                "are not supported yet", ErrorCode::EXEC_ERROR);
+                                "Reading from a row modified in the same batch request is not "
+                                "supported yet", ErrorCode::EXEC_ERROR);
   }
   return exec_context_->Apply(op);
 }

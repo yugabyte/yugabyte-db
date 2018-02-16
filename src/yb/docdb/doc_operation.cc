@@ -12,10 +12,11 @@
 //
 
 #include "yb/common/partition.h"
+#include "yb/common/ql_expr.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_expr.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
@@ -1527,39 +1528,6 @@ const RedisResponsePB& RedisReadOperation::response() {
 }
 
 namespace {
-
-bool RequireReadForExpressions(const QLWriteRequestPB& request) {
-  // A QLWriteOperation requires a read if it contains an IF clause or an UPDATE assignment that
-  // involves an expresion with a column reference. If the IF clause contains a condition that
-  // involves a column reference, the column will be included in "column_refs". However, we cannot
-  // rely on non-empty "column_ref" alone to decide if a read is required because "IF EXISTS" and
-  // "IF NOT EXISTS" do not involve a column reference explicitly.
-  return request.has_if_expr()
-      || request.has_column_refs() && (!request.column_refs().ids().empty() ||
-          !request.column_refs().static_ids().empty());
-}
-
-// If range key portion is missing and there are no targeted columns this is a range operation
-// (e.g. range delete) -- it affects all rows within a hash key that match the where clause.
-// Note: If target columns are given this could just be e.g. a delete targeting a static column
-// which can also omit the range portion -- Analyzer will check these restrictions.
-bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema) {
-  return schema.num_range_key_columns() > 0 &&
-         request.range_column_values().empty() &&
-         request.column_values().empty();
-}
-
-bool RequireRead(const QLWriteRequestPB& request, const Schema& schema) {
-  // In case of a user supplied timestamp, we need a read (and hence appropriate locks for read
-  // modify write) but it is at the docdb level on a per key basis instead of a QL read of the
-  // latest row.
-  bool has_user_timestamp = request.has_user_timestamp_usec();
-
-  // We need to read the rows in the given range to find out which rows to write to.
-  bool is_range_operation = IsRangeOperation(request, schema);
-
-  return RequireReadForExpressions(request) || has_user_timestamp || is_range_operation;
-}
 
 // Append dummy entries in schema to table_row
 // TODO(omer): this should most probably be added somewhere else
