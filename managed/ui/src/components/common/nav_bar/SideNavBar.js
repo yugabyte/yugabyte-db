@@ -60,6 +60,11 @@ export default class SideNavBar extends Component {
                     </li>
                     <h4>Support</h4>
                     <li>
+                      <a href="https://forum.yugabyte.com/" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-university"></i> Forum
+                      </a>
+                    </li>
+                    <li>
                       <a href="https://gitter.im/YugaByte/Lobby" target="_blank" rel="noopener noreferrer">
                         <object data={gitterIcon} type="image/svg+xml" width="16">Icon</object> Gitter
                       </a>
