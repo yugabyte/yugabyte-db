@@ -25,10 +25,6 @@ $ TSAdd cpu_usage 10 “70”
 “OK”
 $ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
 “OK”
-$ TSAdd cpu_usage 201710311100 “50”
-“OK”
-$ TSAdd cpu_usage 1509474505 “75”
-“OK”
 
 $ TSRangeByTime cpu_usage 20 40
 1) 20

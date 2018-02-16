@@ -6,7 +6,7 @@ weight: 2360
 ## SYNOPSIS
 <b>`TSREM key timestamp [timestamp ...]`</b><br>
 This command removes one or more specified timestamps from the time series that is associated with the given `key`.
-<li>If the `key` is associated with a value that is not a set, an error is raised.</li>
+<li>If the `key` exists, but is not of time series type, an error is raised.</li>
 <li>If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.</li>
 <li>If the provided timestamps don't exist, TSRem still returns "OK". As a result, TSRem just
 ensures the provided timestamps no longer exist, but doesn't provide any information about whether
@@ -17,12 +17,16 @@ Returns the appropriate status string.
 
 ## EXAMPLES
 ```
+# The timestamp can be arbitrary integers used just for sorting values in a certain order.
 $ TSAdd cpu_usage 10 “70”
 “OK”
 $ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
 “OK”
+# We could also encode the timestamp as “yyyymmddhhmm”, since this would still 
+# produce integers that are sortable by the actual timestamp.
 $ TSAdd cpu_usage 201710311100 “50”
 “OK”
+# A more common option would be to specify the timestamp as the unix timestamp
 $ TSAdd cpu_usage 1509474505 “75”
 “OK”
 

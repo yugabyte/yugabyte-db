@@ -11,7 +11,7 @@ metric, the `timestamp` is the time when the metric was generated and `value` is
 metric at the given `timestamp`.
 <li>If the given `timestamp` already exists in the specified time series, this command overwrites the existing value with the given `value`.</li>
 <li>If the given `key` does not exist, a new time series is created for the `key`, and the given values are inserted to the associated given fields.</li>
-<li>If the given `key` is associated with a non-timeseries data, an error is raised.</li>
+<li>If the given `key` exists, but is not of time series type, an error is raised.</li>
 <li>If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.</li>
 <li>`EXPIRE_IN TTL` sets the TTL (time-to-live) in seconds for the entries being added.</li>
 <li>`EXPIRE_AT UNIX_TIMESTAMP` ensures that the entries added would expire by the given [`UNIX_TIMESTAMP`](https://en.wikipedia.org/wiki/Unix_time) (seconds since January 1, 1970).</li>
