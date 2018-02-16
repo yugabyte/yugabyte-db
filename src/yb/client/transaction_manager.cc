@@ -154,6 +154,10 @@ class TransactionManager::Impl {
     clock_->Update(time);
   }
 
+  void Shutdown() {
+    rpcs_.Shutdown();
+  }
+
  private:
   YBClientPtr client_;
   scoped_refptr<ClockBase> clock_;
@@ -169,6 +173,7 @@ TransactionManager::TransactionManager(
     : impl_(new Impl(client, clock)) {}
 
 TransactionManager::~TransactionManager() {
+  impl_->Shutdown();
 }
 
 void TransactionManager::PickStatusTablet(PickStatusTabletCallback callback) {

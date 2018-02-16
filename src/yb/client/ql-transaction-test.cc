@@ -312,39 +312,55 @@ TEST_F(QLTransactionTest, Simple) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+// Commit flags says whether we should commit write txn during this test.
 void QLTransactionTest::TestReadRestart(bool commit) {
   google::FlagSaver saver;
 
   FLAGS_max_clock_skew_usec = 250000;
 
-  auto write_txn = CreateTransaction();
-  WriteRows(CreateSession(write_txn));
-  if (commit) {
-    ASSERT_OK(write_txn->CommitFuture().get());
-  }
+  {
+    auto write_txn = CreateTransaction();
+    WriteRows(CreateSession(write_txn));
+    if (commit) {
+      ASSERT_OK(write_txn->CommitFuture().get());
+    }
+    BOOST_SCOPE_EXIT(write_txn, commit) {
+      if (!commit) {
+        write_txn->Abort();
+      }
+    } BOOST_SCOPE_EXIT_END;
 
-  server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto txn1 = CreateTransaction();
-  auto session = CreateSession(txn1);
-  if (commit) {
-    for (size_t r = 0; r != kNumRows; ++r) {
-      auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-      ASSERT_NOK(row);
-      ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
-                    << "Bad row: " << row;
-    }
-    auto txn2 = txn1->CreateRestartedTransaction();
-    session->SetTransaction(txn2);
-    for (size_t r = 0; r != kNumRows; ++r) {
-      auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-      ASSERT_OK(row);
-      ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
-    }
-    VerifyData();
-  } else {
-    for (size_t r = 0; r != kNumRows; ++r) {
-      auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
-      ASSERT_TRUE(!row.ok() && row.status().IsNotFound()) << "Bad row: " << row;
+    server::TestClockDeltaChanger delta_changer(-100ms, clock_);
+    auto txn1 = CreateTransaction();
+    BOOST_SCOPE_EXIT(txn1, commit) {
+      if (!commit) {
+        txn1->Abort();
+      }
+    } BOOST_SCOPE_EXIT_END;
+    auto session = CreateSession(txn1);
+    if (commit) {
+      for (size_t r = 0; r != kNumRows; ++r) {
+        auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+        ASSERT_NOK(row);
+        ASSERT_EQ(ql::ErrorCode::RESTART_REQUIRED, ql::GetErrorCode(row.status()))
+                      << "Bad row: " << row;
+      }
+      auto txn2 = txn1->CreateRestartedTransaction();
+      BOOST_SCOPE_EXIT(txn2) {
+        txn2->Abort();
+      } BOOST_SCOPE_EXIT_END;
+      session->SetTransaction(txn2);
+      for (size_t r = 0; r != kNumRows; ++r) {
+        auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+        ASSERT_OK(row);
+        ASSERT_EQ(ValueForTransactionAndIndex(0, r, WriteOpType::INSERT), *row);
+      }
+      VerifyData();
+    } else {
+      for (size_t r = 0; r != kNumRows; ++r) {
+        auto row = SelectRow(session, KeyForTransactionAndIndex(0, r));
+        ASSERT_TRUE(!row.ok() && row.status().IsNotFound()) << "Bad row: " << row;
+      }
     }
   }
 
