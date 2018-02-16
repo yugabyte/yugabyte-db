@@ -151,6 +151,8 @@ export default class RollingUpgradeForm extends Component {
           </Col>
           <div className="form-right-aligned-labels">
             <Field name="rollingUpgrade" component={YBToggle} label="Rolling Upgrade" />
+            <Field name="timeDelay" component={YBInputField}
+                               label="Upgrade Delay Between Servers (secs)" />
             <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
                    options={softwareVersionOptions} label="Server Version"
                    onInputChanged={this.softwareVersionChanged}/>
