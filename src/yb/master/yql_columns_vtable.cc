@@ -33,7 +33,9 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
   RETURN_NOT_OK(SetColumnValue(kColumnName, schema.column(col_idx).name(), row));
   RETURN_NOT_OK(SetColumnValue(kClusteringOrder, schema.column(col_idx).sorting_type_string(),
                                row));
-  RETURN_NOT_OK(SetColumnValue(kType, schema.column(col_idx).type()->ToString(), row));
+  const ColumnSchema& column = schema.column(col_idx);
+  RETURN_NOT_OK(SetColumnValue(kType, column.is_counter() ? "counter" : column.type()->ToString(),
+                               row));
   return Status::OK();
 }
 
@@ -64,8 +66,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     int32_t num_hash_columns = schema.num_hash_key_columns();
     for (int32_t i = 0; i < num_hash_columns; i++) {
       QLRow& row = (*vtable)->Extend();
-      RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
-                                              &row));
+      RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always partition_key for hash columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "partition_key", &row));
       RETURN_NOT_OK(SetColumnValue(kPosition, i, &row));
@@ -75,8 +76,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     int32_t num_range_columns = schema.num_range_key_columns();
     for (int32_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
       QLRow& row = (*vtable)->Extend();
-      RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
-                                              &row));
+      RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always clustering for range columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "clustering", &row));
       RETURN_NOT_OK(SetColumnValue(kPosition, i - num_hash_columns, &row));
@@ -85,8 +85,7 @@ Status YQLColumnsVTable::RetrieveData(const QLReadRequestPB& request,
     // Now fill in the rest of the columns.
     for (int32_t i = num_hash_columns + num_range_columns; i < schema.num_columns(); i++) {
       QLRow &row = (*vtable)->Extend();
-      RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
-                                              &row));
+      RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)
       RETURN_NOT_OK(SetColumnValue(kKind, "regular", &row));
       RETURN_NOT_OK(SetColumnValue(kPosition, -1, &row));

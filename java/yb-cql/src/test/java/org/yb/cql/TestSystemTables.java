@@ -379,6 +379,14 @@ public class TestSystemTables extends BaseCQLTest {
     // Verify SELECT * works.
     results = session.execute("SELECT * FROM system_schema.columns").all();
     assertTrue(results.size() > 9);
+
+    // Test counter column.
+    session.execute("CREATE TABLE counter_column (k int PRIMARY KEY, c counter);");
+    results = session.execute(String.format("SELECT * FROM system_schema.columns WHERE " +
+      "keyspace_name = '%s' AND table_name = 'counter_column'", DEFAULT_TEST_KEYSPACE)).all();
+    assertEquals(2, results.size());
+    verifyColumnSchema(results.get(0), "counter_column", "k", "partition_key", 0, "int", "none");
+    verifyColumnSchema(results.get(1), "counter_column", "c", "regular", -1, "counter", "none");
   }
 
   @Test
