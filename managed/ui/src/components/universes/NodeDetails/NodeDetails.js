@@ -91,7 +91,8 @@ export default class NodeDetails extends Component {
       }
       return {
         name: nodeDetail.nodeName,
-        regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
+        regionItem: `${nodeDetail.cloudInfo.region}`,
+        azItem: `${nodeDetail.cloudInfo.az}`,
         isMaster: nodeDetail.isMaster ? "Details" : "-",
         masterPort: nodeDetail.masterHttpPort,
         tserverPort: nodeDetail.tserverHttpPort,
@@ -171,7 +172,8 @@ export default class NodeDetails extends Component {
           <div>
             <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
               <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
-              <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
+              <TableHeaderColumn dataField="regionItem">Region</TableHeaderColumn>
+              <TableHeaderColumn dataField="azItem">Zone</TableHeaderColumn>
               <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
                 Master
               </TableHeaderColumn>
