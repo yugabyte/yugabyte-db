@@ -3,11 +3,9 @@
   {{ $breadcrumb := (index . 0) }}
   {{ if $breadcrumb.URL }}
     <a title="{{ $breadcrumb.Name }}" href="{{ $breadcrumb.URL | relURL}}">
-      {{ $breadcrumb.Pre }}{{ $breadcrumb.Name }}{{ $breadcrumb.Post }}</a>
+      {{ $breadcrumb.Name }}</a>
   {{ else }}
-    {{ $breadcrumb.Pre }}
     {{ $breadcrumb.Name }}
-    {{ $breadcrumb.Post }}
   {{ end }}
   <i class="fa fa-angle-right"></i>
 

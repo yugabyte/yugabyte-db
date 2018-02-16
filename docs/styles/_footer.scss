@@ -7,7 +7,7 @@
   z-index: 11;
   bottom: 0;
   width: 100%;
-  padding: 20px 0;
+  padding: 25px 0;
   font-size: 13px;
   line-height: 1.3 !important;
   color: $YB_LIGHT_GRAY;
@@ -17,6 +17,10 @@
   .social-icons {
     display: inline-block;
     margin-left: -20px;
+  }
+
+  .nav-logo {
+    margin-bottom: 20px;
   }
 
   @media screen and (max-width: 767px) {
@@ -92,5 +96,6 @@
   .disclaimers {
     font-size: 11px;
     color: #919dbe;
+    text-align: right;
   }
 }

@@ -131,7 +131,9 @@ body {
 .drawer .toc {
   padding-left: 5px;
   margin-top: 34px !important;
-
+  li ul {
+    margin-left: 0;
+  }
   ul {
     margin-bottom: 0 !important;
     padding-bottom: 4px;
@@ -143,6 +145,26 @@ body {
   }
   > ul > li {
     margin-bottom: 6px;
+    position: relative;
+    > a:not(.node-toggle) > i {
+      position: absolute;
+      top: 7px;
+      left: -13px;
+      text-align: center;
+      display: inline-block;
+      width: 16px;
+    }
+    a.node-toggle{
+      color: $YB_LIGHT_BLUE;
+      > i {
+        font-size: 12px;
+      }
+    } 
+  }
+
+  > ul > li > ul > li >ul {
+    margin-left: 15px;
+    border-left: 1px solid $YB_ORANGE;
   }
   > ul > li > a {
     font-family: Montserrat, sans-serif;
@@ -158,7 +180,6 @@ body {
   }
   li {
     padding-left: 0;
-    margin-left: 5px;
   }
 
   li > .node-toggle {
@@ -195,9 +216,6 @@ body {
   li a.current {
     color: $YB_ORANGE !important;
     font-weight: 700;
-  }
-  li li {
-    border-left: 1px solid $YB_ORANGE;
   }
 }
 

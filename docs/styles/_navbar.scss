@@ -23,7 +23,7 @@ a.anchor {
 }
 
 .nav-logo {
-  height: 38px;
+  height: 33px;
   width: auto;
   display: inline-block;
 
@@ -135,7 +135,7 @@ a.anchor {
 
   .navbar-brand {
     height: $HEADER_HEIGHT;
-    padding: 15px;
+    padding: 20px 6px;
 
     @media screen and (max-width: 991px) {
       height: 58px;
