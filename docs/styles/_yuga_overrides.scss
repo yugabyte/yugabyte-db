@@ -452,14 +452,23 @@ body {
 }
 
 .breadcrumbs {
+  position: relative;
   margin: 0 0 -23px;
-}
-.breadcrumbs a {
-  border-bottom: none !important;
-}
-.breadcrumbs i {
-  padding: 0 2px;
-  color: #999;
+  z-index: 10 !important;
+
+  .toggle-button {
+    padding: 5px;
+    margin: -5px;
+  }
+
+  a {
+    border-bottom: none !important;
+  }
+
+  i {
+    padding: 0 2px;
+    color: #999;
+  }
 }
 
 .toggle-button {
