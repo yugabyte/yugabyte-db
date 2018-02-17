@@ -19,3 +19,12 @@ $(document).ready(() => {
     },
   }).show();
 });
+
+$(() => {
+  const hash = window.location.hash;
+  if (hash) $('ul.nav-tabs-yb a[href="' + hash + '"]').tab('show');
+  $('.nav-tabs-yb a').click(function () {
+    $(this).tab('show');
+    window.location.hash = this.hash;
+  });
+});

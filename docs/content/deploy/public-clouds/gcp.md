@@ -3,9 +3,9 @@ title: Google Cloud Platform
 weight: 640
 ---
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a data-toggle="tab" href="#gke">
+    <a href="#gke">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Google Kubernetes Engine (GKE)
     </a>

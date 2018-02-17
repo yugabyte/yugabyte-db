@@ -14,15 +14,15 @@ We will explore automatic sharding inside YugaByte DB by creating these tables:
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](/quick-start/install/) guide.
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
-    <a data-toggle="tab" href="#macos">
+    <a href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#linux">
+    <a href="#linux">
       <i class="fa fa-linux" aria-hidden="true"></i>
       Linux
     </a>

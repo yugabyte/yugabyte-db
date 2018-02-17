@@ -3,27 +3,27 @@ title: Install YugaByte DB
 weight: 110
 ---
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
-    <a data-toggle="tab" href="#docker">
+    <a href="#docker">
       <i class="icon-docker"></i>
       Docker
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#kubernetes">
+    <a href="#kubernetes">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
   <li >
-    <a data-toggle="tab" href="#macos">
+    <a href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#linux">
+    <a href="#linux">
       <i class="fa fa-linux" aria-hidden="true"></i>
       Linux
     </a>

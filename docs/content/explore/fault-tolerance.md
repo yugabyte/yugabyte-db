@@ -7,27 +7,27 @@ YugaByte DB can automatically handle failures and therefore provides [high avail
 
 If you haven't installed YugaByte DB yet, do so first by following the [Quick Start](/quick-start/install/) guide.
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
-    <a data-toggle="tab" href="#docker">
+    <a href="#docker">
       <i class="icon-docker"></i>
       Docker
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#kubernetes">
+    <a href="#kubernetes">
       <i class="fa fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
   <li >
-    <a data-toggle="tab" href="#macos">
+    <a href="#macos">
       <i class="fa fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#linux">
+    <a href="#linux">
       <i class="fa fa-linux" aria-hidden="true"></i>
       Linux
     </a>

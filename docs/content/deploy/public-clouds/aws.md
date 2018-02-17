@@ -3,9 +3,9 @@ title: Amazon Web Services
 weight: 630
 ---
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a data-toggle="tab" href="#terraform">
+    <a href="#terraform">
       <i class="icon-shell"></i>
       Terraform
     </a>

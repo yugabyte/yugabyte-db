@@ -3,21 +3,21 @@ title: Apache Spark
 weight: 571
 ---
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
-    <a data-toggle="tab" href="#java">
+    <a href="#java">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Java
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#python">
+    <a href="#python">
       <i class="icon-python" aria-hidden="true"></i>
       Python
     </a>
   </li>
   <li>
-    <a data-toggle="tab" href="#scala">
+    <a href="#scala">
       <i class="icon-scala" aria-hidden="true"></i>
       Scala
     </a>

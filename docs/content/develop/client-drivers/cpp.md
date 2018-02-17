@@ -2,15 +2,15 @@
 title: Develop C++ Apps
 ---
 
-<ul class="nav nav-tabs">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
-    <a data-toggle="tab" href="#cql">
+    <a href="#cql">
       <i class="icon-cassandra" aria-hidden="true"></i>
       Cassandra
     </a>
   </li>
   <li >
-    <a data-toggle="tab" href="#redis">
+    <a href="#redis">
       <i class="icon-redis" aria-hidden="true"></i>
       Redis
     </a>
