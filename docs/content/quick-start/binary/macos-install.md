@@ -7,9 +7,9 @@
 Download the YugaByte CE package as shown below.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.4.0-darwin.tar.gz
-$ tar xvfz yugabyte-ce-0.9.4.0-darwin.tar.gz
-$ cd yugabyte-0.9.4.0/
+$ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.5.0-darwin.tar.gz
+$ tar xvfz yugabyte-ce-0.9.5.0-darwin.tar.gz
+$ cd yugabyte-0.9.5.0/
 ```
 
 ## Configure

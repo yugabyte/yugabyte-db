@@ -371,10 +371,18 @@ menu:
       parent: comparisons
       url: /comparisons/redis/
       weight: 1100
+    - name: Azure Cosmos DB
+      parent: comparisons
+      url: comparisons/azure-cosmos/
+      weight: 1110
+    - name: Google Cloud Spanner
+      parent: comparisons
+      url: comparisons/google-spanner/
+      weight: 1120
     - name: Apache HBase
       parent: comparisons
-      url: /comparisons/hbase/
-      weight: 1110
+      url: comparisons/hbase/
+      weight: 1130
     - name: API Reference
       identifier: API
       url: /api/
@@ -746,7 +754,7 @@ menu:
       parent: faq
       url: /faq/enterprise-edition/
       weight: 2490
-    - name: Apache Cassandra API
+    - name: Cassandra API
       parent: faq
       url: /faq/cassandra/
       weight: 2500
