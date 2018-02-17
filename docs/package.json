@@ -12,9 +12,7 @@
     "sass-watch": "npm run sass-build; node_modules/node-sass/bin/node-sass --watch --output static/css --output-style compressed styles/site.scss",
     "webpack-build": "webpack",
     "webpack-watch": "webpack -w",
-    "publish": "npm run build && aws s3 sync public/ s3://docs.yugabyte.com",
-    "generate-index": "hugo-algolia",
-    "publish-index": "hugo-algolia -s"
+    "publish": "npm run build && aws s3 rm s3://docs.yugabyte.com --recursive && aws s3 sync public/ s3://docs.yugabyte.com"
   },
   "repository": {
     "type": "git",
