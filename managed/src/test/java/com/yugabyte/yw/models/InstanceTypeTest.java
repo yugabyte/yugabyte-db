@@ -79,15 +79,26 @@ public class InstanceTypeTest extends FakeDBApplication {
   @Test
   public void testFindByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
-    InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.code, "c3.medium", 3, 10.0, defaultDetails);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
     assertThat(instanceTypeList.get(0).getInstanceTypeCode(),
-               allOf(notNullValue(), equalTo("foo")));
+               allOf(notNullValue(), equalTo("c3.medium")));
   }
 
+  @Test
+  public void testFindByProviderWithUnSupportedInstances() {
+    InstanceType.upsert(defaultProvider.code, "m3.medium", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.code, "c3.medium", 2, 10.0, defaultDetails);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
+    assertNotNull(instanceTypeList);
+    assertEquals(1, instanceTypeList.size());
+    assertThat(instanceTypeList.get(0).getInstanceTypeCode(),
+        allOf(notNullValue(), equalTo("c3.medium")));
+  }
+  
   @Test
   public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);

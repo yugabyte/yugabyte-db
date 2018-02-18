@@ -130,7 +130,7 @@ function mapStateToProps(state, ownProps) {
     "ybSoftwareVersion": "",
     "numNodes": 3,
     "isMultiAZ": true,
-    "instanceType": "m3.medium",
+    "instanceType": "c4.2xlarge",
     "formType": "create",
     "accessKeyCode": "yugabyte-default",
     "spotPrice": "0.00",
