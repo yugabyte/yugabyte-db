@@ -41,7 +41,7 @@ const initialState = {
 };
 
 const DEFAULT_INSTANCE_TYPE_MAP = {
-  'aws': 'm3.medium',
+  'aws': 'c4.2xlarge',
   'gcp': 'n1-standard-1'
 };
 

@@ -117,7 +117,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       InstanceTypeDetails instanceDetails = new InstanceTypeDetails();
       instanceDetails.volumeDetailsList.add(volDetails);
       instanceDetails.setDefaultMountPaths();
-      String code = "test-i" + Integer.toString(i);
+      String code = "c3.i" + Integer.toString(i);
       instanceTypes[i] = InstanceType.upsert(awsProvider.code, code, 2, 10.5, instanceDetails);
     }
     return instanceTypes;

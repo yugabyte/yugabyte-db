@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import javax.persistence.Column;
@@ -10,6 +11,7 @@ import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
@@ -26,6 +28,9 @@ import play.libs.Json;
 @Entity
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
+
+  static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED = ImmutableList.of("c4.", "c3.", "i3.");
+
   public enum VolumeType {
     @EnumValue("EBS")
     EBS,
@@ -147,12 +152,22 @@ public class InstanceType extends Model {
     }
   }
 
+  private static Predicate<InstanceType> supportedInstanceTypes(List<String> supportedPrefixes) {
+    return p -> supportedPrefixes.stream().anyMatch(prefix -> p.getInstanceTypeCode().startsWith(prefix));
+  }
+
   /**
    * Query Helper to find supported instance types for a given cloud provider.
    */
   public static List<InstanceType> findByProvider(Provider provider) {
     List<InstanceType> entries = InstanceType.find.where().eq("provider_code", provider.code)
         .findList();
+    if (provider.code.equals("aws")) {
+      // For AWS, we would filter and show only supported instance prefixes
+      entries = entries.stream()
+          .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
+          .collect(Collectors.toList());
+    }
     return entries.stream().map(entry -> InstanceType.get(entry.getProviderCode(),
         entry.getInstanceTypeCode())).collect(Collectors.toList());
   }
