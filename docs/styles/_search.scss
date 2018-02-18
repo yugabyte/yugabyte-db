@@ -1,5 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
+.search-by-algolia {
+  height: 30px;
+
+  @media (min-width: 550px) {
+    margin-top: -30px;
+    text-align: right;
+  }
+
+  img {
+    position: relative;
+    top: -32px;
+    height: 22px;
+  }
+}
+
 .algolia-docsearch-suggestion--highlight {
   color: inherit !important;
   font-weight: bold;

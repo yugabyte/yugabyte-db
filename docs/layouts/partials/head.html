@@ -71,11 +71,11 @@
       }
     </style>
 
-    <link rel="stylesheet" href="{{ "css/application.css" | absURL }}">
-    <link rel="stylesheet" type="text/css" href="{{.Site.BaseURL}}/css/site.css" />
-    <link rel="stylesheet" href="{{ "css/temporary.css" | absURL }}">
-    <link rel="stylesheet" href="{{ "css/palettes.css" | absURL }}">
-    <link rel="stylesheet" href="{{ with .Site.Params.highlight_css }}{{ . | absURL }}{{ else }}{{ "css/highlight/highlight.css" | absURL }}{{ end }}">
+    <link rel="stylesheet" href="/css/application.css">
+    <link rel="stylesheet" type="text/css" href="/css/site.css" />
+    <link rel="stylesheet" href="/css/temporary.css">
+    <link rel="stylesheet" href="/css/palettes.css">
+    <link rel="stylesheet" href="{{ with .Site.Params.highlight_css }}{{ . | absURL }}{{ else }}{{ "/css/highlight/highlight.css" }}{{ end }}">
 
     {{ $text := or .Site.Params.font.text "Roboto" }}
     {{ $code := or .Site.Params.font.code "Roboto Mono" }}
@@ -94,7 +94,7 @@
     {{ range .Site.Params.custom_css }}
     <link rel="stylesheet" href="{{ . | absURL }}">
     {{ end }}
-    <script src="{{ "js/modernizr.js" | absURL }}"></script>
+    <script src="/js/modernizr.js"></script>
 
     {{ with .RSSLink }}
     <link href="{{ . }}" rel="alternate" type="application/rss+xml" title="{{ $.Site.Title }}" />

@@ -3,7 +3,7 @@ baseurl: https://docs.yugabyte.com
 languageCode: en-us
 title: YugaByte DB Docs
 metadataformat: yaml
-canonifyurls: true
+canonifyurls: false
 googleAnalytics: UA-104956980-1
 algolia:
   index: docs
