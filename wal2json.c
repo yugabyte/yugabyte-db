@@ -100,9 +100,14 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data = palloc0(sizeof(JsonDecodingData));
 	data->context = AllocSetContextCreate(TopMemoryContext,
 										"wal2json output context",
+#if PG_VERSION_NUM >= 90600
+										ALLOCSET_DEFAULT_SIZES
+#else
 										ALLOCSET_DEFAULT_MINSIZE,
 										ALLOCSET_DEFAULT_INITSIZE,
-										ALLOCSET_DEFAULT_MAXSIZE);
+										ALLOCSET_DEFAULT_MAXSIZE
+#endif
+                                        );
 	data->include_xids = false;
 	data->include_timestamp = false;
 	data->include_schemas = true;
