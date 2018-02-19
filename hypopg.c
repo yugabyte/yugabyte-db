@@ -1625,8 +1625,13 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 		if (entry->indexkeys[keyno] != 0)
 		{
 			int32		keycoltypmod;
+#if PG_VERSION_NUM >= 110000
+			appendStringInfo(&buf, "%s", get_attname(entry->relid,
+						entry->indexkeys[keyno], false));
+#else
 			appendStringInfo(&buf, "%s", get_attname(entry->relid,
 						entry->indexkeys[keyno]));
+#endif
 
 			get_atttypetypmodcoll(entry->relid, entry->indexkeys[keyno],
 								  &keycoltype, &keycoltypmod,
