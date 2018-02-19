@@ -927,6 +927,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
 
+  // Checks if the table is the internal redis table. Returns false if either not redis table or
+  // its namespace info is not found, and returns true otherwise.
+  bool IsRedisTable(const TableInfo& table) const;
+
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
   void NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid, const TableId& table_id);
