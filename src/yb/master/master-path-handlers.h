@@ -38,6 +38,7 @@
 
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/macros.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/server/webserver.h"
 
 namespace yb {
@@ -87,7 +88,10 @@ class MasterPathHandlers {
                           std::stringstream* output);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, std::stringstream* output);
 
-  // Convert location of peers to HTML, indicating the roles
+  // Checks if the table is system managed table (including redis table).
+  bool IsSystemTable(const TableInfo& table);
+
+    // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.
   // This method will display 'locations' in the order given.
   std::string RaftConfigToHtml(const std::vector<TabletReplica>& locations,

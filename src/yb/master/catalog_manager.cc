@@ -2730,6 +2730,22 @@ bool CatalogManager::IsSystemTable(const TableInfo& table) const {
   return table.IsSupportedSystemTable(sys_tables_handler_.supported_system_tables());
 }
 
+bool CatalogManager::IsRedisTable(const TableInfo& table) const {
+  NamespaceIdentifierPB ns_id;
+  ns_id.set_id(table.namespace_id());
+  scoped_refptr<NamespaceInfo> ns_info;
+  Status s = FindNamespace(ns_id, &ns_info);
+  if (!s.ok()) {
+    return false;
+  }
+
+  if (ns_info->name() == common::kRedisKeyspaceName && table.name() == common::kRedisTableName) {
+    return true;
+  }
+
+  return false;
+}
+
 void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
                                                 const TabletId& tablet_id) {
   scoped_refptr<DeletedTableInfo> deleted_table;

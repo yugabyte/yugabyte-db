@@ -44,7 +44,6 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
@@ -233,7 +232,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     }
 
     // Skip system tables if we should.
-    if (skip_system_tables && master_->catalog_manager()->IsSystemTable(*table)) {
+    if (skip_system_tables && IsSystemTable(*table)) {
       continue;
     }
 
@@ -378,6 +377,11 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   HtmlOutputTasks(table->GetTasks(), output);
 }
 
+bool MasterPathHandlers::IsSystemTable(const TableInfo& table) {
+  return master_->catalog_manager()->IsSystemTable(table) ||
+         master_->catalog_manager()->IsRedisTable(table);
+}
+
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                                      stringstream* output) {
 
@@ -447,7 +451,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   // Get the list of user tables.
   vector<scoped_refptr<TableInfo> > user_tables;
   for (scoped_refptr<TableInfo> table : tables) {
-    if (!master_->catalog_manager()->IsSystemTable(*table)) {
+    if (!IsSystemTable(*table)) {
       user_tables.push_back(table);
     }
   }
