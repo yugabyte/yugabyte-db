@@ -8,7 +8,7 @@ $(document).ready(() => {
     cookie: {
       name: 'navgoco',
       path: '/',
-      expires: false,
+      expires: 0,
     },
     toggleSelector: 'a.node-toggle',
     openClass: 'open',
