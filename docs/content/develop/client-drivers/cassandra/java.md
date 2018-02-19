@@ -156,13 +156,13 @@ mvn package
 
 To run the program, do the following.
 
-```sh
+```{.sh .copy}
 java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YBCqlHelloWorld
 ```
 
 You should see the following as the output.
 
-```sh
+```{.sh .copy}
 Created keyspace ybdemo
 Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');

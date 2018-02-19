@@ -8,7 +8,7 @@ $ ./bin/yb-ctl destroy
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl create
 ```
 

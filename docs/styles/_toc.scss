@@ -43,3 +43,75 @@ h1 {
 #TableOfContents ul ul ul {
   display: none;
 }
+
+pre {
+  position: relative;
+}
+
+pre code.copy + textarea + button.copy {
+  position: absolute;
+  border: none !important;
+  text-transform: uppercase;
+  right: 0;
+  top: 0;
+  width: auto;
+  text-align: center;
+  padding: 3px 8px;
+  border-radius: 3px;
+  margin: 12px 12px 0 0;
+  color: $YB_GRAY;
+  background-color: transparent;
+  overflow: hidden;
+
+  &, &:active, &:hover, &:focus {
+    box-shadow: none;
+    border: none;
+    transform: none;
+  }
+  &:after {
+    position: absolute;
+    top: 0;
+    left: 0;    
+    font: normal normal normal 18px/1 FontAwesome;
+    content: '\F00C';
+    color: #fff;
+    text-align: center;
+    border-radius: 2px;
+    width: 50px;
+    height: 27px;
+    line-height: 26px;
+    opacity: 1;
+    background-color: $YB_SUCCESS_COLOR !important;
+  }
+  &:hover {
+    color: #fff;
+    background-color: $YB_ORANGE;
+  }
+  &.unclicked {
+    color: $YB_ORANGE;
+    background-color: #fff;
+    &:hover {
+      color: #fff;
+      background-color: $YB_ORANGE;
+    }
+    &:after {
+      content: '';
+      opacity: 0;
+      -webkit-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.60, 1) 0s;
+         -moz-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.60, 1) 0s;
+           -o-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.60, 1) 0s;
+              transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.60, 1) 0s;
+    }
+  }
+}
+
+pre code.copy + textarea {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  width: 0;
+  opacity: 0;
+  padding: 0 0 1px 1px;
+  border: none;
+}
