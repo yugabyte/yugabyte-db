@@ -4,9 +4,9 @@ Add the following snippet to your pom.xml:
 
 ```
 <dependency>
-<groupId>com.datastax.spark</groupId>
+<groupId>com.yugabyte.spark</groupId>
  <artifactId>spark-cassandra-connector_2.10</artifactId>
- <version>2.0.5</version>
+ <version>2.0.5-yb-2</version>
 </dependency>
 ```
 

@@ -7,7 +7,7 @@ To build your Java application using the YugaByte CQL driver, add the following 
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>3.2.0-yb-8</version>
+  <version>3.2.0-yb-12</version>
 </dependency>
 ```
 
@@ -44,7 +44,7 @@ Create a maven build file `pom.xml` and add the following content into it.
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.2.0-yb-8</version>
+      <version>3.2.0-yb-12</version>
     </dependency>
   </dependencies>
 
