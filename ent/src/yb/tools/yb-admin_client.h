@@ -21,7 +21,7 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   // Snapshot operations.
   CHECKED_STATUS ListSnapshots();
-  CHECKED_STATUS CreateSnapshot(const client::YBTableName& table_name);
+  CHECKED_STATUS CreateSnapshot(const client::YBTableName& table_name, int flush_timeout_secs);
   CHECKED_STATUS RestoreSnapshot(const std::string& snapshot_id);
 
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,
