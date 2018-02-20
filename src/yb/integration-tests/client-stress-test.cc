@@ -162,7 +162,7 @@ TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
 
 namespace {
 
-class ClientStressTestSlowMultiMaster: public ClientStressTest {
+class ClientStressTestSlowMultiMaster : public ClientStressTest {
  protected:
   ExternalMiniClusterOptions default_opts() override {
     ExternalMiniClusterOptions result;
@@ -181,19 +181,15 @@ void LeaderMasterCallback(Synchronizer* sync,
   sync->StatusCB(status);
 }
 
-} // namespace
-
-TEST_F_EX(ClientStressTest, SlowLeaderResolution, ClientStressTestSlowMultiMaster) {
-  DontVerifyClusterBeforeNextTearDown();
-
+void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
   std::vector<Endpoint> master_addrs;
-  for (auto i = 0; i != cluster_->num_masters(); ++i) {
-    master_addrs.push_back(cluster_->master(i)->bound_rpc_addr());
+  for (auto i = 0; i != cluster->num_masters(); ++i) {
+    master_addrs.push_back(cluster->master(i)->bound_rpc_addr());
   }
   auto stop_time = std::chrono::steady_clock::now() + 60s;
   std::vector<std::thread> threads;
   for (auto i = 0; i != 10; ++i) {
-    threads.emplace_back([this, stop_time, master_addrs]() {
+    threads.emplace_back([cluster, stop_time, master_addrs]() {
       while (std::chrono::steady_clock::now() < stop_time) {
         rpc::Rpcs rpcs;
         Synchronizer sync;
@@ -202,7 +198,7 @@ TEST_F_EX(ClientStressTest, SlowLeaderResolution, ClientStressTestSlowMultiMaste
             Bind(&LeaderMasterCallback, &sync),
             master_addrs,
             deadline,
-            cluster_->messenger(),
+            cluster->messenger(),
             &rpcs);
         auto status = sync.Wait();
         LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;
@@ -212,6 +208,36 @@ TEST_F_EX(ClientStressTest, SlowLeaderResolution, ClientStressTestSlowMultiMaste
   for (auto& thread : threads) {
     thread.join();
   }
+}
+
+} // namespace
+
+TEST_F_EX(ClientStressTest, SlowLeaderResolution, ClientStressTestSlowMultiMaster) {
+  DontVerifyClusterBeforeNextTearDown();
+
+  RepeatGetLeaderMaster(cluster_.get());
+}
+
+namespace {
+
+class ClientStressTestSmallQueueMultiMaster : public ClientStressTest {
+ protected:
+  ExternalMiniClusterOptions default_opts() override {
+    ExternalMiniClusterOptions result;
+    result.num_masters = 3;
+    result.master_rpc_ports = { 0, 0, 0 };
+    result.extra_master_flags = { "--master_svc_queue_length=5"s };
+    result.num_tablet_servers = 0;
+    return result;
+  }
+};
+
+} // namespace
+
+TEST_F_EX(ClientStressTest, RetryLeaderResolution, ClientStressTestSmallQueueMultiMaster) {
+  DontVerifyClusterBeforeNextTearDown();
+
+  RepeatGetLeaderMaster(cluster_.get());
 }
 
 // Override the base test to start a cluster with a low memory limit.
