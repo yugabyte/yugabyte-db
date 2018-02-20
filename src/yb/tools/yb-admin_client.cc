@@ -52,6 +52,11 @@ PB_ENUM_FORMATTERS(yb::tablet::TabletStatePB);
 namespace yb {
 namespace tools {
 
+using namespace std::literals;
+
+using std::cout;
+using std::endl;
+
 using google::protobuf::RepeatedPtrField;
 
 using client::YBClientBuilder;
@@ -68,13 +73,17 @@ using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
-using master::MasterServiceProxy;
+using master::FlushTablesRequestPB;
+using master::FlushTablesResponsePB;
+using master::IsFlushTablesDoneRequestPB;
+using master::IsFlushTablesDoneResponsePB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
 using master::ListMasterRaftPeersRequestPB;
 using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
+using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
 
@@ -344,7 +353,7 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  std::cout << "Percent complete = " << resp.percent() << std::endl;
+  cout << "Percent complete = " << resp.percent() << endl;
   return Status::OK();
 }
 
@@ -390,9 +399,9 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   //   Standard deviation:    1.24722
   //   Adjusted deviation %:  10.9717%
   vector<double> leader_dist, best_case, worst_case;
-  std::cout << RightPadToUuidWidth("Server UUID") << kColumnSep << "Leader Count" << std::endl;
+  cout << RightPadToUuidWidth("Server UUID") << kColumnSep << "Leader Count" << endl;
   for (const auto& leader_count : leader_counts) {
-    std::cout << leader_count.first << kColumnSep << leader_count.second << std::endl;
+    cout << leader_count.first << kColumnSep << leader_count.second << endl;
     leader_dist.push_back(leader_count.second);
   }
 
@@ -410,8 +419,8 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
     double best_stdev = yb::standard_deviation(best_case);
     double worst_stdev = yb::standard_deviation(worst_case);
     double percent_dev = (stdev - best_stdev) / (worst_stdev - best_stdev) * 100.0;
-    std::cout << "Standard deviation: " << stdev << std::endl;
-    std::cout << "Adjusted deviation percentage: " << percent_dev << "%" << std::endl;
+    cout << "Standard deviation: " << stdev << endl;
+    cout << "Adjusted deviation percentage: " << percent_dev << "%" << endl;
   }
 
   return Status::OK();
@@ -623,13 +632,13 @@ Status ClusterAdminClient::ListAllTabletServers() {
   RETURN_NOT_OK(ListTabletServers(&servers));
 
   if (!servers.empty()) {
-    std::cout << RightPadToUuidWidth("Tablet Server UUID") << kColumnSep
-              << kRpcHostPortHeading << std::endl;
+    cout << RightPadToUuidWidth("Tablet Server UUID") << kColumnSep
+         << kRpcHostPortHeading << endl;
   }
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    std::cout << server.instance_id().permanent_uuid() << kColumnSep
-              << FormatFirstHostPort(server.registration().common().rpc_addresses())
-              << std::endl;
+    cout << server.instance_id().permanent_uuid() << kColumnSep
+         << FormatFirstHostPort(server.registration().common().rpc_addresses())
+         << endl;
   }
 
   return Status::OK();
@@ -645,16 +654,16 @@ Status ClusterAdminClient::ListAllMasters() {
     return StatusFromPB(lresp.error().status());
   }
   if (!lresp.masters().empty()) {
-    std::cout << RightPadToUuidWidth("Master UUID") << kColumnSep
-              << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
-              << "State" << kColumnSep
-              << "Role" << std::endl;
+    cout << RightPadToUuidWidth("Master UUID") << kColumnSep
+         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth)<< kColumnSep
+         << "State" << kColumnSep
+         << "Role" << endl;
   }
   for (int i = 0; i < lresp.masters_size(); i++) {
     if (lresp.masters(i).role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
       auto master_reg =
           lresp.masters(i).has_registration() ? &lresp.masters(i).registration() : nullptr;
-      std::cout
+      cout
           << (master_reg ? lresp.masters(i).instance_id().permanent_uuid() :
               RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep
           << RightPadToWidth(
@@ -662,9 +671,9 @@ Status ClusterAdminClient::ListAllMasters() {
               kHostPortColWidth) << kColumnSep
           << (lresp.masters(i).has_error() ?
               PBEnumToString(lresp.masters(i).error().code()) : "ALIVE") << kColumnSep
-          << PBEnumToString(lresp.masters(i).role()) << std::endl;
+          << PBEnumToString(lresp.masters(i).role()) << endl;
     } else {
-      std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
+      cout << "UNREACHABLE MASTER at index " << i << "." << endl;
     }
   }
 
@@ -678,16 +687,16 @@ Status ClusterAdminClient::ListAllMasters() {
   }
 
   if (r_resp.masters_size() != lresp.masters_size()) {
-    std::cout << "WARNING: Mismatch in in-memory masters and raft peers info."
-              << "Raft peer info from master leader dumped below.\n";
+    cout << "WARNING: Mismatch in in-memory masters and raft peers info."
+         << "Raft peer info from master leader dumped below." << endl;
     for (int i = 0; i < r_resp.masters_size(); i++) {
       if (r_resp.masters(i).member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
         const auto& master = r_resp.masters(i);
-        std::cout << master.permanent_uuid() << "  "
-                  << master.last_known_addr().host() << "/"
-                  << master.last_known_addr().port() << std::endl;
+        cout << master.permanent_uuid() << "  "
+             << master.last_known_addr().host() << "/"
+             << master.last_known_addr().port() << endl;
       } else {
-        std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
+        cout << "UNREACHABLE MASTER at index " << i << "." << endl;
       }
     }
   }
@@ -700,10 +709,10 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   RETURN_NOT_OK(ListTabletServers(&servers));
 
   if (!servers.empty()) {
-    std::cout << RightPadToUuidWidth("TS UUID") << kColumnSep
-              << kRpcHostPortHeading << kColumnSep
-              << "LogLocation"
-              << std::endl;
+    cout << RightPadToUuidWidth("TS UUID") << kColumnSep
+         << kRpcHostPortHeading << kColumnSep
+         << "LogLocation"
+         << endl;
   }
 
   for (const ListTabletServersResponsePB::Entry& server : servers) {
@@ -721,9 +730,9 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
     tserver::GetLogLocationResponsePB resp;
     ts_proxy.get()->GetLogLocation(req, &resp, &rpc);
 
-    std::cout << ts_uuid << kColumnSep
-              << ts_addr << kColumnSep
-              << resp.log_location() << std::endl;
+    cout << ts_uuid << kColumnSep
+         << ts_addr << kColumnSep
+         << resp.log_location() << endl;
   }
 
   return Status::OK();
@@ -733,7 +742,7 @@ Status ClusterAdminClient::ListTables() {
   vector<YBTableName> tables;
   RETURN_NOT_OK(yb_client_->ListTables(&tables));
   for (const YBTableName& table : tables) {
-    std::cout << table.ToString() << std::endl;
+    cout << table.ToString() << endl;
   }
   return Status::OK();
 }
@@ -743,9 +752,9 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int 
   std::vector<master::TabletLocationsPB> locations;
   RETURN_NOT_OK(yb_client_->GetTablets(
       table_name, max_tablets, &tablet_uuids, &ranges, &locations));
-  std::cout << RightPadToUuidWidth("Tablet UUID") << kColumnSep
-            << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
-            << "Leader" << std::endl;
+  cout << RightPadToUuidWidth("Tablet UUID") << kColumnSep
+       << RightPadToWidth("Range", kPartitionRangeColWidth) << kColumnSep
+       << "Leader" << endl;
   for (int i = 0; i < tablet_uuids.size(); i++) {
     string tablet_uuid = tablet_uuids[i];
     string leader_host_port;
@@ -760,9 +769,9 @@ Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int 
         }
       }
     }
-    std::cout << tablet_uuid << kColumnSep
-              << RightPadToWidth(ranges[i], kPartitionRangeColWidth) << kColumnSep
-              << leader_host_port << std::endl;
+    cout << tablet_uuid << kColumnSep
+         << RightPadToWidth(ranges[i], kPartitionRangeColWidth) << kColumnSep
+         << leader_host_port << endl;
   }
   return Status::OK();
 }
@@ -781,14 +790,14 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id)
   if (resp.tablet_locations_size() != 1) {
     if (resp.tablet_locations_size() > 0) {
       std::cerr << "List of all incorrect locations - " << resp.tablet_locations_size()
-                << " : " << std::endl;
+                << " : " << endl;
       for (int i = 0; i < resp.tablet_locations_size(); i++) {
         std::cerr << i << " : " << resp.tablet_locations(i).DebugString();
         if (i >= MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR) {
           break;
         }
       }
-      std::cerr << std::endl;
+      std::cerr << endl;
     }
     return STATUS_FORMAT(IllegalState,
                          "Incorrect number of locations $0 for tablet $1.",
@@ -797,15 +806,15 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id)
 
   TabletLocationsPB locs = resp.tablet_locations(0);
   if (!locs.replicas().empty()) {
-    std::cout << RightPadToUuidWidth("Server UUID") << kColumnSep
-              << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
-              << "Role" << std::endl;
+    cout << RightPadToUuidWidth("Server UUID") << kColumnSep
+         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
+         << "Role" << endl;
   }
   for (const auto& replica : locs.replicas()) {
-    std::cout << replica.ts_info().permanent_uuid() << kColumnSep
-              << RightPadToWidth(FormatHostPort(replica.ts_info().rpc_addresses(0)),
+    cout << replica.ts_info().permanent_uuid() << kColumnSep
+         << RightPadToWidth(FormatHostPort(replica.ts_info().rpc_addresses(0)),
                             kHostPortColWidth) << kColumnSep
-              << PBEnumToString(replica.role()) << std::endl;
+         << PBEnumToString(replica.role()) << endl;
   }
 
   return Status::OK();
@@ -813,7 +822,7 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const TabletId& tablet_id)
 
 Status ClusterAdminClient::DeleteTable(const YBTableName& table_name) {
   RETURN_NOT_OK(yb_client_->DeleteTable(table_name));
-  std::cout << "Deleted table " << table_name.ToString() << std::endl;
+  cout << "Deleted table " << table_name.ToString() << endl;
   return Status::OK();
 }
 
@@ -856,15 +865,15 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const PeerId& ts_uuid) {
   tserver::ListTabletsForTabletServerResponsePB resp;
   RETURN_NOT_OK(ts_proxy.get()->ListTabletsForTabletServer(req, &resp, &rpc));
 
-  std::cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
-            << RightPadToUuidWidth("Tablet ID") << kColumnSep
-            << "Is Leader" << kColumnSep
-            << "State" << std::endl;
+  cout << RightPadToWidth("Table name", kTableNameColWidth) << kColumnSep
+       << RightPadToUuidWidth("Tablet ID") << kColumnSep
+       << "Is Leader" << kColumnSep
+       << "State" << endl;
   for (const auto& entry : resp.entries()) {
-    std::cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
-              << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
-              << entry.is_leader() << kColumnSep
-              << PBEnumToString(entry.state()) << std::endl;
+    cout << RightPadToWidth(entry.table_name(), kTableNameColWidth) << kColumnSep
+         << RightPadToUuidWidth(entry.tablet_id()) << kColumnSep
+         << entry.is_leader() << kColumnSep
+         << PBEnumToString(entry.state()) << endl;
   }
   return Status::OK();
 }
@@ -906,6 +915,53 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
   }
 
   return Status::OK();
+}
+
+Status ClusterAdminClient::FlushTable(const YBTableName& table_name, int timeout_secs) {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  FlushTablesRequestPB req;
+  FlushTablesResponsePB resp;
+  table_name.SetIntoTableIdentifierPB(req.add_tables());
+  RETURN_NOT_OK(master_proxy_->FlushTables(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Started flushing table " << table_name.ToString() << endl
+       << "Flush request id: " << resp.flush_request_id() << endl;
+
+  IsFlushTablesDoneRequestPB wait_req;
+  IsFlushTablesDoneResponsePB wait_resp;
+
+  // Wait for table creation.
+  wait_req.set_flush_request_id(resp.flush_request_id());
+
+  for (int k = 0; k < timeout_secs; ++k) {
+    rpc.Reset();
+    RETURN_NOT_OK(master_proxy_->IsFlushTablesDone(wait_req, &wait_resp, &rpc));
+
+    if (wait_resp.has_error()) {
+      if (wait_resp.error().status().code() == AppStatusPB::NOT_FOUND) {
+        cout << "Flush request was deleted: " << resp.flush_request_id() << endl;
+      }
+
+      return StatusFromPB(wait_resp.error().status());
+    }
+
+    if (wait_resp.done()) {
+      cout << "Flushing complete: " << (wait_resp.success() ? "SUCCESS" : "FAILED") << endl;
+      return Status::OK();
+    }
+
+    cout << "Waiting for flushing... " << (wait_resp.success() ? "" : "Already FAILED") << endl;
+    std::this_thread::sleep_for(1s);
+  }
+
+  return STATUS(TimedOut,
+      Substitute("Expired timeout ($0 seconds) for table $1 flushing",
+          timeout_secs, table_name.ToString()));
 }
 
 string RightPadToUuidWidth(const string &s) {

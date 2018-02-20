@@ -815,6 +815,11 @@ Status Tablet::Flush(FlushMode mode) {
   return Status::OK();
 }
 
+Status Tablet::WaitForFlush() {
+  TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
+  return rocksdb_->WaitForFlush();
+}
+
 Status Tablet::ImportData(const std::string& source_dir) {
   return rocksdb_->Import(source_dir);
 }

@@ -1098,6 +1098,30 @@ message UDTypeInfoPB {
   optional NamespaceIdentifierPB namespace = 5;
 }
 
+message FlushTablesRequestPB {
+  repeated TableIdentifierPB tables = 1;
+}
+
+message FlushTablesResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bytes flush_request_id = 2;
+}
+
+message IsFlushTablesDoneRequestPB {
+  optional bytes flush_request_id = 1;
+}
+
+message IsFlushTablesDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // true if the flush tables operation is completed, false otherwise
+  optional bool done = 2;
+
+  // true if the flush tables operation is successfull
+  optional bool success = 3;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1164,4 +1188,7 @@ service MasterService {
       returns (GetLoadMovePercentResponsePB);
   rpc IsLoadBalanced(IsLoadBalancedRequestPB)
       returns (IsLoadBalancedResponsePB);
+
+  rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
+  rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
 }

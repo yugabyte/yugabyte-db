@@ -23,5 +23,9 @@ YB_EDITION_NS_PREFIX CatalogManager* MasterServiceBase::handler(CatalogManager*)
   return server_->catalog_manager();
 }
 
+FlushManager* MasterServiceBase::handler(FlushManager*) {
+  return server_->flush_manager();
+}
+
 } // namespace master
 } // namespace yb

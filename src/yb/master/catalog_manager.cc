@@ -1930,6 +1930,52 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   return Status::OK();
 }
 
+Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
+    const TableIdentifierPB& table_identifier,
+    MasterErrorPB::Code* error,
+    scoped_refptr<TableInfo>* table,
+    scoped_refptr<NamespaceInfo>* ns) {
+  DCHECK_ONLY_NOTNULL(error);
+  // Lookup the table and verify it exists.
+  TRACE("Looking up table");
+  scoped_refptr<TableInfo> local_table_info;
+  scoped_refptr<TableInfo>& table_obj = table ? *table : local_table_info;
+  RETURN_NOT_OK(FindTable(table_identifier, &table_obj));
+  if (table_obj == nullptr) {
+    *error = MasterErrorPB::TABLE_NOT_FOUND;
+    return STATUS(NotFound, "Table does not exist", table_identifier.DebugString());
+  }
+
+  TRACE("Locking table");
+  auto l = table_obj->LockForRead();
+
+  if (table_obj->metadata().state().table_type() != TableType::YQL_TABLE_TYPE) {
+    *error = MasterErrorPB::INVALID_TABLE_TYPE;
+    return STATUS(InvalidArgument, "Invalid table type", table_identifier.DebugString());
+  }
+
+  if (table_obj->IsCreateInProgress()) {
+    *error = MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS;
+    return STATUS(IllegalState, "Table creation is in progress", table_obj->ToString());
+  }
+
+  if (ns) {
+    TRACE("Looking up namespace");
+    boost::shared_lock<LockType> l(lock_);
+
+    *ns = FindPtrOrNull(namespace_ids_map_, table_obj->namespace_id());
+    if (*ns == nullptr) {
+      *error = MasterErrorPB::NAMESPACE_NOT_FOUND;
+      return STATUS(
+          InvalidArgument, "Could not find namespace by namespace id", table_obj->namespace_id());
+    }
+  }
+
+  TabletInfos tablets;
+  table_obj->GetAllTablets(&tablets);
+  return std::move(tablets);
+}
+
 // Truncate a Table
 Status CatalogManager::TruncateTable(const TruncateTableRequestPB* req,
                                      TruncateTableResponsePB* resp,

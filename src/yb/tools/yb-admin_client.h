@@ -132,6 +132,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS DropRedisTable();
 
+  CHECKED_STATUS FlushTable(const client::YBTableName& table_name, int timeout_secs);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,

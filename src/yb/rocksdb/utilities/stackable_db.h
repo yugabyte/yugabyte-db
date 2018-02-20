@@ -247,6 +247,11 @@ class StackableDB : public DB {
     return db_->Flush(fopts, column_family);
   }
 
+  using DB::WaitForFlush;
+  virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override {
+    return db_->WaitForFlush(column_family);
+  }
+
   virtual Status SyncWAL() override {
     return db_->SyncWAL();
   }

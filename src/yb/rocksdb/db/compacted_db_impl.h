@@ -17,8 +17,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_DB_COMPACTED_DB_IMPL_H
-#define ROCKSDB_DB_COMPACTED_DB_IMPL_H
+#ifndef YB_ROCKSDB_DB_COMPACTED_DB_IMPL_H
+#define YB_ROCKSDB_DB_COMPACTED_DB_IMPL_H
 
 #pragma once
 #ifndef ROCKSDB_LITE
@@ -94,6 +94,10 @@ class CompactedDBImpl : public DBImpl {
                        ColumnFamilyHandle* column_family) override {
     return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
+  using DBImpl::WaitForFlush;
+  virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override {
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
+  }
 
  private:
   friend class DB;
@@ -112,4 +116,4 @@ class CompactedDBImpl : public DBImpl {
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE
 
-#endif // ROCKSDB_DB_COMPACTED_DB_IMPL_H
+#endif // YB_ROCKSDB_DB_COMPACTED_DB_IMPL_H

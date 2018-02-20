@@ -186,5 +186,32 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
   ASSERT_OK(registry->WriteAsJson(&new_writer, { "*" }, MetricJsonOptions()));
 }
 
+TYPED_TEST(TestTablet, TestFlushedOpId) {
+  LocalTabletWriter writer(this->tablet().get());
+  const int64_t N = 1000;
+
+  // Insert & flush one row to start index counting.
+  ASSERT_OK(this->InsertTestRow(&writer, 0, 333));
+  ASSERT_OK(this->tablet()->Flush(FlushMode::kSync));
+  OpId id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  const int64_t start_index = id.index;
+
+  this->InsertTestRows(1, N, 555);
+  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  ASSERT_EQ(id.index, start_index);
+
+  ASSERT_OK(this->tablet()->Flush(FlushMode::kSync));
+  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  ASSERT_EQ(id.index, start_index + N);
+
+  this->InsertTestRows(1, N, 777);
+  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  ASSERT_EQ(id.index, start_index + N);
+
+  ASSERT_OK(this->tablet()->Flush(FlushMode::kSync));
+  id = ASSERT_RESULT(this->tablet()->MaxPersistentOpId());
+  ASSERT_EQ(id.index, start_index + 2*N);
+}
+
 } // namespace tablet
 } // namespace yb

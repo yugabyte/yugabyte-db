@@ -55,8 +55,25 @@ set(MASTER_PROTO_LIBS
   ${MASTER_PROTO_LIBS_EXTENSIONS})
 
 set(MASTER_SRCS
+  async_flush_tablets_task.cc
+  async_rpc_tasks.cc
+  call_home.cc
+  catalog_manager.cc
+  cluster_balance.cc
+  flush_manager.cc
+  master.cc
+  master_options.cc
+  master_service_base.cc
+  master_service.cc
+  master_tablet_service.cc
+  master_tserver.cc
+  master-path-handlers.cc
+  mini_master.cc
+  sys_catalog.cc
   system_tablet.cc
   system_tables_handler.cc
+  ts_descriptor.cc
+  ts_manager.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
   util/yql_vtable_helpers.cc
@@ -76,21 +93,6 @@ set(MASTER_SRCS
   yql_types_vtable.cc
   yql_views_vtable.cc
   yql_partitions_vtable.cc
-  async_rpc_tasks.cc
-  catalog_manager.cc
-  cluster_balance.cc
-  master.cc
-  master_options.cc
-  master_service_base.cc
-  master_service.cc
-  master-path-handlers.cc
-  mini_master.cc
-  sys_catalog.cc
-  ts_descriptor.cc
-  ts_manager.cc
-  master_tablet_service.cc
-  master_tserver.cc
-  call_home.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 add_library(master ${MASTER_SRCS})
