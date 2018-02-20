@@ -75,7 +75,10 @@ bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
         err->has_code() &&
         err->code() == ErrorStatusPB::ERROR_SERVER_TOO_BUSY) {
       auto status = DelayedRetry(rpc, controller_status);
-      LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
+      if (!status.ok()) {
+        *out_status = status;
+        return false;
+      }
       return true;
     }
   }
