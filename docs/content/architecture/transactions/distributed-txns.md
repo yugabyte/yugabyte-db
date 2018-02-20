@@ -1,6 +1,8 @@
 ---
 title: Distributed ACID Transactions
 weight: 1053
+aliases:
+  - architecture/concepts/transactions
 ---
 
 ## Introduction
