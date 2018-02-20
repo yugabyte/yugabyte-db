@@ -2,17 +2,7 @@
 
 ## Inserting data
 
-To insert data in a batch, create a `BATCH` statement.
-
-```sh
-BEGIN BATCH;
-...
-<insert statements>
-...
-APPLY BATCH;
-```
-
-Prepared-bind statements are usually added to the write batch. This is done in order to reduce the query parsing overhead.
+To insert data in a batch, prepared statements with the bind values are added to the write batch. This is done in order to reduce repeated query parsing overhead.
 
 ### Java Example
 
@@ -23,7 +13,7 @@ In order to perform a batch insert operation in Java, first create a `BatchState
 BatchStatement batch = new BatchStatement();
 
 // Create a prepared statement object to add to the batch.
-PreparedStatement insert = client..prepare("INSERT INTO table (k, v) VALUES (?, ?);");
+PreparedStatement insert = client.prepare("INSERT INTO table (k, v) VALUES (?, ?);");
 
 // Bind values to the prepared statement and add them to the batch.
 for (...) {
@@ -47,25 +37,25 @@ Consider a table which has a hash column `h` and two clustering columns `r1` and
 - Query a range of values for `r1` given `h`.
 
 ```{.sql .copy}
-SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 < '<lower-bound>';
+SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 > '<lower-bound>';
 ```
 
 - Query a range of values for `r2` given `h` and `r1`.
 
 ```{.sql .copy}
-SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 < '<lower-bound>';
+SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
 ```
 
 - Query a range of values for `r2` given `h` - **may not be efficient**. This query will need to iterate through all the unique values of `r1` in order to fetch the result and would be less efficient if a key has a lot of values for the `r1` column.
 
 ```{.sql .copy}
-SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 < '<lower-bound>';
+SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
 ```
 
 - Query a range of values for `r1` without `h` being specified - **may not be efficient**. This query will perform a full scan of the table and would be less efficient if the table is large.
 
 ```{.sql .copy}
-SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 < '<lower-bound>';
+SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 > '<lower-bound>';
 ```
 
 
@@ -82,16 +72,16 @@ Consider a table which has a hash column `h` and a clustering column `r`.
 SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
 ```
 
-- Query a set of values for `r` given one value of `h` - this query is efficient and will seek to the various values for the given value of `h`.
+- Query a set of values for `r` given one value of `h` - this query is efficient and will seek to the various values of `r` for the given value of `h`.
 
 ```{.sql .copy}
 SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 
-- Query a set of values for `h` and a set of values for `r`. 
+- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have upto 6 rows. 
 
 ```{.sql .copy}
-SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
+SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
 ```
 
 

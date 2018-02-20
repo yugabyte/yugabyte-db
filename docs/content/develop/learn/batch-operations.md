@@ -12,19 +12,10 @@ Batch operations is the ability to send a set of operations as one operation (RP
       Cassandra
     </a>
   </li>
-  <li>
-    <a href="#redis">
-      <i class="icon-java-bold" aria-hidden="true"></i>
-      Redis
-    </a>
-  </li>
 </ul>
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade in active">
     {{% includeMarkdown "/develop/learn/cassandra/batch-operations.md" /%}}
-  </div>
-  <div id="redis" class="tab-pane fade">
-    {{% includeMarkdown "/develop/learn/redis/batch-operations.md" /%}}
   </div>
 </div>
