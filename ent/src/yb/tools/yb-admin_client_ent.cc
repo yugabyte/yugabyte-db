@@ -84,7 +84,22 @@ Status ClusterAdminClient::ListSnapshots() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateSnapshot(const YBTableName& table_name) {
+Status ClusterAdminClient::CreateSnapshot(const YBTableName& table_name,
+                                          int flush_timeout_secs) {
+  if (flush_timeout_secs > 0) {
+    // Flush table before the snapshot creation.
+    const Status s = FlushTable(table_name, flush_timeout_secs);
+    // Expected statuses:
+    //   OK - table was successfully flushed
+    //   NotFound - flush request was finished & deleted
+    //   TimedOut - flush request failed by timeout
+    if (s.IsTimedOut()) {
+      cout << s.ToString(false) << " (ignored)" << endl;
+    } else if (!s.ok() && !s.IsNotFound()) {
+      return s;
+    }
+  }
+
   RpcController rpc;
   rpc.set_timeout(timeout_);
   CreateSnapshotRequestPB req;
@@ -266,7 +281,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
       if (wait_resp.done()) {
         break;
       } else {
-        LOG(INFO) << "Waiting for table " << new_table_id << "...";
+        cout << "Waiting for table " << new_table_id << "..." << endl;
         std::this_thread::sleep_for(1s);
       }
     }

@@ -106,46 +106,17 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   // Create in memory snapshot data descriptor.
   for (const TableIdentifierPB& table_id_pb : req->tables()) {
     scoped_refptr<TableInfo> table;
-
-    // Lookup the table and verify it exists.
-    TRACE("Looking up table");
-    RETURN_NOT_OK(FindTable(table_id_pb, &table));
-    if (table == nullptr) {
-      const Status s = STATUS(NotFound, "Table does not exist", table_id_pb.DebugString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
-    }
-
-    vector<scoped_refptr<TabletInfo>> tablets;
     scoped_refptr<NamespaceInfo> ns;
+    MasterErrorPB::Code error = MasterErrorPB::UNKNOWN_ERROR;
 
-    {
-      TRACE("Locking table");
-      auto l = table->LockForRead();
-
-      if (table->metadata().state().table_type() != TableType::YQL_TABLE_TYPE) {
-        const Status s = STATUS(InvalidArgument, "Invalid table type", table_id_pb.DebugString());
-        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_TYPE, s);
-      }
-
-      if (table->IsCreateInProgress()) {
-        const Status s = STATUS(IllegalState,
-            "Table creation is in progress", table->ToString());
-        return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS, s);
-      }
-
-      TRACE("Looking up namespace");
-      ns = FindPtrOrNull(namespace_ids_map_, table->namespace_id());
-      if (ns == nullptr) {
-        const Status s = STATUS(InvalidArgument,
-            "Could not find namespace by namespace id", table->namespace_id());
-        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      }
-
-      table->GetAllTablets(&tablets);
+    const Result<TabletInfos> res_tablets = GetTabletsOrSetupError(
+        table_id_pb, &error, &table, &ns);
+    if (!res_tablets.ok()) {
+      return SetupError(resp->mutable_error(), error, res_tablets.status());
     }
 
-    RETURN_NOT_OK(snapshot->AddEntries(ns, table, tablets));
-    all_tablets.insert(all_tablets.end(), tablets.begin(), tablets.end());
+    RETURN_NOT_OK(snapshot->AddEntries(ns, table, *res_tablets));
+    all_tablets.insert(all_tablets.end(), res_tablets->begin(), res_tablets->end());
   }
 
   VLOG(1) << "Snapshot " << snapshot->ToString()
@@ -859,6 +830,16 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
 ////////////////////////////////////////////////////////////
 
 SnapshotInfo::SnapshotInfo(SnapshotId id) : snapshot_id_(std::move(id)) {}
+
+SysSnapshotEntryPB::State SnapshotInfo::state() const {
+  auto l = LockForRead();
+  return l->data().state();
+}
+
+const std::string& SnapshotInfo::state_name() const {
+  auto l = LockForRead();
+  return l->data().state_name();
+}
 
 std::string SnapshotInfo::ToString() const {
   return Substitute("[id=$0]", snapshot_id_);

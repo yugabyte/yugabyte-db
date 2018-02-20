@@ -14,29 +14,37 @@ namespace master {
 // This portion of SnapshotInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
 struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntry::SNAPSHOT> {
+  SysSnapshotEntryPB::State state() const {
+    return pb.state();
+  }
+
+  const std::string& state_name() const {
+    return SysSnapshotEntryPB::State_Name(state());
+  }
+
   bool is_creating() const {
-    return pb.state() == SysSnapshotEntryPB::CREATING;
+    return state() == SysSnapshotEntryPB::CREATING;
   }
 
   bool started_deleting() const {
-    return pb.state() == SysSnapshotEntryPB::DELETING ||
-           pb.state() == SysSnapshotEntryPB::DELETED;
+    return state() == SysSnapshotEntryPB::DELETING ||
+           state() == SysSnapshotEntryPB::DELETED;
   }
 
   bool is_failed() const {
-    return pb.state() == SysSnapshotEntryPB::FAILED;
+    return state() == SysSnapshotEntryPB::FAILED;
   }
 
   bool is_cancelled() const {
-    return pb.state() == SysSnapshotEntryPB::CANCELLED;
+    return state() == SysSnapshotEntryPB::CANCELLED;
   }
 
   bool is_complete() const {
-    return pb.state() == SysSnapshotEntryPB::COMPLETE;
+    return state() == SysSnapshotEntryPB::COMPLETE;
   }
 
   bool is_restoring() const {
-    return pb.state() == SysSnapshotEntryPB::RESTORING;
+    return state() == SysSnapshotEntryPB::RESTORING;
   }
 };
 
@@ -50,6 +58,10 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
   explicit SnapshotInfo(SnapshotId id);
 
   virtual const std::string& id() const override { return snapshot_id_; };
+
+  SysSnapshotEntryPB::State state() const;
+
+  const std::string& state_name() const;
 
   std::string ToString() const override;
 
