@@ -187,6 +187,8 @@ class DBImpl : public DB {
   using DB::Flush;
   virtual Status Flush(const FlushOptions& options,
                        ColumnFamilyHandle* column_family) override;
+  using DB::WaitForFlush;
+  virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override;
   virtual Status SyncWAL() override;
 
   virtual SequenceNumber GetLatestSequenceNumber() const override;

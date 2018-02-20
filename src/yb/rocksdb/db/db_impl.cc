@@ -1705,7 +1705,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     return STATUS(InvalidArgument, "Invalid target path ID");
   }
 
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
   bool exclusive = options.exclusive_manual_compaction;
 
@@ -1830,7 +1830,7 @@ Status DBImpl::CompactFiles(
     return STATUS(InvalidArgument, "ColumnFamilyHandle must be non-null.");
   }
 
-  auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   assert(cfd);
 
   Status s;
@@ -2114,7 +2114,7 @@ Status DBImpl::SetOptions(ColumnFamilyHandle* column_family,
 #ifdef ROCKSDB_LITE
   return STATUS(NotSupported, "Not supported in ROCKSDB LITE");
 #else
-  auto* cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
+  auto* cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   if (options_map.empty()) {
     RLOG(InfoLogLevel::WARN_LEVEL,
         db_options_.info_log, "SetOptions() on column family [%s], empty input",
@@ -2273,7 +2273,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
 }
 
 int DBImpl::NumberLevels(ColumnFamilyHandle* column_family) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   return cfh->cfd()->NumberLevels();
 }
 
@@ -2282,7 +2282,7 @@ int DBImpl::MaxMemCompactionLevel(ColumnFamilyHandle* column_family) {
 }
 
 int DBImpl::Level0StopWriteTrigger(ColumnFamilyHandle* column_family) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   InstrumentedMutexLock l(&mutex_);
   return cfh->cfd()->GetSuperVersion()->
       mutable_cf_options.level0_stop_writes_trigger;
@@ -2290,8 +2290,14 @@ int DBImpl::Level0StopWriteTrigger(ColumnFamilyHandle* column_family) {
 
 Status DBImpl::Flush(const FlushOptions& flush_options,
                      ColumnFamilyHandle* column_family) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   return FlushMemTable(cfh->cfd(), flush_options);
+}
+
+Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
+  // Wait until the flush completes.
+  return WaitForFlushMemTable(cfh->cfd());
 }
 
 Status DBImpl::SyncWAL() {
@@ -2520,7 +2526,7 @@ InternalIterator* DBImpl::NewInternalIterator(
   if (column_family == nullptr) {
     cfd = default_cf_handle_->cfd();
   } else {
-    auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+    auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
     cfd = cfh->cfd();
   }
 
@@ -2588,8 +2594,7 @@ Status DBImpl::EnableAutoCompaction(
     Status status =
         this->SetOptions(cf_ptr, {{"disable_auto_compactions", "false"}});
     if (status.ok()) {
-      ColumnFamilyData* cfd =
-          reinterpret_cast<ColumnFamilyHandleImpl*>(cf_ptr)->cfd();
+      ColumnFamilyData* cfd = down_cast<ColumnFamilyHandleImpl*>(cf_ptr)->cfd();
       InstrumentedMutexLock guard_lock(&mutex_);
       InstallSuperVersionAndScheduleWork(cfd, nullptr, *cfd->GetLatestMutableCFOptions());
     } else {
@@ -3494,7 +3499,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   StopWatch sw(env_, stats_, DB_GET);
   PERF_TIMER_GUARD(get_snapshot_time);
 
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
   SequenceNumber snapshot;
@@ -3562,7 +3567,7 @@ std::vector<Status> DBImpl::MultiGet(
   std::unordered_map<uint32_t, MultiGetColumnFamilyData*> multiget_cf_data;
   // fill up and allocate outside of mutex
   for (auto cf : column_family) {
-    auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(cf);
+    auto cfh = down_cast<ColumnFamilyHandleImpl*>(cf);
     auto cfd = cfh->cfd();
     if (multiget_cf_data.find(cfd->GetID()) == multiget_cf_data.end()) {
       auto mgcfd = new MultiGetColumnFamilyData();
@@ -3607,7 +3612,7 @@ std::vector<Status> DBImpl::MultiGet(
     std::string* value = &(*values)[i];
 
     LookupKey lkey(keys[i], snapshot);
-    auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family[i]);
+    auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family[i]);
     auto mgd_iter = multiget_cf_data.find(cfh->cfd()->GetID());
     assert(mgd_iter != multiget_cf_data.end());
     auto mgd = mgd_iter->second;
@@ -3671,7 +3676,7 @@ std::vector<Status> DBImpl::MultiGet(
 Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
                        const std::string& file_path, bool move_file) {
   Status status;
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   ColumnFamilyData* cfd = cfh->cfd();
 
   ExternalSstFileInfo file_info;
@@ -3799,7 +3804,7 @@ void DeleteFile(Env* env, const std::string& path, const shared_ptr<Logger>& inf
 Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
                        const ExternalSstFileInfo* file_info, bool move_file) {
   Status status;
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   ColumnFamilyData* cfd = cfh->cfd();
 
   if (file_info->num_entries == 0) {
@@ -4007,8 +4012,7 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
 
   // this is outside the mutex
   if (s.ok()) {
-    NewThreadStatusCfInfo(
-        reinterpret_cast<ColumnFamilyHandleImpl*>(*handle)->cfd());
+    NewThreadStatusCfInfo(down_cast<ColumnFamilyHandleImpl*>(*handle)->cfd());
     if (!persist_options_status.ok()) {
       if (db_options_.fail_if_options_file_error) {
         s = STATUS(IOError,
@@ -4025,7 +4029,7 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
 }
 
 Status DBImpl::DropColumnFamily(ColumnFamilyHandle* column_family) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
   if (cfd->GetID() == 0) {
     return STATUS(InvalidArgument, "Can't drop default column family");
@@ -4127,7 +4131,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
     return NewErrorIterator(STATUS(NotSupported,
         "ReadTier::kPersistedData is not yet supported in iterators."));
   }
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
   XFUNC_TEST("", "managed_new", managed_new1, xf_manage_new,
@@ -4253,7 +4257,7 @@ Status DBImpl::NewIterators(
           "Managed interator not supported without snapshots");
     }
     for (auto cfh : column_families) {
-      auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+      auto cfd = down_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
       auto iter = new ManagedIterator(this, read_options, cfd);
       iterators->push_back(iter);
     }
@@ -4264,7 +4268,7 @@ Status DBImpl::NewIterators(
         "Tailing interator not supported in RocksDB lite");
 #else
     for (auto cfh : column_families) {
-      auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
+      auto cfd = down_cast<ColumnFamilyHandleImpl*>(cfh)->cfd();
       SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
       auto iter = new ForwardIterator(this, read_options, cfd, sv);
       iterators->push_back(NewDBIterator(
@@ -4278,8 +4282,7 @@ Status DBImpl::NewIterators(
     SequenceNumber latest_snapshot = versions_->LastSequence();
 
     for (size_t i = 0; i < column_families.size(); ++i) {
-      auto* cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(
-          column_families[i])->cfd();
+      auto* cfd = down_cast<ColumnFamilyHandleImpl*>(column_families[i])->cfd();
       SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
 
       auto snapshot =
@@ -4342,7 +4345,7 @@ Status DBImpl::Put(const WriteOptions& o, ColumnFamilyHandle* column_family,
 
 Status DBImpl::Merge(const WriteOptions& o, ColumnFamilyHandle* column_family,
                      const Slice& key, const Slice& val) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   if (!cfh->cfd()->ioptions()->merge_operator) {
     return STATUS(NotSupported, "Provide a merge_operator when opening DB");
   } else {
@@ -4950,7 +4953,7 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
 #ifndef ROCKSDB_LITE
 Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
                                         TablePropertiesCollection* props) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
   // Increment the ref count
@@ -4972,7 +4975,7 @@ Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
 Status DBImpl::GetPropertiesOfTablesInRange(ColumnFamilyHandle* column_family,
                                             const Range* range, std::size_t n,
                                             TablePropertiesCollection* props) {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
 
   // Increment the ref count
@@ -5002,7 +5005,7 @@ Env* DBImpl::GetEnv() const {
 }
 
 const Options& DBImpl::GetOptions(ColumnFamilyHandle* column_family) const {
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   return *cfh->cfd()->options();
 }
 
@@ -5012,7 +5015,7 @@ bool DBImpl::GetProperty(ColumnFamilyHandle* column_family,
                          const Slice& property, std::string* value) {
   const DBPropertyInfo* property_info = GetPropertyInfo(property);
   value->clear();
-  auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   if (property_info == nullptr) {
     return false;
   } else if (property_info->handle_int) {
@@ -5040,7 +5043,7 @@ bool DBImpl::GetIntProperty(ColumnFamilyHandle* column_family,
   if (property_info == nullptr || property_info->handle_int == nullptr) {
     return false;
   }
-  auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   return GetIntPropertyInternal(cfd, *property_info, false, value);
 }
 
@@ -5226,7 +5229,7 @@ void DBImpl::GetApproximateSizes(ColumnFamilyHandle* column_family,
                                  const Range* range, int n, uint64_t* sizes,
                                  bool include_memtable) {
   Version* v;
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
   SuperVersion* sv = GetAndRefSuperVersion(cfd);
   v = sv->current;
@@ -5371,7 +5374,7 @@ Status DBImpl::DeleteFile(std::string name) {
 Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
                                   const Slice* begin, const Slice* end) {
   Status status;
-  auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   ColumnFamilyData* cfd = cfh->cfd();
   VersionEdit edit;
   std::vector<FileMetaData*> deleted_files;
@@ -5494,7 +5497,7 @@ void DBImpl::GetColumnFamilyMetaData(
     ColumnFamilyHandle* column_family,
     ColumnFamilyMetaData* cf_meta) {
   assert(column_family);
-  auto* cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
+  auto* cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   auto* sv = GetAndRefSuperVersion(cfd);
   sv->current->GetColumnFamilyMetaData(cf_meta);
   ReturnAndCleanupSuperVersion(cfd, sv);

@@ -27,6 +27,7 @@ namespace master {
 
 class Master;
 class CatalogManager;
+class FlushManager;
 
 // Base class for any master service with a few helpers.
 class MasterServiceBase {
@@ -56,6 +57,7 @@ class MasterServiceBase {
       Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*));
 
   YB_EDITION_NS_PREFIX CatalogManager* handler(CatalogManager*);
+  FlushManager* handler(FlushManager*);
 
   Master* server_;
 

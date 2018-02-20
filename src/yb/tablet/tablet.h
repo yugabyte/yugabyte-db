@@ -285,6 +285,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Makes RocksDB Flush.
   CHECKED_STATUS Flush(FlushMode mode);
 
+  CHECKED_STATUS WaitForFlush();
+
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)

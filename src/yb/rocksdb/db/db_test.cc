@@ -4771,8 +4771,12 @@ class ModelDB: public DB {
   using DB::Flush;
   virtual Status Flush(const rocksdb::FlushOptions& options,
                        ColumnFamilyHandle* column_family) override {
-    Status ret;
-    return ret;
+    return Status::OK();
+  }
+
+  using DB::WaitForFlush;
+  virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override {
+    return Status::OK();
   }
 
   Status SyncWAL() override {

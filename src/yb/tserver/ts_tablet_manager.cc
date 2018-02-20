@@ -245,6 +245,7 @@ using tablet::TabletMetadata;
 using tablet::TabletClass;
 using tablet::TabletPeer;
 using tablet::TabletPeerClass;
+using tablet::TabletPeerPtr;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 
@@ -253,7 +254,7 @@ void TSTabletManager::MaybeFlushTablet() {
   int iteration = 0;
   while (memory_monitor()->Exceeded() ||
          (iteration++ == 0 && FLAGS_pretend_memory_exceeded_enforce_flush)) {
-    scoped_refptr<TabletPeer> tablet_to_flush = TabletToFlush();
+    TabletPeerPtr tablet_to_flush = TabletToFlush();
     // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
     // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
     // will not happen often, but should be fixed.
@@ -266,10 +267,10 @@ void TSTabletManager::MaybeFlushTablet() {
 
 // Return the tablet with the oldest write in memstore, or nullptr if all
 // tablet memstores are empty or about to flush.
-scoped_refptr<TabletPeer> TSTabletManager::TabletToFlush() {
+TabletPeerPtr TSTabletManager::TabletToFlush() {
   boost::shared_lock<rw_spinlock> lock(lock_); // For using the tablet map
   HybridTime oldest_write_in_memstores = HybridTime::kMax;
-  scoped_refptr<TabletPeer> tablet_to_flush;
+  TabletPeerPtr tablet_to_flush;
   for (const TabletMap::value_type& entry : tablet_map_) {
     const auto tablet = entry.second->shared_tablet();
     if (tablet) {
@@ -435,7 +436,7 @@ Status TSTabletManager::Init() {
       CHECK_OK(StartTabletStateTransitionUnlocked(meta->tablet_id(), "opening tablet", &deleter));
     }
 
-    scoped_refptr<TabletPeer> tablet_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
+    TabletPeerPtr tablet_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
     RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
         std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
   }
@@ -480,7 +481,7 @@ Status TSTabletManager::CreateNewTablet(
     const Schema &schema,
     const PartitionSchema &partition_schema,
     RaftConfigPB config,
-    scoped_refptr<TabletPeer> *tablet_peer) {
+    TabletPeerPtr *tablet_peer) {
   CHECK_EQ(state(), MANAGER_RUNNING);
   CHECK(IsRaftConfigMember(server_->instance_pb().permanent_uuid(), config));
 
@@ -500,7 +501,7 @@ Status TSTabletManager::CreateNewTablet(
     TRACE("Acquired tablet manager lock");
 
     // Sanity check that the tablet isn't already registered.
-    scoped_refptr<TabletPeer> junk;
+    TabletPeerPtr junk;
     if (LookupTabletUnlocked(tablet_id, &junk)) {
       return STATUS(AlreadyPresent, "Tablet already registered", tablet_id);
     }
@@ -540,7 +541,7 @@ Status TSTabletManager::CreateNewTablet(
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager_, tablet_id, fs_manager_->uuid(),
                                                   config, consensus::kMinimumTerm, &cmeta),
                         "Unable to create new ConsensusMeta for tablet " + tablet_id);
-  scoped_refptr<TabletPeer> new_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
+  TabletPeerPtr new_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
 
   // We can run this synchronously since there is nothing to bootstrap.
   RETURN_NOT_OK(
@@ -574,7 +575,7 @@ Status CheckLeaderTermNotLower(
 
 Status HandleReplacingStaleTablet(
     scoped_refptr<TabletMetadata> meta,
-    scoped_refptr<TabletPeer> old_tablet_peer,
+    TabletPeerPtr old_tablet_peer,
     const string& tablet_id,
     const string& uuid,
     const int64_t& leader_term) {
@@ -628,7 +629,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
 
-  scoped_refptr<TabletPeer> old_tablet_peer;
+  TabletPeerPtr old_tablet_peer;
   scoped_refptr<TabletMetadata> meta;
   bool replacing_tablet = false;
   scoped_refptr<TransitionInProgressDeleter> deleter;
@@ -675,7 +676,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
   RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
-  scoped_refptr<TabletPeer> tablet_peer = CreateAndRegisterTabletPeer(meta, mode);
+  TabletPeerPtr tablet_peer = CreateAndRegisterTabletPeer(meta, mode);
 
   // Download all of the remote files.
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()),
@@ -726,9 +727,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 }
 
 // Create and register a new TabletPeer, given tablet metadata.
-scoped_refptr<TabletPeer> TSTabletManager::CreateAndRegisterTabletPeer(
+TabletPeerPtr TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
-  scoped_refptr<TabletPeer> tablet_peer(
+  TabletPeerPtr tablet_peer(
       new TabletPeerClass(meta,
                           local_peer_pb_,
                           apply_pool_.get(),
@@ -754,7 +755,7 @@ Status TSTabletManager::DeleteTablet(
 
   TRACE("Deleting tablet $0", tablet_id);
 
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   scoped_refptr<TransitionInProgressDeleter> deleter;
   {
     // Acquire the lock in exclusive mode as we'll add a entry to the
@@ -887,7 +888,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
                "tablet_id", tablet_id);
 
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   CHECK(LookupTablet(tablet_id, &tablet_peer))
       << "Tablet not registered prior to OpenTabletAsync call: " << tablet_id;
 
@@ -1001,10 +1002,10 @@ void TSTabletManager::Shutdown() {
   // Take a snapshot of the peers list -- that way we don't have to hold
   // on to the lock while shutting them down, which might cause a lock
   // inversion. (see KUDU-308 for example).
-  vector<scoped_refptr<TabletPeer> > peers_to_shutdown;
+  TabletPeers peers_to_shutdown;
   GetTabletPeers(&peers_to_shutdown);
 
-  for (const scoped_refptr<TabletPeer>& peer : peers_to_shutdown) {
+  for (const TabletPeerPtr& peer : peers_to_shutdown) {
     peer->Shutdown();
   }
 
@@ -1036,7 +1037,7 @@ void TSTabletManager::Shutdown() {
 }
 
 void TSTabletManager::RegisterTablet(const std::string& tablet_id,
-                                     const scoped_refptr<TabletPeer>& tablet_peer,
+                                     const TabletPeerPtr& tablet_peer,
                                      RegisterTabletPeerMode mode) {
   std::lock_guard<rw_spinlock> lock(lock_);
   // If we are replacing a tablet peer, we delete the existing one first.
@@ -1052,14 +1053,14 @@ void TSTabletManager::RegisterTablet(const std::string& tablet_id,
 }
 
 bool TSTabletManager::LookupTablet(const string& tablet_id,
-                                   scoped_refptr<TabletPeer>* tablet_peer) const {
+                                   TabletPeerPtr* tablet_peer) const {
   boost::shared_lock<rw_spinlock> shared_lock(lock_);
   return LookupTabletUnlocked(tablet_id, tablet_peer);
 }
 
 bool TSTabletManager::LookupTabletUnlocked(const string& tablet_id,
-                                           scoped_refptr<TabletPeer>* tablet_peer) const {
-  const scoped_refptr<TabletPeer>* found = FindOrNull(tablet_map_, tablet_id);
+                                           TabletPeerPtr* tablet_peer) const {
+  const TabletPeerPtr* found = FindOrNull(tablet_map_, tablet_id);
   if (!found) {
     return false;
   }
@@ -1068,7 +1069,7 @@ bool TSTabletManager::LookupTabletUnlocked(const string& tablet_id,
 }
 
 Status TSTabletManager::GetTabletPeer(const string& tablet_id,
-                                      scoped_refptr<tablet::TabletPeer>* tablet_peer) const {
+                                      TabletPeerPtr* tablet_peer) const {
   if (!LookupTablet(tablet_id, tablet_peer)) {
     return STATUS(NotFound, "Tablet not found", tablet_id);
   }
@@ -1085,7 +1086,7 @@ const NodeInstancePB& TSTabletManager::NodeInstance() const {
   return server_->instance_pb();
 }
 
-void TSTabletManager::GetTabletPeers(vector<scoped_refptr<TabletPeer> >* tablet_peers) const {
+void TSTabletManager::GetTabletPeers(TabletPeers* tablet_peers) const {
   boost::shared_lock<rw_spinlock> shared_lock(lock_);
   AppendValuesFromMap(tablet_map_, tablet_peers);
 }
@@ -1156,7 +1157,7 @@ void TSTabletManager::InitLocalRaftPeerPB() {
 }
 
 void TSTabletManager::CreateReportedTabletPB(const string& tablet_id,
-                                             const scoped_refptr<TabletPeer>& tablet_peer,
+                                             const TabletPeerPtr& tablet_peer,
                                              ReportedTabletPB* reported_tablet) {
   reported_tablet->set_tablet_id(tablet_id);
   reported_tablet->set_state(tablet_peer->state());
@@ -1182,7 +1183,7 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
   report->set_is_incremental(true);
   for (const DirtyMap::value_type& dirty_entry : dirty_tablets_) {
     const string& tablet_id = dirty_entry.first;
-    scoped_refptr<TabletPeer>* tablet_peer = FindOrNull(tablet_map_, tablet_id);
+    TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, tablet_id);
     if (tablet_peer) {
       // Dirty entry, report on it.
       CreateReportedTabletPB(tablet_id, *tablet_peer, report->add_updated_tablets());

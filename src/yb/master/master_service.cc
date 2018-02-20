@@ -40,6 +40,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/flush_manager.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
@@ -533,6 +534,18 @@ void MasterServiceImpl::IsLoadBalanced(
     const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
     RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalanced);
+}
+
+void MasterServiceImpl::FlushTables(const FlushTablesRequestPB* req,
+                                    FlushTablesResponsePB* resp,
+                                    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &FlushManager::FlushTables);
+}
+
+void MasterServiceImpl::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
+                                          IsFlushTablesDoneResponsePB* resp,
+                                          RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &FlushManager::IsFlushTablesDone);
 }
 
 } // namespace master

@@ -160,6 +160,7 @@ using strings::Substitute;
 using tablet::AlterSchemaOperationState;
 using tablet::Tablet;
 using tablet::TabletPeer;
+using tablet::TabletPeerPtr;
 using tablet::TabletStatusPB;
 using tablet::TruncateOperationState;
 using tablet::OperationCompletionCallback;
@@ -168,7 +169,7 @@ using tablet::WriteOperationState;
 namespace {
 
 template<class RespClass>
-bool GetConsensusOrRespond(const scoped_refptr<TabletPeer>& tablet_peer,
+bool GetConsensusOrRespond(const TabletPeerPtr& tablet_peer,
                            RespClass* resp,
                            rpc::RpcContext* context,
                            scoped_refptr<Consensus>* consensus) {
@@ -182,7 +183,7 @@ bool GetConsensusOrRespond(const scoped_refptr<TabletPeer>& tablet_peer,
   return true;
 }
 
-Status GetTabletRef(const scoped_refptr<TabletPeer>& tablet_peer,
+Status GetTabletRef(const TabletPeerPtr& tablet_peer,
                     shared_ptr<Tablet>* tablet,
                     TabletServerErrorPB::Code* error_code) {
   *DCHECK_NOTNULL(tablet) = tablet_peer->shared_tablet();
@@ -370,7 +371,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
 
   server::UpdateClock(*req, server_->Clock());
 
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
     return;
@@ -528,7 +529,7 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
 
   UpdateClock(*req, server_->Clock());
 
-  scoped_refptr<tablet::TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(),
                                  req->tablet_id(),
                                  resp, &context,
@@ -640,6 +641,54 @@ void TabletServiceAdminImpl::CopartitionTable(const CopartitionTableRequestPB* r
                                               rpc::RpcContext context) {
   context.RespondSuccess();
   LOG(INFO) << "tserver doesn't support co-partitioning yet";
+}
+
+void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
+                                          FlushTabletsResponsePB* resp,
+                                          rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "FlushTablets", req, resp, &context)) {
+    return;
+  }
+
+  if (req->tablet_ids_size() == 0) {
+    const Status s = STATUS(InvalidArgument, "No tablet ids");
+    SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB_Code_UNKNOWN_ERROR, &context);
+    return;
+  }
+
+  server::UpdateClock(*req, server_->Clock());
+
+  TRACE_EVENT1("tserver", "FlushTablets",
+               "TS: ", req->dest_uuid());
+
+  LOG(INFO) << "Processing FlushTablets from " << context.requestor_string();
+  VLOG(1) << "Full request: " << req->DebugString();
+  TabletPeers tablet_peers;
+
+  for (const TabletId& id : req->tablet_ids()) {
+    resp->set_failed_tablet_id(id);
+
+    TabletPeerPtr tablet_peer;
+    if (!LookupTabletPeerOrRespond(server_->tablet_manager(), id, resp, &context, &tablet_peer)) {
+      return;
+    }
+
+    RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+        tablet_peer->tablet()->Flush(tablet::FlushMode::kAsync), resp, &context);
+
+    tablet_peers.push_back(tablet_peer);
+    resp->clear_failed_tablet_id();
+  }
+
+  // Wait for end of all flush operations.
+  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
+    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
+    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet_peer->tablet()->WaitForFlush(), resp, &context);
+    resp->clear_failed_tablet_id();
+  }
+
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::Write(const WriteRequestPB* req,
@@ -759,7 +808,7 @@ bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
 template <class Req, class Resp>
 bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
                                              std::shared_ptr<tablet::AbstractTablet>* tablet) {
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
                                  &tablet_peer)) {
     return false;
@@ -1000,7 +1049,7 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, &context)) {
     return;
   }
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
     return;
   }
@@ -1034,7 +1083,7 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
   if (!CheckUuidMatchOrRespond(tablet_manager_, "RequestConsensusVote", req, resp, &context)) {
     return;
   }
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
     return;
   }
@@ -1059,7 +1108,7 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
       !CheckUuidMatchOrRespond(tablet_manager_, "ChangeConfig", req, resp, &context)) {
     return;
   }
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context,
                                  &tablet_peer)) {
     return;
@@ -1100,7 +1149,7 @@ class RpcScope {
     if (!CheckUuidMatchOrRespond(tablet_manager, method_name, req, resp, context)) {
       return;
     }
-    scoped_refptr<TabletPeer> tablet_peer;
+    TabletPeerPtr tablet_peer;
     if (!LookupTabletPeerOrRespond(tablet_manager, req->tablet_id(), resp, context, &tablet_peer)) {
       return;
     }
@@ -1198,7 +1247,7 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
   if (!CheckUuidMatchOrRespond(tablet_manager_, "GetLastOpId", req, resp, &context)) {
     return;
   }
-  scoped_refptr<TabletPeer> tablet_peer;
+  TabletPeerPtr tablet_peer;
   if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, &context, &tablet_peer)) {
     return;
   }
@@ -1263,10 +1312,10 @@ void TabletServiceImpl::NoOp(const NoOpRequestPB *req,
 void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
                                     ListTabletsResponsePB* resp,
                                     rpc::RpcContext context) {
-  std::vector<scoped_refptr<TabletPeer> > peers;
+  TabletPeers peers;
   server_->tablet_manager()->GetTabletPeers(&peers);
   RepeatedPtrField<StatusAndSchemaPB>* peer_status = resp->mutable_status_and_schema();
-  for (const scoped_refptr<TabletPeer>& peer : peers) {
+  for (const TabletPeerPtr& peer : peers) {
     StatusAndSchemaPB* status = peer_status->Add();
     peer->GetTabletStatusPB(status->mutable_tablet_status());
     CHECK_OK(SchemaToPB(peer->status_listener()->schema(),
@@ -1288,9 +1337,9 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
                                                    ListTabletsForTabletServerResponsePB* resp,
                                                    rpc::RpcContext context) {
   // Replicating logic from path-handlers.
-  std::vector<scoped_refptr<TabletPeer> > peers;
+  TabletPeers peers;
   server_->tablet_manager()->GetTabletPeers(&peers);
-  for (const scoped_refptr<TabletPeer>& peer : peers) {
+  for (const TabletPeerPtr& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
 

@@ -59,6 +59,8 @@ class TabletServer;
 
 class TabletServiceImpl : public TabletServerServiceIf {
  public:
+  typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
+
   explicit TabletServiceImpl(TabletServerIf* server);
 
   void Write(const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext context) override;
@@ -153,6 +155,8 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
 class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
  public:
+  typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
+
   explicit TabletServiceAdminImpl(TabletServer* server);
   virtual void CreateTablet(const CreateTabletRequestPB* req,
                             CreateTabletResponsePB* resp,
@@ -169,6 +173,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   virtual void CopartitionTable(const CopartitionTableRequestPB* req,
                                 CopartitionTableResponsePB* resp,
                                 rpc::RpcContext context) override;
+
+  virtual void FlushTablets(const FlushTabletsRequestPB* req,
+                            FlushTabletsResponsePB* resp,
+                            rpc::RpcContext context) override;
 
  private:
   TabletServer* server_;

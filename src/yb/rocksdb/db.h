@@ -710,6 +710,12 @@ class DB {
     return Flush(options, DefaultColumnFamily());
   }
 
+  // Wait for end of mem-table data flushing.
+  virtual Status WaitForFlush(ColumnFamilyHandle* column_family) = 0;
+  virtual Status WaitForFlush() {
+    return WaitForFlush(DefaultColumnFamily());
+  }
+
   // Sync the wal. Note that Write() followed by SyncWAL() is not exactly the
   // same as Write() with sync=true: in the latter case the changes won't be
   // visible until the sync is done.

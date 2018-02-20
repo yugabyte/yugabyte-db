@@ -1037,9 +1037,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
 
+  CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
+                           scoped_refptr<TableInfo>* table_info);
+
+  Result<TabletInfos> GetTabletsOrSetupError(const TableIdentifierPB& table_identifier,
+                                             MasterErrorPB::Code* error,
+                                             scoped_refptr<TableInfo>* table = nullptr,
+                                             scoped_refptr<NamespaceInfo>* ns = nullptr);
+
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
   }
+
+  std::string GenerateId() { return oid_generator_.Next(); }
+
+  ThreadPool* WorkerPool() { return worker_pool_.get(); }
 
  protected:
   friend class TableLoader;
@@ -1164,9 +1176,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns Status::ServiceUnavailable if tablet is not running.
   CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                          TabletLocationsPB* locs_pb);
-
-  CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
-                           scoped_refptr<TableInfo>* table_info);
 
   // Handle one of the tablets in a tablet reported.
   // Requires that the lock is already held.
@@ -1324,8 +1333,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      TabletToTabletServerMap *add_replica_tasks_map,
                                      TabletToTabletServerMap *remove_replica_tasks_map,
                                      TabletToTabletServerMap *stepdown_leader_tasks);
-
-  std::string GenerateId() { return oid_generator_.Next(); }
 
   // Abort creation of 'table': abort all mutation for TabletInfo and
   // TableInfo objects (releasing all COW locks), abort all pending

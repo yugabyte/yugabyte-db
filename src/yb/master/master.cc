@@ -43,6 +43,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/flush_manager.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
@@ -123,6 +124,7 @@ Master::Master(const MasterOptions& opts)
     ts_manager_(new TSManager()),
     catalog_manager_(new YB_EDITION_NS_PREFIX CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
+    flush_manager_(new FlushManager(this, catalog_manager())),
     opts_(opts),
     registration_initialized_(false),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),

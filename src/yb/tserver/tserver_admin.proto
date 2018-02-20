@@ -154,6 +154,24 @@ enum TSTabletManagerStatePB {
   MANAGER_SHUTDOWN = 3;
 }
 
+message FlushTabletsRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  // Tablets to flush.
+  repeated bytes tablet_ids = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message FlushTabletsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional bytes failed_tablet_id = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -167,4 +185,6 @@ service TabletServerAdminService {
 
   // Create a co-partitioned table in an existing tablet
   rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);
+
+  rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 }
