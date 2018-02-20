@@ -323,7 +323,11 @@ Status Connection::ReadHandler() {
       if (received.status().error_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
       } else {
-        LOG(INFO) << ToString() << " recv error: " << received;
+        if (direction_ == Direction::CLIENT) {
+          LOG(INFO) << ToString() << " recv error: " << received;
+        } else {
+          YB_LOG_EVERY_N(INFO, 50) << ToString() << " recv error: " << received;
+        }
       }
       return received.status();
     }
@@ -450,7 +454,11 @@ Status Connection::DoWrite() {
     auto status = socket_.Writev(iov, iov_len, &written);
     if (PREDICT_FALSE(!status.ok())) {
       if (!Socket::IsTemporarySocketError(status)) {
-        LOG(WARNING) << ToString() << " send error: " << status.ToString();
+        if (direction_ == Direction::CLIENT) {
+          LOG(WARNING) << ToString() << " send error: " << status.ToString();
+        } else {
+          YB_LOG_EVERY_N(WARNING, 50) << ToString() << " send error: " << status.ToString();
+        }
         return status;
       } else {
         waiting_write_ready_ = true;
