@@ -90,7 +90,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testFindByProviderWithUnSupportedInstances() {
-    InstanceType.upsert(defaultProvider.code, "m3.medium", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.code, "t2.medium", 3, 10.0, defaultDetails);
     InstanceType.upsert(defaultProvider.code, "c3.medium", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
     assertNotNull(instanceTypeList);
