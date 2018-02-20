@@ -17,15 +17,15 @@ This section will help you get started with building apps on top of YugaByte DB.
     </div>
   </a>
 
-<!--  <a class="section-link icon-offset" href="common-patterns/">
+  <a class="section-link icon-offset" href="learn/">
     <div class="icon">
       <i class="fa fa-map-o" aria-hidden="true"></i>
     </div>
     <div class="text">
-      Common Patterns
-      <div class="caption">Examples of reading and writing data for various common access patterns that arise while building apps.</div>
+      Learn
+      <div class="caption">Learn how to build cloud services and applications on YugaByte DB.</div>
     </div>
-  </a> -->
+  </a>
 
 <a class="section-link icon-offset" href="ecosystem-integrations/">
     <div class="icon">

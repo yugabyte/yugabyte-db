@@ -121,6 +121,56 @@ menu:
       identifier: develop-client-drivers-python
       url: /develop/client-drivers/python/
       weight: 554
+    - name: Learn
+      parent: develop
+      identifier: develop-learn
+      url: /develop/learn/
+      weight: 560
+    - name: 1. SQL vs NoSQL
+      parent: develop-learn
+      identifier: develop-learn-sql-nosql
+      url: /develop/learn/sql-nosql/
+      weight: 561
+    - name: 2. Data Modelling
+      parent: develop-learn
+      identifier: develop-learn-data-modelling
+      url: /develop/learn/data-modelling/
+      weight: 562
+#    - name: 3. Reads and Writes
+#      parent: develop-learn
+#      identifier: develop-learn-reads-writes
+#      url: /develop/learn/reads-writes/
+#      weight: 563
+#    - name: 4. Conditional Updates
+#      parent: develop-learn
+#      identifier: develop-learn-conditional-updates
+#      url: /develop/learn/conditional-updates/
+#      weight: 564
+    - name: 3. ACID transactions
+      parent: develop-learn
+      identifier: develop-learn-acid-transactions
+      url: /develop/learn/acid-transactions/
+      weight: 565
+#    - name: 6. Data Types
+#      parent: develop-learn
+#      identifier: develop-learn-data-types
+#      url: /develop/learn/data-types/
+#      weight: 566
+    - name: 4. Aggregations
+      parent: develop-learn
+      identifier: develop-learn-aggregations
+      url: /develop/learn/aggregations/
+      weight: 567
+    - name: 5. Batch Operations
+      parent: develop-learn
+      identifier: develop-learn-batch-operations
+      url: /develop/learn/batch-operations/
+      weight: 568
+#    - name: 9. Expiring Data with TTL
+#      parent: develop-learn
+#      identifier: develop-learn-ttl
+#      url: /develop/learn/ttl-data-expiry/
+#      weight: 569
     - name: Ecosystem Integrations
       parent: develop
       identifier: develop-ecosystem-integrations
