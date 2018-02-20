@@ -14,8 +14,7 @@ Dedicated hosts or cloud VMs running CentOS 7 with local or remote attached stor
 
 Here's the command to install these packages.
 
-```sh
-# install prerequisite packages
+```{.sh .copy .separator-dollar}
 $ sudo yum install -y epel-release ntp
 ```
 
@@ -26,13 +25,12 @@ $ sudo yum install -y epel-release ntp
 Download the YugaByte CE binary package as described in the [Quick Start section](/quick-start/install/).
 
 ### Install
-For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. As noted in the [default ports reference](/deploy/community-edition/#default-ports-reference) section, YB-Masters will run on port 7100 and YB-TServers will run on port 9100 of these instances. On each of these instances, run the following steps.
+For the purpose of this document, let's assume that we have 3 instances with private IP addresses as `172.151.17.130, 172.151.17.220, 172.151.17.140` and are accessible from each other over the network. As noted in the [default ports reference](/deploy/multi-node-cluster/#default-ports-reference) section, YB-Masters will run on port 7100 and YB-TServers will run on port 9100 of these instances. On each of these instances, run the following steps.
 
 Copy the YugaByte DB package into each instace and then running the following commands.
 
-```sh
-$ tar xvfz yugabyte-ce-<version>-<os>.tar.gz
-$ cd yugabyte-<version>/
+```{.sh .copy .separator-dollar}
+$ tar xvfz yugabyte-ce-<version>-<os>.tar.gz && cd yugabyte-<version>/
 ```
 
 ### Configure the installation
@@ -40,13 +38,13 @@ $ cd yugabyte-<version>/
 - Run the **post_install.sh** script to make some final updates to the installed software.
 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/post_install.sh
 ```
 
 - YugaByte DB can be configured to use multiple disks that have been previously mounted to the instance. For the purpose of this document, we will create 2 separate directories on the same disk and then use those directories as YugaByte's data directories.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ mkdir /home/centos/disk1 /home/centos/disk2
 ```
 
@@ -56,7 +54,7 @@ Execute the following steps on each of the instances.
 
 - Run `yb-master` as below. Note how multiple directories can be provided to the `--fs_data_dirs` flag. For the full list of flags, see the [yb-master Reference](/admin/yb-master/). 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-master \
 --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
@@ -65,18 +63,18 @@ $ ./bin/yb-master \
 
 - Alternatively, you can also create a `master.conf` file with the following flags and then run the `yb-master` with the `--flagfile` option as shown below.
 
-```sh
+```{.sh .copy}
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2 &
 ```
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-master --flagfile master.conf &
 ```
 
 - Make sure all the 3 yb-masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ cat /home/centos/disk1/yb-data/master/logs/yb-master.INFO
 ```
 
@@ -100,7 +98,7 @@ Execute the following steps on each of the instances.
 
 - Run `yb-tserver` as below. Note that all the master addresses have to be provided as a flag. For the full list of flags, see the [yb-tserver Reference](/admin/yb-tserver/). 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-tserver \
 --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
@@ -108,18 +106,18 @@ $ ./bin/yb-tserver \
 
 - Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the `--flagfile` option as shown below.
 
-```sh
+```{.sh .copy}
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
 ```
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-tserver --flagfile tserver.conf &
 ```
 
 - Make sure all the 3 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
 
@@ -150,7 +148,7 @@ I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { per
 
 While the CQL service is turned on by default after all the yb-tservers start, the Redis service is off by default. If you want this cluster to be able to support Redis clients, run the following command from any of the 3 instances. The command below will add the special Redis table into the DB and also start the Redis server on port 6379 on all instances.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 setup_redis_table
 ```
 

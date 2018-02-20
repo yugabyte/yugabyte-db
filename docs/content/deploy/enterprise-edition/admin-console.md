@@ -50,25 +50,33 @@ If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://
 YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated. 
 
 
-```sh
+```{.sh .copy .separator-dollar}
 # uninstall any older versions of docker (ubuntu-based hosts)
-sudo apt-get remove docker docker-engine
+$ sudo apt-get remove docker docker-engine
+```
 
+```{.sh .copy .separator-dollar}
 # uninstall any older versions of docker (centos-based hosts)
-sudo yum remove docker \
+$ sudo yum remove docker \
                 docker-common \
                 container-selinux \
                 docker-selinux \
                 docker-engine
+```
 
+```{.sh .copy .separator-dollar}
 # install replicated
-curl -sSL https://get.replicated.com/docker | sudo bash
+$ curl -sSL https://get.replicated.com/docker | sudo bash
+```
 
+```{.sh .copy .separator-dollar}
 # install replicated behind a proxy
-curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
+$ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker | sudo bash
+```
 
+```{.sh .copy .separator-dollar}
 # after replicated install completes, make sure it is running 
-sudo docker ps
+$ sudo docker ps
 ```
 You should see an output similar to the following.
 
@@ -82,39 +90,54 @@ An “airgapped” host has no path to inbound or outbound Internet traffic at a
 
 On a machine connected to the Internet, perform the following steps.
 
-```sh
+```{.sh .copy .separator-dollar}
 # make a directory for downloading the binaries
-sudo mkdir /opt/downloads
+$ sudo mkdir /opt/downloads
+```
 
+```{.sh .copy .separator-dollar}
 # change the owner user for the directory
-sudo chown -R ubuntu:ubuntu /opt/downloads
+$ sudo chown -R ubuntu:ubuntu /opt/downloads
+```
 
+```{.sh .copy .separator-dollar}
 # change to the directory
-cd /opt/downloads
+$ cd /opt/downloads
+```
 
+```{.sh .copy .separator-dollar}
 # get the replicated binary
-wget https://downloads.yugabyte.com/replicated.tar.gz 
+$ wget https://downloads.yugabyte.com/replicated.tar.gz 
+```
 
+```{.sh .copy .separator-dollar}
 # get the yugaware binary where the 0.9.4.0 refers to the version of the binary. change this number as needed.
-wget https://downloads.yugabyte.com/yugaware-0.9.4.0.airgap
+$ wget https://downloads.yugabyte.com/yugaware-0.9.4.0.airgap
 ```
 
 On the host marked for installation, first ensure that a supported version of docker-engine (currently 1.7.1 to 17.03.1-ce). If you do not have docker-engine installed, follow the instructions [here](https://help.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/) to first install docker-engine.
 
 After docker-engine is installed, perform the following steps to install replicated.
 
-```sh
+```{.sh .copy .separator-dollar}
 # change to the directory
-cd /opt/downloads
+$ cd /opt/downloads
+```
 
+```{.sh .copy .separator-dollar}
 # expand the replicated binary
-tar xzvf replicated.tar.gz
+$ ar xzvf replicated.tar.gz
+```
 
-# install replicated (yugaware will be installed via replicated ui after replicated install completes), pick eth0 network interface in case multiple ones show up
-cat ./install.sh | sudo bash -s airgap
+```{.sh .copy .separator-dollar}
+# install replicated (yugaware will be installed via replicated ui after replicated install completes)
+# pick eth0 network interface in case multiple ones show up
+$ cat ./install.sh | sudo bash -s airgap
+```
 
+```{.sh .copy .separator-dollar}
 # after replicated install completes, make sure it is running 
-sudo docker ps
+$ sudo docker ps
 ```
 
 You should see an output similar to the following.
@@ -231,21 +254,25 @@ Upgrades to Replicated are as simple as rerunning the Replicated install command
 
 Stop and remove the YugaWare application on Replicated first. 
 
-```sh
+```{.sh .copy .separator-dollar}
 # stop the yugaware application on replicated
-/usr/local/bin/replicated apps
-
+$ /usr/local/bin/replicated apps
+```
+```{.sh .copy .separator-dollar}
 # replace <appid> with the application id of yugaware from the command above
-/usr/local/bin/replicated app <appid> stop
-
+$ /usr/local/bin/replicated app <appid> stop
+```
+```{.sh .copy .separator-dollar}
 # remove yugaware app
-/usr/local/bin/replicated app <appid> rm
-
+$ /usr/local/bin/replicated app <appid> rm
+```
+```{.sh .copy .separator-dollar}
 # remove all yugaware containers
-docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
-
+$ docker images | grep "yuga" | awk '{print $3}' | xargs docker rmi -f
+```
+```{.sh .copy .separator-dollar}
 # delete the mapped directory
-rm -rf /opt/yugabyte
+$ rm -rf /opt/yugabyte
 ```
 
 And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated).
@@ -256,7 +283,7 @@ And then uninstall Replicated itself by following instructions documented [here]
 
 If your host has SELinux turned on, then docker-engine may not be able to connect with the host. Run the following commands to open the ports using firewall exceptions.
 
-```sh
+```{.sh .copy}
 sudo firewall-cmd --zone=trusted --add-interface=docker0
 sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 sudo firewall-cmd --zone=public --add-port=80/tcp
@@ -271,10 +298,11 @@ sudo firewall-cmd --zone=public --add-port=9090/tcp
 
 If your YugaWare host is not able to do passwordless ssh to the data nodes, follow the steps below.
 
-```sh
+```{.sh .copy .separator-dollar}
 # Generate key pair
 $ ssh-keygen -t rsa
-
+```
+```{.sh .copy .separator-dollar}
 # Setup passwordless ssh to the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
 $ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do
   ssh $IP mkdir -p .ssh;
@@ -283,10 +311,11 @@ done
 ```
 
 ### Check host resources on the data nodes 
-
+heck resources on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
+```{.sh .copy}
+for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do echo $IP; ssh $IP 'echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem'; done
+```
 ```sh
-# Check resources on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
-$ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do echo $IP; ssh $IP 'echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem'; done
 10.1.12.103
 CPUs: 72
 Mem: 251G
@@ -303,15 +332,15 @@ Disk: /dev/sda2       208G  5.1G  203G   3% /
 
 ### Create mount paths on the data nodes
 
-```sh
-# Create mount paths on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
+Create mount paths on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152.
+```{.sh .copy}
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105; do ssh $IP mkdir -p /mnt/data0; done
 ```
 
 ### SELinux turned on for data nodes
 
-```sh
-# Add firewall exceptions on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
+Add firewall exceptions on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152.
+```{.sh .copy}
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105
 do
   ssh $IP firewall-cmd --zone=public --add-port=7000/tcp;

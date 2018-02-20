@@ -7,8 +7,10 @@
 2. Verify by the `terraform` command, it should print a help message that looks similar to that shown below.
 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ terraform
+```
+```sh
 Usage: terraform [--version] [--help] <command> [args]
 ...
 Common commands:
@@ -24,7 +26,7 @@ Common commands:
 
 Create a terraform config file called `yugabyte-db-config.tf` and add following details to it. The terraform module can be found in the [terraform-aws-yugabyte github repository](https://github.com/YugaByte/terraform-aws-yugabyte).
 
-```sh
+```{.sh .copy}
 provider "aws" {
   # Configure your AWS account credentials here.
   access_key = "ACCESS_KEY_HERE"
@@ -62,7 +64,7 @@ module "yugabyte-db-cluster" {
 
 **NOTE:** If you do not have a custom security group, you would need to remove the `${var.custom_security_group_id}` variable in `main.tf`, so that the `aws_instance` looks as follows:
 
-```sh
+```{.sh .copy}
 resource "aws_instance" "yugabyte_nodes" {
   count                       = "${var.num_instances}"
   ...
@@ -78,13 +80,13 @@ resource "aws_instance" "yugabyte_nodes" {
 
 Init terraform first if you have not already done so.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ terraform init
 ```
 
 Now run the following to create the instances and bring up the cluster.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ terraform apply
 ```
 
@@ -98,7 +100,7 @@ You can access the cluster UI by going to any of the following URLs.
 
 You can check the state of the nodes at any point by running the following command.
 
-```
+```{.sh .copy .separator-dollar}
 $ terraform show
 ```
 
@@ -125,6 +127,6 @@ For cluster named `test-cluster`, this security group will be named `yb-ce-test-
 
 To destroy what we just created, you can run the following command.
 
-```
+```{.sh .copy .separator-dollar}
 $ terraform destroy
 ```

@@ -79,9 +79,9 @@ Dedicated hosts or cloud VMs running CentOS 7 with local or remote attached stor
 
 Here's the command to install these packages.
 
-```sh
+```{.sh .copy .separator-dollar}
 # install pre-requisite packages
-sudo yum install -y epel-release ntp collectd python-pip python-devel python-psutil libsemanage-python policycoreutils-python
+$ sudo yum install -y epel-release ntp collectd python-pip python-devel python-psutil libsemanage-python policycoreutils-python
 ```
 
 ### Configure the On-Premises Datacenter provider

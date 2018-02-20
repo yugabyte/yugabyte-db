@@ -5,22 +5,20 @@
 **NOTE:** If you install gcloud using a package manager (as opposed to downloading and installing it manually), it does not support some of the commands below.
 
 - After installing Cloud SDK, install the kubectl command-line tool by running the following command:
-```sh
-gcloud components install kubectl
+```{.sh .copy .separator-dollar}
+$ gcloud components install kubectl
 ```
 
 - Configure defaults for gcloud
 
-Set the project id using the following.
-```sh
-gcloud config set project [PROJECT_ID]
-# yugabyte for us
+Set the project id as `yugabyte`. You can change this as per your need.
+```{.sh .copy .separator-dollar}
+$ gcloud config set project yugabyte
 ```
 
-Set the defaut compute zone using the following.
-```sh
-gcloud config set compute/zone [COMPUTE_ZONE]
-# us-west1-b for us
+Set the defaut compute zone as `us-west1-b`. You can change this as per your need.
+```{.sh .copy .separator-dollar}
+gcloud config set compute/zone us-west1-b
 ```
 
 
@@ -28,13 +26,13 @@ gcloud config set compute/zone [COMPUTE_ZONE]
 
 Create a Kubernetes cluster if you have not already done so by running the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ gcloud container clusters create yugabyte
 ```
 
 Create a YugaByte DB cluster by running the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl create -f https://downloads.yugabyte.com/kubernetes/yugabyte-statefulset.yaml
 ```
 ```sh
@@ -46,7 +44,7 @@ statefulset "yb-tserver" created
 
 You should see the following pods running.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl get pods
 ```
 ```sh
@@ -59,7 +57,7 @@ yb-tserver-1   1/1       Running   0          3m
 yb-tserver-2   1/1       Running   0          3m
 ```
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl get persistentvolumes
 ```
 ```sh
@@ -72,7 +70,7 @@ pvc-f366a4af-1110-11e8-8231-42010a8a0083   1Gi       RWO            Delete      
 pvc-f36d2892-1110-11e8-8231-42010a8a0083   1Gi       RWO            Delete           Bound     default/datadir-yb-tserver-2   standard                 5m
 ```
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl get services
 ```
 ```sh
@@ -85,7 +83,7 @@ yb-tservers   ClusterIP   None         <none>        9000/TCP,9100/TCP,9042/TCP,
 
 ## 2. Destroy cluster (optional)
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```
 ```sh
@@ -97,7 +95,7 @@ statefulset "yb-tserver" deleted
 
 To destroy the persistent volume claims (**you will lose all the data if you do this**), run:
 
-```sh
+```{.sh .copy}
 kubectl delete pvc -l app=yb-master
 kubectl delete pvc -l app=yb-tserver
 ```
