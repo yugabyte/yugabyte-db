@@ -29,13 +29,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "create_snapshot", " <keyspace> <table_name>",
+      "create_snapshot",
+      " <keyspace> <table_name> [flush_timeout_in_seconds] (default 60, set 0 to skip flushing)",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 4) {
+        if (args.size() != 4 && args.size() != 5) {
           UsageAndExit(args[0]);
         }
         const YBTableName table_name(args[2], args[3]);
-        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(table_name),
+        int timeout_secs = 60;
+        if (args.size() > 4) {
+          timeout_secs = std::stoi(args[4].c_str());
+        }
+
+        RETURN_NOT_OK_PREPEND(client->CreateSnapshot(table_name, timeout_secs),
                               Substitute("Unable to create snapshot of table $0",
                                          table_name.ToString()));
         return Status::OK();
