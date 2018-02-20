@@ -1,6 +1,6 @@
 - Run cqlsh to connect to the service.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
 ```
 ```sh
@@ -12,7 +12,7 @@ cqlsh>
 
 - Run a cql command to verify it is working.
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> describe keyspaces;
 ```
 ```sh

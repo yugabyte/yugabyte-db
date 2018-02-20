@@ -13,8 +13,10 @@ This command collects string values of all given keys.
 Returns an array of string values.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ MGET yuga_area1 yuga_area2 yuga_none
+```
+```sh
 1) "Africa"
 2) "America"
 3) (null)

@@ -13,10 +13,16 @@ This command seeks the length of a string value that is associated with the give
 Returns the length of the specified string.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HMSET yugahash L1 America L2 Europe
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ HSTRLEN yugahash L1
+```
+```sh
 7
 ```
 

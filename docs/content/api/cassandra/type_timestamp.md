@@ -35,15 +35,26 @@ Where
 ## Examples
 
 ### Using the timestamp type
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE sensor_data(sensor_id INT, ts TIMESTAMP, value FLOAT, PRIMARY KEY(sensor_id, ts));
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> -- Timestamp values can be given using date-time literals
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:30:30 UTC', 12.5);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-07-04 12:31 UTC', 13.5);
-cqlsh:example> -- Timestamp values can also be given as integers (milliseconds from epoch).
+```
+Timestamp values can also be given as integers (milliseconds from epoch).
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (2, 1499171430000, 20);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM sensor_data;
-
+```
+```sh
  sensor_id | ts                              | value
 -----------+---------------------------------+-------
          2 | 2017-07-04 12:30:30.000000+0000 |    20

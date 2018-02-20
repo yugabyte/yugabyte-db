@@ -24,13 +24,22 @@ Where
 
 ## Examples
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE directory(file FROZEN<LIST<TEXT>> PRIMARY KEY, value BLOB);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO directory(file, value) VALUES([ 'home', 'documents', 'homework.doc' ], 0x);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO directory(file, value) VALUES([ 'home', 'downloads', 'textbook.pdf' ], 0x12ab21ef);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE directory SET value = 0xab00ff WHERE file = [ 'home', 'documents', 'homework.doc' ];
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM directory;
-
+```
+```sh
  file                                  | value
 ---------------------------------------+------------
  ['home', 'downloads', 'textbook.pdf'] | 0x12ab21ef

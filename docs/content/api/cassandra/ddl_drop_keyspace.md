@@ -28,11 +28,13 @@ Where
 - An error is raised if the specified keyspace is non-empty (contains tables or types).
 
 ## Examples
-``` sql
+```{.sql .copy .separator-gt} 
 cqlsh> CREATE KEYSPACE example;
-
+```
+```{.sql .copy .separator-gt} 
 cqlsh> DROP KEYSPACE example;
-
+```
+```{.sql .copy .separator-gt} 
 cqlsh> DROP KEYSPACE IF EXISTS example;
 ```
 

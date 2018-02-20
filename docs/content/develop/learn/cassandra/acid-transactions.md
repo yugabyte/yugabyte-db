@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : 
 
 Here is an example of how to create a simple key-value table which has two columns with transactions enabled.
 
-```
+```{.java .copy}
 String create_stmt =
   String.format("CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) " +
                 "WITH transactions = { 'enabled' : true };",
@@ -35,7 +35,7 @@ END TRANSACTION;
 
 Here is a code snippet of how you would insert data into this table.
 
-```
+```{.java .copy}
 // Insert two key values, (key1, value1) and (key2, value2) as a transaction.
 String create_stmt = 
   String.format("BEGIN TRANSACTION;" +
@@ -54,7 +54,7 @@ You can prepare statements with transactions and bind variables to the prepared 
 
 ### Java example
 
-```
+```{.java .copy}
 String create_stmt = 
   String.format("BEGIN TRANSACTION;" +
                 "INSERT INTO %s (k, v) VALUES (:k1, :v1);" +

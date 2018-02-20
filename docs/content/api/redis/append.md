@@ -14,12 +14,22 @@ This command appends a value to the end of the string that is associated with th
 Returns the length of the resulted string after appending.
 
 ## EXAMPLES
+```{.sh .copy .separator-dollar}
+$ GET yugakey
 ```
-$ GET yugakey
+```sh
 "Yuga"
+```
+```{.sh .copy .separator-dollar}
 $ APPEND yugakey "Byte"
+```
+```sh
 8
+```
+```{.sh .copy .separator-dollar}
 $ GET yugakey
+```
+```sh
 "YugaByte"
 ```
 

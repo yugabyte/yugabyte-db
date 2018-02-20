@@ -16,29 +16,64 @@ given `key`.
 Returns the value for the given `timestamp`
 
 ## EXAMPLES
-```
-# The timestamp can be arbitrary integers used just for sorting values in a certain order.
-$ TSAdd cpu_usage 10 “70”
-“OK”
-$ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
-“OK”
-# We could also encode the timestamp as “yyyymmddhhmm”, since this would still 
-# produce integers that are sortable by the actual timestamp.
-$ TSAdd cpu_usage 201710311100 “50”
-“OK”
-# A more common option would be to specify the timestamp as the unix timestamp
-$ TSAdd cpu_usage 1509474505 “75”
-“OK”
 
+The timestamp can be arbitrary integers used just for sorting values in a certain order.
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 10 “70”
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
+```
+```sh
+“OK”
+```
+
+We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 201710311100 “50”
+```
+```sh
+“OK”
+```
+
+A more common option would be to specify the timestamp as the unix timestamp.
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 1509474505 “75”
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
 $ TSGet cpu_usage 10
+```
+```sh
 “70”
+```
+```{.sh .copy .separator-dollar}
 $ TSGet cpu_usage 100
+```
+```sh
 (nil)
+```
+```{.sh .copy .separator-dollar}
 $ TSGet cpu_usage 201710311100
+```
+```sh
 “50”
+```
+```{.sh .copy .separator-dollar}
 $ TSGet cpu_usage 1509474505
+```
+```sh
 “75”
+```
+```{.sh .copy .separator-dollar}
 $ TSGet cpu_usage xyz # timestamp is not int64.
+```
+```sh
 (error) Request was unable to be processed from server.
 ```
 

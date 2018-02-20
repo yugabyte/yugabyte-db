@@ -56,14 +56,14 @@ After [creating a local cluster](/quick-start/create-local-cluster/), follow the
 
 Create a keyspace called 'myapp'.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE myapp;
 ```
 
 
 Create a table named 'stock_market' which can store stock prices at various timestamps for different stock ticker symbols.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE myapp.stock_market (
   stock_symbol text,
   ts text,
@@ -78,15 +78,15 @@ cqlsh> CREATE TABLE myapp.stock_market (
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your cqlsh shell.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
@@ -95,7 +95,7 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2
 
 Query all the values we have inserted into the database for the stock symbol 'AAPL' as follows.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 ```
 ```sql
@@ -110,7 +110,7 @@ cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
 Query all the values for 'FB' and 'GOOG' as follows.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ```
 ```sql

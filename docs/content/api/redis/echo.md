@@ -11,7 +11,9 @@ This command outputs the given `message`.
 Returns the message.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ ECHO "Yuga Yuga"
+```
+```sh
 "Yuga Yuga"
 ```

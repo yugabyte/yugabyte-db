@@ -14,10 +14,16 @@ This command sets the data for the given `field` with the given `value` in the h
 Returns status string.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HMSET yugahash area1 "America" area2 "Africa"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ HGET yugahash area1
+```
+```sh
 "America"
 ```
 

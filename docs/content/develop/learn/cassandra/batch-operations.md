@@ -18,7 +18,7 @@ Prepared-bind statements are usually added to the write batch. This is done in o
 
 In order to perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of [prepared and bound insert queries](/develop/how-to/prepare-bind/) to it. Finally, execute the batch object. This is shown below.
 
-```sh
+```{.java .copy}
 // Create a batch statement object.
 BatchStatement batch = new BatchStatement();
 
@@ -46,25 +46,25 @@ Consider a table which has a hash column `h` and two clustering columns `r1` and
 
 - Query a range of values for `r1` given `h`.
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 < '<lower-bound>';
 ```
 
 - Query a range of values for `r2` given `h` and `r1`.
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 < '<lower-bound>';
 ```
 
 - Query a range of values for `r2` given `h` - **may not be efficient**. This query will need to iterate through all the unique values of `r1` in order to fetch the result and would be less efficient if a key has a lot of values for the `r1` column.
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 < '<lower-bound>';
 ```
 
 - Query a range of values for `r1` without `h` being specified - **may not be efficient**. This query will perform a full scan of the table and would be less efficient if the table is large.
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 < '<lower-bound>';
 ```
 
@@ -78,19 +78,19 @@ Consider a table which has a hash column `h` and a clustering column `r`.
 
 - Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient that performing each lookup from the application.
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
 ```
 
 - Query a set of values for `r` given one value of `h` - this query is efficient and will seek to the various values for the given value of `h`.
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 
 - Query a set of values for `h` and a set of values for `r`. 
 
-```sh
+```{.sql .copy}
 SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 

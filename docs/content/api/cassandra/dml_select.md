@@ -64,22 +64,33 @@ Ideally, these performance considerations should be taken into account when crea
 ## Examples
 ### Select all rows from a table
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       dept_name TEXT STATIC,
                                       employee_name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (1, 1, 'Accounting', 'John');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (1, 2, 'Accounting', 'Jane');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (1, 3, 'Accounting', 'John');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, dept_name, employee_name) 
                    VALUES (2, 1, 'Marketing', 'Joe');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```sh
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -90,9 +101,10 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Select with limit
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees LIMIT 2;
-
+```
+```sh
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -101,9 +113,10 @@ cqlsh:example> SELECT * FROM employees LIMIT 2;
 
 ### Select distinct values
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT DISTINCT dept_name FROM employees;
-
+```
+```sh
  dept_name
 ------------
  Accounting
@@ -112,9 +125,10 @@ cqlsh:example> SELECT DISTINCT dept_name FROM employees;
 
 ### Select with a condition on the partitioning column
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees WHERE department_id = 2;
-
+```
+```sh
  department_id | employee_id | dept_name | employee_name
 ---------------+-------------+-----------+---------------
              2 |           1 | Marketing |           Joe
@@ -122,9 +136,10 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 2;
 
 ### Select with condition on the clustering column
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <= 2;
-
+```
+```sh
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -133,9 +148,10 @@ cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id <
 
 ### Select with condition on a regular column
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John';
-
+```
+```sh
  department_id | employee_id | dept_name  | employee_name
 ---------------+-------------+------------+---------------
              1 |           1 | Accounting |          John
@@ -150,40 +166,55 @@ cqlsh:example> CREATE TABLE sensor_data(device_id INT,
                                         ts TIMESTAMP,
                                         value TEXT,
                                         PRIMARY KEY((device_id), sensor_id, ts)) WITH CLUSTERING ORDER BY (sensor_id ASC, ts DESC);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 1, '2018-1-1 12:30:30 UTC', 'a');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 1, '2018-1-1 12:30:31 UTC', 'b');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 2, '2018-1-1 12:30:30 UTC', 'x');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(device_id, sensor_id, ts, value)
                    VALUES (1, 2, '2018-1-1 12:30:31 UTC', 'y');
-
-cqlsh:example> -- Reverse scan, opposite of the table's clustering order.
+```
+Reverse scan, opposite of the table's clustering order.
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id DESC, ts ASC;
-
+```
+```sh
  device_id | sensor_id | ts                              | value
 -----------+-----------+---------------------------------+-------
          1 |         2 | 2018-01-01 12:30:30.000000+0000 |     x
          1 |         2 | 2018-01-01 12:30:31.000000+0000 |     y
          1 |         1 | 2018-01-01 12:30:30.000000+0000 |     a
          1 |         1 | 2018-01-01 12:30:31.000000+0000 |     b
-
-cqlsh:example> -- Forward scan, same as a SELECT without an ORDER BY clause.
+```
+Forward scan, same as a SELECT without an ORDER BY clause.
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts DESC;
-
+```
+```sh
  device_id | sensor_id | ts                              | value
 -----------+-----------+---------------------------------+-------
          1 |         1 | 2018-01-01 12:30:31.000000+0000 |     b
          1 |         1 | 2018-01-01 12:30:30.000000+0000 |     a
          1 |         2 | 2018-01-01 12:30:31.000000+0000 |     y
          1 |         2 | 2018-01-01 12:30:30.000000+0000 |     x
-
-cqlsh:example> -- Other orderings are not allowed.
+```
+Other orderings are not allowed.
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
+```
+```sh
 InvalidRequest: Unsupported order by relation
-SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC;
-                                                       ^^^^^^^^^^^^^^^^^^^^^
+SELECT * FROM sensor_data WHERE device_id = 1 ORDER BY sensor_id ASC, ts ASC; 
+                                                        ^^^^^^^^^^^^^^^^^^^^^                                                      
 ```
 
 ## See Also

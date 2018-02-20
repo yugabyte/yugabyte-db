@@ -14,12 +14,22 @@ This is a predicate to check whether or not the given `field` exists in the hash
 Returns existence status as integer, either 1 or 0.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HEXISTS yugahash area1
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HEXISTS yugahash area_none
+```
+```sh
 0
 ```
 

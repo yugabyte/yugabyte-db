@@ -9,8 +9,10 @@ weight: 2420
 
 Use the **-\-help** option to see all the commands supported.
 
+```{.sh .copy .separator-dollar}
+$ ./yb-docker-ctl -h
+```
 ```sh
-$ .$ ./yb-docker-ctl -h
 usage: yb-docker-ctl [-h] {create,status,destroy,add_node,remove_node} ...
 
 YugaByte Docker Container Control
@@ -36,8 +38,10 @@ Each of these initial nodes run a `yb-tserver` process and a `yb-master` process
 
 Note that the create command pulls the latest `yugabytedb/yugabyte` image at the outset in case the image is not yet downloaded or is not the latest.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl create
+```
+```sh
 docker run --name yb-master-n1 --privileged -p 7000:7000 --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-master --fs_data_dirs=/mnt/disk0,/mnt/disk1 --master_addresses=yb-master-n1:7100,yb-master-n2:7100,yb-master-n3:7100 --rpc_bind_addresses=yb-master-n1:7100
 Adding node yb-master-n1
 docker run --name yb-master-n2 --privileged --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-master --fs_data_dirs=/mnt/disk0,/mnt/disk1 --master_addresses=yb-master-n1:7100,yb-master-n2:7100,yb-master-n3:7100 --rpc_bind_addresses=yb-master-n2:7100
@@ -63,7 +67,7 @@ PID        Type       Node                 URL                       Status     
 
 The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/admin/yb-docker-ctl/#add-a-node) and [remove_node](/admin/yb-docker-ctl/#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl create --rf 5
 ```
 
@@ -71,8 +75,10 @@ $ ./yb-docker-ctl create --rf 5
 
 Get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl status
+```
+```sh
 PID        Type       Node                 URL                       Status          Started At          
 11818      tserver    yb-tserver-n3        http://172.19.0.7:9000    Running         2017-11-28T23:33:00.369124907Z
 11632      tserver    yb-tserver-n2        http://172.19.0.6:9000    Running         2017-11-28T23:32:59.874963849Z
@@ -87,8 +93,10 @@ PID        Type       Node                 URL                       Status     
 
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl add_node
+```
+```sh
 docker run --name yb-tserver-n4 --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-tserver --fs_data_dirs=/mnt/disk0,/mnt/disk1 --tserver_master_addrs=04:7100,04:7100,04:7100 --rpc_bind_addresses=yb-tserver-n4:9100
 Adding node yb-tserver-n4
 ```
@@ -99,8 +107,10 @@ Remove a node from the cluster by executing the following command. The command t
 
 ### Help
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl remove_node --help
+```
+```sh
 usage: yb-docker-ctl remove_node [-h] node
 
 positional arguments:
@@ -112,8 +122,10 @@ optional arguments:
 
 ### Example
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl remove_node yb-tserver-n3
+```
+```sh
 Stopping node :yb-tserver-n3
 ```
 
@@ -121,7 +133,7 @@ Stopping node :yb-tserver-n3
 
 The command below destroys the cluster which includes deleting the data directories.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl destroy
 ```
 
@@ -129,6 +141,6 @@ $ ./yb-docker-ctl destroy
 
 The command below upgrades the YugaByte DB image to the latest version.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ docker pull yugabytedb/yugabyte
 ```

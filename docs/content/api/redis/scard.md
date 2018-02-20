@@ -13,12 +13,22 @@ This command finds the cardinality of the set that is associated with the given 
 Returns the cardinality of the set.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "Asia"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SCARD yuga_world
+```
+```sh
 2
 ```
 

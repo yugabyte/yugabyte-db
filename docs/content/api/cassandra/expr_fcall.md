@@ -1,5 +1,5 @@
 ---
-title: Builtin Function Call
+title: Built-in Function Call
 summary: Combination of one or more values.
 weight: 1330
 ---

@@ -21,14 +21,23 @@ type_specification ::= INET
 - `INET` value format supports text literals for both IPv4 and IPv6 addresses.
 
 ## Examples
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE dns_table(site_name TEXT PRIMARY KEY, ip_address INET);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO dns_table(site_name, ip_address) VALUES ('localhost', '127.0.0.1');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO dns_table(site_name, ip_address) VALUES ('example.com', '93.184.216.34'); 
-cqlsh:example> -- `INET` type supports both ipv4 and ipv6 addresses.
+```
+`INET` type supports both ipv4 and ipv6 addresses.
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE dns_table SET ip_address = '2606:2800:220:1:248:1893:25c8:1946' WHERE site_name = 'example.com'; 
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM dns_table;
-
+```
+```sh
  site_name   | ip_address
 -------------+------------------------------------
  example.com | 2606:2800:220:1:248:1893:25c8:1946

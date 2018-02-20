@@ -2,13 +2,13 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl create
 ```
 
@@ -16,7 +16,7 @@ $ ./bin/yb-ctl create
 
 Connect to the cluster using `cqlsh`.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/cqlsh
 ```
 ```sh
@@ -28,13 +28,13 @@ cqlsh>
 
 Create a keyspace.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE banking;
 ```
 
 Create a table with the `transactions` property set to enabled.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE banking.accounts (
   account_name varchar,
   account_type varchar,
@@ -45,7 +45,7 @@ cqlsh> CREATE TABLE banking.accounts (
 
 You can verify that this table has transactions enabled on it by querying the 
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> select keyspace_name, table_name, transactions from system_schema.tables
 where keyspace_name='banking' AND table_name = 'accounts';
 ```
@@ -62,7 +62,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 
 Let us seed this table with some sample data.
 
-```sql
+```{.sql .copy}
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'savings', 1000);
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'checking', 100);
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smith', 'savings', 2000);
@@ -71,7 +71,7 @@ INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smit
 
 Here are the balances for John and Smith.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> select * from banking.accounts;
 ```
 ```sql
@@ -83,7 +83,7 @@ cqlsh> select * from banking.accounts;
         Smith |      savings |    2000
 ```
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 ```sql
@@ -92,7 +92,7 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
           1100
 ```
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 ```sql
@@ -109,7 +109,7 @@ Here are a couple of examples of executing transactions.
 
 - Let us say John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows.
 
-```sql
+```{.sql .copy}
 BEGIN TRANSACTION;
 UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='savings';
 UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='John' AND account_type='checking';
@@ -118,7 +118,7 @@ END TRANSACTION;
 
 If we now selected the value of John's account, we should see the amounts reflected. The total balance should be the same $1100 as before.
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> select * from banking.accounts where account_name='John';
 ```
 ```sql
@@ -128,7 +128,7 @@ cqlsh> select * from banking.accounts where account_name='John';
          John |      savings |     800
 ```
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 ```sql
@@ -139,7 +139,7 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
 
 Further, the checking and savings account balances for John should have been written at the same write timestamp.
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> select account_name, account_type, balance, writetime(balance) 
 from banking.accounts where account_name='John';
 ```
@@ -153,7 +153,7 @@ from banking.accounts where account_name='John';
 
 - Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
 
-```sql
+```{.sql .copy}
 BEGIN TRANSACTION;
 UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='checking';
 UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='Smith' AND account_type='checking';
@@ -162,7 +162,7 @@ END TRANSACTION;
 
 We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
 ```
 ```sql
@@ -176,7 +176,7 @@ cqlsh> select account_name, account_type, balance, writetime(balance) from banki
 
 The net balance for John should have decreased by $200 which that of Smith should have increased by $200.
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
 ```sql
@@ -185,7 +185,7 @@ cqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_
            900
 ```
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
 ```
 ```sql
@@ -199,7 +199,7 @@ cqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```
 

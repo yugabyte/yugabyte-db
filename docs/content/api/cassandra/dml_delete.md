@@ -28,13 +28,13 @@ Where
  - An error is raised if the specified `table_name` does not exist.
  - The `where_expression` and `if_expression` must evaluate to [boolean](../type_bool) values.
 
-### `WHERE` Clause
+### WHERE Clause
 
  - The `where_expression` must specify conditions for all primary-key columns.
  - The `where_expression` must not specifiy conditions for any regular columns.
  - The `where_expression` can only apply `AND` and `=` operators. Other operators are not yet supported.
  
-### `IF` Clause
+### IF Clause
 
  - The `if_expression` can only apply to non-key columns (regular columns).
  - The `if_expression` can contain any logical and boolean operators.
@@ -47,28 +47,43 @@ Where
 
 ### Delete a row from a table
 
-``` sql
+```{.sql .copy .separator-gt} 
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
              1 |           2 | Jane
              2 |           1 |  Joe
-
-cqlsh:example> -- Delete statements identify rows by the primary key columns.
+```
+Delete statements identify rows by the primary key columns.
+```{.sql .copy .separator-gt}
 cqlsh:example> DELETE FROM employees WHERE department_id = 1 AND employee_id = 1;
-cqlsh:example> -- Deletes on non-existent rows are no-ops.
+```
+Deletes on non-existent rows are no-ops.
+```{.sql .copy .separator-gt}
 cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           2 | Jane
@@ -76,21 +91,27 @@ cqlsh:example> SELECT * FROM employees;
 ```
 ### Conditional delete using the `IF` clause
 
-``` sql
-cqlsh:example> -- 'IF' clause conditions will return whether they were applied or not.
+'IF' clause conditions will return whether they were applied or not.
+```{.sql .copy .separator-gt}
 cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id = 1 IF name = 'Joe';
-
+```
+```
  [applied]
 -----------
       True
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> DELETE FROM employees WHERE department_id = 3 AND employee_id = 1 IF EXISTS;
-
+```
+```
  [applied]
 -----------
      False
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           2 | Jane
@@ -98,39 +119,51 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Delete several rows with the same partition key
 
-``` sql
-cqlsh:example> -- Insert some more values
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
              1 |           2 | Jane
              2 |           1 |  Joe
              2 |           2 | Jack
+```
 
-
-cqlsh:example> -- Delete all entries for a partition key
+Delete all entries for a partition key.
+```{.sql .copy .separator-gt}
 cqlsh:example> DELETE FROM employees WHERE department_id = 1;
-cqlsh:example> DELETE FROM employees WHERE department_id = 1;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
              2 |           2 | Jack
-
-cqlsh:example> -- Delete a range of entries within a partition key
+```
+Delete a range of entries within a partition key.
+```{.sql .copy .separator-gt}
 cqlsh:example> DELETE FROM employees WHERE department_id = 2 AND employee_id >= 2 AND employee_id < 4;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
-
 ```
 
 ## See Also

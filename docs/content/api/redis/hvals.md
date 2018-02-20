@@ -14,10 +14,16 @@ This command selects all the values in the hash that is associated with the give
 Returns list of values in the specified hash.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HMSET yugahash area1 "America" area2 "Africa"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ HVALS yugahash
+```
+```sh
 1) "America"
 2) "Africa"
 ```

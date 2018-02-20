@@ -14,10 +14,16 @@ This command is an atomic read and write operation that gets the existing value 
 Returns the old value of the given `key`.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yugakey 1
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ GETSET yugakey 2
+```
+```sh
 1
 ```
 

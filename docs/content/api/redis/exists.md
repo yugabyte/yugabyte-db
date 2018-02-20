@@ -12,14 +12,28 @@ This command is a predicate to check whether or not the given `key` exists.
 Returns the number of existing keys.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yuga1 "Africa"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ SET yuga2 "America"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ EXISTS yuga1
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ EXISTS yuga1 yuga2 not_a_key
+```
+```sh
 2
 ```
 

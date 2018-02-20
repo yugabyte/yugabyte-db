@@ -27,13 +27,22 @@ Where
 
 ## Examples
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE users(user_name TEXT PRIMARY KEY, full_name VARCHAR);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('jane', 'Jane Doe');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO users(user_name, full_name) VALUES ('john', 'John Doe');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users set full_name = 'Jane Poe' WHERE user_name = 'jane';
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
-
+```
+```sh
  user_name | full_name
 -----------+-----------
       jane |  Jane Poe

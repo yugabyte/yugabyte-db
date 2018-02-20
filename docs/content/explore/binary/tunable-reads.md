@@ -2,19 +2,19 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-gt}
 ./bin/yb-ctl destroy
 ```
 
 Start a new local universe with the default 3 nodes and default replication factor 3.
 
-```sh
+```{.sh .copy .separator-gt}
 ./bin/yb-ctl create
 ```
 
 Add 1 more node.
 
-```sh
+```{.sh .copy .separator-gt}
 ./bin/yb-ctl add_node
 ```
 
@@ -24,7 +24,7 @@ By default, the key-value sample application runs with strong read consistency w
 
 Let us run the Cassandra sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
-```sh
+```{.sh .copy .separator-gt}
 java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --nouuid \
@@ -37,15 +37,15 @@ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
 
 In the above command, we have set the value of `num_unique_keys` to 1, which means we are overwriting a single key `key:0`. We can verify this using cqlsh:
 
-```sql
-./bin/cqlsh 127.0.0.1
+```{.sh .copy .separator-gt}
+$ ./bin/cqlsh 127.0.0.1
 ```
 ```sh
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 ```
 ```sql
@@ -67,7 +67,7 @@ When performing strongly consistent reads as a part of the above command, all re
 
 Let us stop the above sample app, and run the following variant of the sample app. This command will do updates to the same key `key:0` which will go through the tablet leader, but it will reads from the replicas.
 
-```sh
+```{.sql .copy .separator-gt}
 java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --nouuid \
@@ -87,6 +87,6 @@ This can be easily seen by refreshing the <a href='http://127.0.0.1:7000/tablet-
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sql .copy .separator-gt}
 $ ./bin/yb-ctl destroy
 ```

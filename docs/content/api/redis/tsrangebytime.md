@@ -20,35 +20,74 @@ exclusive.</li>
 Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ TSAdd cpu_usage 10 “70”
+```
+```sh
 “OK”
+```
+```{.sh .copy .separator-dollar}
 $ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
+```
+```sh
 “OK”
-
+```
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 201710311100 “50”
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 1509474505 “75”
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
 $ TSRangeByTime cpu_usage 20 40
+```
+```sh
 1) 20
 2) “80” 
 3) 30
 4) “60” 
 5) 40
 6) “90”
-$ TSRangeByTime cpu_usage (20 40 # 20 is exclusive
+```
+```{.sh .copy .separator-dollar}
+# 20 is exclusive
+$ TSRangeByTime cpu_usage (20 40 
+```
+```sh
 1) 30
 2) “60”
 3) 40
 4) “90”
-$ TSRangeByTime cpu_usage (20 (40 # 20 and 40 are exclusive
+```
+```{.sh .copy .separator-dollar}
+# 20 and 40 are exclusive
+$ TSRangeByTime cpu_usage (20 (40 
+	```
+```sh
 1) 30
 2) “60”
+```
+```{.sh .copy .separator-dollar}
 $ TSRangeByTime cpu_usage -inf 30
+```
+```sh
 1) 10
 2) “70”
 3) 20
 4) “80”
 5) 30
 6) “60”
+```
+```{.sh .copy .separator-dollar}
 $ TSRangeByTime cpu_usage 20 +inf
+```
+```sh
 1) 20
 2) “80”
 3) 30

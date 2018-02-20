@@ -44,12 +44,17 @@ Where
 
 ### Add a column to a table
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE employees (id INT, name TEXT, salary FLOAT, PRIMARY KEY((id), name));
-cqlsh:example> -- Add a column 'title' of type 'TEXT'.
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> ALTER TABLE employees ADD title TEXT;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> DESCRIBE TABLE employees;
-
+```
+Following result would be shown.
+```
 CREATE TABLE example.employees (
     id int,
     name text,
@@ -61,11 +66,14 @@ CREATE TABLE example.employees (
 
 ### Remove a column from a table
 
-``` sql
-cqlsh:example> -- Remove the 'salary' column.
+```{.sql .copy .separator-gt}
 cqlsh:example> ALTER TABLE employees DROP salary;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> DESCRIBE TABLE employees;
-
+```
+Following result would be shown.
+```
 CREATE TABLE example.employees (
     id int,
     name text,
@@ -76,10 +84,14 @@ CREATE TABLE example.employees (
 
 ### Rename a column in a table
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> ALTER TABLE employees RENAME title TO job_title;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> DESCRIBE TABLE employees;
-
+```
+Following result would be shown.
+```
 CREATE TABLE example.employees (
     id int,
     name text,
@@ -90,10 +102,14 @@ CREATE TABLE example.employees (
 
 ### Update a table property
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> ALTER TABLE employees WITH default_time_to_live = 5;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> DESCRIBE TABLE employees;
-
+```
+Following result would be shown.
+```
 CREATE TABLE example.employees (
     id int,
     name text,

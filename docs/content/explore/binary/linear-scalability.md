@@ -2,13 +2,13 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl create
 ```
 
@@ -17,7 +17,7 @@ $ ./bin/yb-ctl create
 
 Run the Cassandra sample key-value app against the local universe by typing the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --num_threads_write 1 \
@@ -45,7 +45,7 @@ You can check a lot of the per-node stats by browsing to the <a href='http://127
 
 Add a node to the universe.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node
 ```
 
@@ -57,7 +57,7 @@ Now we should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-se
 
 Add yet another node to the universe.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node
 ```
 
@@ -71,6 +71,6 @@ The YugaByte universe automatically let the client know to use the newly added n
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```

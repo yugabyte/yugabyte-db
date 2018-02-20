@@ -1,6 +1,6 @@
 - Run cqlsh to connect to the service.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/cqlsh localhost
 ```
 ```sh
@@ -12,11 +12,10 @@ cqlsh>
 
 - Run a cql command to verify it is working.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> describe keyspaces;
 ```
 ```sh
-
 system_schema  system_auth  system
 
 cqlsh> 

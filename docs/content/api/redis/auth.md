@@ -15,8 +15,10 @@ This command authenticates a client connection to YugaByte Redis Server.
 Returns a status string.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ AUTH "yugapass"
+```
+```sh
 "OK"
 ```
 

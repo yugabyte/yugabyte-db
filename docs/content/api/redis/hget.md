@@ -14,10 +14,16 @@ This command fetches the value for the given `field` in the hash that is specifi
 Returns the value for the given `field`
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HGET yugahash area1
+```
+```sh
 "America"
 ```
 

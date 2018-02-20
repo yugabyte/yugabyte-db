@@ -19,25 +19,43 @@ Returns a list of `members` found in the range specified by `min`, `max`, unless
 <li> WITHSCORES: Makes the command return both the `member` and its `score`.</li>
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ ZADD z_key 1.0 v1 2.0 v2
+```
+```sh
 (integer) 2
+```
+```{.sh .copy .separator-dollar}
 # Should retrieve all members.
 $ ZRANGEBYSCORE z_key +inf -inf
+```
+```sh
 1) "v1"
 2) "v2"
+```
+```{.sh .copy .separator-dollar}
 # Should retrive all member score pairs.
 $ ZRANGEBYSCORE z_key +inf -inf WITHSCORES
+```
+```sh
 1) "v1"
 2) "1.0"
 3) "v2"
 4) "2.0"
+```
+```{.sh .copy .separator-dollar}
 # Bounds are inclusive.
 $ ZRANGEBYSCORE z_key 1.0 2.0
+```
+```sh
 1) "v1"
 2) "v2"
+```
+```{.sh .copy .separator-dollar}
 # Bounds are exclusive.
 $ ZRANGEBYSCORE z_key (1.0 (2.0
+```
+```sh
 (empty list or set)
 ```
 ## SEE ALSO

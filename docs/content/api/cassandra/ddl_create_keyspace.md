@@ -5,7 +5,7 @@ weight: 1230
 ---
 
 ## Synopsis
-The `CREATE KEYSPACE` statement creates an abstract container for database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)). 
+The `CREATE KEYSPACE` statement creates a `keyspace` that functions as a grouping mechanism for database objects (such as [tables](../ddl_create_table) or [types](../ddl_create_type)). 
 
 ## Syntax
 
@@ -36,16 +36,25 @@ Where
 - CQL keyspace properties are supported in the syntax but have no effect internally (where YugaByte defaults are used instead).
 
 ## Examples
-``` sql
+``` {.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE example;
-
+```
+```{.sql .copy .separator-gt}
 cqlsh> DESCRIBE KEYSPACES;
+```
+```
 example  system_schema  system_auth  system
-
+```
+```{.sql .copy .separator-gt}
 cqlsh> DESCRIBE example;
+```
+```
 CREATE KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': '3'} AND DURABLE_WRITES = true;
-
+```
+```{.sql .copy .separator-gt}
 cqlsh> CREATE SCHEMA example;
+```
+```
 SQL error: Keyspace Already Exists
 CREATE SCHEMA example;
 ^^^^^^

@@ -11,14 +11,15 @@ One of the following operating systems
 Download the YugaByte CE package as shown below.
 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ wget https://downloads.yugabyte.com/yugabyte-ce-0.9.5.0-linux.tar.gz
-$ tar xvfz yugabyte-ce-0.9.5.0-linux.tar.gz
-$ cd yugabyte-0.9.5.0/
+```
+```{.sh .copy .separator-dollar}
+$ tar xvfz yugabyte-ce-0.9.5.0-linux.tar.gz && cd yugabyte-0.9.5.0/
 ```
 
 ## Configure
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/post_install.sh
 ```

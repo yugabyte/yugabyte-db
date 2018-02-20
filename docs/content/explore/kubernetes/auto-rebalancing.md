@@ -2,19 +2,19 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl apply -f yugabyte-statefulset.yaml
 ```
 
 Check the Kubernetes dashboard to see the 3 yb-tserver and 3 yb-master pods representing the 3 nodes of the cluster.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ minikube dashboard
 ```
 
@@ -22,7 +22,7 @@ $ minikube dashboard
 
 Connect to cqlsh on node 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
 ```
 ```sh
@@ -34,8 +34,10 @@ cqlsh>
 
 Create a Cassandra keyspace and a table.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE users;
+```
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               email text,
 	                               password text,
@@ -46,7 +48,7 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 
 We need to access the [yb-master Admin UI]](/admin/yb-master/#admin-ui) on port 7000 exposed by any of the pods in the `yb-master` service (one of `yb-master-0`, `yb-master-1` or `yb-master-2`). Let us set up a network route to access `yb-master-0` on port 7000 from our localhost. You can do this by running the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl port-forward yb-master-0 7000
 ```
 
@@ -62,7 +64,7 @@ You can check a lot of the per-node stats by browsing to the <a href='http://loc
 
 Add a node to the universe.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl scale statefulset yb-tserver --replicas=4
 ```
 
@@ -76,6 +78,6 @@ YugaByte DB automatically balances the tablet leaders and followers of a univers
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```

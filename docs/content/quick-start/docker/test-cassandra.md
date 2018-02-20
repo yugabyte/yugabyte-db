@@ -1,6 +1,6 @@
 - Run cqlsh to connect to the service.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ docker exec -it yb-tserver-n3 /home/yugabyte/bin/cqlsh
 ```
 ```sh
@@ -12,7 +12,7 @@ cqlsh>
 
 - Run a cql command to verify it is working.
 
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> describe keyspaces;
 ```
 ```sh

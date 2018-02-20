@@ -92,8 +92,10 @@ cqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT);
 
 ### Use table constraint to define primary key
 
-``` sql
+```sql
 cqlsh:example> -- 'supplier_id' and 'device_id' are the partitioning columns and 'model_year' is the clustering column.
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE devices(supplier_id INT, 
                                     device_id INT,
                                     model_year INT,
@@ -103,18 +105,25 @@ cqlsh:example> CREATE TABLE devices(supplier_id INT,
 
 ### Use column constraint to define a static column.
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE items(supplier_id INT, 
                                   item_id INT,
                                   supplier_name TEXT STATIC,
                                   item_name TEXT,
                                   PRIMARY KEY((supplier_id), item_id));
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name) 
                VALUES (1, 1, 'Unknown', 'Wrought Anvil');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name) 
                VALUES (1, 2, 'Acme Corporation', 'Giant Rubber Band');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM devices;
-
+```
+```
  supplier_id | item_id | supplier_name    | item_name
 -------------+---------+------------------+-------------------
            1 |       1 | Acme Corporation |     Wrought Anvil
@@ -125,16 +134,26 @@ cqlsh:example> SELECT * FROM devices;
 
 ``` sql
 cqlsh:example> -- timestmap column 'ts' will be stored in descending order (latest values first).
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE user_actions(user_id INT,
                                          ts TIMESTAMP,
                                          action TEXT,
                                          PRIMARY KEY((user_id), ts))
                                          WITH CLUSTERING ORDER BY (ts DESC);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-12-2 12:30:15', 'log in');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-12-2 12:30:25', 'change password');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-12-2 12:30:35', 'log out');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM user_actions;
-
+```
+```
  user_id | ts                              | action
 ---------+---------------------------------+-----------------
        1 | 2000-12-02 19:30:35.000000+0000 |         log out
@@ -144,26 +163,35 @@ cqlsh:example> SELECT * FROM user_actions;
 
 ### Use table property to define the default expiration time for rows.
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE sensor_data(sensor_id INT,
                                         ts TIMESTAMP,
                                         value DOUBLE,
                                         PRIMARY KEY((sensor_id), ts))
                                         WITH default_time_to_live = 5;
-cqlsh:example> -- First insert at time T (row expires at T + 5)                                       
+```
+First insert at time T (row expires at T + 5).
+```{.sql .copy .separator-gt}                                      
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (1, '2017-10-1 11:22:31', 3.1);
-cqlsh:example> -- Second insert 3 seconds later (row expires at T + 8)
+```
+Second insert 3 seconds later (row expires at T + 8).
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO sensor_data(sensor_id, ts, value) VALUES (2, '2017-10-1 11:22:34', 3.4);
-cqlsh:example> -- First select 3 seconds later (at time T + 6)
+```
+First select 3 seconds later (at time T + 6).
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM sensor_data;
-
+```
+```
  sensor_id | ts                              | value
 -----------+---------------------------------+-------
          2 | 2017-10-01 18:22:34.000000+0000 |   3.4
-
-cqlsh:example> -- Second select 3 seconds later (at time T + 9)
+```
+Second select 3 seconds later (at time T + 9).
+```Second insert 3 seconds later (row expires at T + 8)
 cqlsh:example> SELECT * FROM sensor_data;
-
+```
+```
  sensor_id | ts | value
 -----------+----+-------
 

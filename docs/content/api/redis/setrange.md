@@ -14,12 +14,25 @@ This command overwrites the string that is associated with the given `key` with 
 Returns the length of the resulted string after overwriting.
 
 ## EXAMPLES
+```{.sh .copy .separator-dollar}
 ```
 $ SET yugakey "YugaKey"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
+```sh
 $ SETRANGE yugakey 4 "Byte"
+```
+```sh
 8
+```
+```{.sh .copy .separator-dollar}
+```sh
 $ GET yugakey
+```
+```sh
 "YugaByte"
 ```
 

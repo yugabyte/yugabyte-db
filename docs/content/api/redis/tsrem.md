@@ -16,28 +16,59 @@ they existed before the command was run.</li>
 Returns the appropriate status string.
 
 ## EXAMPLES
-```
-# The timestamp can be arbitrary integers used just for sorting values in a certain order.
-$ TSAdd cpu_usage 10 “70”
-“OK”
-$ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
-“OK”
-# We could also encode the timestamp as “yyyymmddhhmm”, since this would still 
-# produce integers that are sortable by the actual timestamp.
-$ TSAdd cpu_usage 201710311100 “50”
-“OK”
-# A more common option would be to specify the timestamp as the unix timestamp
-$ TSAdd cpu_usage 1509474505 “75”
-“OK”
 
-$ TSRem cpu_usage 20 30 40
+The timestamp can be arbitrary integers used just for sorting values in a certain order.
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 10 “70”
+```
+```sh
 “OK”
+```
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 20 “80” 30 “60” 40 “90”
+```
+```sh
+“OK”
+```
+
+We could also encode the timestamp as “yyyymmddhhmm”, since this would still produce integers that are sortable by the actual timestamp.
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 201710311100 “50”
+```
+```sh
+“OK”
+```
+
+A more common option would be to specify the timestamp as the unix timestamp
+```{.sh .copy .separator-dollar}
+$ TSAdd cpu_usage 1509474505 “75”
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
+$ TSRem cpu_usage 20 30 40
+```
+```sh
+“OK”
+```
+```{.sh .copy .separator-dollar}
 $ TSRangeByTime cpu_usage 10 40
+```
+```sh
 1) 10 
 2) “70"
+```
+```{.sh .copy .separator-dollar}
 $ TSRem cpu_usage 1509474505
+```
+```sh
 “OK”
+```
+```{.sh .copy .separator-dollar}
 $ TSGet cpu_usage 1509474505
+```
+```sh
 (nil)
 ```
 

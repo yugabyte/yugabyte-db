@@ -14,14 +14,28 @@ If `key` is associated with non sorted-set data, an error is returned.
 The number of `members` removed from the sorted set.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ ZADD z_key 1.0 v1 2.0 v2
+```
+```sh
 (integer) 2
+```
+```{.sh .copy .separator-dollar}
 $ ZREM z_key v2 v3
+```
+```sh
 (integer) 1
+```
+```{.sh .copy .separator-dollar}
 $ ZREM z_key v1 v2 v3
+```
+```sh
 (integer) 1
-$ ZCARD z_key 
+```
+```{.sh .copy .separator-dollar}
+$ ZCARD z_key
+```
+```sh
 (integer) 0
 ```
 ## SEE ALSO

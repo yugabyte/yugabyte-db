@@ -47,15 +47,22 @@ Where
 ## Examples
 
 ### Insert a row into a table
-``` sql
+```{.sql .copy .separator-gt} 
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
+```
+```{.sql .copy .separator-gt}                                   
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              1 |           1 | John
@@ -65,14 +72,18 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Conditional insert using the `IF` clause
 
-``` sql
+```{.sql .copy .separator-gt} 
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe') IF name = null;
-
+```
+```
  [applied]
 -----------
       True
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Jack') IF NOT EXISTS;
-
+```
+``` 
  [applied]
 -----------
      False
@@ -87,19 +98,24 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Insert a row with expiration time using the `USING TTL` clause
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
              2 |           2 | Jack
              1 |           1 | John
              1 |           2 | Jane
-
+```
+```{.sql .copy .separator-gt}              
 cqlsh:example> SELECT * FROM employees; -- 11 seconds after the insert. 
-
+```
+``` 
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe

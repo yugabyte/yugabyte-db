@@ -2,35 +2,35 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl destroy
 ```
 
 Start a new local universe with replication factor 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl create --rf 1 
 ```
 
 The above command creates a universe with one node. Let us add 2 more nodes to this universe. You can do that by running the following:
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl add_node
 ```
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl add_node
 ```
 
 
 Create a CQL table. The keyspace and table name below must be named as shown below, since the sample application writes data to this table. We will use the sample application to write data to this table to understand sharding in a subsequent step.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/cqlsh
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
@@ -55,6 +55,6 @@ Note here that the tablets balancing across nodes happens on a per-table basis, 
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl destroy
 ```

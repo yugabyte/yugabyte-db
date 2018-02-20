@@ -36,8 +36,10 @@ This command provides information of a Redis instance, such as its role, its sta
 Returns an array of values.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ ROLE
+```
+```sh
 1) "master"
 2) 0
 3) 1) 1) "127.0.0.1"

@@ -23,23 +23,43 @@ If `emulate_redis_responses` is `false`, returns OK.
 
 ## EXAMPLES
 <li> `emulate_redis_responses` is `true`.
-```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash moon "Moon"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HDEL yugahash moon
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HDEL yugahash moon
+```
+```sh
 0
 ```
 </li>
 
 <li> `emulate_redis_responses` is `false`.
-```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash moon "Moon"
+```
+```sh
 OK
+```
+```{.sh .copy .separator-dollar}
 $ HDEL yugahash moon
+```
+```sh
 OK
+```
+```{.sh .copy .separator-dollar}
 $ HDEL yugahash moon
+```
+```sh
 OK
 ```
 </li>

@@ -5,8 +5,8 @@ weight: 1054
 
 ## Introduction
 
-See the [Concepts / Distributed ACID Transactions](/architecture/concepts/distributed-txns/) section
-for an overview of some common concepts used in YugaByte's implementation of distributed
+Review the [Distributed ACID Transactions](/architecture/transactions/distributed-txns/) section
+for an overview of some common concepts used in YugaByte DB's implementation of distributed
 transactions. In this section, we will go over the write path of a transaction modifying multiple
 keys, and the read path for reading a consistent combination of values from multiple tablets.
 
@@ -109,13 +109,13 @@ garbage-collection of old Raft logs soon after this point.
 
 ## Read path overview
 
-YugaByteDB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database,
+YugaByte DB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database,
 which means it internally keeps track of multiple versions of the same value. Read operations don't
 take any locks, and rely on the MVCC timestamp in order to read a consistent snapshot of the data. A
 long-running read operation, either single-shard or cross-shard, can proceed concurrently with write
 operations modifying the same key.
 
-In the [ACID Transactions](/architecture/concepts/transactions/) section we talked about how
+In the [ACID Transactions](/architecture/transactions/) section, we talked about how
 up-to-date reads are performed from a single shard (tablet). In that case, the most recent value of
 a key is simply the value written by the last committed Raft log record that the Raft leader knows
 about. For reading multiple keys from different tablets, though, we have to make sure that the
@@ -143,11 +143,10 @@ of these two properties of the snapshot we have to choose:
 
 ### 1. Client's request handling and read transaction initialization
 
-The client's request (CQL or Redis) arrives at the YQL engine of a tablet server. The YQL engine
+The client's request (Cassandra or Redis) arrives at the YQL engine of a tablet server. The YQL engine
 detects that the query requests rows from multiple tablets and starts a read-only transaction.  A
 hybrid time **ht_read** is selected for the request, which could be either the current hybrid time
-on the YQL engine's tablet server, or the [safe
-time](/architecture/concepts/transactions/#safe-timestamp-assignment-for-a-read-request) on one of
+on the YQL engine's tablet server, or the [safe time](/architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request) on one of
 the involved tablets. The latter case would reduce waiting for safe time for at least that tablet
 and is therefore better for performance. Typically, due to our load-balancing policy, the YQL engine
 receiving the request will also host some of the tablets that the request is reading, allowing to
@@ -156,15 +155,14 @@ implement the more performant second option without an additional RPC round-trip
 We also select a point in time we call **global_limit**, computed as **physical_time +
 max_clock_skew**, which allows us to determine whether a particular record was written *definitely
 after* our read request started. **max_clock_skew** is a globally configured bound on clock skew
-between different YugaByteDB servers. (We've also designed an adaptive clock skew tracking algorithm
-that allows to avoid the need to specify a global clock skew bound, which is part of [YugaByteDB
+between different YugaByte DB servers. (We've also designed an adaptive clock skew tracking algorithm
+that allows to avoid the need to specify a global clock skew bound, which is part of [YugaByte DB
 Enterprise Edition](https://www.yugabyte.com/product/enterprise/)).
 
 ### 2. Read from all tablets at the chosen hybrid time
 
 The YQL engine sends requests to all tablets the transaction needs to read from. Each tablet waits
-for **ht_read** to become a safe time to read at according to our [definition of safe time](
-/architecture/concepts/transactions/#definition-of-safe-time), and then starts executing its part
+for **ht_read** to become a safe time to read at according to our [definition of safe time](/architecture/transactions/single-row-transactions/#definition-of-safe-time), and then starts executing its part
 of the read request from its local DocDB.
 
 WHen a tablet server sees a relevant record with a hybrid time *ht_record*, it executes the
@@ -198,7 +196,7 @@ which it does not yet know the final transaction status and commit time. In thes
 send a transaction status request to the transaction status tablet. If a transaction is committed,
 it is treated as if DocDB already contained permanent records with hybrid time equal to the
 transaction's commit time. The
-[cleanup](/architecture/core-functions/transactional-io-path/#6-asynchronously-applying-and-cleaning-up-provisional-records)
+[cleanup](/architecture/transactions/transactional-io-path/#6-asynchronously-applying-and-cleaning-up-provisional-records)
 of provisional records happens independently and asynchronously.
 
 ### 4. Tablets respond to the YQL engine
@@ -218,5 +216,5 @@ appropriate wire protocol (e.g. Cassandra or Redis).
 
 ## See also
 
-See the [Concepts / Distributed ACID Transactions](/architecture/concepts/distributed-txns/) section
-to review some common concepts relevant to YugaByteDB's implementation of distributed transactions.
+See the [Distributed ACID Transactions](/architecture/transactions/distributed-txns/) section
+to review some common concepts relevant to YugaByte DB's implementation of distributed transactions.

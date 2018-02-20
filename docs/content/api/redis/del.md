@@ -14,12 +14,22 @@ This command deletes the given `key`.
 Returns number of keys that were removed.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yuga1 "America"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ SET yuga2 "Africa"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ DEL yuga1 yuga2 not_a_key
+```
+```sh
 2
 ```
 

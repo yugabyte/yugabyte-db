@@ -9,14 +9,14 @@ Use the popular [docker-compose](https://docs.docker.com/compose/overview/) util
 
 ### Pull the container
 
-```sh
+```{.sh .copy .separator-dollar}
 # pull the container from docker hub registry
 $ docker pull yugabytedb/yugabyte
 ```
 
 ### Create a docker-compose.yaml file
 
-```sh
+```{.sh .copy}
 version: '2'
 
 services:
@@ -52,27 +52,27 @@ services:
 
 ### Start the cluster
 
-```sh
-docker-compose up -d
+```{.sh .copy .separator-dollar}
+$ docker-compose up -d
 ```
 
 Clients can now connect to YugaByte’s CQL service at http://localhost:9042 and to YugaByte’s Redis service at http://localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
-## Connect to YugaByte Cassandra and Redis API services
+## Connect to YugaByte DB Cassandra and Redis APIs
 
-```sh
+```{.sh .copy .separator-dollar}
 # connect to cassandra service on port 9042 via cqlsh
-docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
 ```
 
 
-```sh
+```{.sh .copy .separator-dollar}
 # connect to redis service on port 6379 via redis-cli
-docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/redis-cli
 ```
 
 ## Stop the cluster
 
-```sh
-docker-compose down
+```{.sh .copy .separator-dollar}
+$ docker-compose down
 ```

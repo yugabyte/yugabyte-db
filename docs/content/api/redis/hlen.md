@@ -13,12 +13,22 @@ This command fetches the number of fields in the hash that is associated with th
 Returns number of fields in the specified hash.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "Africa"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash area2 "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HLEN yugahash
+```
+```sh
 2
 ```
 

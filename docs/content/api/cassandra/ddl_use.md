@@ -28,9 +28,12 @@ Where
 ## Examples
 ### Create and use keyspaces
 
-``` sql
+```{.sql .copy .separator-gt} 
 cqlsh> CREATE KEYSPACE example;
+```
+```{.sql .copy .separator-gt} 
 cqlsh> CREATE KEYSPACE other_keyspace;
+```{.sql .copy .separator-gt} 
 cqlsh> USE example;
 ```
 

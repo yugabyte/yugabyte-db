@@ -14,10 +14,16 @@ This command fetches one or more values for the given fields of the hash that is
 Returns list of string values of the fields in the same order that was requested.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HMSET yugahash area1 "Africa" area2 "America"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ HMGET yugahash area1 area2 area_none
+```
+```sh
 1) "Africa"
 2) "America"
 3) (null)

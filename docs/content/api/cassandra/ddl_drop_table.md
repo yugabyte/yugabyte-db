@@ -27,8 +27,10 @@ Where
 
 ## Examples
 
-```
+```{.sql .copy .separator-gt} 
 cqlsh:example> CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> DROP TABLE users;
 ```
 

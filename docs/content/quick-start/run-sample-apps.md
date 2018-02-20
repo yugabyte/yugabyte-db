@@ -11,7 +11,7 @@ We will show how to run a sample key-value workload against both the CQL service
 
 - Verify that Java is installed on your localhost. You need Java 1.8 installed on your system in order to run sample applications. You can install Java 1.8 from [here](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html).
 
-```sh
+```{.sh .copy .separator-dollar}
 $ java -version
 ```
 
@@ -23,13 +23,13 @@ For binary installs, this is located in the `java` subdirectory of the install.
 
 For docker based installs, you can copy it from one of the YB containers into the `yugabyte` install directory.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ docker cp yb-master-n1:/home/yugabyte/java/yb-sample-apps.jar .
 ```
 
 For Kubernetes based installs, you can copy it from one of the YB pods into the `yugabyte` install directory.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl cp yb-master-0:/home/yugabyte/java/yb-sample-apps.jar .
 ```
 
@@ -40,7 +40,7 @@ $ kubectl cp yb-master-0:/home/yugabyte/java/yb-sample-apps.jar .
 
 You can run the CQL `CassandraKeyValue` sample app using the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ java -jar yb-sample-apps.jar --workload CassandraKeyValue --nodes 127.0.0.1:9042
 ```
 
@@ -109,13 +109,13 @@ Uptime: 15013 ms | maxWrittenKey: 6220 | maxGeneratedKey: 6225
 
 You can inspect the table created by the sample app using cqlsh. Connect to the local cluster [as before](quick-start/test-cassandra/). The sample app creates the `cassandrakeyvalue` table in the keyspace `ybdemo_keyspace`.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> use ybdemo_keyspace;
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh:ybdemo_keyspace> DESCRIBE cassandrakeyvalue;
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh:ybdemo_keyspace> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
     k text PRIMARY KEY,
     v blob
@@ -125,7 +125,7 @@ cqlsh:ybdemo_keyspace> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
 
 You can select a few rows and examine what gets written.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 ```
 ```sql
@@ -147,7 +147,7 @@ cqlsh:ybdemo_keyspace> SELECT * FROM cassandrakeyvalue LIMIT 5;
 
 You can run the Redis sample app `RedisKeyValue` using the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ java -jar yb-sample-apps.jar --workload RedisKeyValue --nodes localhost:6379 --nouuid --num_threads_read 24 --num_threads_write 1
 ```
 
@@ -190,22 +190,22 @@ Write: 129.13 ops/sec (7.72 ms/op), 2454 total ops
 
 ### 4. Verify using redis-cli
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/redis-cli
 ```
-```sh
+```{.sh .copy .separator-gt}
 127.0.0.1:6379> get key:1  
 ```
 ```sh
 "val:1"  
 ```
-```sh
+```{.sh .copy .separator-gt}
 127.0.0.1:6379> get key:2  
 ```
 ```sh
 "val:2"
 ```
-```sh
+```{.sh .copy .separator-gt}
 127.0.0.1:6379> get key:1000 
 ```
 ```sh

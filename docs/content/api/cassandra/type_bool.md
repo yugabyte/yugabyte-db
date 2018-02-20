@@ -24,13 +24,22 @@ boolean_literal ::= TRUE | FALSE
 
 ## Examples
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE tasks (id INT PRIMARY KEY, finished BOOLEAN);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO tasks (id, finished) VALUES (1, false);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO tasks (id, finished) VALUES (2, false);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE tasks SET finished = true WHERE id = 2;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM tasks;
-
+```
+```sh
 id | finished
 ----+----------
   2 |     True

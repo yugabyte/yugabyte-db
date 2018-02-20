@@ -4,17 +4,17 @@ title: SQL vs NoSQL
 weight: 561
 ---
 
-Most application developer have some used SQL and possibly some NoSQL databases to build applications. YugaByte DB brings the best of these two databases together into one unified platform to make developing cloud services simpler.
+Most application developers have used SQL and possibly some NoSQL databases to build applications. YugaByte DB brings the best of these two databases together into one unified platform to make developing cloud services simpler.
 
 Very often, today's cloud services and applications will start out with just a requests and a very small amount of data. These can be served by just a few nodes. But if the application becomes popular, they would have to scale out rapidly in order to handle millions of requests and many terabytes of data. YugaByte is well suited for these kinds of workloads.
 
 ## Unifying SQL and NoSQL
 
-We can think of the Here are a few different criteria where YugaByte brings the best of SQL and NoSQL together into a single data platform.
+We can think of the Here are a few different criteria where YugaByte DB brings the best of SQL and NoSQL together into a single data platform.
 
 ### Data characteristics
 
-These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics and so on. Here is a table that contrasts what YugaByte offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table below is not accurate for all NoSQL databases - it is just meant to give an idea.
+These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics and so on. Here is a table that contrasts what YugaByte DB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table below is not accurate for all NoSQL databases - it is just meant to give an idea.
 
 | Database Characteristics  | SQL | NoSQL | YugaByte DB |
 | --------------- | ---------------- | ------------------ | ------------------ |
@@ -48,9 +48,9 @@ Operational characteristics can be defined as the concerns these runtime concern
 
 Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiry with TTLs, and so on.
 
-Here is a table that lists some of the important features that YugaByte DB supports, and which of YugaByte's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
+Here is a table that lists some of the important features that YugaByte DB supports, and which of YugaByte DB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 
-| Database Features  | YugaByte - Cassandra API | YugaByte - Redis API |
+| Database Features  | YugaByte DB - Cassandra API | YugaByte DB - Redis API |
 | --------------- | ---------------- | ------------------ |
 | Multi-row transactions | Yes | - |
 | Consistent secondary indexes | Coming soon | - |
@@ -70,7 +70,7 @@ In order to test the linear scalability of YugaByte DB, we have run some large c
 
 ## High Performance
 
-YugaByte was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. YugaByte DB has been written ground up in C++ for this very reason. Here is a chart showing how YugaByte DB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugaByte performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+YugaByte DB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. YugaByte DB has been written ground up in C++ for this very reason. Here is a chart showing how YugaByte DB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugaByte DB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 The first chart below shows the total ops/second when running YBSB benchmark.
 
@@ -83,7 +83,7 @@ The second chart below shows the latency for the YCSB run.
 
 ## Geo-distributed
 
-This is a screenshot of YugaByte EE edition, which visualized the universe created. Below is a screenshot of a 5-node YugaByte universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in us-west, 2 copies of the data in us-east and 1 copy of the data in asia-pacific region. 
+This is a screenshot of YugaByte DB EE edition, which visualized the universe created. Below is a screenshot of a 5-node YugaByte DB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in us-west, 2 copies of the data in us-east and 1 copy of the data in asia-pacific region. 
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 
@@ -101,7 +101,7 @@ The graphs above, also taken from the EE edition, show that the average read lat
 
 ## Multi-cloud ready
 
-It is possible to easily configure YugaByte EE to work with multiple public clouds as well as private datacenters in just a few minutes.
+It is possible to easily configure YugaByte DB EE to work with multiple public clouds as well as private datacenters in just a few minutes.
 
 ![Geo-distributed](/images/develop/learn/yb-multi-cloud-ready.png)
 

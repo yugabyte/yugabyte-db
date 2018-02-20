@@ -12,12 +12,22 @@ This command selects all members of the set that is associated with the given `k
 Returns all members of the given set.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "Africa"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SMEMBERS yuga_world
+```
+```sh
 1) "Africa"
 2) "America"
 ```

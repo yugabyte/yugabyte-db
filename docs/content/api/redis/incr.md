@@ -13,10 +13,16 @@ This command adds 1 to the number that is associated with the given `key`. The n
 Returns the value after addition.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yugakey 7
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ INCR yugakey
+```
+```sh
 8
 ```
 

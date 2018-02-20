@@ -2,19 +2,19 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl destroy
 ```
 
 Start a new local universe with replication factor 5.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl create --rf 5 
 ```
 
 Connect to cqlsh on node 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ docker exec -it yb-tserver-n1 /home/yugabyte/bin/cqlsh
 ```
 ```sh
@@ -26,10 +26,10 @@ cqlsh>
 
 Create a Cassandra keyspace and a table.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE users;
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               email text,
 	                               password text,
@@ -41,13 +41,13 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 
 Now insert some data by typing the following into cqlsh shell we joined above.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
    {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
   );
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
    {'firstname': 'Sherlock', 'lastname': 'Holmes'}
@@ -57,7 +57,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 
 Query all the rows.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
 ```sql
@@ -74,13 +74,13 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 Let us now query the data from node 5.
 
-```sh
-docker exec -it yb-tserver-n5 /home/yugabyte/bin/cqlsh
+```{.sh .copy .separator-dollar}
+$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/cqlsh
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
-```sql
+```{.sql .copy .separator-gt}
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -93,31 +93,31 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 We have 5 nodes in this universe. You can verify this by running the following.
 
-```sh
-./yb-docker-ctl status
+```{.sh .copy .separator-dollar}
+$ ./yb-docker-ctl status
 ```
 
 Let us simulate node 5 failure by doing the following.
 
-```sh
-./yb-docker-ctl remove_node 5
+```{.sh .copy .separator-dollar}
+$ ./yb-docker-ctl remove_node 5
 ```
 
 Now running the status command should show only 4 nodes:
 
-```sh
-./yb-docker-ctl status
+```{.sh .copy .separator-dollar}
+$ ./yb-docker-ctl status
 ```
 
 Now connect to node 4.
 
-```sh
+```{.sh .copy .separator-dollar}
 docker exec -it yb-tserver-n4 /home/yugabyte/bin/cqlsh
 ```
 
 Let us insert some data.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
@@ -125,7 +125,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 
 Now query the data.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
 ```sql
@@ -143,25 +143,25 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 This cluster was created with replication factor 5 and hence needs only 3 replicas to make consensus. Therefore, it is resilient to 2 failures without any data loss. Let us simulate another node failure.
 
-```sh
-./yb-docker-ctl remove_node 1
+```{.sh .copy .separator-dollar}
+$ ./yb-docker-ctl remove_node 1
 ```
 
 We can check the status to verify:
 
-```sh
-./yb-docker-ctl status
+```{.sh .copy .separator-dollar}
+$ ./yb-docker-ctl status
 ```
 
 Now let us connect to node 2.
 
-```sh
-docker exec -it yb-tserver-n2 /home/yugabyte/bin/cqlsh
+```{.sh .copy .separator-dollar}
+$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/cqlsh
 ```
 
 Insert some data.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (4000, 'superman@yugabyte.com', 'iCanFly',
    {'firstname': 'Clark', 'lastname': 'Kent'});
@@ -169,7 +169,7 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 
 Run the query.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
 ```sql
@@ -188,6 +188,6 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl destroy
 ```

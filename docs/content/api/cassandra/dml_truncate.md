@@ -27,26 +27,39 @@ Where
 
 ### Truncate a table
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       PRIMARY KEY(department_id, employee_id));
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 1, 'Joe');
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```sh
  department_id | employee_id | name
 ---------------+-------------+------
              2 |           1 |  Joe
              1 |           1 | John
              1 |           2 | Jane
-             
-cqlsh:example> -- Remove all rows from the table.
+```             
+Remove all rows from the table.
+```{.sql .copy .separator-gt}
 cqlsh:example> TRUNCATE employees;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees;
-
+```
+```sh
  department_id | employee_id | name
 ---------------+-------------+------
 ```

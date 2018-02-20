@@ -2,17 +2,17 @@
 
 We will use the [`yb-docker-ctl`]((/admin/yb-docker-ctl/)) utility downloaded in the previous step to create and administer a containerized local cluster. Detailed output for the *create* command is available in [yb-docker-ctl Reference](/admin/yb-docker-ctl/#create-cluster).
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl create
 ```
 
-Clients can now connect to YugaByte's CQL service at `localhost:9042` and to YugaByte's Redis service at  `localhost:6379`.
+Clients can now connect to YugaByte DB's Cassandra API at `localhost:9042` and to YugaByte's Redis API at  `localhost:6379`.
 
 ## 2. Check cluster status with yb-docker-ctl
 
 Run the command below to see that we now have 3 `yb-master` (yb-master-n1,yb-master-n2,yb-master-n3) and 3 `yb-tserver` (yb-tserver-n1,yb-tserver-n2,yb-tserver-n3) containers running on this localhost. Roles played by these containers in a YugaByte cluster (aka Universe) is explained in detail [here](/architecture/concepts/universe/).
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./yb-docker-ctl status
 ```
 ```sh

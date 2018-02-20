@@ -14,10 +14,16 @@ This command inserts `string_value` to be hold at `key`, where `EX seconds` sets
 Returns status string.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yugakey "YugaByte"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ GET yugakey
+```
+```sh
 "YugaByte"
 ```
 

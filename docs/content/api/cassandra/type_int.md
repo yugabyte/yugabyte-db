@@ -43,14 +43,25 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 
 ### Using integer datatypes
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE items(id INT PRIMARY KEY, item_count BIGINT);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO items(id, item_count) VALUES(1, 1);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO items(id, item_count) VALUES(2, 2);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE items SET item_count = 5 WHERE id = 1;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE items SET item_count = item_count + 1 WHERE id = 2;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM items;
-
+```
+```sh
  id | item_count
 ----+------------
   2 |          3
@@ -59,12 +70,17 @@ cqlsh:example> SELECT * FROM items;
 
 ### Using `COUNTER` datatype
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE item_counters(id INT PRIMARY KEY, item_counter COUNTER);
-cqlsh:example> -- For counter type, null values are treated as 0.
+```
+For counter type, null values are treated as 0.
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE item_counters SET item_counter = item_counter + 1 WHERE id = 1;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM item_counters;
-
+```
+```sh
  id | item_counter
 ----+--------------
   1 |            1

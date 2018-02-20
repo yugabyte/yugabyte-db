@@ -18,8 +18,10 @@ b) You must have `python` installed on your localhost.
 
 Download the [yb-docker-ctl](/admin/yb-docker-ctl/) utility. This utility has a set of pre-built commands to create and thereafter administer a containerized local cluster. 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ mkdir ~/yugabyte && cd ~/yugabyte
+```
+```{.sh .copy .separator-dollar}
 $ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 ```
 
@@ -27,13 +29,15 @@ $ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 
 Confirm that Docker and python are installed correctly.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ docker ps
+```
+```{.sh .copy .separator-dollar}
 $ python --version
 ```
 
 Pull the YugaByte DB container.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ docker pull yugabytedb/yugabyte
 ```

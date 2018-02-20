@@ -29,22 +29,31 @@ Where
  - Each `field_type` must be either a [non-parametric type](../#datatypes) or a [frozen type](../type_frozen).
 
 ## Examples
-``` sql
-cqlsh:example> -- Collection types must be frozen to be used inside a user-defined type.
+Collection types must be frozen to be used inside a user-defined type.
+```{.sql .copy .separator-gt} 
 cqlsh:example> CREATE TYPE person(first_name TEXT, last_name TEXT, emails FROZEN<LIST<TEXT>>);
-
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> DESCRIBE TYPE person;
-
+```
+```
 CREATE TYPE example.person (
     first_name text,
     last_name text,
     emails frozen<list<text>>
 );
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> CREATE TABLE employees(employee_id INT PRIMARY KEY, employee person);
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> INSERT INTO employees(employee_id, employee)
                    VALUES (1, {first_name : 'John', last_name : 'Doe', emails : ['jdoe@example.com']});
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> SELECT * FROM employees;
-
+```
+```
  employee_id | employee
 -------------+---------------------------------------------------------------------------
            1 | {first_name: 'John', last_name: 'Doe', emails: ['john.doe@yugabyte.com']}

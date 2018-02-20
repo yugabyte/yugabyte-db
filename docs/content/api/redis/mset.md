@@ -13,10 +13,16 @@ This command is an atomic write that sets the data for all given `keys` with the
 Returns status string.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ MSET yuga1 "Africa" yuga2 "America"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ GET yuga1
+```
+```sh
 "Africa"
 ```
 

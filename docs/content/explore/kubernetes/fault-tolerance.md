@@ -2,19 +2,19 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```
 
 Start a new local cluster - by default, this will create a 3 node universe with a replication factor of 3.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl apply -f yugabyte-statefulset.yaml
 ```
 
 Check the Kubernetes dashboard to see the 3 yb-tserver and 3 yb-master pods representing the 3 nodes of the cluster.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ minikube dashboard
 ```
 
@@ -22,7 +22,7 @@ $ minikube dashboard
 
 Connect to cqlsh on node 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
 ```
 ```sh
@@ -34,10 +34,10 @@ cqlsh>
 
 Create a Cassandra keyspace and a table.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE users;
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 	                               email text,
 	                               password text,
@@ -49,13 +49,13 @@ cqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
 
 Now insert some data by typing the following into cqlsh shell we joined above.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (1000, 'james.bond@yugabyte.com', 'licensed2Kill',
    {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
   );
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (2000, 'sherlock.holmes@yugabyte.com', 'itsElementary',
    {'firstname': 'Sherlock', 'lastname': 'Holmes'}
@@ -64,11 +64,10 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 
 Query all the rows.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
-```sh
-
+```sql
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -82,14 +81,13 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 Let us now query the data from node 3.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-tserver-2 /home/yugabyte/bin/cqlsh
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
 ```sql
-
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -97,7 +95,7 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 (2 rows)
 ```
-```sh
+```{.sh .copy .separator-gt}
 cqlsh> exit;
 ```
 
@@ -105,13 +103,13 @@ cqlsh> exit;
 
 This cluster was created with replication factor 3 and hence needs only 2 replicas to make consensus. Therefore, it is resilient to 1 failure without any data loss. Let us simulate node 3 failure.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl delete pod yb-tserver-2
 ```
 
 Now running the status command should would show that the `yb-tserver-2` pod is `Terminating`.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl get pods
 ```
 ```sh
@@ -126,13 +124,13 @@ yb-tserver-2   1/1       Terminating   0          33m
 
 Now connect to node 2.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl exec -it yb-tserver-1 /home/yugabyte/bin/cqlsh
 ```
 
 Let us insert some data to ensure that the loss of a node hasn't impacted the ability of the universe to take writes.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
@@ -140,11 +138,10 @@ cqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
 
 Now query the data. We see that all the data inserted so far is returned and the loss of the node has no impact on data integrity.
 
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> SELECT email, profile FROM users.profile;
 ```
 ```sql
-
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -159,7 +156,7 @@ cqlsh> SELECT email, profile FROM users.profile;
 
 We can now check the cluster status to verify that Kubernetes has indeed brought back the `yb-tserver-2` node that had failed before. This is because the replica count currently effective in Kubernetes for the `yb-tserver` StatefulSet is 3 and there were only 2 nodes remaining after 1 node failure. 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl get pods
 ```
 ```sh
@@ -178,6 +175,6 @@ YugaByte DB's fault tolerance when combined with Kubernetes's automated operatio
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ kubectl delete -f yugabyte-statefulset.yaml
 ```

@@ -14,14 +14,28 @@ This command removes one or more specified members from the set that is associat
 Returns the total number of existed members that were removed from the set.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "Moon"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SREM yuga_world "Moon"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SREM yuga_world "Moon"
+```
+```sh
 0
 ```
 

@@ -14,12 +14,22 @@ This command fetches the full content of all fields and all values of the hash t
 Returns list of fields and values.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash area1 "Africa"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HSET yugahash area2 "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ HGETALL yugahash
+```
+```sh
 1) area1
 2) "Africa"
 3) area2

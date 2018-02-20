@@ -2,7 +2,7 @@
 
 If you have a previously running local universe, destroy it using the following:
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```
 
@@ -17,7 +17,7 @@ $ ./bin/yb-ctl create
 
 Run the Cassandra sample key-value app against the local universe by typing the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ java -jar ./java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --num_threads_write 1 \
@@ -36,7 +36,7 @@ You can check a lot of the per-node stats by browsing to the <a href='http://127
 
 Add a node to the universe.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node
 ```
 
@@ -49,7 +49,7 @@ Now we should have 4 nodes. Refresh the <a href='http://127.0.0.1:7000/tablet-se
 
 Add yet another node to the universe.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node
 ```
 
@@ -63,6 +63,6 @@ YugaByte DB automatically balances the tablet leaders and followers of a univers
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```

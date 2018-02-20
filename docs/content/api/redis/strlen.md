@@ -13,12 +13,22 @@ This command finds the length of the string value that is associated with the gi
 Returns length of the specified string.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yugakey "string value"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ STRLEN yugakey
+```
+```sh
 12
+```
+```{.sh .copy .separator-dollar}
 $ STRLEN undefined_key
+```
+```sh
 0
 ```
 

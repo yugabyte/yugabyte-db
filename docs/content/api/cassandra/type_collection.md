@@ -58,7 +58,7 @@ In particular, some list operations (insert at an index and remove elements) req
 ### `CREATE TABLE` with Collections.
 - Collection types are used like simple types (except they are not allowed in primary key).
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY, 
                                   emails SET<TEXT>,
                                   phones MAP<TEXT,TEXT>,
@@ -68,18 +68,21 @@ cqlsh:example> CREATE TABLE users(username TEXT PRIMARY KEY,
 ### `INSERT` Collection Data.
 - Collection values are inserted by setting all their elements at once.
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) 
                VALUES ('foo', 
                        {'c@example.com', 'a@example.com'}, 
                        {'home' : '999-9999', 'mobile' : '000-0000'}, 
                        ['New York', 'Paris']);
-
-cqlsh:example> -- Empty collections are the same as nulls.
+```
+Empty collections are the same as nulls.
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO users(username, emails, phones, top_cities) VALUES ('bar', { }, { }, [ ]);
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
-
+```
+```sh
  username | emails                             | phones                                     | top_cities
 ----------+------------------------------------+--------------------------------------------+-----------------------
       bar |                               null |                                       null |                  null
@@ -89,13 +92,19 @@ cqlsh:example> SELECT * FROM users;
 ### `UPDATE` Collection Column.
 - Collection values can be updated by setting all their elements at once.
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET emails = {'bar@example.com'} WHERE username = 'bar';
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones = {'home' : '123-45678'} WHERE username = 'bar';
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities = ['London', 'Tokyo'] WHERE username = 'bar';
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
-
+```
+```sh
  username | emails                             | phones                                     | top_cities
 ----------+------------------------------------+--------------------------------------------+-----------------------
       bar |                {'bar@example.com'} |                      {'home': '123-45678'} |   ['London', 'Tokyo']
@@ -105,21 +114,33 @@ cqlsh:example> SELECT * FROM users;
 ### Collection Expressions
 - Collection elements can be added with `+` or removed with `-`.
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET emails = emails + {'foo@example.com'} WHERE username = 'foo';
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET emails = emails - {'a@example.com', 'c.example.com'} WHERE username = 'foo';
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones = phones + {'office' : '333-3333'} WHERE username = 'foo';
-cqlsh:example> -- To remove map elements only the relevant keys need to be given (as a set).
+```
+To remove map elements only the relevant keys need to be given (as a set).
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones = phones - {'home'} WHERE username = 'foo';
-
-cqlsh:example> -- List elements can be either prepended or appended. 
+```
+List elements can be either prepended or appended. 
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities = top_cities + ['Delhi'] WHERE username = 'foo';
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities = ['Sunnyvale'] + top_cities WHERE username = 'foo';
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities = top_cities - ['Paris', 'New York'] WHERE username = 'foo';
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
-
+```
+```sh
  username | emails              | phones                                       | top_cities
 ----------+---------------------+----------------------------------------------+------------------------
       bar | {'bar@example.com'} |                        {'home': '123-45678'} |    ['London', 'Tokyo']
@@ -127,20 +148,28 @@ cqlsh:example> SELECT * FROM users;
 ```
 
 ### `UPDATE` Map and List Elements
-- Maps and Lists also allow updating elements individually.
 
-``` sql
+Maps and Lists also allow updating elements individually.
+
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones['mobile'] = '111-1111' WHERE username = 'foo';
-cqlsh:example> -- Map elements can also be accessed in IF/WHERE conditions.
+```
+Map elements can also be accessed in IF/WHERE conditions.
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET phones['mobile'] = '345-6789' WHERE username = 'bar' IF phones['mobile'] = null;
-
-cqlsh:example> -- List numbering starts from 1.
+```
+List numbering starts from 1.
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities[1] = 'San Francisco' WHERE username = 'bar';
-cqlsh:example> -- List elements can also be accessed in IF/WHERE conditions.
+```
+List elements can also be accessed in IF/WHERE conditions.
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE users SET top_cities[2] = 'Mumbai' WHERE username = 'foo' IF top_cities[2] = 'Delhi';
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM users;
-
+```
+```sh
  username | emails              | phones                                       | top_cities
 ----------+---------------------+----------------------------------------------+----------------------------
       bar | {'bar@example.com'} |  {'home': '123-45678', 'mobile': '345-6789'} | ['San Francisco', 'Tokyo']

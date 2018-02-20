@@ -14,11 +14,19 @@ This command fetches the value that is associated with the given `key`.
 Returns string value of the given `key`.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ GET yugakey
+```
+```sh
 (null)
+```
+```{.sh .copy .separator-dollar}
 $ SET yugakey "YugaByte"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ GET yugakey
 "YugaByte"
 ```

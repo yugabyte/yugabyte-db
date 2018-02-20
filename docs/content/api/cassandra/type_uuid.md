@@ -28,18 +28,26 @@ Where
 - Value of text datatypes with the correct format are convertible to UUID types.
 
 ## Examples
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE devices(id UUID PRIMARY KEY, ordered_id TIMEUUID);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO devices (id, ordered_id) 
                VALUES (123e4567-e89b-12d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
-cqlsh:example> -- `TIMEUUID`s must be type 1 `UUID`s (first number in third component).
+```
+`TIMEUUID`s must be type 1 `UUID`s (first number in third component).
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO devices (id, ordered_id) 
                VALUES (123e4567-e89b-42d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> UPDATE devices SET ordered_id = 00000000-0000-1000-0000-000000000000
                WHERE id = 123e4567-e89b-42d3-a456-426655440000; 
-
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM devices;
-
+```
+```sh
 id                                   | ordered_id
 --------------------------------------+--------------------------------------
  123e4567-e89b-12d3-a456-426655440000 | 123e4567-e89b-12d3-a456-426655440000

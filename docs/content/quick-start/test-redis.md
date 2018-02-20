@@ -56,7 +56,7 @@ After [creating a local cluster](/quick-start/create-local-cluster/), follow the
 
 Insert a key and a value.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> set mykey somevalue
 ```
 ```sh
@@ -65,7 +65,7 @@ OK
 
 Query the value by the key.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> get mykey
 ```
 ```sh
@@ -74,7 +74,7 @@ Query the value by the key.
 
 Check if the key exists.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> exists mykey
 ```
 ```sh
@@ -84,25 +84,25 @@ Check if the key exists.
 
 If the value is a number, it can be incremented.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> set counter 100
 ```
 ```sh
 OK
 ```
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> incr counter
 ```
 ```sh
 (integer) 101
 ```
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> incr counter
 ```
 ```sh
 (integer) 102
 ```
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> get counter
 ```
 ```sh
@@ -114,7 +114,7 @@ OK
 
 You can create a Redis Hash data type as follows. This models the data for user id 1000 with the following attributes {username : john, birthyear : 1977, verified : 1}.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> hmset user:1000 username john birthyear 1977 verified 1
 ```
 ```sh
@@ -123,13 +123,13 @@ OK
 
 You can retrieve specific attributes for user id 1000 as follows.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> hget user:1000 username
 ```
 ```sh
 "john"
 ```
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> hget user:1000 birthyear
 ```
 ```sh
@@ -138,7 +138,7 @@ You can retrieve specific attributes for user id 1000 as follows.
 
 You can fetch multiple attributes with a single command as follows.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> hmget user:1000 username birthyear no-such-field
 ```
 ```sh
@@ -149,7 +149,7 @@ You can fetch multiple attributes with a single command as follows.
 
 You can fetch all attributes by using the `hgetall` command.
 
-```sh
+```{.sql .copy .separator-gt}
 127.0.0.1:6379> hgetall user:1000
 ```
 ```sh

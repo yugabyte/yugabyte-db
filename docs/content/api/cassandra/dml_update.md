@@ -50,19 +50,28 @@ Where
 
 ### Update a value in a table
 
-``` sql
+```{.sql .copy .separator-gt}
 cqlsh:example> CREATE TABLE employees(department_id INT, 
                                       employee_id INT, 
                                       name TEXT, 
                                       age INT, 
                                       PRIMARY KEY(department_id, employee_id));
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> INSERT INTO employees(department_id, employee_id, name, age) VALUES (1, 1, 'John', 30);
-cqlsh:example> -- Update the value of a non primary-key column. 
+```
+Update the value of a non primary-key column.
+```{.sql .copy .separator-gt} 
 cqlsh:example> UPDATE employees SET name = 'Jack' WHERE department_id = 1 AND employee_id = 1;
-cqlsh:example> -- Using upsert semantics to update a non-existent row (i.e. insert the row).
+```
+Using upsert semantics to update a non-existent row (i.e. insert the row).
+```{.sql .copy .separator-gt} 
 cqlsh:example> UPDATE employees SET name = 'Jane', age = 40 WHERE department_id = 1 AND employee_id = 2;
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> SELECT * FROM employees;
-
+```
+```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+-----
              1 |           1 | Jack |  30
@@ -72,23 +81,29 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Conditional update using the `IF` clause
 
-``` sql
-cqlsh:example> -- The supported expressions are allowed in the 'SET' assignment targets.
+
+The supported expressions are allowed in the 'SET' assignment targets.
+```{.sql .copy .separator-gt} 
 cqlsh:example> UPDATE employees SET age = age + 1 WHERE department_id = 1 AND employee_id = 1 IF name = 'Jack';
-
+```
+```sh
  [applied]
 -----------
       True
-
-cqlsh:example> -- Using upsert semantics to add a row, age is not set so will be 'null'.
+```
+Using upsert semantics to add a row, age is not set so will be 'null'.
+```{.sql .copy .separator-gt} 
 cqlsh:example> UPDATE employees SET name = 'Joe' WHERE department_id = 2 AND employee_id = 1 IF NOT EXISTS;
-
+```
+```sh
  [applied]
 -----------
       True
-
+```
+```{.sql .copy .separator-gt} 
 cqlsh:example> SELECT * FROM employees;
-
+```
+```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              2 |           1 |  Joe | null
@@ -98,18 +113,23 @@ cqlsh:example> SELECT * FROM employees;
 
 ### Update with expiration time using the `USING TTL` clause.
 
-``` sql 
-cqlsh:example> -- The updated value(s) will persist for the TTL duration
+The updated value(s) will persist for the TTL duration.
+```{.sql .copy .separator-gt} 
 cqlsh:example> UPDATE employees USING TTL 10 SET age = 32 WHERE department_id = 1 AND employee_id = 1;
+```
+```{.sql .copy .separator-gt}
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
-
+```
+```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack |   32
-
-cqlsh:example> -- 11 seconds after the update (value will have expired)
+```
+11 seconds after the update (value will have expired).
+```{.sql .copy .separator-gt} 
 cqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id = 1;
-
+```
+```sh
  department_id | employee_id | name | age
 ---------------+-------------+------+------
              1 |           1 | Jack | null

@@ -9,8 +9,10 @@ weight: 2410
 
 Use the **-\-help** option to see all the commands supported.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl --help
+```
+```sh
 usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
               [--replication_factor REPLICATION_FACTOR]
               [--require_clock_sync REQUIRE_CLOCK_SYNC]
@@ -55,8 +57,10 @@ Optional Argument | Default | Description
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl create
+```
+```sh
 2017-10-16 21:46:52,558 INFO: Starting master with:
 /home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_interface 127.0.0.1 --rpc_bind_addresses 127.0.0.1 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-1/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/master.err" &
 2017-10-16 21:46:52,567 INFO: Starting master with:
@@ -75,7 +79,7 @@ $ ./bin/yb-ctl create
 
 The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/admin/yb-ctl/#add-a-node) and [remove_node](/admin/yb-ctl/#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl --rf 5 create
 ```
 
@@ -83,8 +87,10 @@ $ ./bin/yb-ctl --rf 5 create
 
 Get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl status
+```
+```sh
 2017-10-16 21:47:32,937 INFO: Server is running: type=master, node_id=1, PID=27942, admin service=127.0.0.1:7000
 2017-10-16 21:47:32,942 INFO: Server is running: type=master, node_id=2, PID=27945, admin service=127.0.0.2:7000
 2017-10-16 21:47:32,947 INFO: Server is running: type=master, node_id=3, PID=27948, admin service=127.0.0.3:7000
@@ -97,8 +103,10 @@ $ ./bin/yb-ctl status
 
 Run this command after creating the cluster in case you are looking to use YugaByte's Redis API.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl setup_redis
+```
+```sh
 I0918 22:48:20.253942 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
 I0918 22:48:20.254120 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
 I0918 22:48:20.254149 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
@@ -118,8 +126,10 @@ I0918 22:48:21.376237 12246 yb-admin.cc:580] Table 'redis_keyspace..redis' creat
 
 Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node
+```
+```sh
 2017-10-16 22:05:31,517 INFO: Starting tserver with:
 /home/vagrant/yugabyte/bin/yb-tserver 
 --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-4,/tmp/yugabyte-local-cluster/disk2/node-4" 
@@ -139,8 +149,10 @@ Remove a node from the cluster by executing the following command. The command t
 
 ### Help
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl remove_node -h
+```
+```sh
 usage: yb-ctl remove_node [-h] node_id
 
 positional arguments:
@@ -152,8 +164,10 @@ optional arguments:
 
 ### Example
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl remove_node 4
+```
+```sh
 2017-09-06 22:56:11,929 INFO: Removing server type=tserver node_id=4
 2017-09-06 22:56:11,935 INFO: Stopping server type=tserver node_id=4 PID=28874
 2017-09-06 22:56:11,935 INFO: Waiting for server type=tserver node_id=4 PID=28874 to stop...
@@ -163,8 +177,10 @@ $ ./bin/yb-ctl remove_node 4
 
 The command below destroys the cluster which includes deleting the data directories.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
+```
+```sh
 2017-09-06 22:56:41,230 INFO: Stopping server type=master node_id=1 PID=28494
 2017-09-06 22:56:41,231 INFO: Waiting for server type=master node_id=1 PID=28494 to stop...
 2017-09-06 22:56:41,739 INFO: Stopping server type=master node_id=2 PID=28504

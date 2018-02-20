@@ -13,11 +13,19 @@ This command fetches a substring of the string value that is associated with the
 Returns a string value.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SET yugakey "YugaByte"
+```
+```sh
 "OK"
+```
+```{.sh .copy .separator-dollar}
 $ GETRANGE yugakey 0 3
+```
+```sh
 "Yuga"
+```
+```{.sh .copy .separator-dollar}
 $ GETRANGE yugakey -4 -1
 "Byte"
 ```

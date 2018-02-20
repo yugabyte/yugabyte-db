@@ -2,10 +2,9 @@
 
 If you have a previously running local universe, destroy it using the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```
-
 
 Start a new local universe with a replication factor of 1 (rf=1). We are passing the following options/flags:
 
@@ -13,7 +12,7 @@ Start a new local universe with a replication factor of 1 (rf=1). We are passing
 - `--num_shards_per_tserver 4`  This option controls the total number of tablets (or partitions) when creating a new table. By making this number 4, we will end up creating 12 tablets on a 3 node cluster. 
 - `--tserver_flags "memstore_size_mb=1"` This sets the total size of memstores on the tablet-servers to 1MB. We do this in order to force a flush of the data to disk when we insert a value more than 1MB, so that we can observe which tablets the data gets written to.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl --replication_factor 1 --num_shards_per_tserver 4 create \
              --tserver_flags "memstore_size_mb=1"
 ```
@@ -21,16 +20,16 @@ $ ./bin/yb-ctl --replication_factor 1 --num_shards_per_tserver 4 create \
 
 The above command creates a universe with one node. Let us add 2 more nodes to make this a 3-node, rf=1 universe. We need to pass the memstore size flag to each new tserver we add. You can do that by running the following:
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
 We can check the status of the cluster to confirm that we have 3 tservers.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl status
 ```
 ```sh
@@ -46,13 +45,13 @@ $ ./bin/yb-ctl status
 
 Create a Cassandra table. The keyspace and table name below must created exactly as shown below, since we will be using the sample application to write data into this table.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/cqlsh
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ```
-```sql
+```{.sql .copy .separator-gt}
 cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
@@ -82,7 +81,7 @@ What we see here is that there are 12 tablets as expected, and the key ranges ow
 
 Let us list out all the tablet directories and see their sizes. This can be done as follows.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
 ```
 ```sh
@@ -110,7 +109,7 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 - `--value_size 10000000`  - Generate the value being written as a random byte string of around 10MB size.
 - `--nouuid` - Do not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ java -jar java/yb-sample-apps.jar --workload CassandraKeyValue \
                                     --nodes 127.0.0.1:9042 \
                                     --nouuid \
@@ -129,10 +128,10 @@ $ java -jar java/yb-sample-apps.jar --workload CassandraKeyValue \
 
 Let us check what we have inserted using `cqlsh`.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/cqlsh
 ```
-```sh
+```{.sql .copy .separator-gt}
 cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 ```
 ```sh
@@ -145,7 +144,7 @@ cqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 
 Now let us check the sizes of the various tablets:
 
-```sh
+```{.sh .copy .separator-dollar}
 $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/table*/* | grep -v '0B'
 ```
 ```sh
@@ -166,10 +165,9 @@ We can also easily confirm that the `node-1` indeed has about 10MB of storage be
 
 ## 5. Automatic sharding when add nodes
 
-
 Let us add one more node to the universe for a total of 4 nodes, by running the following command.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
@@ -180,10 +178,10 @@ By looking at the tablet servers page, we find that the tablets are re-distribut
 
 Next, let us add 2 more nodes to the universe, making it a total of 6 nodes. We can do this by running the following.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
@@ -196,6 +194,6 @@ We can verify that the tablets are evenly distributed across the 6 nodes. Each n
 
 Optionally, you can shutdown the local cluster created in Step 1.
 
-```sh
+```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```

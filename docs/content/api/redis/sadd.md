@@ -22,24 +22,44 @@ If `emulate_redis_responses` is `false`, returns OK.
 
 ## EXAMPLES
 <li> `emulate_redis_responses` is `true`.
-```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "Africa"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SMEMBERS yuga_world
+```
+```sh
 1) "Africa"
 2) "America"
 ```
 </li>
 
 <li> `emulate_redis_responses` is `false`.
-```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "Africa"
+```
+```sh
 OK
+```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "America"
+```
+```sh
 OK
+```
+```{.sh .copy .separator-dollar}
 $ SMEMBERS yuga_world
+```
+```sh
 1) "Africa"
 2) "America"
 ```

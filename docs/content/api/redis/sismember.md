@@ -13,12 +13,22 @@ This command is a predicate for whether or not a value is a member of a set that
 Returns 1 if the specified member exists. Returns 0 otherwise.
 
 ## EXAMPLES
-```
+```{.sh .copy .separator-dollar}
 $ SADD yuga_world "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SISMEMBER yuga_world "America"
+```
+```sh
 1
+```
+```{.sh .copy .separator-dollar}
 $ SISMEMBER yuga_world "Moon"
+```
+```sh
 0
 ```
 
