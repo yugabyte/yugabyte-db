@@ -147,6 +147,32 @@ public class TestTransaction extends BaseCQLTest {
     // Verify writetimes are same.
     assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
     assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
+
+    // Test writes to the same row.
+    session.execute("truncate test_txn1;");
+    session.execute("begin transaction;" +
+                    "insert into test_txn1 (k, c1, c2) values (1, 1, 'v1');" +
+                    "insert into test_txn1 (k, c1, c2) values (2, 2, 'v2');" +
+                    "insert into test_txn1 (k, c1, c2) values (2, 22, 'v2');" +
+                    "insert into test_txn1 (k, c1, c2) values (3, 3, 'v3');" +
+                    "delete from test_txn1 where k = 1;" +
+                    "update test_txn1 set c2 = 'v22' where k = 2;" +
+                    "end transaction;");
+
+    // Verify the rows.
+    rows = new Vector<Row>();
+    values = new HashSet<String>();
+    for (Row row : session.execute("select k, c1, c2, writetime(c1), writetime(c2) " +
+                                   "from test_txn1;")) {
+      rows.add(row);
+      values.add(row.getInt("k") + "," + row.getInt("c1") + "," + row.getString("c2"));
+    }
+    assertEquals(new HashSet<String>(Arrays.asList("2,22,v22",
+                                                   "3,3,v3")), values);
+
+    // Verify writetimes are same.
+    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
+    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
   }
 
   @Test
@@ -188,6 +214,30 @@ public class TestTransaction extends BaseCQLTest {
   }
 
   @Test
+  public void testStaticColumn() throws Exception {
+    // Multiple writes to the same static row are not allowed
+    createTable("test_static", "h int, r int, s int static, c int, primary key ((h), r)", true);
+    session.execute("begin transaction;" +
+                    "insert into test_static (h, r, s, c) values (1, 1, 1, 1);" +
+                    "insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
+                    "end transaction;");
+
+    // Verify the rows.
+    Vector<Row> rows = new Vector<Row>();
+    HashSet<String> values = new HashSet<String>();
+    for (Row row : session.execute("select h, r, s, c, writetime(s), writetime(c) " +
+                                   "from test_static;")) {
+      rows.add(row);
+      values.add(row.getInt("h")+","+row.getInt("r")+","+row.getInt("s")+","+row.getInt("c"));
+    }
+    assertEquals(new HashSet<String>(Arrays.asList("1,1,3,1",
+                                                   "1,2,3,4")), values);
+    // Verify writetimes are same.
+    assertEquals(rows.get(0).getLong("writetime(s)"), rows.get(1).getLong("writetime(s)"));
+    assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(1).getLong("writetime(c)"));
+  }
+
+  @Test
   public void testInvalidStatements() throws Exception {
     createTables();
 
@@ -215,19 +265,6 @@ public class TestTransaction extends BaseCQLTest {
     // Conditional DML not supported yet
     runInvalidStmt("begin transaction;" +
                    "insert into test_txn1 (k, c1, c2) values (?, ?, ?) if not exists;" +
-                   "end transaction;");
-
-    // Multiple writes to the same row are not allowed
-    runInvalidStmt("begin transaction;" +
-                   "insert into test_txn1 (k, c1, c2) values (1, 1, 'v1');" +
-                   "delete from test_txn1 where k = 1;" +
-                   "end transaction;");
-
-    // Multiple writes to the same static row are not allowed
-    createTable("test_static", "h int, r int, s int static, c int, primary key ((h), r)", true);
-    runInvalidStmt("begin transaction;" +
-                   "insert into test_static (h, s) values (1, 1);" +
-                   "insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
                    "end transaction;");
   }
 
