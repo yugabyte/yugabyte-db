@@ -249,7 +249,6 @@ constexpr const char* const kDefaultCassandraPassword = "cassandra";
     }                                                                             \
   } while (false)
 
-
 ////////////////////////////////////////////////////////////
 // Table Loader
 ////////////////////////////////////////////////////////////
@@ -1421,7 +1420,6 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB req,
   RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true, namespace_id,
                                         partitions, nullptr, resp, &this_table_info));
 
-
   TRACE("Inserted new table info into CatalogManager maps");
 
   // NOTE: the table is already locked for write at this point,
@@ -2162,7 +2160,6 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
     }
   }
 
-
   table->AbortTasks();
   scoped_refptr<DeletedTableInfo> deleted_table(new DeletedTableInfo(table.get()));
 
@@ -2648,6 +2645,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       }
     }
 
+    if (req->exclude_system_tables() &&
+        (IsSystemTable(*entry.second) || IsRedisTable(*entry.second))) {
+      continue;
+    }
+
     ListTablesResponsePB::TableInfo *table = resp->add_tables();
     table->set_id(entry.second->id());
     table->set_name(ltm->data().name());
@@ -3088,7 +3090,6 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   return Status::OK();
 }
 
-
 Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
                                        GrantPermissionResponsePB* resp,
                                        rpc::RpcContext* rpc) {
@@ -3140,7 +3141,6 @@ Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
                           req->role_name()));
     return SetupError(resp->mutable_error(), MasterErrorPB::ROLE_NOT_FOUND, s);
   }
-
 
   SysRoleEntryPB* metadata;
   rp->mutable_metadata()->StartMutation();
@@ -3208,7 +3208,6 @@ Status CatalogManager::GrantPermission(const GrantPermissionRequestPB* req,
   LOG(INFO) << "Modified Permission for role" << rp->id();
   return Status::OK();
 }
-
 
 Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                                        CreateNamespaceResponsePB* resp,
@@ -3413,7 +3412,6 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
   LOG(INFO) << "CreateRole from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-
   RETURN_NOT_OK(CheckOnline());
   Status s;
 
@@ -3432,7 +3430,6 @@ Status CatalogManager::CreateRole(const CreateRoleRequestPB* req,
   return s;
 
 }
-
 
 Status CatalogManager::DeleteRole(const DeleteRoleRequestPB* req,
                                   DeleteRoleResponsePB* resp,
@@ -4519,7 +4516,6 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
         Substitute("TableInfo for tablet $0 is not initialized (aborted CreateTable attempt?)",
                    tablet->tablet_id()));
   }
-
 
   ReplicationInfoPB replication_info;
   if (table_guard->data().pb.has_replication_info()) {
