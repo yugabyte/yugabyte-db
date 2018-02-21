@@ -1282,8 +1282,11 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 		/* Open the current relation */
 		relation = heap_open(relationObjectId, AccessShareLock);
 
-		if (relation->rd_rel->relkind == RELKIND_RELATION ||
-				relation->rd_rel->relkind == RELKIND_MATVIEW)
+		if (relation->rd_rel->relkind == RELKIND_RELATION
+#if PG_VERSION_NUM >= 90300
+				|| relation->rd_rel->relkind == RELKIND_MATVIEW
+#endif
+				)
 		{
 			ListCell   *lc;
 
