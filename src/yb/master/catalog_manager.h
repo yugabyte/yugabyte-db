@@ -858,12 +858,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const std::string& salted_hash,
                                     const bool login, const bool superuser);
 
-
   // Grant one role to another role
   CHECKED_STATUS GrantRole(const GrantRoleRequestPB* req,
                            GrantRoleResponsePB* resp,
                            rpc::RpcContext* rpc);
-
 
   // Create a new User-Defined Type with the specified attributes.
   //
@@ -872,7 +870,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreateUDType(const CreateUDTypeRequestPB* req,
                               CreateUDTypeResponsePB* resp,
                               rpc::RpcContext* rpc);
-
 
   // Delete the specified UDType.
   //
@@ -907,7 +904,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
       const NamespaceName& namespace_name, const TableName& table_name);
 
-
   // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
   // to retrieve all Tables irrespective of their state or just the tables with the state
   // 'RUNNING'. Typically, if you want to retrieve all the live tables in the system, you should
@@ -927,7 +923,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
 
-  // Checks if the table is the internal redis table. Returns false if either not redis table or
+  // Checks if the table is the internal redis table. Returns false if either the redis table or
   // its namespace info is not found, and returns true otherwise.
   bool IsRedisTable(const TableInfo& table) const;
 

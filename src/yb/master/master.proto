@@ -659,6 +659,9 @@ message ListTablesRequestPB {
 
   // Can be used to list tables for this one particular namespace.
   optional NamespaceIdentifierPB namespace = 2;
+
+  // Exclude system tables.
+  optional bool exclude_system_tables = 3 [default = false];
 }
 
 message ListTablesResponsePB {

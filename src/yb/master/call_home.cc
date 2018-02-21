@@ -236,6 +236,7 @@ class TablesCollector : public CollectorBase {
 
   void Collect(CollectionLevel collection_level) {
     ListTablesRequestPB req;
+    req.set_exclude_system_tables(true);
     ListTablesResponsePB resp;
     auto status = master()->catalog_manager()->ListTables(&req, &resp);
     if (collection_level == CollectionLevel::LOW) {
