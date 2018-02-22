@@ -47,13 +47,19 @@ a {
 
   .wrapper {
     padding-top: 36px !important;
-    padding-bottom: 70px !important;
+    padding-bottom: 90px !important;
   }
 }
 
-@media screen and (max-width: 799px) {
+@media screen and (max-width: 767px) {
   .article .wrapper {
     padding-bottom: 200px !important;
+  }
+}
+
+@media screen and (max-width: 559px) {
+  .article .wrapper {
+    padding-bottom: 0 !important;
   }
 }
 
@@ -74,6 +80,9 @@ body {
   position: relative;
   min-height: 100%;
   padding-bottom: 120px;
+  @media only screen and (max-width: 559px) {
+    padding-bottom: 0px;
+  }
 }
 
 @media only screen and (max-width: 959px) {
@@ -174,6 +183,9 @@ body {
     font-family: Montserrat, sans-serif;
     font-size: 16px;
     font-weight: 500;
+  }
+  > ul > li > ul {
+    margin-left: 15px;
   }
   .node-toggle {
     position: relative;
@@ -388,6 +400,9 @@ body {
 .pagination > div {
   height: 70px !important;
   width: 45% !important;
+  @media screen and (max-width: 559px) {
+    height: 50px !important;
+  }
 }
 .pagination .next {
   float: right;
@@ -401,10 +416,15 @@ body {
 .pagination .direction {
   display: none !important;
 }
+.pagination .icon {
+  padding: 8px 0;
+  margin: 4px 0;
+}
 
 @media screen and (max-width: 559px) {
   .pagination {
     height: auto !important;
+    margin-bottom: 0px;
   }
   .pagination .previous,
   .pagination .next {
@@ -415,7 +435,7 @@ body {
     text-align: right !important;
   }
   .pagination .page {
-    display: inline-block !important;
+    display: flex !important;
     position: relative;
     top: 0 !important;
     text-align: center !important;

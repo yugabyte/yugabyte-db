@@ -135,10 +135,11 @@ a.anchor {
 
   .navbar-brand {
     height: $HEADER_HEIGHT;
-    padding: 20px 6px;
+    padding: 19px 6px;
 
     @media screen and (max-width: 991px) {
       height: 58px;
+      padding: 15px 6px;
     }
   }
 

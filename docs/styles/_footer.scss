@@ -23,7 +23,10 @@
     margin-bottom: 20px;
   }
 
-  @media screen and (max-width: 767px) {
+    @media screen and (max-width: 559px) {
+      position: static;
+    }
+    @media screen and (max-width: 767px) {
     .nav-logo {
       height: 36px;
       margin: 0 10px 15px 0;
@@ -100,6 +103,10 @@
     @media screen and (max-width: 767px) {
       text-align: center;
       margin: 10px 15%;
+    }
+    @media screen and (max-width: 480px) {
+      text-align: center;
+      margin: 10px 5%;
     }
   }
 }
