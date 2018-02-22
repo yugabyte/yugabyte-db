@@ -222,19 +222,17 @@ bool RemoteTablet::stale() const {
 
 bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts,
                                      const Status& status) {
-  bool found = false;
   std::lock_guard<simple_spinlock> l(lock_);
   VLOG(2) << "Tablet " << tablet_id_ << ": Current remote replicas in meta cache: "
-          << ReplicasAsStringUnlocked();
-  LOG(WARNING) << "Tablet " << tablet_id_ << ": Replica " << ts->ToString()
-               << " has failed: " << status.ToString();
+          << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
+          << " has failed: " << status.ToString();
   for (RemoteReplica& rep : replicas_) {
     if (rep.ts == ts) {
       rep.failed = true;
-      found = true;
+      return true;
     }
   }
-  return found;
+  return false;
 }
 
 int RemoteTablet::GetNumFailedReplicas() const {

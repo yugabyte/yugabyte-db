@@ -4905,7 +4905,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id,
   if (GetReplicationFactor(&num_replicas).ok() && num_replicas > 0 &&
       locs_pb->replicas().size() != num_replicas) {
     YB_LOG_EVERY_N(WARNING, 100) << "Expected replicas " << num_replicas << " but found "
-        << locs_pb->replicas().size();
+        << locs_pb->replicas().size() << " for tablet " << tablet_id;
   }
 
   return s;
