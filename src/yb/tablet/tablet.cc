@@ -829,11 +829,14 @@ Status Tablet::ImportData(const std::string& source_dir) {
 // TODO(dtxn) use separate thread for applying intents.
 // TODO(dtxn) use multiple batches when applying really big transaction.
 Status Tablet::ApplyIntents(const TransactionApplyData& data) {
+  Slice reverse_index_upperbound;
   auto reverse_index_iter = docdb::CreateRocksDBIterator(
       rocksdb_.get(),
       docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
       boost::none,
-      rocksdb::kDefaultQueryId);
+      rocksdb::kDefaultQueryId,
+      nullptr,
+      &reverse_index_upperbound);
 
   auto intent_iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
                                                   docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -844,6 +847,10 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
   Slice transaction_id_slice(data.transaction_id.data, TransactionId::static_size());
   AppendTransactionKeyPrefix(data.transaction_id, &txn_reverse_index_prefix);
 
+  KeyBytes txn_reverse_index_upperbound = txn_reverse_index_prefix;
+  txn_reverse_index_upperbound.AppendValueType(ValueType::kMaxByte);
+  reverse_index_upperbound = txn_reverse_index_upperbound.AsSlice();
+
   reverse_index_iter->Seek(txn_reverse_index_prefix.data());
 
   WriteBatch rocksdb_write_batch;
@@ -853,10 +860,6 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
   IntraTxnWriteId write_id = 0;
   while (reverse_index_iter->Valid()) {
     rocksdb::Slice key_slice(reverse_index_iter->key());
-
-    if (!key_slice.starts_with(txn_reverse_index_prefix.data())) {
-      break;
-    }
 
     // If the key ends at the transaction id then it is transaction metadata (status tablet,
     // isolation level etc.).
