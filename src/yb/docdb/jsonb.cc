@@ -78,8 +78,21 @@ CHECKED_STATUS Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::str
         RETURN_NOT_OK(ToJsonbInternal(value, jsonb));
         break;
       case rapidjson::Type::kNumberType:
-        // TODO: Need to support float, doubles and unsigned ints.
-        AppendBigEndianUInt64(value.GetInt64(), jsonb);
+        if (value.IsInt()) {
+          AppendInt32ToKey(value.GetInt(), jsonb);
+        } else if (value.IsUint()) {
+          AppendBigEndianUInt32(value.GetUint(), jsonb);
+        } else if (value.IsInt64()) {
+          AppendInt64ToKey(value.GetInt64(), jsonb);
+        } else if (value.IsUint64()) {
+          AppendBigEndianUInt64(value.GetUint64(), jsonb);
+        } else if (value.IsFloat()) {
+          AppendFloatToKey(value.GetFloat(), jsonb);
+        } else if (value.IsDouble()) {
+          AppendDoubleToKey(value.GetDouble(), jsonb);
+        } else {
+          return STATUS(NotSupported, "Numeric type is not supported");
+        }
         break;
       case rapidjson::Type::kStringType:
         jsonb->append(value.GetString());
@@ -99,6 +112,7 @@ CHECKED_STATUS Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::str
   DCHECK_EQ(kv_pairs.size(), value_offsets.size());
   int index = 0;
   for (const auto& entry : kv_pairs) {
+    const rapidjson::Value& value = entry.second;
     JEntry jentry = value_offsets[index] & kJEOffsetMask;
     switch (entry.second.GetType()) {
       case rapidjson::Type::kNullType:
@@ -117,7 +131,21 @@ CHECKED_STATUS Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::str
         jentry |= kJEIsContainer;
         break;
       case rapidjson::Type::kNumberType:
-        jentry |= kJEIsNumeric;
+        if (value.IsInt()) {
+          jentry |= kJEIsInt;
+        } else if (value.IsUint()) {
+          jentry |= kJEIsUInt;
+        } else if (value.IsInt64()) {
+          jentry |= kJEIsInt64;
+        } else if (value.IsUint64()) {
+          jentry |= kJEIsUInt64;
+        } else if (value.IsFloat()) {
+          jentry |= kJEIsFloat;
+        } else if (value.IsDouble()) {
+          jentry |= kJEIsDouble;
+        } else {
+          return STATUS(NotSupported, "Numeric type is not supported");
+        }
         break;
       case rapidjson::Type::kStringType:
         jentry |= kJEIsString;
@@ -134,6 +162,16 @@ CHECKED_STATUS Jsonb::ToJsonbInternal(const rapidjson::Value& document, std::str
   DCHECK_EQ(data_begin_offset, metadata_offset);
   return Status::OK();
 }
+
+namespace {
+
+template <typename T>
+void AddNumericMember(rapidjson::Document* document, const string& key, T value) {
+  document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
+                      rapidjson::Value(value),
+                      document->GetAllocator());
+}
+} // anonymous namespace
 
 Status Jsonb::FromJsonbInternal(const std::string& jsonb, size_t offset,
                                 rapidjson::Document* document) {
@@ -179,35 +217,59 @@ Status Jsonb::FromJsonbInternal(const std::string& jsonb, size_t offset,
                                                               metadata_begin_offset);
     DCHECK_LE(value_offset + value_length, jsonb.size());
 
+    rapidjson::Value json_key(key.c_str(), key.size(), document->GetAllocator());
     switch (value_metadata & kJETypeMask) {
       case kJEIsString: {
         const std::string &value = jsonb.substr(value_offset, value_length);
-        document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
+        document->AddMember(json_key,
                             rapidjson::Value(value.c_str(), value.size(), document->GetAllocator()),
                             document->GetAllocator());
         break;
       }
-      case kJEIsNumeric: {
-        int64_t value = BigEndian::Load64(&jsonb[value_offset]);
-        document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
-                            rapidjson::Value(value),
-                            document->GetAllocator());
+      case kJEIsInt: {
+        int32_t value = DecodeInt32FromKey(&jsonb[value_offset]);
+        AddNumericMember(document, key, value);
+        break;
+      }
+      case kJEIsUInt: {
+        uint32_t value = BigEndian::Load32(&jsonb[value_offset]);
+        AddNumericMember(document, key, value);
+        break;
+      }
+      case kJEIsInt64: {
+        int64_t value = DecodeInt64FromKey(&jsonb[value_offset]);
+        AddNumericMember(document, key, value);
+        break;
+      }
+      case kJEIsUInt64: {
+        uint64_t value = BigEndian::Load64(&jsonb[value_offset]);
+        AddNumericMember(document, key, value);
+        break;
+      }
+      case kJEIsDouble: {
+        double value = DecodeDoubleFromKey(&jsonb[value_offset]);
+        AddNumericMember(document, key, value);
+        break;
+      }
+      case kJEIsFloat: {
+        float value = DecodeFloatFromKey(&jsonb[value_offset]);
+        AddNumericMember(document, key, value);
         break;
       }
       case kJEIsBoolFalse: {
-        document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
+        document->AddMember(json_key,
                             rapidjson::Value(false),
                             document->GetAllocator());
         break;
       }
       case kJEIsBoolTrue: {
-        document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
+        document->AddMember(json_key,
                             rapidjson::Value(true),
                             document->GetAllocator());
         break;
       }
       case kJEIsNull: {
-        document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
+        document->AddMember(json_key,
                             rapidjson::Value(rapidjson::Type::kNullType),
                             document->GetAllocator());
         break;
@@ -216,8 +278,8 @@ Status Jsonb::FromJsonbInternal(const std::string& jsonb, size_t offset,
         rapidjson::Document nested_container(&document->GetAllocator());
         nested_container.SetObject();
         RETURN_NOT_OK(FromJsonbInternal(jsonb, value_offset, &nested_container));
-        document->AddMember(rapidjson::Value(key.c_str(), key.size(), document->GetAllocator()),
-                            nested_container,
+        document->AddMember(json_key,
+                            std::move(nested_container),
                             document->GetAllocator());
         break;
       }

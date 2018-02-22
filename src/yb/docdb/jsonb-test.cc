@@ -18,18 +18,42 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::to_string;
+using std::numeric_limits;
+
 namespace yb {
 namespace docdb {
 
 TEST(JsonbTest, TestJsonbSerialization) {
   std::string jsonb;
-  ASSERT_OK(Jsonb::ToJsonb(
-      "{ \"b\" : 1, \"a\" : { \"d\" : true, \"g\" : -100, \"c\" : false, \"f\" : \"hello\", "
-          "\"e\" : null} }", &jsonb));
+  ASSERT_OK(Jsonb::ToJsonb(R"#(
+      {
+        "b" : 1,
+        "a" :
+        {
+          "d" : true,
+          "q" :
+          {
+            "p" : 4294967295,
+            "r" : -2147483648,
+            "s" : 2147483647
+          },
+          "g" : -100,
+          "c" : false,
+          "f" : "hello",
+          "x" : 2.1,
+          "y" : 9223372036854775807,
+          "z" : -9223372036854775808,
+          "u" : 18446744073709551615,
+          "l" : 2147483647.123123e+75,
+          "e" : null
+        }
+      })#", &jsonb));
   ASSERT_FALSE(jsonb.empty());
 
   rapidjson::Document document;
   ASSERT_OK(Jsonb::FromJsonb(jsonb, &document));
+
   rapidjson::StringBuffer buffer;
   rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
   document.Accept(writer);
@@ -51,6 +75,41 @@ TEST(JsonbTest, TestJsonbSerialization) {
   ASSERT_TRUE(document["a"].HasMember("g"));
   ASSERT_TRUE(document["a"]["g"].IsInt64());
   ASSERT_EQ(-100, document["a"]["g"].GetInt64());
+
+  ASSERT_TRUE(document["a"].HasMember("q"));
+  ASSERT_TRUE(document["a"]["q"].IsObject());
+
+  ASSERT_TRUE(document["a"]["q"].HasMember("p"));
+  ASSERT_TRUE(document["a"]["q"]["p"].IsUint());
+  ASSERT_EQ(4294967295, document["a"]["q"]["p"].GetUint());
+
+  ASSERT_TRUE(document["a"]["q"].HasMember("r"));
+  ASSERT_TRUE(document["a"]["q"]["r"].IsInt());
+  ASSERT_EQ(-2147483648, document["a"]["q"]["r"].GetInt());
+
+  ASSERT_TRUE(document["a"]["q"].HasMember("s"));
+  ASSERT_TRUE(document["a"]["q"]["s"].IsInt());
+  ASSERT_EQ(2147483647, document["a"]["q"]["s"].GetInt());
+
+  ASSERT_TRUE(document["a"].HasMember("x"));
+  ASSERT_TRUE(document["a"]["x"].IsFloat());
+  ASSERT_FLOAT_EQ(2.1f, document["a"]["x"].GetFloat());
+
+  ASSERT_TRUE(document["a"].HasMember("u"));
+  ASSERT_TRUE(document["a"]["u"].IsUint64());
+  ASSERT_EQ(18446744073709551615ULL, document["a"]["u"].GetUint64());
+
+  ASSERT_TRUE(document["a"].HasMember("y"));
+  ASSERT_TRUE(document["a"]["y"].IsInt64());
+  ASSERT_EQ(9223372036854775807LL, document["a"]["y"].GetInt64());
+
+  ASSERT_TRUE(document["a"].HasMember("z"));
+  ASSERT_TRUE(document["a"]["z"].IsInt64());
+  ASSERT_EQ(-9223372036854775808ULL, document["a"]["z"].GetInt64());
+
+  ASSERT_TRUE(document["a"].HasMember("l"));
+  ASSERT_TRUE(document["a"]["l"].IsDouble());
+  ASSERT_DOUBLE_EQ(2147483647.123123e+75, document["a"]["l"].GetDouble());
 
   ASSERT_TRUE(document.HasMember("b"));
   ASSERT_TRUE(document["b"].IsInt64());
