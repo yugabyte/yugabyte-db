@@ -298,7 +298,8 @@ rocksdb::ReadOptions PrepareReadOptions(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
+    const Slice* iterate_upper_bound) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
   if (FLAGS_use_docdb_aware_bloom_filter &&
@@ -308,6 +309,7 @@ rocksdb::ReadOptions PrepareReadOptions(
         NewTableAwareReadFileFilter(read_opts, user_key_for_filter.get());
   }
   read_opts.file_filter = std::move(file_filter);
+  read_opts.iterate_upper_bound = iterate_upper_bound;
   return read_opts;
 }
 
@@ -318,9 +320,11 @@ unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
-  return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(PrepareReadOptions(rocksdb,
-      bloom_filter_mode, user_key_for_filter, query_id, std::move(file_filter))));
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
+    const Slice* iterate_upper_bound) {
+  rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
+      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
+  return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
 }
 
 unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
@@ -330,11 +334,11 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
     const ReadHybridTime& read_time,
-    std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
+    const Slice* iterate_upper_bound) {
   rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter));
-  return std::make_unique<IntentAwareIterator>(
-      rocksdb, read_opts, read_time, txn_op_context);
+      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
+  return std::make_unique<IntentAwareIterator>(rocksdb, read_opts, read_time, txn_op_context);
 }
 
 void InitRocksDBOptions(

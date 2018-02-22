@@ -104,7 +104,8 @@ std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
+    const Slice* iterate_upper_bound = nullptr);
 
 // Values and transactions committed later than high_ht can be skipped, so we won't spend time
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
@@ -115,7 +116,8 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& transaction_context,
     const ReadHybridTime& read_time,
-    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
+    const Slice* iterate_upper_bound = nullptr);
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The 'statistics'
 // object provided by the caller will be used by RocksDB to maintain the stats for the tablet

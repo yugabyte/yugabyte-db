@@ -109,9 +109,14 @@ class ConflictResolver {
 
     const auto& conflicting_intent_types = kIntentConflicts[static_cast<size_t>(type)];
 
+    KeyBytes upperbound_key(*intent_key_prefix);
+    upperbound_key.AppendValueType(ValueType::kMaxByte);
+    intent_key_upperbound_ = upperbound_key.AsSlice();
+
     intent_key_prefix->AppendValueType(ValueType::kIntentType);
-    BOOST_SCOPE_EXIT(intent_key_prefix) {
+    BOOST_SCOPE_EXIT(intent_key_prefix, &intent_key_upperbound_) {
       intent_key_prefix->RemoveValueTypeSuffix(ValueType::kIntentType);
+      intent_key_upperbound_.clear();
     } BOOST_SCOPE_EXIT_END;
     intent_iter_->Seek(intent_key_prefix->data());
     while (intent_iter_->Valid()) {
@@ -165,7 +170,9 @@ class ConflictResolver {
           db_,
           BloomFilterMode::DONT_USE_BLOOM_FILTER,
           boost::none /* user_key_for_filter */,
-          rocksdb::kDefaultQueryId);
+          rocksdb::kDefaultQueryId,
+          nullptr /* file_filter */,
+          &intent_key_upperbound_);
     }
   }
 
@@ -280,6 +287,7 @@ class ConflictResolver {
 
   rocksdb::DB* db_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
+  Slice intent_key_upperbound_;
   TransactionStatusManager& status_manager_;
   ConflictResolverContext& context_;
   TransactionIdSet conflicts_;
