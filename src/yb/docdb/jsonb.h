@@ -83,11 +83,16 @@ class Jsonb {
 
   // Values stored in the type bits.
   static constexpr uint32_t kJEIsString = 0x00000000;
-  static constexpr uint32_t kJEIsNumeric = 0x10000000;
   static constexpr uint32_t kJEIsBoolFalse = 0x20000000;
   static constexpr uint32_t kJEIsBoolTrue = 0x30000000;
   static constexpr uint32_t kJEIsNull = 0x40000000;
   static constexpr uint32_t kJEIsContainer = 0x50000000; // could be array or object.
+  static constexpr uint32_t kJEIsInt = 0x60000000;
+  static constexpr uint32_t kJEIsUInt = 0x70000000;
+  static constexpr uint32_t kJEIsInt64 = 0x80000000;
+  static constexpr uint32_t kJEIsUInt64 = 0x90000000;
+  static constexpr uint32_t kJEIsFloat = 0xA0000000;
+  static constexpr uint32_t kJEIsDouble = 0xB0000000;
 };
 
 } // namespace docdb

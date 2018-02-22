@@ -90,6 +90,11 @@ inline int64_t DecodeInt64FromKey(const rocksdb::Slice& slice) {
   return v ^ kInt64SignBitFlipMask;
 }
 
+inline int64_t DecodeInt32FromKey(const rocksdb::Slice& slice) {
+  uint32_t v = BigEndian::Load32(slice.data());
+  return v ^ kInt32SignBitFlipMask;
+}
+
 inline void AppendInt32ToKey(int32_t val, std::string* dest) {
   char buf[sizeof(int32_t)];
   BigEndian::Store32(buf, val ^ kInt32SignBitFlipMask);
