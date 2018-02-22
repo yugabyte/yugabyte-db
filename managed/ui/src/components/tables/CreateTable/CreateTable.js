@@ -72,7 +72,7 @@ class CreateTable extends Component {
     return (
       <YBPanelItem
         header={
-          <h2 class="content-title">Create Table</h2>
+          <h2 className="content-title">Create Table</h2>
         }
         body={
           <div>
