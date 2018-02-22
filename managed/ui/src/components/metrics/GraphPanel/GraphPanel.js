@@ -188,9 +188,14 @@ class GraphPanel extends Component {
       panelData = "Error receiving response from Graph Server";
     }
     return (
-      <Accordion>
-        <Panel header={panelTypes[type].title} key={panelTypes[type]} className="metrics-container">
-          {panelData}
+      <Accordion id={panelTypes[type].title}>
+        <Panel key={panelTypes[type]} className="metrics-container">
+          <Panel.Heading>
+            <Panel.Title tag="h4" toggle>{panelTypes[type].title}</Panel.Title>
+          </Panel.Heading>
+          <Panel.Body collapsible>
+            {panelData}
+          </Panel.Body>
         </Panel>
       </Accordion>
     );
