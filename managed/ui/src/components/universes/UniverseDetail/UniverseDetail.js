@@ -54,7 +54,7 @@ class UniverseDetail extends Component {
   }
 
   onResize(dimensions) {
-    dimensions.width -= 40;
+    dimensions.width -= 20;
     this.setState({dimensions});
   }
 

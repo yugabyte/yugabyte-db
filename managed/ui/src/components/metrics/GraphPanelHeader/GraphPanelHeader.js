@@ -278,33 +278,36 @@ class GraphPanelHeader extends Component {
       <YBPanelItem
         className="graph-panel"
         header={
-          <FlexContainer>
-            <FlexGrow power={1}>
-              <div className="filter-container">
-                {universePicker}
-                <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
-                            selectedUniverse={this.state.currentSelectedUniverse}
-                            selectedNode={this.state.currentSelectedNode}/>
-                <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
-              </div>
-            </FlexGrow>
-            <FlexGrow>
-              <form name="GraphPanelFilterForm">
-                <div id="reportrange" className="pull-right">
-                  {datePicker}
-                  <Dropdown id="graph-filter-dropdown" pullRight={true} >
-                    <Dropdown.Toggle>
-                      <i className="fa fa-clock-o"></i>&nbsp;
-                      {this.state.filterLabel}
-                    </Dropdown.Toggle>
-                    <Dropdown.Menu>
-                      {menuItems}
-                    </Dropdown.Menu>
-                  </Dropdown>
+          <div>
+            {this.props.origin === "customer" ? <h2 className="task-list-header content-title">Metrics</h2> : ''}
+            <FlexContainer>
+              <FlexGrow power={1}>
+                <div className="filter-container">
+                  {universePicker}
+                  <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
+                              selectedUniverse={this.state.currentSelectedUniverse}
+                              selectedNode={this.state.currentSelectedNode}/>
+                  <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
                 </div>
-              </form>
-            </FlexGrow>
-          </FlexContainer>
+              </FlexGrow>
+              <FlexGrow>
+                <form name="GraphPanelFilterForm">
+                  <div id="reportrange" className="pull-right">
+                    {datePicker}
+                    <Dropdown id="graph-filter-dropdown" pullRight={true} >
+                      <Dropdown.Toggle>
+                        <i className="fa fa-clock-o"></i>&nbsp;
+                        {this.state.filterLabel}
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu>
+                        {menuItems}
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </div>
+                </form>
+              </FlexGrow>
+            </FlexContainer>
+          </div>
         }
         body={
           this.props.children
