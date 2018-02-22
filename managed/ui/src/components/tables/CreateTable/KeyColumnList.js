@@ -9,6 +9,11 @@ import { isValidArray } from '../../../utils/ObjectUtils';
 import CollectionSubtypeRow from './CollectionSubtypeRow';
 
 export default class KeyColumnList extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {selectedTypes: []};
+  }
+
   static propTypes = {
     columnType: PropTypes.oneOf(['partitionKey', 'clustering', 'other'])
   };
@@ -71,7 +76,6 @@ export default class KeyColumnList extends Component {
   componentDidMount() {
     const {fields} = this.props;
     fields.push({});
-    this.state = {selectedTypes: []};
   }
 
   render() {
