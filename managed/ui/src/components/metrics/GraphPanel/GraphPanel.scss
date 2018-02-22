@@ -73,6 +73,7 @@
   .panel-body {
     border: none !important;
     padding: 10px 0px !important;
+    margin-right: -7px;
   }
 }
 
@@ -86,6 +87,14 @@
 }
 
 /* Symbol for showing chevron right before the title */
+.graph-panel .panel-title {
+  font-size: 18px;
+  margin-top: 0;
+  font-family: 'Montserrat', 'Helvetica Neue', sans-serif;
+  letter-spacing: -.03em;
+  font-weight: 500;
+  line-height: 1;
+}
 .graph-panel .panel-title a:after {
   font-family: 'FontAwesome';
   content: "\f078";
