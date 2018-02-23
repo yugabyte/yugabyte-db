@@ -20,3 +20,9 @@
     font-weight: 500;
     color: $YB_DARK_GRAY;
 }
+
+.progressbar .failed:before {
+    background-color: #e73e3e;
+    color: white;
+    border: transparent;
+}
