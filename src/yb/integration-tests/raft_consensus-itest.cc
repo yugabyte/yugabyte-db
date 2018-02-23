@@ -63,6 +63,7 @@
 #include "yb/rpc/messenger.h"
 
 #include "yb/server/server_base.pb.h"
+#include "yb/server/hybrid_clock.h"
 
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
@@ -87,10 +88,14 @@ METRIC_DECLARE_gauge_int64(raft_term);
 namespace yb {
 namespace tserver {
 
+using std::unordered_map;
+using std::unordered_set;
+using std::vector;
+using std::shared_ptr;
+
 using client::YBSession;
 using client::YBTable;
 using client::YBTableName;
-using std::shared_ptr;
 using consensus::ConsensusRequestPB;
 using consensus::ConsensusResponsePB;
 using consensus::ConsensusServiceProxy;
@@ -118,9 +123,8 @@ using master::TabletLocationsPB;
 using rpc::RpcController;
 using server::SetFlagRequestPB;
 using server::SetFlagResponsePB;
-using std::unordered_map;
-using std::unordered_set;
-using std::vector;
+using server::HybridClock;
+using server::ClockPtr;
 using strings::Substitute;
 
 static const int kConsensusRpcTimeoutForTests = 50;
@@ -133,7 +137,9 @@ static const int kTestRowIntVal = 5678;
 class RaftConsensusITest : public TabletServerIntegrationTestBase {
  public:
   RaftConsensusITest()
-      : inserters_(FLAGS_num_client_threads) {
+      : inserters_(FLAGS_num_client_threads),
+        clock_(new HybridClock()) {
+    CHECK_OK(clock_->Init());
   }
 
   void SetUp() override {
@@ -440,6 +446,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
   std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
+  ClockPtr clock_;
 };
 
 void RaftConsensusITest::AddFlagsForLogRolls(vector<string>* extra_tserver_flags) {
@@ -1463,7 +1470,7 @@ TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
 void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
   ReplicateMsg* msg = req->add_ops();
   msg->mutable_id()->CopyFrom(id);
-  msg->set_hybrid_time(id.index());
+  msg->set_hybrid_time(clock_->Now().ToUint64());
   msg->set_op_type(consensus::WRITE_OP);
   WriteRequestPB* write_req = msg->mutable_write_request();
   write_req->set_tablet_id(tablet_id_);

@@ -144,7 +144,7 @@ static bool kBindToUniqueLoopbackAddress = false;
 static bool kBindToUniqueLoopbackAddress = true;
 #endif
 
-constexpr size_t kDefaultMemoryLimitHardBytes = 1_GB;
+constexpr size_t kDefaultMemoryLimitHardBytes = NonTsanVsTsan(1_GB, 512_MB);
 
 ExternalMiniClusterOptions::ExternalMiniClusterOptions()
     : bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),

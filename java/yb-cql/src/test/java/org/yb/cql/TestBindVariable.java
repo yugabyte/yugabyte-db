@@ -1408,9 +1408,10 @@ public class TestBindVariable extends BaseCQLTest {
 
     // simple bind
     {
+      Integer ttlSeconds = Integer.valueOf(2);
       String insertStmt = "INSERT INTO test_bind (h1, h2, r1, r2, v1, v2) " +
               "VALUES (1, '1', 1, '1', ?, ?) USING TTL ?";
-      session.execute(insertStmt, new Integer(2), "2", new Integer(1));
+      session.execute(insertStmt, new Integer(2), "2", ttlSeconds);
 
       // checking result
       ResultSet rs = session.execute(selectStmt);
@@ -1420,7 +1421,7 @@ public class TestBindVariable extends BaseCQLTest {
       assertEquals("2", row.getString("v2"));
 
       // checking value expires
-      TestUtils.waitForTTL(1000L);
+      TestUtils.waitForTTL(ttlSeconds.intValue() * 1000);
       rs = session.execute(selectStmt);
       assertEquals(0, rs.getAvailableWithoutFetching());
     }

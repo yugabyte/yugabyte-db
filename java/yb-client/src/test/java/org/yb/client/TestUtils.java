@@ -452,6 +452,10 @@ public class TestUtils {
     return getBuildType().equals("tsan");
   }
 
+  public static long nonTsanVsTsan(long nonTsanValue, long tsanValue) {
+    return isTSAN() ? tsanValue : nonTsanValue;
+  }
+
   /** @return a timeout multiplier to apply in tests based on the build type */
   public static double getTimeoutMultiplier() {
     return isTSAN() ? 3.0 : 1.0;
@@ -480,7 +484,7 @@ public class TestUtils {
    * @param ttl the ttl (in msec) to wait for expiry.
    * @throws Exception
    */
-  public static void waitForTTL(Long ttl) throws Exception {
+  public static void waitForTTL(long ttl) throws Exception {
     Thread.sleep(ttl + WAIT_FOR_TTL_EXTENSION_MS);
   }
 

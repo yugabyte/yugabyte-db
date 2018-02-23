@@ -32,6 +32,11 @@ import java.util.Map;
 
 public class TestBatchRequest extends BaseCQLTest {
 
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 180;
+  }
+
   @Test
   public void testPreparedStatement() throws Exception {
     // Setup table.
@@ -195,7 +200,7 @@ public class TestBatchRequest extends BaseCQLTest {
   }
 
   @Test
-  public void testRecreateTable() throws Exception {
+  public void testRecreateTable1() throws Exception {
 
     // Test executing batch statements with recreated tables to verify metadata cache is flushed to
     // handle new table definition.
@@ -216,26 +221,29 @@ public class TestBatchRequest extends BaseCQLTest {
 
       // Verify the rows are inserted.
       assertQuery("SELECT * FROM test_batch",
-                  new HashSet<String>(Arrays.asList("Row[2, r1]",
-                                                    "Row[2, r2]",
-                                                    "Row[2, r3]",
-                                                    "Row[2, r4]",
-                                                    "Row[2, r5]",
-                                                    "Row[3, r1]",
-                                                    "Row[3, r2]",
-                                                    "Row[3, r3]",
-                                                    "Row[3, r4]",
-                                                    "Row[3, r5]",
-                                                    "Row[1, r1]",
-                                                    "Row[1, r2]",
-                                                    "Row[1, r3]",
-                                                    "Row[1, r4]",
-                                                    "Row[1, r5]")));
+          new HashSet<String>(Arrays.asList("Row[2, r1]",
+              "Row[2, r2]",
+              "Row[2, r3]",
+              "Row[2, r4]",
+              "Row[2, r5]",
+              "Row[3, r1]",
+              "Row[3, r2]",
+              "Row[3, r3]",
+              "Row[3, r4]",
+              "Row[3, r5]",
+              "Row[1, r1]",
+              "Row[1, r2]",
+              "Row[1, r3]",
+              "Row[1, r4]",
+              "Row[1, r5]")));
 
       // Drop test table.
       session.execute("DROP TABLE test_batch;");
     }
+  }
 
+  @Test
+  public void testRecreateTable2() throws Exception {
     for (int t = 0; t < 3; t++) {
       {
         // Create test table.
