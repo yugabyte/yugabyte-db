@@ -104,6 +104,10 @@ DEFINE_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
+DEFINE_int32(db_block_cache_num_shard_bits, 4,
+             "Number of bits to use for sharding the block cache (defaults to 4 bits)");
+TAG_FLAG(db_block_cache_num_shard_bits, advanced);
+
 DEFINE_test_flag(double, fault_crash_after_blocks_deleted, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
                  "after deleting the data blocks during tablet deletion.");
@@ -339,7 +343,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     block_cache_size_bytes = total_ram_avail * FLAGS_db_block_cache_size_percentage / 100;
   }
   if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
-    tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes);
+    tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
+                                                       FLAGS_db_block_cache_num_shard_bits);
     tablet_options_.block_cache->SetMetrics(server_->metric_entity());
   }
 
