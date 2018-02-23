@@ -1,10 +1,10 @@
-//Copyright YugaByte Inc.
+// Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
 import { UniverseDetail } from '../../universes';
 import { fetchUniverseInfo, fetchUniverseInfoResponse, resetUniverseInfo, fetchUniverseTasks,
   fetchUniverseTasksResponse, resetUniverseTasks, openDialog, closeDialog, getUniversePerNodeStatus,
-  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader,
+  getUniversePerNodeStatusResponse, getMasterLeader, getMasterLeaderResponse, resetMasterLeader, 
   performUniverseNodeAction, performUniverseNodeActionResponse
 } from '../../../actions/universe';
 
@@ -12,9 +12,9 @@ const mapDispatchToProps = (dispatch) => {
   return {
     getUniverseInfo: (uuid) => {
       dispatch(fetchUniverseInfo(uuid))
-        .then((response) => {
-          dispatch(fetchUniverseInfoResponse(response.payload));
-        });
+      .then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
     },
 
     getMasterLeader: (uuid) => {
@@ -43,9 +43,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     fetchUniverseTasks: (uuid) => {
       dispatch(fetchUniverseTasks(uuid))
-        .then((response) => {
-          dispatch(fetchUniverseTasksResponse(response.payload));
-        });
+      .then((response) => {
+        dispatch(fetchUniverseTasksResponse(response.payload));
+      });
     },
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
