@@ -136,6 +136,7 @@ class UniverseForm extends Component {
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
         accessKeyCode: formValues[clusterType].accessKeyCode,
+        replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
