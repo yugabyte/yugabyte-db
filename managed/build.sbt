@@ -26,7 +26,7 @@ libraryDependencies ++= Seq(
   "com.google.protobuf" % "protobuf-java" % "2.6.1"
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
-lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("true")
+lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
 resolvers += {
   if (mavenLocal != null && mavenLocal.equals("true")) {
     Resolver.mavenLocal

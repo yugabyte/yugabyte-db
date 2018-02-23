@@ -119,9 +119,14 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
-  'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields', 'accessKeyCode',
-  'spotPrice', 'masterGFlags', 'tserverGFlags'];
+const formFieldNames =
+  ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
+    'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
+    'primary.masterGFlags', 'primary.tserverGFlags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
+    'primary.volumeSize', 'primary.ebsType',
+    'async.provider', 'async.providerType', 'async.spotPrice',
+    'async.regionList', 'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode',
+    'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'asyncClusters'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
@@ -137,28 +142,34 @@ function mapStateToProps(state, ownProps) {
     "useSpotPrice": IN_DEVELOPMENT_MODE,
     "assignPublicIP":  true
   };
+
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
     if (isDefinedNotNull(primaryCluster)) {
       const userIntent = primaryCluster.userIntent;
-      data.universeName = currentUniverse.data.name;
+      data.primary = {};
+      data.primary.universeName = currentUniverse.data.name;
       data.formType = "edit";
-      data.provider = userIntent.provider;
-      data.numNodes = userIntent.numNodes;
-      data.isMultiAZ = userIntent.isMultiAZ;
-      data.instanceType = userIntent.instanceType;
-      data.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-      data.accessKeyCode = userIntent.accessKeyCode;
-      data.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
-      data.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
-      data.assignPublicIP = userIntent.assignPublicIP;
-      data.regionList = primaryCluster.regions.map((item) => {
+
+      data.primary.provider = userIntent.provider;
+      data.primary.numNodes = userIntent.numNodes;
+      data.primary.instanceType = userIntent.instanceType;
+      data.primary.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      data.primary.accessKeyCode = userIntent.accessKeyCode;
+      data.primary.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
+      data.primary.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
+      data.primary.diskIops = userIntent.deviceInfo.diskIops;
+      data.primary.numVolumes = userIntent.deviceInfo.numVolumes;
+      data.primary.volumeSize = userIntent.deviceInfo.volumeSize;
+      data.primary.ebsType = userIntent.deviceInfo.ebsType;
+
+      data.primary.regionList = primaryCluster.regions.map((item) => {
         return {value: item.uuid, name: item.name, label: item.name};
       });
-      data.masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
+      data.primary.masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
         return {name: key, value: userIntent.masterGFlags[key]};
       });
-      data.tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
+      data.primary.tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
         return {name: key, value: userIntent.tserverGFlags[key]};
       });
     }
@@ -174,16 +185,21 @@ function mapStateToProps(state, ownProps) {
     accessKeys: state.cloud.accessKeys,
     initialValues: data,
     formValues: selector(state,
-      'formType', 'universeName', 'provider', 'providerType', 'regionList',
-      'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'accessKeyCode',
-      'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'assignPublicIP')
+      'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
+      'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
+      'primary.masterGFlags', 'primary.tserverGFlags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
+      'primary.diskIops', 'primary.spotPrice',
+      'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
+      'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType',
+      'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
   };
 }
 
 const asyncValidate = (values, dispatch ) => {
-  if (isNonEmptyString(values.universeName)) {
+  if (isNonEmptyString(values.primary.universeName)) {
     return new Promise((resolve, reject) => {
-      dispatch(checkIfUniverseExists(values.universeName)).then((response) => {
+      dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
         if (response.payload.status !== 200 && values.formType !== "edit") {
           reject({universeName: 'Universe name already exists'});
         } else {
@@ -197,30 +213,33 @@ const asyncValidate = (values, dispatch ) => {
 const validate = (values, props) => {
   const cloud = props.cloud;
   let currentProvider = null;
-  if (isDefinedNotNull(values.provider)) {
-    currentProvider = cloud.providers.data.find((provider) => provider.uuid === values.provider);
+  const errors = {primary: {}};
+  if (!isNonEmptyObject(values.primary)) {
+    return;
   }
-  const errors = {};
-  if (!isNonEmptyString(values.universeName)) {
+  if (isNonEmptyObject(values.primary) && isNonEmptyString(values.primary.provider)) {
+    currentProvider = cloud.providers.data.find((provider) => provider.uuid === values.primary.provider);
+  }
+  if (!isNonEmptyString(values.primary.universeName)) {
     errors.universeName = 'Universe Name is Required';
   }
   if (currentProvider && currentProvider.code === "gcp") {
     const specialCharsRegex = /^[a-z0-9-]*$/;
     if(!specialCharsRegex.test(values.universeName)) {
-      errors.universeName = 'GCP Universe name cannot contain capital letters or special characters except dashes';
+      errors.primary.universeName = 'GCP Universe name cannot contain capital letters or special characters except dashes';
     }
   }
-  if (!isDefinedNotNull(values.provider)) {
-    errors.provider = 'Provider Value is Required';
+  if (!isDefinedNotNull(values.primary.provider)) {
+    errors.primary.provider = 'Provider Value is Required';
   }
-  if (!isDefinedNotNull(values.regionList)) {
-    errors.regionList = 'Region Value is Required';
+  if (!isDefinedNotNull(values.primary.regionList)) {
+    errors.primary.regionList = 'Region Value is Required';
   }
-  if (!isDefinedNotNull(values.instanceType)) {
-    errors.instanceType = 'Instance Type is Required';
+  if (!isDefinedNotNull(values.primary.instanceType)) {
+    errors.primary.instanceType = 'Instance Type is Required';
   }
-  if (values.useSpotPrice && values.spotPrice === '0.00') {
-    errors.spotPrice = 'Spot Price must be greater than $0.00';
+  if (values.useSpotPrice && values.primary.spotPrice === '0.00') {
+    errors.primary.spotPrice = 'Spot Price must be greater than $0.00';
   }
   return errors;
 };
@@ -229,7 +248,6 @@ const universeForm = reduxForm({
   form: 'UniverseForm',
   validate,
   asyncValidate,
-  asyncBlurFields: ['universeName'],
   fields: formFieldNames
 });
 
