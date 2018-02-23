@@ -11,8 +11,6 @@ spend resources to create them.  For more information on this extension usage,
 you can see [this blog
 post](https://rjuju.github.io/postgresql/2015/07/02/how-about-hypothetical-indexes.html).
 
-This project is sponsored by [Dalibo](http://dalibo.com).
-
 Installation
 ------------
 
