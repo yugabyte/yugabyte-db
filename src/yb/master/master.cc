@@ -142,7 +142,6 @@ Master::Master(const MasterOptions& opts)
 }
 
 Master::~Master() {
-  CHECK_NE(kRunning, state_);
   Shutdown();
   if (messenger_) {
     messenger_->Shutdown();

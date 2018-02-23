@@ -57,7 +57,6 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.pb.h"
-#include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
@@ -342,11 +341,31 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
 
 }  // anonymous namespace
 
+Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string& peer_addrs) {
+  uint16_t rpc_port = AllocateFreePort();
+  uint16_t http_port = AllocateFreePort();
+  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
+            << " to start a new external mini-cluster master with peers '" << peer_addrs << "'.";
+
+  string addr = Substitute("127.0.0.1:$0", rpc_port);
+  string exe = GetBinaryPath(kMasterBinaryName);
+
+  ExternalMaster* master =
+      new ExternalMaster(add_new_master_at_, messenger_, exe,
+                         GetDataPath(Substitute("master-$0", add_new_master_at_)),
+                         opts_.extra_master_flags, addr, http_port, peer_addrs);
+
+  RETURN_NOT_OK(master->Start());
+
+  add_new_master_at_++;
+  return master;
+}
+
 void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
   uint16_t rpc_port = AllocateFreePort();
   uint16_t http_port = AllocateFreePort();
   LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
-            << " to start a new external mini-cluster master.";
+            << " to start a new external mini-cluster shell master.";
 
   string addr = Substitute("127.0.0.1:$0", rpc_port);
 
@@ -608,6 +627,17 @@ int ExternalMiniCluster::GetIndexOfMaster(ExternalMaster* master) const {
   return -1;
 }
 
+Status ExternalMiniCluster::PingMaster(ExternalMaster* master) const {
+  int index = GetIndexOfMaster(master);
+  server::PingRequestPB req;
+  server::PingResponsePB resp;
+  std::shared_ptr<server::GenericServiceProxy> proxy =
+      index == -1 ? master_generic_proxy(master->bound_rpc_addr()) : master_generic_proxy(index);
+  rpc::RpcController rpc;
+  rpc.set_timeout(opts_.timeout_);
+  return proxy->Ping(req, &resp, &rpc);
+}
+
 Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers) {
   ListMastersRequestPB list_req;
   ListMastersResponsePB list_resp;
@@ -759,6 +789,17 @@ Status ExternalMiniCluster::GetLastOpIdForLeader(consensus::OpId* opid) {
       opid));
 
   return Status::OK();
+}
+
+string ExternalMiniCluster::GetMasterAddresses() const {
+  string peer_addrs = "";
+  for (int i = 0; i < opts_.num_masters; i++) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += Substitute("127.0.0.1:$0", opts_.master_rpc_ports[i]);
+  }
+  return peer_addrs;
 }
 
 Status ExternalMiniCluster::StartMasters() {
@@ -1087,9 +1128,23 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy() {
 }
 
 std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
+  CHECK_GE(idx, 0);
   CHECK_LT(idx, masters_.size());
   return std::make_shared<MasterServiceProxy>(
       proxy_cache_.get(), CHECK_NOTNULL(master(idx))->bound_rpc_addr());
+}
+
+std::shared_ptr<server::GenericServiceProxy> ExternalMiniCluster::master_generic_proxy(
+    int idx) const {
+  CHECK_GE(idx, 0);
+  CHECK_LT(idx, masters_.size());
+  return std::make_shared<server::GenericServiceProxy>(
+    proxy_cache_.get(), CHECK_NOTNULL(master(idx))->bound_rpc_addr());
+}
+
+std::shared_ptr<server::GenericServiceProxy> ExternalMiniCluster::master_generic_proxy(
+    const HostPort& bound_rpc_addr) const {
+  return std::make_shared<server::GenericServiceProxy>(proxy_cache_.get(), bound_rpc_addr);
 }
 
 Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
