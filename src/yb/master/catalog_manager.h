@@ -1160,6 +1160,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                           rpc::RpcContext* rpc,
                                           Schema schema,
                                           NamespaceId namespace_id);
+
+  // Check that local host is present in master addresses for normal master process start.
+  // On error, it could imply that master_addresses is incorrectly set for shell master startup
+  // or that this master host info was missed in the master addresses and it should be
+  // participating in the very first quorum setup.
+  CHECKED_STATUS CheckLocalHostInMasterAddresses();
+
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_
   // WITHOUT holding 'lock_' to wait for consensus to start for

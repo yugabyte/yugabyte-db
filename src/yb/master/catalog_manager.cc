@@ -1168,6 +1168,20 @@ Status CatalogManager::PrepareNamespace(const NamespaceName& name, const Namespa
   return Status::OK();
 }
 
+Status CatalogManager::CheckLocalHostInMasterAddresses() {
+  auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();
+  auto local_hostport = master_->first_rpc_address();
+  for (const HostPort& peer_addr : *master_addresses_shared_ptr) {
+    if (peer_addr.equals(local_hostport)) {
+      return Status::OK();
+    }
+  }
+
+  return STATUS(IllegalState,
+                Substitute("Local host/port $0 not present in master_addresses $1.",
+                           yb::ToString(local_hostport), master_->opts().master_addresses_flag));
+}
+
 Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
   std::lock_guard<LockType> l(lock_);
   if (is_first_run) {
@@ -1177,6 +1191,7 @@ Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
       return Status::OK();
     }
 
+    RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
     RETURN_NOT_OK(sys_catalog_->CreateNew(master_->fs_manager()));
   } else {
     RETURN_NOT_OK(sys_catalog_->Load(master_->fs_manager()));
@@ -1742,11 +1757,12 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   int num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
   int max_tablets = FLAGS_max_create_tablets_per_ts * num_live_tservers;
   Status s;
-  if (num_replicas > 1 && max_tablets > 0 &&
-      partitions.size() > max_tablets) {
-    s = STATUS(InvalidArgument, Substitute("The requested number of tablets ($0) is over the "
-                                               "permitted maximum ($1)", partitions.size(),
-                                           max_tablets));
+  string msg;
+  if (num_replicas > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
+    msg = Substitute("The requested number of tablets ($0) is over the permitted maximum ($1)",
+                     partitions.size(), max_tablets);
+    s = STATUS(InvalidArgument, msg);
+    LOG(WARNING) << msg;
     RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s));
     return s;
   }
@@ -1755,10 +1771,10 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   // servers.
   if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
       num_replicas > num_live_tservers) {
-    s = STATUS(InvalidArgument, Substitute("Not enough live tablet servers to create table with "
-                                           "the requested replication factor $0. "
-                                           "$1 tablet servers are alive.",
-                                           num_replicas, num_live_tservers));
+    msg = Substitute("Not enough live tablet servers to create table with replication factor $0. "
+                     "$1 tablet servers are alive.", num_replicas, num_live_tservers);
+    LOG(WARNING) << msg;
+    s = STATUS(InvalidArgument, msg);
     RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s));
     return s;
   }
@@ -1769,20 +1785,19 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
     for (const auto& pb : placement_info.placement_blocks()) {
       minimum_sum += pb.min_num_replicas();
       if (!pb.has_cloud_info()) {
-        s = STATUS(InvalidArgument,
-                   Substitute("Got placement info without cloud info set: $0",
-                              pb.ShortDebugString()));
+        msg = Substitute("Got placement info without cloud info set: $0", pb.ShortDebugString());
+        s = STATUS(InvalidArgument, msg);
+        LOG(WARNING) << msg;
         RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s));
         return s;
       }
     }
 
     if (minimum_sum > num_replicas) {
-      s = STATUS(
-          InvalidArgument, Substitute(
-          "Sum of required minimum replicas per placement ($0) is greater "
-          "than num_replicas ($1)",
-          minimum_sum, num_replicas));
+      msg = Substitute("Sum of minimum replicas per placement ($0) is greater than num_replicas "
+                       " ($1)", minimum_sum, num_replicas);
+      s = STATUS(InvalidArgument, msg);
+      LOG(WARNING) << msg;
       RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s));
       return s;
     }

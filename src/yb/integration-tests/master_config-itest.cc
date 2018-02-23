@@ -64,12 +64,6 @@ class MasterChangeConfigTest : public YBTest {
     ASSERT_OK(cluster_->WaitForLeaderCommitTermAdvance());
 
     ASSERT_OK(CheckNumMastersWithCluster("Start"));
-
-    MessengerBuilder builder("config_change");
-    Status s = builder.Build().MoveTo(&messenger_);
-    if (!s.ok()) {
-      LOG(FATAL) << "Unable to build messenger : " << s.ToString();
-    }
   }
 
   void TearDown() override {
@@ -125,7 +119,6 @@ class MasterChangeConfigTest : public YBTest {
   int num_masters_;
   int cur_log_index_;
   std::unique_ptr<ExternalMiniCluster> cluster_;
-  std::shared_ptr<rpc::Messenger> messenger_;
 };
 
 void MasterChangeConfigTest::VerifyLeaderMasterPeerCount() {
@@ -479,6 +472,32 @@ TEST_F(MasterChangeConfigTest, TestMulitpleLeaderRestarts) {
   check_leader = cluster_->GetLeaderMaster();
   // Leader should not be second one, it can be any one of the other masters.
   ASSERT_NE(second_leader->bound_rpc_addr().port(), check_leader->bound_rpc_addr().port());
+}
+
+TEST_F(MasterChangeConfigTest, TestPingShellMaster) {
+  string peers = "";
+  // Create a shell master as `peers` is empty (for master_addresses).
+  Result<ExternalMaster *> new_shell_master = cluster_->StartMasterWithPeers(peers);
+  ASSERT_OK(new_shell_master);
+  // Add the new shell master to the quorum and ensure it is still running and pingable.
+  SetCurLogIndex();
+  Status s = cluster_->ChangeConfig(*new_shell_master, consensus::ADD_SERVER);
+  LOG(INFO) << "Started shell " << (*new_shell_master)->bound_rpc_hostport().ToString();
+  ASSERT_OK_PREPEND(s, "Change Config returned error : ");
+  ++num_masters_;
+  ASSERT_OK(cluster_->PingMaster(*new_shell_master));
+}
+
+// Process that stops/fails internal to external mini cluster is not allowing test to terminate.
+TEST_F(MasterChangeConfigTest, DISABLED_TestIncorrectMasterStart) {
+  string peers = cluster_->GetMasterAddresses();
+  // Master process start with master_addresses not containing a new master host/port should fail
+  // and become un-pingable.
+  Result<ExternalMaster *> new_master = cluster_->StartMasterWithPeers(peers);
+  ASSERT_OK(new_master);
+  LOG(INFO) << "Tried incorrect master " << (*new_master)->bound_rpc_hostport().ToString();
+  ASSERT_NOK(cluster_->PingMaster(*new_master));
+  (*new_master)->Shutdown();
 }
 
 } // namespace master
