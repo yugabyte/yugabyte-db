@@ -1,16 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import PropTypes from 'prop-types';
 import { isObject } from 'lodash';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 import YBRadioButton from './YBRadioButton';
 import { YBLabel } from '../../descriptors';
 
 export default class YBRadioButtonBar extends Component {
-  static propTypes = {
-    onSelect: PropTypes.func.isRequired
-  }
   constructor(props) {
     super(props);
     this.state = {fieldValue: 0};
@@ -21,7 +17,7 @@ export default class YBRadioButtonBar extends Component {
 
   radioButtonChecked = event => {
     const {onSelect, isReadOnly} = this.props;
-    if (!isReadOnly) {
+    if (!isReadOnly && onSelect) {
       this.setState({fieldValue: Number(event.target.value)});
       onSelect(event.target.value);
     }

@@ -17,6 +17,9 @@ export function isNonEmptyArray(arr) {
 }
 
 export function isEmptyObject(obj) {
+  if (typeof obj === "undefined") {
+    return true;
+  }
   return _.isObject(obj) && Object.keys(obj).length === 0;
 }
 
@@ -26,6 +29,10 @@ export function isNonEmptyObject(obj) {
 
 export function isNonEmptyString(str) {
   return _.isString(str) && str.trim().length > 0;
+}
+
+export function isEmptyString(str) {
+  return !(_.isString(str) && str.trim().length > 0);
 }
 
 export function removeNullProperties(obj) {

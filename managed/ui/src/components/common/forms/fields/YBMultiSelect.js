@@ -40,7 +40,9 @@ export class YBNewMultiSelect extends Component {
       if (isFunction(self.props.input.onChange)) {
         self.props.input.onChange(val);
       }
-      selectValChanged(val);
+      if (selectValChanged) {
+        selectValChanged(val);
+      }
     }
 
     return (

@@ -7,9 +7,16 @@ import PropTypes from 'prop-types';
 import './UniverseResources.scss';
 
 export default class UniverseResources extends Component {
+  static propTypes = {
+    renderType: PropTypes.oneOf(["Display", "Configure"])
+  };
+
+  static defaultProps = {
+    renderType: "Configure"
+  };
+
   render() {
     const {resources, renderType} = this.props;
-    let empty = true;
     let costPerDay = '$0.00';
     let costPerMonth = '$0.00';
     let numCores = 0;
@@ -18,7 +25,6 @@ export default class UniverseResources extends Component {
     let volumeCount = 0;
     let universeNodes = <span/>;
     if (isNonEmptyObject(resources)) {
-      empty = false;
       costPerDay = <YBCost value={resources.pricePerHour} multiplier={"day"} />;
       costPerMonth = <YBCost value={resources.pricePerHour} multiplier={"month"} />;
       numCores = resources.numCores;
@@ -31,7 +37,7 @@ export default class UniverseResources extends Component {
     }
     
     return (
-      <div className={(empty ? "universe-resources empty" : "universe-resources")}>
+      <div className={("universe-resources")}>
         {universeNodes}
         <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
         <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
@@ -45,10 +51,3 @@ export default class UniverseResources extends Component {
   }
 }
 
-UniverseResources.propTypes = {
-  renderType: PropTypes.oneOf(["Display", "Configure"])
-};
-
-UniverseResources.defaultProps = {
-  renderType: "Configure"
-};

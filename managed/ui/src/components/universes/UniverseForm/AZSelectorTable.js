@@ -225,10 +225,6 @@ export default class AZSelectorTable extends Component {
     }
   }
 
-  componentWillUnmount() {
-    this.props.resetConfig();
-  }
-
   render() {
     const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
     const self = this;
