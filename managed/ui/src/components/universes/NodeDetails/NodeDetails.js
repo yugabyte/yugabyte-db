@@ -11,6 +11,7 @@ import { isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamel
   isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster, isNodeRemovable } from '../../../utils/UniverseUtils';
+import { IN_DEVELOPMENT_MODE } from '../../../config';
 
 export default class NodeDetails extends Component {
   constructor(props) {
@@ -101,7 +102,12 @@ export default class NodeDetails extends Component {
         && universeMasterLeader.data.privateIP === row.privateIP) {
         cell += " (Leader)";
       }
-      const href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
+      let href = "";
+      if (IN_DEVELOPMENT_MODE) {
+        href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
+      } else {
+        href = "/proxy/" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort) + "/";
+      }
       let statusDisplay = (!self.state.universeCreated || inLoadingOrInitState) ? loadingIcon : warningIcon;
       if (self.state.universeCreated && isDefinedNotNull(currentUniverse.data) && !inLoadingOrInitState) {
         if (isDefinedNotNull(universePerNodeStatus.data) &&
