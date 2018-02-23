@@ -47,6 +47,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -199,7 +200,16 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a non-leader master index
   CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
 
-  // Starts a new master and returns the handle of the new master object on success.  Not thread
+  // The comma separated string of the master adresses host/ports from current list of masters.
+  string GetMasterAddresses() const;
+
+  // Start a new master with `peer_addrs` as the master_addresses parameter.
+  Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
+
+  // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
+  CHECKED_STATUS PingMaster(ExternalMaster* master) const;
+
+    // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
   // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
   // errors and if a new master could not be spawned, it will crash internally.
@@ -292,6 +302,12 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Returns an RPC proxy to the master at 'idx'. Requires that the master at 'idx' is running.
   std::shared_ptr<master::MasterServiceProxy> master_proxy(int idx);
+
+  // Returns an generic proxy to the master at 'idx'. Requires that the master at 'idx' is running.
+  std::shared_ptr<server::GenericServiceProxy> master_generic_proxy(int idx) const;
+  // Same as above, using the bound rpc address.
+  std::shared_ptr<server::GenericServiceProxy> master_generic_proxy(const HostPort& bound_addr)
+      const;
 
   // Wait until the number of registered tablet servers reaches the given count on at least one of
   // the running masters.  Returns Status::TimedOut if the desired count is not achieved with the
