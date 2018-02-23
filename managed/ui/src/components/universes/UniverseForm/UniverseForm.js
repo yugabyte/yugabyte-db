@@ -192,7 +192,7 @@ class UniverseForm extends Component {
           clusterType: "ASYNC",
           userIntent: getIntentValues("async")
         }
-      ]
+      ];
     }
     return submitPayload;
   }

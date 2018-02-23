@@ -5,7 +5,7 @@ import { Link, withRouter, browserHistory} from 'react-router';
 import { Grid, Row, Col, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { UniverseInfoPanel, ResourceStringPanel } from '../../panels';
-import { CustomerMetricsPanel } from '../../metrics';
+import { CustomerMetricsPanel, OverviewMetricsContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
@@ -13,7 +13,7 @@ import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
 import { UniverseResources } from '../UniverseResources';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import { YBTabsPanel, YBPanelItem } from '../../panels';
+import { YBTabsPanel, YBPanelItem, YBWidget } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
@@ -22,6 +22,7 @@ import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
+import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
 import './UniverseDetail.scss';
 
@@ -105,27 +106,67 @@ class UniverseDetail extends Component {
     }
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-        <YBPanelItem
+        <YBPanelItem noBackground
+          header={
+            <FlexContainer>
+              <FlexGrow>
+                <UniverseResources split='left' resources={currentUniverse.data.resources} renderType={"Display"}/>
+              </FlexGrow>
+              <FlexShrink>
+                <div className="operating-costs">
+                  <UniverseResources split='right' resources={currentUniverse.data.resources} renderType={"Display"}/>
+                </div>
+              </FlexShrink>
+            </FlexContainer>
+          }
           body={
             <div>
-              <div className="universe-detail-flex-container">
-                <UniverseResources resources={currentUniverse.data.resources} renderType={"Display"}/>
-              </div>
               <Row>
-                <Col lg={5}>
-                  <UniverseInfoPanel universeInfo={currentUniverse.data}
-                                    customerId={localStorage.getItem("customer_id")} />
+                <Col lg={4} md={12} sm={12} xs={12} >
+                  <Row>
+                    <Col lg={12} md={6} sm={6} xs={12} >
+                      <YBWidget
+                        headerLeft={
+                          "resource info"
+                        }
+                        body={
+                          <UniverseInfoPanel universeInfo={currentUniverse.data}
+                          customerId={localStorage.getItem("customer_id")} />
+                        }
+                      />
+                    </Col>
+                    <Col lg={12} md={6} sm={6} xs={12} >
+                      <YBWidget
+                        headerLeft={
+                          "universe details"
+                        }
+                        body={
+                          <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
+                          universeInfo={currentUniverse.data} providers={providers} />
+                        }
+                      />
+                    </Col>
+                  </Row>
                 </Col>
-                <Col lg={7}>
-                  <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                                       universeInfo={currentUniverse.data} providers={providers} />
+                <Col lg={8} xs={12}>
+                  <YBWidget
+                    noMargin
+                    size={2}
+                    headerLeft={
+                      "universe nodes"
+                    }
+                    headerRight={
+                      currentUniverse.data.resources.numNodes+" nodes"
+                    }
+                    body={
+                      <div>
+                        <RegionMap universe={currentUniverse.data} type={"Universe"} />
+                        <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
+                      </div>
+                    }
+                  />
                 </Col>
-              </Row>
-              <Row>
-                <Col lg={12}>
-                  <RegionMap universe={currentUniverse.data} type={"Universe"} />
-                  <YBMapLegend title="Data Placement (In AZs)" regions={placementInfoRegionList} type="Universe"/>
-                </Col>
+                <OverviewMetricsContainer type={"overview"} origin={"universe"} width={width} nodePrefixes={nodePrefixes} />
               </Row>
             </div>
           }
@@ -147,24 +188,28 @@ class UniverseDetail extends Component {
       </Tab>
     ];
     const currentBreadCrumb = (
-      <div className="breadcumb-container">
+      <div className="detail-label-small">
         <Link to="/universes">
           <YBLabelWithIcon>
             Universes
           </YBLabelWithIcon>
         </Link>
-        <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
-        </YBLabelWithIcon>
+        <Link to={`/universes/${currentUniverse.data.universeUUID}`}>
+          <YBLabelWithIcon icon="fa fa-angle-right fa-fw">
+            {currentUniverse.data.name}
+          </YBLabelWithIcon>
+        </Link>
       </div>
     );
 
     return (
-      <Grid id="page-wrapper" fluid={true} className="universe-details">
+      <Grid id="page-wrapper" fluid={true} className="universe-details universe-details-new">
         <Row>
           <Col lg={10} sm={8} xs={6}>
+
             {/* UNIVERSE NAME */}
+            {currentBreadCrumb}
             <div className="universe-detail-status-container">
-              {currentBreadCrumb}
               <h2>
                 { currentUniverse.data.name }
               </h2>
@@ -172,7 +217,6 @@ class UniverseDetail extends Component {
             </div>
           </Col>
           <Col lg={2} sm={4}  xs={6} className="page-action-buttons">
-
 
             {/* UNIVERSE EDIT */}
             <div className="universe-detail-btn-group">
