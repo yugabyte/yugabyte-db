@@ -9,7 +9,7 @@ The figure below represents a single YugaByte DB cluster, also known as a Univer
 
 Each node runs on top of a instance that provides a Linux-based compute and a set of persistent disks, preferably locally attached SSDs. The cloud provider can be any of the major public cloud providers, an on-premises datacenter or even Docker engine. Universes can be linearly expanded to add new nodes in an existing availability zone, or a new availabilty zone or even new regions at any point of time. They can also be shrinked to remove unused nodes as per business needs all without taking any downtime or performance slowdown.
 
-![YugaByte DB Architecture](/images/linear-scalability.png)
+![YugaByte DB Architecture](/images/intro/linear-scalability.png)
 
 Shards of tables, also known as [tablets](/architecture/concepts/sharding/), are automatically created and managed via the YB-TServer. Application clients connect to the YB-TServer using either [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) or the [Redis API](https://redis.io/commands). The YB-Masters manage the metadata of these shards and can be configured to run on nodes different than the Tablet Server. Tablets are stored in [DocDB](/architecture/concepts/persistence/), YugaByte DB's own Log Structured Merge (LSM) based transactional data store that has been purpose-built for mission-critical use cases. Finally, data for each tablet is [consistently replicated](/architecture/concepts/replication/) onto other nodes using the [Raft distributed consensus algorithm](https://raft.github.io/raft.pdf).
 
@@ -33,7 +33,7 @@ YugaByte DB's architecture is similar to that of [Google Cloud Spanner](https://
 
 Writes (and background data rebalancing in general) are guaranteed to be zero data loss by virtue of single row ACID transactions. Raft distributed consensus algorithm is used for each tablet's replication. Each tablet's Raft consensus group is comprised of a tablet leader and set of tablet-peers (aka tablet followers). Leader owns the interaction with clients for write requests and acknowledges the write as committed only after it synchronously replicates to other node. Loss of the leader makes the remaining members of the group auto-elect a new leader among themselves in a matter of couple seconds. 
 
-![Strongly consistent writes](/images/strongly-consistent-writes.png)
+![Strongly consistent writes](/images/intro/strongly-consistent-writes.png)
 
 ## 4. Low latency, timeline-consistent, always-on reads
 
@@ -41,7 +41,7 @@ YugaByte DB enables a spectrum of consistency options when it comes to reads whi
 
 Given the use of distributed consensus where reads are either served only by one single node (either by the leader for strong consistency level or by a follower for all other consistency levels), YugaByte DB reads have 3x throughput compared to a traditional NoSQL database that uses quorum to establish the same consistency levels. 
 
-![Tunably consistent reads](/images/tunably-consistent-reads.png)
+![Tunably consistent reads](/images/intro/tunably-consistent-reads.png)
 
 ## 5. Multi-region deployments
 

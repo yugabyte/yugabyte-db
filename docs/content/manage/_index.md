@@ -12,7 +12,7 @@ weight: 700
     </div>
     <div class="text">
       Diagnostics Reporting
-      <div class="caption">Create, expand, shrink and reconfigure YugaByte DB universes without any downtime.</div>
+      <div class="caption">Configure collection and reporting of diagnostics data.</div>
     </div>
   </a>
 
