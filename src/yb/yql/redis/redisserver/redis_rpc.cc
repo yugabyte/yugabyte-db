@@ -44,7 +44,8 @@ DEFINE_uint64(redis_max_concurrent_commands, 1,
 DEFINE_uint64(redis_max_batch, 500, "Max number of redis commands that forms batch");
 DEFINE_int32(rpcz_max_redis_query_dump_size, 4_KB,
              "The maximum size of the Redis query string in the RPCZ dump.");
-
+DEFINE_uint64(redis_max_read_buffer_size, yb::redisserver::kMaxBufferSize,
+              "Max read buffer size for Redis connections.");
 
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -119,7 +120,7 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
 }
 
 size_t RedisConnectionContext::BufferLimit() {
-  return kMaxBufferSize;
+  return FLAGS_redis_max_read_buffer_size;
 }
 
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,

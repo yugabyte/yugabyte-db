@@ -57,6 +57,9 @@ using std::map;
 using std::shared_ptr;
 using strings::Substitute;
 
+DEFINE_int32(max_concurrent_master_lookups, 50,
+             "Maximum number of concurrent tablet location lookups from YB client to master");
+
 namespace yb {
 
 using consensus::RaftPeerPB;
@@ -390,7 +393,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 
 MetaCache::MetaCache(YBClient* client)
   : client_(client),
-    master_lookup_sem_(50) {
+    master_lookup_sem_(FLAGS_max_concurrent_master_lookups) {
 }
 
 MetaCache::~MetaCache() {
