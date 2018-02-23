@@ -207,6 +207,21 @@
   }
 }
 
+.universe-heading-title {
+  position: fixed;
+  z-index: 1031;
+  top: 24px;
+  left: 40px;
+  width: 100%;
+  margin-bottom: 0;
+  @media (max-width: 991px) {
+    left: 115px;
+  }
+  span {
+    opacity: .3;
+  }
+}
+
 .universe-detail {
   .content-title {
     position: static;

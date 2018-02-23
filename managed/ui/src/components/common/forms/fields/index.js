@@ -6,7 +6,7 @@ export { default as YBAddRowButton } from './YBAddRowButton';
 export { default as YBRemoveRowButton } from './YBRemoveRowButton';
 export { default as YBCheckBox } from './YBCheckBox';
 export { default as YBMultiSelectWithLabel, YBNewMultiSelect, YBMultiSelect } from './YBMultiSelect';
-export { default as YBNumericInputWithLabel, YBNumericInput, YBControlledNumericInputWithLabel, YBControlledNumericInput } from './YBNumericInput';
+export { default as YBNumericInputWithLabel, YBNumericInput, YBControlledNumericInputWithLabel, YBControlledNumericInput, YBUnControlledNumericInput } from './YBNumericInput';
 export { default as YBRadioButton } from './YBRadioButton';
 export { default as YBRadioButtonBar, YBRadioButtonBarWithLabel } from './YBRadioButtonBar';
 export { default as YBSelectWithLabel, YBUnControlledSelect, YBControlledSelect, YBControlledSelectWithLabel, YBSelect } from './YBSelect';
