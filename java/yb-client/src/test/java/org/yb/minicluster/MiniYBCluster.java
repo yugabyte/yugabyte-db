@@ -136,7 +136,8 @@ public class MiniYBCluster implements AutoCloseable {
    * Hard memory limit for YB daemons. This should be consistent with the memory limit set for C++
    * based mini clusters in external_mini_cluster.cc.
    */
-  private static final long DAEMON_MEMORY_LIMIT_HARD_BYTES = 1024 * 1024 * 1024;
+  private static final long DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN = 1024 * 1024 * 1024;
+  private static final long DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN = 512 * 1024 * 1024;
 
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
@@ -163,7 +164,6 @@ public class MiniYBCluster implements AutoCloseable {
   private List<String> getCommonDaemonFlags() {
     final List<String> commonFlags = Lists.newArrayList(
         "--logtostderr",
-        "--memory_limit_hard_bytes=1073741824",  // 1 GB.
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
     final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
     if (extraFlagsFromEnv != null) {
@@ -175,7 +175,10 @@ public class MiniYBCluster implements AutoCloseable {
     if (testClassName != null) {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
-    commonFlags.add("--memory_limit_hard_bytes=" + DAEMON_MEMORY_LIMIT_HARD_BYTES);
+
+    final long memoryLimit = TestUtils.nonTsanVsTsan(DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
+                                                     DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
+    commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
 
     // YB_TEST_INVOCATION_ID is a special environment variable that we use to force-kill all
     // processes even if MiniYBCluster fails to kill them.

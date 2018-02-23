@@ -70,7 +70,7 @@ public class MiniYBDaemon {
       if (cmdResult.stdoutLines.isEmpty()) {
         if (!terminatedNormally()) {
           LOG.warn("Could not find anything in " + SYSLOG_PATH + " relevant to the " +
-              "disappearance of process: " + this);
+              "disappearance of process: " + MiniYBDaemon.this);
         }
       } else {
         LOG.warn("Potentially relevant lines from " + SYSLOG_PATH +
@@ -141,10 +141,9 @@ public class MiniYBDaemon {
     }
 
     private void handleTermination(int exitCode) throws IOException {
-
-      String msg = "Process " + processDescription() + " exited with code " + exitCode;
+      LOG.info("Process " + processDescription() + " exited with code " + exitCode + " " +
+               (terminatedNormally() ? "(normal termination)" : "(abnormal termination)"));
       if (exitCode == 0) {
-        LOG.info(msg);
         return;
       }
 

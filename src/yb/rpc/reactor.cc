@@ -668,10 +668,13 @@ bool DelayedTask::MarkAsDone() {
   std::lock_guard<LockType> l(lock_);
   if (done_) {
     return false;
-  } else {
-    done_ = true;
-    return true;
   }
+  done_ = true;
+
+  // ENG-2879: we only return true if reactor_ is not nullptr because if it is, the task has not
+  // even started.  AbortTask uses the return value of this function to check if it needs to stop
+  // the timer on the reactor thread, and that is impossible if reactor_ is nullptr.
+  return reactor_ != nullptr;
 }
 
 void DelayedTask::AbortTask(const Status& abort_status) {

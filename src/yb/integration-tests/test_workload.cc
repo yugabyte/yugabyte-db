@@ -46,6 +46,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -254,7 +255,7 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
              // NOTE: this is quite high as a timeout, but the default (5 sec) does not
              // seem to be high enough in some cases (see KUDU-550). We should remove
              // this once that ticket is addressed.
-             .timeout(MonoDelta::FromSeconds(20))
+             .timeout(MonoDelta::FromSeconds(NonTsanVsTsan(20, 60)))
              .table_type(table_type)
              .Create());
   } else {
