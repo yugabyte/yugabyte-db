@@ -1,12 +1,22 @@
 ## Maven
 
-Add the following snippet to your pom.xml:
+Add the following snippet to your pom.xml for Scala 2.10:
 
 ```
 <dependency>
-<groupId>com.yugabyte.spark</groupId>
- <artifactId>spark-cassandra-connector_2.10</artifactId>
- <version>2.0.5-yb-2</version>
+  <groupId>com.yugabyte.spark</groupId>
+  <artifactId>spark-cassandra-connector_2.10</artifactId>
+  <version>2.0.5-yb-2</version>
+</dependency>
+```
+
+For Scala 2.11:
+
+```
+<dependency>
+  <groupId>com.yugabyte.spark</groupId>
+  <artifactId>spark-cassandra-connector_2.11</artifactId>
+  <version>2.0.5-yb-2</version>
 </dependency>
 ```
 
