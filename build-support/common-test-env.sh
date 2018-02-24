@@ -59,7 +59,8 @@ append_output_to=/dev/null
 readonly ADDRESS_ALREADY_IN_USE_PATTERN="Address already in use"
 
 # We use this to submit test jobs for execution on Spark.
-readonly SPARK_SUBMIT_CMD_PATH=/n/tools/spark/current/bin/spark-submit
+readonly SPARK_SUBMIT_CMD_PATH_NON_TSAN=/n/tools/spark/current/bin/spark-submit
+readonly SPARK_SUBMIT_CMD_PATH_TSAN=/n/tools/spark/current-tsan/bin/spark-submit
 readonly INITIAL_SPARK_DRIVER_CORES=8
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -1125,14 +1126,26 @@ show_disk_usage() {
   echo
 }
 
+find_spark_submit_cmd() {
+  if [[ $build_type == "tsan" ]]; then
+    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_TSAN
+  else
+    spark_submit_cmd_path=$SPARK_SUBMIT_CMD_PATH_NON_TSAN
+  fi
+}
+
 spark_available() {
-  if is_running_on_gcp && [[ -f $SPARK_SUBMIT_CMD_PATH ]]; then
+  find_spark_submit_cmd
+  if is_running_on_gcp && [[ -f $spark_submit_cmd_path ]]; then
     return 0  # true
   fi
   return 1  # false
 }
 
 run_tests_on_spark() {
+  if ! spark_available; then
+    fatal "Spark is not available, can't run tests on Spark"
+  fi
   log "Running tests on Spark"
   local return_code
   local run_tests_args=(
@@ -1149,7 +1162,7 @@ run_tests_on_spark() {
     # Run Spark and filter out some boring output (or we'll end up with 6000 lines, two per test).
     # We still keep "Finished" lines ending with "(x/y)" where x is divisible by 10. Example:
     # Finished task 2791.0 in stage 0.0 (TID 2791) in 10436 ms on <ip> (executor 3) (2900/2908)
-    time "$SPARK_SUBMIT_CMD_PATH" \
+    time "$spark_submit_cmd_path" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
       "$YB_SRC_ROOT/build-support/run_tests_on_spark.py" \
       "${run_tests_args[@]}" "$@" 2>&1 | \

@@ -90,6 +90,7 @@ propagated_env_vars = {}
 global_conf_dict = None
 
 DEFAULT_SPARK_MASTER_URL = 'spark://buildmaster.c.yugabyte.internal:7077'
+DEFAULT_SPARK_MASTER_URL_TSAN = 'spark://buildmaster.c.yugabyte.internal:7078'
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
 CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
@@ -131,7 +132,14 @@ def init_spark_context(details=[]):
     # NOTE: we never retry failed tests to avoid hiding bugs. This failure tolerance mechanism
     #       is just for the resilience of the test framework itself.
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
-    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', DEFAULT_SPARK_MASTER_URL)
+    if yb_dist_tests.global_conf.build_type == 'tsan':
+        logging.info("Using a separate default Spark cluster for TSAN tests")
+        default_spark_master_url = DEFAULT_SPARK_MASTER_URL_TSAN
+    else:
+        logging.info("Using the regular default Spark cluster for non-TSAN tests")
+        default_spark_master_url = DEFAULT_SPARK_MASTER_URL
+
+    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', default_spark_master_url)
     details += [
         'user: {}'.format(getpass.getuser()),
         'build type: {}'.format(build_type)

@@ -7,3 +7,5 @@ alignment:crcutil::Crc32cSSE4::Crc32c
 # snappy works with unaligned data
 alignment:snappy::internal::CompressFragment
 alignment:snappy::EmitLiteral
+alignment:snappy::EmitCopyLessThan64
+alignment:snappy::internal::CompressFragment

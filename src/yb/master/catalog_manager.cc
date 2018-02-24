@@ -2051,8 +2051,7 @@ Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
 //  - Update the table state to "removed"
 //  - Write the updated table metadata to sys-table
 //
-// we are lazy about deletions...
-// the cleaner will remove tables and tablets marked as "removed"
+// We are lazy about deletions... The cleaner will remove tables and tablets marked as "removed".
 Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
                                    DeleteTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
@@ -2083,7 +2082,8 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     DeleteTabletsAndSendRequests(tables[i]);
   }
 
-  LOG(INFO) << Substitute("Successfully deleted $0 ", req->is_index_table() ? "index" : "table")
+  LOG(INFO) << Substitute("Successfully initiated deletion of $0 ",
+                          req->is_index_table() ? "index" : "table") << " with "
             << req->table().DebugString() << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
   return Status::OK();

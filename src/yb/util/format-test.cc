@@ -72,9 +72,9 @@ double ClocksToMs(std::clock_t clocks) {
 template<class... Args>
 void CheckSpeed(const std::string& format, Args&&... args) {
 #ifdef THREAD_SANITIZER
-  const size_t kCycles = 10000;
+  const size_t kCycles = 5000;
 #else
-  const size_t kCycles = 1000000;
+  const size_t kCycles = 500000;
 #endif
   const size_t kMeasurements = 10;
   std::vector<std::clock_t> substitute_times, format_times;
@@ -108,11 +108,14 @@ void CheckSpeed(const std::string& format, Args&&... args) {
   if (format_time > substitute_time) {
     LOG(INFO) << Format("Format times: $0, substitute times: $1", format_times, substitute_times);
   }
-  LOG(INFO) << Format(format, std::forward<Args>(args)...)
-            << ", substitute: " << ClocksToMs(substitute_time) << "ms, "
-            << "format: " << ClocksToMs(format_time) << "ms" << std::endl;
-  // Check that format is at least as good as substitute
-  ASSERT_PERF_LE(format_time, substitute_time * 1.15);
+  LOG(INFO) << "Performance results for [[ "
+            << Format(format, std::forward<Args>(args)...) << " ]]: "
+            << "substitute: " << ClocksToMs(substitute_time) << "ms, "
+            << "format: " << ClocksToMs(format_time) << "ms";
+
+  // Check that Format and Substitute differ by a factor within a certain range.
+  ASSERT_PERF_LE(format_time, substitute_time * 3);
+  ASSERT_PERF_LE(substitute_time, format_time * 10);
 }
 
 } // namespace

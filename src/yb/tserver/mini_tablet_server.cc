@@ -117,6 +117,10 @@ Status MiniTabletServer::WaitStarted() {
 
 void MiniTabletServer::Shutdown() {
   if (started_) {
+    // Save bind address and port so we can later restart the server.
+    opts_.rpc_opts.rpc_bind_addresses =
+        Substitute("127.0.0.$0:$1", index_, bound_rpc_addr().port());
+    opts_.webserver_opts.port = bound_http_addr().port();
     server_->Shutdown();
     server_.reset();
   }
@@ -164,11 +168,13 @@ Status MiniTabletServer::CleanTabletLogs() {
 
 Status MiniTabletServer::Restart() {
   CHECK(started_);
-  opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.$0:$1", index_, bound_rpc_addr().port());
-  opts_.webserver_opts.port = bound_http_addr().port();
   Shutdown();
-  RETURN_NOT_OK(Start());
-  return Status::OK();
+  return Start();
+}
+
+Status MiniTabletServer::RestartStoppedServer() {
+  Shutdown();
+  return Start();
 }
 
 RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
