@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/scope_exit.hpp>
+
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -202,7 +204,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
             proxy_.get(), &MasterServiceProxy::IsCreateTableDone));
   }
 
-  string CreateSnapshot() {
+  SnapshotId CreateSnapshot() {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
     TableIdentifierPB* const table = req.mutable_tables()->Add();
@@ -423,23 +425,43 @@ TEST_F(SnapshotTest, RestoreSnapshot) {
 }
 
 TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
-  auto ts0 = cluster_->mini_tablet_server(0);
+  auto* const ts0 = cluster_->mini_tablet_server(0);
 
   // Shutdown one node, so remote bootstrap will be required after its start.
   ts0->Shutdown();
+  BOOST_SCOPE_EXIT(ts0) {
+    // Restart the node in the end, because we need to perform table deletion, etc.
+    LOG(INFO) << "Restarting the stopped tserver";
+    ASSERT_OK(ts0->RestartStoppedServer());
+    ASSERT_OK(ts0->WaitStarted());
+  } BOOST_SCOPE_EXIT_END;
 
-  auto workload = SetupWorkload();
-  workload.Start();
-  workload.WaitInserted(1000);
+  SnapshotId snapshot_id;
+  {
+    LOG(INFO) << "Setting up workload";
+    TestWorkload workload = SetupWorkload();
+    workload.Start();
+    BOOST_SCOPE_EXIT(&workload) {
+      LOG(INFO) << "Stopping workload";
+      workload.StopAndJoin();
+    } BOOST_SCOPE_EXIT_END;
+    LOG(INFO) << "Waiting for data to be inserted";
+    workload.WaitInserted(1000);
 
-  const auto snapshot_id = CreateSnapshot();
+    LOG(INFO) << "Creating snapshot";
+    snapshot_id = CreateSnapshot();
 
-  // Wait to make sure that we would need remote bootstrap.
-  std::this_thread::sleep_for(std::chrono::seconds(FLAGS_log_min_seconds_to_retain));
+    LOG(INFO) << "Wait to make sure that we would need remote bootstrap";
+    std::this_thread::sleep_for(std::chrono::seconds(FLAGS_log_min_seconds_to_retain) * 1.1);
 
-  workload.StopAndJoin();
+    // Workload will stop here at the latest.
+  }
 
-  ASSERT_OK(cluster_->FlushTablets());
+  // Flushing tablets for all tablet servers except for the one that we stopped.
+  for (int i = 1; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->FlushTablets());
+  }
+
   ASSERT_OK(cluster_->CleanTabletLogs());
 
   ASSERT_OK(ts0->Start());
