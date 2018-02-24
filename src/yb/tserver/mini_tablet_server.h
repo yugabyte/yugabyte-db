@@ -83,8 +83,10 @@ class MiniTabletServer {
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 
-  // Restart a tablet server on the same RPC and webserver ports.
+  // Stop and start the tablet server on the same RPC and webserver ports. The tserver must be
+  // running.
   CHECKED_STATUS Restart();
+  CHECKED_STATUS RestartStoppedServer();
 
   // Add a new tablet to the test server, use the default consensus configuration.
   //

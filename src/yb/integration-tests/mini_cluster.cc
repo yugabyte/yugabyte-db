@@ -101,8 +101,8 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
 } // namespace
 
 MiniClusterOptions::MiniClusterOptions()
-  : num_masters(1),
-    num_tablet_servers(1) {
+    : num_masters(1),
+      num_tablet_servers(1) {
 }
 
 MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
@@ -116,7 +116,7 @@ MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
 }
 
 MiniCluster::~MiniCluster() {
-  CHECK(!running_);
+  Shutdown();
 }
 
 Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
@@ -286,14 +286,20 @@ MiniMaster* MiniCluster::leader_mini_master() {
 }
 
 void MiniCluster::Shutdown() {
+  if (!running_)
+    return;
+
   for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
     tablet_server->Shutdown();
   }
   mini_tablet_servers_.clear();
+
   for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
     master_server->Shutdown();
     master_server.reset();
   }
+  mini_masters_.clear();
+
   running_ = false;
 }
 
