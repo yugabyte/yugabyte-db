@@ -30,17 +30,26 @@ class AwsSdkCppDependency(Dependency):
 
     def build(self, builder):
         out_dir = os.path.join(builder.prefix, 'aws-sdk-cpp')
-        for shared in ['Off', 'On']:
-            builder.build_with_cmake(self,
-                                     ['-DCMAKE_BUILD_TYPE=Release',
-                                      '-DBUILD_SHARED_LIBS={}'.format(shared),
-                                      '-DBUILD_ONLY=route53',
-                                      '-DENABLE_TESTING=Off',
-                                      '-DENABLE_UNITY_BUILD=On',
-                                      '-DCMAKE_INSTALL_PREFIX={}'.format(out_dir),
-                                      '-DCMAKE_PREFIX_PATH={}'.format(builder.find_prefix)])
-            for file in glob.glob(os.path.join(out_dir, 'lib*', 'libaws-cpp-sdk-*.*')):
-                os.rename(file, os.path.join(builder.prefix_lib, os.path.basename(file)))
-        dst_include = os.path.join(builder.prefix_include, 'aws')
-        remove_path(dst_include)
-        os.rename(os.path.join(out_dir, 'include', 'aws'), dst_include)
+        old_git_dir = os.environ.get('GIT_DIR')
+        old_environ = os.environ
+        os.environ['GIT_DIR'] = '/tmp'
+        try:
+          for shared in ['Off', 'On']:
+              builder.build_with_cmake(self,
+                                       ['-DCMAKE_BUILD_TYPE=Release',
+                                        '-DBUILD_SHARED_LIBS={}'.format(shared),
+                                        '-DBUILD_ONLY=route53',
+                                        '-DENABLE_TESTING=Off',
+                                        '-DENABLE_UNITY_BUILD=On',
+                                        '-DCMAKE_INSTALL_PREFIX={}'.format(out_dir),
+                                        '-DCMAKE_PREFIX_PATH={}'.format(builder.find_prefix)])
+              for file in glob.glob(os.path.join(out_dir, 'lib*', 'libaws-cpp-sdk-*.*')):
+                  os.rename(file, os.path.join(builder.prefix_lib, os.path.basename(file)))
+          dst_include = os.path.join(builder.prefix_include, 'aws')
+          remove_path(dst_include)
+          os.rename(os.path.join(out_dir, 'include', 'aws'), dst_include)
+        finally:
+          if old_git_dir is not None:
+            os.environ['GIT_DIR'] = old_git_dir
+          else:
+            del os.environ['GIT_DIR']
