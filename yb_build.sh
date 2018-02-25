@@ -807,6 +807,7 @@ build_type: "$build_type"
 cmake_build_type: "$cmake_build_type"
 build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
+thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
   log "Created a build descriptor file at '$build_descriptor_path'"
 fi

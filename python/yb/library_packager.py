@@ -40,7 +40,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from yb.command_util import run_program, mkdir_p  # nopep8
 from yb.linuxbrew import get_linuxbrew_dir  # nopep8
-from yb.common_util import YB_THIRDPARTY_DIR, YB_SRC_ROOT, sorted_grouped_by, \
+from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by, \
                            safe_path_join  # nopep8
 
 
@@ -123,7 +123,7 @@ class Dependency:
 
         if self.target.startswith(LINUXBREW_HOME + '/'):
             self.category = 'linuxbrew'
-        elif self.target.startswith(YB_THIRDPARTY_DIR + '/'):
+        elif self.target.startswith(get_thirdparty_dir() + '/'):
             self.category = 'yb-thirdparty'
         elif self.target.startswith(self.context.build_dir + '/'):
             self.category = 'yb'
@@ -153,7 +153,7 @@ class Dependency:
              "YB general-purpose script directory ('{}'), "
              "YB build support script directory ('{}'), "
              "and does not appear to be a system library (does not start with any of {})."
-             ).format(self.target, LINUXBREW_HOME, YB_THIRDPARTY_DIR, self.context.build_dir,
+             ).format(self.target, LINUXBREW_HOME, get_thirdparty_dir(), self.context.build_dir,
                       YB_SCRIPT_BIN_DIR, YB_BUILD_SUPPORT_DIR, SYSTEM_LIBRARY_PATHS))
 
 
@@ -395,9 +395,9 @@ class LibraryPackager:
 
 
 if __name__ == '__main__':
-    if not os.path.isdir(YB_THIRDPARTY_DIR):
+    if not os.path.isdir(get_thirdparty_dir()):
         raise RuntimeError("Third-party dependency directory '{}' does not exist".format(
-            YB_THIRDPARTY_DIR))
+            get_thirdparty_dir()))
 
     parser = argparse.ArgumentParser(description=LibraryPackager.__doc__)
     parser.add_argument('--build-dir',
