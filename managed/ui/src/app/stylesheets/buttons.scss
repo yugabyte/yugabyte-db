@@ -340,3 +340,12 @@
     display: block;
   }
 }
+
+.button-group-row {
+  @media (min-width:1200px) {
+    margin-left: -15px;
+  }
+  .btn-group {
+    display: flex;
+  }
+}

@@ -879,12 +879,12 @@ export default class ClusterFields extends Component {
 
               <Row>
                 <div className="form-right-aligned-labels">
-                  <Col lg={6}>
+                  <Col lg={5}>
                     <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
                            label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
                            minVal={Number(this.state.replicationFactor)}/>
                   </Col>
-                  <Col lg={6}>
+                  <Col lg={7} className="button-group-row">
                     <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
                            label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
                   </Col>

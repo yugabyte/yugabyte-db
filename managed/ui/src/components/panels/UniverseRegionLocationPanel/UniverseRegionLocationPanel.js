@@ -20,7 +20,7 @@ export default class UniverseRegionLocationPanel extends Component {
   componentWillReceiveProps(nextProps) {
     if (isNonEmptyArray(nextProps.cloud.providers.data) && (nextProps.cloud.providers !== this.props.cloud.providers
         || isEmptyArray(this.state.selectedProviders))) {
-      this.state = {selectedProviders: nextProps.cloud.providers.data.map(provider => provider.code)};
+      this.setState({selectedProviders: nextProps.cloud.providers.data.map(provider => provider.code)});
     }
   }
 

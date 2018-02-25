@@ -101,13 +101,18 @@ label textarea {
   font-weight: 500;
 }
 
-.stepper-cell {
-  padding-bottom: 12px;
+.stepper-cell {    
+  box-sizing: border-box;
+  font-size: 16px;
+  line-height: 46px;
+  padding-bottom: 3px;
+  margin-left: 25px;
   border-bottom: 1px solid $YB_GRAY;
+  color: rgba(black, 0.35);
+  white-space: nowrap;
 }
 .active-stepper-cell {
   color: black;
-  padding-bottom: 10px;
   border-bottom: 3px solid $YB_ORANGE;
 }
 
@@ -116,6 +121,7 @@ label textarea {
   font-weight: 600;
   padding-top: 6px;
 }
+
 .horizontal-border {
   border: 1px solid $YB_GRAY;
   margin-bottom: 10px;
