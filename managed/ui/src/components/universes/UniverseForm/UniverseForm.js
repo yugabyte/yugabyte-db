@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Row, Col, Grid } from 'react-bootstrap';
+import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
@@ -10,6 +10,7 @@ import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, 
   normalizeToPositiveFloat } from 'utils/ObjectUtils';
 import {YBButton } from 'components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
+import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import {getPrimaryCluster} from "../../../utils/UniverseUtils";
@@ -33,32 +34,23 @@ class UniverseForm extends Component {
 
   constructor(props, context) {
     super(props);
-    this.createUniverse = this.createUniverse.bind(this);
-    this.editUniverse = this.editUniverse.bind(this);
-    this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
-    this.handleSubmitButtonClick = this.handleSubmitButtonClick.bind(this);
-    this.handleUniverseConfigure = this.handleUniverseConfigure.bind(this);
-    this.getFormPayload = this.getFormPayload.bind(this);
-    this.configureAsyncCluster = this.configureAsyncCluster.bind(this);
-    this.configurePrimaryCluster = this.configurePrimaryCluster.bind(this);
-    this.updateFormField = this.updateFormField.bind(this);
     this.state = initialState;
   }
 
 
-  updateFormField(fieldName, fieldValue) {
+  updateFormField = (fieldName, fieldValue) => {
     this.props.dispatch(change("UniverseForm", fieldName, fieldValue));
   }
 
-  configureAsyncCluster() {
+  configureAsyncCluster = () => {
     this.setState({currentView: 'async'});
   }
 
-  configurePrimaryCluster() {
+  configurePrimaryCluster = () => {
     this.setState({currentView: 'primary'});
   }
 
-  handleCancelButtonClick() {
+  handleCancelButtonClick = () => {
     this.setState(initialState);
     this.props.reset();
     if (this.props.type === "Create") {
@@ -74,7 +66,7 @@ class UniverseForm extends Component {
     }
   }
 
-  handleSubmitButtonClick() {
+  handleSubmitButtonClick = () => {
     const {type} = this.props;
     if (type === "Create") {
       this.createUniverse();
@@ -83,7 +75,7 @@ class UniverseForm extends Component {
     }
   }
 
-  handleUniverseConfigure(universeTaskParams) {
+  handleUniverseConfigure = universeTaskParams => {
     const {universe: {currentUniverse}, type} = this.props;
     const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
     if (!isNonEmptyObject(primaryCluster)) return;
@@ -105,11 +97,11 @@ class UniverseForm extends Component {
     }
   }
 
-  createUniverse() {
+  createUniverse = () => {
     this.props.submitCreateUniverse(this.getFormPayload());
   }
 
-  editUniverse() {
+  editUniverse = () => {
     const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
     this.props.submitEditUniverse(this.getFormPayload(), universeUUID);
   }
@@ -124,7 +116,7 @@ class UniverseForm extends Component {
     }
   }
 
-  getFormPayload() {
+  getFormPayload = () => {
     const {formValues, universe: {universeConfigTemplate}} = this.props;
     const submitPayload = _.clone(universeConfigTemplate.data, true);
     const getIntentValues = function (clusterType) {
@@ -205,32 +197,22 @@ class UniverseForm extends Component {
     if (search === "?new") {
       displayPane = "async";
     }
-
-    let primaryCell = "";
-    let asyncCell = "";
-    if (this.state.currentView === "primary") {
-      primaryCell = "active-stepper-cell";
-      asyncCell = "";
-    } else {
-      primaryCell = "";
-      asyncCell = "active-stepper-cell";
-    }
     const createUniverseTitle =
-      (<div className="universe-heading-title">
-        <Row className="stepper-container">
-          <Col lg={2}>
-            <div className="inline-heading">{this.props.type} universe</div>
-          </Col>
-          <Col lg={2} className={`stepper-cell ${primaryCell}`}>
+      (<h2 className="content-title">
+        <FlexContainer>
+          <FlexShrink>
+            <div>{this.props.type} universe</div>
+          </FlexShrink>
+          <FlexShrink className={this.state.currentView === "primary" ? 'stepper-cell active-stepper-cell' : 'stepper-cell'}>
             1. Primary Cluster
-          </Col>
+          </FlexShrink>
           {displayPane === "async" ?
-            <Col lg={2} className={`stepper-cell ${asyncCell}`}>
+            <FlexShrink className={this.state.currentView === "primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
               2. Read Replica
-            </Col> : <span/>
+            </FlexShrink> : <span/>
           }
-        </Row>
-      </div>);
+        </FlexContainer>
+      </h2>);
 
     let primaryUniverseName = "";
     if (this.props.formValues && this.props.formValues.primary) {
@@ -261,7 +243,7 @@ class UniverseForm extends Component {
       getInstanceTypeListItems: getInstanceTypeListItems, cloud: cloud, resetConfig: resetConfig,
       accessKeys: this.props.accessKeys, softwareVersions: softwareVersions, updateFormField: this.updateFormField,
       formValues: formValues, submitConfigureUniverse: submitConfigureUniverse, setPlacementStatus: this.props.setPlacementStatus,
-      getSuggestedSpotPrice: getSuggestedSpotPrice, fetchUniverseResources: fetchUniverseResources,
+      getSuggestedSpotPrice: getSuggestedSpotPrice, fetchUniverseResources: fetchUniverseResources, fetchNodeInstanceList: this.props.fetchNodeInstanceList,
       resetSuggestedSpotPrice: resetSuggestedSpotPrice, reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
       fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration
     };
@@ -281,7 +263,7 @@ class UniverseForm extends Component {
           <div className="form-action-button-container">
             <UniverseResources resources={universe.universeResourceTemplate.data}>
               {primaryReplicaBtn}
-              <div className="form-cancel-btn" onClick={this.handleCancelButtonClick}>Cancel</div>
+              <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
               <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"}/>
               {asyncReplicaBtn}
             </UniverseResources>

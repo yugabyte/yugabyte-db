@@ -248,6 +248,10 @@
   }
 }
 
+.Select-menu-outer {
+  z-index: 2;
+}
+
 .form-cancel-btn {
   display: inline;
   font-size: 18px;
@@ -255,10 +259,4 @@
   margin: 6px 20px 0px 20px;
   color: #293569;
   cursor: pointer;
-}
-
-.inline-heading {
-  display: inline;
-  font-size: 20px;
-  margin-left: 30px;
 }
