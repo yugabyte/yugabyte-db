@@ -6,6 +6,7 @@
 [![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
 [![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FYugaByte%2Fyugabyte-db.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FYugaByte%2Fyugabyte-db?ref=badge_shield)
 
 A cloud-native database for building mission-critical applications. This repository contains the Community Edition of the YugaByte Database.
 
@@ -186,3 +187,6 @@ We accept contributions as GitHub pull requests. Our code style is available
 YugaByte Community Edition is distributed under an Apache 2.0 license. See the
 [LICENSE.txt](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt) file for
 details.
+
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FYugaByte%2Fyugabyte-db.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FYugaByte%2Fyugabyte-db?ref=badge_large)
