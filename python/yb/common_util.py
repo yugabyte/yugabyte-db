@@ -12,9 +12,23 @@ import re
 
 MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
 YB_SRC_ROOT = os.path.realpath(os.path.join(MODULE_DIR, '..', '..'))
-YB_THIRDPARTY_DIR = os.path.realpath(
-    os.environ.get("YB_THIRDPARTY_DIR", os.path.join(YB_SRC_ROOT, 'thirdparty')))
 NINJA_BUILD_ROOT_PART_RE = re.compile(r'-ninja($|(?=-))')
+
+# We default this to the env var or to the actual local thirdparty call, but we expose a getter
+# and setter below that should be imported and used to access this global.
+_YB_THIRDPARTY_DIR = os.path.realpath(
+        os.environ.get("YB_THIRDPARTY_DIR", os.path.join(YB_SRC_ROOT, 'thirdparty')))
+
+
+def get_thirdparty_dir():
+    global _YB_THIRDPARTY_DIR
+    return _YB_THIRDPARTY_DIR
+
+
+def set_thirdparty_dir(thirdparty_dir):
+    global _YB_THIRDPARTY_DIR
+    _YB_THIRDPARTY_DIR = thirdparty_dir
+    os.environ["YB_THIRDPARTY_DIR"] = thirdparty_dir
 
 
 def sorted_grouped_by(arr, key_fn):

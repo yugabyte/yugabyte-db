@@ -14,9 +14,9 @@ import sys
 import re
 
 from subprocess import call, check_output
-from common_util import YB_THIRDPARTY_DIR
 from xml.dom import minidom
 from yb.command_util import run_program
+from yb.common_util import get_thirdparty_dir
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
@@ -55,7 +55,7 @@ class ReleaseUtil(object):
         """
         Rewrite the release manifest with the following changes:
         - Replace ${project.version} with the Java version from pom.xml.
-        - Replace the leading "thirdparty/" with YB_THIRDPARTY_DIR.
+        - Replace the leading "thirdparty/" with the respective YB_THIRDPARTY_DIR from the build.
         - Replace $BUILD_ROOT with the actual build_root.
         """
         pom_file = os.path.join(self.repo, 'java', 'pom.xml')
@@ -71,7 +71,7 @@ class ReleaseUtil(object):
                 # Substitution for thirdparty.
                 thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
                 if thirdparty_prefix_match:
-                    new_value = os.path.join(YB_THIRDPARTY_DIR, thirdparty_prefix_match.group(1))
+                    new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
                 # Substitution for BUILD_ROOT.
                 new_value = new_value.replace("$BUILD_ROOT", build_root)
                 if new_value != value_list[i]:

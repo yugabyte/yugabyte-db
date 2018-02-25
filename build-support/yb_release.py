@@ -26,7 +26,7 @@ import yaml
 from yb.library_packager import LibraryPackager, add_common_arguments
 from yb.mac_library_packager import MacLibraryPackager, add_common_arguments
 from yb.release_util import ReleaseUtil, check_for_local_changes
-from yb.common_util import init_env, get_build_type_from_build_root
+from yb.common_util import init_env, get_build_type_from_build_root, set_thirdparty_dir
 
 YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -181,6 +181,14 @@ def main():
         raise RuntimeError(
             "Build root from the build descriptor file (see above) is inconsistent with that "
             "specified on the command line ('{}')".format(build_root))
+
+    thirdparty_dir = build_desc["thirdparty_dir"]
+    if thirdparty_dir != os.environ.get("YB_THIRDPARTY_DIR", thirdparty_dir):
+        raise RuntimeError(
+            "Mismatch between env YB_THIRDPARTY_DIR: '{}' and build desc thirdparty_dir: '{}'"
+            .format(os.environ["YB_THIRDPARTY_DIR"], thirdparty_dir))
+    # Set the var for in-memory access to it across the other python files.
+    set_thirdparty_dir(thirdparty_dir)
 
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
