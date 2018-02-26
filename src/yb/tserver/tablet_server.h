@@ -72,8 +72,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   static const uint16_t kDefaultWebPort = 9000;
 
   // Default tserver and consensus RPC queue length per service.
-  // The lighter version is for low-cpu machines.
-  static constexpr uint32_t kLighterSvcQueueLength = 50;
   static constexpr uint32_t kDefaultSvcQueueLength = 5000;
 
   explicit TabletServer(const TabletServerOptions& opts);
