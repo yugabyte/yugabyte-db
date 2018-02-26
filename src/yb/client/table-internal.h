@@ -61,6 +61,7 @@ class YBTable::Data {
   std::shared_ptr<YBClient> client_;
   YBTableType table_type_;
   const Info info_;
+  std::vector<std::string> partitions_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

@@ -1388,6 +1388,21 @@ const PartitionSchema& YBTable::partition_schema() const {
   return data_->info_.partition_schema;
 }
 
+const std::string& YBTable::FindPartitionStart(
+    const std::string& partition_key, size_t group_by) const {
+  auto it = std::lower_bound(data_->partitions_.begin(), data_->partitions_.end(), partition_key);
+  if (it == data_->partitions_.end() || *it > partition_key) {
+    DCHECK(it != data_->partitions_.begin());
+    --it;
+  }
+  if (group_by <= 1) {
+    return *it;
+  }
+  size_t idx = (it - data_->partitions_.begin()) / group_by * group_by;
+  return data_->partitions_[idx];
+}
+
+
 ////////////////////////////////////////////////////////////
 // Error
 ////////////////////////////////////////////////////////////
