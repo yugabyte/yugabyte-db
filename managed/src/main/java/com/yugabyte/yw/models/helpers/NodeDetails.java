@@ -3,7 +3,11 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.NodeActionType;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -40,25 +44,29 @@ public class NodeDetails {
     UpgradeSoftware,
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags,
-    // Set after all the services (master, tserver, etc) on a node are started and successfully
-    // running.
-    Running,
+    // Set after all the services (master, tserver, etc) on a node are successfully running.
+    Live,
 
     // Set when node is about to enter the stopped state.
     Stopping,
-    // Set when node is about to be set to running state.
+    // Set when node is about to be set to live state.
     Starting,
     // Set when node has been stopped and no longer has a master or a tserver running.
     Stopped,
-    // Set when node is unreachable but has not been decommissioned from the universe.
+    // Set when node is unreachable but has not been Removed from the universe.
     Unreachable,
-    // Set when a node is marked for removal. Note that we will wait to get all its data out during
-    // edit universe.
-    ToBeDecommissioned,
+    // Set when a node is marked for removal. Note that we will wait to get all its data out.
+    ToBeRemoved,
     // Set just before sending the request to the IaaS provider to terminate this node.
+    Removing,
+    // Set after the node has been removed.
+    Removed,
+    // Set when node is about to enter the Live state from Removed/Decommissioned state.
+    Adding,
+    // Set when a stopped/removed node is about to enter the Decommissioned state.
     BeingDecommissioned,
-    // Set after the node has been decommissioned.
-    Destroyed
+    // After a stopped/removed node is returned back to the IaaS.
+    Decommissioned
   }
 
   // The current state of the node.
@@ -100,26 +108,47 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.Unreachable ||
-      state == NodeState.ToBeDecommissioned ||
-      state == NodeState.BeingDecommissioned ||
-      state == NodeState.Destroyed ||
+      state == NodeState.ToBeRemoved ||
+      state == NodeState.Removing ||
+      state == NodeState.Removed ||
       state == NodeState.Starting ||
-      state == NodeState.Stopped);
+      state == NodeState.Stopped ||
+      state == NodeState.Adding ||
+      state == NodeState.BeingDecommissioned ||
+      state == NodeState.Decommissioned);
   }
 
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware ||
       state == NodeState.UpdateGFlags ||
-      state == NodeState.Running ||
-      state == NodeState.ToBeDecommissioned ||
-      state == NodeState.BeingDecommissioned ||
+      state == NodeState.Live ||
+      state == NodeState.ToBeRemoved ||
+      state == NodeState.Removing ||
       state == NodeState.Stopping);
   }
 
   @JsonIgnore
+  public Set<NodeActionType> getAllowedActions() {
+    switch (state) {
+      case ToBeAdded:
+        return new HashSet<>(Arrays.asList(NodeActionType.DELETE));
+      case Live:
+        return new HashSet<>(Arrays.asList(NodeActionType.STOP, NodeActionType.REMOVE));
+      case Stopped:
+        return new HashSet<>(Arrays.asList(NodeActionType.START, NodeActionType.RELEASE));
+      case Removed:
+        return new HashSet<>(Arrays.asList(NodeActionType.ADD, NodeActionType.RELEASE));
+      case Decommissioned:
+        return new HashSet<>(Arrays.asList(NodeActionType.ADD));
+      default:
+        return new HashSet<>();
+    }
+  }
+
+  @JsonIgnore
   public boolean isRemovable() {
-    return state == NodeState.ToBeAdded;
+    return state == NodeState.ToBeAdded || state == NodeState.Removed;
   }
   
   @JsonIgnore

@@ -466,9 +466,9 @@ public class PlacementInfoUtil {
     Set<NodeDetails> servers = new HashSet<NodeDetails>();
 
     for (NodeDetails node : nodeDetailsSet) {
-      if (node.state == NodeDetails.NodeState.ToBeDecommissioned &&
-              (serverType == ServerType.MASTER && node.isMaster ||
-                      serverType == ServerType.TSERVER && node.isTserver)) {
+      if (node.state == NodeDetails.NodeState.ToBeRemoved &&
+          (serverType == ServerType.MASTER && node.isMaster ||
+           serverType == ServerType.TSERVER && node.isTserver)) {
         servers.add(node);
       }
     }
@@ -480,7 +480,7 @@ public class PlacementInfoUtil {
     Set<NodeDetails> servers = new HashSet<NodeDetails>();
 
     for (NodeDetails node : nodeDetailsSet) {
-      if (node.state == NodeDetails.NodeState.ToBeDecommissioned) {
+      if (node.state == NodeDetails.NodeState.ToBeRemoved) {
         servers.add(node);
       }
     }
@@ -824,7 +824,7 @@ public class PlacementInfoUtil {
    * @return set of indexes in which to provision the nodes.
    */
   private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
-          PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
+      PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
 
@@ -886,7 +886,7 @@ public class PlacementInfoUtil {
     // If placementInfo is null then user has chosen to Reset AZ config
     // Hence a new full move configuration is generated
     if (primaryPlacementInfo == null) {
-      // Remove primary cluster nodes which will be added back in ToBeDecommissioned state
+      // Remove primary cluster nodes which will be added back in ToBeRemoved state
       taskParams.nodeDetailsSet.removeIf((NodeDetails nd) -> {
         return (nd.placementUuid.equals(primaryCluster.uuid));
       });
@@ -948,10 +948,9 @@ public class PlacementInfoUtil {
         }
       }
     }
-    // Add all existing nodes in the ToBeDecimissioned state
-    LOG.info("Decommissioning {} nodes.", existingNodes.size());
+    LOG.info("Removing {} nodes.", existingNodes.size());
     for (NodeDetails node : existingNodes) {
-      node.state = NodeDetails.NodeState.ToBeDecommissioned;
+      node.state = NodeDetails.NodeState.ToBeRemoved;
       taskParams.nodeDetailsSet.add(node);
     }
   }
@@ -961,16 +960,16 @@ public class PlacementInfoUtil {
                                                        String nodePrefix,
                                                        boolean isEditUniverse) {
     LinkedHashSet<PlacementIndexes> indexes =
-            getDeltaPlacementIndices(cluster.placementInfo, nodes.stream()
-                    .filter(n -> n.placementUuid.equals(cluster.uuid))
-                    .collect(Collectors.toSet()));
+        getDeltaPlacementIndices(
+            cluster.placementInfo,
+            nodes.stream().filter(n -> n.placementUuid.equals(cluster.uuid)).collect(Collectors.toSet()));
     Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
     int startIndex = getNextIndexToConfigure(nodes);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
       if (index.action == Action.ADD) {
         NodeDetails nodeDetails =
-                createNodeDetailsWithPlacementIndex(cluster, nodePrefix, index, startIndex + iter);
+            createNodeDetailsWithPlacementIndex(cluster, nodePrefix, index, startIndex + iter);
         deltaNodesSet.add(nodeDetails);
       } else if (index.action == Action.REMOVE) {
         PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
@@ -1013,7 +1012,7 @@ public class PlacementInfoUtil {
         }
         if (isEditUniverse) {
           if (currentNode.isActive()) {
-            currentNode.state = NodeDetails.NodeState.ToBeDecommissioned;
+            currentNode.state = NodeDetails.NodeState.ToBeRemoved;
             LOG.debug("Removing node [{}].", currentNode);
             deleteCounter++;
           }
@@ -1051,7 +1050,7 @@ public class PlacementInfoUtil {
       Collection<NodeDetails> existingNodes = universe.getNodesInCluster(cluster.uuid);
       LOG.info("Decommissioning {} nodes.", existingNodes.size());
       for (NodeDetails node : existingNodes) {
-        node.state = NodeDetails.NodeState.ToBeDecommissioned;
+        node.state = NodeDetails.NodeState.ToBeRemoved;
         nodeDetailsSet.add(node);
       }
 
@@ -1116,10 +1115,10 @@ public class PlacementInfoUtil {
     NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, targetAZUuid);
     if (nodeDetails == null) {
       LOG.error("Could not find an active node running tservers only in AZ {}. All nodes: {}.",
-              targetAZUuid, nodes);
+                targetAZUuid, nodes);
       throw new IllegalStateException("Should find an active running tserver.");
     } else {
-      nodeDetails.state = NodeDetails.NodeState.ToBeDecommissioned;
+      nodeDetails.state = NodeDetails.NodeState.ToBeRemoved;
       LOG.debug("Removing node [{}].", nodeDetails);
     }
   }

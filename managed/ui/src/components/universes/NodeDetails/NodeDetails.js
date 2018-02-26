@@ -70,7 +70,6 @@ export default class NodeDetails extends Component {
 
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
-
       if (!inLoadingOrInitState && isNonEmptyObject(universePerNodeStatus.data)
         && isNonEmptyObject(universePerNodeStatus.data[nodeDetail.nodeName])) {
         nodeStatus = insertSpacesFromCamelCase(universePerNodeStatus.data[nodeDetail.nodeName]["node_status"]);
@@ -86,6 +85,7 @@ export default class NodeDetails extends Component {
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus: nodeStatus,
+        allowedActions: nodeDetail.allowedActions,
         cloudInfo: nodeDetail.cloudInfo
       };
     });
@@ -139,11 +139,29 @@ export default class NodeDetails extends Component {
       if (isNodeRemovable(row.nodeStatus)) {
         return <YBButton btnText="Delete" onClick={self.performNodeAction.bind(self, row, 'DELETE')}/>;
       }
-      if (row.nodeStatus === "Running") {
-        return <YBButton btnText="Stop" onClick={self.performNodeAction.bind(self, row, 'STOP')}/>;
-      }
-      if (row.nodeStatus === "Stopped") {
-        return <YBButton btnText="Start" onClick={self.performNodeAction.bind(self, row, 'START')}/>;
+
+      if (true) {
+        if (row.nodeStatus === "Live") {
+          return <YBButton btnText="Stop" onClick={self.performNodeAction.bind(self, row, 'STOP')}/>;
+        }
+        if (row.nodeStatus === "Stopped") {
+          return <YBButton btnText="Start" onClick={self.performNodeAction.bind(self, row, 'START')}/>;
+        }
+      } else {
+        // TODO (Ram/Bharat): change the YBButton to YBSelect and use allowedActions as option, of course
+        // the onChange would also now not pass any action. New states to be added are in comments...
+        if (row.nodeStatus === "Live") {
+          return <YBButton btnText="Remove" onClick={self.performNodeAction.bind(self, row, 'REMOVE')}/>; // Stop
+        }
+        if (row.nodeStatus === "Removed") {
+          return <YBButton btnText="Release" onClick={self.performNodeAction.bind(self, row, 'RELEASE')}/>; // Add
+        }
+        if (row.nodeStatus === "Stopped") {
+          return <YBButton btnText="Start" onClick={self.performNodeAction.bind(self, row, 'START')}/>; // Release
+        }
+        if (row.nodeStatus === "Decommissioned") {
+          return <YBButton btnText="Add" onClick={self.performNodeAction.bind(self, row, 'ADD')}/>;
+        }
       }
     };
 

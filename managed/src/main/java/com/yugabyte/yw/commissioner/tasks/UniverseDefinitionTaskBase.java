@@ -19,10 +19,9 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
@@ -129,8 +128,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Note that `universe` should have the new name persisted before this call.
     if (updateNodePrefix) {
       if (univNameChanged) {
-    	LOG.warn("Universe name mismatched: expected {} but found {}. Updating to {}.",
-    			 univNewName, universe.name, univNewName);
+        LOG.warn("Universe name mismatched: expected {} but found {}. Updating to {}.",
+                 univNewName, universe.name, univNewName);
       }
       nodePrefix = Util.getNodePrefix(universe.customerId, univNewName);
       LOG.info("Updating node prefix to {}.", nodePrefix);
@@ -201,129 +200,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  /**
-   * Creates a task list for provisioning the list of nodes passed in and adds it to the task queue.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   */
-  public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
-
-    for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
-      // Set the region code.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Pick one of the subnets in a round robin fashion.
-      params.subnetId = node.cloudInfo.subnet_id;
-      // Set the instance type.
-      params.instanceType = userIntent.instanceType;
-      // Set the spot price.
-      params.spotPrice = userIntent.spotPrice;
-      // set the assign public ip param
-      params.assignPublicIP = userIntent.assignPublicIP;
-      // Create the Ansible task to setup the server.
-      AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
-      ansibleSetupServer.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(ansibleSetupServer);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list for fetching information about the nodes provisioned (such as the ip
-   * address) and adds it to the task queue. This is specific to the cloud.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   */
-  public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
-
-    for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      NodeTaskParams params = new NodeTaskParams();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
-      // Set the region name to the proper provider code so we can use it in the cloud API calls.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Create the Ansible task to get the server info.
-      AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
-      ansibleFindCloudHost.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(ansibleFindCloudHost);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list to configure the newly provisioned nodes and adds it to the task queue.
-   * Includes tasks such as setting up the 'yugabyte' user and installing the passed in software
-   * package.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   * @param isMasterInShellMode : true if we are configuring a master node in shell mode
-   */
-  public SubTaskGroup createConfigureServerTasks(Collection<NodeDetails> nodes,
-                                                 boolean isMasterInShellMode) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
-
-    for (NodeDetails node : nodes) {
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      params.placementUuid = node.placementUuid;
-      // Sets the isMaster field
-      params.isMaster = node.isMaster;
-      // Set if this node is a master in shell mode.
-      params.isMasterInShellMode = isMasterInShellMode;
-      // The software package to install for this cluster.
-      params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      params.type = UpgradeUniverse.UpgradeTaskType.Everything;
-      // Create the Ansible task to get the server info.
-      AnsibleConfigureServers task = new AnsibleConfigureServers();
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(task);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createGFlagsOverrideTasks(Collection<NodeDetails> nodes,
-                                                ServerType taskType) {
+  public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
     // Skip if no extra flags for MASTER in primary cluster.
     if (taskType.equals(ServerType.MASTER) &&
-            taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty()) {
-      return null;
+        taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty()) {
+      return;
     }
+
     // Skip if all clusters have no extra TSERVER flags. (No cluster has an extra TSERVER flag.)
     if (taskType.equals(ServerType.TSERVER) &&
-            taskParams().clusters.stream().allMatch(c -> c.userIntent.tserverGFlags.isEmpty())) {
-      return null;
+        taskParams().clusters.stream().allMatch(c -> c.userIntent.tserverGFlags.isEmpty())) {
+      return;
     }
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
@@ -350,40 +237,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.addTask(task);
     }
     subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list to start the masters on the given nodes and adds it to the task queue.
-   *
-   * @param nodes   : a collection of nodes that need master process started.
-   * @param isShell : Determines if the masters should be started in shell mode.
-   */
-  public SubTaskGroup createStartMasterTasks(Collection<NodeDetails> nodes,
-                                             boolean isShell) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
-    for (NodeDetails node : nodes) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // The service and the command we want to run.
-      params.process = "master";
-      params.command = isShell ? "start" : "create";
-      params.placementUuid = node.placementUuid;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addTask(task);
-    }
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
   /**
@@ -439,39 +293,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list to update the placement information by making a call to the master leader
-   * of the cluster just created and adds it to the task queue.
-   *
-   * @param blacklistNodes    list of nodes which are being decommissioned.
-   */
-  public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("UpdatePlacementInfo", executor);
-    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
-    UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
-    // Set the cloud name.
-    params.cloud = userIntent.providerType;
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    // Set the number of masters.
-    params.numReplicas = userIntent.replicationFactor;
-    // Set the blacklist nodes if any are passed in.
-    if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
-      Set<String> blacklistNodeNames = new HashSet<String>();
-      for (NodeDetails node : blacklistNodes) {
-        blacklistNodeNames.add(node.nodeName);
-      }
-      params.blacklistNodes = blacklistNodeNames;
-    }
-    // Create the task to update placement info.
-    UpdatePlacementInfo task = new UpdatePlacementInfo();
-    task.initialize(params);
-    // Add it to the task list.
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;

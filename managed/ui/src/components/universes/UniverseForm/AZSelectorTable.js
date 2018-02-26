@@ -9,8 +9,8 @@ import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlex
 import { getPrimaryCluster, getReadOnlyCluster, getClusterByType } from '../../../utils/UniverseUtils';
 
 const nodeStates = {
-  activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
-  inactiveStates: ["ToBeDecommissioned", "BeingDecommissioned", "Destroyed"]
+  activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Live", "Starting"],
+  inactiveStates: ["Unreachable", "ToBeRemoved", "Removing", "Removed", "Decommissioned", "BeingDecommissioned", "Stopping", "Stopped"]
 };
 
 export default class AZSelectorTable extends Component {
@@ -264,7 +264,7 @@ export default class AZSelectorTable extends Component {
 
   componentWillMount() {
     const {universe: {currentUniverse, universeConfigTemplate}, type, clusterType} = this.props;
-    let currentCluster = getClusterByType(universeConfigTemplate.data.clusters, clusterType);
+    const currentCluster = getClusterByType(universeConfigTemplate.data.clusters, clusterType);
     // Set AZ Groups when switching back to a cluster tab
     if (isNonEmptyObject(currentCluster)) {
       const azGroups = this.getGroupWithCounts(universeConfigTemplate.data).groups;

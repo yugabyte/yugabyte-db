@@ -124,7 +124,7 @@ public class TablesController extends AuthenticatedController {
       LOG.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    final String masterAddresses = universe.getMasterAddresses();
+    final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
@@ -202,7 +202,7 @@ public class TablesController extends AuthenticatedController {
     }
 
     // Validate universe UUID and retrieve master addresses
-    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
+    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
@@ -248,7 +248,7 @@ public class TablesController extends AuthenticatedController {
    */
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     YBClient client = null;
-    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
+    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses(true);
     try {
       // Validate customer UUID and universe UUID
       if (Customer.get(customerUUID) == null) {

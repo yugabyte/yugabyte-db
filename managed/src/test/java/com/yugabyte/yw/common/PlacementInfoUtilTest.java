@@ -21,7 +21,7 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Running;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -215,7 +215,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     public void removeNodesAndVerify(Set<NodeDetails> nodes) {
       // Simulate an actual shrink operation completion.
       for (NodeDetails node : nodes) {
-        if (node.state == NodeDetails.NodeState.ToBeDecommissioned) {
+        if (node.state == NodeDetails.NodeState.ToBeRemoved) {
           removeNodeFromUniverse(node);
         }
       }
@@ -595,8 +595,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     return PlacementInfoUtil.getUniverseAliveStatus(u, mockMetricQueryHelper);
   }
 
-  private void validatePerNodeStatus(JsonNode result, Collection<NodeDetails> baseNodeDetails, Set<NodeDetails> deadTservers,
-                                     Set<NodeDetails> deadMasters, Set<NodeDetails> deadNodes) {
+  private void validatePerNodeStatus(JsonNode result, Collection<NodeDetails> baseNodeDetails,
+                                     Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters,
+                                     Set<NodeDetails> deadNodes) {
     for (NodeDetails nodeDetails : baseNodeDetails) {
       JsonNode jsonNode = result.get(nodeDetails.nodeName);
       assertNotNull(jsonNode);
@@ -604,7 +605,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertTrue(tserverAlive == jsonNode.get("tserver_alive").asBoolean());
       boolean masterAlive = deadMasters == null || !deadMasters.contains(nodeDetails);
       assertTrue(masterAlive == jsonNode.get("master_alive").asBoolean());
-      NodeDetails.NodeState nodeState = deadNodes != null && deadNodes.contains(nodeDetails) ? Unreachable : Running;
+      NodeDetails.NodeState nodeState = deadNodes != null && deadNodes.contains(nodeDetails) ?
+          Unreachable : Live;
       assertEquals(nodeState.toString(), jsonNode.get("node_status").asText());
     }
   }

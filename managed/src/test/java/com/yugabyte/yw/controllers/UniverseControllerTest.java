@@ -4,10 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
@@ -33,16 +30,11 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -236,9 +228,10 @@ public class UniverseControllerTest extends WithApplication {
     JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsSet");
     assertNotNull(nodeDetailsMap);
     assertNotNull(json.get("resources"));
-    Iterator<String> nodeNameIt = nodeDetailsMap.fieldNames();
-    for (int i = 1; nodeNameIt.hasNext(); ++i) {
-      assertEquals("host-n" + i, nodeNameIt.next());
+    for (Iterator<JsonNode> it = nodeDetailsMap.elements(); it.hasNext(); ) {
+      JsonNode node = it.next();
+      int nodeIdx = node.get("nodeIdx").asInt();
+      assertValue(node, "nodeName", "host-n" + nodeIdx);
     }
   }
 
@@ -1163,9 +1156,9 @@ public class UniverseControllerTest extends WithApplication {
       }
     }
 
-    // Simulate a running universe by setting existing nodes to Running state.
+    // Simulate a running universe by setting existing nodes to Live state.
     for (NodeDetails nd: taskParams.nodeDetailsSet) {
-      nd.state = NodeDetails.NodeState.Running;
+      nd.state = NodeDetails.NodeState.Live;
     }
 
     // Set placement info with addition of nodes that is more than what has been configured

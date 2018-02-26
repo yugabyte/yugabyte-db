@@ -50,11 +50,12 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       // Stop the master process on this node and remove its state from YW DB.
       if (currentNode.isMaster) {
-        createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)));
+        createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         createWaitForMasterLeaderTask()
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 
       // Update Node State to Stopped
