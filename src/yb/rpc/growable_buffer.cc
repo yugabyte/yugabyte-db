@@ -75,8 +75,8 @@ Status GrowableBuffer::PrepareRead() {
   if (size_ * 2 > capacity_) {
     const size_t new_capacity = std::min(limit_, capacity_ * 2);
     if (size_ == new_capacity) {
-      return STATUS(RuntimeError,
-          Substitute("Prepare read when buffer already full size: $0, limit: $1", size_, limit_));
+      return STATUS_FORMAT(
+          Busy, "Prepare read when buffer already full, size: $0, limit: $1", size_, limit_);
     }
     return Reshape(new_capacity);
   }

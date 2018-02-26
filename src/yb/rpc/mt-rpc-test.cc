@@ -154,7 +154,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
   string msg = status.ToString();
   SCOPED_TRACE(msg);
   ASSERT_TRUE(msg.find("Client RPC Messenger shutting down") != string::npos ||
-              msg.find("Reactor is shutting down") != string::npos ||
+              msg.find("Shutdown connection") != string::npos ||
               msg.find("Unable to start connection negotiation thread") != string::npos)
               << "Status is actually: " << msg;
 }

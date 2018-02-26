@@ -80,7 +80,7 @@ namespace rpc {
 
 namespace {
 
-static const char* kShutdownMessage = "Reactor is shutting down";
+static const char* kShutdownMessage = "Shutdown connection";
 
 const Status& AbortedError() {
   static Status result = STATUS(Aborted, kShutdownMessage, "", ESHUTDOWN);

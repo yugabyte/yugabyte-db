@@ -23,8 +23,10 @@
 namespace yb {
 namespace rpc {
 
-ConnectionContextWithQueue::ConnectionContextWithQueue(size_t max_concurrent_calls)
-    : max_concurrent_calls_(max_concurrent_calls) {
+ConnectionContextWithQueue::ConnectionContextWithQueue(
+    size_t max_concurrent_calls,
+    size_t max_queued_bytes)
+    : max_concurrent_calls_(max_concurrent_calls), max_queued_bytes_(max_queued_bytes) {
 }
 
 ConnectionContextWithQueue::~ConnectionContextWithQueue() {
@@ -46,6 +48,8 @@ void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> c
   DCHECK(reactor->IsCurrentThread());
 
   calls_queue_.push_back(call);
+  queued_bytes_ += call->weight_in_bytes();
+
   size_t size = calls_queue_.size();
   if (size == replies_being_sent_ + 1) {
     first_without_reply_.store(call.get(), std::memory_order_release);
@@ -75,6 +79,10 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   DCHECK_EQ(calls_queue_.front().get(), call);
   DCHECK_GT(replies_being_sent_, 0);
 
+  bool could_enqueue = can_enqueue();
+  auto call_weight_in_bytes = down_cast<QueueableInboundCall*>(call)->weight_in_bytes();
+  queued_bytes_ -= call_weight_in_bytes;
+
   calls_queue_.pop_front();
   --replies_being_sent_;
   if (calls_queue_.size() >= max_concurrent_calls_) {
@@ -83,6 +91,10 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   }
   if (Idle() && idle_listener_) {
     idle_listener_();
+  }
+
+  if (!could_enqueue && can_enqueue()) {
+    call->connection()->ParseReceived();
   }
 }
 

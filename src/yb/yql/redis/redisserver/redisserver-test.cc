@@ -38,6 +38,9 @@
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
+DECLARE_uint64(redis_max_read_buffer_size);
+DECLARE_uint64(redis_max_queued_bytes);
+DECLARE_uint64(rpc_initial_buffer_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
 DECLARE_int32(redis_max_value_size);
@@ -467,10 +470,11 @@ Status TestRedisService::SendCommandAndGetResponse(
   deadline.AddDelta(MonoDelta::FromMilliseconds(timeout_in_millis));
   size_t bytes_read = 0;
   resp_.resize(expected_resp_length);
-      RETURN_NOT_OK(client_sock_.BlockingRecv(resp_.data(),
-      expected_resp_length,
-      &bytes_read,
-      deadline));
+  if (expected_resp_length) {
+    memset(resp_.data(), 0, expected_resp_length);
+  }
+  RETURN_NOT_OK(client_sock_.BlockingRecv(
+      resp_.data(), expected_resp_length, &bytes_read, deadline));
   resp_.resize(bytes_read);
   if (expected_resp_length != bytes_read) {
     return STATUS(
@@ -587,6 +591,39 @@ TEST_F_EX(TestRedisService, AbortQueueOnShutdown, TestRedisServiceCleanQueueOnSh
 
 TEST_F(TestRedisService, AbortBatches) {
   TestAbort("DEBUGSLEEP 2000\r\nSET foo 1\r\nGET foo\r\nDEBUGSLEEP 999999999\r\n");
+}
+
+class TestRedisServiceReceiveBufferOverflow : public TestRedisService {
+ public:
+  void SetUp() override {
+    saver_.emplace();
+
+    FLAGS_redis_max_concurrent_commands = 1;
+    FLAGS_redis_max_batch = 1;
+    FLAGS_rpc_initial_buffer_size = 128;
+    FLAGS_redis_max_read_buffer_size = 128;
+    FLAGS_redis_max_queued_bytes = 0;
+    TestRedisService::SetUp();
+  }
+
+  void TearDown() override {
+    TestRedisService::TearDown();
+    saver_.reset();
+  }
+
+ private:
+  boost::optional<google::FlagSaver> saver_;
+};
+
+TEST_F_EX(TestRedisService, ReceiveBufferOverflow, TestRedisServiceReceiveBufferOverflow) {
+  auto key = std::string(FLAGS_redis_max_read_buffer_size - 12, 'X');
+  SendCommandAndExpectResponse(
+      __LINE__, Format("DEBUGSLEEP 2000\r\nSET key $0\r\n", key), "+OK\r\n+OK\r\n");
+
+  SendCommandAndExpectResponse(
+      __LINE__,
+      Format("DEBUGSLEEP 2000\r\nSET key1 $0\r\nSET key2 $0\r\n", key, key),
+      "+OK\r\n+OK\r\n+OK\r\n");
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
