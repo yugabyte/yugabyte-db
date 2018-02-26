@@ -78,16 +78,16 @@ DEFINE_int32(ts_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC worker threads for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(tablet_server_svc_queue_length, -1,
-             "RPC queue length for the TS service. If -1, it is auto configured.");
+DEFINE_int32(tablet_server_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the TS service.");
 TAG_FLAG(tablet_server_svc_queue_length, advanced);
 
 DEFINE_int32(ts_admin_svc_queue_length, 50,
              "RPC queue length for the TS admin service");
 TAG_FLAG(ts_admin_svc_queue_length, advanced);
 
-DEFINE_int32(ts_consensus_svc_queue_length, -1,
-             "RPC queue length for the TS consensus service. If -1, it is auto configured.");
+DEFINE_int32(ts_consensus_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the TS consensus service.");
 TAG_FLAG(ts_consensus_svc_queue_length, advanced);
 
 DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
@@ -199,26 +199,6 @@ void TabletServer::AutoInitServiceFlags() {
     FLAGS_ts_consensus_svc_num_threads = std::max(64, num_threads);
     LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads to "
               << FLAGS_ts_consensus_svc_num_threads;
-  }
-
-  if (FLAGS_tablet_server_svc_queue_length == -1) {
-    if (num_cores <= 4) {
-      FLAGS_tablet_server_svc_queue_length = kLighterSvcQueueLength;
-    } else {
-      FLAGS_tablet_server_svc_queue_length = kDefaultSvcQueueLength;
-    }
-    LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_queue_length to "
-              << FLAGS_tablet_server_svc_queue_length;
-  }
-
-  if (FLAGS_ts_consensus_svc_queue_length == -1) {
-    if (num_cores <= 4) {
-      FLAGS_ts_consensus_svc_queue_length = kLighterSvcQueueLength;
-    } else {
-      FLAGS_ts_consensus_svc_queue_length = kDefaultSvcQueueLength;
-    }
-    LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_queue_length to "
-              << FLAGS_ts_consensus_svc_queue_length;
   }
 }
 
