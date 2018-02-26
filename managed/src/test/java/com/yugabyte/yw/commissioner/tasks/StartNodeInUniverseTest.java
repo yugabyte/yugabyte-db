@@ -86,7 +86,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                             "command", "start")),
             Json.toJson(ImmutableMap.of("processType", "TSERVER",
                             "isAdd", true)),
-            Json.toJson(ImmutableMap.of("state", "Running")),
+            Json.toJson(ImmutableMap.of("state", "Live")),
             Json.toJson(ImmutableMap.of())
     );
 
@@ -111,7 +111,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
                     "command", "start")),
             Json.toJson(ImmutableMap.of("processType", "MASTER",
                     "isAdd", true)),
-            Json.toJson(ImmutableMap.of("state", "Running")),
+            Json.toJson(ImmutableMap.of("state", "Live")),
             Json.toJson(ImmutableMap.of())
 
     );

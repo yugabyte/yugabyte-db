@@ -58,6 +58,9 @@ public class CustomerTask extends Model {
     @EnumValue("Add")
     Add,
 
+    @EnumValue("Release")
+    Release,
+
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
 

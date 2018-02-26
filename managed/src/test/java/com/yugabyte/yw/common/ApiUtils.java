@@ -51,7 +51,7 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, null);
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
               idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           universeDetails.nodeDetailsSet.add(node);
@@ -87,7 +87,7 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
               setMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           universeDetails.nodeDetailsSet.add(node);
@@ -99,6 +99,11 @@ public class ApiUtils {
   }
 
   public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes() {
+    return mockUniverseUpdaterWithInactiveNodes(false);
+  }
+  
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithInactiveNodes(
+      final boolean setMasters) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -108,12 +113,14 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         userIntent.numNodes = userIntent.replicationFactor;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running);
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live,
+                                                setMasters && idx <= userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null);
 
-        NodeDetails node = getDummyNodeDetails(4, NodeDetails.NodeState.BeingDecommissioned);
+        NodeDetails node = getDummyNodeDetails(userIntent.numNodes + 1,
+                                               NodeDetails.NodeState.Removed);
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);

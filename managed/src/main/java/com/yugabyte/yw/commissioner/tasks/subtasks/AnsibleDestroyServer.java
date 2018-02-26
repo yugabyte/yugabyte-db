@@ -19,7 +19,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public class AnsibleDestroyServer extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
-    public Boolean isForceDelete;
+    // Flag to be set where errors from ansible will be ignored.
+    public boolean isForceDelete;
+    // Flag to track if node info should be deleted from universe db.
+    public boolean deleteNode = true;
   }
 
   @Override
@@ -36,15 +39,14 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       return;
     }
     UserIntent userIntent = u.getUniverseDetails()
-            .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
+        .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid).userIntent;
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.removeNode(nodeName);
-        LOG.debug("Removing node " + nodeName +
-                  " from universe " + taskParams().universeUUID);
+        LOG.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
       }
     };
 
@@ -61,8 +63,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Update the node state as being decommissioned.
-    setNodeState(NodeDetails.NodeState.BeingDecommissioned);
+    // Update the node state as removing.
+    setNodeState(NodeDetails.NodeState.Removing);
     // Execute the ansible command.
     try {
       ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
@@ -73,10 +75,13 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         throw e;
       }
     }
-    // Update the node state to destroyed. Even though we remove the node below, this will
-    // help tracking state for any nodes stuck in limbo.
-    setNodeState(NodeDetails.NodeState.Destroyed);
 
-    removeNodeFromUniverse(taskParams().nodeName);
+    if (taskParams().deleteNode) {
+      // Update the node state to removed. Even though we remove the node below, this will
+      // help tracking state for any nodes stuck in limbo.
+      setNodeState(NodeDetails.NodeState.Removed);
+
+      removeNodeFromUniverse(taskParams().nodeName);
+    }
   }
 }

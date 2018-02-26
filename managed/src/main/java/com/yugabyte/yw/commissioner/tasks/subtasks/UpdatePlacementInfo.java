@@ -18,7 +18,6 @@ import org.yb.master.Master;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -42,9 +41,6 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
   // Parameters for placement info update task.
   public static class Params extends AbstractTaskParams {
-    // The cloud provider to get node details.
-    public CloudType cloud;
-
     // The universe against which this node's details should be saved.
     public UUID universeUUID;
 
@@ -68,7 +64,8 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "'(" + taskParams().universeUUID + " num:" + taskParams().numReplicas
+        + " " + taskParams().blacklistNodes + ")'";
   }
 
   @Override

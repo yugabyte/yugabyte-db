@@ -97,7 +97,7 @@ public abstract class AbstractTaskBase implements ITask {
    */
   public void logShellResponse(ShellProcessHandler.ShellResponse response) {
     if (response.code == 0) {
-      LOG.info("[" + getName() + "] STDOUT: " + response.message);
+      LOG.info("[" + getName() + "] STDOUT: '" + response.message + "'");
     } else {
       throw new RuntimeException(response.message);
     }

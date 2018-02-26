@@ -29,7 +29,7 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 import static com.yugabyte.yw.common.ApiUtils.getDummyDeviceInfo;
 import static com.yugabyte.yw.common.ApiUtils.getDummyUserIntent;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeDecommissioned;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -162,7 +162,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     sampleNodeDetails.cloudInfo.region = region.code;
     sampleNodeDetails.cloudInfo.az = az.code;
     sampleNodeDetails.azUuid = az.uuid;
-    sampleNodeDetails.state = NodeDetails.NodeState.Running;
+    sampleNodeDetails.state = NodeDetails.NodeState.Live;
   }
 
   @Test
@@ -234,7 +234,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   public void testAddPriceWithRemovingOneNode() throws Exception {
     NodeDetails decommissioningNode = Json.fromJson(Json.toJson(sampleNodeDetails).deepCopy(),
         NodeDetails.class);
-    decommissioningNode.state = ToBeDecommissioned;
+    decommissioningNode.state = ToBeRemoved;
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator, 4, 0.0);
     OngoingStubbing nextStubbing = when(mockIterator.next());

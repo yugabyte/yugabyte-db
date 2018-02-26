@@ -58,15 +58,16 @@ public class StartNodeInUniverse extends UniverseTaskBase {
 
       if (areMastersUnderReplicated(currentNode, universe)) {
         // Start a master process.
-        createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)), false);
+        createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as isMaster in YW DB.
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.StartingNodeProcesses);
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 
       // Update node state to running
-      createSetNodeStateTask(currentNode, NodeDetails.NodeState.Running)
+      createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Mark universe update success to true
