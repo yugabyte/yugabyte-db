@@ -24,11 +24,42 @@ using std::numeric_limits;
 namespace yb {
 namespace docdb {
 
-TEST(JsonbTest, TestJsonbSerialization) {
+void ParseJson(const std::string& json, rapidjson::Document* document) {
   std::string jsonb;
-  ASSERT_OK(Jsonb::ToJsonb(R"#(
+  LOG(INFO) << "Parsing json...";
+  ASSERT_OK(Jsonb::ToJsonb(json, &jsonb));
+  ASSERT_FALSE(jsonb.empty());
+
+  ASSERT_OK(Jsonb::FromJsonb(jsonb, document));
+
+  rapidjson::StringBuffer buffer;
+  rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+  document->Accept(writer);
+  LOG (INFO) << "Deserialized json: " << buffer.GetString();
+}
+
+void VerifyArray(const rapidjson::Value& document) {
+  ASSERT_TRUE(document.IsArray());
+  ASSERT_EQ(1, document[0].GetInt());
+  ASSERT_EQ(2, document[1].GetInt());
+  ASSERT_DOUBLE_EQ(3.0, document[2].GetFloat());
+  ASSERT_TRUE(document[3].IsFalse());
+  ASSERT_TRUE(document[4].IsTrue());
+  ASSERT_TRUE(document[5].IsObject());
+  ASSERT_EQ(1, document[5]["k1"].GetInt());
+  ASSERT_TRUE(document[5]["k2"].IsArray());
+  ASSERT_EQ(100, document[5]["k2"][0].GetInt());
+  ASSERT_EQ(200, document[5]["k2"][1].GetInt());
+  ASSERT_EQ(300, document[5]["k2"][2].GetInt());
+  ASSERT_TRUE(document[5]["k3"].IsTrue());
+}
+
+TEST(JsonbTest, TestJsonbSerialization) {
+  rapidjson::Document document;
+  ParseJson(R"#(
       {
         "b" : 1,
+        "a1" : [1, 2, 3.0, false, true, { "k1" : 1, "k2" : [100, 200, 300], "k3" : true}],
         "a" :
         {
           "d" : true,
@@ -48,16 +79,7 @@ TEST(JsonbTest, TestJsonbSerialization) {
           "l" : 2147483647.123123e+75,
           "e" : null
         }
-      })#", &jsonb));
-  ASSERT_FALSE(jsonb.empty());
-
-  rapidjson::Document document;
-  ASSERT_OK(Jsonb::FromJsonb(jsonb, &document));
-
-  rapidjson::StringBuffer buffer;
-  rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
-  document.Accept(writer);
-  LOG (INFO) << "Deserialized json: " << buffer.GetString();
+      })#", &document);
 
   // Verify the json.
   ASSERT_TRUE(document.HasMember("a"));
@@ -114,6 +136,19 @@ TEST(JsonbTest, TestJsonbSerialization) {
   ASSERT_TRUE(document.HasMember("b"));
   ASSERT_TRUE(document["b"].IsInt64());
   ASSERT_EQ(1, document["b"].GetInt64());
+
+  // Test array.
+  ASSERT_TRUE(document.HasMember("a1"));
+  ASSERT_TRUE(document["a1"].IsArray());
+  VerifyArray(document["a1"]);
+}
+
+TEST(JsonbTest, TestArrays) {
+  rapidjson::Document document;
+  ParseJson(R"#(
+        [1, 2, 3.0, false, true, { "k1" : 1, "k2" : [100, 200, 300], "k3" : true}]
+      )#", &document);
+  VerifyArray(document);
 }
 
 }  // namespace docdb
