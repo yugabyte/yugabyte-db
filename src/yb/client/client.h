@@ -704,6 +704,11 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   const PartitionSchema& partition_schema() const;
 
+  // Finds partition start for specified partition_key.
+  // Partitions could be groupped by group_by bunches, in this case start of such bunch is returned.
+  const std::string& FindPartitionStart(
+      const std::string& partition_key, size_t group_by = 1) const;
+
  private:
   struct Info;
   class Data;

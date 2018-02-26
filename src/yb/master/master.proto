@@ -499,8 +499,8 @@ message TSHeartbeatResponsePB {
 }
 
 message TSInformationPB {
-    required TSRegistrationPB registration = 1;
-    required NodeInstancePB tserver_instance = 2;
+  required TSRegistrationPB registration = 1;
+  required NodeInstancePB tserver_instance = 2;
 }
 
 //////////////////////////////

@@ -39,6 +39,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/thread/shared_mutex.hpp>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/partition.h"
@@ -275,7 +277,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
                          RemoteTabletPtr* remote_tablet,
                          const StatusCallback& callback);
 
-  void LookupTabletById(const std::string& tablet_id,
+  void LookupTabletById(const TabletId& tablet_id,
                         const MonoTime& deadline,
                         RemoteTabletPtr* remote_tablet,
                         const StatusCallback& callback);
@@ -301,14 +303,15 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Called on the slow LookupTablet path when the master responds. Populates
   // the tablet caches and returns a reference to the first one.
   RemoteTabletPtr ProcessTabletLocations(
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations);
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+      const std::string* partition_group_start);
 
   // Lookup the given tablet by key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
-  RemoteTabletPtr LookupTabletByKeyFastPath(const YBTable* table,
-                                            const std::string& partition_key);
+  RemoteTabletPtr LookupTabletByKeyFastPathUnlocked(const YBTable* table,
+                                                    const std::string& partition_key);
 
-  RemoteTabletPtr LookupTabletByIdFastPath(const std::string& tablet_id);
+  RemoteTabletPtr LookupTabletByIdFastPath(const TabletId& tablet_id);
 
   // Update our information about the given tablet server.
   //
@@ -316,11 +319,16 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // the latest host/port info for a server.
   //
   // NOTE: Must be called with lock_ held.
-  void UpdateTabletServer(const master::TSInfoPB& pb);
+  void UpdateTabletServerUnlocked(const master::TSInfoPB& pb);
+
+  // Notify appropriate callbacks that lookup of specified partition group of specified table
+  // was failed because of specified status.
+  void LookupFailed(
+      const YBTable* table, const std::string& partition_group_start, const Status& status);
 
   YBClient* client_;
 
-  rw_spinlock lock_;
+  boost::shared_mutex mutex_;
 
   // Cache of Tablet Server locations: TS UUID -> RemoteTabletServer*.
   //
@@ -336,9 +344,28 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Cache of tablets, keyed by table ID, then by start partition key.
   //
-  // Protected by lock_.
-  typedef std::map<std::string, RemoteTabletPtr> TabletMap;
-  std::unordered_map<std::string, TabletMap> tablets_by_table_and_key_;
+  // Protected by mutex_.
+  struct LookupData {
+    StatusCallback callback;
+    RemoteTabletPtr* remote_tablet;
+    MonoTime deadline;
+
+    std::string ToString() const {
+      return Format("{ remote_tablet: $0 deadline: $1 }",
+                    static_cast<void*>(remote_tablet), deadline);
+    }
+  };
+
+  typedef std::unordered_map<std::string, std::vector<LookupData>> PartitionToLookupData;
+  typedef std::string PartitionKey;
+  typedef std::string PartitionGroupKey;
+
+  struct TableData {
+    std::unordered_map<PartitionKey, RemoteTabletPtr> tablets_by_partition;
+    std::unordered_map<PartitionGroupKey, PartitionToLookupData> tablet_lookups_by_group;
+  };
+
+  std::unordered_map<TableId, TableData> tables_;
 
   // Cache of tablets, keyed by tablet ID.
   //

@@ -59,7 +59,7 @@ class TabletInvoker {
                          rpc::RpcRetrier* retrier,
                          Trace* trace);
 
-  virtual ~TabletInvoker() {}
+  virtual ~TabletInvoker();
 
   void Execute(const std::string& tablet_id);
   bool Done(Status* status);

@@ -39,8 +39,6 @@
 #include "yb/common/partition.h"
 #include "yb/common/read_hybrid_time.h"
 
-#include "yb/client/meta_cache.h"
-
 namespace yb {
 
 class RedisWriteRequestPB;
@@ -57,6 +55,7 @@ namespace client {
 namespace internal {
 class Batcher;
 class AsyncRpc;
+class RemoteTablet;
 }  // namespace internal
 
 class YBSession;
@@ -95,9 +94,7 @@ class YBOperation {
     return tablet_;
   }
 
-  void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet) {
-    tablet_ = tablet;
-  }
+  void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet);
 
   // Returns the partition key of the operation.
   virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;

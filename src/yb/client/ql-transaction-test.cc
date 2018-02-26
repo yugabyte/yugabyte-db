@@ -27,6 +27,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+#include "yb/rpc/rpc.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/test_clock.h"
 

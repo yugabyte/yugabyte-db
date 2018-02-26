@@ -84,6 +84,7 @@ YBTable::Data::~Data() {
 Status YBTable::Data::Open() {
   // TODO: fetch the schema from the master here once catalog is available.
   GetTableLocationsRequestPB req;
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   GetTableLocationsResponsePB resp;
 
   MonoTime deadline = MonoTime::Now();
@@ -164,6 +165,13 @@ Status YBTable::Data::Open() {
       continue;
     }
     if (resp.tablet_locations_size() > 0) {
+      DCHECK(partitions_.empty());
+      partitions_.clear();
+      partitions_.reserve(resp.tablet_locations().size());
+      for (const auto& tablet_location : resp.tablet_locations()) {
+        partitions_.push_back(tablet_location.partition().partition_key_start());
+      }
+      std::sort(partitions_.begin(), partitions_.end());
       break;
     }
 

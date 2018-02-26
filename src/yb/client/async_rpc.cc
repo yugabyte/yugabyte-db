@@ -279,7 +279,7 @@ WriteRpc::WriteRpc(
 
     CHECK(partition_contains_row)
         << "Row " << op->yb_op->ToString()
-        << "not in partition " << partition_schema.PartitionDebugString(partition, schema)
+        << " not in partition " << partition_schema.PartitionDebugString(partition, schema)
         << " partition_key: '" << Slice(partition_key).ToDebugHexString() << "'";
 
 #endif

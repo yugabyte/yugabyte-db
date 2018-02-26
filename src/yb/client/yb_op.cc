@@ -33,6 +33,8 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
+
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol.h"
@@ -54,6 +56,10 @@ YBOperation::YBOperation(const shared_ptr<YBTable>& table)
 }
 
 YBOperation::~YBOperation() {}
+
+void YBOperation::SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet) {
+  tablet_ = tablet;
+}
 
 // YBRedisOp ----------------------------------------------------------------------
 
