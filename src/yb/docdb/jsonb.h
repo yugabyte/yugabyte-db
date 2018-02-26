@@ -37,6 +37,10 @@ using JEntry = JsonbMetadata;
 // jsonb. After the 32 bit jsonb header, we store 32 bit metadata for each key, followed by a
 // 32 bit metadata for each value. Next, we store all the keys followed by all the values.
 //
+// In case of arrays, we store the metadata for all the array elements first and then store the
+// data for the corresponding array elements after that. The original order of the array elements
+// is maintained.
+//
 // The 32 bit metadata is called a JEntry and the first 28 bits store the ending offset of the
 // data. The last 4 bits indicate the type of the data (ex: string, numeric, bool, array, object
 // or null).
@@ -47,6 +51,8 @@ using JEntry = JsonbMetadata;
 // difference and hence its simpler to just use offsets.
 // 2. In our serialization format, we just use the BigEndian format used in docdb to store
 // serialized integers.
+// 3. We store the data type for ints, uints, floats and doubles in the JEntry.
+// 4. We store information about whether a container is an array or an object in the JEntry.
 class Jsonb {
  public:
   // Creates a serialized jsonb string from plaintext json.
@@ -55,10 +61,29 @@ class Jsonb {
   static CHECKED_STATUS FromJsonb(const std::string& jsonb, rapidjson::Document* document);
  private:
   static CHECKED_STATUS ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb);
+  static CHECKED_STATUS ToJsonbProcessObject(const rapidjson::Value& document,
+                                             std::string* jsonb);
+  static CHECKED_STATUS ToJsonbProcessArray(const rapidjson::Value& document,
+                                            std::string* jsonb);
+  static CHECKED_STATUS ProcessJsonValue(const rapidjson::Value& value,
+                                         const size_t data_begin_offset,
+                                         std::string* jsonb,
+                                         size_t* metadata_offset);
+
   // Method to recursively build the json object from serialized jsonb. The offset denotes the
   // starting position in the jsonb from which we need to start processing.
   static CHECKED_STATUS FromJsonbInternal(const std::string& jsonb, size_t offset,
                                           rapidjson::Document* document);
+  static CHECKED_STATUS FromJsonbProcessObject(const std::string& jsonb, size_t offset,
+                                               const JsonbHeader& jsonb_header,
+                                               rapidjson::Document* document);
+  static CHECKED_STATUS FromJsonbProcessArray(const std::string& jsonb, size_t offset,
+                                              const JsonbHeader& jsonb_header,
+                                              rapidjson::Document* document);
+
+  static pair<size_t, size_t> ComputeOffsetsAndJsonbHeader(size_t num_entries,
+                                                           uint32_t container_type,
+                                                           std::string* jsonb);
 
   // Helper method to retrieve the (offset, length) of a key/value serialized in jsonb format.
   // element_metadata_offset denotes the offset for the JEntry of the key/value,
@@ -83,10 +108,11 @@ class Jsonb {
 
   // Values stored in the type bits.
   static constexpr uint32_t kJEIsString = 0x00000000;
+  static constexpr uint32_t kJEIsObject = 0x10000000;
   static constexpr uint32_t kJEIsBoolFalse = 0x20000000;
   static constexpr uint32_t kJEIsBoolTrue = 0x30000000;
   static constexpr uint32_t kJEIsNull = 0x40000000;
-  static constexpr uint32_t kJEIsContainer = 0x50000000; // could be array or object.
+  static constexpr uint32_t kJEIsArray = 0x50000000;
   static constexpr uint32_t kJEIsInt = 0x60000000;
   static constexpr uint32_t kJEIsUInt = 0x70000000;
   static constexpr uint32_t kJEIsInt64 = 0x80000000;
