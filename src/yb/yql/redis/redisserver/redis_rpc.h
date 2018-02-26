@@ -56,7 +56,11 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
 class RedisInboundCall : public rpc::QueueableInboundCall {
  public:
-  explicit RedisInboundCall(rpc::ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  explicit RedisInboundCall(
+     rpc::ConnectionPtr conn,
+     size_t weight_in_bytes,
+     CallProcessedListener call_processed_listener);
+
   ~RedisInboundCall();
   CHECKED_STATUS ParseFrom(size_t commands, Slice source);
 

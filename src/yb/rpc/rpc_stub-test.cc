@@ -95,6 +95,7 @@ class RpcStubTest : public RpcTestBase {
     StartTestServerWithGeneratedCode(&server_endpoint_);
     client_messenger_ = CreateMessenger("Client");
   }
+
  protected:
   void SendSimpleCall() {
     CalculatorServiceProxy p(client_messenger_, server_endpoint_);

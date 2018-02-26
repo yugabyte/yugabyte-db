@@ -189,6 +189,9 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   CHECKED_STATUS Start(ev::loop_ref* loop);
 
+  // Try to parse already received data.
+  void ParseReceived();
+
  private:
   CHECKED_STATUS DoWrite();
 
@@ -203,6 +206,9 @@ class Connection final : public std::enable_shared_from_this<Connection> {
 
   // Try to parse received data into calls and process them.
   Result<bool> TryProcessCalls();
+
+  // Updates listening events.
+  void UpdateEvents();
 
   // The reactor thread that created this connection.
   Reactor* const reactor_;
@@ -220,6 +226,8 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   Direction direction_;
 
   bool connected_ = false;
+
+  bool read_buffer_full_ = false;
 
   // The last time we read or wrote from the socket.
   CoarseMonoClock::TimePoint last_activity_time_;

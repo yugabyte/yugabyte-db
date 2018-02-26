@@ -34,7 +34,9 @@
 
 #include "yb/util/memory/memory.h"
 
-using yb::operator"" _KB;
+using namespace std::literals;
+using namespace std::placeholders;
+using namespace yb::size_literals;
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
@@ -47,20 +49,26 @@ DEFINE_int32(rpcz_max_redis_query_dump_size, 4_KB,
 DEFINE_uint64(redis_max_read_buffer_size, yb::redisserver::kMaxBufferSize,
               "Max read buffer size for Redis connections.");
 
-using namespace std::literals; // NOLINT
-using namespace std::placeholders;
+DEFINE_uint64(redis_max_queued_bytes, 16_MB,
+              "Max number of bytes in queued redis commands.");
 
 namespace yb {
 namespace redisserver {
 
 RedisConnectionContext::RedisConnectionContext()
-    : ConnectionContextWithQueue(FLAGS_redis_max_concurrent_commands) {}
+    : ConnectionContextWithQueue(
+        FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes) {}
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
 Status RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
                                             Slice slice,
                                             size_t* consumed) {
+  if (!can_enqueue()) {
+    *consumed = 0;
+    return Status::OK();
+  }
+
   if (!parser_) {
     parser_.reset(new RedisParser(slice));
   } else {
@@ -107,7 +115,8 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = std::make_shared<RedisInboundCall>(connection, call_processed_listener());
+  auto call = std::make_shared<RedisInboundCall>(
+      connection, source.size(), call_processed_listener());
 
   Status s = call->ParseFrom(commands_in_batch, source);
   if (!s.ok()) {
@@ -124,8 +133,9 @@ size_t RedisConnectionContext::BufferLimit() {
 }
 
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
+                                   size_t weight_in_bytes,
                                    CallProcessedListener call_processed_listener)
-    : QueueableInboundCall(std::move(conn), std::move(call_processed_listener)) {
+    : QueueableInboundCall(std::move(conn), weight_in_bytes, std::move(call_processed_listener)) {
 }
 
 RedisInboundCall::~RedisInboundCall() {

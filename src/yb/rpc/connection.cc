@@ -302,14 +302,23 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   }
 
   if (status.ok()) {
-    int events = ev::READ;
-    waiting_write_ready_ = !sending_.empty();
-    if (waiting_write_ready_) {
-      events |= ev::WRITE;
-    }
-    io_.set(events);
+    UpdateEvents();
   } else {
     reactor_->DestroyConnection(this, status);
+  }
+}
+
+void Connection::UpdateEvents() {
+  int events = 0;
+  if (!read_buffer_full_) {
+    events |= ev::READ;
+  }
+  waiting_write_ready_ = !sending_.empty();
+  if (waiting_write_ready_) {
+    events |= ev::WRITE;
+  }
+  if (events) {
+    io_.set(events);
   }
 }
 
@@ -348,7 +357,13 @@ Status Connection::ReadHandler() {
 }
 
 Result<bool> Connection::Receive() {
-  RETURN_NOT_OK(read_buffer_.PrepareRead());
+  auto status = read_buffer_.PrepareRead();
+  if (status.IsBusy()) {
+    read_buffer_full_ = true;
+    return false;
+  }
+  RETURN_NOT_OK(status);
+  read_buffer_full_ = false;
 
   size_t max_receive = context_->MaxReceive(Slice(read_buffer_.begin(), read_buffer_.size()));
   DCHECK_GT(max_receive, read_buffer_.size());
@@ -364,7 +379,7 @@ Result<bool> Connection::Receive() {
 
   const int32_t remaining_buf_capacity = static_cast<int32_t>(max_receive);
   int32_t nread = 0;
-  auto status = socket_.Recv(read_buffer_.write_position(), remaining_buf_capacity, &nread);
+  status = socket_.Recv(read_buffer_.write_position(), remaining_buf_capacity, &nread);
   if (!status.ok()) {
     if (Socket::IsTemporarySocketError(status)) {
       return false;
@@ -374,6 +389,17 @@ Result<bool> Connection::Receive() {
 
   read_buffer_.DataAppended(nread);
   return nread != 0;
+}
+
+void Connection::ParseReceived() {
+  auto result = TryProcessCalls();
+  if (!result.ok()) {
+    reactor_->DestroyConnection(this, result.status());
+  }
+  if (read_buffer_full_) {
+    read_buffer_full_ = false;
+    UpdateEvents();
+  }
 }
 
 Result<bool> Connection::TryProcessCalls() {
