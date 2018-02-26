@@ -75,11 +75,20 @@ public class UserTaskDetails {
     // Starting Node
     StartingNode,
 
-    // Start Node Master and T-Server process
+    // Start master and tserver processes on a node
     StartingNodeProcesses,
 
-    // Stop Node Master and T-Server Process
+    // Stop master and tserver processes on a node
     StoppingNodeProcesses,
+
+    // Adding a node.
+    AddingNode,
+
+    // Removing a node.
+    RemovingNode,
+
+    // Releasing the backing IaaS instance.
+    ReleasingInstance,
 
     // Deleting Table
     DeletingTable,
@@ -173,12 +182,24 @@ public class UserTaskDetails {
         description = "Waiting for node to start.";
         break;
       case StartingNodeProcesses:
-        title = "Starting Node Processes";
-        description = "Starting tserver process and master process if required.";
+        title = "Starting Node processes";
+        description = "Waiting for node to start either tserver of master process.";
+        break;
+     case AddingNode:
+        title = "Adding a node";
+        description = "Add a node to universe and start tserver (and master, if required).";
+        break;
+     case RemovingNode:
+        title = "Removing a node";
+        description = "Remove a node from universe.";
+        break;
+     case ReleasingInstance:
+        title = "Releasing the instance back to the IaaS.";
+        description = "Releasing the instance from universe.";
         break;
       case StoppingNodeProcesses:
         title = "Stopping Node Processes";
-        description = "Stopping tserver process and master process on node.";
+        description = "Stopping tserver and master processes on the node.";
         break;
       case DeletingTable:
         title = "Deleting Table";

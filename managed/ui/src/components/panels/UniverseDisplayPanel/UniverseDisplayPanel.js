@@ -44,7 +44,7 @@ class UniverseDisplayItem extends Component {
     }
     const provider = providers.data.find((p) => p.uuid === primaryCluster.userIntent.provider);
     const replicationFactor = <span>{`${primaryCluster.userIntent.replicationFactor}`}</span>;
-    const universeProvider = <span>{`${provider.name}`}</span>;
+    const universeProvider = isNonEmptyObject(provider) ? <span>{`${provider.name}`}</span> : <span/>;
     const numNodes = <span>{primaryCluster.userIntent.numNodes}</span>;
     let costPerMonth = <span>n/a</span>;
     if (isFinite(universe.pricePerHour)) {

@@ -159,6 +159,7 @@ public class Util {
         mastersToAZMap.putIfAbsent(currentNode.azUuid, 0);
       }
     }
+    LOG.info("Masters to AZ :" + mastersToAZMap);
     return mastersToAZMap;
   }
 
@@ -182,15 +183,15 @@ public class Util {
 
   /**
    * API detects if addition of a master to the same AZ of current node makes master quorum get closer to 
-   * satisfying the replication factor requirements. Caller ensures that universe is under replicated, so
-   * `numMastersToBeAdded` below will never be negative.
+   * satisfying the replication factor requirements.
    * @param currentNode the node whose AZ is checked.
-   * @param universeUUID UUID of universe.
+   * @param nodeDetailsSet collection of nodes in a universe.
+   * @param numMastersToBeAdded number of masters to be added.
    * @return true if starting a master on the node will enhance master replication of the universe.
    */
-  public static boolean needMasterQuorumRestore(NodeDetails currentNode, UUID universeUUID) {
-    Universe universe = Universe.get(universeUUID);
-    Set<NodeDetails> nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+  public static boolean needMasterQuorumRestore(NodeDetails currentNode,
+                                                Set<NodeDetails> nodeDetailsSet,
+                                                int numMastersToBeAdded) {
     Map<UUID, Integer> mastersToAZMap = getMastersToAZMap(nodeDetailsSet);
 
     // If this is a single AZ deploy or if no master in current AZ, then start a master.
@@ -199,9 +200,6 @@ public class Util {
     }
 
     Map<UUID, Integer> azToNumStoppedNodesMap = getAZToStoppedNodesCountMap(nodeDetailsSet);
-    int numMastersToBeAdded =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor -
-            getNumMasters(nodeDetailsSet);
     int numStoppedMasters = 0;
     for (UUID azUUID : azToNumStoppedNodesMap.keySet()) {
       if (azUUID != currentNode.azUuid &&
@@ -209,7 +207,7 @@ public class Util {
         numStoppedMasters++;
       }
     }
-
+    LOG.info("Masters: numStopped {}, numToBeAdded {}", numStoppedMasters, numMastersToBeAdded);
     return numStoppedMasters < numMastersToBeAdded;
   }
 
@@ -221,11 +219,14 @@ public class Util {
   private static Map<UUID, Integer> getAZToStoppedNodesCountMap(Set<NodeDetails> nodeDetailsSet) {
     Map<UUID, Integer> azToNumStoppedNodesMap = new HashMap<UUID, Integer>();
     for (NodeDetails currentNode : nodeDetailsSet) {
-      if (currentNode.state == NodeDetails.NodeState.Stopped) {
+      if (currentNode.state == NodeDetails.NodeState.Stopped ||
+          currentNode.state == NodeDetails.NodeState.Removed ||
+          currentNode.state == NodeDetails.NodeState.Decommissioned) {
         azToNumStoppedNodesMap.put(currentNode.azUuid,
                                    azToNumStoppedNodesMap.getOrDefault(currentNode.azUuid, 0) + 1);
       }
     }
+    LOG.info("AZ to stopped count {}", azToNumStoppedNodesMap);
     return azToNumStoppedNodesMap;
   }
 
@@ -238,9 +239,12 @@ public class Util {
   public static boolean areMastersUnderReplicated(NodeDetails currentNode,
                                                   Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (universeDetails.getPrimaryCluster().userIntent.replicationFactor >
-          getNumMasters(universeDetails.nodeDetailsSet) &&
-        needMasterQuorumRestore(currentNode, universe.universeUUID)) {
+    Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
+    int numMasters = getNumMasters(nodes);
+    int replFactor = universeDetails.getPrimaryCluster().userIntent.replicationFactor;
+    LOG.info("RF = {} , numMasters = {}", replFactor, numMasters);
+    if (replFactor > numMasters &&
+        needMasterQuorumRestore(currentNode, nodes, replFactor - numMasters)) {
       return true;
     }
     return false;

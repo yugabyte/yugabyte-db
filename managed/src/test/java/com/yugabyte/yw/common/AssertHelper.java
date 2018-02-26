@@ -53,6 +53,11 @@ public class AssertHelper {
     json.findValues(key).forEach((node) -> assertTrue(values.contains(node.asText())));
   }
 
+  public static void assertArrayNode(JsonNode json, String key, List<String> expectedValues) {
+    assertTrue(json.get(key).isArray());
+    json.get(key).forEach( (value) -> assertTrue(expectedValues.contains(value.asText())));
+  }
+
   public static void assertErrorNodeValue(JsonNode json, String key, String value) {
     JsonNode errorJson = json.get("error");
     assertNotNull(errorJson);

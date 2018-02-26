@@ -189,7 +189,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
     createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType))
         .setSubTaskGroupType(getTaskSubGroupType());
-    createSetNodeStateTask(node, NodeDetails.NodeState.Running)
+    createSetNodeStateTask(node, NodeDetails.NodeState.Live)
         .setSubTaskGroupType(getTaskSubGroupType());
   }
 
@@ -220,7 +220,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
 
     createServerControlTasks(nodes, processType, "start", 0).setSubTaskGroupType(getTaskSubGroupType());
-    createSetNodeStateTasks(nodes, NodeDetails.NodeState.Running).setSubTaskGroupType(getTaskSubGroupType());
+    createSetNodeStateTasks(nodes, NodeDetails.NodeState.Live).setSubTaskGroupType(getTaskSubGroupType());
   }
 
   private SubTaskGroupType getTaskSubGroupType() {

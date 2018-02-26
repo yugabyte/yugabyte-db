@@ -31,6 +31,12 @@ public enum TaskType {
 
   StartNodeInUniverse("StartNodeInUniverse"),
 
+  AddNodeToUniverse("AddNodeToUniverse"),
+
+  RemoveNodeFromUniverse("RemoveNodeFromUniverse"),
+
+  ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 

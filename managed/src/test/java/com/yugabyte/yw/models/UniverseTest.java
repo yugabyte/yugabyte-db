@@ -112,6 +112,7 @@ public class UniverseTest extends FakeDBApplication {
           node.cloudInfo.region = "test-region";
           node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
           node.cloudInfo.private_ip = "host-n" + idx;
+          node.state = NodeDetails.NodeState.Live;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
@@ -205,7 +206,7 @@ public class UniverseTest extends FakeDBApplication {
           node.cloudInfo.region = "test-region";
           node.cloudInfo.subnet_id = "subnet-" + idx;
           node.cloudInfo.private_ip = "host-n" + idx;
-          node.state = NodeDetails.NodeState.Running;
+          node.state = NodeDetails.NodeState.Live;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
