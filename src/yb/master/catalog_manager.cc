@@ -737,7 +737,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
 }
 
 void CatalogManager::LoadSysCatalogDataTask() {
-  Consensus* consensus = tablet_peer()->consensus();
+  auto consensus = tablet_peer()->shared_consensus();
   const int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
       MonoDelta::FromMilliseconds(FLAGS_master_failover_catchup_timeout_ms));

@@ -122,6 +122,11 @@ Options:
     Enable precompiled headers using cotire.
   --cmake-args
     Additional CMake arguments
+  --host-for-tests
+    Use this host for running tests. Could also be set using the YB_HOST_FOR_RUNNING_TESTS env
+    variable.
+  --test-timeout-sec
+    Test timeout in seconds
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -161,6 +166,7 @@ print_summary() {
     thick_horizontal_line
     echo "YUGABYTE BUILD SUMMARY"
     thick_horizontal_line
+    echo "Build type:            ${build_type:-undefined}"
     echo "Edition:               ${YB_EDITION:-undefined}"
     if [[ -n ${cmake_end_time_sec:-} ]]; then
       echo "CMake time:            $(( $cmake_end_time_sec - $cmake_start_time_sec )) seconds"
@@ -218,11 +224,12 @@ use_shared_thirdparty=false
 run_python_tests=false
 cmake_extra_args=""
 predefined_build_root=""
+export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
 unset BUILD_ROOT
 
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   if is_valid_build_type "$1"; then
     build_type="$1"
     shift
@@ -446,6 +453,17 @@ while [ $# -gt 0 ]; do
         cmake_extra_args+=" "
       fi
       cmake_extra_args+=$2
+      shift
+    ;;
+    --host-for-tests)
+      export YB_HOST_FOR_RUNNING_TESTS=$2
+      shift
+    ;;
+    --test-timeout-sec)
+      export YB_TEST_TIMEOUT=$2
+      if [[ ! $YB_TEST_TIMEOUT =~ ^[0-9]+$ ]]; then
+        fatal "Invalid value for test timeout: '$YB_TEST_TIMEOUT'"
+      fi
       shift
     ;;
     *)
@@ -688,6 +706,31 @@ if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
 fi
 
 if [[ -n $cxx_test_name ]]; then
+  if [[ -n ${YB_HOST_FOR_RUNNING_TESTS:-} && \
+        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME && \
+        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]]; then
+    log "Running tests on host '$YB_HOST_FOR_RUNNING_TESTS' (current host is '$HOSTNAME')"
+
+    # Add extra arguments to the sub-invocation of yb_build.sh. We have to add them before the
+    # first "--".
+    set +u
+    sub_yb_build_args=()
+    extra_args=( --skip-build --host-for-tests "" )
+    for arg in "${original_args[@]}"; do
+      if [[ $arg == "--" ]]; then
+        sub_yb_build_args+=( "${extra_args[@]}" )
+        extra_args=()
+      fi
+      sub_yb_build_args+=( "$arg" )
+    done
+    sub_yb_build_args+=( "${extra_args[@]}" )
+    set -u
+
+    log "Invoking on '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
+    run_remote_cmd "$YB_HOST_FOR_RUNNING_TESTS" "$YB_SRC_ROOT/yb_build.sh" \
+      "${sub_yb_build_args[@]}"
+    exit
+  fi
   fix_cxx_test_name
 
   if [[ $num_test_repetitions -eq 1 ]]; then

@@ -995,7 +995,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   }
 
   state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data);
-  leader_lease_wait_cond_.Broadcast();
+  leader_lease_wait_cond_.notify_all();
 
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking majority replicated up to "
       << majority_replicated_data.op_id.ShortDebugString();
@@ -2212,14 +2212,15 @@ Status RaftConsensus::WaitForLeaderLeaseImprecise(MonoTime deadline) {
         return Status::OK();
       case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
         {
-          std::lock_guard<decltype(leader_lease_wait_mtx_)> lock(leader_lease_wait_mtx_);
+          std::unique_lock<decltype(leader_lease_wait_mtx_)> lock(leader_lease_wait_mtx_);
           // Because we're not taking the same lock (leader_lease_wait_mtx_) when we check the
           // leader lease status, there is a possibility of a race condition when we miss the
           // notification and by this point we already have a lease. Rather than re-taking the
           // ReplicaState lock and re-checking, here we simply block for up to 100ms in that case,
           // because this function is currently (08/14/2017) only used in a context when it is OK,
           // such as catalog manager initialization.
-          leader_lease_wait_cond_.TimedWait(max(MonoDelta::FromMilliseconds(100), deadline - now));
+          leader_lease_wait_cond_.wait_for(lock,
+              max(MonoDelta::FromMilliseconds(100), deadline - now).ToSteadyDuration());
         }
         continue;
       case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:

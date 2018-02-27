@@ -19,7 +19,6 @@ import shlex
 import subprocess
 import sys
 
-
 REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
 
 
@@ -85,6 +84,23 @@ def remote_output_line(args, command):
 
 def fetch_remote_commit(args):
     return remote_output_line(args, 'git rev-parse HEAD')
+
+
+def add_extra_ybd_args(ybd_args, extra_args):
+    """
+    Inserts extra arguments into a list of yb_build.sh arguments. If a "--" argument is present,
+    new arguments are inserted before it, because the rest of yb_build.sh's arguments may be passed
+    along to yet another command.
+
+    :param ybd_args: existing yb_build.sh arguments
+    :param extra_args: extra arguments to insert
+    :return: new list of yb_build.sh arguments
+    """
+    for i in range(len(ybd_args)):
+        if ybd_args[i] == '--':
+            return ybd_args[:i] + extra_args + ybd_args[i:]
+
+    return ybd_args + extra_args
 
 
 def main():
@@ -179,10 +195,16 @@ def main():
         sys.exit(0)
 
     ybd_args = [args.build_type]
+
     if len(args.args) != 0 and args.args[0] == '--':
         ybd_args += args.args[1:]
     else:
         ybd_args += args.args
+
+    if '--host-for-tests' not in ybd_args and 'YB_HOST_FOR_RUNNING_TESTS' in os.environ:
+        ybd_args = add_extra_ybd_args(ybd_args,
+                                      ['--host-for-tests', os.environ['YB_HOST_FOR_RUNNING_TESTS']])
+
     remote_command = "cd {0} && ./yb_build.sh".format(args.remote_path)
     for arg in ybd_args:
         remote_command += " {0}".format(shlex.quote(arg))

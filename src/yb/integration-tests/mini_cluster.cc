@@ -181,6 +181,9 @@ Status MiniCluster::StartMasters() {
   LOG(INFO) << "Creating distributed mini masters. RPC ports: "
             << JoinInts(master_rpc_ports_, ", ");
 
+  if (mini_masters_.size() < num_masters_initial_) {
+    mini_masters_.resize(num_masters_initial_);
+  }
   for (int i = 0; i < num_masters_initial_; i++) {
     gscoped_ptr<MiniMaster> mini_master(
         new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i]));
