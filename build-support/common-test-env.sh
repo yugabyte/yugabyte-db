@@ -508,8 +508,14 @@ set_debugger_input_for_core_stack_trace() {
   if is_mac; then
     debugger_cmd=( lldb "$executable_path" -c "$core_path" )
     debugger_input="thread backtrace ${thread_for_backtrace:-all}"  # backtrace
+    # TODO: dump the current thread AND all threads, like we already do with gdb.
   else
-    debugger_cmd=( gdb -q -n -ex bt -batch "$executable_path" "$core_path" )
+    debugger_cmd=(
+      gdb -q -n
+      -ex 'bt'
+      -ex 'thread apply all bt'
+      -batch "$executable_path" "$core_path"
+    )
     debugger_input=""
   fi
 }

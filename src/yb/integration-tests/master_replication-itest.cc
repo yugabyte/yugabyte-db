@@ -139,20 +139,23 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void VerifyMasterRestart() {
-    // Check that all masters are up first.
+    LOG(INFO) << "Check that all " << num_masters_ << " masters are up first.";
     for (int i = 0; i < num_masters_; ++i) {
+      LOG(INFO) << "Checking master " << i;
       auto* master = cluster_->mini_master(i)->master();
-      CHECK(!master->IsShutdown());
-      CHECK_OK(master->WaitForCatalogManagerInit());
+      ASSERT_FALSE(master->IsShutdown());
+      ASSERT_OK(master->WaitForCatalogManagerInit());
     }
 
-    // Restart the first master successfully.
+    LOG(INFO) << "Restart the first master -- expected to succeed.";
     auto* first_master = cluster_->mini_master(0);
-    CHECK_OK(first_master->Restart());
-    // Shutdown the master.
+    ASSERT_OK(first_master->Restart());
+
+    LOG(INFO) << "Shutdown the master.";
     first_master->Shutdown();
-    // Normal start call should also work fine (and just reload the sys catalog.
-    CHECK_OK(first_master->Start());
+
+    LOG(INFO) << "Normal start call should also work fine (and just reload the sys catalog).";
+    ASSERT_OK(first_master->Start());
   }
 
  protected:
@@ -162,8 +165,9 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
 
 TEST_F(MasterReplicationTest, TestMasterClusterCreate) {
   DontVerifyClusterBeforeNextTearDown();
+
   // We want to confirm that the cluster starts properly and fails if you restart it.
-  VerifyMasterRestart();
+  ASSERT_NO_FATAL_FAILURE(VerifyMasterRestart());
 }
 
 // Basic test. Verify that:
@@ -216,6 +220,7 @@ TEST_F(MasterReplicationTest, TestTimeoutWhenAllMastersAreDown) {
 // bring the cluster back up during the initialization (but before the
 // timeout can elapse).
 TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
+  DontVerifyClusterBeforeNextTearDown();
   vector<string> master_addrs;
   ListMasterServerAddrs(&master_addrs);
 
@@ -224,11 +229,11 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   // ... start the cluster after a delay.
   scoped_refptr<yb::Thread> start_thread;
   ASSERT_OK(Thread::Create(
-    "TestCycleThroughAllMasters", "start_thread",
-    &MasterReplicationTest::StartClusterDelayed,
-    this,
-    100 * 1000, // start after 100 millis.
-    &start_thread));
+      "TestCycleThroughAllMasters", "start_thread",
+      &MasterReplicationTest::StartClusterDelayed,
+      this,
+      100 * 1000, // start after 100 millis.
+      &start_thread));
 
   // Verify that the client doesn't give up even though the entire
   // cluster is down for 100 milliseconds.
@@ -242,7 +247,6 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   EXPECT_OK(builder.Build(&client));
 
   ASSERT_OK(ThreadJoiner(start_thread.get()).Join());
-  DontVerifyClusterBeforeNextTearDown();
 }
 
 }  // namespace master

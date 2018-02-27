@@ -19,6 +19,8 @@
 # under the License.
 #
 cd "$1"
-export PATH=$2
+if [[ -n ${2:-} ]]; then
+  export PATH=$2
+fi
 shift 2
 exec "$@"

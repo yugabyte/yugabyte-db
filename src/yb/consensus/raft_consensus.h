@@ -612,8 +612,8 @@ class RaftConsensus : public Consensus,
   TableType table_type_;
 
   // Mutex / condition used for waiting for acquiring a valid leader lease.
-  Mutex leader_lease_wait_mtx_;
-  ConditionVariable leader_lease_wait_cond_{&leader_lease_wait_mtx_};
+  std::mutex leader_lease_wait_mtx_;
+  std::condition_variable leader_lease_wait_cond_;
 
   std::function<void()> lost_leadership_listener_;
 
