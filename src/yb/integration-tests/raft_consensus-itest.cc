@@ -1158,8 +1158,6 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   // Make leader elections faster so we get through more cycles of
   // leaders.
   ts_flags.push_back("--raft_heartbeat_interval_ms=100");
-  ts_flags.push_back("--leader_failure_monitor_check_mean_ms=50");
-  ts_flags.push_back("--leader_failure_monitor_check_stddev_ms=25");
 
   // Avoid preallocating segments since bootstrap is a little bit
   // faster if it doesn't have to scan forward through the preallocated
@@ -1235,8 +1233,6 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   // On TSAN builds, we need to be a little bit less churny in order to make
   // any progress at all.
   ts_flags.push_back(Format("--raft_heartbeat_interval_ms=$0", NonTsanVsTsan(5, 1)));
-  ts_flags.push_back("--leader_failure_monitor_check_mean_ms=1");
-  ts_flags.push_back("--leader_failure_monitor_check_stddev_ms=1");
   ts_flags.push_back("--never_fsync");
   if (with_latency) {
     ts_flags.push_back("--consensus_inject_latency_ms_in_notifications=50");

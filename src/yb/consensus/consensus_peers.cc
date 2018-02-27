@@ -500,6 +500,8 @@ void RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter wa
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}
 
+const std::shared_ptr<rpc::Messenger> RpcPeerProxyFactory::messenger() const { return messenger_; }
+
 Status SetPermanentUuidForRemotePeer(
     const shared_ptr<Messenger>& messenger,
     std::chrono::steady_clock::duration timeout,
