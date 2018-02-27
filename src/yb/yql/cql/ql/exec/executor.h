@@ -278,7 +278,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------
-  CHECKED_STATUS ApplyWriteOp(const TreeNode *tnode, const client::YBqlWriteOpPtr& op);
+  bool DeferOperation(const client::YBqlWriteOpPtr& op);
 
   //------------------------------------------------------------------------------------------------
   // Environment (YBClient) for executing statements.
