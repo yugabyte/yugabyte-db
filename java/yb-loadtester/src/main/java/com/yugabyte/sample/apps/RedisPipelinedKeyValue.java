@@ -18,12 +18,18 @@ import org.apache.log4j.Logger;
 import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 import redis.clients.jedis.Response;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Pipeline;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Vector;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.Adler32;
 import java.util.zip.Checksum;
 
@@ -34,11 +40,20 @@ import java.util.zip.Checksum;
 public class RedisPipelinedKeyValue extends RedisKeyValue {
   private static final Logger LOG = Logger.getLogger(RedisPipelinedKeyValue.class);
 
+  ExecutorService flushPool;
+  AtomicLong numOpsRespondedThisRound;
+  AtomicLong numPipelinesCreated;
+  AtomicLong pendingPipelineBatches;
+  boolean shouldSleepBeforeNextRound = false;
   // Responses for pipelined redis operations.
   ArrayList<Callable<Integer>> pipelinedOpResponseCallables;
 
   public RedisPipelinedKeyValue() {
     pipelinedOpResponseCallables = new ArrayList<Callable<Integer>>(appConfig.redisPipelineLength);
+    flushPool = Executors.newCachedThreadPool();
+    numOpsRespondedThisRound = new AtomicLong();
+    numPipelinesCreated = new AtomicLong();
+    pendingPipelineBatches = new AtomicLong();
   }
 
   @Override
@@ -58,25 +73,76 @@ public class RedisPipelinedKeyValue extends RedisKeyValue {
     return flushPipelineIfNecessary();
   }
 
-  protected int flushPipelineIfNecessary() {
-    if (pipelinedOpResponseCallables.size() % appConfig.redisPipelineLength != 0)
-      return 0;
+  protected long flushPipelineIfNecessary() {
+    if (pipelinedOpResponseCallables.size() % appConfig.redisPipelineLength == 0) {
+      ArrayList<Callable<Integer>> callbacksToWaitFor = pipelinedOpResponseCallables;
+      long batch = numPipelinesCreated.addAndGet(1);
+      Pipeline currPipeline = getRedisPipeline();
+      Jedis currJedis = getRedisClient();
+      if (appConfig.sleepTime == 0) {  // 0 disables running pipelines in parallel.
+        doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch);
+      } else {
+        flushPool.submit(new Runnable() {
+          public void run() {
+            doActualFlush(currJedis, currPipeline, callbacksToWaitFor, batch);
+          }
+        });
+        LOG.debug("Submitted a runnable. Now resetting clients");
+        resetClients();
+        shouldSleepBeforeNextRound = true;
+      }
+      pipelinedOpResponseCallables =
+          new ArrayList<Callable<Integer>>(appConfig.redisPipelineLength);
+    }
 
-    LOG.debug("Flushing pipeline. size = " + pipelinedOpResponseCallables.size());
+    return numOpsRespondedThisRound.getAndSet(0);
+  }
+
+  public void performWrite() {
+    super.performWrite();
+    sleepIfNeededBeforeNextBatch();
+  }
+
+  public void performRead() {
+    super.performRead();
+    sleepIfNeededBeforeNextBatch();
+  }
+
+  private void sleepIfNeededBeforeNextBatch() {
+    if (shouldSleepBeforeNextRound) {
+      try {
+        LOG.debug("Sleeping for " + appConfig.sleepTime + " ms");
+        Thread.sleep(appConfig.sleepTime);
+      } catch (Exception e) {
+        LOG.error("Caught exception while sleeping ... ", e);
+      }
+      shouldSleepBeforeNextRound = false;
+    }
+  }
+
+  protected void doActualFlush(Jedis jedis, Pipeline pipeline,
+                               ArrayList<Callable<Integer>> pipelineCallables,
+                               long batch) {
+    LOG.debug("Flushing pipeline. batch " + batch + " size = " +
+              pipelineCallables.size() + " pending batches " +
+              pendingPipelineBatches.addAndGet(1));
     int count = 0;
     try {
-      getRedisPipeline().sync();
-      for (Callable<Integer> c : pipelinedOpResponseCallables) {
+      pipeline.sync();
+      for (Callable<Integer> c : pipelineCallables) {
         count += c.call();
       }
+      pipeline.close();
+      jedis.close();
     } catch (Exception e) {
       throw new RuntimeException(
         "Caught Exception from redis pipeline " + getRedisServerInUse(), e);
     } finally {
-      pipelinedOpResponseCallables.clear();
+      pipelineCallables.clear();
+      numOpsRespondedThisRound.addAndGet(count);
     }
-    LOG.debug("Processed  " + count + " responses.");
-    return count;
+    LOG.debug("Processed batch  " + batch + " count " + count + " responses."
+              + " pending batches " + pendingPipelineBatches.addAndGet(-1));
   }
 
   public Response<String> doActualReadString(Key key) {
