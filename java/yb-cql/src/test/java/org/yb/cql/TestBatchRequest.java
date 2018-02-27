@@ -483,21 +483,15 @@ public class TestBatchRequest extends BaseCQLTest {
                 new HashSet<String>(Arrays.asList("Row[1, r1, 1]",
                                                   "Row[1, r2, 1]")));
 
-    // Test reading and writing the same rows (new and existing).
+    // Test reading and writing the same row is not allowed in the same batch.
     batch.clear();
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 2 WHERE h = 1 and r = 'r1';"));
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 3 WHERE h = 1 and r = 'r1';"));
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 4 WHERE h = 1 and r = 'r2';"));
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 5 WHERE h = 1 and r = 'r1';"));
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 6 WHERE h = 1 and r = 'r3';"));
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 7 WHERE h = 1 and r = 'r2';"));
-    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 8 WHERE h = 1 and r = 'r3';"));
-    session.execute(batch);
+    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r1';"));
+    batch.add(new SimpleStatement("UPDATE test_counter SET c = c + 1 WHERE h = 1 and r = 'r1';"));
+    runInvalidStmt(batch);
 
-    // Verify the counter columns are updated properly.
+    // Verify the rows are not modified.
     assertQuery("SELECT * FROM test_counter",
-                new HashSet<String>(Arrays.asList("Row[1, r1, 11]",
-                                                  "Row[1, r2, 12]",
-                                                  "Row[1, r3, 14]")));
+                new HashSet<String>(Arrays.asList("Row[1, r1, 1]",
+                                                  "Row[1, r2, 1]")));
   }
 }

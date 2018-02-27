@@ -201,21 +201,9 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Apply YBClient read/write operation.
-  CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op, const bool defer = false) {
+  CHECKED_STATUS Apply(std::shared_ptr<client::YBqlOp> op) {
     op_ = op;
-    op_deferred_ = defer;
-    return defer ? Status::OK() : ql_env_->Apply(op);
-  }
-  // Apply the deferred operation.
-  CHECKED_STATUS Apply() {
-    DCHECK(IsOperationDeferred());
-    op_deferred_ = false;
-    return ql_env_->Apply(op_);
-  }
-
-  // Is the operation deferred?
-  bool IsOperationDeferred() const {
-    return op_ != nullptr && op_deferred_;
+    return ql_env_->Apply(op);
   }
 
   bool SelectingAggregate();
@@ -239,9 +227,6 @@ class ExecContext : public ProcessContextBase {
 
   // Read/write operation to execute.
   std::shared_ptr<client::YBqlOp> op_;
-
-  // Is the operation deferred?
-  bool op_deferred_ = false;
 
   // Execution start time.
   const MonoTime start_time_;
