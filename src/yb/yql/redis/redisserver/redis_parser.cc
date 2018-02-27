@@ -54,8 +54,8 @@ string to_lower_case(Slice slice) {
   return boost::to_lower_copy(slice.ToBuffer());
 }
 
-CHECKED_STATUS add_string_subkey(const string& subkey, RedisKeyValuePB* kv_pb) {
-  kv_pb->add_subkey()->set_string_subkey(subkey);
+CHECKED_STATUS add_string_subkey(string subkey, RedisKeyValuePB* kv_pb) {
+  kv_pb->add_subkey()->set_string_subkey(std::move(subkey));
   return Status::OK();
 }
 
@@ -327,10 +327,12 @@ CHECKED_STATUS ParseCollection(YBRedisOp *op,
     for (size_t i = 2; i < args.size(); i++) {
       subkey_set.insert(string(args[i].cdata(), args[i].size()));
     }
+    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(subkey_set.size());
     for (const auto &val : subkey_set) {
       RETURN_NOT_OK(add_sub_key(val, op->mutable_request()->mutable_key_value()));
     }
   } else {
+    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(args.size() - 2);
     for (size_t i = 2; i < args.size(); i++) {
       RETURN_NOT_OK(add_sub_key(string(args[i].cdata(), args[i].size()),
                                 op->mutable_request()->mutable_key_value()));
