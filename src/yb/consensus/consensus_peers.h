@@ -308,6 +308,10 @@ class PeerProxyFactory {
   }
 
   virtual ~PeerProxyFactory() {}
+
+  virtual const std::shared_ptr<rpc::Messenger> messenger() const {
+    return nullptr;
+  }
 };
 
 // PeerProxy implementation that does RPC calls
@@ -356,6 +360,8 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
   void NewProxy(const RaftPeerPB& peer_pb, PeerProxyWaiter waiter) override;
 
   virtual ~RpcPeerProxyFactory();
+
+  virtual const std::shared_ptr<rpc::Messenger> messenger() const override;
 
  private:
   std::shared_ptr<rpc::Messenger> messenger_;

@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <memory>
 #include <mutex>
 
 #include <boost/optional.hpp>
@@ -50,6 +51,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/rpc/periodic.h"
 #include "yb/server/clock.h"
 #include "yb/server/metadata.h"
 #include "yb/tserver/tserver.pb.h"
@@ -73,19 +75,6 @@ DEFINE_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
              "to followers at this interval. The followers expect a heartbeat at this interval "
              "and consider a leader to have failed if it misses several in a row.");
 TAG_FLAG(raft_heartbeat_interval_ms, advanced);
-
-// Defaults to be the same value as the leader heartbeat interval.
-DEFINE_int32(leader_failure_monitor_check_mean_ms, -1,
-             "The mean failure-checking interval of the randomized failure monitor. If this "
-             "is configured to -1 (the default), uses the value of 'raft_heartbeat_interval_ms'.");
-TAG_FLAG(leader_failure_monitor_check_mean_ms, experimental);
-
-// Defaults to half of the mean (above).
-DEFINE_int32(leader_failure_monitor_check_stddev_ms, -1,
-             "The standard deviation of the failure-checking interval of the randomized "
-             "failure monitor. If this is configured to -1 (the default), this is set to "
-             "half of the mean check interval.");
-TAG_FLAG(leader_failure_monitor_check_stddev_ms, experimental);
 
 DEFINE_double(leader_failure_max_missed_heartbeat_periods, 6.0,
               "Maximum heartbeat periods that the leader can fail to heartbeat in before we "
@@ -179,41 +168,16 @@ DEFINE_int32(min_leader_stepdown_retry_interval_ms,
              "to avoid infinite leader stepdown loops when the current leader never has a chance "
              "to update the intended leader with its latest records.");
 
-namespace {
-
-// Return the mean interval at which to check for failures of the
-// leader.
-int GetFailureMonitorCheckMeanMs() {
-  int val = FLAGS_leader_failure_monitor_check_mean_ms;
-  if (val < 0) {
-    val = FLAGS_raft_heartbeat_interval_ms;
-  }
-  return val;
-}
-
-// Return the standard deviation for the interval at which to check
-// for failures of the leader.
-int GetFailureMonitorCheckStddevMs() {
-  int val = FLAGS_leader_failure_monitor_check_stddev_ms;
-  if (val < 0) {
-    val = GetFailureMonitorCheckMeanMs() / 2;
-  }
-  return val;
-}
-
-} // anonymous namespace
-
 namespace yb {
 namespace consensus {
 
 using log::LogEntryBatch;
+using rpc::PeriodicTimer;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::weak_ptr;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
-
-// Special string that represents any known leader to the failure detector.
-static const char* const kTimerId = "election-timer";
 
 shared_ptr<RaftConsensus> RaftConsensus::Create(
     const ConsensusOptions& options,
@@ -298,11 +262,6 @@ RaftConsensus::RaftConsensus(
       peer_manager_(peer_manager.Pass()),
       queue_(queue.Pass()),
       rng_(GetRandomSeed32()),
-      failure_monitor_(GetRandomSeed32(), GetFailureMonitorCheckMeanMs(),
-                       GetFailureMonitorCheckStddevMs()),
-      failure_detector_(new TimedFailureDetector(MonoDelta::FromMilliseconds(
-          FLAGS_raft_heartbeat_interval_ms *
-          FLAGS_leader_failure_max_missed_heartbeat_periods))),
       withhold_votes_until_(MonoTime::Min()),
       withhold_election_start_until_(MonoTime::Min().ToUint64()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
@@ -332,17 +291,17 @@ RaftConsensus::~RaftConsensus() {
 Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
   RETURN_NOT_OK(ExecuteHook(PRE_START));
 
-  // This just starts the monitor thread -- no failure detector is registered yet.
-  if (FLAGS_enable_leader_failure_detection) {
-    RETURN_NOT_OK(failure_monitor_.Start());
-  }
-
-  // Register the failure detector instance with the monitor.
-  // We still have not enabled failure detection for the leader election timer.
-  // That happens separately via the helper functions
-  // EnsureFailureDetector(Enabled/Disabled)Unlocked();
-  RETURN_NOT_OK(failure_monitor_.MonitorFailureDetector(state_->GetOptions().tablet_id,
-                                                        failure_detector_));
+  // Capture a weak_ptr reference into the functor so it can safely handle
+  // outliving the consensus instance.
+  std::weak_ptr<RaftConsensus> w = shared_from_this();
+  failure_detector_ = PeriodicTimer::Create(
+      peer_proxy_factory_->messenger(),
+      [w]() {
+        if (auto consensus = w.lock()) {
+          consensus->ReportFailureDetected();
+        }
+      },
+      MinimumElectionTimeout());
 
   {
     ReplicaState::UniqueLock lock;
@@ -370,13 +329,13 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
 
-    RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
+    EnableFailureDetector();
 
     // If this is the first term expire the FD immediately so that we have a fast first
     // election, otherwise we just let the timer expire normally.
+    MonoDelta initial_delta = MonoDelta();
     if (state_->GetCurrentTermUnlocked() == 0) {
-      // Initialize the failure detector timeout to some time in the past so that
-      // the next time the failure detector monitor runs it triggers an election
+      // The failure detector is initialized to a low value to trigger an early election
       // (unless someone else requested a vote from us first, which resets the
       // election timer). We do it this way instead of immediately running an
       // election to get a higher likelihood of enough servers being available
@@ -385,9 +344,11 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
         LOG_WITH_PREFIX_UNLOCKED(INFO) << "Consensus starting up: Expiring fail detector timer "
                                           "to make a prompt election more likely";
+        initial_delta = MonoDelta::FromMilliseconds(
+            rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
       }
-      RETURN_NOT_OK(ExpireFailureDetectorUnlocked());
     }
+    EnableFailureDetector(initial_delta);
 
     RETURN_NOT_OK(BecomeReplicaUnlocked());
   }
@@ -445,15 +406,17 @@ Status RaftConsensus::DoStartElection(
     if (active_role == RaftPeerPB::LEADER) {
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- already leader";
       return Status::OK();
-    } else if (active_role == RaftPeerPB::LEARNER || active_role == RaftPeerPB::READ_REPLICA) {
+    }
+    if (active_role == RaftPeerPB::LEARNER || active_role == RaftPeerPB::READ_REPLICA) {
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- role is " << active_role
                                      << " , pending = "
                                      << state_->IsConfigChangePendingUnlocked()
                                      <<", active_role=" << active_role;
       return Status::OK();
-    } else if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
+    }
+    if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
       // Avoid excessive election noise while in this state.
-      RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
+      SnoozeFailureDetector(DO_NOT_LOG);
       return STATUS(IllegalState, "Not starting election: Node is currently "
                                   "a non-participant in the raft config",
                                   state_->GetActiveConfigUnlocked().ShortDebugString());
@@ -494,10 +457,8 @@ Status RaftConsensus::DoStartElection(
 
       // Snooze to avoid the election timer firing again as much as possible.
       // We do not disable the election timer while running an election.
-      RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
-
       MonoDelta timeout = LeaderElectionExpBackoffDeltaUnlocked();
-      RETURN_NOT_OK(SnoozeFailureDetectorUnlocked(timeout, ALLOW_LOGGING));
+      SnoozeFailureDetector(ALLOW_LOGGING, timeout);
 
       const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Starting election with config: "
@@ -752,9 +713,7 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
   }
 }
 
-void RaftConsensus::ReportFailureDetected(const std::string& name, const Status& msg) {
-  DCHECK_EQ(name, kTimerId);
-
+void RaftConsensus::ReportFailureDetectedTask() {
   MonoTime now;
   const auto kMinTime = MonoTime::Min().ToUint64();
   for (;;) {
@@ -790,6 +749,13 @@ void RaftConsensus::ReportFailureDetected(const std::string& name, const Status&
   }
 }
 
+void RaftConsensus::ReportFailureDetected() {
+  // We're running on a timer thread; start an election on a different thread pool.
+  WARN_NOT_OK(raft_pool_token_->SubmitFunc(std::bind(&RaftConsensus::ReportFailureDetectedTask,
+                                                     shared_from_this())),
+              "Failed to submit failure detected task");
+}
+
 Status RaftConsensus::BecomeLeaderUnlocked() {
   DCHECK(state_->IsLocked());
   TRACE_EVENT2("consensus", "RaftConsensus::BecomeLeaderUnlocked",
@@ -798,7 +764,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Becoming Leader. State: " << state_->ToStringUnlocked();
 
   // Disable FD while we are leader.
-  RETURN_NOT_OK(EnsureFailureDetectorDisabledUnlocked());
+  DisableFailureDetector();
 
   // Don't vote for anyone if we're a leader.
   withhold_votes_until_ = MonoTime::Max();
@@ -843,7 +809,7 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
   state_->ClearLeaderUnlocked();
 
   // FD should be running while we are a follower.
-  RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
+  EnableFailureDetector();
 
   // Now that we're a replica, we can allow voting for other nodes.
   withhold_votes_until_ = MonoTime::Min();
@@ -1509,7 +1475,7 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
     // Snooze the failure detector as soon as we decide to accept the message.
     // We are guaranteed to be acting as a FOLLOWER at this point by the above
     // sanity check.
-    RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
+    SnoozeFailureDetector(DO_NOT_LOG);
 
     // Update the expiration time of the current leader's lease, so that when this follower becomes
     // a leader, it can wait out the time interval while the old leader might still be active.
@@ -1717,7 +1683,7 @@ Status RaftConsensus::WaitWritesUnlocked(const LeaderRequest& deduped_req,
         }
         return s;
       }
-      RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
+      SnoozeFailureDetector(DO_NOT_LOG);
     }
     TRACE("finished");
   }
@@ -2148,7 +2114,7 @@ void RaftConsensus::Shutdown() {
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_token_->Shutdown();
-  failure_monitor_.Shutdown();
+  DisableFailureDetector();
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 
@@ -2360,7 +2326,7 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
   // persist our vote to disk. We use an exponential backoff to avoid too much
   // split-vote contention when nodes display high latencies.
   MonoDelta additional_backoff = LeaderElectionExpBackoffDeltaUnlocked();
-  RETURN_NOT_OK(SnoozeFailureDetectorUnlocked(additional_backoff, ALLOW_LOGGING));
+  SnoozeFailureDetector(ALLOW_LOGGING, additional_backoff);
 
   // Persist our vote to disk.
   RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(request->candidate_uuid()));
@@ -2369,7 +2335,7 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
 
   // Give peer time to become leader. Snooze one more time after persisting our
   // vote. When disk latency is high, this should help reduce churn.
-  RETURN_NOT_OK(SnoozeFailureDetectorUnlocked(additional_backoff, DO_NOT_LOG));
+  SnoozeFailureDetector(DO_NOT_LOG, additional_backoff);
 
   LOG(INFO) << Substitute("$0: Granting yes vote for candidate $1 in term $2.",
                           GetRequestVoteLogPrefixUnlocked(),
@@ -2621,8 +2587,7 @@ void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
     //   finish another one is triggered already.
     // We ignore the status as we don't want to fail if we the timer is
     // disabled.
-    ignore_result(SnoozeFailureDetectorUnlocked(LeaderElectionExpBackoffDeltaUnlocked(),
-                                                ALLOW_LOGGING));
+    SnoozeFailureDetector(ALLOW_LOGGING, LeaderElectionExpBackoffDeltaUnlocked());
   }
   if (result.decision == VOTE_DENIED) {
     LOG_WITH_PREFIX(INFO) << "Leader election lost for term " << result.election_term
@@ -2747,57 +2712,30 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
   }
 }
 
-Status RaftConsensus::EnsureFailureDetectorEnabledUnlocked() {
-  if (PREDICT_FALSE(!FLAGS_enable_leader_failure_detection)) {
-    return Status::OK();
+void RaftConsensus::EnableFailureDetector(MonoDelta delta) {
+  if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
+    failure_detector_->Start(delta);
   }
-  if (failure_detector_->IsTracking(kTimerId)) {
-    return Status::OK();
-  }
-  return failure_detector_->Track(kTimerId,
-                                  MonoTime::Now(),
-                                  // Unretained to avoid a circular ref.
-                                  Bind(&RaftConsensus::ReportFailureDetected, Unretained(this)));
 }
 
-Status RaftConsensus::EnsureFailureDetectorDisabledUnlocked() {
-  if (PREDICT_FALSE(!FLAGS_enable_leader_failure_detection)) {
-    return Status::OK();
+void RaftConsensus::DisableFailureDetector() {
+  if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
+    failure_detector_->Stop();
   }
-
-  if (!failure_detector_->IsTracking(kTimerId)) {
-    return Status::OK();
-  }
-  return failure_detector_->UnTrack(kTimerId);
 }
 
-Status RaftConsensus::ExpireFailureDetectorUnlocked() {
-  if (PREDICT_FALSE(!FLAGS_enable_leader_failure_detection)) {
-    return Status::OK();
+void RaftConsensus::SnoozeFailureDetector(AllowLogging allow_logging, MonoDelta delta) {
+  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_enable_leader_failure_detection))) {
+    if (allow_logging == ALLOW_LOGGING) {
+      LOG(INFO) << Substitute("Snoozing failure detection for $0",
+                              delta.Initialized() ? delta.ToString() : "election timeout");
+    }
+
+    if (!delta.Initialized()) {
+      delta = MinimumElectionTimeout();
+    }
+    failure_detector_->Snooze(delta);
   }
-
-  return failure_detector_->MessageFrom(kTimerId, MonoTime::Min());
-}
-
-Status RaftConsensus::SnoozeFailureDetectorUnlocked() {
-  return SnoozeFailureDetectorUnlocked(MonoDelta::FromMicroseconds(0), DO_NOT_LOG);
-}
-
-Status RaftConsensus::SnoozeFailureDetectorUnlocked(const MonoDelta& additional_delta,
-                                                    AllowLogging allow_logging) {
-  if (PREDICT_FALSE(!FLAGS_enable_leader_failure_detection)) {
-    return Status::OK();
-  }
-
-  MonoTime time = MonoTime::Now();
-  time.AddDelta(additional_delta);
-
-  if (allow_logging == ALLOW_LOGGING) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Snoozing fail detection for election timeout "
-                                   << "plus an additional " + additional_delta.ToString();
-  }
-
-  return failure_detector_->MessageFrom(kTimerId, time);
 }
 
 MonoDelta RaftConsensus::MinimumElectionTimeout() const {
