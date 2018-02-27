@@ -337,6 +337,14 @@ public class CmdLineOpts {
     if (cmd.hasOption("value_size")) {
       AppBase.appConfig.valueSize = Integer.parseInt(cmd.getOptionValue("value_size"));
     }
+    if (cmd.hasOption("sleep_time")) {
+      AppBase.appConfig.sleepTime =
+          Integer.parseInt(cmd.getOptionValue("sleep_time"));
+    }
+    if (cmd.hasOption("socket_timeout")) {
+      AppBase.appConfig.jedisSocketTimeout =
+          Integer.parseInt(cmd.getOptionValue("socket_timeout"));
+    }
     if (cmd.hasOption("use_ascii_values")) {
       AppBase.appConfig.restrictValuesToAscii = true;
     }
@@ -422,6 +430,11 @@ public class CmdLineOpts {
     options.addOption("num_threads_write", true, "The number of threads that perform writes.");
     options.addOption("num_writes", true, "The total number of writes to perform.");
     options.addOption("num_reads", true, "The total number of reads to perform.");
+    options.addOption(
+        "sleep_time", true,
+        "How long (in ms) to sleep between multiple pipeline batches.");
+    options.addOption("socket_timeout", true,
+                      "How long (in ms) to wait for a response from jedis.");
     options.addOption("value_size", true, "Size in bytes of the value. " +
         "The bytes are random. Value size should be more than 5 (9) bytes for binary (ascii) " +
         "values in order to have checksum for read verification. First byte is used as a " +

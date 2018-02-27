@@ -52,6 +52,12 @@ public class AppConfig {
 
   // The size of the value to be written.
   public int valueSize;
+  // The amount of time to wait before starting the next pipeline to the
+  // server. sleepTime == 0 means that we'll wait for the pipeline to respond
+  // before creating the next one i.e. we'll have only as many outstanding
+  // pipelines as (numReaders + numWriters).
+  public int sleepTime = 0;
+  public int jedisSocketTimeout = 61000;
 
   // Use ASCII strings as values.
   public boolean restrictValuesToAscii;
