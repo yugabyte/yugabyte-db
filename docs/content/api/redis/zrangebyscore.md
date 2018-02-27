@@ -27,7 +27,7 @@ $ ZADD z_key 1.0 v1 2.0 v2
 ```
 ```{.sh .copy .separator-dollar}
 # Should retrieve all members.
-$ ZRANGEBYSCORE z_key +inf -inf
+$ ZRANGEBYSCORE z_key -inf +inf
 ```
 ```sh
 1) "v1"
@@ -35,7 +35,7 @@ $ ZRANGEBYSCORE z_key +inf -inf
 ```
 ```{.sh .copy .separator-dollar}
 # Should retrive all member score pairs.
-$ ZRANGEBYSCORE z_key +inf -inf WITHSCORES
+$ ZRANGEBYSCORE z_key -inf +inf WITHSCORES
 ```
 ```sh
 1) "v1"
