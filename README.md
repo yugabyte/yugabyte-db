@@ -34,7 +34,7 @@ YugaByte offers **both** SQL and NoSQL in a single, unified db. It is meant to b
 ## Supported APIs
 
 In terms of data model and APIs, YugaByte supports the following on top of a common core data platform: 
-* [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cql/) - with enhancements to support ACID transactions in the works
+* [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cassandra/) - with enhancements to support ACID transactions in the works
 * [Redis](https://docs.yugabyte.com/api/redis/) - as a full database with automatic sharding, clustering, elasticity
 * PostgreSQL (in progress) - with linear scalability, high availability and fault tolerance
 
