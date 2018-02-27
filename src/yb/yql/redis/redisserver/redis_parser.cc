@@ -46,9 +46,9 @@ namespace {
 
 constexpr size_t kMaxNumberOfArgs = 1 << 20;
 constexpr size_t kLineEndLength = 2;
+constexpr size_t kMaxNumberLength = 25;
 constexpr char kPositiveInfinity[] = "+inf";
 constexpr char kNegativeInfinity[] = "-inf";
-
 
 string to_lower_case(Slice slice) {
   return boost::to_lower_copy(slice.ToBuffer());
@@ -717,45 +717,39 @@ CHECKED_STATUS ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) 
 // beginning of the buffer.
 void RedisParser::Consume(size_t count) {
   pos_ -= count;
-  if (token_begin_ != nullptr) {
+
+  if (token_begin_ != kNoToken) {
     token_begin_ -= count;
   }
 }
 
 // New data arrived, so update the end of available bytes.
-void RedisParser::Update(Slice source) {
-  ptrdiff_t delta = source.data() - begin_;
-  begin_ = source.data();
-  end_ = source.end();
-  pos_ += delta;
-  if (token_begin_ != nullptr) {
-    token_begin_ += delta;
-  }
+void RedisParser::Update(const IoVecs& data) {
+  DCHECK_LE(data.size(), 2);
 
-  DCHECK_LE(pos_, end_);
+  source_ = data;
+  full_size_ = IoVecsFullSize(data);
+  DCHECK_LE(pos_, full_size_);
 }
 
 // Parse next command.
-CHECKED_STATUS RedisParser::NextCommand(const uint8_t** end_of_command) {
-  *end_of_command = nullptr;
-  while (pos_ != end_) {
+Result<size_t> RedisParser::NextCommand() {
+  while (pos_ != full_size_) {
     incomplete_ = false;
     Status status = AdvanceToNextToken();
     if (!status.ok()) {
       return status;
     }
     if (incomplete_) {
-      pos_ = end_;
-      *end_of_command = nullptr;
-      return Status::OK();
+      pos_ = full_size_;
+      return 0;
     }
     if (state_ == State::FINISHED) {
-      *end_of_command = pos_;
       state_ = State::INITIAL;
-      return Status::OK();
+      return pos_;
     }
   }
-  return Status::OK();
+  return 0;
 }
 
 CHECKED_STATUS RedisParser::AdvanceToNextToken() {
@@ -778,7 +772,7 @@ CHECKED_STATUS RedisParser::AdvanceToNextToken() {
 
 CHECKED_STATUS RedisParser::Initial() {
   token_begin_ = pos_;
-  state_ = *pos_ == '*' ? State::BULK_HEADER : State::SINGLE_LINE;
+  state_ = char_at_offset(pos_) == '*' ? State::BULK_HEADER : State::SINGLE_LINE;
   return Status::OK();
 }
 
@@ -789,14 +783,17 @@ CHECKED_STATUS RedisParser::SingleLine() {
   }
   auto start = token_begin_;
   auto finish = pos_ - 2;
-  while (start < finish && isspace(*start)) {
+  while (start < finish && isspace(char_at_offset(start))) {
     ++start;
   }
   if (start >= finish) {
     return STATUS(InvalidArgument, "Empty line");
   }
   if (args_) {
-    RETURN_NOT_OK(util::SplitArgs(Slice(start, finish), args_));
+    // Args is supported only when parsing from single block of data.
+    // Because we parse prepared call data in this case, that is contained in a single buffer.
+    DCHECK_EQ(source_.size(), 1);
+    RETURN_NOT_OK(util::SplitArgs(Slice(offset_to_pointer(start), finish - start), args_));
   }
   state_ = State::FINISHED;
   return Status::OK();
@@ -807,8 +804,8 @@ CHECKED_STATUS RedisParser::BulkHeader() {
   if (!status.ok() || incomplete_) {
     return status;
   }
-  ptrdiff_t num_args = 0;
-  RETURN_NOT_OK(ParseNumber('*', 1, kMaxNumberOfArgs, "Number of lines in multiline", &num_args));
+  auto num_args = VERIFY_RESULT(ParseNumber(
+      '*', 1, kMaxNumberOfArgs, "Number of lines in multiline"));
   if (args_) {
     args_->clear();
     args_->reserve(num_args);
@@ -824,8 +821,7 @@ CHECKED_STATUS RedisParser::BulkArgumentSize() {
   if (!status.ok() || incomplete_) {
     return status;
   }
-  ptrdiff_t current_size = 0;
-  RETURN_NOT_OK(ParseNumber('$', 0, kMaxBufferSize, "Argument size", &current_size));
+  auto current_size = VERIFY_RESULT(ParseNumber('$', 0, kMaxBufferSize, "Argument size"));
   state_ = State::BULK_ARGUMENT_BODY;
   token_begin_ = pos_;
   current_argument_size_ = current_size;
@@ -834,16 +830,20 @@ CHECKED_STATUS RedisParser::BulkArgumentSize() {
 
 CHECKED_STATUS RedisParser::BulkArgumentBody() {
   auto desired_position = token_begin_ + current_argument_size_ + kLineEndLength;
-  if (desired_position > end_) {
+  if (desired_position > full_size_) {
     incomplete_ = true;
-    pos_ = end_;
+    pos_ = full_size_;
     return Status::OK();
   }
-  if (desired_position[-1] != '\n' || desired_position[-2] != '\r') {
+  if (char_at_offset(desired_position - 1) != '\n' ||
+      char_at_offset(desired_position - 2) != '\r') {
     return STATUS(NetworkError, "No \\r\\n after bulk");
   }
   if (args_) {
-    args_->emplace_back(token_begin_, current_argument_size_);
+    // Args is supported only when parsing from single block of data.
+    // Because we parse prepared call data in this case, that is contained in a single buffer.
+    DCHECK_EQ(source_.size(), 1);
+    args_->emplace_back(offset_to_pointer(token_begin_), current_argument_size_);
   }
   --arguments_left_;
   pos_ = desired_position;
@@ -857,16 +857,31 @@ CHECKED_STATUS RedisParser::BulkArgumentBody() {
 }
 
 CHECKED_STATUS RedisParser::FindEndOfLine() {
-  auto new_line = static_cast<const uint8_t *>(memchr(pos_, '\n', end_ - pos_));
-  incomplete_ = new_line == nullptr;
+  size_t new_line_offset;
+  if (pos_ < source_[0].iov_len) {
+    size_t extra_offset = pos_;
+    auto begin = offset_to_pointer(pos_);
+    auto new_line = static_cast<const char*>(memchr(begin, '\n', IoVecEnd(source_[0]) - begin));
+    if (new_line == nullptr && source_.size() > 1) {
+      extra_offset = source_[0].iov_len;
+      begin = IoVecBegin(source_[1]);
+      new_line = static_cast<const char*>(memchr(begin, '\n', source_[1].iov_len));
+    }
+    new_line_offset = new_line ? extra_offset + (new_line - begin) : kNoToken;
+  } else {
+    auto begin = offset_to_pointer(pos_);
+    auto new_line = static_cast<const char*>(memchr(begin, '\n', IoVecEnd(source_[1]) - begin));
+    new_line_offset = new_line ? pos_ + (new_line - begin) : kNoToken;
+  }
+  incomplete_ = new_line_offset == kNoToken;
   if (!incomplete_) {
-    if (new_line == token_begin_) {
+    if (new_line_offset == token_begin_) {
       return STATUS(NetworkError, "End of line at the beginning of a Redis command");
     }
-    if (new_line[-1] != '\r') {
+    if (char_at_offset(new_line_offset - 1) != '\r') {
       return STATUS(NetworkError, "\\n is not prefixed with \\r");
     }
-    pos_ = ++new_line;
+    pos_ = ++new_line_offset;
   }
   return Status::OK();
 }
@@ -874,30 +889,34 @@ CHECKED_STATUS RedisParser::FindEndOfLine() {
 // Parses number with specified bounds.
 // Number is located in separate line, and contain prefix before actual number.
 // Line starts at token_begin_ and pos_ is a start of next line.
-CHECKED_STATUS RedisParser::ParseNumber(char prefix,
-                                        ptrdiff_t min,
-                                        ptrdiff_t max,
-                                        const char* name,
-                                        ptrdiff_t* out) {
-  if (*token_begin_ != prefix) {
-    return STATUS_SUBSTITUTE(Corruption,
-                             "Invalid character before number, expected: $0, but found: $1",
-                             prefix,
-                             static_cast<char>(*token_begin_));
+Result<ptrdiff_t> RedisParser::ParseNumber(char prefix,
+                                           ptrdiff_t min,
+                                           ptrdiff_t max,
+                                           const char* name) {
+  if (char_at_offset(token_begin_) != prefix) {
+    return STATUS_FORMAT(Corruption,
+                         "Invalid character before number, expected: $0, but found: $1",
+                         prefix, char_at_offset(token_begin_));
   }
   auto number_begin = token_begin_ + 1;
   auto expected_stop = pos_ - kLineEndLength;
-  auto parsed_number = util::CheckedStoll(Slice(number_begin, expected_stop));
-  RETURN_NOT_OK(parsed_number);
-  static_assert(sizeof(*parsed_number) == sizeof(*out), "Expected size");
-  SCHECK_BOUNDS(*parsed_number,
+  if (expected_stop - number_begin > kMaxNumberLength) {
+    return STATUS_FORMAT(
+        Corruption, "Too long $0 of length $1", name, expected_stop - number_begin);
+  }
+  number_buffer_.reserve(kMaxNumberLength);
+  IoVecsToBuffer(source_, number_begin, expected_stop, &number_buffer_);
+  number_buffer_.push_back(0);
+  auto parsed_number = VERIFY_RESULT(util::CheckedStoll(
+      Slice(number_buffer_.data(), number_buffer_.size() - 1)));
+  static_assert(sizeof(parsed_number) == sizeof(ptrdiff_t), "Expected size");
+  SCHECK_BOUNDS(parsed_number,
                 min,
                 max,
                 Corruption,
                 yb::Format("$0 out of expected range [$1, $2] : $3",
-                           name, min, max, *parsed_number));
-  *out = static_cast<ptrdiff_t>(*parsed_number);
-  return Status::OK();
+                           name, min, max, parsed_number));
+  return static_cast<ptrdiff_t>(parsed_number);
 }
 
 }  // namespace redisserver

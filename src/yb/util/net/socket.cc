@@ -41,6 +41,7 @@
 #include <unistd.h>
 
 #include <limits>
+#include <numeric>
 #include <string>
 
 #include <glog/logging.h>
@@ -71,6 +72,30 @@ TAG_FLAG(socket_inject_short_recvs, hidden);
 TAG_FLAG(socket_inject_short_recvs, unsafe);
 
 namespace yb {
+
+size_t IoVecsFullSize(const IoVecs& io_vecs) {
+  return std::accumulate(io_vecs.begin(), io_vecs.end(), 0ULL, [](size_t p, const iovec& v) {
+    return p + v.iov_len;
+  });
+}
+
+void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, std::vector<char>* result) {
+  result->clear();
+  result->reserve(end - begin);
+  for (const auto& io_vec : io_vecs) {
+    if (begin == end) {
+      break;
+    }
+    if (io_vec.iov_len > begin) {
+      size_t clen = std::min(io_vec.iov_len, end) - begin;
+      auto start = IoVecBegin(io_vec) + begin;
+      result->insert(result->end(), start, start + clen);
+      begin += clen;
+    }
+    begin -= io_vec.iov_len;
+    end -= io_vec.iov_len;
+  }
+}
 
 Socket::Socket()
   : fd_(-1) {
@@ -527,6 +552,30 @@ Status Socket::Recv(uint8_t *buf, int32_t amt, int32_t *nread) {
   }
   *nread = res;
   return Status::OK();
+}
+
+Result<int32_t> Socket::Recvv(IoVecs* vecs) {
+  if (PREDICT_FALSE(vecs->empty())) {
+    return STATUS(NetworkError, "Recvv: receive to empty vecs");
+  }
+  if (fd_ < 0) {
+    return STATUS(NetworkError, "Recvv on closed socket");
+  }
+
+  struct msghdr msg;
+  memset(&msg, 0, sizeof(struct msghdr));
+  msg.msg_iov = vecs->data();
+  msg.msg_iovlen = vecs->size();
+  auto res = recvmsg(fd_, &msg, MSG_NOSIGNAL);
+  if (PREDICT_FALSE(res <= 0)) {
+    if (res == 0) {
+      return STATUS(NetworkError, "Recv() got EOF from remote", Slice(), ESHUTDOWN);
+    }
+    int err = errno;
+    return STATUS(NetworkError, std::string("recvmsg error: ") + ErrnoToString(err), Slice(), err);
+  }
+
+  return res;
 }
 
 // Mostly follows readn() from Stevens (2004) or Kerrisk (2010).

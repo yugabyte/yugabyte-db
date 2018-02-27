@@ -27,7 +27,7 @@
 namespace yb {
 namespace rpc {
 
-// Convenience buffer for receiving bytes.
+// Convenience circular buffer for receiving bytes.
 // Major features:
 //   Limit allocated bytes.
 //   Resize depending on used size.
@@ -38,15 +38,12 @@ class GrowableBuffer {
 
   inline bool empty() const { return size_ == 0; }
   inline size_t size() const { return size_; }
-  inline const uint8_t* begin() const { return buffer_.get(); }
-  inline const uint8_t* end() const { return buffer_.get() + size_; }
   inline size_t capacity_left() const { return capacity_ - size_; }
-  inline uint8_t* write_position() { return buffer_.get() + size_; }
   inline size_t limit() const { return limit_; }
 
   void Swap(GrowableBuffer* rhs);
   // Reset buffer size to zero. Like with std::vector Clean does not deallocate any memory.
-  void Clear() { size_ = 0; }
+  void Clear() { pos_ = 0; size_ = 0; }
   void DumpTo(std::ostream& out) const;
 
   // Removes first `count` bytes from buffer, moves remaining bytes to the beginning of the buffer.
@@ -60,7 +57,11 @@ class GrowableBuffer {
   void Consume(size_t count);
 
   // Ensures there is some space to read into. Depending on currently used size.
-  CHECKED_STATUS PrepareRead();
+  // Returns iov's that could be used for receiving data into to this buffer.
+  Result<IoVecs> PrepareAppend();
+
+  // Returns currently appended data.
+  IoVecs AppendedVecs();
 
   // Mark next `len` bytes as used.
   void DataAppended(size_t len);
@@ -88,8 +89,11 @@ class GrowableBuffer {
   // Current capacity, i.e. allocated bytes
   size_t capacity_;
 
+  // Current start position of used bytes.
+  size_t pos_ = 0;
+
   // Currently used bytes
-  size_t size_;
+  size_t size_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const GrowableBuffer& receiver);

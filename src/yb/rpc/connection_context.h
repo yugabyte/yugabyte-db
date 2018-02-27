@@ -17,7 +17,8 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
-#include "yb/util/status.h"
+#include "yb/util/result.h"
+#include "yb/util/net/socket.h"
 
 namespace yb {
 namespace rpc {
@@ -30,11 +31,10 @@ class ConnectionContext {
  public:
   virtual ~ConnectionContext() {}
 
-  // Split slice into separate calls and invoke them.
-  // Return number of processed bytes in `consumed`.
-  virtual CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
-                                      Slice slice,
-                                      size_t* consumed) = 0;
+  // Split data into separate calls and invoke them.
+  // Returns number of processed bytes.
+  virtual Result<size_t> ProcessCalls(const ConnectionPtr& connection,
+                                      const IoVecs& data) = 0;
 
   // Dump information about status of this connection context to protobuf.
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
@@ -51,10 +51,6 @@ class ConnectionContext {
   // Reading buffer limit for this connection context.
   // The reading buffer will never be larger than this limit.
   virtual size_t BufferLimit() = 0;
-
-  // We could limit receiving of too big amount of data, if packet is big enough to avoid moving
-  // of remainder of the next packet.
-  virtual size_t MaxReceive(Slice existing_data) { return std::numeric_limits<size_t>::max(); }
 
   virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 

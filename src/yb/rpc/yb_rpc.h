@@ -16,13 +16,14 @@
 #ifndef YB_RPC_YB_RPC_H
 #define YB_RPC_YB_RPC_H
 
+#include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 
 namespace yb {
 namespace rpc {
 
-class YBConnectionContext : public ConnectionContextWithCallId {
+class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
   YBConnectionContext();
   ~YBConnectionContext();
@@ -32,20 +33,23 @@ class YBConnectionContext : public ConnectionContextWithCallId {
 
   size_t BufferLimit() override;
 
-  CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
-                              Slice slice,
-                              size_t* consumed) override;
+  Result<size_t> ProcessCalls(const ConnectionPtr& connection,
+                              const IoVecs& data) override;
 
-  size_t MaxReceive(Slice existing_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
 
-  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, Slice call_data);
-  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice call_data);
+  // Takes ownership of call_data content.
+  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, std::vector<char>* call_data) override;
+
+  // Takes ownership of call_data content.
+  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
 
   RpcConnectionPB::StateType State() override { return state_; }
 
   RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
+
+  BinaryCallParser parser_;
 };
 
 class YBInboundCall : public InboundCall {
@@ -63,7 +67,9 @@ class YBInboundCall : public InboundCall {
   // 'serialized_request_' member variables. The actual call parameter is
   // not deserialized, as this may be CPU-expensive, and this is called
   // from the reactor thread.
-  CHECKED_STATUS ParseFrom(Slice source);
+  //
+  // Takes ownership of call_data content.
+  CHECKED_STATUS ParseFrom(std::vector<char>* call_data);
 
   int32_t call_id() const {
     return header_.call_id();

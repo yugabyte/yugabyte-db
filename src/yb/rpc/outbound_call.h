@@ -132,8 +132,8 @@ class CallResponse {
   void operator=(CallResponse&& rhs);
 
   // Parse the response received from a call. This must be called before any
-  // other methods on this object.
-  CHECKED_STATUS ParseFrom(Slice source);
+  // other methods on this object. Takes ownership of data content.
+  CHECKED_STATUS ParseFrom(std::vector<char>* data);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -174,7 +174,7 @@ class CallResponse {
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
-  std::vector<uint8_t> response_data_;
+  std::vector<char> response_data_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
