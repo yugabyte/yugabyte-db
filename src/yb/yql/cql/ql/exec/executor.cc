@@ -248,8 +248,9 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTListNode *tnode) {
+  ExecContext* parent = exec_context_;
   for (TreeNode::SharedPtr dml : tnode->node_list()) {
-    exec_contexts_.emplace_back(exec_contexts_.front(), dml.get());
+    exec_contexts_.emplace_back(*parent, dml.get());
     exec_context_ = &exec_contexts_.back();
     RETURN_NOT_OK(ProcessStatementStatus(*exec_context_->parse_tree(), ExecTreeNode(dml.get())));
   }
@@ -816,7 +817,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   }
 
   // Apply the operation.
-  return ApplyWriteOp(tnode, insert_op);
+  return exec_context_->Apply(insert_op, DeferOperation(insert_op));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -860,7 +861,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   }
 
   // Apply the operation.
-  return ApplyWriteOp(tnode, delete_op);
+  return exec_context_->Apply(delete_op, DeferOperation(delete_op));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -912,7 +913,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   }
 
   // Apply the operation.
-  return ApplyWriteOp(tnode, update_op);
+  return exec_context_->Apply(update_op, DeferOperation(update_op));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -985,6 +986,7 @@ void Executor::FlushAsyncDone(const Status &s) {
     ss = ProcessAsyncResults();
     if (ss.ok()) {
       const TreeNode *last_stmt = exec_context_->tnode();
+      const bool commit = (last_stmt->opcode() == TreeNodeOpcode::kPTCommit);
 
       if (last_stmt->opcode() == TreeNodeOpcode::kPTSelectStmt) {
 
@@ -1000,34 +1002,59 @@ void Executor::FlushAsyncDone(const Status &s) {
         }
       }
 
-      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
-      // but exclude the time to commit the transaction if any.
-      if (ql_metrics_ != nullptr) {
-        const MonoTime now = MonoTime::Now();
-        for (const auto& exec_context : exec_contexts_) {
-          const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
-          switch (exec_context.tnode()->opcode()) {
-            case TreeNodeOpcode::kPTSelectStmt:
-              ql_metrics_->ql_select_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTInsertStmt:
-              ql_metrics_->ql_insert_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTUpdateStmt:
-              ql_metrics_->ql_update_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTDeleteStmt:
-              ql_metrics_->ql_delete_->Increment(delta_usec);
-              break;
-            default:
-              break;
+      for (auto itr = exec_contexts_.begin(); itr != exec_contexts_.end();) {
+        ExecContext& exec_context = *itr;
+        if (exec_context.op() != nullptr) {
+          // Apply any operation that has been deferred but can be applied now.
+          if (exec_context.IsOperationDeferred()) {
+            if (!DeferOperation(std::static_pointer_cast<YBqlWriteOp>(exec_context.op()))) {
+              ss = exec_context.Apply();
+              if (!ss.ok()) {
+                break;
+              }
+            }
+            itr++;
+          } else {
+            // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
+            // completed but exclude the time to commit the transaction if any.
+            if (ql_metrics_ != nullptr) {
+              const auto now = MonoTime::Now();
+              const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
+              switch (exec_context.tnode()->opcode()) {
+                case TreeNodeOpcode::kPTSelectStmt:
+                  ql_metrics_->ql_select_->Increment(delta_usec);
+                  break;
+                case TreeNodeOpcode::kPTInsertStmt:
+                  ql_metrics_->ql_insert_->Increment(delta_usec);
+                  break;
+                case TreeNodeOpcode::kPTUpdateStmt:
+                  ql_metrics_->ql_update_->Increment(delta_usec);
+                  break;
+                case TreeNodeOpcode::kPTDeleteStmt:
+                  ql_metrics_->ql_delete_->Increment(delta_usec);
+                  break;
+                default:
+                  LOG(FATAL) << "unexpected operation";
+              }
+            }
+            itr = exec_contexts_.erase(itr);
           }
+        } else {
+          itr++;
         }
       }
 
-      if (last_stmt->opcode() == TreeNodeOpcode::kPTCommit) {
-        ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
-        return;
+      if (ss.ok()) {
+        // Flush any deferred operation that has been applied now. If there is no more deferred
+        // operation, commit the transaction if needed.
+        if (FlushAsync()) {
+          return;
+        } else {
+          if (commit) {
+            ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
+            return;
+          }
+        }
       }
     }
   }
@@ -1036,16 +1063,19 @@ void Executor::FlushAsyncDone(const Status &s) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ApplyWriteOp(const TreeNode *tnode, const YBqlWriteOpPtr& op) {
-  if (!batched_write_ops_.insert(op).second &&
-      RequireRead(op->request(), op->table()->InternalSchema())) {
-    // TODO: defer multiple reads and writes of the same row by separating them into batches and
-    // executing them one after another.
-    return exec_context_->Error(tnode,
-                                "Reading from a row modified in the same batch request is not "
-                                "supported yet", ErrorCode::EXEC_ERROR);
-  }
-  return exec_context_->Apply(op);
+bool Executor::DeferOperation(const YBqlWriteOpPtr& op) {
+  // Defer the given write operation if 2 conditions are met:
+  // 1) It fails to be added to batched_write_ops_ because the primary / hash key overlaps with that
+  //    of a prior write operation in the current write batch (see YBqlWriteOp::Overlap), and
+  // 2) It requires a read. We need to defer this latter overlapping write operation that requires
+  //    a read because currently we cannot read the results of a prior write operation to the same
+  //    primary / hash key until the prior write batch has been applied in tserver. We need to defer
+  //    the operation to the next batch.
+  // If the latter write operation overlaps with the prior one but does not require a read, it is
+  // okay to apply in the same batch. Our semantics allows the latter write operation to overwrite
+  // the prior one.
+  return (!batched_write_ops_.insert(op).second &&
+          RequireRead(op->request(), op->table()->InternalSchema()));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1095,8 +1125,8 @@ Status Executor::ProcessAsyncResults() {
   Status s, ss;
   for (auto& exec_context : exec_contexts_) {
     client::YBqlOp* op = exec_context.op().get();
-    if (op == nullptr) {
-      continue; // Skip empty op.
+    if (op == nullptr || exec_context.IsOperationDeferred()) {
+      continue; // Skip empty or deferred op.
     }
     ss = ql_env_->GetOpError(op);
     if (PREDICT_FALSE(!ss.ok())) {
