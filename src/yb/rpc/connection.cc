@@ -357,38 +357,26 @@ Status Connection::ReadHandler() {
 }
 
 Result<bool> Connection::Receive() {
-  auto status = read_buffer_.PrepareRead();
-  if (status.IsBusy()) {
-    read_buffer_full_ = true;
-    return false;
-  }
-  RETURN_NOT_OK(status);
-  read_buffer_full_ = false;
-
-  size_t max_receive = context_->MaxReceive(Slice(read_buffer_.begin(), read_buffer_.size()));
-  DCHECK_GT(max_receive, read_buffer_.size());
-  // This should not happen, but at least avoid crash if something went wrong.
-  if (PREDICT_FALSE(max_receive <= read_buffer_.size())) {
-    LOG(ERROR) << "Max receive: " << max_receive << ", less existing data: " << read_buffer_.size();
-    max_receive = std::numeric_limits<size_t>::max();
-  } else {
-    max_receive -= read_buffer_.size();
-  }
-  max_receive = std::min(max_receive, static_cast<size_t>(std::numeric_limits<int32_t>::max()));
-  max_receive = std::min(max_receive, read_buffer_.capacity_left());
-
-  const int32_t remaining_buf_capacity = static_cast<int32_t>(max_receive);
-  int32_t nread = 0;
-  status = socket_.Recv(read_buffer_.write_position(), remaining_buf_capacity, &nread);
-  if (!status.ok()) {
-    if (Socket::IsTemporarySocketError(status)) {
+  auto iov = read_buffer_.PrepareAppend();
+  if (!iov.ok()) {
+    if (iov.status().IsBusy()) {
+      read_buffer_full_ = true;
       return false;
     }
-    return status;
+    return iov.status();
+  }
+  read_buffer_full_ = false;
+
+  auto nread = socket_.Recvv(iov.get_ptr());
+  if (!nread.ok()) {
+    if (Socket::IsTemporarySocketError(nread.status())) {
+      return false;
+    }
+    return nread.status();
   }
 
-  read_buffer_.DataAppended(nread);
-  return nread != 0;
+  read_buffer_.DataAppended(*nread);
+  return *nread != 0;
 }
 
 void Connection::ParseReceived() {
@@ -409,18 +397,16 @@ Result<bool> Connection::TryProcessCalls() {
     return false;
   }
 
-  Slice bytes_to_process(read_buffer_.begin(), read_buffer_.size());
-  size_t consumed = 0;
-  auto result = context_->ProcessCalls(shared_from_this(), bytes_to_process, &consumed);
-  if (PREDICT_FALSE(!result.ok())) {
-    LOG(WARNING) << ToString() << " command sequence failure: " << result.ToString();
-    return result;
+  auto consumed = context_->ProcessCalls(shared_from_this(), read_buffer_.AppendedVecs());
+  if (PREDICT_FALSE(!consumed.ok())) {
+    LOG(WARNING) << ToString() << " command sequence failure: " << consumed;
+    return consumed.status();
   }
-  read_buffer_.Consume(consumed);
+  read_buffer_.Consume(*consumed);
   return true;
 }
 
-Status Connection::HandleCallResponse(Slice call_data) {
+Status Connection::HandleCallResponse(std::vector<char>* call_data) {
   DCHECK(reactor_->IsCurrentThread());
   CallResponse resp;
   RETURN_NOT_OK(resp.ParseFrom(call_data));

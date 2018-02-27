@@ -54,46 +54,22 @@ namespace yb {
 namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext()
-    : ql_session_(new ql::QLSession()) {
+    : ql_session_(new ql::QLSession()),
+      parser_(CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
+              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this) {
 }
 
-Status CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                          Slice slice,
-                                          size_t* consumed) {
-  auto pos = slice.data();
-  const auto end = slice.end();
-  while (end - pos >= CQLMessage::kMessageHeaderLength) {
-    // Extract the body length field in buf_[5..8] and update the total length of the frame.
-    size_t body_length = NetworkByteOrder::Load32(pos + CQLMessage::kHeaderPosLength);
-    size_t total_length = CQLMessage::kMessageHeaderLength + body_length;
-    if (total_length > FLAGS_max_message_length) {
-      return STATUS_SUBSTITUTE(NetworkError,
-          "the frame had a length of $0, but we only support "
-              "messages up to $1 bytes long.",
-          total_length,
-          FLAGS_max_message_length);
-    }
-
-    if (pos + total_length > end) {
-      break;
-    }
-
-    RETURN_NOT_OK(HandleInboundCall(connection, Slice(pos, total_length)));
-    pos += total_length;
-  }
-
-  *consumed = pos - slice.data();
-  if (pos != slice.end()) {
-    DVLOG(1) << "Pending CQL data: " << slice.end() - pos;
-  }
-  return Status::OK();
+Result<size_t> CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
+                                                  const IoVecs& data) {
+  return parser_.Parse(connection, data);
 }
 
 size_t CQLConnectionContext::BufferLimit() {
   return FLAGS_max_message_length;
 }
 
-Status CQLConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection, Slice slice) {
+Status CQLConnectionContext::HandleCall(
+    const rpc::ConnectionPtr& connection, std::vector<char>* call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -101,7 +77,7 @@ Status CQLConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connect
       call_processed_listener(),
       ql_session_);
 
-  Status s = call->ParseFrom(slice);
+  Status s = call->ParseFrom(call_data);
   if (!s.ok()) {
     LOG(WARNING) << connection->ToString() << ": received bad data: " << s.ToString();
     return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToString());
@@ -137,12 +113,12 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
       ql_session_(std::move(ql_session)) {
 }
 
-Status CQLInboundCall::ParseFrom(Slice source) {
+Status CQLInboundCall::ParseFrom(std::vector<char>* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "CQLInboundCall", this);
   TRACE_EVENT0("rpc", "CQLInboundCall::ParseFrom");
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
-  request_data_.assign(source.data(), source.end());
+  request_data_.swap(*call_data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
   // Fill the service name method name to transfer the call to. The method name is for debug

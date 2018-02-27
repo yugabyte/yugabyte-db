@@ -90,13 +90,8 @@ using google::protobuf::Message;
 using google::protobuf::MessageLite;
 using google::protobuf::io::CodedOutputStream;
 
-namespace {
-
-constexpr size_t kBigPacket = 128_KB;
-
-} // namespace
-
-YBConnectionContext::YBConnectionContext() {}
+YBConnectionContext::YBConnectionContext()
+    : parser_(kMsgLengthPrefixLength, 0, FLAGS_rpc_max_message_size, IncludeHeader::kFalse, this) {}
 
 YBConnectionContext::~YBConnectionContext() {}
 
@@ -104,62 +99,32 @@ size_t YBConnectionContext::BufferLimit() {
   return FLAGS_rpc_max_message_size;
 }
 
-Status YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
-                                         Slice slice,
-                                         size_t* consumed) {
-  auto pos = slice.data();
-  const auto end = slice.end();
-
+Result<size_t> YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
+                                                 const IoVecs& data) {
   if (state_ == RpcConnectionPB::NEGOTIATING) {
-    if (slice.size() < kConnectionHeaderSize) {
-      *consumed = 0;
-      return Status::OK();
+    // We assume that header is fully contained in the first block.
+    if (data[0].iov_len < kConnectionHeaderSize) {
+      return 0;
     }
+
+    Slice slice(static_cast<const char*>(data[0].iov_base), data[0].iov_len);
     if (!slice.starts_with(kConnectionHeaderBytes, kConnectionHeaderSize)) {
       return STATUS_FORMAT(NetworkError,
                            "Invalid connection header: $0",
                            slice.ToDebugHexString());
     }
     state_ = RpcConnectionPB::OPEN;
-    pos += kConnectionHeaderSize;
+    IoVecs data_copy(data);
+    data_copy[0].iov_len -= kConnectionHeaderSize;
+    data_copy[0].iov_base = const_cast<uint8_t*>(slice.data() + kConnectionHeaderSize);
+    return VERIFY_RESULT(parser_.Parse(connection, data_copy)) + kConnectionHeaderSize;
   }
 
-  while (end - pos >= kMsgLengthPrefixLength) {
-    const size_t data_length = NetworkByteOrder::Load32(pos);
-    const size_t total_length = data_length + kMsgLengthPrefixLength;
-    if (total_length > FLAGS_rpc_max_message_size) {
-      return STATUS(NetworkError,
-          strings::Substitute("The frame had a length of $0, but we only support "
-                              "messages up to $1 bytes long.",
-                              total_length,
-                              FLAGS_rpc_max_message_size));
-    }
-    auto stop = pos + total_length;
-    if (stop > end) {
-      break;
-    }
-    pos += kMsgLengthPrefixLength;
-    const auto status = HandleCall(connection, Slice(pos, stop - pos));
-    if (!status.ok()) {
-      return status;
-    }
-
-    pos = stop;
-  }
-  *consumed = pos - slice.data();
-  return Status::OK();
+  return parser_.Parse(connection, data);
 }
 
-size_t YBConnectionContext::MaxReceive(Slice existing_data) {
-  if (existing_data.size() >= kMsgLengthPrefixLength) {
-    const size_t data_length = NetworkByteOrder::Load32(existing_data.data());
-    return std::max(kBigPacket, data_length + kMsgLengthPrefixLength);
-  }
-  return kBigPacket;
-}
-
-
-Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice call_data) {
+Status YBConnectionContext::HandleCall(
+    const ConnectionPtr& connection, std::vector<char>* call_data) {
   const auto direction = connection->direction();
   switch (direction) {
     case ConnectionDirection::CLIENT:
@@ -170,7 +135,8 @@ Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice ca
   FATAL_INVALID_ENUM_VALUE(ConnectionDirection, direction);
 }
 
-Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice call_data) {
+Status YBConnectionContext::HandleInboundCall(
+    const ConnectionPtr& connection, std::vector<char>* call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -226,12 +192,12 @@ MonoTime YBInboundCall::GetClientDeadline() const {
   return deadline;
 }
 
-Status YBInboundCall::ParseFrom(Slice source) {
+Status YBInboundCall::ParseFrom(std::vector<char>* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
 
-  request_data_.assign(source.data(), source.end());
-  source = Slice(request_data_.data(), request_data_.size());
+  request_data_.swap(*call_data);
+  Slice source(request_data_.data(), request_data_.size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &serialized_request_));
 
   // Adopt the service/method info from the header as soon as it's available.

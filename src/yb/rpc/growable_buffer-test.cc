@@ -49,7 +49,7 @@ TEST_F(GrowableBufferTest, TestPrepareRead) {
   unsigned int seed = SeedRandom();
 
   while (buffer.size() != buffer.limit()) {
-    auto status = buffer.PrepareRead();
+    auto status = buffer.PrepareAppend();
     ASSERT_OK(status);
     size_t step = 1 + rand_r(&seed) % buffer.capacity_left();
     buffer.DataAppended(step);
@@ -69,16 +69,33 @@ TEST_F(GrowableBufferTest, TestConsume) {
   for (auto i = 10000; i--;) {
     size_t step = 1 + rand_r(&seed) % (buffer.limit() - buffer.size());
     ASSERT_OK(buffer.EnsureFreeSpace(step));
-    for (int j = 0; j != step; ++j)
-      buffer.write_position()[j] = static_cast<uint8_t>(counter++);
+    {
+      auto iov = ASSERT_RESULT(buffer.PrepareAppend());
+      auto idx = 0;
+      auto* data = static_cast<uint8_t*>(iov[0].iov_base);
+      int start = 0;
+      for (int j = 0; j != step; ++j) {
+        if (j - start >= iov[idx].iov_len) {
+          start += iov[idx].iov_len;
+          ++idx;
+          data = static_cast<uint8_t*>(iov[idx].iov_base);
+        }
+        data[j - start] = static_cast<uint8_t>(counter++);
+      }
+    }
     buffer.DataAppended(step);
     ASSERT_EQ(consumed + buffer.size(), counter);
     size_t consume_size = 1 + rand_r(&seed) % buffer.size();
     buffer.Consume(consume_size);
     consumed += consume_size;
     ASSERT_EQ(consumed + buffer.size(), counter);
-    for (int j = 0; j != buffer.size(); ++j) {
-      ASSERT_EQ(buffer.begin()[j], static_cast<uint8_t>(consumed + j));
+    auto iovs = buffer.AppendedVecs();
+    int value = consumed;
+    for (const auto& iov : iovs) {
+      const auto* data = static_cast<const uint8_t*>(iov.iov_base);
+      for (int j = 0; j != iov.iov_len; ++j) {
+        ASSERT_EQ(data[j], static_cast<uint8_t>(value++));
+      }
     }
   }
 }

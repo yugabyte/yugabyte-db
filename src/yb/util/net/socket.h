@@ -35,6 +35,8 @@
 #include <sys/uio.h>
 #include <string>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -43,6 +45,15 @@ namespace yb {
 
 class MonoDelta;
 class MonoTime;
+
+// Vector of io buffers. Could be used with receive, already received data etc.
+typedef boost::container::small_vector<::iovec, 2> IoVecs;
+
+size_t IoVecsFullSize(const IoVecs& io_vecs);
+// begin and end are positions in concatenated io_vecs.
+void IoVecsToBuffer(const IoVecs& io_vecs, size_t begin, size_t end, std::vector<char>* result);
+inline const char* IoVecBegin(const iovec& inp) { return static_cast<const char*>(inp.iov_base); }
+inline const char* IoVecEnd(const iovec& inp) { return IoVecBegin(inp) + inp.iov_len; }
 
 class Socket {
  public:
@@ -142,6 +153,9 @@ class Socket {
       const MonoTime& deadline);
 
   CHECKED_STATUS Recv(uint8_t *buf, int32_t amt, int32_t *nread);
+
+  // Receives into multiple buffers, returns number of bytes received.
+  Result<int32_t> Recvv(IoVecs* vecs);
 
   // Blocking Recv call, returns IOError unless requested amt bytes are read.
   // Underlying Socket expected to be in blocking mode. Fails if any Recv() reads 0 bytes.

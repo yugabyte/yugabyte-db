@@ -181,7 +181,7 @@ class Connection final : public std::enable_shared_from_this<Connection> {
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
-  CHECKED_STATUS HandleCallResponse(Slice slice);
+  CHECKED_STATUS HandleCallResponse(std::vector<char>* call_data);
 
   ConnectionContext& context() { return *context_; }
 

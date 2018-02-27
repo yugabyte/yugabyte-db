@@ -184,20 +184,24 @@ TEST_F(RpcStubTest, TestIncoherence) {
   auto proxy2ptr = CreateCalculatorProxy(server2.bound_endpoint());
   auto& proxy2 = *proxy2ptr;
 
-  CheckForward(&proxy1, server2.bound_endpoint(), kServer2Name);
-  CheckForward(&proxy2, server1.bound_endpoint(), kServer1Name);
+  ASSERT_NO_FATALS(CheckForward(&proxy1, server2.bound_endpoint(), kServer2Name));
+  ASSERT_NO_FATALS(CheckForward(&proxy2, server1.bound_endpoint(), kServer1Name));
 
   server2.messenger().BreakConnectivityWith(server1.bound_endpoint().address());
 
   LOG(INFO) << "Checking connectivity";
-  CheckForward(&proxy1, server2.bound_endpoint(), std::string()); // No connection between servers.
-  CheckForward(&proxy1, Endpoint(), kServer1Name); // We could connect to server1.
-  CheckForward(&proxy2, server1.bound_endpoint(), std::string()); // No connection between servers.
-  CheckForward(&proxy2, Endpoint(), kServer2Name); // We could connect to server2.
+  // No connection between servers.
+  ASSERT_NO_FATALS(CheckForward(&proxy1, server2.bound_endpoint(), std::string()));
+  // We could connect to server1.
+  ASSERT_NO_FATALS(CheckForward(&proxy1, Endpoint(), kServer1Name));
+  // No connection between servers.
+  ASSERT_NO_FATALS(CheckForward(&proxy2, server1.bound_endpoint(), std::string()));
+  // We could connect to server2.
+  ASSERT_NO_FATALS(CheckForward(&proxy2, Endpoint(), kServer2Name));
 
   server2.messenger().RestoreConnectivityWith(server1.bound_endpoint().address());
-  CheckForward(&proxy1, server2.bound_endpoint(), kServer2Name);
-  CheckForward(&proxy2, server1.bound_endpoint(), kServer1Name);
+  ASSERT_NO_FATALS(CheckForward(&proxy1, server2.bound_endpoint(), kServer2Name));
+  ASSERT_NO_FATALS(CheckForward(&proxy2, server1.bound_endpoint(), kServer1Name));
 }
 
 // Test calls which are rather large.

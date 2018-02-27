@@ -44,11 +44,13 @@ CHECKED_STATUS ParseGet(client::YBRedisReadOp* op, const RedisClientCommand& arg
 // In this case parsing will be continued from the last position.
 class RedisParser {
  public:
-  explicit RedisParser(Slice source)
-      : begin_(source.data()), end_(source.end()), pos_(begin_)
-  {}
+  explicit RedisParser(const IoVecs& source)
+      : source_(source), full_size_(IoVecsFullSize(source)) {
+    DCHECK_LE(source.size(), 2);
+  }
 
   void SetArgs(boost::container::small_vector_base<Slice>* args) {
+    DCHECK_EQ(source_.size(), 1);
     args_ = args;
   }
 
@@ -58,10 +60,11 @@ class RedisParser {
   void Consume(size_t count);
 
   // New data arrived, so update the end of available bytes.
-  void Update(Slice source);
+  void Update(const IoVecs& source);
 
   // Parse next command.
-  CHECKED_STATUS NextCommand(const uint8_t** end_of_command);
+  Result<size_t> NextCommand();
+
  private:
   // Redis command could be of 2 types.
   // First one is just single line that terminates with \r\n.
@@ -98,20 +101,35 @@ class RedisParser {
   // Parses number with specified bounds.
   // Number is located in separate line, and contain prefix before actual number.
   // Line starts at token_begin_ and pos_ is a start of next line.
-  CHECKED_STATUS ParseNumber(char prefix,
-                             ptrdiff_t min,
-                             ptrdiff_t max,
-                             const char* name,
-                             ptrdiff_t* out);
+  Result<ptrdiff_t> ParseNumber(char prefix,
+                                ptrdiff_t min,
+                                ptrdiff_t max,
+                                const char* name);
 
-  // Begin of data.
-  const uint8_t* begin_;
+  // Returns pointer to byte with specified offset in all iovecs of source_.
+  // Pointer byte is valid, the end of valid range should be determined separately if required.
+  const char* offset_to_pointer(size_t offset) const {
+      // We assume that there are at most 2 blocks of data.
+    if (offset < source_[0].iov_len) {
+      return IoVecBegin(source_[0]) + offset;
+    } else {
+      return IoVecBegin(source_[1]) + offset - source_[0].iov_len;
+    }
+  }
 
-  // End of data.
-  const uint8_t* end_;
+  char char_at_offset(size_t offset) const {
+    return *offset_to_pointer(offset);
+  }
+
+  static constexpr size_t kNoToken = std::numeric_limits<size_t>::max();
+
+  // Data to parse.
+  IoVecs source_;
+
+  size_t full_size_;
 
   // Current parsing position.
-  const uint8_t* pos_;
+  size_t pos_ = 0;
 
   // Command arguments.
   boost::container::small_vector_base<Slice>* args_ = nullptr;
@@ -120,7 +138,7 @@ class RedisParser {
   State state_ = State::INITIAL;
 
   // Beginning of last token.
-  const uint8_t* token_begin_ = nullptr;
+  size_t token_begin_ = kNoToken;
 
   // Mark that current token is incomplete.
   bool incomplete_ = false;
@@ -130,6 +148,8 @@ class RedisParser {
 
   // Size of the current argument in bulk command.
   size_t current_argument_size_ = 0;
+
+  std::vector<char> number_buffer_;
 };
 
 }  // namespace redisserver

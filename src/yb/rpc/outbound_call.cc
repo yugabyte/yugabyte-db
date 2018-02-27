@@ -547,12 +547,12 @@ Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   return Status::OK();
 }
 
-Status CallResponse::ParseFrom(Slice source) {
+Status CallResponse::ParseFrom(std::vector<char>* call_data) {
   CHECK(!parsed_);
   Slice entire_message;
 
-  response_data_.assign(source.data(), source.end());
-  source = Slice(response_data_.data(), response_data_.size());
+  response_data_.swap(*call_data);
+  Slice source(response_data_.data(), response_data_.size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
 
   // Use information from header to extract the payload slices.

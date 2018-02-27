@@ -19,6 +19,7 @@
 
 #include "yb/yql/cql/cqlserver/cql_message.h"
 
+#include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
 
@@ -30,7 +31,8 @@ namespace cqlserver {
 class CQLStatement;
 class CQLServiceImpl;
 
-class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
+class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
+                             public rpc::BinaryCallParserListener {
  public:
   CQLConnectionContext();
   void DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
@@ -52,18 +54,21 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId {
   }
 
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
-  CHECKED_STATUS ProcessCalls(const rpc::ConnectionPtr& connection,
-                              Slice slice,
-                              size_t* consumed) override;
+  Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
+                              const IoVecs& bytes_to_process) override;
   size_t BufferLimit() override;
 
-  CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection, Slice slice);
+  // Takes ownership of call_data content.
+  CHECKED_STATUS HandleCall(
+      const rpc::ConnectionPtr& connection, std::vector<char>* call_data) override;
 
   // SQL session of this CQL client connection.
   ql::QLSession::SharedPtr ql_session_;
 
   // CQL message compression scheme to use.
   CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::NONE;
+
+  rpc::BinaryCallParser parser_;
 };
 
 class CQLInboundCall : public rpc::InboundCall {
@@ -72,7 +77,8 @@ class CQLInboundCall : public rpc::InboundCall {
                           CallProcessedListener call_processed_listener,
                           ql::QLSession::SharedPtr ql_session);
 
-  CHECKED_STATUS ParseFrom(Slice source);
+  // Takes ownership of call_data content.
+  CHECKED_STATUS ParseFrom(std::vector<char>* call_data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.

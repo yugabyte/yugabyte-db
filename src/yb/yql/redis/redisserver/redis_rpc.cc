@@ -61,35 +61,31 @@ RedisConnectionContext::RedisConnectionContext()
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
-Status RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                            Slice slice,
-                                            size_t* consumed) {
+Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
+                                                    const IoVecs& data) {
   if (!can_enqueue()) {
-    *consumed = 0;
-    return Status::OK();
+    return 0;
   }
 
   if (!parser_) {
-    parser_.reset(new RedisParser(slice));
+    parser_.reset(new RedisParser(data));
   } else {
-    parser_->Update(slice);
+    parser_->Update(data);
   }
   RedisParser& parser = *parser_;
-  *consumed = 0;
-  const uint8_t* begin_of_batch = slice.data();
-  const uint8_t* end_of_batch = begin_of_batch;
+  size_t begin_of_batch = 0;
+  size_t end_of_batch = begin_of_batch;
   // Try to parse all received commands to a single RedisInboundCall.
   for(;;) {
-    const uint8_t* end_of_command = nullptr;
-    RETURN_NOT_OK(parser.NextCommand(&end_of_command));
-    if (end_of_command == nullptr) {
+    auto end_of_command = VERIFY_RESULT(parser.NextCommand());
+    if (end_of_command == 0) {
       break;
     }
     end_of_batch = end_of_command;
     if (++commands_in_batch_ >= FLAGS_redis_max_batch) {
-      RETURN_NOT_OK(HandleInboundCall(connection,
-                                      commands_in_batch_,
-                                      Slice(begin_of_batch, end_of_batch)));
+      std::vector<char> call_data;
+      IoVecsToBuffer(data, begin_of_batch, end_of_batch, &call_data);
+      RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
       begin_of_batch = end_of_batch;
       commands_in_batch_ = 0;
     }
@@ -97,28 +93,27 @@ Status RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection
   // Create call for rest of commands.
   // Do not form new call if we are in a middle of command.
   // It means that soon we should receive remaining data for this command and could wait.
-  if (commands_in_batch_ > 0 && end_of_batch == slice.end()) {
-    RETURN_NOT_OK(HandleInboundCall(connection,
-                                    commands_in_batch_,
-                                    Slice(begin_of_batch, end_of_batch)));
+  if (commands_in_batch_ > 0 && end_of_batch == IoVecsFullSize(data)) {
+    std::vector<char> call_data;
+    IoVecsToBuffer(data, begin_of_batch, end_of_batch, &call_data);
+    RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
     begin_of_batch = end_of_batch;
     commands_in_batch_ = 0;
   }
-  *consumed = begin_of_batch - slice.data();
-  parser.Consume(*consumed);
-  return Status::OK();
+  parser.Consume(begin_of_batch);
+  return begin_of_batch;
 }
 
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
-                                                 Slice source) {
+                                                 std::vector<char>* data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
   auto call = std::make_shared<RedisInboundCall>(
-      connection, source.size(), call_processed_listener());
+      connection, data->size(), call_processed_listener());
 
-  Status s = call->ParseFrom(commands_in_batch, source);
+  Status s = call->ParseFrom(commands_in_batch, data);
   if (!s.ok()) {
     return s;
   }
@@ -152,24 +147,23 @@ RedisInboundCall::~RedisInboundCall() {
   }
 }
 
-Status RedisInboundCall::ParseFrom(size_t commands, Slice source) {
+Status RedisInboundCall::ParseFrom(size_t commands, std::vector<char>* data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
 
-  request_data_.assign(source.data(), source.end());
-  serialized_request_ = source = Slice(request_data_.data(), request_data_.size());
+  request_data_.swap(*data);
+  serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
   client_batch_.resize(commands);
   responses_.resize(commands);
   ready_.reserve(commands);
   for (size_t i = 0; i != commands; ++i)
     ready_.emplace_back(0);
-  Status status;
-  RedisParser parser(source);
-  const uint8_t* end_of_command = nullptr;
+  RedisParser parser(IoVecs(1, iovec{request_data_.data(), request_data_.size()}));
+  size_t end_of_command = 0;
   for (size_t i = 0; i != commands; ++i) {
     parser.SetArgs(&client_batch_[i]);
-    RETURN_NOT_OK(parser.NextCommand(&end_of_command));
+    end_of_command = VERIFY_RESULT(parser.NextCommand());
     DCHECK_NE(0, client_batch_[i].size());
     if (client_batch_[i].empty()) { // Should not be there
       return STATUS(Corruption, "Empty command");
@@ -178,11 +172,10 @@ Status RedisInboundCall::ParseFrom(size_t commands, Slice source) {
       break;
     }
   }
-  if (end_of_command != source.end()) {
-    return STATUS_SUBSTITUTE(Corruption,
-                             "Parsed size $0 does not match source size $1",
-                             end_of_command - source.data(),
-                             source.size());
+  if (end_of_command != request_data_.size()) {
+    return STATUS_FORMAT(Corruption,
+                         "Parsed size $0 does not match source size $1",
+                         end_of_command, request_data_.size());
   }
 
   parsed_.store(true, std::memory_order_release);

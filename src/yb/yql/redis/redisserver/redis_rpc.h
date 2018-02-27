@@ -41,14 +41,14 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  CHECKED_STATUS ProcessCalls(const rpc::ConnectionPtr& connection,
-                              Slice slice,
-                              size_t* consumed) override;
+  Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
+                              const IoVecs& bytes_to_process) override;
   size_t BufferLimit() override;
 
+  // Takes ownership of data content.
   CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection,
                                    size_t commands_in_batch,
-                                   Slice source);
+                                   std::vector<char>* data);
 
   std::unique_ptr<RedisParser> parser_;
   size_t commands_in_batch_ = 0;
@@ -62,7 +62,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
      CallProcessedListener call_processed_listener);
 
   ~RedisInboundCall();
-  CHECKED_STATUS ParseFrom(size_t commands, Slice source);
+  // Takes ownership of data content.
+  CHECKED_STATUS ParseFrom(size_t commands, std::vector<char>* data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
