@@ -132,8 +132,12 @@ Status Executor::Execute(const string &ql_stmt, const ParseTree &parse_tree,
                          const StatementParameters* params) {
   // Prepare execution context and execute the parse tree's root node.
   exec_contexts_.emplace_back(ql_stmt.c_str(), ql_stmt.length(), &parse_tree, params, ql_env_);
-  exec_context_ = &exec_contexts_.back();
-  return ProcessStatementStatus(parse_tree, ExecTreeNode(exec_context_->tnode()));
+  return ProcessStatementStatus(parse_tree, ExecTreeNode(exec_context().tnode()));
+}
+
+ExecContext& Executor::exec_context() {
+  CHECK(!exec_contexts_.empty());
+  return exec_contexts_.back();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -196,7 +200,7 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
       return ExecPTNode(static_cast<const PTUseKeyspace *>(tnode));
 
     default:
-      return exec_context_->Error(ErrorCode::FEATURE_NOT_SUPPORTED);
+      return exec_context().Error(ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 }
 
@@ -207,7 +211,7 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
   const std::string role_name = tnode->role_name();
   const std::string salted_hash = tnode->salted_hash();
 
-  Status s = exec_context_->CreateRole(role_name, salted_hash, tnode->login(), tnode->superuser());
+  Status s = exec_context().CreateRole(role_name, salted_hash, tnode->login(), tnode->superuser());
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -219,7 +223,7 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
       return Status::OK();
     }
     // TODO (Bristy) : Set result_ properly
-    return exec_context_->Error(tnode, s, error_code);
+    return exec_context().Error(tnode, s, error_code);
   }
 
   return Status::OK();
@@ -229,7 +233,7 @@ Status Executor::ExecPTNode(const PTCreateRole *tnode) {
 
 Status Executor::ExecPTNode(const PTGrantRole *tnode) {
 
-  Status s = exec_context_->GrantRole(tnode->granted_role_name(), tnode->recipient_role_name());
+  Status s = exec_context().GrantRole(tnode->granted_role_name(), tnode->recipient_role_name());
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -240,7 +244,7 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
       error_code = ErrorCode::ROLE_NOT_FOUND;
     }
     // TODO (Bristy) : Set result_ properly
-    return exec_context_->Error(tnode, s, error_code);
+    return exec_context().Error(tnode, s, error_code);
   }
   return Status::OK();
 }
@@ -248,10 +252,10 @@ Status Executor::ExecPTNode(const PTGrantRole *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTListNode *tnode) {
+  ExecContext& parent = exec_context();
   for (TreeNode::SharedPtr dml : tnode->node_list()) {
-    exec_contexts_.emplace_back(exec_contexts_.front(), dml.get());
-    exec_context_ = &exec_contexts_.back();
-    RETURN_NOT_OK(ProcessStatementStatus(*exec_context_->parse_tree(), ExecTreeNode(dml.get())));
+    exec_contexts_.emplace_back(parent, dml.get());
+    RETURN_NOT_OK(ProcessStatementStatus(*exec_context().parse_tree(), ExecTreeNode(dml.get())));
   }
   return Status::OK();
 }
@@ -272,7 +276,7 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
     field_types.push_back(field->ql_type());
   }
 
-  Status s = exec_context_->CreateUDType(keyspace_name, type_name, field_names, field_types);
+  Status s = exec_context().CreateUDType(keyspace_name, type_name, field_names, field_types);
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
     if (s.IsAlreadyPresent()) {
@@ -285,7 +289,7 @@ Status Executor::ExecPTNode(const PTCreateType *tnode) {
       return Status::OK();
     }
 
-    return exec_context_->Error(tnode->type_name(), s, error_code);
+    return exec_context().Error(tnode->type_name(), s, error_code);
   }
 
   result_ = std::make_shared<SchemaChangeResult>("CREATED", "TYPE", keyspace_name, type_name);
@@ -298,7 +302,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
   if (table_name.is_system() && client::FLAGS_yb_system_namespace_readonly) {
-    return exec_context_->Error(tnode->table_name(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
+    return exec_context().Error(tnode->table_name(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
   }
 
   // Setting up columns.
@@ -309,7 +313,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+      return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     b.AddColumn(column->yb_name())->Type(column->ql_type())
         ->HashPrimaryKey()
@@ -325,11 +329,11 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   const MCList<PTColumnDefinition *>& columns = tnode->columns();
   for (const auto& column : columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+      return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                                              ->Nullable()
-                                                              ->Order(column->order());
+                                ->Nullable()
+                                ->Order(column->order());
     if (column->is_static()) {
       column_spec->StaticColumn();
     }
@@ -341,7 +345,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   TableProperties table_properties;
   s = tnode->ToTableProperties(&table_properties);
   if (!s.ok()) {
-    return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+    return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     table_properties.SetTransactional(true);
@@ -351,14 +355,14 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
 
   s = b.Build(&schema);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
+    return exec_context().Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Create table.
-  shared_ptr<YBTableCreator> table_creator(exec_context_->NewTableCreator());
+  shared_ptr<YBTableCreator> table_creator(exec_context().NewTableCreator());
   table_creator->table_name(table_name)
-                .table_type(YBTableType::YQL_TABLE_TYPE)
-                .schema(&schema);
+      .table_type(YBTableType::YQL_TABLE_TYPE)
+      .schema(&schema);
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
     table_creator->indexed_table_id(index_node->indexed_table_id());
@@ -381,7 +385,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
       return Status::OK();
     }
 
-    return exec_context_->Error(tnode->table_name(), s, error_code);
+    return exec_context().Error(tnode->table_name(), s, error_code);
   }
 
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
@@ -401,24 +405,24 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
 Status Executor::ExecPTNode(const PTAlterTable *tnode) {
   YBTableName table_name = tnode->yb_table_name();
 
-  shared_ptr<YBTableAlterer> table_alterer(exec_context_->NewTableAlterer(table_name));
+  shared_ptr<YBTableAlterer> table_alterer(exec_context().NewTableAlterer(table_name));
 
   for (const auto& mod_column : tnode->mod_columns()) {
     switch (mod_column->mod_type()) {
       case ALTER_ADD:
         table_alterer->AddColumn(mod_column->new_name()->data())
-                     ->Type(mod_column->ql_type());
+            ->Type(mod_column->ql_type());
         break;
       case ALTER_DROP:
         table_alterer->DropColumn(mod_column->old_name()->last_name().data());
         break;
       case ALTER_RENAME:
         table_alterer->AlterColumn(mod_column->old_name()->last_name().data())
-                     ->RenameTo(mod_column->new_name()->c_str());
+            ->RenameTo(mod_column->new_name()->c_str());
         break;
       case ALTER_TYPE:
         // Not yet supported by AlterTableRequestPB.
-        return exec_context_->Error(ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        return exec_context().Error(ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
     }
   }
 
@@ -426,7 +430,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
     TableProperties table_properties;
     Status s = tnode->ToTableProperties(&table_properties);
     if(PREDICT_FALSE(!s.ok())) {
-      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
 
     table_alterer->SetTableProperties(table_properties);
@@ -434,7 +438,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
 
   Status s = table_alterer->Alter();
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::EXEC_ERROR);
+    return exec_context().Error(s, ErrorCode::EXEC_ERROR);
   }
 
   result_ = std::make_shared<SchemaChangeResult>(
@@ -452,7 +456,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_TABLE: {
       // Drop the table.
       const YBTableName table_name = tnode->yb_table_name();
-      s = exec_context_->DeleteTable(table_name);
+      s = exec_context().DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
@@ -463,7 +467,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       // Drop the index.
       const YBTableName table_name = tnode->yb_table_name();
       YBTableName indexed_table_name;
-      s = exec_context_->DeleteIndexTable(table_name, &indexed_table_name);
+      s = exec_context().DeleteIndexTable(table_name, &indexed_table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
@@ -473,7 +477,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_SCHEMA: {
       // Drop the keyspace.
       const string keyspace_name(tnode->name()->last_name().c_str());
-      s = exec_context_->DeleteKeyspace(keyspace_name);
+      s = exec_context().DeleteKeyspace(keyspace_name);
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", keyspace_name);
       break;
@@ -483,7 +487,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       // Drop the type.
       const string type_name(tnode->name()->last_name().c_str());
       const string namespace_name(tnode->name()->first_name().c_str());
-      s = exec_context_->DeleteUDType(namespace_name, type_name);
+      s = exec_context().DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "TYPE", namespace_name, type_name);
       break;
@@ -492,14 +496,14 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
     case OBJECT_ROLE: {
       // Drop the role
       const string role_name(tnode->name()->QLName());
-      s = exec_context_->DeleteRole(role_name);
+      s = exec_context().DeleteRole(role_name);
       error_not_found = ErrorCode::ROLE_NOT_FOUND;
       // TODO (Bristy) : Set result_ properly
       break;
     }
 
     default:
-      return exec_context_->Error(ErrorCode::FEATURE_NOT_SUPPORTED);
+      return exec_context().Error(ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -514,7 +518,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_code = error_not_found;
     }
 
-    return exec_context_->Error(tnode->name(), s, error_code);
+    return exec_context().Error(tnode->name(), s, error_code);
   }
 
   return Status::OK();
@@ -529,7 +533,7 @@ Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
   ResourceType resource_type = tnode->resource_type();
   PermissionType permission = tnode->permission();
 
-  Status s = exec_context_->GrantPermission(permission, resource_type, canonical_resource,
+  Status s = exec_context().GrantPermission(permission, resource_type, canonical_resource,
                                             resource_name, namespace_name, role_name);
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -540,7 +544,7 @@ Status Executor::ExecPTNode(const PTGrantPermission *tnode) {
     if (s.IsNotFound()) {
       error_code = ErrorCode::RESOURCE_NOT_FOUND;
     }
-    return exec_context_->Error(tnode, s, error_code);
+    return exec_context().Error(tnode, s, error_code);
   }
   // TODO (Bristy) : Return proper result
   return Status::OK();
@@ -553,15 +557,15 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   if (table == nullptr) {
     // If this is a system table but the table does not exist, it is okay. Just return OK with void
     // result.
-    return tnode->is_system() ? Status::OK() : exec_context_->Error(ErrorCode::TABLE_NOT_FOUND);
+    return tnode->is_system() ? Status::OK() : exec_context().Error(ErrorCode::TABLE_NOT_FOUND);
   }
 
-  const StatementParameters& params = *exec_context_->params();
+  const StatementParameters& params = *exec_context().params();
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.
   const bool continue_select = !params.table_id().empty();
   if (continue_select && params.table_id() != table->id()) {
-    return exec_context_->Error("Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
+    return exec_context().Error("Table no longer exists.", ErrorCode::TABLE_NOT_FOUND);
   }
 
   // Create the read request.
@@ -575,7 +579,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
                               tnode->subscripted_col_where_ops(), tnode->partition_key_ops(),
                               tnode->func_ops(), &no_results);
   if (PREDICT_FALSE(!st.ok())) {
-    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // If where clause restrictions guarantee no rows could match, return empty result immediately.
@@ -598,7 +602,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     } else {
       st = PTExprToPB(expr, req->add_selected_exprs());
       if (PREDICT_FALSE(!st.ok())) {
-        return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+        return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
       }
 
       // Add the expression metadata (rsrow descriptor).
@@ -611,7 +615,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Setup the column values that need to be read.
   st = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!st.ok())) {
-    return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Specify distinct columns or non.
@@ -627,11 +631,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
     QLExpressionPB limit_pb;
     st = (PTExprToPB(tnode->limit(), &limit_pb));
     if (PREDICT_FALSE(!st.ok())) {
-      return exec_context_->Error(st, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(st, ErrorCode::INVALID_ARGUMENTS);
     }
 
     if (limit_pb.has_value() && IsNull(limit_pb.value())) {
-      return exec_context_->Error("LIMIT value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error("LIMIT value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
     }
 
     // this should be ensured by checks before getting here
@@ -639,7 +643,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
         << "Integer constant expected for LIMIT clause";
 
     if (limit_pb.value().int32_value() < 0) {
-      return exec_context_->Error("LIMIT value cannot be negative.", ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error("LIMIT value cannot be negative.", ErrorCode::INVALID_ARGUMENTS);
     }
 
     uint64_t limit = limit_pb.value().int32_value();
@@ -677,17 +681,17 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // If we have several hash partitions (i.e. IN condition on hash columns) we initialize the
   // start partition here, and then iteratively scan the rest in FetchMoreRowsIfNeeded.
   // Otherwise, the request will already have the right hashed column values set.
-  if (exec_context_->UnreadPartitionsRemaining() > 0) {
+  if (exec_context().UnreadPartitionsRemaining() > 0) {
     if (continue_select) {
-      exec_context_->InitializePartition(select_op->mutable_request(),
-          params.next_partition_index());
+      exec_context().InitializePartition(select_op->mutable_request(),
+                                         params.next_partition_index());
     } else {
-      exec_context_->InitializePartition(select_op->mutable_request(), 0);
+      exec_context().InitializePartition(select_op->mutable_request(), 0);
     }
   }
 
   // Apply the operator.
-  return exec_context_->Apply(select_op);
+  return exec_context().Apply(select_op);
 }
 
 Status Executor::FetchMoreRowsIfNeeded() {
@@ -696,7 +700,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
   }
 
   // The current select statement.
-  const PTSelectStmt *tnode = static_cast<const PTSelectStmt *>(exec_context_->tnode());
+  const PTSelectStmt *tnode = static_cast<const PTSelectStmt *>(exec_context().tnode());
 
   // Rows read so far: in this fetch, previous fetches (for paging selects), and in total.
   RowsResult::SharedPtr current_result = std::static_pointer_cast<RowsResult>(result_);
@@ -705,7 +709,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
                                         current_result->rows_data(),
                                         &current_fetch_row_count));
 
-  size_t previous_fetches_row_count = exec_context_->params()->total_num_rows_read();
+  size_t previous_fetches_row_count = exec_context().params()->total_num_rows_read();
   size_t total_row_count = previous_fetches_row_count + current_fetch_row_count;
 
   // Statement (paging) parameters.
@@ -713,7 +717,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
   RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
 
   // The limit for this select: min of page size and result limit (if set).
-  uint64_t fetch_limit = exec_context_->params()->page_size(); // default;
+  uint64_t fetch_limit = exec_context().params()->page_size(); // default;
   if (tnode->has_limit()) {
     QLExpressionPB limit_pb;
     RETURN_NOT_OK(PTExprToPB(tnode->limit(), &limit_pb));
@@ -724,7 +728,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
   }
 
   // The current read operation.
-  std::shared_ptr<YBqlReadOp> op = std::static_pointer_cast<YBqlReadOp>(exec_context_->op());
+  std::shared_ptr<YBqlReadOp> op = std::static_pointer_cast<YBqlReadOp>(exec_context().op());
 
   //------------------------------------------------------------------------------------------------
   // Check if we should fetch more rows (return with 'done=true' otherwise).
@@ -734,12 +738,12 @@ Status Executor::FetchMoreRowsIfNeeded() {
   if (finished_current_read_partition) {
 
     // If there or no other partitions to query, we are done.
-    if (exec_context_->UnreadPartitionsRemaining() <= 1) {
+    if (exec_context().UnreadPartitionsRemaining() <= 1) {
       return Status::OK();
     }
 
     // Otherwise, we continue to the next partition.
-    exec_context_->AdvanceToNextPartition(op->mutable_request());
+    exec_context().AdvanceToNextPartition(op->mutable_request());
     op->mutable_request()->clear_hash_code();
     op->mutable_request()->clear_max_hash_code();
   }
@@ -754,7 +758,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
       QLPagingStatePB paging_state;
       paging_state.set_total_num_rows_read(total_row_count);
       paging_state.set_table_id(tnode->table()->id());
-      paging_state.set_next_partition_index(exec_context_->current_partition_index());
+      paging_state.set_next_partition_index(exec_context().current_partition_index());
       current_result->set_paging_state(paging_state);
     }
 
@@ -772,7 +776,7 @@ Status Executor::FetchMoreRowsIfNeeded() {
   paging_state->set_total_num_rows_read(total_row_count);
 
   // Apply the request.
-  return exec_context_->Apply(op);
+  return exec_context().Apply(op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -786,37 +790,37 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Set the ttl.
   Status s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the timestamp.
   s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the values for columns.
   s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
   // Apply the operation.
-  return ApplyWriteOp(tnode, insert_op);
+  return exec_context().Apply(insert_op, DeferOperation(insert_op));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -830,37 +834,37 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Set the timestamp.
   Status s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-                             tnode->subscripted_col_where_ops());
+                      tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
   s = ColumnArgsToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
   // Apply the operation.
-  return ApplyWriteOp(tnode, delete_op);
+  return exec_context().Apply(delete_op, DeferOperation(delete_op));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -874,45 +878,45 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   Status s = WhereClauseToPB(req, tnode->key_where_ops(), tnode->where_ops(),
-      tnode->subscripted_col_where_ops());
+                             tnode->subscripted_col_where_ops());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the ttl.
   s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the timestamp.
   s = TimestampToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the columns' new values.
   s = ColumnArgsToPB(tnode, update_op->mutable_request());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Setup the column values that need to be read.
   s = ColumnRefsToPB(tnode, req->mutable_column_refs());
   if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+      return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
     }
   }
 
   // Apply the operation.
-  return ApplyWriteOp(tnode, update_op);
+  return exec_context().Apply(update_op, DeferOperation(update_op));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -932,13 +936,13 @@ Status Executor::ExecPTNode(const PTCommit *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTTruncateStmt *tnode) {
-  return exec_context_->TruncateTable(tnode->table_id());
+  return exec_context().TruncateTable(tnode->table_id());
 }
 
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
-  Status s = exec_context_->CreateKeyspace(tnode->name());
+  Status s = exec_context().CreateKeyspace(tnode->name());
 
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -952,7 +956,7 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
       error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
     }
 
-    return exec_context_->Error(s, error_code);
+    return exec_context().Error(s, error_code);
   }
 
   result_ = std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name());
@@ -962,10 +966,10 @@ Status Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTUseKeyspace *tnode) {
-  const Status s = exec_context_->UseKeyspace(tnode->name());
+  const Status s = exec_context().UseKeyspace(tnode->name());
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = s.IsNotFound() ? ErrorCode::KEYSPACE_NOT_FOUND : ErrorCode::SERVER_ERROR;
-    return exec_context_->Error(s, error_code);
+    return exec_context().Error(s, error_code);
   }
 
   result_ = std::make_shared<SetKeyspaceResult>(tnode->name());
@@ -984,9 +988,9 @@ void Executor::FlushAsyncDone(const Status &s) {
   if (ss.ok()) {
     ss = ProcessAsyncResults();
     if (ss.ok()) {
-      const TreeNode *last_stmt = exec_context_->tnode();
+      const TreeNodeOpcode last_opcode = exec_context().tnode()->opcode();
 
-      if (last_stmt->opcode() == TreeNodeOpcode::kPTSelectStmt) {
+      if (last_opcode == TreeNodeOpcode::kPTSelectStmt) {
 
         ql_env_->Reset();
         ss = FetchMoreRowsIfNeeded();
@@ -1000,34 +1004,59 @@ void Executor::FlushAsyncDone(const Status &s) {
         }
       }
 
-      // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been completed
-      // but exclude the time to commit the transaction if any.
-      if (ql_metrics_ != nullptr) {
-        const MonoTime now = MonoTime::Now();
-        for (const auto& exec_context : exec_contexts_) {
-          const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
-          switch (exec_context.tnode()->opcode()) {
-            case TreeNodeOpcode::kPTSelectStmt:
-              ql_metrics_->ql_select_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTInsertStmt:
-              ql_metrics_->ql_insert_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTUpdateStmt:
-              ql_metrics_->ql_update_->Increment(delta_usec);
-              break;
-            case TreeNodeOpcode::kPTDeleteStmt:
-              ql_metrics_->ql_delete_->Increment(delta_usec);
-              break;
-            default:
-              break;
+      for (auto itr = exec_contexts_.begin(); itr != exec_contexts_.end();) {
+        ExecContext& exec_context = *itr;
+        if (exec_context.op() != nullptr) {
+          // Apply any operation that has been deferred but can be applied now.
+          if (exec_context.IsOperationDeferred()) {
+            if (!DeferOperation(std::static_pointer_cast<YBqlWriteOp>(exec_context.op()))) {
+              ss = exec_context.Apply();
+              if (!ss.ok()) {
+                break;
+              }
+            }
+            itr++;
+          } else {
+            // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
+            // completed but exclude the time to commit the transaction if any.
+            if (ql_metrics_ != nullptr) {
+              const auto now = MonoTime::Now();
+              const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
+              switch (exec_context.tnode()->opcode()) {
+                case TreeNodeOpcode::kPTSelectStmt:
+                  ql_metrics_->ql_select_->Increment(delta_usec);
+                  break;
+                case TreeNodeOpcode::kPTInsertStmt:
+                  ql_metrics_->ql_insert_->Increment(delta_usec);
+                  break;
+                case TreeNodeOpcode::kPTUpdateStmt:
+                  ql_metrics_->ql_update_->Increment(delta_usec);
+                  break;
+                case TreeNodeOpcode::kPTDeleteStmt:
+                  ql_metrics_->ql_delete_->Increment(delta_usec);
+                  break;
+                default:
+                  LOG(FATAL) << "unexpected operation";
+              }
+            }
+            itr = exec_contexts_.erase(itr);
           }
+        } else {
+          itr++;
         }
       }
 
-      if (last_stmt->opcode() == TreeNodeOpcode::kPTCommit) {
-        ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
-        return;
+      if (ss.ok()) {
+        // Flush any deferred operation that has been applied now. If there is no more deferred
+        // operation, commit the transaction if needed.
+        if (FlushAsync()) {
+          return;
+        } else {
+          if (last_opcode == TreeNodeOpcode::kPTCommit) {
+            ql_env_->CommitTransaction(std::bind(&Executor::CommitDone, this, _1));
+            return;
+          }
+        }
       }
     }
   }
@@ -1036,16 +1065,19 @@ void Executor::FlushAsyncDone(const Status &s) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ApplyWriteOp(const TreeNode *tnode, const YBqlWriteOpPtr& op) {
-  if (!batched_write_ops_.insert(op).second &&
-      RequireRead(op->request(), op->table()->InternalSchema())) {
-    // TODO: defer multiple reads and writes of the same row by separating them into batches and
-    // executing them one after another.
-    return exec_context_->Error(tnode,
-                                "Reading from a row modified in the same batch request is not "
-                                "supported yet", ErrorCode::EXEC_ERROR);
-  }
-  return exec_context_->Apply(op);
+bool Executor::DeferOperation(const YBqlWriteOpPtr& op) {
+  // Defer the given write operation if 2 conditions are met:
+  // 1) It fails to be added to batched_write_ops_ because the primary / hash key overlaps with that
+  //    of a prior write operation in the current write batch (see YBqlWriteOp::Overlap), and
+  // 2) It requires a read. We need to defer this latter overlapping write operation that requires
+  //    a read because currently we cannot read the results of a prior write operation to the same
+  //    primary / hash key until the prior write batch has been applied in tserver. We need to defer
+  //    the operation to the next batch.
+  // If the latter write operation overlaps with the prior one but does not require a read, it is
+  // okay to apply in the same batch. Our semantics allows the latter write operation to overwrite
+  // the prior one.
+  return (!batched_write_ops_.insert(op).second &&
+          RequireRead(op->request(), op->table()->InternalSchema()));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1095,8 +1127,8 @@ Status Executor::ProcessAsyncResults() {
   Status s, ss;
   for (auto& exec_context : exec_contexts_) {
     client::YBqlOp* op = exec_context.op().get();
-    if (op == nullptr) {
-      continue; // Skip empty op.
+    if (op == nullptr || exec_context.IsOperationDeferred()) {
+      continue; // Skip empty or deferred op.
     }
     ss = ql_env_->GetOpError(op);
     if (PREDICT_FALSE(!ss.ok())) {
@@ -1156,10 +1188,12 @@ void Executor::StatementExecuted(const Status& s) {
       }
     }
 
-    const TreeNode* last_tnode = exec_context_->tnode();
-    if (last_tnode != nullptr && last_tnode->opcode() == TreeNodeOpcode::kPTCommit) {
-      const MonoDelta delta = now - exec_contexts_.front().start_time();
-      ql_metrics_->ql_transaction_->Increment(delta.ToMicroseconds());
+    if (!exec_contexts_.empty()) {
+      const TreeNode* last_tnode = exec_contexts_.back().tnode();
+      if (last_tnode != nullptr && last_tnode->opcode() == TreeNodeOpcode::kPTCommit) {
+        const MonoDelta delta = now - exec_contexts_.front().start_time();
+        ql_metrics_->ql_transaction_->Increment(delta.ToMicroseconds());
+      }
     }
   }
 
@@ -1172,10 +1206,10 @@ void Executor::StatementExecuted(const Status& s) {
 
 void Executor::Reset() {
   exec_contexts_.clear();
-  exec_context_ = nullptr;
   batched_write_ops_.clear();
   result_ = nullptr;
   cb_.Reset();
+  ql_env_->Reset();
 }
 
 }  // namespace ql

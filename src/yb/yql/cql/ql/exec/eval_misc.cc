@@ -27,7 +27,7 @@ CHECKED_STATUS Executor::PTExprToPBValidated(const PTExpr::SharedPtr& expr,
                                              QLExpressionPB *expr_pb) {
   RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
   if (expr_pb->has_value() && IsNull(expr_pb->value())) {
-    return exec_context_->Error("Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
+    return exec_context().Error("Value cannot be null.", ErrorCode::INVALID_ARGUMENTS);
   }
   return Status::OK();
 }
@@ -43,7 +43,7 @@ CHECKED_STATUS Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB 
 
     UserTimeMicros user_timestamp = timestamp_pb.value().int64_value();
     if (user_timestamp == common::kInvalidUserTimestamp) {
-      return exec_context_->Error(tnode->user_timestamp_usec(), "Invalid timestamp",
+      return exec_context().Error(tnode->user_timestamp_usec(), "Invalid timestamp",
                                   ErrorCode::INVALID_ARGUMENTS);
     }
     req->set_user_timestamp_usec(timestamp_pb.value().int64_value());
@@ -63,7 +63,7 @@ CHECKED_STATUS Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) 
     int32_t ttl_seconds = ttl_pb.value().int32_value();
 
     if (!yb::common::IsValidTTLSeconds(ttl_seconds)) {
-      return exec_context_->Error(tnode->ttl_seconds(),
+      return exec_context().Error(tnode->ttl_seconds(),
                                   strings::Substitute("Valid ttl range : [$0, $1]",
                                                       yb::common::kCassandraMinTtlSeconds,
                                                       yb::common::kCassandraMaxTtlSeconds).c_str(),

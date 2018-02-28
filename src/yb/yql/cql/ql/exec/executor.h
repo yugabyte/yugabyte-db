@@ -278,7 +278,10 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
 
   //------------------------------------------------------------------------------------------------
-  CHECKED_STATUS ApplyWriteOp(const TreeNode *tnode, const client::YBqlWriteOpPtr& op);
+  bool DeferOperation(const client::YBqlWriteOpPtr& op);
+
+  //------------------------------------------------------------------------------------------------
+  ExecContext& exec_context();
 
   //------------------------------------------------------------------------------------------------
   // Environment (YBClient) for executing statements.
@@ -287,9 +290,6 @@ class Executor : public QLExprExecutor {
   // Execution contexts of the statements being executed. They are created and destroyed for each
   // execution.
   std::list<ExecContext> exec_contexts_;
-
-  // Execution context of the last statement being executed.
-  ExecContext* exec_context_;
 
   // Set of write operations that have been applied.
   std::unordered_set<client::YBqlWriteOpPtr,

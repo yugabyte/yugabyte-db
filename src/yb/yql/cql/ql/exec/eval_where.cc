@@ -51,7 +51,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLWriteRequestPB *req,
     QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
     where_pb->set_op(QL_OP_AND);
     for (const auto &col_op : where_ops) {
-          RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
+      RETURN_NOT_OK(WhereOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
     }
   }
 
@@ -76,7 +76,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
     QLValue result;
     RETURN_NOT_OK(EvalExpr(expr_pb, empty_row, &result));
     DCHECK(result.value().has_int64_value())
-      << "Partition key operations are expected to return BIGINT";
+        << "Partition key operations are expected to return BIGINT";
     uint16_t hash_code = YBPartition::CqlToYBHashCode(result.int64_value());
 
     // We always use inclusive intervals [start, end] for hash_code
@@ -134,16 +134,16 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
           col_pb->set_column_id(col_desc->id());
           Status s = PTExprToPB(op.expr(), col_pb);
           if (PREDICT_FALSE(!s.ok())) {
-            return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+            return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
           }
         } else {
           QLExpressionPB col_pb;
           col_pb.set_column_id(col_desc->id());
           Status s = PTExprToPB(op.expr(), &col_pb);
           if (PREDICT_FALSE(!s.ok())) {
-            return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+            return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
           }
-          exec_context_->hash_values_options()->push_back({col_pb});
+          exec_context().hash_values_options()->push_back({col_pb});
         }
         break;
       }
@@ -158,7 +158,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         QLExpressionPB col_pb;
         Status s = PTExprToPB(op.expr(), &col_pb);
         if (PREDICT_FALSE(!s.ok())) {
-          return exec_context_->Error(s, ErrorCode::INVALID_ARGUMENTS);
+          return exec_context().Error(s, ErrorCode::INVALID_ARGUMENTS);
         }
 
         // Fast path for returning no results when 'IN' list is empty.
@@ -174,8 +174,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
 
         // Adding partition options information to the execution context.
         partitions_count *= set_values.size();
-        exec_context_->hash_values_options()->emplace_back();
-        auto& options = exec_context_->hash_values_options()->back();
+        exec_context().hash_values_options()->emplace_back();
+        auto& options = exec_context().hash_values_options()->back();
         for (const QLValuePB &value_pb : set_values) {
           options.emplace_back();
           options.back().set_column_id(col_desc->id());
@@ -191,7 +191,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
   }
 
   // Set the partitions count in the execution context, will be 0 if not IN conditions found.
-  exec_context_->set_partitions_count(partitions_count);
+  exec_context().set_partitions_count(partitions_count);
 
   // Skip generation of query condition if where clause is empty.
   if (where_ops.empty() && subcol_where_ops.empty() && func_ops.empty()) {
