@@ -50,14 +50,13 @@ public class CloudQueryHelper extends DevopsBase {
     return execAndParseCommandCloud(providerUUID, "regions", commandArgs);
   }
 
-  public JsonNode getZones(Region region) {
-    return getZones(region, null);
+  public JsonNode getZones(UUID regionUUID) {
+    return getZones(regionUUID, null);
   }
 
-  public JsonNode getZones(Region region, String destVpcId) {
+  public JsonNode getZones(UUID regionUUID, String destVpcId) {
+    Region region = Region.get(regionUUID);
     List<String> commandArgs = new ArrayList<String>();
-    commandArgs.add("--regions");
-    commandArgs.add(region.code);
     if (destVpcId != null && !destVpcId.isEmpty()) {
       commandArgs.add("--dest_vpc_id");
       commandArgs.add(destVpcId);

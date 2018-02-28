@@ -16,6 +16,8 @@ public class RegionFormData {
 
   public String ybImage;
 
+  public String hostVpcRegion;
+
   public String hostVpcId;
 
   public String destVpcId;

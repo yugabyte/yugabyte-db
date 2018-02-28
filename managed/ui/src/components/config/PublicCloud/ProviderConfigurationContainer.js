@@ -13,8 +13,8 @@ import {fetchTaskProgress, fetchTaskProgressResponse,fetchCustomerTasks , fetchC
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    createAWSProvider: (type, name, config, regionFormVals) => {
-      dispatch(createProvider(type, name, config)).then((response) => {
+    createAWSProvider: (name, config, regionFormVals) => {
+      dispatch(createProvider("aws", name, config)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           dispatch(fetchCloudMetadata());

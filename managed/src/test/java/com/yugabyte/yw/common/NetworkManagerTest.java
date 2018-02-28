@@ -61,7 +61,8 @@ public class NetworkManagerTest extends FakeDBApplication {
       response.message = "{\"foo\": \"bar\"}";
     }
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
-    return networkManager.bootstrap(regionUUID, hostVpcId, destVpcId);
+    // TODO: figure this out
+    return networkManager.bootstrap(regionUUID, null, null, hostVpcId, destVpcId);
   }
 
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {

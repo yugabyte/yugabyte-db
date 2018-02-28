@@ -44,26 +44,24 @@ public class CloudRegionSetup extends CloudTaskBase {
     JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
     Provider provider = getProvider();
     final Region region = Region.createWithMetadata(provider, regionCode, metaData);
+    CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
+    JsonNode zoneInfo = null;
 
     switch (Common.CloudType.valueOf(provider.code)) {
       case aws:
-        NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
-        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, taskParams().hostVpcId,
-            taskParams().destVpcId);
-        if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
-          // If network bootstrap failed, we will delete the newly created region.
+        zoneInfo =  queryHelper.getZones(region.uuid, taskParams().destVpcId);
+        if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
           region.delete();
-          throw new RuntimeException("Region Bootstrap failed for: " + regionCode);
+          String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
+          throw new RuntimeException(errMsg);
         }
-        Map<String, String> zoneSubnets = Json.fromJson(vpcInfo.get(regionCode).get("zones"),
-            Map.class);
+        Map<String, String> zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         region.zones = new HashSet<>();
         zoneSubnets.forEach((zone, subnet) ->
             region.zones.add(AvailabilityZone.create(region, zone, zone, subnet)));
         break;
       case gcp:
-        CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
-        JsonNode zoneInfo = queryHelper.getZones(region, taskParams().destVpcId);
+        zoneInfo =  queryHelper.getZones(region.uuid, taskParams().destVpcId);
         if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
           region.delete();
           String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;

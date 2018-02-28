@@ -123,6 +123,7 @@ public class NodeManager extends DevopsBase {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
           // Also we will add the security group name
+          // TODO: abstract this once we setup user-provided custom vpc/subnet/sg.
           subCommand.add("--security_group");
           subCommand.add("yb-" + params.getRegion().code + "-sg");
         }
