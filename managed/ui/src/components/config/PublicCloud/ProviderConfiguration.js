@@ -142,9 +142,14 @@ class ProviderConfiguration extends Component {
       }
       let universeExistsForProvider = false;
       if (getPromiseState(configuredProviders).isSuccess() && getPromiseState(universeList).isSuccess()){
-        universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === currentProvider.uuid));
+        universeList.data.forEach(function(universeItem){
+          universeItem.universeDetails.clusters.forEach(function(cluster){
+            if (cluster.userIntent.provider === currentProvider.uuid) {
+              universeExistsForProvider = true;
+            }
+          });
+        });
       }
-
       let currentModal = "";
       if (providerType === "aws") {
         currentModal = "deleteAWSProvider";
