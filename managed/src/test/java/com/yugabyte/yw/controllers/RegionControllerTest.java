@@ -228,10 +228,12 @@ public class RegionControllerTest extends FakeDBApplication {
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
+    regionJson.put("hostVpcRegion", "host-vpc-region");
     regionJson.put("hostVpcId", "host-vpc-id");
     regionJson.put("destVpcId", "dest-vpc-id");
     JsonNode vpcInfo = Json.parse("{\"foo-region\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
-    when(networkManager.bootstrap(any(UUID.class), eq("host-vpc-id"), eq("dest-vpc-id")))
+    when(networkManager.bootstrap(any(UUID.class), any(UUID.class), eq("host-vpc-id"),
+                                  eq("dest-vpc-id"), eq("host-vpc-region")))
         .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
@@ -252,11 +254,13 @@ public class RegionControllerTest extends FakeDBApplication {
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
+    regionJson.put("hostVpcRegion", "host-vpc-region");
     regionJson.put("hostVpcId", "host-vpc-id");
     regionJson.put("destVpcId", "dest-vpc-id");
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
-    when(networkManager.bootstrap(any(UUID.class), eq("host-vpc-id"), eq("dest-vpc-id")))
+    when(networkManager.bootstrap(any(UUID.class), any(UUID.class), eq("host-vpc-id"),
+                                  eq("dest-vpc-id"), eq("host-vpc-region")))
         .thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     assertInternalServerError(result, "Region Bootstrap failed.");

@@ -3,53 +3,60 @@ us-west-1:
   name: US West (N. California)
   latitude: 36.778261
   longitude: -119.417932
-  ybImage: ami-18cc9478
 us-west-2:
   name: US West (Oregon)
   latitude: 43.804133
   longitude: -120.554201
-  ybImage: ami-c60e80a6
 us-east-1:
   name: US East (N. Virginia)
   latitude: 37.478397
   longitude: -76.453077
-  ybImage: ami-7b03b46d
 us-east-2:
   name: US East (Ohio)
   latitude: 40.367474
   longitude: -82.996216
-  ybImage: ami-e0eac385
 eu-west-1:
   name: EU (Ireland)
   latitude: 53.412910
   longitude: -8.243890
-  ybImage: ami-d1bd8db7
 eu-central-1:
   name: EU (Frankfurt)
   latitude: 50.110922
   longitude: 8.682127
-  ybImage: ami-6d3fe902
 ap-southeast-1:
   name: Asia Pacific (Singapore)
   latitude: 1.352083
   longitude: 103.819836
-  ybImage: ami-d6b30eb5
 ap-northeast-1:
   name: Asia Pacific (Tokyo)
   latitude: 35.689487
   longitude: 139.691706
-  ybImage: ami-51633d36
 ap-southeast-2:
   name: Asia Pacific (Sydney)
   latitude: -33.868820
   longitude: 151.209296
-  ybImage: ami-e67e7285
-ap-northeast-2:
-  name: Asia Pacific (Seoul)
-  latitude: 37.566535
-  longitude: 126.977969
 sa-east-1:
   name: South America (São Paulo)
   latitude: -23.550520
   longitude: -46.633309
-  ybImage: ami-1d6c0c71
+eu-west-2:
+  name: EU (London)
+  latitude: 51.5287718
+  longitude: 0.2416806
+eu-west-3:
+  name: EU (Paris)
+  latitude: 48.8589507
+  longitude: 2.2770204
+ap-south-1:
+  name: Asia Pacific (Mumbai)
+  latitude: 19.0825223
+  longitude: 72.7411014
+ca-central-1:
+  name: Montreal (Canada)
+  latitude: 45.5580421
+  longitude: -73.7303025
+# TODO: not currently supported in x-region VPC.
+# ap-northeast-2:
+#   name: Asia Pacific (Seoul)
+#   latitude: 37.566535
+#   longitude: 126.977969

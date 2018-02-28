@@ -9,9 +9,15 @@ import { IN_DEVELOPMENT_MODE } from '../../../../config';
 import { isValidObject, trimString, convertSpaceToDash } from '../../../../utils/ObjectUtils';
 import {reduxForm} from 'redux-form';
 
-const PROVIDER_TYPE = "aws";
-
 class AWSProviderInitView extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      hostVpcVisible: true,
+    };
+    this.hostVpcToggled = this.hostVpcToggled.bind(this);
+  }
+
   createProviderConfig = formValues => {
     const {hostInfo} = this.props;
     const awsProviderConfig = {
@@ -23,15 +29,23 @@ class AWSProviderInitView extends Component {
     if (this.isHostInAWS()) {
       const awsHostInfo = hostInfo["aws"];
       regionFormVals = {
-        "regionList": [awsHostInfo["region"]],
+        "regionList": [],
+        "hostVpcRegion": awsHostInfo["region"],
         "hostVpcId": awsHostInfo["vpc-id"],
         "destVpcId": isDefinedNotNull(formValues.useHostVpc) ? awsHostInfo["vpc-id"] : "",
       };
     } else {
-      // TODO: Temporary change to it work locally.
-      regionFormVals = {"regionList": ["us-west-2"], "hostVpcId": ""};
+      regionFormVals = {
+        "regionList": [],
+        // TODO: this should really be called destVpcRegion, but we're piggybacking on this through
+        // YW and devops.
+        // DEFAULT FOR PORTAL OR LOCAL: us-west-2
+        "hostVpcRegion": formValues.destVpcRegion,
+        // DEFAULT FOR PORTAL OR LOCAL: vpc-0fe36f6b
+        "destVpcId": formValues.destVpcId
+      };
     }
-    this.props.createAWSProvider(PROVIDER_TYPE, formValues.accountName, awsProviderConfig, regionFormVals);
+    this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
   };
 
   isHostInAWS = () => {
@@ -40,9 +54,25 @@ class AWSProviderInitView extends Component {
       hostInfo["aws"]["error"] === undefined;
   }
 
+  hostVpcToggled(event) {
+    this.setState({hostVpcVisible: !event.target.checked});
+  }
+
   render() {
     const { handleSubmit, submitting, error} = this.props;
     const subLabel = "Disabled if host is not on AWS";
+    let hostVpcRegionField = <span />;
+    let hostVpcIdField = <span />;
+    if (this.state.hostVpcVisible) {
+      hostVpcRegionField = (
+        <Field name="destVpcRegion" type="text" label="Custom VPC Region"
+               component={YBTextInputWithLabel} normalize={trimString} />
+      );
+      hostVpcIdField = (
+        <Field name="destVpcId" type="text" label="Custom VPC ID"
+               component={YBTextInputWithLabel} normalize={trimString} />
+      );
+    }
     return (
       <form name="providerConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
         <Row className="config-section-header">
@@ -56,11 +86,14 @@ class AWSProviderInitView extends Component {
                      component={YBTextInputWithLabel} normalize={trimString} />
               <Field name="secretKey" type="text" label="Secret Access Key"
                      component={YBTextInputWithLabel} normalize={trimString} />
+              {hostVpcRegionField}
+              {hostVpcIdField}
               <Field name="useHostVpc"
                      component={YBToggle}
                      label="Use Host's VPC"
                      subLabel={subLabel}
-                     defaultChecked={false}
+                     defaultChecked={!this.state.hostVpcVisible}
+                     onToggle={this.hostVpcToggled}
                      isReadOnly={!this.isHostInAWS()} />
             </div>
           </Col>

@@ -7,7 +7,7 @@ import { YBTextInput } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
-import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString } from 'utils/ObjectUtils';
 import Dropzone from 'react-dropzone';
 import { reduxForm } from 'redux-form';
 
@@ -19,7 +19,9 @@ class GCPProviderInitView extends Component {
       accountName: "Google Cloud Provider",
       providerUUID: "",
       currentProvider: {},
+      hostVpcVisible: true,
     };
+    this.hostVpcToggled = this.hostVpcToggled.bind(this);
   }
 
   createProviderConfig = vals => {
@@ -36,10 +38,16 @@ class GCPProviderInitView extends Component {
           const gcpCreateConfig = {
             "config_file_contents": JSON.parse(reader.result)
           };
-          if (self.isHostInGCP()) {
-            gcpCreateConfig["project"] = hostInfo["gcp"]["project"];
+          const useHostVpc = Boolean(vals.useHostVpc);
+          if (self.isHostInGCP() && useHostVpc) {
             gcpCreateConfig["network"] = hostInfo["gcp"]["network"];
-            gcpCreateConfig["use_host_vpc"] = Boolean(vals.useHostVpc);
+            gcpCreateConfig["use_host_vpc"] = useHostVpc;
+          } else if (isNonEmptyString(vals.destVpcId)) {
+            gcpCreateConfig["network"] = vals.destVpcId;
+            gcpCreateConfig["use_host_vpc"] = true;
+          } else {
+            // This already implies useHostVpc === false, as it defaults to false outside of GCP.
+            gcpCreateConfig["use_host_vpc"] = false;
           }
           self.props.createGCPProvider(providerName, gcpCreateConfig);
         } catch (e) {
@@ -62,6 +70,10 @@ class GCPProviderInitView extends Component {
     this.setState({gcpConfig: uploadFile[0]});
   }
 
+  hostVpcToggled(event) {
+    this.setState({hostVpcVisible: !event.target.checked});
+  }
+
   render() {
     const { handleSubmit, configuredProviders} = this.props;
     if (getPromiseState(configuredProviders).isLoading()) {
@@ -72,6 +84,22 @@ class GCPProviderInitView extends Component {
       gcpConfigFileName = this.state.gcpConfig.name;
     }
     const subLabel = "Disabled if host is not on GCP";
+    let destVpcField = <span />;
+    if (this.state.hostVpcVisible) {
+      destVpcField = (
+        <div>
+          <Col lg={2}>
+            <div className="form-item-custom-label">
+              Custom VPC Network
+            </div>
+          </Col>
+          <Col lg={10}>
+            <Field name="destVpcId" component={YBTextInput} placeHolder="VPC Network Name"
+                   className={"gcp-provider-input-field"} />
+          </Col>
+        </div>
+      );
+    }
     return (
       <div className="provider-config-container">
         <form name="gcpProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
@@ -101,13 +129,17 @@ class GCPProviderInitView extends Component {
                   </Col>
                 </Row>
                 <Row className="config-provider-row">
+                  {destVpcField}
+                </Row>
+                <Row className="config-provider-row">
                   <Col lg={2}>
                     <Field name="useHostVpc"
                            component={YBToggle}
                            label="Use Host's VPC"
                            subLabel={subLabel}
-                           defaultChecked={false}
-                           isReadOnly={!this.isHostInGCP()} />
+                           defaultChecked={!this.state.hostVpcVisible}
+                           isReadOnly={!this.isHostInGCP()}
+                           onToggle={this.hostVpcToggled} />
                   </Col>
                 </Row>
               </Col>

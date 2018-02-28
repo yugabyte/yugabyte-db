@@ -23,8 +23,14 @@ public class NetworkManager extends DevopsBase {
   @Override
   protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
 
-  public JsonNode bootstrap(UUID regionUUID, String hostVpcId, String destVpcId) {
+  public JsonNode bootstrap(
+      UUID regionUUID, UUID providerUUID, String hostVpcRegion, String hostVpcId,
+      String destVpcId) {
     List<String> commandArgs = new ArrayList();
+    if (hostVpcRegion != null && !hostVpcRegion.trim().isEmpty()) {
+      commandArgs.add("--host_vpc_region");
+      commandArgs.add(hostVpcRegion);
+    }
     if (hostVpcId != null && !hostVpcId.trim().isEmpty()) {
       commandArgs.add("--host_vpc_id");
       commandArgs.add(hostVpcId);
@@ -34,17 +40,11 @@ public class NetworkManager extends DevopsBase {
       commandArgs.add(destVpcId);
     }
 
-    return execAndParseCommandRegion(regionUUID, "bootstrap", commandArgs);
-  }
-
-  public JsonNode bootstrapWholeCloud(UUID providerUUID, String destVpcId) {
-    List<String> commandArgs = new ArrayList();
-    if (destVpcId != null && !destVpcId.trim().isEmpty()) {
-      commandArgs.add("--dest_vpc_id");
-      commandArgs.add(destVpcId);
+    if (regionUUID != null) {
+      return execAndParseCommandRegion(regionUUID, "bootstrap", commandArgs);
+    } else {
+      return execAndParseCommandCloud(providerUUID, "bootstrap", commandArgs);
     }
-
-    return execAndParseCommandCloud(providerUUID, "bootstrap", commandArgs);
   }
 
   public JsonNode query(UUID regionUUID) {

@@ -23,6 +23,7 @@ public class CloudBootstrap extends CloudTaskBase {
   public static class Params extends CloudTaskParams {
     public Common.CloudType providerCode;
     public List<String> regionList;
+    public String hostVpcRegion;
     public String hostVpcId;
     public String destVpcId;
   }
@@ -35,6 +36,13 @@ public class CloudBootstrap extends CloudTaskBase {
     subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
     if (taskParams().providerCode.equals(Common.CloudType.gcp)) {
+      createCloudSetupTask()
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+    } else if (taskParams().providerCode.equals(Common.CloudType.aws)) {
+      if (taskParams().destVpcId != null && !taskParams().destVpcId.isEmpty() &&
+          !(taskParams().hostVpcRegion != null && !taskParams().hostVpcRegion.isEmpty())) {
+        throw new RuntimeException("Using destVpcId with AWS requires also passing in hostVpcRegion.");
+      }
       createCloudSetupTask()
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
     }
@@ -55,8 +63,9 @@ public class CloudBootstrap extends CloudTaskBase {
     SubTaskGroup subTaskGroup = new SubTaskGroup("Create Cloud setup task", executor);
 
     CloudSetup.Params params = new CloudSetup.Params();
-    // TODO: this is needed by the superclass.
     params.providerUUID = taskParams().providerUUID;
+    params.hostVpcRegion = taskParams().hostVpcRegion;
+    params.hostVpcId = taskParams().hostVpcId;
     params.destVpcId = taskParams().destVpcId;
     CloudSetup task = new CloudSetup();
     task.initialize(params);
