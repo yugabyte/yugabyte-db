@@ -904,33 +904,53 @@ RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(const YBTable* tabl
   return nullptr;
 }
 
+template <class Lock>
+bool MetaCache::FastLookupTabletByKeyUnlocked(
+    const YBTable* table,
+    const std::string& partition_start,
+    RemoteTabletPtr* remote_tablet,
+    const StatusCallback& callback,
+    Lock* lock) {
+  // Fast path: lookup in the cache.
+  auto result = LookupTabletByKeyFastPathUnlocked(table, partition_start);
+  if (result && result->HasLeader()) {
+    lock->unlock();
+    VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
+    if (remote_tablet) {
+      *remote_tablet = result;
+    }
+    callback.Run(Status::OK());
+    return true;
+  }
+
+  return false;
+}
+
 void MetaCache::LookupTabletByKey(const YBTable* table,
                                   const string& partition_key,
                                   const MonoTime& deadline,
                                   RemoteTabletPtr* remote_tablet,
                                   const StatusCallback& callback) {
   const auto& partition_start = table->FindPartitionStart(partition_key);
-  const std::string* partition_group_start;
 
   rpc::Rpcs::Handle rpc;
   {
-    boost::upgrade_lock<boost::shared_mutex> lock(mutex_);
-    // Fast path: lookup in the cache.
-    auto result = LookupTabletByKeyFastPathUnlocked(table, partition_start);
-    if (result && result->HasLeader()) {
-      lock.unlock();
-      VLOG(3) << "Fast lookup: found tablet " << result->tablet_id();
-      if (remote_tablet) {
-        *remote_tablet = result;
-      }
-      callback.Run(Status::OK());
+    boost::shared_lock<boost::shared_mutex> lock(mutex_);
+    if (FastLookupTabletByKeyUnlocked(table, partition_start, remote_tablet, callback, &lock)) {
+      return;
+    }
+  }
+
+  const std::string& partition_group_start =
+      table->FindPartitionStart(partition_start, kPartitionGroupSize);
+  {
+    std::unique_lock<boost::shared_mutex> lock(mutex_);
+    if (FastLookupTabletByKeyUnlocked(table, partition_start, remote_tablet, callback, &lock)) {
       return;
     }
 
-    partition_group_start = &table->FindPartitionStart(partition_start, kPartitionGroupSize);
-    boost::upgrade_to_unique_lock<boost::shared_mutex> upgraded_lock(lock);
     auto& table_data = tables_[table->id()];
-    auto& lookup = table_data.tablet_lookups_by_group[*partition_group_start];
+    auto& lookup = table_data.tablet_lookups_by_group[partition_group_start];
     bool was_empty = lookup.empty();
     lookup[partition_start].push_back({callback, remote_tablet, deadline});
     if (!was_empty) {
@@ -939,7 +959,7 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
   }
 
   rpc::StartRpc<LookupByKeyRpc>(
-      this, table, *partition_group_start, deadline, client_->data_->messenger_);
+      this, table, partition_group_start, deadline, client_->data_->messenger_);
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {

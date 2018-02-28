@@ -326,6 +326,14 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupFailed(
       const YBTable* table, const std::string& partition_group_start, const Status& status);
 
+  template <class Lock>
+  bool FastLookupTabletByKeyUnlocked(
+      const YBTable* table,
+      const std::string& partition_start,
+      RemoteTabletPtr* remote_tablet,
+      const StatusCallback& callback,
+      Lock* lock);
+
   YBClient* client_;
 
   boost::shared_mutex mutex_;
