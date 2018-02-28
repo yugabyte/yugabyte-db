@@ -138,7 +138,6 @@ bool QLEnv::FlushAsync(Callback<void(const Status &)>* cb) {
   if (!has_session_operations_) {
     return false;
   }
-  DCHECK(requested_callback_ == nullptr);
   requested_callback_ = cb;
   TRACE("Flush Async");
   session_->FlushAsync([this](const Status& status) { FlushAsyncDone(status); });

@@ -86,12 +86,12 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
 CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
   // TODO(neil) This error should be raised by CQL when it compares between bind variables and
   // bind arguments before calling QL layer to execute.
-  if (exec_context_->params() == nullptr) {
+  if (exec_context().params() == nullptr) {
     return STATUS(RuntimeError, "no bind variable supplied");
   }
 
   QLValue ql_bind;
-  RETURN_NOT_OK(exec_context_->params()->GetBindVariable(bind_pt->name()->c_str(),
+  RETURN_NOT_OK(exec_context().params()->GetBindVariable(bind_pt->name()->c_str(),
                                                          bind_pt->pos(),
                                                          bind_pt->ql_type(),
                                                          &ql_bind));
