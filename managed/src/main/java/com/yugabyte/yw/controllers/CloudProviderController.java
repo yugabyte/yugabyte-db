@@ -217,16 +217,6 @@ public class CloudProviderController extends AuthenticatedController {
     if (customer == null) {
       ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
-    // We need to save the destVpcId into the provider config, because we'll need it during
-    // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need to
-    // store it somewhere and the config is the easiest place to put it. As such, since all the
-    // config is loaded up as env vars anyway, might as well use in in devops like that...
-    if (formData.get().destVpcId != null && !formData.get().destVpcId.isEmpty()) {
-      Map<String, String> config = provider.getConfig();
-      config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
-      provider.setConfig(config);
-      provider.save();
-    }
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
     taskParams.providerCode = Common.CloudType.valueOf(provider.code);
     taskParams.providerUUID = providerUUID;
@@ -235,6 +225,30 @@ public class CloudProviderController extends AuthenticatedController {
     if (taskParams.regionList == null) {
       taskParams.regionList = new ArrayList<String>();
     }
+    String hostVpcRegion = formData.get().hostVpcRegion;
+    if (formData.get().destVpcId != null && !formData.get().destVpcId.isEmpty()) {
+      if (provider.code.equals("gcp")) {
+        // We need to save the destVpcId into the provider config, because we'll need it during
+        // instance creation. Technically, we could make it a ybcloud parameter, but we'd still need to
+        // store it somewhere and the config is the easiest place to put it. As such, since all the
+        // config is loaded up as env vars anyway, might as well use in in devops like that...
+        Map<String, String> config = provider.getConfig();
+        config.put("CUSTOM_GCE_NETWORK", formData.get().destVpcId);
+        provider.setConfig(config);
+        provider.save();
+        // Ignore hostVpcRegion for GCP.
+        hostVpcRegion = null;
+      } else if (provider.code.equals("aws")) {
+        if (hostVpcRegion == null || hostVpcRegion.isEmpty()) {
+          return ApiResponse.error(
+              BAD_REQUEST, "For AWS provider, destVpcId requires hostVpcRegion");
+        }
+        // Add the hostVpcRegion to the regionList for an AWS provider, as we would only bootstrap
+        // that particular region.
+        taskParams.regionList.add(hostVpcRegion);
+      }
+    }
+    // If the regionList is still empty by here, then we need to list the regions available.
     if (taskParams.regionList.isEmpty()) {
       CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
       JsonNode regionInfo = queryHelper.getRegions(provider.uuid);
@@ -244,6 +258,7 @@ public class CloudProviderController extends AuthenticatedController {
         taskParams.regionList.add(region.asText());
       }
     }
+    taskParams.hostVpcRegion = hostVpcRegion;
     taskParams.hostVpcId = formData.get().hostVpcId;
     taskParams.destVpcId = formData.get().destVpcId;
 

@@ -16,6 +16,8 @@ public class CloudSetup extends CloudTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CloudRegionSetup.class);
 
   public static class Params extends CloudBootstrap.Params {
+    public String hostVpcRegion;
+    public String hostVpcId;
     public String destVpcId;
   }
 
@@ -27,8 +29,11 @@ public class CloudSetup extends CloudTaskBase {
   @Override
   public void run() {
     NetworkManager networkManager = Play.current().injector().instanceOf(NetworkManager.class);
-    JsonNode response = networkManager.bootstrapWholeCloud(
+    JsonNode response = networkManager.bootstrap(
+        null,
         getProvider().uuid,
+        taskParams().hostVpcRegion,
+        taskParams().hostVpcId,
         taskParams().destVpcId);
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());

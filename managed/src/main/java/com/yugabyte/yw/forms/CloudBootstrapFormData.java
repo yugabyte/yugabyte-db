@@ -14,6 +14,11 @@ public class CloudBootstrapFormData {
   // Not required for non-AWS deployments.
   public String hostVpcId;
 
-  // We use destVpcId to when bootstrapping a previously existing VPC.
+  // We need to know the region of the YW machine in order to properly peer back to its vpc.
+  // Not required for non-AWS deployments.
+  public String hostVpcRegion;
+
+  // We use destVpcId when bootstrapping a previously existing VPC - this creates a security group
+  // and just returns back the VPC information.
   public String destVpcId;
 }
