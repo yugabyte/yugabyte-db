@@ -759,6 +759,10 @@ menu:
       weight: 2391
       parent: api-redis
       url: /api/redis/zrem/
+    - name: ZREVRANGE
+      weight: 2392
+      parent: api-redis
+      url: /api/redis/zrevrange/
     - name: Admin Reference
       weight: 2400
       url: /admin/

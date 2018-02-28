@@ -64,5 +64,6 @@ Command | Description |
 [`TSREM`](tsrem/) | Delete a time series entry|
 [`ZADD`](zadd/) | Add a sorted set entry|
 [`ZCARD`](zcard/) | Get cardinality of a sorted set|
-[`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given range|
+[`ZRANGEBYSCORE`](zrangebyscore/) | Retrieve sorted set entries for a given score range|
 [`ZREM`](zrem/) | Delete a sorted set entry|
+[`ZREVRANGE`](zrevrange/) | Retrieve sorted set entries for given index range ordered from highest to lowest score |

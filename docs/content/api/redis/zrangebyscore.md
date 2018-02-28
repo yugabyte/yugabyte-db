@@ -59,4 +59,4 @@ $ ZRANGEBYSCORE z_key (1.0 (2.0
 (empty list or set)
 ```
 ## SEE ALSO
-[`zadd`](../zadd/), [`zcard`](../zcard/), [`zrem`](../zrem/)
+[`zadd`](../zadd/), [`zcard`](../zcard/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

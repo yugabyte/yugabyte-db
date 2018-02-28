@@ -38,4 +38,4 @@ $ ZCARD ts_key
 (integer) 0
 ```
 ## SEE ALSO
-[`zadd`](../zadd/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/)
+[`zadd`](../zadd/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

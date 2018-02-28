@@ -39,4 +39,4 @@ $ ZCARD z_key
 (integer) 0
 ```
 ## SEE ALSO
-[`zadd`](../zadd/), [`zcard`](../zcard/), [`zrangebyscore`](../zrangebyscore/)
+[`zadd`](../zadd/), [`zcard`](../zcard/), [`zrangebyscore`](../zrangebyscore/), [`zrevrange`](../zrevrange)
