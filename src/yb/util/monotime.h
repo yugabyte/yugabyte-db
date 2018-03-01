@@ -112,10 +112,13 @@ class MonoDelta {
   NanoDeltaType nano_delta_;
 };
 
-inline bool operator<(const MonoDelta& lhs, const MonoDelta& rhs) { return lhs.LessThan(rhs); }
-inline bool operator>(const MonoDelta& lhs, const MonoDelta& rhs) { return rhs < lhs; }
-inline bool operator>=(const MonoDelta& lhs, const MonoDelta& rhs) { return !(lhs < rhs); }
-inline bool operator<=(const MonoDelta& lhs, const MonoDelta& rhs) { return !(rhs < lhs); }
+inline bool operator<(MonoDelta lhs, MonoDelta rhs) { return lhs.LessThan(rhs); }
+inline bool operator>(MonoDelta lhs, MonoDelta rhs) { return rhs < lhs; }
+inline bool operator>=(MonoDelta lhs, MonoDelta rhs) { return !(lhs < rhs); }
+inline bool operator<=(MonoDelta lhs, MonoDelta rhs) { return !(rhs < lhs); }
+
+inline bool operator==(MonoDelta lhs, MonoDelta rhs) { return lhs.Equals(rhs); }
+inline bool operator!=(MonoDelta lhs, MonoDelta rhs) { return !(rhs == lhs); }
 
 std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other);
 

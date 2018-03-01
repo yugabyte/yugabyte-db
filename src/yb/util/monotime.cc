@@ -244,7 +244,11 @@ MonoDelta MonoTime::GetDeltaSince(const MonoTime &rhs) const {
 void MonoTime::AddDelta(const MonoDelta &delta) {
   DCHECK(Initialized());
   DCHECK(delta.Initialized());
-  value_ += delta.ToSteadyDuration();
+  if (delta == MonoDelta::kMax) {
+    value_ = kMax.value_;
+  } else {
+    value_ += delta.ToSteadyDuration();
+  }
 }
 
 bool MonoTime::ComesBefore(const MonoTime &rhs) const {
