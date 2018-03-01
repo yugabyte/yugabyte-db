@@ -267,6 +267,7 @@ class PTVarchar : public PTCharBaseType {
 };
 
 // Other char-based types.
+using PTJsonb = PTSimpleType<InternalType::kJsonbValue, DataType::JSONB, false>;
 using PTInet = PTSimpleType<InternalType::kInetaddressValue, DataType::INET>;
 using PTBlob = PTSimpleType<InternalType::kBinaryValue, DataType::BINARY>;
 

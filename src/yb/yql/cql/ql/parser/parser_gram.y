@@ -596,7 +596,7 @@ using namespace yb::ql;
                           INITIALLY INLINE_P INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD
                           INT_P INTEGER INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
-                          JOIN
+                          JOIN JSONB
 
                           KEY KEYSPACE KEYSPACES
 
@@ -4493,6 +4493,9 @@ SimpleTypename:
   | INET {
     $$ = MAKE_NODE(@1, PTInet);
   }
+  | JSONB {
+    $$ = MAKE_NODE(@1, PTJsonb);
+  }
   | UUID {
     $$ = MAKE_NODE(@1, PTUuid);
   }
@@ -5137,6 +5140,7 @@ col_name_keyword:
   | GREATEST { $$ = $1; }
   | GROUPING { $$ = $1; }
   | INET { $$ = $1; }
+  | JSONB { $$ = $1; }
   | INOUT { $$ = $1; }
   | INT_P { $$ = $1; }
   | INTEGER { $$ = $1; }

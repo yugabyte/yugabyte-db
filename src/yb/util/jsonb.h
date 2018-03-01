@@ -11,15 +11,15 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_JSONB_H
-#define YB_DOCDB_JSONB_H
+#ifndef YB_UTIL_JSONB_H
+#define YB_UTIL_JSONB_H
 
 #include <rapidjson/document.h>
 
 #include "yb/util/status.h"
 
 namespace yb {
-namespace docdb {
+namespace util {
 
 using JsonbMetadata = uint32_t;
 using JsonbHeader = JsonbMetadata;
@@ -59,6 +59,8 @@ class Jsonb {
   static CHECKED_STATUS ToJsonb(const std::string& json, std::string* jsonb);
   // Builds a json document from serialized jsonb.
   static CHECKED_STATUS FromJsonb(const std::string& jsonb, rapidjson::Document* document);
+  // Returns a json string for serialized jsonb
+  static CHECKED_STATUS FromJsonb(const std::string& jsonb, std::string* json);
  private:
   static CHECKED_STATUS ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb);
   static CHECKED_STATUS ToJsonbProcessObject(const rapidjson::Value& document,
@@ -121,7 +123,7 @@ class Jsonb {
   static constexpr uint32_t kJEIsDouble = 0xB0000000;
 };
 
-} // namespace docdb
+} // namespace util
 } // namespace yb
 
-#endif // YB_DOCDB_JSONB_H
+#endif // YB_UTIL_JSONB_H

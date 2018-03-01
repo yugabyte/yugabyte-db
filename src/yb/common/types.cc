@@ -88,6 +88,7 @@ class TypeInfoResolver {
     AddMapping<DOUBLE>();
     AddMapping<BINARY>();
     AddMapping<INET>();
+    AddMapping<JSONB>();
     AddMapping<MAP>();
     AddMapping<SET>();
     AddMapping<LIST>();

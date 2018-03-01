@@ -124,7 +124,7 @@ void Value::EncodeAndAppend(std::string *value_bytes) const {
   }
   if (user_timestamp_ != kInvalidUserTimestamp) {
     value_bytes->push_back(static_cast<char>(ValueType::kUserTimestamp));
-    AppendBigEndianUInt64(user_timestamp_, value_bytes);
+    util::AppendBigEndianUInt64(user_timestamp_, value_bytes);
   }
   value_bytes->append(primitive_value_.ToValue());
 }
