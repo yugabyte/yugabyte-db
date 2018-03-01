@@ -22,6 +22,7 @@
 #include "yb/master/master.h"
 #include "yb/master/ts_manager.h"
 #include "yb/util/crypt.h"
+#include "yb/util/jsonb.h"
 
 using std::string;
 using std::unique_ptr;
@@ -1778,6 +1779,53 @@ TEST_F(TestQLQuery, TestDoublePrimaryKey) {
     EXPECT_EQ(i, row.column(1).int32_value());
   }
 }
+
+
+void verifyJson(std::shared_ptr<QLRowBlock> row_block) {
+  // Verify.
+  ASSERT_EQ(1, row_block->row_count());
+  std::vector<QLRow> &returned_rows = row_block->rows();
+  QLRow &row = returned_rows.at(0);
+  // All spaces are removed by rapidjson writer.
+  string json;
+  ASSERT_OK(util::Jsonb::FromJsonb(row.column(1).jsonb_value(), &json));
+  EXPECT_EQ("{\"a\":1,\"b\":2}", json);
+  faststring buffer;
+  row.column(1).Serialize(QLType::Create(DataType::JSONB), YQL_CLIENT_CQL, &buffer);
+  int32_t len = 0;
+  Slice data(buffer);
+  ASSERT_OK(CQLDecodeNum(sizeof(len), NetworkByteOrder::Load32, &data, &len));
+  string val;
+  ASSERT_OK(CQLDecodeBytes(len, &data, &val));
+  EXPECT_EQ("{\"a\":1,\"b\":2}", val);
+}
+
+TEST_F(TestQLQuery, TestJson) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE test_json (k1 int PRIMARY KEY, data jsonb)"));
+  CHECK_OK(processor->Run(
+      "INSERT INTO test_json (k1, data) values (1, '{ \"a\" : 1, \"b\" : 2 }')"));
+  CHECK_OK(processor->Run("SELECT * FROM test_json"));
+  verifyJson(processor->row_block());
+
+  CHECK_OK(processor->Run("SELECT * FROM test_json WHERE k1=1 AND data='{\"a\":1,\"b\":2}'"));
+  verifyJson(processor->row_block());
+
+  CHECK_OK(processor->Run("SELECT * FROM test_json WHERE k1=1 AND data='{\"a\" : 1,\"b\" : 2}'"));
+  verifyJson(processor->row_block());
+
+  CHECK_OK(processor->Run("SELECT * FROM test_json WHERE k1=1 AND data='{\"b\" : 2,\"a\" : 1}'"));
+  verifyJson(processor->row_block());
+
+  ASSERT_NOK(processor->Run("CREATE TABLE test_json1 (k1 jsonb PRIMARY KEY, data jsonb)"));
+  ASSERT_NOK(processor->Run("CREATE TABLE test_json2 (h1 int, r1 jsonb, c1 int, PRIMARY KEY ((h1)"
+                                ", r1))"));
+}
+
 
 } // namespace ql
 } // namespace yb

@@ -38,6 +38,7 @@ PTBaseType::SharedPtr PTBaseType::FromQLType(MemoryContext *memctx,
     case DataType::DECIMAL: return PTDecimal::MakeShared(memctx);
     case DataType::VARINT: return PTVarInt::MakeShared(memctx);
     case DataType::INET: return PTInet::MakeShared(memctx);
+    case DataType::JSONB: return PTJsonb::MakeShared(memctx);
     case DataType::UUID: return PTUuid::MakeShared(memctx);
     case DataType::TIMEUUID: return PTTimeUuid::MakeShared(memctx);
 

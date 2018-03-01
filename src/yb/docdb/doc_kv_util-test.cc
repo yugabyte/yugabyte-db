@@ -140,9 +140,9 @@ TEST(DocKVUtilTest, FloatEncoding) {
   vector<string> strings;
   for (int i = 0; i < numbers.size(); i++) {
     string s;
-    AppendFloatToKey(numbers[i], &s);
+    util::AppendFloatToKey(numbers[i], &s);
     strings.push_back(s);
-    EXPECT_EQ(numbers[i], DecodeFloatFromKey(rocksdb::Slice(s)));
+    EXPECT_EQ(numbers[i], util::DecodeFloatFromKey(rocksdb::Slice(s)));
   }
   for (int i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
@@ -154,9 +154,9 @@ TEST(DocKVUtilTest, DoubleEncoding) {
   vector<string> strings;
   for (int i = 0; i < numbers.size(); i++) {
     string s;
-    AppendDoubleToKey(numbers[i], &s);
+    util::AppendDoubleToKey(numbers[i], &s);
     strings.push_back(s);
-    EXPECT_EQ(numbers[i], DecodeDoubleFromKey(rocksdb::Slice(s)));
+    EXPECT_EQ(numbers[i], util::DecodeDoubleFromKey(rocksdb::Slice(s)));
   }
   for (int i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);

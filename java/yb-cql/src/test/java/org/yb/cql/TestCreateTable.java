@@ -116,6 +116,7 @@ public class TestCreateTable extends BaseCQLTest {
                          "c10 inet, " +
                          "c11 uuid, " +
                          "c12 timeuuid, " +
+                         "c13 jsonb, " +
                          "primary key (c1));";
     session.execute(create_stmt);
 

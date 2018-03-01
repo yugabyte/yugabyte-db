@@ -50,6 +50,7 @@ message QLValuePB {
     bytes uuid_value = 18;
     // raw bytes for timeuuid value.
     bytes timeuuid_value = 19;
+    bytes jsonb_value = 20;
   }
 }
 

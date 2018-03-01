@@ -210,6 +210,10 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       RETURN_NOT_OK(SetInet(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
+    case JSONB: {
+      RETURN_NOT_OK(SetJsonb(column_idx, *reinterpret_cast<const Slice*>(val)));
+      break;
+    };
     case UUID: {
       RETURN_NOT_OK(SetUuidCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
@@ -239,6 +243,8 @@ void YBPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
       dst = schema_->ExtractColumnFromRow<BINARY>(row, col_idx);
     } else if (col.type_info()->type() == INET) {
       dst = schema_->ExtractColumnFromRow<INET>(row, col_idx);
+    } else if (col.type_info()->type() == JSONB) {
+      dst = schema_->ExtractColumnFromRow<JSONB>(row, col_idx);
     } else if (col.type_info()->type() == UUID) {
       dst = schema_->ExtractColumnFromRow<UUID>(row, col_idx);
     } else if (col.type_info()->type() == TIMEUUID) {
@@ -338,6 +344,9 @@ Status YBPartialRow::SetFrozen(int col_idx, const Slice& val) {
 }
 Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
+}
+Status YBPartialRow::SetJsonb(int col_idx, const Slice& val) {
+  return SetSliceCopy<TypeTraits<JSONB> >(col_idx, val);
 }
 Status YBPartialRow::SetUuid(int col_idx, const Slice& val) {
   return Set<TypeTraits<UUID> >(col_idx, val, false);
@@ -461,6 +470,9 @@ template
 Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(int col_idx, const Slice& val);
 
 template
+Status YBPartialRow::SetSliceCopy<TypeTraits<JSONB> >(int col_idx, const Slice& val);
+
+template
 Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(int col_idx, const Slice& val);
 
 template
@@ -474,6 +486,9 @@ Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(const Slice& col_name, co
 
 template
 Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(const Slice& col_name, const Slice& val);
+
+template
+Status YBPartialRow::SetSliceCopy<TypeTraits<JSONB> >(const Slice& col_name, const Slice& val);
 
 template
 Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(const Slice& col_name, const Slice& val);
@@ -649,6 +664,9 @@ Status YBPartialRow::GetBinary(const Slice& col_name, Slice* val) const {
 Status YBPartialRow::GetInet(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<INET> >(col_name, val);
 }
+Status YBPartialRow::GetJsonb(const Slice& col_name, Slice* val) const {
+  return Get<TypeTraits<JSONB> >(col_name, val);
+}
 Status YBPartialRow::GetUuid(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_name, val);
 }
@@ -687,6 +705,9 @@ Status YBPartialRow::GetBinary(int col_idx, Slice* val) const {
 }
 Status YBPartialRow::GetInet(int col_idx, Slice* val) const {
   return Get<TypeTraits<INET> >(col_idx, val);
+}
+Status YBPartialRow::GetJsonb(int col_idx, Slice* val) const {
+  return Get<TypeTraits<JSONB> >(col_idx, val);
 }
 Status YBPartialRow::GetUuid(int col_idx, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_idx, val);

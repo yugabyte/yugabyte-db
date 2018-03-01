@@ -111,6 +111,8 @@ class YBColumnSchema {
         return InternalType::kTimestampValue;
       case INET:
         return InternalType::kInetaddressValue;
+      case JSONB:
+        return InternalType::kJsonbValue;
       case UUID:
         return InternalType::kUuidValue;
       case TIMEUUID:

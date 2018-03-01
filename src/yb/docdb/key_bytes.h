@@ -127,11 +127,11 @@ class KeyBytes {
   }
 
   void AppendInt64(int64_t x) {
-    AppendInt64ToKey(x, &data_);
+    util::AppendInt64ToKey(x, &data_);
   }
 
   void AppendInt32(int32_t x) {
-    AppendInt32ToKey(x, &data_);
+    util::AppendInt32ToKey(x, &data_);
   }
 
   void AppendIntentType(IntentType intent_type) {
@@ -156,11 +156,11 @@ class KeyBytes {
     //    -1   = 0xFF -> 0x00 -> 0x80
     //    0    = 0x00 -> 0xFF -> 0x7F
     //    127  = 0x7F -> 0x80 -> 0x00
-    AppendInt64ToKey(~x, &data_);
+    util::AppendInt64ToKey(~x, &data_);
   }
 
   void AppendDescendingInt32(int32_t x) {
-    AppendInt32ToKey(~x, &data_);
+    util::AppendInt32ToKey(~x, &data_);
   }
 
   void AppendUInt16(int16_t x) {
@@ -180,19 +180,19 @@ class KeyBytes {
   }
 
   void AppendDescendingFloat(float x) {
-    AppendFloatToKey(x, &data_, /* descending */ true);
+    util::AppendFloatToKey(x, &data_, /* descending */ true);
   }
 
   void AppendFloat(float x) {
-    AppendFloatToKey(x, &data_);
+    util::AppendFloatToKey(x, &data_);
   }
 
   void AppendDescendingDouble(double x) {
-    AppendDoubleToKey(x, &data_, /* descending */ true);
+    util::AppendDoubleToKey(x, &data_, /* descending */ true);
   }
 
   void AppendDouble(double x) {
-    AppendDoubleToKey(x, &data_);
+    util::AppendDoubleToKey(x, &data_);
   }
 
   void RemoveValueTypeSuffix(ValueType value_type) {

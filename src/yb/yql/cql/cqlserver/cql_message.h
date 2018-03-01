@@ -622,6 +622,7 @@ class ResultResponse : public CQLResponse {
         TIME      = 0x0012, // Since V4
         SMALLINT  = 0x0013, // Since V4
         TINYINT   = 0x0014, // Since V4
+        JSONB     = 0x0017,
         LIST      = 0x0020,
         MAP       = 0x0021,
         SET       = 0x0022,

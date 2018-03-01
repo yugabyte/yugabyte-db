@@ -24,6 +24,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
+#include "yb/util/jsonb.h"
 #include "yb/util/varint.h"
 #include "yb/util/enums.h"
 
@@ -104,6 +105,8 @@ int QLValue::CompareTo(const QLValue& other) const {
     case InternalType::kBinaryValue: return binary_value().compare(other.binary_value());
     case InternalType::kInetaddressValue:
       return GenericCompare(inetaddress_value(), other.inetaddress_value());
+    case InternalType::kJsonbValue:
+      return GenericCompare(jsonb_value(), other.jsonb_value());
     case InternalType::kUuidValue:
       return GenericCompare(uuid_value(), other.uuid_value());
     case InternalType::kTimeuuidValue:
@@ -209,7 +212,8 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
     case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kListValue:
+    case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
+    case QLValue::InternalType::kJsonbValue:
       LOG(FATAL) << "Runtime error: This datatype("
                  << int(value_pb.value_case())
                  << ") is not supported in hash key";
@@ -282,6 +286,12 @@ void QLValue::Serialize(
       std::string bytes;
       CHECK_OK(inetaddress_value().ToBytes(&bytes));
       CQLEncodeBytes(bytes, buffer);
+      return;
+    }
+    case JSONB: {
+      std::string json;
+      CHECK_OK(util::Jsonb::FromJsonb(jsonb_value(), &json));
+      CQLEncodeBytes(json, buffer);
       return;
     }
     case UUID: {
@@ -493,6 +503,11 @@ Status QLValue::Deserialize(
       set_inetaddress_value(addr);
       return Status::OK();
     }
+    case JSONB: {
+      string json;
+      RETURN_NOT_OK(CQLDecodeBytes(len, data, &json));
+      return util::Jsonb::ToJsonb(json, mutable_jsonb_value());
+    }
     case UUID: {
       string bytes;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
@@ -657,6 +672,7 @@ string QLValue::ToString() const {
     case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
+    case InternalType::kJsonbValue: return "jsonb:" + FormatBytesAsStr(jsonb_value());
     case InternalType::kUuidValue: return "uuid:" + uuid_value().ToString();
     case InternalType::kTimeuuidValue: return "timeuuid:" + timeuuid_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
@@ -791,6 +807,8 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case QLValuePB::kInetaddressValue:
       return GenericCompare(lhs.inetaddress_value(), rhs.inetaddress_value());
+    case QLValuePB::kJsonbValue:
+      return GenericCompare(lhs.jsonb_value(), rhs.jsonb_value());
     case QLValuePB::kUuidValue:
       return GenericCompare(QLValue(lhs).uuid_value(), QLValue(rhs).uuid_value());
     case QLValuePB::kTimeuuidValue:
@@ -849,6 +867,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
     case QLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case QLValuePB::kInetaddressValue:
       return GenericCompare(QLValue(lhs).inetaddress_value(), rhs.inetaddress_value());
+    case QLValuePB::kJsonbValue:
+      return GenericCompare(QLValue(lhs).jsonb_value(), rhs.jsonb_value());
     case QLValuePB::kUuidValue:
       return GenericCompare(QLValue(lhs).uuid_value(), rhs.uuid_value());
     case QLValuePB::kTimeuuidValue:

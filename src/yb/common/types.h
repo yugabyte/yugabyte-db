@@ -377,6 +377,17 @@ struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
 };
 
 template<>
+struct DataTypeTraits<JSONB> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "jsonb";
+  }
+  static void AppendDebugStringForValue(const void *val, string *str) {
+    const Slice *s = reinterpret_cast<const Slice *>(val);
+    str->append(strings::Utf8SafeCEscape(s->ToString()));
+  }
+};
+
+template<>
 struct DataTypeTraits<UUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "uuid";
@@ -591,6 +602,7 @@ class Variant {
       case UUID: FALLTHROUGH_INTENDED;
       case TIMEUUID: FALLTHROUGH_INTENDED;
       case FROZEN: FALLTHROUGH_INTENDED;
+      case JSONB: FALLTHROUGH_INTENDED;
       case BINARY:
         {
           const Slice *str = static_cast<const Slice *>(value);

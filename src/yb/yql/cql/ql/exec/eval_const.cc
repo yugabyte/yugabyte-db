@@ -15,6 +15,7 @@
 
 #include <yb/util/bytes_formatter.h>
 #include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/util/jsonb.h"
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfunc.h"
 #include "yb/util/net/inetaddress.h"
@@ -272,6 +273,17 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
 
       QLValue ql_const;
       ql_const.set_inetaddress_value(value);
+      *const_pb = std::move(*ql_const.mutable_value());
+      break;
+    }
+    case InternalType::kJsonbValue: {
+      std::string value;
+      RETURN_NOT_OK(const_pt->ToString(&value));
+      std::string jsonb;
+      RETURN_NOT_OK(util::Jsonb::ToJsonb(value, &jsonb));
+
+      QLValue ql_const;
+      ql_const.set_jsonb_value(std::move(jsonb));
       *const_pb = std::move(*ql_const.mutable_value());
       break;
     }

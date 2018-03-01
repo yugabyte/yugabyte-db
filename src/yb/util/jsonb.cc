@@ -13,12 +13,14 @@
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
-#include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/jsonb.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/jsonb.h"
 
 namespace yb {
-namespace docdb {
+namespace util {
 
 Status Jsonb::ToJsonb(const std::string& json, std::string* jsonb) {
   // Parse the json document.
@@ -461,5 +463,15 @@ Status Jsonb::FromJsonb(const std::string& jsonb, rapidjson::Document* document)
   return FromJsonbInternal(jsonb, 0, document);
 }
 
-} // namespace docdb
+Status Jsonb::FromJsonb(const std::string& jsonb, std::string* json) {
+  rapidjson::Document document;
+  RETURN_NOT_OK(FromJsonb(jsonb, &document));
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  document.Accept(writer);
+  *json = buffer.GetString();
+  return Status::OK();
+}
+
+} // namespace util
 } // namespace yb
