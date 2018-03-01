@@ -73,7 +73,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/size_literals.h"
 
-using namespace std::literals;
+using namespace std::literals;  // NOLINT
 
 using std::atomic;
 using std::lock_guard;
@@ -814,9 +814,13 @@ Status ExternalMiniCluster::AddTabletServer() {
   const uint16_t redis_http_port = AllocateFreePort();
   const uint16_t cql_rpc_port = AllocateFreePort();
   const uint16_t cql_http_port = AllocateFreePort();
+  const uint16_t pgsql_rpc_port = AllocateFreePort();
+  const uint16_t pgsql_http_port = AllocateFreePort();
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
       idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
-      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port, cql_rpc_port, cql_http_port,
+      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port,
+      cql_rpc_port, cql_http_port,
+      pgsql_rpc_port, pgsql_http_port,
       master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
   RETURN_NOT_OK(ts->Start());
   tablet_servers_.push_back(ts);
@@ -1686,6 +1690,7 @@ ExternalTabletServer::ExternalTabletServer(
     const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
     uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
     uint16_t cql_rpc_port, uint16_t cql_http_port,
+    uint16_t pgsql_rpc_port, uint16_t pgsql_http_port,
     const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
     : ExternalDaemon(
           Substitute("ts-$0", tablet_server_index + 1), messenger, exe, data_dir, "tserver",
@@ -1696,6 +1701,8 @@ ExternalTabletServer::ExternalTabletServer(
       http_port_(http_port),
       redis_rpc_port_(redis_rpc_port),
       redis_http_port_(redis_http_port),
+      pgsql_rpc_port_(pgsql_rpc_port),
+      pgsql_http_port_(pgsql_http_port),
       cql_rpc_port_(cql_rpc_port),
       cql_http_port_(cql_http_port) {}
 
@@ -1713,6 +1720,8 @@ Status ExternalTabletServer::Start(bool start_cql_proxy) {
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
   flags.push_back(Substitute("--redis_proxy_bind_address=$0:$1", bind_host_, redis_rpc_port_));
   flags.push_back(Substitute("--redis_proxy_webserver_port=$0", redis_http_port_));
+  flags.push_back(Substitute("--pgsql_proxy_bind_address=$0:$1", bind_host_, pgsql_rpc_port_));
+  flags.push_back(Substitute("--pgsql_proxy_webserver_port=$0", pgsql_http_port_));
   flags.push_back(Substitute("--cql_proxy_bind_address=$0:$1", bind_host_, cql_rpc_port_));
   flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
   flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));

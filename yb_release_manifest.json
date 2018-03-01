@@ -14,6 +14,7 @@
           "$BUILD_ROOT/bin/yb_load_test_tool",
           "$BUILD_ROOT/bin/yb-master",
           "$BUILD_ROOT/bin/yb-pbc-dump",
+          "$BUILD_ROOT/bin/yb-pgserver",
           "$BUILD_ROOT/bin/yb-redisserver",
           "$BUILD_ROOT/bin/yb-ts-cli",
           "$BUILD_ROOT/bin/yb-tserver",
