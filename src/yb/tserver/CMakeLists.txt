@@ -189,9 +189,10 @@ target_link_libraries(tserver
 
 add_executable(yb-tserver tablet_server_main.cc)
 target_link_libraries(yb-tserver
-  yb-cql
   tserver
+  yb-cql
   yb-redis
+  yb-pgsql
   master
   ${YB_BASE_LIBS})
 

@@ -146,7 +146,9 @@ class ClusterOptions:
                     "redis_http": 11000,
                     "redis_rpc": 6379,
                     "cql_http": 12000,
-                    "cql_rpc": 9042
+                    "cql_rpc": 9042,
+                    "pgsql_http": 13000,
+                    "pgsql_rpc": 5432
                 }
         }
 
@@ -418,6 +420,7 @@ class ClusterControl:
             "--yb_num_shards_per_tserver {}".format(self.options.num_shards_per_tserver),
             "--redis_proxy_bind_address {}".format(daemon_id.get_ip_address()),
             "--cql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
+            "--pgsql_proxy_bind_address {}".format(daemon_id.get_ip_address()),
             "--local_ip_for_outbound_sockets {}".format(daemon_id.get_ip_address()),
             # TODO ENG-2876: Enable this in master as well.
             "--use_cassandra_authentication={}".format(
@@ -550,6 +553,7 @@ class ClusterControl:
                 info_list.extend([
                     ("cql service", get_address("cql_rpc")),
                     ("redis service", get_address("redis_rpc"))
+                    ("pgsql service", get_address("pgsql_rpc"))
                 ])
             logging.info("Server is running: {}".format(
                 ", ".join(["{}={}".format(k, v) for k, v in info_list])))

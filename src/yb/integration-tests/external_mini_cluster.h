@@ -545,7 +545,9 @@ class ExternalTabletServer : public ExternalDaemon {
       int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
       const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
       uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
-      uint16_t cql_rpc_port, uint16_t cql_http_port, const std::vector<HostPort>& master_addrs,
+      uint16_t cql_rpc_port, uint16_t cql_http_port,
+      uint16_t pgsql_rpc_port, uint16_t pgsql_http_port,
+      const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
   CHECKED_STATUS Start(bool start_cql_proxy = true);
@@ -568,6 +570,8 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t http_port_;
   const uint16_t redis_rpc_port_;
   const uint16_t redis_http_port_;
+  const uint16_t pgsql_rpc_port_;
+  const uint16_t pgsql_http_port_;
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
