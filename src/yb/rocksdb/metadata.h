@@ -246,7 +246,7 @@ struct SstFileMetaData {
   BoundaryValues smallest;
   BoundaryValues largest;
   bool imported = false;
-  bool being_compacted;  // true if the file is currently being compacted.
+  bool being_compacted = false; // true if the file is currently being compacted.
 };
 
 // The full set of metadata associated with each SST file.
