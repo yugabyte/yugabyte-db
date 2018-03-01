@@ -37,6 +37,7 @@ import com.sun.security.auth.module.UnixSystem;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.BaseYBTest;
 
 import java.io.*;
 import java.lang.reflect.Field;
@@ -120,7 +121,7 @@ public class TestUtils {
       synchronized (flagFilePathLock) {
         if (flagFileTmpPath == null || !Files.exists(flagFileTmpPath)) {
           flagFileTmpPath = Files.createTempFile(
-            Paths.get(getBaseDir()), "yb-flags", ".flags");
+            Paths.get(getBaseTmpDir()), "yb-flags", ".flags");
           Files.copy(BaseYBClientTest.class.getResourceAsStream("/flags"), flagFileTmpPath,
             StandardCopyOption.REPLACE_EXISTING);
         }
@@ -244,7 +245,7 @@ public class TestUtils {
   /**
    * @return the base directory within which we will store server data
    */
-  public static String getBaseDir() {
+  public static String getBaseTmpDir() {
     String testTmpDir = System.getenv("TEST_TMPDIR");
     if (testTmpDir == null) {
       testTmpDir = "/tmp/ybtest-" + unixUserId + "-" + startTimeMillis + "-" +
@@ -547,9 +548,9 @@ public class TestUtils {
   }
 
   public static CommandResult runShellCommand(String cmd) throws IOException {
-    File outputFile = new File(TestUtils.getBaseDir() + "/tmp_stdout_"  +
+    File outputFile = new File(TestUtils.getBaseTmpDir() + "/tmp_stdout_"  +
         randomNonNegNumber() + ".txt");
-    File errorFile = new File(TestUtils.getBaseDir() + "/tmp_stderr_"  +
+    File errorFile = new File(TestUtils.getBaseTmpDir() + "/tmp_stderr_"  +
         randomNonNegNumber() + ".txt");
     try {
 
@@ -580,4 +581,31 @@ public class TestUtils {
       }
     }
   }
+
+  public static String getSurefireTestReportPrefix() {
+    Class testClass;
+    try {
+      testClass = Class.forName(BaseYBTest.getCurrentTestClassName());
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    }
+    String testClassesDir = testClass.getProtectionDomain().getCodeSource().getLocation().getPath();
+    if (testClassesDir.endsWith("/")) {
+      testClassesDir = testClassesDir.substring(0, testClassesDir.length() - 1);
+    }
+    if (!testClassesDir.endsWith("test-classes")) {
+      throw new RuntimeException(
+          "Found class " + testClass + " in directory " + testClassesDir + ", expected it to be " +
+              "in a 'test-classes' directory");
+    }
+    File surefireDir = new File(new File(testClassesDir).getParent(), "surefire-reports");
+    if (!surefireDir.exists()) {
+      throw new RuntimeException(
+          "Surefire report directory '" + surefireDir + "' does not exist");
+    }
+    return new File(
+        surefireDir,
+        testClass.getName() + "." + BaseYBTest.getCurrentTestMethodName() + "-").toString();
+  }
+
 }

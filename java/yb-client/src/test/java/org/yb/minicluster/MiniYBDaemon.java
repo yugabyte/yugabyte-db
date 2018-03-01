@@ -100,10 +100,11 @@ public class MiniYBDaemon {
           continue;
         }
         long rssKB = 0;
+        String rssKbStr = items[0].trim();
         try {
-          rssKB = Long.valueOf(items[0]);
+          rssKB = Long.valueOf(rssKbStr);
         } catch (NumberFormatException ex) {
-          LOG.warn("Failed parsing number: '" + rssKB + "' in ps output line:" + line);
+          LOG.warn("Failed parsing number: '" + rssKbStr + "' in ps output line:" + line);
           continue;
         }
         String executablePath = items[2];

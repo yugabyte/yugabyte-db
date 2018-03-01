@@ -1240,13 +1240,13 @@ class ExternalDaemon::LogTailerThread {
 };
 
 ExternalDaemon::ExternalDaemon(
-    std::string short_description,
+    std::string daemon_id,
     std::shared_ptr<rpc::Messenger> messenger,
     string exe,
     string data_dir,
     string server_type,
     vector<string> extra_flags)
-  : short_description_(short_description),
+  : daemon_id_(daemon_id),
     messenger_(std::move(messenger)),
     exe_(std::move(exe)),
     data_dir_(std::move(data_dir)),
@@ -1347,15 +1347,21 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
     argv.push_back(Format("--metric_node_name=$0", test_invocation_id));
   }
 
+  string fatal_details_path_prefix = GetFatalDetailsPathPrefix();
+  argv.push_back(Format(
+      "--fatal_details_path_prefix=$0.$1", GetFatalDetailsPathPrefix(), daemon_id_));
+
+  argv.push_back(Format("--minicluster_daemon_id=$0", daemon_id_));
+
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
-  auto default_output_prefix = Substitute("[$0]", short_description_);
+  auto default_output_prefix = Substitute("[$0]", daemon_id_);
   LOG(INFO) << "Running " << default_output_prefix << ": " << exe_ << "\n"
     << JoinStrings(argv, "\n");
   if (!FLAGS_external_daemon_heap_profile_prefix.empty()) {
     p->SetEnv("HEAPPROFILE",
-              FLAGS_external_daemon_heap_profile_prefix + "_" + short_description_);
+              FLAGS_external_daemon_heap_profile_prefix + "_" + daemon_id_);
     p->SetEnv("HEAPPROFILESIGNAL", std::to_string(kHeapProfileSignal));
   }
 
@@ -1363,7 +1369,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
                         Substitute("Failed to start subprocess $0", exe_));
 
   stdout_tailer_thread_ = unique_ptr<LogTailerThread>(new LogTailerThread(
-      Substitute("[$0 stdout]", short_description_), p->ReleaseChildStdoutFd(), &std::cout));
+      Substitute("[$0 stdout]", daemon_id_), p->ReleaseChildStdoutFd(), &std::cout));
 
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
@@ -1636,7 +1642,7 @@ ExternalMaster::ExternalMaster(
     uint16_t http_port,
     const string& master_addrs)
     : ExternalDaemon(
-          Substitute("m-$0", master_index), messenger, exe, data_dir, "master", extra_flags),
+          Substitute("m-$0", master_index + 1), messenger, exe, data_dir, "master", extra_flags),
       rpc_bind_address_(std::move(rpc_bind_address)),
       master_addrs_(std::move(master_addrs)),
       http_port_(http_port) {
@@ -1683,7 +1689,7 @@ ExternalTabletServer::ExternalTabletServer(
     uint16_t cql_rpc_port, uint16_t cql_http_port,
     const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
     : ExternalDaemon(
-          Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, "tserver",
+          Substitute("ts-$0", tablet_server_index + 1), messenger, exe, data_dir, "tserver",
           extra_flags),
       master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
       bind_host_(std::move(bind_host)),

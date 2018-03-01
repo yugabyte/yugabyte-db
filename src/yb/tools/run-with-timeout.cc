@@ -25,7 +25,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 
-constexpr int kWaitSecBeforeSIGKILL = 5;
+constexpr int kWaitSecAfterSigQuit = 10;
+constexpr int kWaitSecAfterSigSegv = 10;
 
 using std::cerr;
 using std::condition_variable;
@@ -43,6 +44,30 @@ using std::chrono::milliseconds;
 
 using yb::Subprocess;
 using yb::Status;
+
+bool SendSignalAndWait(Subprocess* subprocess, int signal, const string& signal_str, int wait_sec) {
+  LOG(ERROR) << "Timeout reached, trying to stop the child process with " << signal_str;
+  const Status signal_status = subprocess->KillNoCheckIfRunning(signal);
+  if (!signal_status.ok()) {
+    LOG(ERROR) << "Failed to send " << signal_str << " to child process: " << signal_status;
+  }
+
+  if (wait_sec > 0) {
+    int sleep_ms = 5;
+    auto second_wait_until = steady_clock::now() + std::chrono::seconds(wait_sec);
+    while (subprocess->IsRunning() && steady_clock::now() < second_wait_until) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+      // Sleep for 5 ms, 10 ms, 15 ms, etc. capped at 100 ms.
+      sleep_ms = std::min(sleep_ms + 5, 100);
+    }
+  }
+
+  bool is_running = subprocess->IsRunning();
+  if (!is_running) {
+    LOG(INFO) << "Child process terminated after we sent " << signal_str;
+  }
+  return !is_running;
+}
 
 int main(int argc, char** argv) {
   yb::InitGoogleLoggingSafeBasic(argv[0]);
@@ -119,28 +144,10 @@ int main(int argc, char** argv) {
 
     if (!finished_local && subprocess_is_running) {
       timed_out = true;
-      LOG(ERROR) << "Timeout reached, trying to stop the child process with SIGQUIT";
-      const Status sigquit_status = subprocess.KillNoCheckIfRunning(SIGQUIT);
-      if (!sigquit_status.ok()) {
-        LOG(ERROR) << "Failed to send SIGQUIT to child process: " << sigquit_status.ToString();
-      }
-      int sleep_ms = 5;
-      auto second_wait_until = steady_clock::now() + std::chrono::seconds(kWaitSecBeforeSIGKILL);
-      while (subprocess.IsRunning() && steady_clock::now() < second_wait_until) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
-        // Sleep for 5 ms, 10 ms, 15 ms, etc. capped at 100 ms.
-        sleep_ms = std::min(sleep_ms + 5, 100);
-      }
-
-      if (subprocess.IsRunning()) {
-        LOG(ERROR) << "The process is still running after waiting for " << kWaitSecBeforeSIGKILL
-                   << " seconds, using SIGKILL";
-        const Status sigkill_status = subprocess.KillNoCheckIfRunning(SIGKILL);
-        if (!sigkill_status.ok()) {
-          LOG(ERROR) << "Failed to send SIGKILL to child process: " << sigkill_status.ToString();
-        }
-      } else {
-        LOG(INFO) << "Child process terminated after we sent SIGQUIT";
+      if (!SendSignalAndWait(&subprocess, SIGQUIT, "SIGQUIT", kWaitSecAfterSigQuit) &&
+          !SendSignalAndWait(&subprocess, SIGSEGV, "SIGSEGV", kWaitSecAfterSigSegv) &&
+          !SendSignalAndWait(&subprocess, SIGKILL, "SIGKILL", /* wait_sec */ 0)) {
+        LOG(ERROR) << "Failed to kill the process with SIGKILL (should not happen).";
       }
     }
   });
@@ -159,15 +166,21 @@ int main(int argc, char** argv) {
   int exit_code = WIFEXITED(waitpid_ret_val) ? WEXITSTATUS(waitpid_ret_val) : 0;
   int term_sig = WIFSIGNALED(waitpid_ret_val) ? WTERMSIG(waitpid_ret_val) : 0;
   LOG(INFO) << "Child process returned exit code " << exit_code;
-  if (exit_code == 0 && timed_out) {
-    LOG(ERROR) << "Child process timed out and we had to kill it";
-  }
-  if (exit_code == 0 && term_sig != 0) {
+  if (timed_out) {
+    if (exit_code == 0) {
+      LOG(ERROR) << "Child process timed out and we had to kill it";
+    }
     exit_code = EXIT_FAILURE;
-    LOG(ERROR) << "Child process terminated due to signal " << term_sig
-               << ", returning exit code " << exit_code;
   }
 
+  if (term_sig != 0) {
+    if (exit_code == 0) {
+      exit_code = EXIT_FAILURE;
+    }
+    LOG(ERROR) << "Child process terminated due to signal " << term_sig;
+  }
+
+  LOG(INFO) << "Returning exit code " << exit_code;
   auto duration_ms = duration_cast<milliseconds>(steady_clock::now() - start_time).count();
   LOG(INFO) << "Total time taken: " << StringPrintf("%.3f", duration_ms / 1000.0) << " sec";
   return exit_code;

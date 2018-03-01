@@ -795,10 +795,19 @@ run_one_test() {
   local test_wrapper_cmd_line=(
     "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
+  if [[ $TEST_TMPDIR == "/" || $TEST_TMPDIR == "/tmp" ]]; then
+    # Let's be paranoid because we'll be deleting everything inside this directory.
+    fatal "Invalid TEST_TMPDIR: '$TEST_TMPDIR': must be a unique temporary directory."
+  fi
   pushd "$TEST_TMPDIR" >/dev/null
+
+  export YB_FATAL_DETAILS_PATH_PREFIX=$test_log_path_prefix.fatal_failure_details
 
   local attempts_left
   for attempts_left in {1..0}; do
+    # Clean up anything that might have been left from the previous attempt.
+    rm -rf "$TEST_TMPDIR"/*
+
     set +e
     (
       # Setting the ulimit may fail with an error message, and that's what we want. We will still

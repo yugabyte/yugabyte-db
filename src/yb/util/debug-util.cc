@@ -340,7 +340,13 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
   // We have not appended an end-of-line character yet. Let's see if we have file name / line number
   // information first. BTW kStackTraceEntryFormat is used both here and in glog-based
   // symbolization.
-  if (filename != nullptr) {
+  if (filename == nullptr) {
+    // libbacktrace failed to produce an address. We still need to produce a line of the form:
+    // "    @     0x7f2d98f9bd87  "
+    char hex_pc_buf[32];
+    snprintf(hex_pc_buf, sizeof(hex_pc_buf), "0x%" PRIxPTR, pc);
+    StringAppendF(buf, "    @ %18s ", hex_pc_buf);
+  } else {
     // Got filename and line number from libbacktrace! No need to filter the output through
     // addr2line, etc.
     if (context.stack_trace_line_format == StackTraceLineFormat::CLION_CLICKABLE) {

@@ -67,6 +67,10 @@ DEFINE_string(log_filename, "",
     "full path is <log_dir>/<log_filename>.[INFO|WARN|ERROR|FATAL]");
 TAG_FLAG(log_filename, stable);
 
+DEFINE_string(fatal_details_path_prefix, "",
+              "A prefix to use for the path of a file to save fatal failure stack trace and "
+              "other details to.");
+
 const char* kProjName = "yb";
 
 bool logging_initialized = false;
@@ -78,9 +82,9 @@ using base::SpinLockHolder;
 
 namespace yb {
 
-// Sink which disables core dump for log(fatal).
-unique_ptr<DisableDumpLogSink> disable_dump;
-
+// Sink which implements special handling for LOG(FATAL) and CHECK failures, such as disabling
+// core dumps and printing the failure stack trace into a separate file.
+unique_ptr<LogFatalHandlerSink> log_fatal_handler_sink;
 
 namespace {
 
@@ -169,7 +173,7 @@ void InitializeGoogleLogging(const char *arg) {
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
 
-  disable_dump = std::make_unique<DisableDumpLogSink>();
+  log_fatal_handler_sink = std::make_unique<LogFatalHandlerSink>();
 
 }
 
@@ -348,6 +352,61 @@ void DisableCoreDumps() {
   if (f >= 0) {
     write(f, "00000000", 8);
     close(f);
+  }
+}
+
+string GetFatalDetailsPathPrefix() {
+  if (!FLAGS_fatal_details_path_prefix.empty())
+    return FLAGS_fatal_details_path_prefix;
+
+  const char* fatal_details_path_prefix_env_var = getenv("YB_FATAL_DETAILS_PATH_PREFIX");
+  if (fatal_details_path_prefix_env_var) {
+    return fatal_details_path_prefix_env_var;
+  }
+
+  string fatal_log_path;
+  GetFullLogFilename(LogSeverity::SEVERITY_FATAL, &fatal_log_path);
+  return fatal_log_path + ".details";
+}
+
+// ------------------------------------------------------------------------------------------------
+// LogFatalHandlerSink
+// ------------------------------------------------------------------------------------------------
+
+LogFatalHandlerSink::LogFatalHandlerSink() {
+  AddLogSink(this);
+}
+
+LogFatalHandlerSink::~LogFatalHandlerSink() {
+  RemoveLogSink(this);
+}
+
+void LogFatalHandlerSink::send(
+    google::LogSeverity severity, const char* full_filename, const char* base_filename,
+    int line_number, const struct tm* tm_time, const char* message, size_t message_len) {
+  if (severity == LogSeverity::SEVERITY_FATAL) {
+    DisableCoreDumps();
+    string timestamp_for_filename;
+    StringAppendStrftime(&timestamp_for_filename, "%Y-%m-%dT%H_%M_%S", tm_time);
+    const string output_path = Format(
+        "$0.$1.pid$2.txt", GetFatalDetailsPathPrefix(), timestamp_for_filename, getpid());
+    ofstream out_f(output_path);
+    if (out_f) {
+      // Use a line format similar to glog with a couple of slight differences:
+      // - Report full file path.
+      // - Time has no microsecond component.
+      string output_line = "F";
+      StringAppendStrftime(&output_line, "%Y%m%d %H:%M:%S", tm_time);
+      // TODO: append thread id if we need to.
+      StringAppendF(&output_line, " %s:%d] ", full_filename, line_number);
+      output_line += std::string(message, message_len);
+      out_f << output_line << "\n" << GetStackTrace() << endl;
+    }
+    if (out_f.bad()) {
+      cerr << "Failed to write fatal failure details to " << output_path << endl;
+    } else {
+      cerr << "Fatal failure details written to " << output_path << endl;
+    }
   }
 }
 
