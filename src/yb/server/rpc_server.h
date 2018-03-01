@@ -43,6 +43,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -56,6 +57,8 @@ struct RpcServerOptions {
   int32_t connection_keepalive_time_ms;
 };
 
+YB_DEFINE_ENUM(ServicePriority, (kNormal)(kHigh));
+
 class RpcServer {
  public:
   explicit RpcServer(const std::string& name, RpcServerOptions opts);
@@ -64,7 +67,9 @@ class RpcServer {
   CHECKED_STATUS Init(const std::shared_ptr<rpc::Messenger>& messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
-  CHECKED_STATUS RegisterService(size_t queue_limit, std::unique_ptr<rpc::ServiceIf> service);
+  CHECKED_STATUS RegisterService(
+      size_t queue_limit, std::unique_ptr<rpc::ServiceIf> service,
+      ServicePriority priority = ServicePriority::kNormal);
   CHECKED_STATUS Bind();
   CHECKED_STATUS Start();
   void Shutdown();
@@ -92,10 +97,19 @@ class RpcServer {
     // State after Start() was called.
     STARTED
   };
+
+  std::unique_ptr<rpc::ThreadPool> CreateThreadPool(string name_prefix, ServicePriority priority);
+
+  string name_;
+
   ServerState server_state_;
 
   const RpcServerOptions options_;
-  std::unique_ptr<rpc::ThreadPool> thread_pool_;
+  std::unique_ptr<rpc::ThreadPool> normal_thread_pool_;
+
+  // This could be used for high-priority services such as Consensus.
+  std::unique_ptr<rpc::ThreadPool> high_priority_thread_pool_;
+
   std::shared_ptr<rpc::Messenger> messenger_;
 
   // Parsed addresses to bind RPC to. Set by Init().

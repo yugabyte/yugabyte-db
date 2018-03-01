@@ -54,6 +54,8 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using strings::Substitute;
+using std::unique_ptr;
+using std::make_unique;
 
 DEFINE_string(rpc_bind_addresses, "0.0.0.0",
               "Comma-separated list of addresses to bind to for RPC connections. "
@@ -80,9 +82,10 @@ RpcServerOptions::RpcServerOptions()
 }
 
 RpcServer::RpcServer(const std::string& name, RpcServerOptions opts)
-    : server_state_(UNINITIALIZED),
+    : name_(name),
+      server_state_(UNINITIALIZED),
       options_(std::move(opts)),
-      thread_pool_(new rpc::ThreadPool(name, options_.queue_limit, options_.workers_limit)) {}
+      normal_thread_pool_(CreateThreadPool(name, ServicePriority::kNormal)) {}
 
 RpcServer::~RpcServer() {
   Shutdown();
@@ -122,13 +125,24 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
   return Status::OK();
 }
 
-Status RpcServer::RegisterService(size_t queue_limit, std::unique_ptr<rpc::ServiceIf> service) {
+Status RpcServer::RegisterService(size_t queue_limit,
+                                  unique_ptr<rpc::ServiceIf> service,
+                                  ServicePriority priority) {
   CHECK(server_state_ == INITIALIZED ||
         server_state_ == BOUND) << "bad state: " << server_state_;
   const scoped_refptr<MetricEntity>& metric_entity = messenger_->metric_entity();
   string service_name = service->service_name();
+
+  rpc::ThreadPool* thread_pool = normal_thread_pool_.get();
+  if (priority == ServicePriority::kHigh) {
+    if (!high_priority_thread_pool_) {
+      high_priority_thread_pool_ = CreateThreadPool(name_, ServicePriority::kHigh);
+    }
+    thread_pool = high_priority_thread_pool_.get();
+  }
+
   scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(queue_limit, thread_pool_.get(), std::move(service), metric_entity);
+    new rpc::ServicePool(queue_limit, thread_pool, std::move(service), metric_entity);
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }
@@ -164,7 +178,10 @@ Status RpcServer::Start() {
 }
 
 void RpcServer::Shutdown() {
-  thread_pool_->Shutdown();
+  normal_thread_pool_->Shutdown();
+  if (high_priority_thread_pool_) {
+    high_priority_thread_pool_->Shutdown();
+  }
 
   if (messenger_) {
     messenger_->ShutdownAcceptor();
@@ -174,6 +191,14 @@ void RpcServer::Shutdown() {
 
 const rpc::ServicePool* RpcServer::service_pool(const string& service_name) const {
   return down_cast<rpc::ServicePool*>(messenger_->rpc_service(service_name).get());
+}
+
+unique_ptr<rpc::ThreadPool> RpcServer::CreateThreadPool(
+    string name_prefix, ServicePriority priority) {
+  string name = priority == ServicePriority::kHigh ? Format("$0-high-pri", name_prefix)
+                                                   : name_prefix;
+  VLOG(1) << "Creating thread pool '" << name << "'";
+  return make_unique<rpc::ThreadPool>(name, options_.queue_limit, options_.workers_limit);
 }
 
 } // namespace yb

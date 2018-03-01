@@ -99,7 +99,9 @@ class RpcServerBase {
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
-  CHECKED_STATUS RegisterService(size_t queue_limit, std::unique_ptr<rpc::ServiceIf> rpc_impl);
+  CHECKED_STATUS RegisterService(
+      size_t queue_limit, std::unique_ptr<rpc::ServiceIf> rpc_impl,
+      ServicePriority priority = ServicePriority::kNormal);
   CHECKED_STATUS Start();
   CHECKED_STATUS StartRpcServer();
   void Shutdown();
