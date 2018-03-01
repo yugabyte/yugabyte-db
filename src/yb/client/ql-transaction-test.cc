@@ -236,6 +236,20 @@ class QLTransactionTest : public QLDmlTestBase {
     LOG(INFO) << "Committed";
   }
 
+  void WriteDataWithRepetition() {
+    auto txn = CreateTransaction();
+    auto session = CreateSession(txn);
+    for (size_t r = 0; r != kNumRows; ++r) {
+      for (int j = 10; j--;) {
+        ASSERT_OK(WriteRow(
+            session,
+            KeyForTransactionAndIndex(0, r),
+            ValueForTransactionAndIndex(0, r, WriteOpType::INSERT) + j));
+      }
+    }
+    ASSERT_OK(txn->CommitFuture().get());
+  }
+
   YBTransactionPtr CreateTransaction() {
     return std::make_shared<YBTransaction>(
         transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
@@ -311,6 +325,22 @@ class QLTransactionTest : public QLDmlTestBase {
 TEST_F(QLTransactionTest, Simple) {
   WriteData();
   VerifyData();
+  ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, WriteSameKey) {
+  ASSERT_NO_FATALS(WriteDataWithRepetition());
+  std::this_thread::sleep_for(1s); // Wait some time for intents to apply.
+  ASSERT_NO_FATALS(VerifyData());
+  ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(QLTransactionTest, WriteSameKeyWithIntents) {
+  google::FlagSaver saver;
+  DisableApplyingIntents();
+
+  ASSERT_NO_FATALS(WriteDataWithRepetition());
+  ASSERT_NO_FATALS(VerifyData());
   ASSERT_OK(cluster_->RestartSync());
 }
 

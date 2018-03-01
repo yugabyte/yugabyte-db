@@ -22,6 +22,7 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -68,6 +69,9 @@ namespace docdb {
 
 namespace {
 
+constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
+    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
+
 // Main intent data::
 // Prefix + DocPath + IntentType + DocHybridTime -> TxnId + value of the intent
 // Reverse index by txn id:
@@ -81,10 +85,18 @@ void AddIntent(
     rocksdb::WriteBatch* rocksdb_write_batch) {
   char reverse_key_prefix[2] = { static_cast<char>(ValueType::kIntentPrefix),
                                  static_cast<char>(ValueType::kTransactionId) };
+  size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
+  auto doc_ht_slice = key.parts[key.num_parts - 1];
+  memcpy(doc_ht_buffer, doc_ht_slice.data(), doc_ht_slice.size());
+  for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
+    doc_ht_buffer[i] = ~doc_ht_buffer[i];
+  }
+  doc_ht_slice = Slice(pointer_cast<char*>(doc_ht_buffer), doc_ht_slice.size());
+
   std::array<Slice, 3> reverse_key = {{
       Slice(reverse_key_prefix, 2),
       Slice(transaction_id.data, transaction_id.size()),
-      key.parts[key.num_parts - 1],
+      doc_ht_slice,
   }};
   rocksdb_write_batch->Put(key, value);
   rocksdb_write_batch->Put(reverse_key, key);
@@ -180,11 +192,11 @@ void PrepareNonTransactionWriteBatch(
 #ifndef NDEBUG
     // Debug-only: ensure all keys we get in Raft replication can be decoded.
     {
-      docdb::SubDocKey subdoc_key;
+      SubDocKey subdoc_key;
       Status s = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(kv_pair.key());
       CHECK(s.ok())
           << "Failed decoding key: " << s.ToString() << "; "
-          << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
+          << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
           << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
           << "put_batch:\n" << put_batch.DebugString();
     }
@@ -210,7 +222,7 @@ void PrepareNonTransactionWriteBatch(
 }
 
 CHECKED_STATUS EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB> &kv_pairs,
+    const google::protobuf::RepeatedPtrField<KeyValuePairPB> &kv_pairs,
     boost::function<Status(IntentKind, Slice, KeyBytes*)> functor) {
   KeyBytes encoded_key;
 
@@ -219,7 +231,7 @@ CHECKED_STATUS EnumerateIntents(
     CHECK(kv_pair.has_key());
     CHECK(kv_pair.has_value());
     Slice key = kv_pair.key();
-    auto key_size = DocKey::EncodedSize(key, docdb::DocKeyPart::WHOLE_DOC_KEY);
+    auto key_size = DocKey::EncodedSize(key, DocKeyPart::WHOLE_DOC_KEY);
     CHECK_OK(key_size);
 
     encoded_key.Clear();
@@ -698,15 +710,36 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, KeyType* key_type) {
           "Error: failed decoding RocksDB intent key " + FormatRocksDBSliceAsStr(key_slice));
       intent_prefix.consume_byte();
       RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(intent_prefix));
-      return subdoc_key.ToString() + " " + yb::docdb::ToString(intent_type) + " " +
-          doc_ht.ToString();
+      return subdoc_key.ToString() + " " + ToString(intent_type) + " " + doc_ht.ToString();
     }
     case KeyType::kReverseTxnKey:
     {
       key_slice.remove_prefix(2); // kIntentPrefix + kTransactionId
-      auto transaction_id = DecodeTransactionId(&key_slice);
-      RETURN_NOT_OK(transaction_id);
-      return Format("TXN REV $0", *transaction_id);
+      auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
+      if (key_slice.empty() || key_slice.size() > kMaxBytesPerEncodedHybridTime + 1) {
+        return STATUS_FORMAT(
+            Corruption,
+            "Invalid doc hybrid time in reverse intent record, transaction id: $0, suffix: $1",
+            transaction_id, key_slice.ToDebugHexString());
+      }
+      size_t doc_ht_buffer[kMaxWordsPerEncodedHybridTimeWithValueType];
+      memcpy(doc_ht_buffer, key_slice.data(), key_slice.size());
+      for (size_t i = 0; i != kMaxWordsPerEncodedHybridTimeWithValueType; ++i) {
+        doc_ht_buffer[i] = ~doc_ht_buffer[i];
+      }
+      key_slice = Slice(pointer_cast<char*>(doc_ht_buffer), key_slice.size());
+
+      if (static_cast<ValueType>(key_slice[0]) != ValueType::kHybridTime) {
+        return STATUS_FORMAT(
+            Corruption,
+            "Invalid prefix of doc hybrid time in reverse intent record, transaction id: $0, "
+                "decoded suffix: $1",
+            transaction_id, key_slice.ToDebugHexString());
+      }
+      key_slice.consume_byte();
+      DocHybridTime doc_ht;
+      RETURN_NOT_OK(doc_ht.DecodeFrom(&key_slice));
+      return Format("TXN REV $0 $1", transaction_id, doc_ht);
     }
     case KeyType::kTransactionMetadata:
     {
@@ -787,6 +820,12 @@ void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, std:
   }
 }
 
+std::string EntryToString(const rocksdb::Iterator& iterator) {
+  std::ostringstream out;
+  ProcessDumpEntry(iterator.key(), iterator.value(), IncludeBinary::kFalse, &out);
+  return out.str();
+}
+
 }  // namespace
 
 void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, IncludeBinary include_binary) {
@@ -820,6 +859,94 @@ DocHybridTimeBuffer::DocHybridTimeBuffer() {
 Slice DocHybridTimeBuffer::EncodeWithValueType(const DocHybridTime& doc_ht) {
   auto end = doc_ht.EncodedInDocDbFormat(buffer_.data() + 1);
   return Slice(buffer_.data(), end);
+}
+
+#define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
+  BOOST_PP_CAT(SCHECK_, op)(lhs, \
+                            rhs, \
+                            Corruption, \
+                            Format("Bad intent value, $0 in $1, transaction: $2", \
+                                   msg, \
+                                   intent_iter->value().ToDebugHexString(), \
+                                   transaction_id_slice.ToDebugHexString()))
+
+Status PrepareApplyIntentsBatch(
+    const TransactionId& transaction_id, HybridTime commit_ht,
+    rocksdb::DB* db, rocksdb::WriteBatch* write_batch) {
+  Slice reverse_index_upperbound;
+  auto reverse_index_iter = CreateRocksDBIterator(
+      db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId, nullptr,
+      &reverse_index_upperbound);
+
+  auto intent_iter = CreateRocksDBIterator(
+      db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
+
+  KeyBytes txn_reverse_index_prefix;
+  Slice transaction_id_slice(transaction_id.data, TransactionId::static_size());
+  AppendTransactionKeyPrefix(transaction_id, &txn_reverse_index_prefix);
+
+  KeyBytes txn_reverse_index_upperbound = txn_reverse_index_prefix;
+  txn_reverse_index_upperbound.AppendValueType(ValueType::kMaxByte);
+  reverse_index_upperbound = txn_reverse_index_upperbound.AsSlice();
+
+  reverse_index_iter->Seek(txn_reverse_index_prefix.data());
+
+  DocHybridTimeBuffer doc_ht_buffer;
+
+  IntraTxnWriteId write_id = 0;
+  while (reverse_index_iter->Valid()) {
+    rocksdb::Slice key_slice(reverse_index_iter->key());
+
+    if (!key_slice.starts_with(txn_reverse_index_prefix.data())) {
+      break;
+    }
+
+    VLOG(4) << "Apply reverse index record: " << EntryToString(*reverse_index_iter);
+
+    // If the key ends at the transaction id then it is transaction metadata (status tablet,
+    // isolation level etc.).
+    if (key_slice.size() > txn_reverse_index_prefix.size()) {
+      // Value of reverse index is a key of original intent record, so seek it and check match.
+      intent_iter->Seek(reverse_index_iter->value());
+      if (!intent_iter->Valid() || intent_iter->key() != reverse_index_iter->value()) {
+        LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
+                    << " for " << reverse_index_iter->key().ToDebugString();
+        continue;
+      }
+      auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter->key(), transaction_id_slice));
+
+      if (IsStrongIntent(intent.type)) {
+        Slice intent_value(intent_iter->value());
+        INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
+                            "prefix expected");
+        intent_value.consume_byte();
+        INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
+                            "wrong transaction id");
+        intent_value.remove_prefix(transaction_id_slice.size());
+
+        // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
+        // Time will be added when writing batch to rocks db.
+        std::array<Slice, 2> key_parts = {{
+            intent.doc_path,
+            doc_ht_buffer.EncodeWithValueType(commit_ht, write_id),
+        }};
+        std::array<Slice, 2> value_parts = {{
+            intent.doc_ht,
+            intent_value,
+        }};
+        write_batch->Put(key_parts, value_parts);
+        ++write_id;
+      }
+
+      write_batch->Delete(intent_iter->key());
+    }
+
+    write_batch->Delete(reverse_index_iter->key());
+
+    reverse_index_iter->Next();
+  }
+
+  return Status::OK();
 }
 
 }  // namespace docdb
