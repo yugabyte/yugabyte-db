@@ -71,9 +71,9 @@ static inline time_t gmktime(struct tm *tm) {
   return rt < 0 ? time_t(-1) : rt;
 }
 
-static void StringAppendStrftime(string* dst,
-                                 const char* format,
-                                 const struct tm* tm) {
+void StringAppendStrftime(string* dst,
+                          const char* format,
+                          const struct tm* tm) {
   char space[1024];
 
   int result = strftime(space, sizeof(space), format, tm);

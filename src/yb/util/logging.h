@@ -281,26 +281,21 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 
 void DisableCoreDumps();
 
-class DisableDumpLogSink : public google::LogSink {
+// Get the path prefix for files that will contain details of a fatal crash (message and stack
+// trace). This is based on the --fatal_details_path_prefix flag and the
+// YB_FATAL_DETAILS_PATH_PREFIX environment variable. If neither of those are set, the result is
+// based on the FATAL log path.
+string GetFatalDetailsPathPrefix();
+
+// Implements special handling for LOG(FATAL) and CHECK failures, such as disabling core dumps and
+// printing the failure stack trace into a separate file.
+class LogFatalHandlerSink : public google::LogSink {
  public:
-
-  DisableDumpLogSink() {
-    AddLogSink(this);
-  }
-  ~DisableDumpLogSink() {
-    RemoveLogSink(this);
-  }
-
-  // (Re)define LogSink interface.
-
+  LogFatalHandlerSink();
+  ~LogFatalHandlerSink();
   void send(google::LogSeverity severity, const char* /* full_filename */,
-                    const char* base_filename, int line,
-                    const struct tm* tm_time,
-                    const char* message, size_t message_len) override {
-    if (severity == SEVERITY_FATAL) {
-      DisableCoreDumps();
-    }
-  }
+            const char* base_filename, int line, const struct tm* tm_time, const char* message,
+            size_t message_len) override;
 };
 
 } // namespace yb

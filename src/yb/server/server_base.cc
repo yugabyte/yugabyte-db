@@ -91,6 +91,9 @@ TAG_FLAG(generic_svc_queue_length, advanced);
 DEFINE_string(yb_test_name, "",
               "Specifies test name this daemon is running as part of.");
 
+DEFINE_string(minicluster_daemon_id, "",
+              "A human-readable 'daemon id', e.g. 'm-1' or 'ts-2', used in tests.");
+
 using namespace std::literals;
 using std::shared_ptr;
 using std::string;

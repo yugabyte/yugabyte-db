@@ -34,9 +34,11 @@ using strings::SubstituteAndAppend;
 
 namespace yb {
 
-// It does not really matter what write id we use here. We determine DocHybridTime validity
-// based on the HybridTime validity.
-const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalid);
+// It does not really matter what write id we use here. We determine DocHybridTime validity based
+// on its HybridTime component's validity. However, given that HybridTime::kInvalid is close to the
+// highest possible value of the underlying in-memory representation of HybridTime, we use
+// kMaxWriteId for the write id portion of this constant for consistency.
+const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalid, kMaxWriteId);
 
 const DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
 const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);

@@ -107,9 +107,6 @@ public class MiniYBCluster implements AutoCloseable {
 
   private String masterAddresses;
 
-  // This is used as part of the seed when mapping server indexes to unique loopback IPs.
-  private final long miniClusterInitTimeMillis = System.currentTimeMillis();
-
   // We pass the Java test class name as a command line option to YB daemons so that we know what
   // test invoked them if they get stuck.
   private final String testClassName;
@@ -287,7 +284,7 @@ public class MiniYBCluster implements AutoCloseable {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
     // The following props are set via yb-client's pom.
-    String baseDirPath = TestUtils.getBaseDir();
+    String baseDirPath = TestUtils.getBaseTmpDir();
 
     LOG.info("Starting {} masters...", numMasters);
     startMasters(numMasters, baseDirPath, masterArgs);
@@ -323,7 +320,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   public void startTServer(List<String> tserverArgs, String tserverBindAddress,
                            Integer tserverRpcPort) throws Exception {
-    String baseDirPath = TestUtils.getBaseDir();
+    String baseDirPath = TestUtils.getBaseTmpDir();
     long now = System.currentTimeMillis();
     if (tserverBindAddress == null) {
       tserverBindAddress = getTabletServerBindAddress();
@@ -406,7 +403,7 @@ public class MiniYBCluster implements AutoCloseable {
    * @throws Exception if we are unable to start the master.
    */
   public HostAndPort startShellMaster() throws Exception {
-    final String baseDirPath = TestUtils.getBaseDir();
+    final String baseDirPath = TestUtils.getBaseTmpDir();
     final String masterBindAddress = getMasterBindAddress();
     final int rpcPort = TestUtils.findFreePort(masterBindAddress);
     final int webPort = TestUtils.findFreePort(masterBindAddress);
@@ -492,7 +489,6 @@ public class MiniYBCluster implements AutoCloseable {
       final int masterWebPort = masterAlloc.webPort;
       List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
         masterBindAddress, masterRpcPort, masterWebPort);
-      masterCmdLine.addAll(getCommonDaemonFlags());
       masterCmdLine.add("--master_addresses=" + masterAddresses);
       if (extraMasterArgs != null) {
         masterCmdLine.addAll(extraMasterArgs);
@@ -533,13 +529,28 @@ public class MiniYBCluster implements AutoCloseable {
                                                 int redisWebPort,
                                                 String dataDirPath) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
+    final int indexForLog =
+        type == MiniYBDaemonType.MASTER ? nextMasterIndex.incrementAndGet()
+            : nextTServerIndex.incrementAndGet();
+
+    {
+      List<String> args = new ArrayList<>();
+      args.addAll(Arrays.asList(command));
+      String fatalDetailsPathPrefix = System.getenv("YB_FATAL_DETAILS_PATH_PREFIX");
+      if (fatalDetailsPathPrefix == null) {
+        fatalDetailsPathPrefix =
+            TestUtils.getSurefireTestReportPrefix() + "fatal_failure_details";
+      }
+      fatalDetailsPathPrefix += "." + type.shortStr() + "-" + indexForLog + "." + bindIp + "-" +
+          "port" + rpcPort;
+      args.add("--fatal_details_path_prefix=" + fatalDetailsPathPrefix);
+      command = args.toArray(command);
+    }
+
     LOG.info("Starting process: {}", Joiner.on(" ").join(command));
     ProcessBuilder processBuilder = new ProcessBuilder(command);
     processBuilder.redirectErrorStream(true);
     Process proc = processBuilder.start();
-    final int indexForLog =
-        type == MiniYBDaemonType.MASTER ? nextMasterIndex.incrementAndGet()
-                                        : nextTServerIndex.incrementAndGet();
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
             redisWebPort, dataDirPath);

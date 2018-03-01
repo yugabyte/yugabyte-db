@@ -396,7 +396,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
   ExternalDaemon(
-      std::string short_description,
+      std::string daemon_id,
       std::shared_ptr<rpc::Messenger> messenger,
       std::string exe,
       std::string data_dir,
@@ -470,7 +470,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   std::string ProcessNameAndPidStr();
 
-  const std::string short_description_;
+  const std::string daemon_id_;
   const std::shared_ptr<rpc::Messenger> messenger_;
   const std::string exe_;
   const std::string data_dir_;

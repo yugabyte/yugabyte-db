@@ -87,9 +87,11 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   set_mvn_parameters
   set_asan_tsan_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
+
   # This can't include $YB_TEST_INVOCATION_ID -- previously, when we did that, it looked like some
-  # Maven processes were killed, although it is not clear why, because they should already complete
-  # by the time we start looking for $YB_TEST_INVOCATION_ID in test names and killing processes.
+  # Maven processes were killed, although it is not clear why, because they should have already
+  # completed by the time we start looking for $YB_TEST_INVOCATION_ID in test names and killing
+  # processes.
   surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
   cd "$YB_SRC_ROOT/java"
@@ -106,6 +108,8 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
     -Dmaven.javadoc.skip \
     -X \
     surefire:test
+  # See the cleanup() function above for how we kill stuck processes based on the
+  # $YB_TEST_INVOCATION_ID pattern.
   exit
 fi
 

@@ -34,6 +34,9 @@ import java.util.concurrent.TimeUnit;
 public class BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
 
+  private static String currentTestClassName;
+  private static String currentTestMethodName;
+
   @Rule
   public final Timeout METHOD_TIMEOUT = new Timeout(
       TestUtils.adjustTimeoutForBuildType(getTestMethodTimeoutSec()), TimeUnit.SECONDS);
@@ -53,6 +56,9 @@ public class BaseYBTest {
 
     @Override
     protected void starting(Description description) {
+      currentTestClassName = description.getClassName();
+      currentTestMethodName = description.getMethodName();
+
       // The format of the heading below is important as it is parsed by external test dashboarding
       // tools.
       String descStr = descriptionToStr(description);
@@ -97,6 +103,20 @@ public class BaseYBTest {
    */
   public int getTestMethodTimeoutSec() {
     return 120;
+  }
+
+  public static String getCurrentTestClassName() {
+    if (currentTestClassName == null) {
+      throw new RuntimeException("Current test class name not known");
+    }
+    return currentTestClassName;
+  }
+
+  public static String getCurrentTestMethodName() {
+    if (currentTestMethodName == null) {
+      throw new RuntimeException("Current test method name not known");
+    }
+    return currentTestMethodName;
   }
 
 }
