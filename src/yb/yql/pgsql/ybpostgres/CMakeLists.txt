@@ -11,12 +11,20 @@
 # under the License.
 #
 
-# CQL service
-add_subdirectory(cql/ql)
-add_subdirectory(cql/cqlserver)
+# Postgres place all header files in one include directory and not together with source files.
+include_directories(postgres/src/include)
 
-# REDIS service
-add_subdirectory(redis/redisserver)
+add_library(ybpostgres_libpq
+            pg_pqcomm.cc
+            pg_pqformat.cc
+            pg_stringinfo.cc)
+target_link_libraries(ybpostgres_libpq
+                      yb_util)
 
-# POSTGRESQL service
-add_subdirectory(pgsql)
+add_library(pgsql-ybpostgres
+            pginstr.cc
+            pgport.cc
+            pgrecv.cc
+            pgsend.cc)
+target_link_libraries(pgsql-ybpostgres
+                      ybpostgres_libpq)

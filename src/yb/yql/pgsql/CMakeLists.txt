@@ -11,12 +11,9 @@
 # under the License.
 #
 
-# CQL service
-add_subdirectory(cql/ql)
-add_subdirectory(cql/cqlserver)
+# RPC service / connection.
+add_subdirectory(server)
 
-# REDIS service
-add_subdirectory(redis/redisserver)
-
-# POSTGRESQL service
-add_subdirectory(pgsql)
+#utility
+add_subdirectory(util)
+add_subdirectory(ybpostgres)

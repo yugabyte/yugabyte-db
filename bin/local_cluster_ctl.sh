@@ -323,6 +323,8 @@ start_tserver() {
        --redis_proxy_bind_address 127.0.0.$tserver_index:$(( $redis_rpc_port )) \
        --cql_proxy_webserver_port $(( $cql_http_port_base + $tserver_index )) \
        --cql_proxy_bind_address 127.0.0.$tserver_index:$(( $cql_rpc_port )) \
+       --pgsql_proxy_webserver_port $(( $pgsql_http_port_base + $tserver_index )) \
+       --pgsql_proxy_bind_address 127.0.0.$tserver_index:$(( $pgsql_rpc_port )) \
        --local_ip_for_outbound_sockets 127.0.0.$tserver_index \
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
@@ -542,11 +544,13 @@ master_http_port_base=7000
 tserver_http_port_base=9000
 redis_http_port_base=11000
 cql_http_port_base=12000
+pgsql_http_port_base=13000
 master_rpc_port=7100
 tserver_rpc_port=8100
 redis_rpc_port=6379
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
 cql_rpc_port=9042
+pgsql_rpc_port=5432
 
 common_params=" --version_file_json_path $build_root --callhome_enabled=false"
 

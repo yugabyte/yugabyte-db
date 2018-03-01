@@ -67,6 +67,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   private static final int REDIS_PORT = 6379;
 
+  private static final int PGSQL_PORT = 5432;
+
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
 
@@ -100,6 +102,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> redisContactPoints = new ArrayList<>();
+  private final List<InetSocketAddress> pgsqlContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private final YBClient syncClient;
@@ -338,6 +341,7 @@ public class MiniYBCluster implements AutoCloseable {
     final int webPort = TestUtils.findFreePort(tserverBindAddress);
     final int redisWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
+    final int pgsqlWebPort = TestUtils.findFreePort(tserverBindAddress);
 
     String dataDirPath = baseDirPath + "/ts-" + tserverBindAddress + "-" + rpcPort + "-" + now;
     String flagsPath = TestUtils.getFlagsPath();
@@ -352,6 +356,8 @@ public class MiniYBCluster implements AutoCloseable {
         "--webserver_port=" + webPort,
         "--redis_proxy_bind_address=" + tserverBindAddress + ":" + REDIS_PORT,
         "--redis_proxy_webserver_port=" + redisWebPort,
+        "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + PGSQL_PORT,
+        "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
         "--yb_num_shards_per_tserver=" + numShardsPerTserver,
         "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH_SECS,
@@ -368,10 +374,12 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.TSERVER,
         tsCmdLine.toArray(new String[tsCmdLine.size()]),
-        tserverBindAddress, rpcPort, webPort, cqlWebPort, redisWebPort, dataDirPath);
+        tserverBindAddress, rpcPort, webPort,
+        cqlWebPort, redisWebPort, pgsqlWebPort, dataDirPath);
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, REDIS_PORT));
+    pgsqlContactPoints.add(new InetSocketAddress(tserverBindAddress, PGSQL_PORT));
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -425,7 +433,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(
         MiniYBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
-        masterBindAddress, rpcPort, webPort, -1, -1, dataDirPath);
+        masterBindAddress, rpcPort, webPort, -1, -1, -1, dataDirPath);
 
     final HostAndPort masterHostPort = HostAndPort.fromParts(masterBindAddress, rpcPort);
     masterHostPorts.add(masterHostPort);
@@ -505,7 +513,7 @@ public class MiniYBCluster implements AutoCloseable {
           configureAndStartProcess(
               MiniYBDaemonType.MASTER,
               masterCmdLine.toArray(new String[masterCmdLine.size()]),
-              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, dataDirPath));
+              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, -1, dataDirPath));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -534,6 +542,7 @@ public class MiniYBCluster implements AutoCloseable {
                                                 int webPort,
                                                 int cqlWebPort,
                                                 int redisWebPort,
+                                                int pgsqlWebPort,
                                                 String dataDirPath) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
     final int indexForLog =
@@ -560,7 +569,7 @@ public class MiniYBCluster implements AutoCloseable {
     Process proc = processBuilder.start();
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
-            redisWebPort, dataDirPath);
+                         redisWebPort, pgsqlWebPort, dataDirPath);
 
     ProcessInputStreamLogPrinterRunnable printer =
         new ProcessInputStreamLogPrinterRunnable(proc.getInputStream(), daemon.getLogPrefix());
@@ -629,6 +638,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
     assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
     assert(redisContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), REDIS_PORT)));
+    assert(pgsqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), PGSQL_PORT)));
     destroyDaemonAndWait(ts);
     tserverUsedBindIPs.remove(hostPort.getHostText());
   }
@@ -776,6 +786,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<InetSocketAddress> getRedisContactPoints() {
     return redisContactPoints;
+  }
+
+  /**
+   * Returns a list of PGSQL contact points.
+   * @return PGSQL contact points
+   */
+  public List<InetSocketAddress> getPgsqlContactPoints() {
+    return pgsqlContactPoints;
   }
 
   /**

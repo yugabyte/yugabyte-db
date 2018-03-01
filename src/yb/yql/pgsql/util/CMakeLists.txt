@@ -11,12 +11,12 @@
 # under the License.
 #
 
-# CQL service
-add_subdirectory(cql/ql)
-add_subdirectory(cql/cqlserver)
+add_library(pgsql-util
+            pg_errcodes.cc
+            pg_env.cc
+            pg_session.cc)
 
-# REDIS service
-add_subdirectory(redis/redisserver)
-
-# POSTGRESQL service
-add_subdirectory(pgsql)
+target_link_libraries(pgsql-util
+                      pgsql-ybpostgres
+                      yb_client
+                      yb_util)
