@@ -57,7 +57,7 @@ DEFINE_uint64(test_redis_max_batch, 250,
 METRIC_DECLARE_gauge_uint64(redis_available_sessions);
 METRIC_DECLARE_gauge_uint64(redis_allocated_sessions);
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
 
 namespace yb {
 namespace redisserver {

@@ -187,9 +187,10 @@ std::string RpcRetrier::ToString() const {
                 deadline_);
 }
 
-RpcController* RpcRetrier::PrepareController() {
-  const auto single_call_timeout =
-      MonoDelta::FromMilliseconds(FLAGS_retryable_rpc_single_call_timeout_ms);
+RpcController* RpcRetrier::PrepareController(MonoDelta single_call_timeout) {
+  if (!single_call_timeout) {
+    single_call_timeout = MonoDelta::FromMilliseconds(FLAGS_retryable_rpc_single_call_timeout_ms);
+  }
   controller_.set_deadline(std::min(deadline_, MonoTime::Now() + single_call_timeout));
   return &controller_;
 }
