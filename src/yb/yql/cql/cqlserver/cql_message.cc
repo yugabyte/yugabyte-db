@@ -95,6 +95,7 @@ Status CQLMessage::QueryParameters::GetBindVariable(const std::string& name,
           case DataType::DECIMAL: FALLTHROUGH_INTENDED;
           case DataType::VARINT: FALLTHROUGH_INTENDED;
           case DataType::INET: FALLTHROUGH_INTENDED;
+          case DataType::JSONB: FALLTHROUGH_INTENDED;
           case DataType::LIST: FALLTHROUGH_INTENDED;
           case DataType::MAP: FALLTHROUGH_INTENDED;
           case DataType::SET: FALLTHROUGH_INTENDED;
@@ -1066,6 +1067,7 @@ ResultResponse::RowsMetadata::Type::Type(const Id id) : id(id) {
     case Id::VARINT:
     case Id::TIMEUUID:
     case Id::INET:
+    case Id::JSONB:
     case Id::DATE:
     case Id::TIME:
     case Id::SMALLINT:
@@ -1118,6 +1120,7 @@ ResultResponse::RowsMetadata::Type::Type(const Id id, shared_ptr<const Type> ele
     case Id::VARINT:
     case Id::TIMEUUID:
     case Id::INET:
+    case Id::JSONB:
     case Id::DATE:
     case Id::TIME:
     case Id::SMALLINT:
@@ -1166,6 +1169,7 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
     case Id::VARINT:
     case Id::TIMEUUID:
     case Id::INET:
+    case Id::JSONB:
     case Id::DATE:
     case Id::TIME:
     case Id::SMALLINT:
@@ -1229,6 +1233,9 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
       return;
     case DataType::INET:
       id = Id::INET;
+      return;
+    case DataType::JSONB:
+      id = Id::JSONB;
       return;
     case DataType::UUID:
       id = Id::UUID;
@@ -1311,6 +1318,7 @@ ResultResponse::RowsMetadata::Type::~Type() {
     case Id::VARINT:
     case Id::TIMEUUID:
     case Id::INET:
+    case Id::JSONB:
     case Id::DATE:
     case Id::TIME:
     case Id::SMALLINT:
@@ -1387,6 +1395,7 @@ void ResultResponse::SerializeType(const RowsMetadata::Type* type, faststring* m
     case RowsMetadata::Type::Id::VARINT:
     case RowsMetadata::Type::Id::TIMEUUID:
     case RowsMetadata::Type::Id::INET:
+    case RowsMetadata::Type::Id::JSONB:
     case RowsMetadata::Type::Id::DATE:
     case RowsMetadata::Type::Id::TIME:
     case RowsMetadata::Type::Id::SMALLINT:

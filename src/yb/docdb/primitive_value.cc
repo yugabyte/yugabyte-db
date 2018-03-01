@@ -27,6 +27,7 @@
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/jsonb.h"
 #include "yb/util/net/inetaddress.h"
 
 using std::string;
@@ -38,6 +39,13 @@ using yb::util::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastAppendSignedVarIntToStr;
 using yb::util::FastDecodeSignedVarInt;
+using yb::util::kInt32SignBitFlipMask;
+using yb::util::AppendBigEndianUInt64;
+using yb::util::AppendBigEndianUInt32;
+using yb::util::DecodeInt64FromKey;
+using yb::util::DecodeFloatFromKey;
+using yb::util::DecodeDoubleFromKey;
+using yb::util::Jsonb;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
 // default clause so that we can ensure that we're handling all possible primitive value types
@@ -54,6 +62,7 @@ using yb::util::FastDecodeSignedVarInt;
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED; \
     case ValueType::kTtl: FALLTHROUGH_INTENDED; \
     case ValueType::kUserTimestamp: FALLTHROUGH_INTENDED; \
+    case ValueType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: \
       break
 
@@ -158,6 +167,8 @@ string PrimitiveValue::ToString() const {
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress:
       return inetaddress_val_->ToString();
+    case ValueType::kJsonb:
+      return FormatBytesAsStr(json_val_);
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuid:
       return uuid_val_.ToString();
@@ -439,6 +450,16 @@ string PrimitiveValue::ToValue() const {
       std::string bytes;
       CHECK_OK(inetaddress_val_->ToBytes(&bytes))
       result.append(bytes);
+      return result;
+    }
+
+    case ValueType::kJsonb: {
+      // Append the jsonb flags.
+      int64_t jsonb_flags = kCompleteJsonb;
+      AppendBigEndianUInt64(jsonb_flags, &result);
+
+      // Append the jsonb serialized blob.
+      result.append(json_val_);
       return result;
     }
 
@@ -924,16 +945,31 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       timestamp_val_ = Timestamp(BigEndian::Load64(slice.data()));
       return Status::OK();
 
+    case ValueType::kJsonb: {
+      if (slice.size() < sizeof(int64_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+                             value_type, slice.size());
+      }
+      // Read the jsonb flags.
+      int64_t jsonb_flags = BigEndian::Load64(slice.data());
+      slice.remove_prefix(sizeof(jsonb_flags));
+
+      // Read the serialized jsonb.
+      new(&json_val_) string(slice.ToBuffer());
+      type_ = value_type;
+      return Status::OK();
+    }
+
     case ValueType::kInetaddress: {
       if (slice.size() != kInetAddressV4Size && slice.size() != kInetAddressV6Size) {
         return STATUS_FORMAT(Corruption,
-            "Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
-            slice.size(), kInetAddressV4Size, kInetAddressV6Size);
+                             "Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
+                             slice.size(), kInetAddressV4Size, kInetAddressV6Size);
       }
       // Need to use a non-rocksdb slice for InetAddress.
       Slice slice_temp(slice.data(), slice.size());
       inetaddress_val_ = new InetAddress();
-      RETURN_NOT_OK(inetaddress_val_->FromSlice(slice_temp));
+          RETURN_NOT_OK(inetaddress_val_->FromSlice(slice_temp));
       type_ = value_type;
       return Status::OK();
     }
@@ -1069,6 +1105,12 @@ PrimitiveValue PrimitiveValue::IntentTypeValue(IntentType intent_type) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
+  PrimitiveValue primitive_value;
+  primitive_value.type_ = ValueType::kJsonb;
+  new(&primitive_value.json_val_) string(json);
+  return primitive_value;
+}
 
 KeyBytes PrimitiveValue::ToKeyBytes() const {
   KeyBytes kb;
@@ -1248,6 +1290,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
     new(&uuid_val_) Uuid();
   } else if (value_type == ValueType::kFrozen || value_type == ValueType::kFrozenDescending) {
     frozen_val_ = new FrozenContainer();
+  } else if (value_type == ValueType::kJsonb) {
+    new(&json_val_) std::string();
   }
 }
 
@@ -1299,6 +1343,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue(QLValue(value).timestamp_value(), sort_order);
     case QLValuePB::kInetaddressValue:
       return PrimitiveValue(QLValue(value).inetaddress_value(), sort_order);
+    case QLValuePB::kJsonbValue:
+      return PrimitiveValue::Jsonb(QLValue(value).jsonb_value());
     case QLValuePB::kUuidValue:
       return PrimitiveValue(QLValue(value).uuid_value(), sort_order);
     case QLValuePB::kTimeuuidValue:
@@ -1381,6 +1427,12 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     case INET: {
       QLValue temp_value;
       temp_value.set_inetaddress_value(*primitive_value.GetInetaddress());
+      *ql_value = std::move(*temp_value.mutable_value());
+      return;
+    }
+    case JSONB: {
+      QLValue temp_value;
+      temp_value.set_jsonb_value(primitive_value.GetJson());
       *ql_value = std::move(*temp_value.mutable_value());
       return;
     }

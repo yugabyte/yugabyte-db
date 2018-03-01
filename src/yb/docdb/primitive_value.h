@@ -53,6 +53,9 @@ class PrimitiveValue {
   static const PrimitiveValue kInvalidPrimitiveValue;
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
+  // Flags for jsonb.
+  // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
+  static constexpr int64_t kCompleteJsonb = 1;
 
   PrimitiveValue() : type_(ValueType::kNull) {
   }
@@ -63,6 +66,9 @@ class PrimitiveValue {
     if (other.type_ == ValueType::kString || other.type_ == ValueType::kStringDescending) {
       type_ = other.type_;
       new(&str_val_) std::string(other.str_val_);
+    } else if (other.type_ == ValueType::kJsonb) {
+      type_ = other.type_;
+      new(&json_val_) std::string(other.json_val_);
     } else if (other.type_ == ValueType::kInetaddress
         || other.type_ == ValueType::kInetaddressDescending) {
       type_ = other.type_;
@@ -201,6 +207,8 @@ class PrimitiveValue {
   ~PrimitiveValue() {
     if (type_ == ValueType::kString || type_ == ValueType::kStringDescending) {
       str_val_.~basic_string();
+    } else if (type_ == ValueType::kJsonb) {
+      json_val_.~basic_string();
     } else if (type_ == ValueType::kInetaddress || type_ == ValueType::kInetaddressDescending) {
       delete inetaddress_val_;
     } else if (type_ == ValueType::kDecimal || type_ == ValueType::kDecimalDescending) {
@@ -235,6 +243,7 @@ class PrimitiveValue {
   static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue IntentTypeValue(IntentType intent_type);
+  static PrimitiveValue Jsonb(const std::string& json);
 
   KeyBytes ToKeyBytes() const;
 
@@ -326,6 +335,11 @@ class PrimitiveValue {
     return inetaddress_val_;
   }
 
+  const std::string& GetJson() const {
+    DCHECK(type_ == ValueType::kJsonb);
+    return json_val_;
+  }
+
   const Uuid& GetUuid() const {
     DCHECK(type_ == ValueType::kUuid || type_ == ValueType::kUuidDescending ||
         type_ == ValueType::kTransactionId);
@@ -407,6 +421,7 @@ class PrimitiveValue {
     ColumnId column_id_val_;
     std::string decimal_val_;
     std::string varint_val_;
+    std::string json_val_;
   };
 
  private:
@@ -428,6 +443,9 @@ class PrimitiveValue {
         || other->type_ == ValueType::kInetaddressDescending) {
       type_ = other->type_;
       inetaddress_val_ = new InetAddress(std::move(*(other->inetaddress_val_)));
+    } else if (other->type_ == ValueType::kJsonb) {
+      type_ = other->type_;
+      new(&json_val_) std::string(std::move(other->json_val_));
     } else if (other->type_ == ValueType::kDecimal ||
         other->type_ == ValueType::kDecimalDescending) {
       type_ = other->type_;

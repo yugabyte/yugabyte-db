@@ -111,6 +111,8 @@ class YBPartialRow {
   CHECKED_STATUS SetBinary(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetInet(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetInet(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetJsonb(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetJsonb(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDecimal(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDecimal(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
@@ -193,6 +195,8 @@ class YBPartialRow {
   CHECKED_STATUS GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetInet(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetInet(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetJsonb(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetJsonb(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetDecimal(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetDecimal(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;

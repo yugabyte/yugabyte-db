@@ -124,6 +124,10 @@ class QLValue {
     CHECK_OK(addr.FromBytes(pb_.inetaddress_value()));
     return addr;
   }
+  virtual const std::string& jsonb_value() const {
+    CHECK(pb_.has_jsonb_value()) << "Value: " << pb_.ShortDebugString();
+    return pb_.jsonb_value();
+  }
   virtual const QLMapValuePB& map_value() const {
     CHECK(pb_.has_map_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.map_value();
@@ -200,6 +204,9 @@ class QLValue {
   virtual void set_decimal_value(std::string&& val) {
     pb_.set_decimal_value(std::move(val));
   }
+  virtual void set_jsonb_value(std::string&& val) {
+    pb_.set_jsonb_value(std::move(val));
+  }
   virtual void set_bool_value(bool val) {
     pb_.set_bool_value(val);
   }
@@ -235,6 +242,9 @@ class QLValue {
     CHECK_OK(val.ToBytes(&bytes));
     pb_.set_inetaddress_value(std::move(bytes));
   }
+  virtual void set_jsonb_value(const std::string& val) {
+    pb_.set_jsonb_value(val);
+  }
   virtual void set_uuid_value(const Uuid& val) {
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));
@@ -253,6 +263,9 @@ class QLValue {
   //--------------------------------- mutable value methods ----------------------------------
   std::string* mutable_decimal_value() {
     return pb_.mutable_decimal_value();
+  }
+  std::string* mutable_jsonb_value() {
+    return pb_.mutable_jsonb_value();
   }
   std::string* mutable_varint_value() {
     return pb_.mutable_varint_value();

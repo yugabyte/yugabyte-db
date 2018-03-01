@@ -53,6 +53,7 @@ string ToString(ValueType value_type) {
     case ValueType::kTimestamp: return "Timestamp";
     case ValueType::kInetaddressDescending: return "InetAddressDescending";
     case ValueType::kInetaddress: return "InetAddress";
+    case ValueType::kJsonb: return "Jsonb";
     case ValueType::kUuidDescending: return "UuidDecending";
     case ValueType::kUuid: return "Uuid";
     case ValueType::kHybridTime: return "HybridTime";

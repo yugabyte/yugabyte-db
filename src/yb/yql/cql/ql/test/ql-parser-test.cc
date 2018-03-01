@@ -183,6 +183,10 @@ TEST_F(QLTestParser, TestQLParser) {
 
   // Valid statement: CREATE table with inet type.
   PARSE_VALID_STMT("CREATE TABLE human_resource (c1 inet, c2 int, c3 int, PRIMARY KEY(c1));");
+
+  // Create table with jsonb type.
+  PARSE_VALID_STMT("CREATE TABLE human_resource (h1 int, r1 int, data jsonb, "
+                       "PRIMARY KEY ((h1), r1));");
 }
 
 TEST_F(QLTestParser, TestStaticColumn) {
