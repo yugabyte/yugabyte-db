@@ -819,96 +819,15 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return rocksdb_->Import(source_dir);
 }
 
-#define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
-  BOOST_PP_CAT(SCHECK_, op)(lhs, \
-                            rhs, \
-                            Corruption, \
-                            Format("Bad intent value, $0 in $1, transaction: $2", \
-                                   msg, \
-                                   intent_iter->value().ToDebugHexString(), \
-                                   transaction_id_slice.ToDebugHexString()))
-
 // We apply intents using by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
 // TODO(dtxn) use separate thread for applying intents.
 // TODO(dtxn) use multiple batches when applying really big transaction.
 Status Tablet::ApplyIntents(const TransactionApplyData& data) {
-  Slice reverse_index_upperbound;
-  auto reverse_index_iter = docdb::CreateRocksDBIterator(
-      rocksdb_.get(),
-      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      boost::none,
-      rocksdb::kDefaultQueryId,
-      nullptr,
-      &reverse_index_upperbound);
-
-  auto intent_iter = docdb::CreateRocksDBIterator(rocksdb_.get(),
-                                                  docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-                                                  boost::none,
-                                                  rocksdb::kDefaultQueryId);
-
-  KeyBytes txn_reverse_index_prefix;
-  Slice transaction_id_slice(data.transaction_id.data, TransactionId::static_size());
-  AppendTransactionKeyPrefix(data.transaction_id, &txn_reverse_index_prefix);
-
-  KeyBytes txn_reverse_index_upperbound = txn_reverse_index_prefix;
-  txn_reverse_index_upperbound.AppendValueType(ValueType::kMaxByte);
-  reverse_index_upperbound = txn_reverse_index_upperbound.AsSlice();
-
-  reverse_index_iter->Seek(txn_reverse_index_prefix.data());
-
   WriteBatch rocksdb_write_batch;
-
-  docdb::DocHybridTimeBuffer doc_ht_buffer;
-
-  IntraTxnWriteId write_id = 0;
-  while (reverse_index_iter->Valid()) {
-    rocksdb::Slice key_slice(reverse_index_iter->key());
-
-    // If the key ends at the transaction id then it is transaction metadata (status tablet,
-    // isolation level etc.).
-    if (key_slice.size() > txn_reverse_index_prefix.size()) {
-      // Value of reverse index is a key of original intent record, so seek it and check match.
-      intent_iter->Seek(reverse_index_iter->value());
-      if (!intent_iter->Valid() || intent_iter->key() != reverse_index_iter->value()) {
-        LOG(DFATAL) << "Unable to find intent: " << reverse_index_iter->value().ToDebugString()
-                    << " for " << reverse_index_iter->key().ToDebugString();
-        continue;
-      }
-      auto intent = docdb::ParseIntentKey(intent_iter->key(), transaction_id_slice);
-      RETURN_NOT_OK(intent);
-
-      if (IsStrongIntent(intent->type)) {
-        Slice intent_value(intent_iter->value());
-        INTENT_VALUE_SCHECK(intent_value[0], EQ, static_cast<uint8_t>(ValueType::kTransactionId),
-                            "prefix expected");
-        intent_value.consume_byte();
-        INTENT_VALUE_SCHECK(intent_value.starts_with(transaction_id_slice), EQ, true,
-                            "wrong transaction id");
-        intent_value.remove_prefix(transaction_id_slice.size());
-
-        // After strip of prefix and suffix intent_key contains just SubDocKey w/o a hybrid time.
-        // Time will be added when writing batch to rocks db.
-        std::array<Slice, 2> key_parts = {{
-            intent->doc_path,
-            doc_ht_buffer.EncodeWithValueType(data.commit_ht, write_id),
-        }};
-        std::array<Slice, 2> value_parts = {{
-            intent->doc_ht,
-            intent_value,
-        }};
-        rocksdb_write_batch.Put(key_parts, value_parts);
-        ++write_id;
-      }
-
-      rocksdb_write_batch.Delete(intent_iter->key());
-    }
-
-    rocksdb_write_batch.Delete(reverse_index_iter->key());
-
-    reverse_index_iter->Next();
-  }
+  RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
+      data.transaction_id, data.commit_ht, rocksdb_.get(), &rocksdb_write_batch));
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.

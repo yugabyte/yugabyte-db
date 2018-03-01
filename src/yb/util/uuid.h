@@ -19,7 +19,6 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/system/error_code.hpp>
-#include <boost/uuid/sha1.hpp>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"

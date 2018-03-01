@@ -156,6 +156,10 @@ void PrepareTransactionWriteBatch(
     const TransactionId& transaction_id,
     IsolationLevel isolation_level);
 
+CHECKED_STATUS PrepareApplyIntentsBatch(
+    const TransactionId& transaction_id, HybridTime commit_ht,
+    rocksdb::DB* db, rocksdb::WriteBatch* write_batch);
+
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.
 // We can scan any SubDocument from a node in the document tree.

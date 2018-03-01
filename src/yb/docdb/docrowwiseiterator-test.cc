@@ -755,14 +755,14 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ 
     -> TransactionId(30303030-3030-3030-3030-303030303032) "row2_e_t2"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) "row2_e_t1"
-TXN REV 30303030-3030-3030-3030-303030303031 -> \
-    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
-TXN REV 30303030-3030-3030-3030-303030303031 -> \
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 }
-TXN REV 30303030-3030-3030-3030-303030303032 -> \
-    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 }
-TXN REV 30303030-3030-3030-3030-303030303032 -> \
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
+    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
+    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 }
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"

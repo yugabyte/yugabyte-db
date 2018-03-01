@@ -75,6 +75,8 @@ class ConflictResolverContext {
 
   virtual HybridTime GetHybridTime() = 0;
 
+  virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
+
  protected:
   ~ConflictResolverContext() {}
 };
@@ -137,11 +139,12 @@ class ConflictResolver {
       RETURN_NOT_OK(existing_intent);
 
       if (conflicting_intent_types.test(static_cast<size_t>(existing_intent->type))) {
-        auto transaction_id = FullyDecodeTransactionId(
-            Slice(existing_value.data(), TransactionId::static_size()));
-        RETURN_NOT_OK(transaction_id);
+        auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
+            Slice(existing_value.data(), TransactionId::static_size())));
 
-        conflicts_.insert(*transaction_id);
+        if (!context_.IgnoreConflictsWith(transaction_id)) {
+          conflicts_.insert(transaction_id);
+        }
       }
 
       intent_iter_->Next();
@@ -403,6 +406,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     return hybrid_time_;
   }
 
+  bool IgnoreConflictsWith(const TransactionId& other) override {
+    return other == *transaction_id_;
+  }
+
   const KeyValueWriteBatchPB& write_batch_;
   HybridTime hybrid_time_;
   Result<TransactionId> transaction_id_;
@@ -454,6 +461,10 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
   HybridTime GetHybridTime() override {
     return hybrid_time_;
+  }
+
+  bool IgnoreConflictsWith(const TransactionId& other) override {
+    return false;
   }
 
   CHECKED_STATUS CheckConflictWithCommitted(
