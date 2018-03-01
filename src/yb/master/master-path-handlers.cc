@@ -184,8 +184,8 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     TSRegistrationPB reg;
     desc->GetRegistration(&reg);
     string host_port = Substitute("$0:$1",
-                                  reg.common().rpc_addresses(0).host(),
-                                  reg.common().rpc_addresses(0).port());
+                                  reg.common().http_addresses(0).host(),
+                                  reg.common().http_addresses(0).port());
     *output << "  <tr>\n";
     *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
     *output << "    <td>" << time_since_hb << "</td>";
@@ -565,8 +565,8 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       continue;
     }
     string host_port = Substitute("$0:$1",
-                                  master.registration().rpc_addresses(0).host(),
-                                  master.registration().rpc_addresses(0).port());
+                                  master.registration().http_addresses(0).host(),
+                                  master.registration().http_addresses(0).port());
     string reg_text = RegistrationToHtml(master.registration(), host_port);
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
