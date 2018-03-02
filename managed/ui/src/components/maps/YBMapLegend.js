@@ -11,13 +11,13 @@ export default class YBMapLegend extends Component {
   render() {
     const {regions, type} = this.props;
     const rootRegions = regions;
-    const asyncRegions = [{"name": "No async replicas added."}];
+    const asyncRegions = [{"name": "No read replicas added."}];
     let mapLegendItems = <span/>;
     if (type === "Universe") {
       mapLegendItems = (
         <span>
           <YBMapLegendItem regions={rootRegions} title={"Primary Data"} type="Root"/>
-          <YBMapLegendItem regions={asyncRegions} title={"Async Replica"} type="Async"/>
+          <YBMapLegendItem regions={asyncRegions} title={"Read Replica"} type="Async"/>
         </span>
       );
     } else if (type === "Region") {
