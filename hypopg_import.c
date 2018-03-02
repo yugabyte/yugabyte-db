@@ -32,7 +32,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-#include "hypopg_import.h"
+#include "include/hypopg_import.h"
 
 
 /* Copied from src/backend/optimizer/util/plancat.c, not exported.

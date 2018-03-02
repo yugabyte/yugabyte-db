@@ -9,6 +9,12 @@
  *
  *-------------------------------------------------------------------------
  */
+#ifndef _HYPOPG_IMPORT_H_
+#define _HYPOPG_IMPORT_H_
+
+#include "nodes/pg_list.h"
+#include "optimizer/planner.h"
+#include "utils/rel.h"
 
 
 /* adapted from nbtinsert.h */
@@ -28,3 +34,5 @@ extern bool CheckMutability(Expr *expr);
 extern char *get_am_name(Oid amOid);
 #endif
 extern void get_opclass_name(Oid opclass, Oid actual_datatype, StringInfo buf);
+
+#endif
