@@ -33,6 +33,7 @@
 #ifndef YB_TABLET_TABLET_PEER_H_
 #define YB_TABLET_TABLET_PEER_H_
 
+#include <atomic>
 #include <future>
 #include <map>
 #include <memory>
@@ -45,6 +46,7 @@
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/transaction_coordinator.h"
@@ -171,8 +173,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   }
 
   const TabletStatePB state() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return state_;
+    return state_.load(std::memory_order_acquire);
   }
 
   // Returns the current Raft configuration.
@@ -184,23 +185,33 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Sets the tablet to a BOOTSTRAPPING state, indicating it is starting up.
   void SetBootstrapping() {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    CHECK_EQ(NOT_STARTED, state_);
-    state_ = BOOTSTRAPPING;
+    CHECK_OK(UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, ""));
+  }
+
+  Status UpdateState(TabletStatePB expected, TabletStatePB new_state, string error_message) {
+    TabletStatePB old = expected;
+    return (state_.compare_exchange_strong(old, new_state, std::memory_order_acq_rel) ?
+        Status::OK() : STATUS_FORMAT(
+            InvalidArgument, "$0 Expected state:$1, got:$2",
+            error_message, TabletStatePB_Name(expected), TabletStatePB_Name(old)));
   }
 
   // sets the tablet state to FAILED additionally setting the error to the provided
   // one.
   void SetFailed(const Status& error) {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    state_ = FAILED;
-    error_ = error;
+    DCHECK(error_.get(std::memory_order_acquire) == nullptr);
+    error_ = MakeAtomicUniquePtr<Status>(error);
+    state_.store(TabletStatePB::FAILED, std::memory_order_release);
   }
 
   // Returns the error that occurred, when state is FAILED.
   CHECKED_STATUS error() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return error_;
+    Status *error;
+    if ((error = error_.get(std::memory_order_acquire)) != nullptr) {
+      // Once the error_ is set, we do not reset it to nullptr
+      return *error;
+    }
+    return Status::OK();
   }
 
   // Returns a human-readable string indicating the state of the tablet.
@@ -320,8 +331,13 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   const consensus::RaftPeerPB local_peer_pb_;
 
-  TabletStatePB state_;
-  Status error_;
+  // The atomics state_, error_ and has_consensus_ maintain information about the tablet peer.
+  // While modifying the other fields in tablet peer, state_ is modified last.
+  // error_ is set before state_ is set to an error state.
+  std::atomic<enum TabletStatePB> state_;
+  AtomicUniquePtr<Status> error_;
+  std::atomic<bool> has_consensus_ = {false};
+
   OperationTracker operation_tracker_;
   OperationOrderVerifier operation_order_verifier_;
   scoped_refptr<log::Log> log_;
