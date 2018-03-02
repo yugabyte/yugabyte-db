@@ -92,6 +92,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   }
 
   void SetUp() override {
+    HybridTime::TEST_SetPrettyToString(true);
     YBMiniClusterTestBase::SetUp();
   }
 

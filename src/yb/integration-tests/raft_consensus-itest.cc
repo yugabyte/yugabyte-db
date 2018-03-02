@@ -2384,7 +2384,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
       "--log_segment_size_mb=1",
       "--log_async_preallocate_segments=false",
       "--maintenance_manager_polling_interval_ms=300",
-      Format("--db_write_buffer_size=$0", 1_MB),
+      Format("--db_write_buffer_size=$0", 256_KB),
       "--remote_bootstrap_begin_session_timeout_ms=15000"
   };
   std::vector<std::string> master_flags = {

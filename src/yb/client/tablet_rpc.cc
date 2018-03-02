@@ -218,7 +218,11 @@ bool TabletInvoker::Done(Status* status) {
   // this case.
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
       status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
-      TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
+      TabletNotFoundOnTServer(rpc_->response_error(), *status) ||
+      (status->IsTimedOut() && MonoTime::Now() < retrier_->deadline())) {
+    VLOG(4) << "Retryable failure: " << *status
+            << ", response: " << yb::ToString(rpc_->response_error());
+
     const bool leader_is_not_ready =
         ErrorCode(rpc_->response_error()) ==
             tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE ||

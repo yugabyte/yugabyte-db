@@ -180,6 +180,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     return;
   }
   ops_.reserve(tablets.size());
+  partition_key_ends_.reserve(tablets.size());
 
   session_ = client->NewSession();
   REPORT_AND_RETURN_IF_NOT_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
@@ -200,12 +201,16 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
 
     if (options.filter) {
       options.filter(*table_, req->mutable_where_expr()->mutable_condition());
+    } else {
+      req->set_return_paging_state(true);
+      req->set_limit(128);
     }
     if (options.read_time) {
       op->SetReadTime(options.read_time);
     }
     table_->AddColumns(*options.columns, req);
     ops_.push_back(std::move(op));
+    partition_key_ends_.push_back(tablet.partition().partition_key_end());
   }
 
   ExecuteOps();
@@ -248,19 +253,38 @@ const QLRow& TableIterator::operator*() const {
 void TableIterator::Move() {
   while (!current_block_ || row_index_ == current_block_->rows().size()) {
     if (current_block_) {
-      ++ops_index_;
-      if (ops_index_ >= executed_ops_ && executed_ops_ < ops_.size()) {
-        ExecuteOps();
+      if (paging_state_) {
+        auto& op = ops_[ops_index_];
+        *op->mutable_request()->mutable_paging_state() = *paging_state_;
+        REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(op));
+        REPORT_AND_RETURN_IF_NOT_OK(session_->Flush());
+        if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
+          HandleError(STATUS_FORMAT(RuntimeError, "Error for $0: $1", *op, op->response()));
+        }
+      } else {
+        ++ops_index_;
+        if (ops_index_ >= executed_ops_ && executed_ops_ < ops_.size()) {
+          ExecuteOps();
+        }
       }
     }
     if (ops_index_ == ops_.size()) {
       table_ = nullptr;
       return;
     }
-    auto next_block = ops_[ops_index_]->MakeRowBlock();
+    auto& op = *ops_[ops_index_];
+    auto next_block = op.MakeRowBlock();
     REPORT_AND_RETURN_IF_NOT_OK(next_block);
     current_block_ = std::move(*next_block);
+    paging_state_ = op.response().has_paging_state() ? &op.response().paging_state() : nullptr;
+    if (ops_index_ < partition_key_ends_.size() - 1 && paging_state_ &&
+        paging_state_->next_partition_key() >= partition_key_ends_[ops_index_]) {
+      paging_state_ = nullptr;
+    }
     row_index_ = 0;
+
+    VLOG(4) << "New block: " << yb::ToString(current_block_->rows())
+            << ", paging: " << yb::ToString(paging_state_);
   }
 }
 
