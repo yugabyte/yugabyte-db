@@ -16,8 +16,6 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_util.h"
 
-DECLARE_bool(use_multi_level_index);
-
 namespace yb {
 namespace docdb {
 
@@ -29,7 +27,6 @@ DocDBTestBase::~DocDBTestBase() {
 
 void DocDBTestBase::SetUp() {
   YBTest::SetUp();
-  FLAGS_use_multi_level_index = true;
   ASSERT_OK(InitRocksDBOptions());
   ASSERT_OK(InitRocksDBDir());
   ASSERT_OK(OpenRocksDB());

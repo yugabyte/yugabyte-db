@@ -75,10 +75,7 @@ DEFINE_bool(use_docdb_aware_bloom_filter, true,
 DEFINE_int32(max_nexts_to_avoid_seek, 1,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
 DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
-// TODO(mli) - switch to true once it is safe (necessary installations are upgraded to a build which
-// supports multi-level index). Also update other places in tests where it is set to true
-// explicitly.
-DEFINE_bool(use_multi_level_index, false, "Whether to use multi-level data index.");
+DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
 
