@@ -6,7 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
 import { isNonEmptyArray, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster, getAsyncCluster } from '../../../utils/UniverseUtils';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
@@ -58,7 +58,8 @@ export default class AZSelectorTable extends Component {
   }
 
   updatePlacementInfo = (currentAZState, universeConfigTemplate) => {
-    const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes, minNumNodes} = this.props;
+    const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList, currentProvider, maxNumNodes,
+           minNumNodes, clusterType} = this.props;
     this.setState({azItemState: currentAZState});
     let totalNodesInConfig = 0;
     currentAZState.forEach(function(item){
@@ -66,10 +67,15 @@ export default class AZSelectorTable extends Component {
     });
     numNodesChangedViaAzList(totalNodesInConfig);
 
-    const primaryCluster = getPrimaryCluster(universeConfigTemplate.clusters);
+    let cluster = null;
+    if (clusterType === "primary") {
+      cluster = getPrimaryCluster(universeConfigTemplate.clusters);
+    } else {
+      cluster = getAsyncCluster(universeConfigTemplate.clusters);
+    }
     if ((currentProvider.code !== "onprem" || totalNodesInConfig <= maxNumNodes) &&
-        totalNodesInConfig >= minNumNodes && isNonEmptyObject(primaryCluster)) {
-      const newPlacementInfo = _.clone(primaryCluster.placementInfo, true);
+        totalNodesInConfig >= minNumNodes && isNonEmptyObject(cluster)) {
+      const newPlacementInfo = _.clone(cluster.placementInfo, true);
       const newRegionList = [];
       cloud.regions.data.forEach(function (regionItem) {
         const newAzList = [];
@@ -102,7 +108,10 @@ export default class AZSelectorTable extends Component {
       const newTaskParams = _.clone(universeConfigTemplate, true);
       if (isNonEmptyArray(newTaskParams.clusters)) {
         newTaskParams.clusters.forEach((cluster) => {
-          if (cluster.clusterType === 'PRIMARY') {
+          if (clusterType === "primary" && cluster.clusterType === 'PRIMARY') {
+            cluster.placementInfo = newPlacementInfo;
+            cluster.userIntent.numNodes = totalNodesInConfig;
+          } else if (clusterType === "async" && cluster.clusterType === 'ASYNC') {
             cluster.placementInfo = newPlacementInfo;
             cluster.userIntent.numNodes = totalNodesInConfig;
           }
@@ -147,8 +156,26 @@ export default class AZSelectorTable extends Component {
 
   getGroupWithCounts = universeConfigTemplate => {
     const uniConfigArray = [];
-    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
-      universeConfigTemplate.nodeDetailsSet.forEach(function (nodeItem) {
+    const {clusterType} = this.props;
+    let cluster = null;
+    if (isNonEmptyObject(universeConfigTemplate)) {
+      if (clusterType === "primary") {
+        cluster = getPrimaryCluster(universeConfigTemplate.clusters);
+      } else {
+        cluster = getAsyncCluster(universeConfigTemplate.clusters);
+      }
+    }
+
+    let currentClusterNodes = [];
+    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyObject(universeConfigTemplate.nodeDetailsSet) && isNonEmptyObject(cluster)) {
+      currentClusterNodes =
+      universeConfigTemplate.nodeDetailsSet.filter(function (nodeItem) {
+        return nodeItem.clusterUuid === cluster.uuid;
+      });
+    }
+
+    if (isNonEmptyObject(universeConfigTemplate) && isNonEmptyArray(currentClusterNodes)) {
+      currentClusterNodes.forEach(function (nodeItem) {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           let nodeFound = false;
           for (let idx = 0; idx < uniConfigArray.length; idx++) {
@@ -166,14 +193,11 @@ export default class AZSelectorTable extends Component {
     }
     const groupsArray = [];
     const uniqueRegions = [];
-    const primaryCluster = isNonEmptyObject(universeConfigTemplate) ?
-      getPrimaryCluster(universeConfigTemplate.clusters) :
-      null;
-    if (isNonEmptyObject(primaryCluster) &&
-        isNonEmptyObject(primaryCluster.placementInfo) &&
-        isNonEmptyArray(primaryCluster.placementInfo.cloudList) &&
-        isNonEmptyArray(primaryCluster.placementInfo.cloudList[0].regionList)) {
-      primaryCluster.placementInfo.cloudList[0].regionList.forEach(function(regionItem) {
+    if (isNonEmptyObject(cluster) &&
+        isNonEmptyObject(cluster.placementInfo) &&
+        isNonEmptyArray(cluster.placementInfo.cloudList) &&
+        isNonEmptyArray(cluster.placementInfo.cloudList[0].regionList)) {
+      cluster.placementInfo.cloudList[0].regionList.forEach(function(regionItem) {
         regionItem.azList.forEach(function(azItem) {
           uniConfigArray.forEach(function(configArrayItem) {
             if (configArrayItem.value === azItem.uuid) {
@@ -233,7 +257,7 @@ export default class AZSelectorTable extends Component {
       getPrimaryCluster(universeConfigTemplate.data.clusters) :
       null;
     if (isNonEmptyObject(primaryCluster) && isNonEmptyObject(primaryCluster.userIntent) &&
-        isNonEmptyArray(primaryCluster.userIntent.regionList)) {
+        isNonEmptyArray(primaryCluster.userIntent.regionList) && isNonEmptyArray(regions.data)) {
       azListForSelectedRegions = regions.data.filter((region) => {
         return primaryCluster.userIntent.regionList.includes(region.uuid);
       }).reduce((az, region) => {

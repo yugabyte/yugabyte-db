@@ -6,15 +6,12 @@ import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
-import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isNonEmptyArray,
-  normalizeToPositiveFloat } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString, isNonEmptyArray, normalizeToPositiveFloat } from 'utils/ObjectUtils';
 import {YBButton } from 'components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import {getPrimaryCluster} from "../../../utils/UniverseUtils";
-
 import ClusterFields from './ClusterFields';
 
 const initialState = {
@@ -34,9 +31,21 @@ class UniverseForm extends Component {
 
   constructor(props, context) {
     super(props);
+    this.createUniverse = this.createUniverse.bind(this);
+    this.editUniverse = this.editUniverse.bind(this);
+    this.handleCancelButtonClick = this.handleCancelButtonClick.bind(this);
+    this.handleSubmitButtonClick = this.handleSubmitButtonClick.bind(this);
+    this.getFormPayload = this.getFormPayload.bind(this);
+    this.configureAsyncCluster = this.configureAsyncCluster.bind(this);
+    this.configurePrimaryCluster = this.configurePrimaryCluster.bind(this);
+    this.updateFormField = this.updateFormField.bind(this);
+    this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.state = initialState;
   }
 
+  getCurrentProvider(providerUUID) {
+    return this.props.cloud.providers.data.find((provider) => provider.uuid === providerUUID);
+  }
 
   updateFormField = (fieldName, fieldValue) => {
     this.props.dispatch(change("UniverseForm", fieldName, fieldValue));
@@ -75,28 +84,6 @@ class UniverseForm extends Component {
     }
   }
 
-  handleUniverseConfigure = universeTaskParams => {
-    const {universe: {currentUniverse}, type} = this.props;
-    const primaryCluster = getPrimaryCluster(universeTaskParams.clusters);
-    if (!isNonEmptyObject(primaryCluster)) return;
-    const checkSpotPrice = primaryCluster.userIntent.providerType === 'aws' && !this.state.gettingSuggestedSpotPrice;
-    if (isDefinedNotNull(this.state.instanceTypeSelected) && isNonEmptyArray(this.state.regionList) &&
-      (!checkSpotPrice || _.isEqual(this.state.spotPrice.toString(), normalizeToPositiveFloat(this.state.spotPrice.toString())) || type === "Edit")) {
-      if (isNonEmptyObject(currentUniverse.data) && isNonEmptyObject(currentUniverse.data.universeDetails)) {
-        const prevPrimaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-        const nextPrimaryCluster = getPrimaryCluster(universeTaskParams.clusters);
-        if (isNonEmptyObject(prevPrimaryCluster) && isNonEmptyObject(nextPrimaryCluster) &&
-          areIntentsEqual(prevPrimaryCluster.userIntent, nextPrimaryCluster.userIntent)) {
-          this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
-        } else {
-          this.props.submitConfigureUniverse(universeTaskParams);
-        }
-      } else {
-        this.props.submitConfigureUniverse(universeTaskParams);
-      }
-    }
-  }
-
   createUniverse = () => {
     this.props.submitCreateUniverse(this.getFormPayload());
   }
@@ -119,12 +106,14 @@ class UniverseForm extends Component {
   getFormPayload = () => {
     const {formValues, universe: {universeConfigTemplate}} = this.props;
     const submitPayload = _.clone(universeConfigTemplate.data, true);
+    const self = this;
     const getIntentValues = function (clusterType) {
       const clusterIntent = {
         regionList: formValues[clusterType].regionList.map(function (item) {
           return item.value;
         }),
         provider: formValues[clusterType].provider,
+        providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
         accessKeyCode: formValues[clusterType].accessKeyCode,
@@ -137,7 +126,7 @@ class UniverseForm extends Component {
           mountPoints: formValues[clusterType].mountPoints,
           ebsType: formValues[clusterType].ebsType
         },
-        spotPrice: formValues[clusterType].spotPrice
+        spotPrice: normalizeToPositiveFloat(formValues[clusterType].spotPrice)
       };
       if (clusterType === "primary") {
         clusterIntent.universeName = formValues[clusterType].universeName;
@@ -191,7 +180,8 @@ class UniverseForm extends Component {
 
   render() {
     const {handleSubmit, universe, softwareVersions, cloud,  getInstanceTypeListItems, submitConfigureUniverse, type,
-      getRegionListItems, resetConfig, formValues, getSuggestedSpotPrice, fetchUniverseResources, resetSuggestedSpotPrice, location: {search}} = this.props;
+      getRegionListItems, resetConfig, formValues, getSuggestedSpotPrice, fetchUniverseResources, fetchNodeInstanceList,
+      resetSuggestedSpotPrice, location: {search}} = this.props;
     // TODO Remove this barrier once async feature committed to mainline
     let displayPane = "primary";
     if (search === "?new") {
@@ -223,6 +213,7 @@ class UniverseForm extends Component {
     let clusterForm = <span/>;
     let primaryReplicaBtn = <span/>;
     let asyncReplicaBtn = <span/>;
+    let isReadOnly = false;
 
     if (this.state.currentView === "async" && type !== "Edit" && displayPane === "async") {
       primaryReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Previous"} onClick={this.configurePrimaryCluster}/>;
@@ -243,13 +234,18 @@ class UniverseForm extends Component {
       getInstanceTypeListItems: getInstanceTypeListItems, cloud: cloud, resetConfig: resetConfig,
       accessKeys: this.props.accessKeys, softwareVersions: softwareVersions, updateFormField: this.updateFormField,
       formValues: formValues, submitConfigureUniverse: submitConfigureUniverse, setPlacementStatus: this.props.setPlacementStatus,
-      getSuggestedSpotPrice: getSuggestedSpotPrice, fetchUniverseResources: fetchUniverseResources, fetchNodeInstanceList: this.props.fetchNodeInstanceList,
+      getSuggestedSpotPrice: getSuggestedSpotPrice, fetchUniverseResources: fetchUniverseResources, fetchUniverseTasks: this.props.fetchUniverseTasks,
+      fetchNodeInstanceList: fetchNodeInstanceList,
       resetSuggestedSpotPrice: resetSuggestedSpotPrice, reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
-      fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration
+      fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
+      fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location
     };
 
     if (this.state.currentView === "primary") {
-      clusterForm = (<PrimaryClusterFields {...clusterProps}/>);
+      if (type === "edit") {
+        isReadOnly = true;
+      }
+      clusterForm = (<PrimaryClusterFields {...clusterProps} isFieldReadOnly={isReadOnly}/>);
     } else {
       // show async cluster if view if async
       clusterForm = (<AsyncClusterFields {...clusterProps}/>);
@@ -278,14 +274,13 @@ UniverseForm.contextTypes = {
   prevPath: PropTypes.string
 };
 
-
 class PrimaryClusterFields extends Component {
   render() {
     return (
       <Fields names={['primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList', 'primary.replicationFactor',
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.ybSoftwareVersion',
-        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType', 'primary.spotPrice']}
-              component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType', 'primary.spotPrice', 'primary.useSpotPrice',
+        'primary.assignPublicIP']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }
@@ -294,8 +289,9 @@ class AsyncClusterFields extends Component {
   render() {
     return (
       <Fields names={['async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
-        'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops','async.numVolumes','async.volumeSize',
-        'async.ebsType', 'async.spotPrice']}
+        'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
+        'async.numVolumes','async.volumeSize', 'async.spotPrice', 'async.useSpotPrice',
+        'async.ebsType', 'async.assignPublicIP']}
               component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }

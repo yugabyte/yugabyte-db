@@ -17,3 +17,23 @@ export function getPrimaryCluster(clusters) {
   }
   return null;
 }
+
+export function getAsyncCluster(clusters) {
+  if (isNonEmptyArray(clusters)) {
+    const foundClusters = clusters.filter((cluster) => cluster.clusterType === 'ASYNC');
+    if (foundClusters.length === 1) {
+      return foundClusters[0];
+    }
+  }
+  return null;
+}
+
+export function getClusterByType(clusters, clusterType) {
+  if (isNonEmptyArray(clusters)) {
+    const foundClusters = clusters.filter((cluster) => cluster.clusterType === clusterType);
+    if (foundClusters.length === 1) {
+      return foundClusters[0];
+    }
+  }
+  return null;
+}
