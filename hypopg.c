@@ -88,6 +88,8 @@ static Oid BLOOM_AM_OID = InvalidOid;
 /* GUC for enabling / disabling hypopg during EXPLAIN */
 static bool hypo_is_enabled;
 
+static MemoryContext HypoMemoryContext = NULL;
+
 /*--------------------------------------------------------
  * Hypothetical index storage, pretty much an IndexOptInfo
  * Some dynamic informations such as pages and lines are not stored but
@@ -260,6 +262,17 @@ _PG_init(void)
 	prev_explain_get_index_name_hook = explain_get_index_name_hook;
 	explain_get_index_name_hook = hypo_explain_get_index_name_hook;
 
+	HypoMemoryContext = AllocSetContextCreate(TopMemoryContext,
+			"HypoPG context",
+#if PG_VERSION_NUM >= 90600
+			ALLOCSET_DEFAULT_SIZES
+#else
+			ALLOCSET_DEFAULT_MINSIZE,
+			ALLOCSET_DEFAULT_INITSIZE,
+			ALLOCSET_DEFAULT_MAXSIZE
+#endif
+			);
+
 	DefineCustomBoolVariable("hypopg.enabled",
 							 "Enable / Disable hypopg",
 							 NULL,
@@ -317,7 +330,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 
 	hypo_discover_am(accessMethod, HeapTupleGetOid(tuple));
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	oldcontext = MemoryContextSwitchTo(HypoMemoryContext);
 
 	entry = palloc0(sizeof(hypoEntry));
 
@@ -436,7 +449,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	}
 	PG_CATCH();
 	{
-		/* Free what was palloc'd in TopMemoryContext */
+		/* Free what was palloc'd in HypoMemoryContext */
 		hypo_entry_pfree(entry);
 
 		PG_RE_THROW();
@@ -487,7 +500,7 @@ hypo_addEntry(hypoEntry *entry)
 {
 	MemoryContext oldcontext;
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	oldcontext = MemoryContextSwitchTo(HypoMemoryContext);
 
 	entries = lappend(entries, entry);
 
@@ -605,7 +618,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			CheckPredicate((Expr *) node->whereClause);
 
 			pred = make_ands_implicit((Expr *) node->whereClause);
-			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+			oldcontext = MemoryContextSwitchTo(HypoMemoryContext);
 
 			entry->indpred = (List *) copyObject(pred);
 			MemoryContextSwitchTo(oldcontext);
@@ -720,7 +733,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 					entry->indexkeys[attn] = 0; /* marks expression */
 
-					oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+					oldcontext = MemoryContextSwitchTo(HypoMemoryContext);
 					entry->indexprs = lappend(entry->indexprs,
 										(Node *) copyObject(attribute->expr));
 					MemoryContextSwitchTo(oldcontext);
@@ -953,7 +966,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	}
 	PG_CATCH();
 	{
-		/* Free what was palloc'd in TopMemoryContext */
+		/* Free what was palloc'd in HypoMemoryContext */
 		hypo_entry_pfree(entry);
 
 		PG_RE_THROW();
