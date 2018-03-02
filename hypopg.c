@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2017: Julien Rouhaud
+ * Copyright (C) 2015-2018: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
  */
