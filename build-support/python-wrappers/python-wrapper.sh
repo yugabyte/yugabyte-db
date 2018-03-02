@@ -36,17 +36,21 @@ python_interpreter_dirs+=(
 )
 
 interpreter_name=${0##*/}
-if [[ $interpreter_name == "python" ]]; then
-  interpreter_name=python2
+
+interpreter_names=( "$interpreter_name" )
+if [[ $interpreter_name == "python2" ]]; then
+  interpreter_names+=( python2.7 )
 fi
 
 for python_dir in "${python_interpreter_dirs[@]}"; do
-  if [[ -n $python_dir && -x $python_dir/$interpreter_name ]]; then
-    if [[ ${YB_PYTHON_WRAPPER_DEBUG:-} == "1" ]]; then
-      log "Invoking Python: $python_dir/$interpreter_name $*"
+  for interpreter_name in "${interpreter_names[@]}"; do
+    if [[ -n $python_dir && -x $python_dir/$interpreter_name ]]; then
+      if [[ ${YB_PYTHON_WRAPPER_DEBUG:-} == "1" ]]; then
+        log "Invoking Python: $python_dir/$interpreter_name $*"
+      fi
+      exec "$python_dir/$interpreter_name" "$@"
     fi
-    exec "$python_dir/$interpreter_name" "$@"
-  fi
+  done
 done
 
 export YB_PREVENT_PYTHON_WRAPPER_RECURSION=1
