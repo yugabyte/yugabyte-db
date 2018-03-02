@@ -186,9 +186,11 @@ class TableIterator : public std::iterator<
 
   const TableHandle* table_;
   std::vector<YBqlReadOpPtr> ops_;
+  std::vector<std::string> partition_key_ends_;
   size_t executed_ops_ = 0;
   size_t ops_index_ = 0;
   boost::optional<QLRowBlock> current_block_;
+  const QLPagingStatePB* paging_state_ = nullptr;
   size_t row_index_;
   YBSessionPtr session_;
   std::function<void(const Status&)> error_handler_;

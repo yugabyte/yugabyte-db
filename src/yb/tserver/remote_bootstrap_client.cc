@@ -140,8 +140,8 @@ RemoteBootstrapClient::~RemoteBootstrapClient() {
   // This assumes that succeeded_ only gets set to true in Finish() just before calling
   // EndRemoteSession. If this didn't happen, then close the session here.
   if (!succeeded_) {
-    LOG(INFO) << "Closing remote bootstrap session " << session_id_ << " in RemoteBootstrapClient "
-              << "destructor.";
+    LOG_WITH_PREFIX(INFO) << "Closing remote bootstrap session " << session_id_
+                          << " in RemoteBootstrapClient destructor.";
     WARN_NOT_OK(EndRemoteSession(), "Unable to close remote bootstrap session " + session_id_);
   }
 }
@@ -214,9 +214,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   // Begin the remote bootstrap session with the remote peer.
   BeginRemoteBootstrapSessionResponsePB resp;
-  RETURN_NOT_OK_UNWIND_PREPEND(proxy_->BeginRemoteBootstrapSession(req, &resp, &controller),
-                               controller,
-                               "Unable to begin remote bootstrap session");
+  auto status =
+      UnwindRemoteError(proxy_->BeginRemoteBootstrapSession(req, &resp, &controller), controller);
+
+  if (!status.ok()) {
+    status = status.CloneAndPrepend("Unable to begin remote bootstrap session");
+    LOG_WITH_PREFIX(WARNING) << status;
+    return status;
+  }
 
   if (resp.superblock().tablet_data_state() != tablet::TABLET_DATA_READY) {
     Status s = STATUS(IllegalState, "Remote peer (" + bootstrap_peer_uuid + ")" +
@@ -226,12 +231,12 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     return s;
   }
 
-  LOG(INFO) << "Received superblock: " << resp.superblock().ShortDebugString();
-  LOG(INFO) << "RocksDB files: " << yb::ToString(resp.superblock().rocksdb_files());
-  LOG(INFO) << "Snapshot files: " << yb::ToString(resp.superblock().snapshot_files());
+  LOG_WITH_PREFIX(INFO) << "Received superblock: " << resp.superblock().ShortDebugString();
+  LOG_WITH_PREFIX(INFO) << "RocksDB files: " << yb::ToString(resp.superblock().rocksdb_files());
+  LOG_WITH_PREFIX(INFO) << "Snapshot files: " << yb::ToString(resp.superblock().snapshot_files());
 
   session_id_ = resp.session_id();
-  LOG(INFO) << "Began remote bootstrap session " << session_id_;
+  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id_;
 
   session_idle_timeout_millis_ = resp.session_idle_timeout_millis();
   superblock_.reset(resp.release_superblock());
@@ -343,7 +348,7 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   CHECK(started_);
   status_listener_ = CHECK_NOTNULL(status_listener);
 
-  VLOG(2) << "Fetching table_type: " << TableType_Name(meta_->table_type());
+  VLOG_WITH_PREFIX(2) << "Fetching table_type: " << TableType_Name(meta_->table_type());
   RETURN_NOT_OK(DownloadRocksDBFiles());
   RETURN_NOT_OK(DownloadWALs());
   return Status::OK();
@@ -462,11 +467,11 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   req.set_is_success(succeeded_);
   EndRemoteBootstrapSessionResponsePB resp;
 
-  LOG(INFO) << "Ending remote bootstrap session " << session_id_;
+  LOG_WITH_PREFIX(INFO) << "Ending remote bootstrap session " << session_id_;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
   auto status = proxy_->EndRemoteBootstrapSession(req, &resp, &controller);
   if (status.ok()) {
-    LOG(INFO) << "Remote bootstrap session " << session_id_ << " ended successfully";
+    LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id_ << " ended successfully";
     return Status::OK();
   }
 
@@ -474,7 +479,7 @@ Status RemoteBootstrapClient::EndRemoteSession() {
     // Ignore timeout errors since the server could have sent the ChangeConfig request and died
     // before replying. We need to check the config to verify that this server's role changed as
     // expected, in which case, the remote bootstrap was completed successfully.
-    LOG(INFO) << "Remote bootstrap session " << session_id_ << " timed out";
+    LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id_ << " timed out";
     return Status::OK();
   }
 
@@ -529,15 +534,15 @@ Status RemoteBootstrapClient::DownloadFile(
   if (file_pb.inode() != 0) {
     auto it = inode2file_.find(file_pb.inode());
     if (it != inode2file_.end()) {
-      VLOG(2) << "File with the same inode already found: " << file_path
-              << " => " << it->second;
+      VLOG_WITH_PREFIX(2) << "File with the same inode already found: " << file_path
+                          << " => " << it->second;
       auto link_status = fs_manager_->env()->LinkFile(it->second, file_path);
       if (link_status.ok()) {
         return Status::OK();
       }
       // TODO fallback to copy.
-      LOG(ERROR) << "Failed to link file: " << file_path << " => " << it->second
-                 << ": " << link_status;
+      LOG_WITH_PREFIX(ERROR) << "Failed to link file: " << file_path << " => " << it->second
+                             << ": " << link_status;
     }
   }
 
@@ -550,7 +555,7 @@ Status RemoteBootstrapClient::DownloadFile(
   RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get()),
                         Format("Unable to download $0 file $1",
                                DataIdPB::IdType_Name(data_id->type()), file_path));
-  VLOG(2) << "Downloaded file " << file_path;
+  VLOG_WITH_PREFIX(2) << "Downloaded file " << file_path;
 
   if (file_pb.inode() != 0) {
     inode2file_.emplace(file_pb.inode(), file_path);

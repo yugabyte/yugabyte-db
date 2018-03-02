@@ -63,7 +63,9 @@ CHECKED_STATUS QLRocksDBStorage::BuildQLScanSpec(const QLReadRequestPB& request,
       !request.paging_state().next_row_key().empty()) {
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    req_read_time->read = start_sub_doc_key.hybrid_time();
+    DCHECK_EQ(req_read_time->read, req_read_time->local_limit);
+    DCHECK_EQ(req_read_time->read, req_read_time->global_limit);
+    *req_read_time = ReadHybridTime::SingleTime(start_sub_doc_key.hybrid_time());
     // TODO(dtxn) What should we do with read_limit_ht here?
 
     // If we start the scan with a specific primary key, the normal scan spec we return below will

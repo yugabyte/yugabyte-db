@@ -965,7 +965,9 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(tablet::AbstractTablet* tablet,
             read_tx.read_time(), ql_read_req, req->transaction(), &result));
         TRACE("Done HandleQLReadRequest");
         if (result.restart_read_ht.is_valid()) {
-          VLOG(1) << "Restart read required at: " << result.restart_read_ht;
+          DCHECK_GT(result.restart_read_ht, read_time.read);
+          VLOG(1) << "Restart read required at: " << result.restart_read_ht
+                  << ", original: " << read_time;
           read_time.read = result.restart_read_ht;
           read_time.local_limit = safe_ht_to_read;
           return read_time;
@@ -1247,6 +1249,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     return;
   }
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
+  LOG_IF(WARNING, s.ok()) << "Start remote bootstrap failed: " << s;
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
 }
