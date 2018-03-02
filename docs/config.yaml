@@ -131,10 +131,10 @@ menu:
       identifier: develop-learn-sql-nosql
       url: /develop/learn/sql-nosql/
       weight: 561
-    - name: 2. Data Modelling
+    - name: 2. Data Modeling
       parent: develop-learn
-      identifier: develop-learn-data-modelling
-      url: /develop/learn/data-modelling/
+      identifier: develop-learn-data-modeling
+      url: /develop/learn/data-modeling/
       weight: 562
 #    - name: 3. Reads and Writes
 #      parent: develop-learn

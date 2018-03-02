@@ -16,6 +16,6 @@ Data modeling is a process that involves identifying the entities (items to be s
 
 <div class="tab-content">
   <div id="cassandra" class="tab-pane fade in active">
-    {{% includeMarkdown "/develop/learn/cassandra/data-modelling.md" /%}}
+    {{% includeMarkdown "/develop/learn/cassandra/data-modeling.md" /%}}
   </div>
 </div>
