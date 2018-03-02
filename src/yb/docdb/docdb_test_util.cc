@@ -50,8 +50,6 @@ using strings::Substitute;
 using yb::util::ApplyEagerLineContinuation;
 using yb::util::FormatBytesAsStr;
 
-DECLARE_bool(use_multi_level_index);
-
 namespace yb {
 namespace docdb {
 
@@ -599,7 +597,6 @@ string DocDBRocksDBFixture::tablet_id() {
 }
 
 Status DocDBRocksDBFixture::InitRocksDBOptions() {
-  FLAGS_use_multi_level_index = true;
   return InitCommonRocksDBOptions();
 }
 
