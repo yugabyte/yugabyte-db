@@ -136,7 +136,7 @@ TabletPeer::TabletPeer(
   : meta_(meta),
     tablet_id_(meta->tablet_id()),
     local_peer_pb_(local_peer_pb),
-    state_(NOT_STARTED),
+    state_(TabletStatePB::NOT_STARTED),
     status_listener_(new TabletStatusListener(meta)),
     apply_pool_(apply_pool),
     log_anchor_registry_(new LogAnchorRegistry()),
@@ -165,7 +165,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    CHECK_EQ(BOOTSTRAPPING, state_);
+    CHECK_EQ(TabletStatePB::BOOTSTRAPPING, state_);
     tablet_ = tablet;
     client_future_ = client_future;
     clock_ = clock;
@@ -215,7 +215,7 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
         tablet_->table_type(),
         std::bind(&Tablet::LostLeadership, tablet.get()),
         raft_pool);
-
+    has_consensus_.store(true, std::memory_order_release);
     auto ht_lease_provider = [this](MicrosTime min_allowed, MonoTime deadline) {
       MicrosTime lease_micros {
           consensus_->MajorityReplicatedHtLeaseExpiration(min_allowed, deadline) };
@@ -268,20 +268,18 @@ Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
-  std::lock_guard<simple_spinlock> l(state_change_lock_);
-  TRACE("Starting consensus");
-
-  VLOG(2) << "T " << tablet_id() << " P " << consensus_->peer_uuid() << ": Peer starting";
-
-  VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
-
-  RETURN_NOT_OK(consensus_->Start(bootstrap_info));
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    CHECK_EQ(state_, BOOTSTRAPPING);
-    state_ = RUNNING;
-  }
+    std::lock_guard<simple_spinlock> l(state_change_lock_);
+    TRACE("Starting consensus");
 
+    VLOG(2) << "T " << tablet_id() << " P " << consensus_->peer_uuid() << ": Peer starting";
+
+    VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
+
+    RETURN_NOT_OK(consensus_->Start(bootstrap_info));
+    RETURN_NOT_OK(UpdateState(TabletStatePB::BOOTSTRAPPING, TabletStatePB::RUNNING,
+                              "Incorrect state to start TabletPeer, "));
+  }
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
   // SysCatalogStateChanged, can get the lock when needed.
@@ -306,13 +304,18 @@ void TabletPeer::Shutdown() {
   }
 
   {
-    std::unique_lock<simple_spinlock> lock(lock_);
-    if (state_ == QUIESCING || state_ == SHUTDOWN) {
-      lock.unlock();
+    TabletStatePB state = state_.load(std::memory_order_acquire);
+    if (state == TabletStatePB::QUIESCING || state == TabletStatePB::SHUTDOWN) {
       WaitUntilShutdown();
       return;
     }
-    state_ = QUIESCING;
+    while (!state_.compare_exchange_strong(state, TabletStatePB::QUIESCING,
+                                           std::memory_order_acq_rel)) {
+      if (state == TabletStatePB::QUIESCING || state == TabletStatePB::SHUTDOWN) {
+        WaitUntilShutdown();
+        return;
+      }
+    }
   }
 
   std::lock_guard<simple_spinlock> l(state_change_lock_);
@@ -350,42 +353,32 @@ void TabletPeer::Shutdown() {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     // Release mem tracker resources.
+    has_consensus_.store(false, std::memory_order_release);
     consensus_.reset();
     tablet_.reset();
-    state_ = SHUTDOWN;
+    state_.store(TabletStatePB::SHUTDOWN, std::memory_order_release);
   }
 }
 
 void TabletPeer::WaitUntilShutdown() {
-  while (true) {
-    {
-      std::lock_guard<simple_spinlock> lock(lock_);
-      if (state_ == SHUTDOWN) {
-        return;
-      }
-    }
+  while (state_.load(std::memory_order_acquire) != TabletStatePB::SHUTDOWN) {
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 }
 
 Status TabletPeer::CheckRunning() const {
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    if (state_ != RUNNING) {
-      return STATUS(IllegalState, Substitute("The tablet is not in a running state: $0",
-                                             TabletStatePB_Name(state_)));
-    }
+  if (state_.load(std::memory_order_acquire) != TabletStatePB::RUNNING) {
+    return STATUS(IllegalState, Substitute("The tablet is not in a running state: $0",
+                                           TabletStatePB_Name(state_)));
   }
   return Status::OK();
 }
 
 Status TabletPeer::CheckShutdownOrNotStarted() const {
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    if (state_ != SHUTDOWN && state_ != NOT_STARTED) {
-      return STATUS(IllegalState, Substitute("The tablet is not in a shutdown state: $0",
-                                             TabletStatePB_Name(state_)));
-    }
+  TabletStatePB value = state_.load(std::memory_order_acquire);
+  if (value != TabletStatePB::SHUTDOWN && value != TabletStatePB::NOT_STARTED) {
+    return STATUS(IllegalState, Substitute("The tablet is not in a shutdown state: $0",
+                                           TabletStatePB_Name(value)));
   }
   return Status::OK();
 }
@@ -396,21 +389,14 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   int backoff_exp = 0;
   const int kMaxBackoffExp = 8;
   while (true) {
-    bool has_consensus = false;
-    TabletStatePB cached_state;
-    {
-      std::lock_guard<simple_spinlock> lock(lock_);
-      cached_state = state_;
-      if (consensus_) {
-        has_consensus = true; // consensus_ is a set-once object.
-      }
-    }
-    if (cached_state == QUIESCING || cached_state == SHUTDOWN) {
+    TabletStatePB cached_state = state_.load(std::memory_order_acquire);
+    if (cached_state == TabletStatePB::QUIESCING || cached_state == TabletStatePB::SHUTDOWN) {
       return STATUS(IllegalState,
           Substitute("The tablet is already shutting down or shutdown. State: $0",
                      TabletStatePB_Name(cached_state)));
     }
-    if (cached_state == RUNNING && has_consensus && consensus_->IsRunning()) {
+    if (cached_state == RUNNING && has_consensus_.load(std::memory_order_acquire) &&
+        consensus_->IsRunning()) {
       break;
     }
     MonoTime now(MonoTime::Now());
@@ -509,10 +495,10 @@ string TabletPeer::HumanReadableState() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   TabletDataState data_state = meta_->tablet_data_state();
   // If failed, any number of things could have gone wrong.
-  if (state_ == FAILED) {
+  if (state() == TabletStatePB::FAILED) {
     return Substitute("$0 ($1): $2", TabletStatePB_Name(state_),
                       TabletDataState_Name(data_state),
-                      error_.ToString());
+                      error_.get()->ToString());
   // If it's remotely bootstrapping, or tombstoned, that is the important thing
   // to show.
   } else if (data_state != TABLET_DATA_READY) {
@@ -520,7 +506,7 @@ string TabletPeer::HumanReadableState() const {
   }
   // Otherwise, the tablet's data is in a "normal" state, so we just display
   // the runtime state (BOOTSTRAPPING, RUNNING, etc).
-  return TabletStatePB_Name(state_);
+  return TabletStatePB_Name(state_.load(std::memory_order_acquire));
 }
 
 namespace {
@@ -694,11 +680,9 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
 
 Status TabletPeer::StartReplicaOperation(
     const scoped_refptr<ConsensusRound>& round, HybridTime propagated_safe_time) {
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    if (state_ != RUNNING && state_ != BOOTSTRAPPING) {
-      return STATUS(IllegalState, TabletStatePB_Name(state_));
-    }
+  TabletStatePB value = state();
+  if (value != TabletStatePB::RUNNING && value != TabletStatePB::BOOTSTRAPPING) {
+    return STATUS(IllegalState, TabletStatePB_Name(value));
   }
 
   consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
@@ -787,9 +771,12 @@ Result<OperationDriverPtr> TabletPeer::NewOperationDriver(std::unique_ptr<Operat
 void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   // Taking state_change_lock_ ensures that we don't shut down concurrently with
   // this last start-up task.
+  // Note that the state_change_lock_ is taken in Shutdown(),
+  // prior to calling UnregisterMaintenanceOps().
+
   std::lock_guard<simple_spinlock> l(state_change_lock_);
 
-  if (state() != RUNNING) {
+  if (state() != TabletStatePB::RUNNING) {
     LOG(WARNING) << "Not registering maintenance operations for " << tablet_
                  << ": tablet not in RUNNING state";
     return;
