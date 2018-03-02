@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -121,7 +122,19 @@ public class UniverseController extends AuthenticatedController {
     try {
       ObjectNode formData = (ObjectNode) request().body().asJson();
       UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
-      return ApiResponse.success(UniverseResourceDetails.create(taskParams.nodeDetailsSet,
+
+      Set<NodeDetails> nodesInCluster = null;
+
+      if (taskParams.currentClusterType.equals("primary")) {
+        nodesInCluster = taskParams.nodeDetailsSet.stream()
+                .filter(n -> n.clusterUuid.equals(taskParams.retrievePrimaryCluster().uuid))
+                .collect(Collectors.toSet());
+      } else {
+        nodesInCluster = taskParams.nodeDetailsSet.stream()
+                .filter(n -> n.clusterUuid.equals(taskParams.retrieveAsyncClusters().get(0).uuid))
+                .collect(Collectors.toSet());
+      }
+      return ApiResponse.success(UniverseResourceDetails.create(nodesInCluster,
           taskParams));
     } catch (Throwable t) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());

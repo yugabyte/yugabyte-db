@@ -35,8 +35,8 @@ export default class GFlagArrayComponent extends Component {
   };
 
   render() {
-    const {fields, flagType, operationType} = this.props;
-    const isReadOnly = operationType === "Edit";
+    const {fields, flagType, isReadOnly} = this.props;
+
     const self = this;
     let currentLabel = <span/>;
     if (flagType === "tserver") {
