@@ -15,7 +15,7 @@ import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 import GFlagArrayComponent from './GFlagArrayComponent';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import {getPrimaryCluster} from "../../../utils/UniverseUtils";
+import {getPrimaryCluster, getClusterByType} from "../../../utils/UniverseUtils";
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -63,6 +63,7 @@ export default class ClusterFields extends Component {
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
     this.setDeviceInfo = this.setDeviceInfo.bind(this);
     this.toggleSpotPrice = this.toggleSpotPrice.bind(this);
+    this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
@@ -132,7 +133,6 @@ export default class ClusterFields extends Component {
       }
     }
 
-
     if (isNonEmptyObject(formValues[clusterType]) && isNonEmptyString(formValues[clusterType].provider)) {
       this.props.getInstanceTypeListItems(formValues[clusterType].provider);
       this.props.getRegionListItems(formValues[clusterType].provider);
@@ -144,11 +144,14 @@ export default class ClusterFields extends Component {
       } else {
         this.setState({useSpotPrice: false, spotPrice: 0.0});
       }
+      if (formValues[clusterType].assignPublicIP) {
+        this.setState({assignPublicIP: formValues[clusterType].assignPublicIP});
+      }
     }
   }
 
   componentWillReceiveProps(nextProps) {
-    const {universe: {currentUniverse}, cloud: {nodeInstanceList, instanceTypes, suggestedSpotPrice}, clusterType, formValues} = nextProps;
+    const {universe: {currentUniverse}, cloud: {nodeInstanceList, instanceTypes, suggestedSpotPrice}, clusterType, formValues, updateFormField} = nextProps;
 
     const currentFormValues = formValues[clusterType];
     let providerSelected = this.state.providerSelected;
@@ -200,22 +203,25 @@ export default class ClusterFields extends Component {
     // Set spot price
     const currentPromiseState = getPromiseState(this.props.cloud.suggestedSpotPrice);
     const nextPromiseState = getPromiseState(suggestedSpotPrice);
-    if (currentPromiseState.isInit() || currentPromiseState.isLoading()) {
+    if (currentPromiseState.isLoading()) {
       if (nextPromiseState.isSuccess()) {
         this.setState({
           spotPrice: normalizeToPositiveFloat(suggestedSpotPrice.data.toString()),
           useSpotPrice: true,
           gettingSuggestedSpotPrice: false
         });
+        updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat(suggestedSpotPrice.data.toString()));
+        updateFormField(`${clusterType}.useSpotPrice`, true);
       } else if (nextPromiseState.isError()) {
         this.setState({
           spotPrice: normalizeToPositiveFloat('0.00'),
           useSpotPrice: false,
           gettingSuggestedSpotPrice: false
         });
+        updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat('0.00'));
+        updateFormField(`${clusterType}.useSpotPrice`, false);
       }
     }
-
 
     // Form Actions on Create Universe Success
     if (getPromiseState(this.props.universe.createUniverse).isLoading() && getPromiseState(nextProps.universe.createUniverse).isSuccess()) {
@@ -237,6 +243,7 @@ export default class ClusterFields extends Component {
       browserHistory.push(this.props.location.pathname);
     }
     // Form Actions on Configure Universe Success
+
     if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {
       this.props.fetchUniverseResources(nextProps.universe.universeConfigTemplate.data);
     }
@@ -250,9 +257,9 @@ export default class ClusterFields extends Component {
       }, 0);
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
       if (this.props.type === "Edit") {
-        const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-        if (isDefinedNotNull(primaryCluster)) {
-          numNodesAvailable += primaryCluster.userIntent.numNodes;
+        let cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+        if (isDefinedNotNull(cluster)) {
+          numNodesAvailable += cluster.userIntent.numNodes;
         }
       }
       this.setState({maxNumNodes: numNodesAvailable});
@@ -262,45 +269,65 @@ export default class ClusterFields extends Component {
   componentDidUpdate(prevProps, prevState) {
     const {universe: {currentUniverse}, formValues, clusterType} = this.props;
     let currentProviderUUID = this.state.providerSelected;
+    const self = this;
+
     if (isNonEmptyObject(formValues[clusterType]) && isNonEmptyString(formValues[clusterType].provider)) {
       currentProviderUUID = formValues[clusterType].provider;
     }
-
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
-    // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
-    if (!_.isEqual(this.state, prevState) && isNonEmptyObject(currentProvider) && (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem") && clusterType !== "async") {
-      if (((currentProvider.code === "onprem" && this.state.numNodes <= this.state.maxNumNodes) || (currentProvider.code !== "onprem"))
-        && (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList)) {
-        if (isNonEmptyObject(currentUniverse.data)) {
-          if (this.hasFieldChanged()) {
-            this.configureUniverseNodeList();
-          } else {
-            const placementStatusObject = {
-              error: {
-                type: "noFieldsChanged",
-                numNodes: this.state.numNodes,
-                maxNumNodes: this.state.maxNumNodes
-              }
-            };
-            this.props.setPlacementStatus(placementStatusObject);
-          }
-        } else {
-          this.configureUniverseNodeList();
-        }
-      } else if (isNonEmptyArray(this.state.regionList) &&
-        currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
-        this.state.numNodes >= this.state.maxNumNodes) {
-        const placementStatusObject = {
-          error: {
-            type: "notEnoughNodesConfigured",
-            numNodes: this.state.numNodes,
-            maxNumNodes: this.state.maxNumNodes
-          }
-        };
-        this.props.setPlacementStatus(placementStatusObject);
+    const hasSpotPriceChanged = function() {
+      if (formValues[clusterType] && prevProps.formValues[clusterType]) {
+        return formValues[clusterType].spotPrice !== prevProps.formValues[clusterType].spotPrice;
+      } else {
+        return false;
       }
+    };
+
+    const configureIntentValid = function() {
+      return (!_.isEqual(self.state, prevState) || hasSpotPriceChanged()) &&
+        isNonEmptyObject(currentProvider) &&
+        (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem") &&
+        !self.state.gettingSuggestedSpotPrice && (!self.state.useSpotPrice || (self.state.useSpotPrice && formValues[clusterType].spotPrice > 0))
+        &&
+        ((currentProvider.code === "onprem" &&
+        self.state.numNodes <= self.state.maxNumNodes) || (currentProvider.code !== "onprem")) &&
+        self.state.numNodes >= self.state.replicationFactor &&
+        !self.state.nodeSetViaAZList;
+    };
+
+    // Fire Configure only iff either provider is not on-prem or maxNumNodes is not -1 if on-prem
+    if (configureIntentValid()) {
+      if (isNonEmptyObject(currentUniverse.data)) {
+        if (this.hasFieldChanged()) {
+          this.configureUniverseNodeList();
+        } else {
+          const placementStatusObject = {
+            error: {
+              type: "noFieldsChanged",
+              numNodes: this.state.numNodes,
+              maxNumNodes: this.state.maxNumNodes
+            }
+          };
+          this.props.setPlacementStatus(placementStatusObject);
+        }
+      } else {
+        this.configureUniverseNodeList();
+      }
+    } else if (isNonEmptyArray(this.state.regionList) &&
+      currentProvider.code === "onprem" && this.state.instanceTypeSelected &&
+      this.state.numNodes > this.state.maxNumNodes) {
+
+      const placementStatusObject = {
+        error: {
+          type: "notEnoughNodesConfigured",
+          numNodes: this.state.numNodes,
+          maxNumNodes: this.state.maxNumNodes
+        }
+      };
+      this.props.setPlacementStatus(placementStatusObject);
     }
   }
+
 
   numNodesChangedViaAzList(value) {
     this.setState({nodeSetViaAZList: true, numNodes: value});
@@ -342,6 +369,7 @@ export default class ClusterFields extends Component {
         universeName: formValues[clusterType].universeName,
         numNodes: formValues[clusterType].numNodes,
         provider: formValues[clusterType].provider,
+        providerType: this.getCurrentProvider(formValues[clusterType].provider).code,
         regionList: formValues[clusterType].regionList.map((a)=>(a.value)),
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
@@ -401,18 +429,35 @@ export default class ClusterFields extends Component {
   }
 
   toggleSpotPrice(event) {
+    const {updateFormField, clusterType} = this.props;
     const nextState = {useSpotPrice: event.target.checked};
     if (event.target.checked) {
       this.getSuggestedSpotPrice(this.state.instanceTypeSelected, this.state.regionList);
     } else {
       nextState['spotPrice'] = initialState.spotPrice;
       this.props.resetSuggestedSpotPrice();
+      updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat('0.00'));
     }
     this.setState(nextState);
+    updateFormField(`${clusterType}.useSpotPrice`, event.target.checked);
+  }
+
+  toggleAssignPublicIP(event) {
+    const {updateFormField, clusterType} = this.props;
+    updateFormField(`${clusterType}.assignPublicIP`, event.target.checked);
+    this.setState({assignPublicIP: event.target.checked});
   }
 
   spotPriceChanged(val, normalize) {
+    const {updateFormField, clusterType} = this.props;
     this.setState({spotPrice: normalize ? normalizeToPositiveFloat(val) : val});
+    if (normalize) {
+      this.setState({spotPrice: normalizeToPositiveFloat(val)});
+      updateFormField(`${clusterType}.spotPrice`, normalizeToPositiveFloat(val));
+    } else {
+      this.setState({spotPrice: val});
+      updateFormField(`${clusterType}.spotPrice`, val);
+    }
   }
 
   replicationFactorChanged = value => {
@@ -468,9 +513,6 @@ export default class ClusterFields extends Component {
 
   configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
-    if (clusterType === "async") {
-      return;
-    }
 
     let universeTaskParams = {};
     if (isNonEmptyObject(universeConfigTemplate.data)) {
@@ -480,14 +522,13 @@ export default class ClusterFields extends Component {
       universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
-    const currentState = this.state;
-
     const userIntent = {
       universeName: formValues[clusterType].universeName,
       provider: formValues[clusterType].provider,
       regionList: formValues[clusterType].regionList && formValues[clusterType].regionList.map(function (item) {
         return item.value;
       }),
+      assignPublicIP: formValues[clusterType].assignPublicIP,
       numNodes: formValues[clusterType].numNodes,
       instanceType: formValues[clusterType].instanceType,
       ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
@@ -500,7 +541,7 @@ export default class ClusterFields extends Component {
         diskIops: formValues[clusterType].diskIops
       },
       accessKeyCode: formValues[clusterType].accessKeyCode,
-      spotPrice: currentState.spotPrice
+      spotPrice: formValues[clusterType].spotPrice
     };
 
     if (isNonEmptyObject(formValues.masterGFlags)) {
@@ -524,6 +565,7 @@ export default class ClusterFields extends Component {
     } else {
       universeTaskParams.clusters = [{clusterType: 'PRIMARY', userIntent: userIntent}];
     }
+    universeTaskParams.currentClusterType = clusterType;
     this.handleUniverseConfigure(universeTaskParams);
   }
 
@@ -608,7 +650,6 @@ export default class ClusterFields extends Component {
 
   render() {
     const {clusterType, cloud, softwareVersions, accessKeys, universe, cloud: {suggestedSpotPrice}, formValues} = this.props;
-
     const self = this;
     let gflagArray = <span/>;
     let universeProviderList = [];
@@ -645,7 +686,6 @@ export default class ClusterFields extends Component {
         return <option key={ebsType} value={ebsType}>{ebsType}</option>;
       });
     const isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) && this.props.type === "Edit";
-
     const deviceInfo = this.state.deviceInfo;
 
     if (isNonEmptyObject(formValues[clusterType])) {
@@ -723,11 +763,12 @@ export default class ClusterFields extends Component {
 
     if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
       assignPublicIP = (
-        <Field name="assignPublicIP"
+        <Field name={`${clusterType}.assignPublicIP`}
                component={YBToggle}
+               checkedVal={this.state.assignPublicIP}
+               onToggle={this.toggleAssignPublicIP}
                label="Assign Public IP"
-               subLabel="Whether or not to assign a public IP."
-               checkedVal={this.state.assignPublicIP}/>
+               subLabel="Whether or not to assign a public IP."/>
       );
       if (this.state.gettingSuggestedSpotPrice) {
         spotPriceField = (
@@ -754,8 +795,9 @@ export default class ClusterFields extends Component {
           </div>
         );
       }
+
       spotPriceToggle = (
-        <Field name="useSpotPrice"
+        <Field name={`${clusterType}.useSpotPrice`}
                component={YBToggle}
                label="Use Spot Pricing"
                subLabel="spot pricing is suitable for test environments only, because spot instances might go away any time"
@@ -823,10 +865,10 @@ export default class ClusterFields extends Component {
             <h4>G-Flags</h4>
           </Col>
           <Col md={6}>
-            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.masterGFlags`} flagType="master" operationType="Create"/>
+            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.masterGFlags`} flagType="master" operationType="Create" isReadOnly={isFieldReadOnly}/>
           </Col>
           <Col md={6}>
-            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.tserverGFlags`} flagType="tserver" operationType="Create"/>
+            <FieldArray component={GFlagArrayComponent} name={`${clusterType}.tserverGFlags`} flagType="tserver" operationType="Create" isReadOnly={isFieldReadOnly}/>
           </Col>
         </Row>);
 
@@ -860,9 +902,11 @@ export default class ClusterFields extends Component {
     }
     let universeNameField = <span/>;
     if (clusterType === "primary") {
-      universeNameField = <Field name={`${clusterType}.universeName`} type="text" component={YBTextInputWithLabel} label="Name"/>;
+      universeNameField = <Field name={`${clusterType}.universeName`} type="text" component={YBTextInputWithLabel} label="Name" isReadOnly={isFieldReadOnly}/>;
     }
 
+    // Instance Type is read-only if use spot price is selected
+    const isInstanceTypeReadOnly = isFieldReadOnly && this.state.useSpotPrice;
     return (
       <div>
         <div className="form-section">
@@ -872,7 +916,7 @@ export default class ClusterFields extends Component {
               <div className="form-right-aligned-labels">
                 {universeNameField}
                 <Field name={`${clusterType}.provider`} type="select" component={YBSelectWithLabel} label="Provider"
-                        onInputChanged={this.providerChanged} options={universeProviderList}/>
+                        onInputChanged={this.providerChanged} options={universeProviderList} readOnlySelect={isFieldReadOnly}/>
                 <Field name={`${clusterType}.regionList`} component={YBMultiSelectWithLabel} options={universeRegionList}
                        label="Regions" multi={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
               </div>
@@ -886,7 +930,7 @@ export default class ClusterFields extends Component {
                   </Col>
                   <Col lg={7} className="button-group-row">
                     <Field name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                           label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} />
+                           label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
                   </Col>
                 </div>
               </Row>
@@ -905,7 +949,7 @@ export default class ClusterFields extends Component {
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.instanceType`} component={YBSelectWithLabel} label="Instance Type"
-                       options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} />
+                       options={universeInstanceTypeList} onInputChanged={this.instanceTypeChanged} readOnlySelect={isInstanceTypeReadOnly}/>
                 {spotPriceToggle}
                 {spotPriceField}
                 {assignPublicIP}
@@ -943,13 +987,13 @@ export default class ClusterFields extends Component {
             <Col sm={5} md={4}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.ybSoftwareVersion`} component={YBSelectWithLabel}
-                       options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged} />
+                       options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
             <Col lg={4}>
               <div className="form-right-aligned-labels">
                 <Field name={`${clusterType}.accessKeyCode`} type="select" component={YBSelectWithLabel} label="Access Key"
-                       onInputChanged={this.accessKeyChanged} options={accessKeyOptions}/>
+                       onInputChanged={this.accessKeyChanged} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
               </div>
             </Col>
           </Row>

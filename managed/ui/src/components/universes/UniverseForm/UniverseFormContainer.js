@@ -123,24 +123,26 @@ const formFieldNames =
   ['formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.spotPrice', 'primary.diskIops', 'primary.numVolumes',
-    'primary.volumeSize', 'primary.ebsType',
-    'async.provider', 'async.providerType', 'async.spotPrice',
-    'async.regionList', 'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode',
+    'primary.volumeSize', 'primary.ebsType', 'primary.assignPublicIP',
+    'async.provider', 'async.providerType', 'async.spotPrice', 'async.regionList', 'async.numNodes',
+    'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP',
     'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags', 'asyncClusters'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
   const data = {
-    "universeName": "",
-    "ybSoftwareVersion": "",
-    "numNodes": 3,
-    "isMultiAZ": true,
-    "instanceType": "c4.2xlarge",
-    "formType": "create",
-    "accessKeyCode": "yugabyte-default",
-    "spotPrice": "0.00",
-    "useSpotPrice": IN_DEVELOPMENT_MODE,
-    "assignPublicIP":  true
+    "primary": {
+      "universeName": "",
+      "ybSoftwareVersion": "",
+      "numNodes": 3,
+      "isMultiAZ": true,
+      "instanceType": "c4.2xlarge",
+      "formType": "create",
+      "accessKeyCode": "yugabyte-default",
+      "spotPrice": "0.00",
+      "useSpotPrice": IN_DEVELOPMENT_MODE,
+      "assignPublicIP":  true
+    }
   };
 
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type === "Edit") {
@@ -153,10 +155,11 @@ function mapStateToProps(state, ownProps) {
 
       data.primary.provider = userIntent.provider;
       data.primary.numNodes = userIntent.numNodes;
+      data.primary.replicationFactor = userIntent.replicationFactor;
       data.primary.instanceType = userIntent.instanceType;
       data.primary.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       data.primary.accessKeyCode = userIntent.accessKeyCode;
-      data.primary.spotPrice = "$ " + normalizeToPositiveFloat(userIntent.spotPrice.toString()) + " per hour";
+      data.primary.spotPrice = normalizeToPositiveFloat(userIntent.spotPrice.toString());
       data.primary.useSpotPrice = parseFloat(userIntent.spotPrice) > 0.0;
       data.primary.diskIops = userIntent.deviceInfo.diskIops;
       data.primary.numVolumes = userIntent.deviceInfo.numVolumes;
@@ -188,27 +191,30 @@ function mapStateToProps(state, ownProps) {
       'formType', 'primary.universeName', 'primary.provider', 'primary.providerType', 'primary.regionList',
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.ebsType',
-      'primary.diskIops', 'primary.spotPrice',
+      'primary.diskIops', 'primary.spotPrice', 'primary.assignPublicIP',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.spotPrice', 'async.ybSoftwareVersion', 'async.accessKeyCode',
-      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType',
+      'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.ebsType', 'async.assignPublicIP',
       'spotPrice', 'useSpotPrice', 'masterGFlags', 'tserverGFlags')
   };
 }
 
 const asyncValidate = (values, dispatch ) => {
-  if (isNonEmptyString(values.primary.universeName)) {
-    return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
+    if (values.primary && isNonEmptyString(values.primary.universeName)) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
         if (response.payload.status !== 200 && values.formType !== "edit") {
-          reject({universeName: 'Universe name already exists'});
+          reject({"primary": {"universeName": 'Universe name already exists'}});
         } else {
           resolve();
         }
       });
-    });
-  }
+    } else {
+      resolve();
+    }
+  });
 };
+
 
 const validate = (values, props) => {
   const cloud = props.cloud;
