@@ -1056,7 +1056,14 @@ hypo_explain_get_index_name_hook(Oid indexId)
 			}
 		}
 	}
-	return ret;
+
+	if (ret)
+		return ret;
+
+	if (prev_explain_get_index_name_hook)
+		return prev_explain_get_index_name_hook(indexId);
+
+	return NULL;
 }
 
 /*
