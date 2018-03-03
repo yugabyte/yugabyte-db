@@ -32,6 +32,7 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <iostream>
+#include <boost/lexical_cast.hpp>
 
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
@@ -177,6 +178,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK_PREPEND(client->ListTablets(table_name, max),
                               Substitute("Unable to list tablets of table $0",
                                          table_name.ToString()));
+        return Status::OK();
+      });
+
+  Register(
+      "modify_placement_info", " <placement_info> <replication_factor>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4) {
+          UsageAndExit(args[0]);
+        }
+        int rf = boost::lexical_cast<int>(args[3]);
+        RETURN_NOT_OK_PREPEND(client->ModifyPlacementInfo(args[2], rf),
+                              Substitute("Unable to modify placement info."));
         return Status::OK();
       });
 

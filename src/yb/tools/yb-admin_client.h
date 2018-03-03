@@ -40,6 +40,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/common/entity_ids.h"
+#include "yb/tools/yb-admin_cli.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/master.pb.h"
@@ -134,6 +135,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS FlushTable(const client::YBTableName& table_name, int timeout_secs);
 
+  CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
@@ -172,6 +175,7 @@ class ClusterAdminClient {
 
   CHECKED_STATUS MasterLeaderStepDown(const std::string& leader_uuid);
   CHECKED_STATUS GetMasterLeaderInfo(std::string* leader_uuid);
+  CHECKED_STATUS WaitUntilMasterLeaderReady();
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;

@@ -154,11 +154,13 @@ class ClusterOptions:
 
         self.master_flags = []
         self.tserver_flags = []
+        self.placement_info_raw = ""
         self.placement_info = []
         self.verbose_level = 0
         self.use_cassandra_authentication = False
         self.node_type = DAEMON_TYPE_TSERVER
         self.is_shell_master = False
+        self.is_startup_command = False
 
     def parse_flag_args(self, flag_args):
         flags = [] if flag_args is None else flag_args.split(",")
@@ -185,7 +187,8 @@ class ClusterOptions:
             setattr(self, arg, self.parse_flag_args(parser_arg))
 
         try:
-            placement_list = getattr(args, "placement_info").split(",")
+            self.placement_info_raw = getattr(args, "placement_info")
+            placement_list = self.placement_info_raw.split(",")
         except AttributeError:
             placement_list = []
 
@@ -328,7 +331,7 @@ class ClusterControl:
         for cmd in startup_commands:
             subparsers[cmd].add_argument("--placement_info",
                                          help="Specify the placement info in the following format:"
-                                         "cloud.region.zone . Can be comma seperated "
+                                         "cloud.region.zone. Can be comma seperated "
                                          "in case you would want to pass more than one value.")
 
             subparsers[cmd].add_argument("--v", default=0, choices=[i for i in range(5)],
@@ -341,11 +344,27 @@ class ClusterControl:
                                          help="If specified, this flag will be "
                                          "passed down to tservers as true.")
             ClusterControl.add_extra_flags_arguments(subparsers[cmd])
+            self.options.is_startup_command = True
+
+    # modify_placement_info if this is a startup command and has a placement info.
+    def modify_placement_info(self):
+        if self.options.is_startup_command and len(self.options.placement_info) > 0:
+            yb_admin_binary_path = self.options.get_binary_path("yb-admin")
+            self.set_master_addresses(on_create=False, running_only=True)
+            cmd = [yb_admin_binary_path, "--master_addresses", self.options.master_addresses,
+                   "modify_placement_info", self.options.placement_info_raw,
+                   str(self.options.replication_factor)]
+            err = subprocess.call(cmd)
+            if err == 0:
+                print ("Successfully modified placement info.")
+            else:
+                raise RuntimeError("Could not modify placement info for the cluster.")
 
     def run(self):
         self.args = self.parser.parse_args()
         self.options.update_options_from_args(self.args)
         self.args.func()
+        self.modify_placement_info()
 
     def get_number_of_servers(self, daemon_type):
         return len(glob.glob("{}/*/{}/yb-data/{}".format(
