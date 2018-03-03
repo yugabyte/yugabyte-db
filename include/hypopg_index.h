@@ -116,6 +116,7 @@ Datum		hypopg_create_index(PG_FUNCTION_ARGS);
 Datum		hypopg_drop_index(PG_FUNCTION_ARGS);
 Datum		hypopg_relation_size(PG_FUNCTION_ARGS);
 Datum		hypopg_get_indexdef(PG_FUNCTION_ARGS);
+Datum		hypopg_reset_index(PG_FUNCTION_ARGS);
 
 extern explain_get_index_name_hook_type prev_explain_get_index_name_hook;
 const char *hypo_explain_get_index_name_hook(Oid indexId);

@@ -79,6 +79,7 @@ PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 PG_FUNCTION_INFO_V1(hypopg_get_indexdef);
+PG_FUNCTION_INFO_V1(hypopg_reset_index);
 
 
 static void hypo_addIndex(hypoIndex *entry);
@@ -1458,6 +1459,16 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf.data));
+}
+
+/*
+ * SQL wrapper to remove all declared hypothetical indexes.
+ */
+Datum
+hypopg_reset_index(PG_FUNCTION_ARGS)
+{
+	hypo_index_reset();
+	PG_RETURN_VOID();
 }
 
 

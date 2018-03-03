@@ -8,6 +8,11 @@
 
 SET client_encoding = 'UTF8';
 
+CREATE FUNCTION hypopg_reset_index()
+    RETURNS void
+    LANGUAGE C VOLATILE COST 100
+AS '$libdir/hypopg', 'hypopg_reset_index';
+
 CREATE FUNCTION hypopg_reset()
     RETURNS void
     LANGUAGE C VOLATILE COST 100
