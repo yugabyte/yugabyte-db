@@ -57,13 +57,13 @@ class ReactorTest : public RpcTestBase {
   }
 
   void ScheduledTask(const Status& status, const Status& expected_status) {
-    CHECK_EQ(expected_status.CodeAsString(), status.CodeAsString());
+    ASSERT_EQ(expected_status.CodeAsString(), status.CodeAsString());
     latch_.CountDown();
   }
 
   void ScheduledTaskCheckThread(const Status& status, const Thread* thread) {
-    CHECK_OK(status);
-    CHECK_EQ(thread, Thread::current_thread());
+    ASSERT_OK(status);
+    ASSERT_EQ(thread, Thread::current_thread());
     latch_.CountDown();
   }
 
