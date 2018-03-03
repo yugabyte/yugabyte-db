@@ -184,6 +184,15 @@ std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f,
   return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
 }
 
+YB_DEFINE_ENUM(MarkAsDoneResult,
+    // Successfully marked as done with this call to MarkAsDone.
+    (kSuccess)
+    // Task already marked as done by another caller to MarkAsDone.
+    (kAlreadyDone)
+    // We've switched the done_ flag to true, but the task is not scheduled on a reactor thread and
+    // reactor_ is nullptr. Next calls to MarkAsDone will return kAlreadyDone.
+    (kNotScheduled))
+
 // A ReactorTask that is scheduled to run at some point in the future.
 //
 // Semantically it works like RunFunctionTask with a few key differences:
@@ -207,7 +216,7 @@ class DelayedTask : public ReactorTask {
 
  private:
   // Set done_ to true if not set and return true. If done_ is already set, return false.
-  bool MarkAsDone();
+  MarkAsDoneResult MarkAsDone();
 
   // libev callback for when the registered timer fires.
   void TimerHandler(ev::timer& rwatcher, int revents); // NOLINT

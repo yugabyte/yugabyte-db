@@ -220,7 +220,6 @@ void Reactor::ShutdownInternal() {
     task->Abort(aborted);
   }
 
-
   {
     std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
     outbound_queue_stopped_ = true;
@@ -284,10 +283,9 @@ void Reactor::CheckReadyToStop() {
   }
 }
 
-// Handle async events.  These events are sent to the reactor by other
-// threads that want to bring something to our attention, like the fact that
-// we're shutting down, or the fact that there is a new outbound Transfer
-// ready to send.
+// Handle async events.  These events are sent to the reactor by other threads that want to bring
+// something to our attention, like the fact that we're shutting down, or the fact that there is a
+// new outbound Transfer ready to send.
 void Reactor::AsyncHandler(ev::async &watcher, int revents) {
   DCHECK(IsCurrentThread());
 
@@ -664,21 +662,26 @@ void DelayedTask::Run(Reactor* reactor) {
   reactor_->scheduled_tasks_.insert(shared_from(this));
 }
 
-bool DelayedTask::MarkAsDone() {
+MarkAsDoneResult DelayedTask::MarkAsDone() {
   std::lock_guard<LockType> l(lock_);
   if (done_) {
-    return false;
+    return MarkAsDoneResult::kAlreadyDone;
   }
   done_ = true;
 
-  // ENG-2879: we only return true if reactor_ is not nullptr because if it is, the task has not
-  // even started.  AbortTask uses the return value of this function to check if it needs to stop
-  // the timer on the reactor thread, and that is impossible if reactor_ is nullptr.
-  return reactor_ != nullptr;
+  // ENG-2879: we need to check if reactor_ is nullptr, because that would mean that the task has
+  // not even started.  AbortTask uses the return value of this function to check if it needs to
+  // stop the timer, and that is only possible / necessary if Run has been called and reactor_ is
+  // not nullptr.
+  return reactor_ == nullptr ? MarkAsDoneResult::kNotScheduled
+                             : MarkAsDoneResult::kSuccess;
 }
 
 void DelayedTask::AbortTask(const Status& abort_status) {
-  if (MarkAsDone()) {
+  auto mark_as_done_result = MarkAsDone();
+  if (mark_as_done_result == MarkAsDoneResult::kSuccess) {
+    // Stop the libev timer. We don't need to do this in the kNotScheduled case, because the timer
+    // has not started in that case.
     if (reactor_->IsCurrentThread()) {
       timer_.stop();
     } else {
@@ -688,6 +691,10 @@ void DelayedTask::AbortTask(const Status& abort_status) {
         timer_.stop();
       });
     }
+  }
+  if (mark_as_done_result != MarkAsDoneResult::kAlreadyDone) {
+    // We need to call the callback whenever we successfully switch the done_ flag to true, whether
+    // or not the task has been scheduled.
     func_(abort_status);
   }
 }
@@ -698,10 +705,14 @@ void DelayedTask::Abort(const Status& abort_status) {
 
 void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   DCHECK(reactor_->IsCurrentThread());
-  if (!MarkAsDone()) {
-    // The task has been already executed by Abort/AbortTask.
+
+  auto mark_as_done_result = MarkAsDone();
+  if (mark_as_done_result != MarkAsDoneResult::kSuccess) {
+    DCHECK_EQ(MarkAsDoneResult::kAlreadyDone, mark_as_done_result)
+        << "Can't get kNotScheduled here, because the timer handler is already being called";
     return;
   }
+
   // Hold shared_ptr, so this task wouldn't be destroyed upon removal below until func_ is called.
   auto holder = shared_from_this();
 
