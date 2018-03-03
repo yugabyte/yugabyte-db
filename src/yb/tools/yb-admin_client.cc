@@ -38,6 +38,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/gutil/strings/split.h"
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -108,6 +109,8 @@ const int kPartitionRangeColWidth = 56;
 const int kHostPortColWidth = 20;
 const int kTableNameColWidth = 48;
 const int kNumCharactersInUuid = 32;
+const int kSleepTimeSec = 1;
+const int kNumberOfTryouts = 30;
 
 }  // anonymous namespace
 
@@ -961,6 +964,92 @@ Status ClusterAdminClient::FlushTable(const YBTableName& table_name, int timeout
   return STATUS(TimedOut,
       Substitute("Expired timeout ($0 seconds) for table $1 flushing",
           timeout_secs, table_name.ToString()));
+}
+
+Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
+  master::IsMasterLeaderReadyRequestPB req_leader_ready;
+  master::IsMasterLeaderReadyResponsePB res_leader_ready;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  int iter = 0;
+  while (iter++ < kNumberOfTryouts) {
+    RETURN_NOT_OK_PREPEND(master_proxy_->IsMasterLeaderServiceReady(
+        req_leader_ready, &res_leader_ready,
+        &rpc), "MasterServiceImpl::IsMasterLeaderServiceReady call fails.")
+    rpc.Reset();
+    if (!res_leader_ready.has_error()) {
+      return Status::OK();
+    }
+    sleep(kSleepTimeSec);
+  }
+  return STATUS(TimedOut, "ClusterAdminClient::WaitUntilMasterLeaderReady timed out.");
+}
+
+Status ClusterAdminClient::ModifyPlacementInfo(
+    std::string placement_info, int replication_factor) {
+
+  // Wait to make sure that master leader is ready.
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  // Get the cluster config from the master leader.
+  master::GetMasterClusterConfigRequestPB req_cluster_config;
+  master::GetMasterClusterConfigResponsePB resp_cluster_config;
+  RETURN_NOT_OK_PREPEND(master_proxy_->
+      GetMasterClusterConfig(req_cluster_config, &resp_cluster_config, &rpc),
+                        "MasterServiceImpl::GetMasterClusterConfig call fails.")
+
+  if (resp_cluster_config.has_error()) {
+    return StatusFromPB(resp_cluster_config.error().status());
+  }
+  rpc.Reset();
+  // Create a new cluster config.
+  std::vector<std::string> placement_info_split = strings::Split(
+      placement_info, ",", strings::SkipEmpty());
+  if (placement_info_split.size() < 1) {
+    return STATUS(InvalidCommand, "Cluster config must be a list of "
+    "placement infos seperated by commas. "
+    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
+    + std::to_string(placement_info_split.size()));
+  }
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+  master::ChangeMasterClusterConfigResponsePB resp_new_cluster_config;
+  master::SysClusterConfigEntryPB* sys_cluster_config_entry =
+      resp_cluster_config.mutable_cluster_config();
+  master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
+  live_replicas->set_num_replicas(replication_factor);
+  // Iterate over the placement blocks of the placementInfo structure.
+  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+    std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
+                                                    strings::SkipEmpty());
+    if (block.size() != 3) {
+      return STATUS(InvalidCommand, "Each placement info must have exactly 3 values seperated"
+          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
+          + " is invalid");
+    }
+    auto pb = live_replicas->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
+    pb->mutable_cloud_info()->set_placement_region(block[1]);
+    pb->mutable_cloud_info()->set_placement_zone(block[2]);
+    pb->set_min_num_replicas(1);
+  }
+  master::ReplicationInfoPB* replication_info_pb = new master::ReplicationInfoPB;
+  replication_info_pb->set_allocated_live_replicas(live_replicas);
+  sys_cluster_config_entry->clear_replication_info();
+  sys_cluster_config_entry->set_allocated_replication_info(replication_info_pb);
+  req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
+
+  RETURN_NOT_OK_PREPEND(master_proxy_->ChangeMasterClusterConfig(
+      req_new_cluster_config, &resp_new_cluster_config, &rpc),
+                        "MasterServiceImpl::ChangeMasterClusterConfig call failed.");
+
+  if (resp_new_cluster_config.has_error()) {
+    return StatusFromPB(resp_new_cluster_config.error().status());
+  }
+
+  LOG(INFO)<< "Changed master cluster config.";
+  return Status::OK();
 }
 
 string RightPadToUuidWidth(const string &s) {
