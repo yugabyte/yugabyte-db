@@ -24,8 +24,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.joda.time.DateTime;
 
-import javafx.util.Pair;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,17 +71,16 @@ public class PlacementInfoUtil {
 
   /**
    * Method to check whether the affinitized leaders info changed between the old and new
-   * placements. If an AZ is present in the new placement but not the old or vice versa, 
-   * returns false.
-   * @param universe
-   * @param taskParams
-   * @return boolean
+   * placements for edit universe.
+   * @param universe   Universe to check
+   * @param taskParams User requested task parameters
+   * @return boolean   If an AZ is present in the new placement but not the old or vice versa,
+   *                   returns false.
    */
   private static boolean didAffinitizedLeadersChange(
-    Universe universe,
-    UniverseDefinitionTaskParams taskParams) {
-    boolean isEditUniverse = universe != null;
-    if (!isEditUniverse) {
+      Universe universe,
+      UniverseDefinitionTaskParams taskParams) {
+    if (universe == null) {
       return false;
     }
     PlacementInfo newPlacementInfo = taskParams.retrievePrimaryCluster().placementInfo;
@@ -103,14 +100,13 @@ public class PlacementInfoUtil {
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
-          if (oldAZMap.containsKey(newAZ.uuid)) {
-            if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
-              // affinitized leader info has changed, return true.
-              return true;
-            }
-          } else {
+          if (!oldAZMap.containsKey(newAZ.uuid)) {
             // The AZ config has changed, return false.
             return false;
+          }
+          if (oldAZMap.get(newAZ.uuid) != newAZ.isAffinitized) {
+            // Affinitized leader info has changed, return true.
+            return true;
           }
         }
       }
@@ -344,19 +340,19 @@ public class PlacementInfoUtil {
       verifyEditParams(taskParams, universe.getUniverseDetails());
     }
 
-    LOG.info("Placement={}, nodes={}.", primaryCluster.placementInfo,
-      taskParams.nodeDetailsSet.size());
     ConfigureNodesMode mode;
     if (didAffinitizedLeadersChange(universe, taskParams)) {
       mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
     } else {
       mode = getPureExpandOrShrinkMode(universe, taskParams);
     }
+    LOG.info("Placement={}, nodes={}, current mode={}.", primaryCluster.placementInfo,
+             taskParams.nodeDetailsSet.size(), mode);
     if (mode == ConfigureNodesMode.NEW_CONFIG) {
       // Not a pure expand or shrink.
       boolean providerOrRegionListChanged =
         isProviderOrRegionChange(taskParams,
-          universe != null ? universe.getNodes() : taskParams.nodeDetailsSet);
+            universe != null ? universe.getNodes() : taskParams.nodeDetailsSet);
       if (providerOrRegionListChanged) {
         // If the provider or region list changed, we pick a new placement.
         // This could be for a edit (full move) or create universe.
@@ -505,16 +501,26 @@ public class PlacementInfoUtil {
     return nodesToProvision;
   }
 
+  private static class AZInfo {
+    public AZInfo(boolean affinitized, int numNodes) {
+      isAffinitized = affinitized;
+      numNodesInAZ = numNodes;
+	}
+
+    public boolean isAffinitized;
+    public int numNodesInAZ;
+  }
+
   // Helper function to check if the old placement and new placement after edit
   // are the same.
   private static boolean isSamePlacement(PlacementInfo oldPlacementInfo,
                                          PlacementInfo newPlacementInfo) {
-    HashMap<UUID, Pair<Boolean, Integer>> oldAZMap = new HashMap<UUID, Pair<Boolean, Integer>>();
+    HashMap<UUID, AZInfo> oldAZMap = new HashMap<UUID, AZInfo>();
 
     for (PlacementCloud oldCloud : oldPlacementInfo.cloudList) {
       for (PlacementRegion oldRegion : oldCloud.regionList) {
         for (PlacementAZ oldAZ : oldRegion.azList) {
-          oldAZMap.put(oldAZ.uuid, new Pair<Boolean, Integer>(oldAZ.isAffinitized, oldAZ.numNodesInAZ));
+          oldAZMap.put(oldAZ.uuid, new AZInfo(oldAZ.isAffinitized, oldAZ.numNodesInAZ));
         }
       }
     }
@@ -522,12 +528,12 @@ public class PlacementInfoUtil {
     for (PlacementCloud newCloud : newPlacementInfo.cloudList) {
       for (PlacementRegion newRegion : newCloud.regionList) {
         for (PlacementAZ newAZ : newRegion.azList) {
-          if (oldAZMap.containsKey(newAZ.uuid)) {
-            if (oldAZMap.get(newAZ.uuid).getKey() != newAZ.isAffinitized ||
-              oldAZMap.get(newAZ.uuid).getValue() != newAZ.numNodesInAZ) {
-              return false;
-            }
-          } else {
+          if (!oldAZMap.containsKey(newAZ.uuid)) {
+            return false;
+          }
+          AZInfo azInfo = oldAZMap.get(newAZ.uuid);
+          if (azInfo.isAffinitized != newAZ.isAffinitized ||
+              azInfo.numNodesInAZ != newAZ.numNodesInAZ) {
             return false;
           }
         }
@@ -550,7 +556,7 @@ public class PlacementInfoUtil {
     UserIntent userIntent = newPrimaryCluster.userIntent;
     // Error out if no fields are modified.
     if (userIntent.equals(existingIntent) &&
-      isSamePlacement(oldPrimaryCluster.placementInfo, newPrimaryCluster.placementInfo)) {
+        isSamePlacement(oldPrimaryCluster.placementInfo, newPrimaryCluster.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
         "modified for editing the universe.");

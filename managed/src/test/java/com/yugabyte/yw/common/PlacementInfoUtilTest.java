@@ -74,9 +74,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     public TestData(Common.CloudType cloud, int replFactor, int numNodes) {
       String customerCode = String.valueOf(customerIdx.nextInt(99999));
-      customer = ModelFactory.testCustomer(
-              customerCode,
-              String.format("%s@customer.com", customerCode));
+      customer = ModelFactory.testCustomer(customerCode,
+                                           String.format("%s@customer.com", customerCode));
       provider = ModelFactory.newProvider(customer, cloud);
 
       // Set up base Universe
@@ -806,6 +805,45 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
       // Verify that preferred region UUID was not mutated in the clone operation
       assertNotEquals(oldIntent.preferredRegion.toString(), newIntent.preferredRegion.toString());
+    }
+  }
+
+  @Test
+  public void testAffinitizedPlacement() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
+      Cluster primaryCluster = udtp.retrievePrimaryCluster();
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      udtp.universeUUID = univUuid;
+      primaryCluster.userIntent.instanceType = "m3.medium";
+      primaryCluster.userIntent.ybSoftwareVersion = "0.0.1";
+      t.setAzUUIDs(udtp);
+      Map<UUID, Integer> azToNum = PlacementInfoUtil.getAzUuidToNumNodes(udtp.nodeDetailsSet);
+      PlacementInfo pi = primaryCluster.placementInfo;
+      for (PlacementCloud cloud : pi.cloudList) {
+        for (PlacementRegion region : cloud.regionList) {
+          int count = 0;
+          for (PlacementAZ az : region.azList) {
+            az.numNodesInAZ = azToNum.get(az.uuid);
+            if (az.isAffinitized && count > 0) {
+              az.isAffinitized = false;
+            }
+            count++;
+          }
+        }
+      }
+
+      PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getCustomerId());
+      Set<NodeDetails> nodes = udtp.nodeDetailsSet;
+      // Should not change process counts or node distribution.
+      assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      Map<UUID, Integer> newAZToNum = PlacementInfoUtil.getAzUuidToNumNodes(nodes);
+      assertEquals(azToNum, newAZToNum);
     }
   }
 }
