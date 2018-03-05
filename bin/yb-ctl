@@ -156,6 +156,7 @@ class ClusterOptions:
         self.verbose_level = 0
         self.use_cassandra_authentication = False
         self.node_type = DAEMON_TYPE_TSERVER
+        self.is_shell_master = False
 
     def parse_flag_args(self, flag_args):
         flags = [] if flag_args is None else flag_args.split(",")
@@ -402,8 +403,11 @@ class ClusterControl:
     def get_master_only_flags(self, daemon_id):
         command_list = [
             "--replication_factor={}".format(self.options.replication_factor),
-            "--master_addresses {}".format(self.options.master_addresses)
         ]
+
+        if not self.options.is_shell_master:
+            command_list += ["--master_addresses {}".format(self.options.master_addresses)]
+
         return self.customize_flags(command_list, self.options.master_flags)
 
     def get_tserver_only_flags(self, daemon_id):
@@ -607,6 +611,8 @@ class ClusterControl:
             raise RuntimeError("Please specify exactly one placement_info value.")
 
         daemon_id = DaemonId(self.options.node_type, num_servers + 1)
+        if self.options.node_type == DAEMON_TYPE_MASTER:
+            self.options.is_shell_master = True
         self.start_daemon(daemon_id)
         self.change_config_if_master(daemon_id, "ADD_SERVER")
 
