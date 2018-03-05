@@ -2,6 +2,8 @@
 title: DROP TABLE
 summary: Remove a table
 weight: 1270
+aliases:
+  - api/cql/ddl_drop_table
 ---
 
 ## Synopsis

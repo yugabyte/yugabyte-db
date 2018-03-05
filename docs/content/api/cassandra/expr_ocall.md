@@ -2,6 +2,8 @@
 title: Builtin Operator Call
 summary: Compounding expression using operators.
 weight: 1340
+aliases:
+  - api/cql/expr_ocall
 ---
 
 An expression with operators is a compound expression that combines multiple expressions using builtin operators. The following sections discuss the supported operators in YugaByte.

@@ -8,7 +8,7 @@ Batch operations is the ability to send a set of operations as one operation (RP
 <ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
     <a href="#cassandra">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="icon-cassandra" aria-hidden="true"></i>
       Cassandra
     </a>
   </li>

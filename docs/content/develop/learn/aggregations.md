@@ -6,7 +6,7 @@ weight: 567
 <ul class="nav nav-tabs nav-tabs-yb">
   <li class="active">
     <a href="#cassandra">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="icon-cassandra" aria-hidden="true"></i>
       Cassandra
     </a>
   </li>

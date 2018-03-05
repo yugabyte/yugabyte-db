@@ -2,6 +2,8 @@
 title: Collection Types
 summary: MAP, SET and LIST types
 weight: 1390
+aliases:
+  - api/cql/type_collection
 ---
 
 ## Synopsis

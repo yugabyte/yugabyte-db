@@ -2,6 +2,8 @@
 title: ALTER TABLE
 summary: Change the schema of a table
 weight: 1220
+aliases:
+  - api/cql/ddl_alter_table
 ---
 
 ## Synopsis

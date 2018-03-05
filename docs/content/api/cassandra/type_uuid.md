@@ -2,6 +2,8 @@
 title: UUID and TIMEUUID
 summary: UUID types
 weight: 1460
+aliases:
+  - api/cql/type_uuid
 ---
 
 ## Synopsis

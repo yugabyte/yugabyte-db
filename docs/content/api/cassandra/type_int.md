@@ -2,6 +2,8 @@
 title: Integer Types
 summary: Signed integers of different ranges
 weight: 1420
+aliases:
+  - api/cql/type_int
 ---
 
 ## Synopsis

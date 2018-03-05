@@ -2,6 +2,8 @@
 title: DELETE
 summary: Deletes rows from a table.
 weight: 1330
+aliases:
+  - api/cql/ddl_delete
 ---
 
 ## Synopsis

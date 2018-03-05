@@ -2,6 +2,8 @@
 title: CREATE TYPE
 summary: Create a new datatype
 weight: 1250
+aliases:
+  - api/cql/ddl_create_type
 ---
 
 ## Synopsis

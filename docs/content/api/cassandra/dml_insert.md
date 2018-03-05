@@ -2,6 +2,8 @@
 title: INSERT
 summary: Add a new row to a table
 weight: 1200
+aliases:
+  - api/cql/dml_insert
 ---
 
 ## Synopsis

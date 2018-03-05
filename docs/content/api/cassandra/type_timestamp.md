@@ -2,6 +2,8 @@
 title: DateTime Types
 summary: DATE, TIME and TIMESTAMP
 weight: 1450
+aliases:
+  - api/cql/type_timestamp
 ---
 
 ## Synopsis

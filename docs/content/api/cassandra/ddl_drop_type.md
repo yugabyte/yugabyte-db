@@ -2,6 +2,8 @@
 title: DROP TYPE
 summary: Drop a user-defined datatype
 weight: 1280
+aliases:
+  - api/cql/ddl_drop_type
 ---
 
 ## Synopsis

@@ -2,6 +2,8 @@
 title: FROZEN Datatypes
 summary: Binary format for complex datatypes.
 weight: 1400
+aliases:
+  - api/cql/type_frozen
 ---
 
 ## Synopsis

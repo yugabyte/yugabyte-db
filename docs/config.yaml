@@ -146,7 +146,7 @@ menu:
 #      identifier: develop-learn-conditional-updates
 #      url: /develop/learn/conditional-updates/
 #      weight: 564
-    - name: 3. ACID transactions
+    - name: 3. ACID Transactions
       parent: develop-learn
       identifier: develop-learn-acid-transactions
       url: /develop/learn/acid-transactions/

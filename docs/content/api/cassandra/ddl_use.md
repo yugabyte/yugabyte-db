@@ -2,6 +2,8 @@
 title: USE
 summary: Create a new database
 weight: 1290
+aliases:
+  - api/cql/ddl_use
 ---
 
 ## Synopsis

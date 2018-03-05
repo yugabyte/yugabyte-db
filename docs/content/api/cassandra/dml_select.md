@@ -2,6 +2,8 @@
 title: SELECT
 summary: Retrieves rows from a table
 weight: 1310
+aliases:
+  - api/cql/dml_select
 ---
 
 ## Synopsis

@@ -2,6 +2,8 @@
 title: BOOLEAN Type
 summary: Boolean values of false or true
 weight: 1380
+aliases:
+  - api/cql/type_bool
 ---
 
 ## Synopsis

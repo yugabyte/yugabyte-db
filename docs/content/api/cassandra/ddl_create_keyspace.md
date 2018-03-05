@@ -2,6 +2,8 @@
 title: CREATE KEYSPACE
 summary: Create a new database
 weight: 1230
+aliases:
+  - api/cql/ddl_create_keyspace
 ---
 
 ## Synopsis

@@ -2,6 +2,8 @@
 title: TEXT Type
 summary: String of Unicode characters
 weight: 1440
+aliases:
+  - api/cql/type_text
 ---
 
 ## Synopsis

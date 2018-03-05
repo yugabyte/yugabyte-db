@@ -2,6 +2,8 @@
 title: BLOB Type
 summary: Binary strings of variable length
 weight: 1370
+aliases:
+  - api/cql/type_blob
 ---
 
 ## Synopsis

@@ -2,6 +2,8 @@
 title: Non-integer Numbers
 summary: FLOAT, DOUBLE, and DECIMAL
 weight: 1430
+aliases:
+  - api/cql/type_number
 ---
 
 ## Synopsis

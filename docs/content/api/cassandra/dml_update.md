@@ -2,6 +2,8 @@
 title: UPDATE
 summary: Change values of a row in a table
 weight: 1320
+aliases:
+  - api/cql/dml_update
 ---
 
 ## Synopsis

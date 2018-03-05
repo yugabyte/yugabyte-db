@@ -2,6 +2,8 @@
 title: Apache Cassandra Query Language (CQL)
 summary: CQL features
 weight: 1300
+aliases:
+  - api/cql
 ---
 
 ## Introduction

@@ -2,6 +2,8 @@
 title: CREATE TABLE
 summary: Create a new table in a keyspace
 weight: 1240
+aliases:
+  - api/cql/ddl_create_table
 ---
 
 ## Synopsis

@@ -2,6 +2,8 @@
 title: Simple Expressions
 summary: Columns, constants, and null.
 weight: 1350
+aliases:
+  - api/cql/expr_simple
 ---
 
 Simple expression can be either a column, a constant, or NULL.

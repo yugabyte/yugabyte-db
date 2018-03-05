@@ -2,6 +2,8 @@
 title: INET Type
 summary: IP Address String
 weight: 1410
+aliases:
+  - api/cql/type_inet
 ---
 
 ## Synopsis

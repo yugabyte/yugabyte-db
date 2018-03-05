@@ -1,6 +1,8 @@
 ---
 title: Grammar Diagrams
 summary: Diagrams of the grammar rules
+aliases:
+  - api/cql/grammar_diagrams
 ---
 
 ## DDL Statements

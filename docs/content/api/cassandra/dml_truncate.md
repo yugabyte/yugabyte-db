@@ -2,6 +2,8 @@
 title: TRUNCATE
 summary: Removes all rows from a table.
 weight: 1335
+aliases:
+  - api/cql/dml_truncate
 ---
 
 ## Synopsis

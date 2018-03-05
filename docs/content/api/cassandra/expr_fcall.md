@@ -2,6 +2,8 @@
 title: Built-in Function Call
 summary: Combination of one or more values.
 weight: 1330
+aliases:
+  - api/cql/expr_fcall
 ---
 
 ## Synopsis

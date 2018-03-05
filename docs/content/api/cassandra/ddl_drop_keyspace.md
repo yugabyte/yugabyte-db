@@ -2,6 +2,8 @@
 title: DROP KEYSPACE
 summary: Removes a keyspace and all of its database objects
 weight: 1260
+aliases:
+  - api/cql/ddl_drop_keyspace
 ---
 
 ## Synopsis
