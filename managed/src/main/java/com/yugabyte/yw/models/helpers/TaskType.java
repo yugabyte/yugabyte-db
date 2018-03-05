@@ -50,7 +50,7 @@ public enum TaskType {
 
   DeleteNode("subtasks.DeleteNode"),
 
-  UpdateNodeProcess("subtasks.UpdateNodeProcess"),
+  UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
 
