@@ -287,7 +287,9 @@ export default class ClusterFields extends Component {
       return (!_.isEqual(self.state, prevState) || hasSpotPriceChanged()) &&
         isNonEmptyObject(currentProvider) &&
         (prevState.maxNumNodes !== -1 || currentProvider.code !== "onprem") &&
-        !self.state.gettingSuggestedSpotPrice && (!self.state.useSpotPrice || (self.state.useSpotPrice && formValues[clusterType].spotPrice > 0))
+
+        (currentProvider.code !== "aws" || (!self.state.gettingSuggestedSpotPrice && (!self.state.useSpotPrice ||
+        (self.state.useSpotPrice && formValues[clusterType].spotPrice > 0))))
         &&
         ((currentProvider.code === "onprem" &&
         self.state.numNodes <= self.state.maxNumNodes) || (currentProvider.code !== "onprem")) &&
