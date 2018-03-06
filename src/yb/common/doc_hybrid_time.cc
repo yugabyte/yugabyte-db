@@ -145,12 +145,19 @@ Status DocHybridTime::FullyDecodeFrom(const Slice& encoded) {
   return Status::OK();
 }
 
-Status DocHybridTime::DecodeFromEnd(const Slice& encoded_key_with_ht_at_end) {
+Result<DocHybridTime> DocHybridTime::DecodeFromEnd(Slice* encoded_key_with_ht_at_end) {
   int encoded_size = 0;
-  RETURN_NOT_OK(CheckAndGetEncodedSize(encoded_key_with_ht_at_end, &encoded_size));
-  Slice s(encoded_key_with_ht_at_end.data() + encoded_key_with_ht_at_end.size() - encoded_size,
-          encoded_size);
-  return FullyDecodeFrom(s);
+  RETURN_NOT_OK(CheckAndGetEncodedSize(*encoded_key_with_ht_at_end, &encoded_size));
+  Slice s(encoded_key_with_ht_at_end->end() - encoded_size, encoded_size);
+  DocHybridTime result;
+  RETURN_NOT_OK(result.FullyDecodeFrom(s));
+  encoded_key_with_ht_at_end->remove_suffix(encoded_size);
+  return result;
+}
+
+Status DocHybridTime::DecodeFromEnd(Slice encoded_key_with_ht_at_end) {
+  *this = VERIFY_RESULT(DecodeFromEnd(&encoded_key_with_ht_at_end));
+  return Status::OK();
 }
 
 string DocHybridTime::ToString() const {

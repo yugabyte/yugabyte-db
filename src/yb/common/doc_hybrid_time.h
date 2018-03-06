@@ -18,6 +18,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/util/compare_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -87,7 +88,10 @@ class DocHybridTime {
   CHECKED_STATUS DecodeFrom(Slice *slice);
 
   CHECKED_STATUS FullyDecodeFrom(const Slice& encoded);
-  CHECKED_STATUS DecodeFromEnd(const Slice& encoded_key_with_ht_at_end);
+  CHECKED_STATUS DecodeFromEnd(Slice encoded_key_with_ht);
+
+  // Decodes doc ht from end of slice, and removes corresponding bytes from provided slice.
+  static Result<DocHybridTime> DecodeFromEnd(Slice* encoded_key_with_ht);
 
   bool operator==(const DocHybridTime& other) const {
     return hybrid_time_ == other.hybrid_time_ && write_id_ == other.write_id_;

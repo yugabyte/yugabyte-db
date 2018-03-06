@@ -210,7 +210,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 
     // TODO(dtxn) - check both transaction and non-transaction path?
     // https://yugabyte.atlassian.net/browse/ENG-2177
-    GetSubDocumentData data = { &subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
+    auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
+    GetSubDocumentData data = { encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     EXPECT_OK(GetSubDocument(
         rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
         ReadHybridTime::SingleTime(ht)));
@@ -331,7 +332,8 @@ void DocDBTest::CheckExpectedLatestDBState() {
   SubDocument subdoc;
   bool doc_found = false;
   // TODO(dtxn) - check both transaction and non-transaction path?
-  GetSubDocumentData data = { &subdoc_key, &subdoc, &doc_found };
+  auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
+  GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
   ASSERT_OK(GetSubDocument(
       rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext));
   ASSERT_TRUE(doc_found);
@@ -1448,8 +1450,8 @@ TEST_F(DocDBTest, BloomFilterTest) {
   flush_rocksdb();
 
   auto get_doc = [this, &doc_from_rocksdb, &subdoc_found_in_rocksdb](const DocKey &key) {
-    SubDocKey subdoc_key(key);
-    GetSubDocumentData data = { &subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
+    auto encoded_subdoc_key = SubDocKey(key).EncodeWithoutHt();
+    GetSubDocumentData data = { encoded_subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
     ASSERT_OK(GetSubDocument(
         rocksdb(), data, rocksdb::kDefaultQueryId, boost::none /* txn_op_context */));
   };
@@ -1572,7 +1574,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   SubDocument subdoc;
   bool doc_found = false;
   // TODO(dtxn) - check both transaction and non-transaction path?
-  GetSubDocumentData data = { &subdoc_key, &subdoc, &doc_found };
+  auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
+  GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
   GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext);
   ASSERT_FALSE(doc_found);
 
@@ -1597,7 +1600,8 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
   // TODO(dtxn) - check both transaction and non-transaction path?
   SubDocKey subdoc_key2(kDocKey2);
-  data.subdocument_key = &subdoc_key2;
+  auto encoded_subdoc_key2 = subdoc_key2.EncodeWithoutHt();
+  data.subdocument_key = encoded_subdoc_key2;
   GetSubDocument(rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext);
   ASSERT_TRUE(doc_found);
 
@@ -1859,15 +1863,14 @@ void QueryBounds(const DocKey& doc_key, int lower, int upper, int base, rocksdb:
                  SubDocument* doc_from_rocksdb, bool* subdoc_found,
                  const SubDocKey& subdoc_to_search) {
   HybridTime ht = HybridTime::FromMicros(1000000);
-  SubDocKeyBound lower_bound(SubDocKey(doc_key,
-                                       PrimitiveValue("subkey" + std::to_string(base + lower))),
-                             /* is_exclusive */ false,
-                             /* is_lower_bound */ true);
-  SubDocKeyBound upper_bound(SubDocKey(doc_key,
-                                       PrimitiveValue("subkey" + std::to_string(base + upper))),
-                             /* is_exclusive */ false,
-                             /* is_lower_bound */ false);
-  GetSubDocumentData data = { &subdoc_to_search, doc_from_rocksdb, subdoc_found };
+  auto lower_key =
+      SubDocKey(doc_key, PrimitiveValue("subkey" + std::to_string(base + lower))).EncodeWithoutHt();
+  SliceKeyBound lower_bound(lower_key, BoundType::kInclusiveLower);
+  auto upper_key =
+      SubDocKey(doc_key, PrimitiveValue("subkey" + std::to_string(base + upper))).EncodeWithoutHt();
+  SliceKeyBound upper_bound(upper_key, BoundType::kInclusiveUpper);
+  auto encoded_subdoc_to_search = subdoc_to_search.EncodeWithoutHt();
+  GetSubDocumentData data = { encoded_subdoc_to_search, doc_from_rocksdb, subdoc_found };
   data.low_subkey = &lower_bound;
   data.high_subkey = &upper_bound;
   EXPECT_OK(GetSubDocument(
@@ -2020,10 +2023,10 @@ TEST_F(DocDBTest, TestCompactionForCollectionsWithTTL) {
       SubDocKey(DocKey([], ["collection"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000s
       )#");
 
-  SubDocKey subdoc_key(collection_key);
+  auto subdoc_key = SubDocKey(collection_key).EncodeWithoutHt();
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
-  GetSubDocumentData data = { &subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
+  GetSubDocumentData data = { subdoc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb };
   EXPECT_OK(GetSubDocument(
       rocksdb(), data, rocksdb::kDefaultQueryId, kNonTransactionalOperationContext,
       ReadHybridTime::FromMicros(1200)));

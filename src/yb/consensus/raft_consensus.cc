@@ -211,7 +211,6 @@ using std::shared_ptr;
 using std::unique_ptr;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
-using yb::util::to_underlying;
 
 // Special string that represents any known leader to the failure detector.
 static const char* const kTimerId = "election-timer";

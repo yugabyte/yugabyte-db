@@ -29,8 +29,6 @@ using std::string;
 namespace yb {
 namespace docdb {
 
-using util::to_underlying;
-
 namespace {
 
 LockState Combine(std::initializer_list<IntentType> lock_types) {

@@ -29,8 +29,6 @@ using std::unique_ptr;
 
 using strings::Substitute;
 
-using yb::util::to_underlying;
-
 namespace yb {
 namespace docdb {
 

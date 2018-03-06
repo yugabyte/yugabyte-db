@@ -61,8 +61,8 @@ inline bool AppendPBToString(const google::protobuf::MessageLite &msg, faststrin
     if (BOOST_PP_CAT(EnumType, _IsValid)(value)) { \
       return BOOST_PP_CAT(EnumType, _Name)(value); \
     } else { \
-      return yb::Format("<unknown " BOOST_PP_STRINGIZE(EnumType) " : $0>", \
-          yb::util::to_underlying(value)); \
+      return ::yb::Format("<unknown " BOOST_PP_STRINGIZE(EnumType) " : $0>", \
+          ::yb::to_underlying(value)); \
     } \
   } \
   inline std::string ToString(EnumType value) { \

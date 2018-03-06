@@ -767,7 +767,7 @@ CHECKED_STATUS RedisParser::AdvanceToNextToken() {
     case State::FINISHED:
       return STATUS(IllegalState, "Should not be in FINISHED state during NextToken");
   }
-  LOG(FATAL) << "Unexpected parser state: " << util::to_underlying(state_);
+  LOG(FATAL) << "Unexpected parser state: " << to_underlying(state_);
 }
 
 CHECKED_STATUS RedisParser::Initial() {

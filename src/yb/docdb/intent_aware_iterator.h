@@ -88,20 +88,19 @@ class IntentAwareIterator {
 
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
-  void SeekWithoutHt(const Slice& key);
+  void Seek(const Slice& key);
 
   // Seek forward to specified encoded key (it is responsibility of caller to make sure it
   // doesn't have hybrid time).
-  void SeekForwardWithoutHt(const Slice& key);
+  void SeekForward(const Slice& key);
 
-  // Seek forward to specified subdoc key.
-  void SeekForwardIgnoreHt(const SubDocKey& subdoc_key);
+  // Seek past specified subdoc key (it is responsibility of caller to make sure it
+  // doesn't have hybrid time).
+  void SeekPastSubKey(const Slice& key);
 
-  // Seek past specified subdoc key.
-  void SeekPastSubKey(const SubDocKey& subdoc_key);
-
-  // Seek out of subdoc key.
-  void SeekOutOfSubDoc(const SubDocKey& subdoc_key);
+  // Seek out of subdoc key (it is responsibility of caller to make sure it
+  // doesn't have hybrid time).
+  void SeekOutOfSubDoc(const Slice& key);
 
   // Seek to last doc key.
   void SeekToLastDocKey();
@@ -136,13 +135,13 @@ class IntentAwareIterator {
   // TODO: We could also check that the value is kTombStone or kObject type for sanity checking - ?
   // It could be a simple value as well, not necessarily kTombstone or kObject.
   CHECKED_STATUS FindLastWriteTime(
-      const KeyBytes& key_bytes_without_ht,
+      const Slice& key_without_ht,
       DocHybridTime* max_deleted_ts,
       Value* result_value);
 
  private:
   // Seek forward on regular sub-iterator.
-  void SeekForwardRegular(const Slice& slice, const Slice& prefix = Slice());
+  void SeekForwardRegular(const Slice& slice);
 
   // Skips regular entries with hybrid time after read limit.
   void SkipFutureRecords();

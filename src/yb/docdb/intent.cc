@@ -122,7 +122,7 @@ string Intent::EncodeKey() {
   KeyBytes encoded_key;
   encoded_key.AppendValueType(ValueType::kGroupEnd);
   subdoc_key_.AppendSubKeysAndMaybeHybridTime(PrimitiveValue::IntentTypeValue(intent_type_));
-  encoded_key.Append(subdoc_key_.Encode(/* include hybrid time */ true));
+  encoded_key.Append(subdoc_key_.Encode());
   subdoc_key_.RemoveLastSubKey();
   return encoded_key.AsStringRef();
 }

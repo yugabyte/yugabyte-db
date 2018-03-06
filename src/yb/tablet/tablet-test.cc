@@ -57,7 +57,6 @@ namespace yb {
 namespace tablet {
 
 using fs::ReadableBlock;
-using yb::util::to_underlying;
 
 DEFINE_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");

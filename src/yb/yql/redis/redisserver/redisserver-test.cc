@@ -77,6 +77,30 @@ constexpr int kDefaultTimeoutMs = 100000;
 constexpr int kDefaultTimeoutMs = 10000;
 #endif
 
+std::string ReplyToString(const cpp_redis::reply& reply) {
+  switch (reply.get_type()) {
+    case cpp_redis::reply::type::bulk_string:
+    case cpp_redis::reply::type::simple_string:
+      return reply.as_string();
+    case cpp_redis::reply::type::array: {
+      std::string result = "[";
+      bool first = true;
+      for (const auto& item : reply.as_array()) {
+        if (first) {
+          first = false;
+        } else {
+          result += ", ";
+        }
+        result += ReplyToString(item);
+      }
+      result += ']';
+      return result;
+    }
+    default:
+      return std::string("Not supported: " + std::to_string(to_underlying(reply.get_type())));
+  }
+}
+
 class TestRedisService : public RedisTableTestBase {
  public:
   void SetUp() override;
@@ -163,7 +187,10 @@ class TestRedisService : public RedisTableTestBase {
     DoRedisTest(line, command, cpp_redis::reply::type::array,
         [line, expected](const RedisReply& reply) {
           const auto& replies = reply.as_array();
-          ASSERT_EQ(expected.size(), replies.size()) << "Originator: " << __FILE__ << ":" << line;
+          ASSERT_EQ(expected.size(), replies.size())
+              << "Originator: " << __FILE__ << ":" << line << std::endl
+              << "Expected: " << yb::ToString(expected) << std::endl
+              << " Replies: " << ReplyToString(reply);
           for (size_t i = 0; i < expected.size(); i++) {
             if (expected[i] == "") {
               ASSERT_TRUE(replies[i].is_null())
@@ -537,7 +564,7 @@ void TestRedisService::DoRedisTest(int line,
   VLOG(4) << "Testing with line: " << __FILE__ << ":" << line;
   client().send(command, [this, line, reply_type, callback] (RedisReply& reply) {
     VLOG(4) << "Received response for line: " << __FILE__ << ":" << line
-            << " : " << reply.as_string() << ", of type: " << util::to_underlying(reply.get_type());
+            << " : " << reply.as_string() << ", of type: " << to_underlying(reply.get_type());
     num_callbacks_called_++;
     ASSERT_EQ(reply_type, reply.get_type()) << "Originator: " << __FILE__ << ":" << line;
     callback(reply);

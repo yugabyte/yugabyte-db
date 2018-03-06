@@ -72,7 +72,7 @@ static_assert(RaftPeerPB_Role_Role_MAX < (1 << kBitsPerPackedRole),
 ReplicaState::PackedRoleAndTerm PackRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
   // Ensure we've had no more than 2305843009213693952 terms in this tablet.
   CHECK_LT(term, 1ull << (8 * sizeof(ReplicaState::PackedRoleAndTerm) - kBitsPerPackedRole));
-  return util::to_underlying(role) | (term << kBitsPerPackedRole);
+  return to_underlying(role) | (term << kBitsPerPackedRole);
 }
 
 int64_t UnpackTerm(ReplicaState::PackedRoleAndTerm role_and_term) {
@@ -84,8 +84,6 @@ RaftPeerPB::Role UnpackRole(ReplicaState::PackedRoleAndTerm role_and_term) {
 }
 
 } // anonymous namespace
-
-using yb::util::to_underlying;
 
 //////////////////////////////////////////////////
 // ReplicaState

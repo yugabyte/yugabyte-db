@@ -140,7 +140,8 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time,
     // transactions write intents resolution during DocDbState capturing.
     // For now passing kNonTransactionalOperationContext in order to fail if there are any intents,
     // since this is not supported.
-    GetSubDocumentData data = { &subdoc_key, &subdoc, &doc_found };
+    auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
+    GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
     const Status get_doc_status = yb::docdb::GetSubDocument(
         rocksdb, data, query_id, kNonTransactionalOperationContext,
         ReadHybridTime::SingleTime(hybrid_time));

@@ -115,8 +115,8 @@ void ApplyIntent(const string& lock_string,
 
 }  // namespace
 
-const SubDocKeyBound& SubDocKeyBound::Empty() {
-  static SubDocKeyBound result;
+const SliceKeyBound& SliceKeyBound::Invalid() {
+  static SliceKeyBound result;
   return result;
 }
 
@@ -367,11 +367,11 @@ void PrepareTransactionWriteBatch(
 
 namespace {
 
-void SeekToLowerBound(const SubDocKeyBound& lower_bound, IntentAwareIterator* iter) {
+void SeekToLowerBound(const SliceKeyBound& lower_bound, IntentAwareIterator* iter) {
   if (lower_bound.is_exclusive()) {
-    iter->SeekPastSubKey(lower_bound);
+    iter->SeekPastSubKey(lower_bound.key());
   } else {
-    iter->SeekForwardIgnoreHt(lower_bound);
+    iter->SeekForward(lower_bound.key());
   }
 }
 
@@ -395,50 +395,51 @@ CHECKED_STATUS BuildSubDocument(
     const GetSubDocumentData& data,
     DocHybridTime low_ts,
     int64* num_values_observed) {
-  DCHECK(!data.subdocument_key->has_hybrid_time());
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
-  const KeyBytes encoded_key = data.subdocument_key->Encode();
   while (iter->valid()) {
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
-    auto iter_key = iter->FetchKey();
-    RETURN_NOT_OK(iter_key);
-    VLOG(4) << "iter: " << iter_key->ToDebugString()
-            << ", key: " << encoded_key.ToString();
-    DCHECK(iter_key->starts_with(encoded_key))
-        << "iter: " << iter_key->ToDebugString()
-        << ", key: " << encoded_key.ToString();
+    auto key = VERIFY_RESULT(iter->FetchKey());
+    VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
+            << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
+    DCHECK(key.starts_with(data.subdocument_key))
+        << "iter: " << SubDocKey::DebugSliceToString(key)
+        << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
 
-    SubDocKey found_key;
-    RETURN_NOT_OK(found_key.FullyDecodeFrom(*iter_key));
-
+    auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
+    if (key.empty() || static_cast<ValueType>(key[key.size() - 1]) != ValueType::kHybridTime) {
+      return STATUS_FORMAT(Corruption, "Key missing value type for hybrid time: $0",
+                           key.ToDebugHexString());
+    }
+    key.remove_suffix(1);
+    // Key could be invalidated because we could move iterator, so back it up.
+    KeyBytes key_copy(key);
+    key = key_copy.AsSlice();
     rocksdb::Slice value = iter->value();
 
     // Checking that intent aware iterator returns entry with correct time.
-    DCHECK_GE(iter->read_time().global_limit, found_key.hybrid_time())
-        << "Found key: " << found_key.ToString();
+    DCHECK_GE(iter->read_time().global_limit, doc_ht.hybrid_time())
+        << "Found key: " << SubDocKey::DebugSliceToString(key);
 
-    if (low_ts > found_key.doc_hybrid_time()) {
-      VLOG(3) << "SeekPastSubKey: $0" << found_key.ToString();
-      iter->SeekPastSubKey(found_key);
+    if (low_ts > doc_ht) {
+      VLOG(3) << "SeekPastSubKey: $0" << SubDocKey::DebugSliceToString(key);
+      iter->SeekPastSubKey(key);
       continue;
     }
 
     Value doc_value;
     RETURN_NOT_OK(doc_value.Decode(value));
 
-    bool only_lacks_ht = false;
-    RETURN_NOT_OK(encoded_key.OnlyLacksHybridTimeFrom(*iter_key, &only_lacks_ht));
-    if (only_lacks_ht) {
+    if (key == data.subdocument_key) {
       const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
 
-      DocHybridTime write_time = found_key.doc_hybrid_time();
+      DocHybridTime write_time = doc_ht;
 
       bool has_expired = false;
       if (!ttl.Equals(Value::kMaxTtl)) {
         const HybridTime expiry =
-            server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
+            server::HybridClock::AddPhysicalTimeToHybridTime(doc_ht.hybrid_time(), ttl);
         if (iter->read_time().read.CompareTo(expiry) > 0) {
           has_expired = true;
           if (low_ts.hybrid_time() > expiry) {
@@ -474,14 +475,12 @@ CHECKED_STATUS BuildSubDocument(
         // If the low subkey cannot include the found key, we want to skip to the low subkey,
         // but if it can, we want to seek to the next key. This prevents an infinite loop
         // where the iterator keeps seeking to itself if the found key matches the low subkey.
-        if (IsObjectType(doc_value.value_type()) &&
-        data.low_subkey->IsValid() &&
-        !data.low_subkey->CanInclude(found_key)) {
+        if (IsObjectType(doc_value.value_type()) && !data.low_subkey->CanInclude(key)) {
           // Try to seek to the low_subkey for efficiency.
           SeekToLowerBound(*data.low_subkey, iter);
         } else {
-          VLOG(3) << "SeekPastSubKey: " << found_key.ToString();
-          iter->SeekPastSubKey(found_key);
+          VLOG(3) << "SeekPastSubKey: " << SubDocKey::DebugSliceToString(key);
+          iter->SeekPastSubKey(key);
         }
         continue;
       } else {
@@ -510,42 +509,34 @@ CHECKED_STATUS BuildSubDocument(
                 ? write_time.hybrid_time().GetPhysicalValueMicros()
                 : doc_value.user_timestamp());
         if (!data.high_index->CanInclude(current_values_observed)) {
-          iter->SeekOutOfSubDoc(found_key);
+          iter->SeekOutOfSubDoc(key);
           return Status::OK();
         }
         if (data.low_index->CanInclude(*num_values_observed)) {
           *data.result = SubDocument(doc_value.primitive_value());
         }
         (*num_values_observed)++;
-        VLOG(3) << "SeekForward: " << found_key.ToString() << ".AdvanceOutOfSubDoc() = "
-                << found_key.AdvanceOutOfSubDoc().ToString();
-        iter->SeekOutOfSubDoc(found_key);
+        VLOG(3) << "SeekOutOfSubDoc: " << SubDocKey::DebugSliceToString(key);
+        iter->SeekOutOfSubDoc(key);
         return Status::OK();
       }
     }
 
-    SubDocument descendant = SubDocument(PrimitiveValue(ValueType::kInvalidValueType));
+    SubDocument descendant{PrimitiveValue(ValueType::kInvalidValueType)};
     // TODO: what if found_key is the same as before? We'll get into an infinite recursion then.
-    found_key.remove_hybrid_time();
     {
-      auto encoded_found_key = found_key.Encode();
-      IntentAwareIteratorPrefixScope prefix_scope(encoded_found_key, iter);
-      RETURN_NOT_OK(BuildSubDocument(iter, data.Adjusted(&found_key, &descendant),
-                                     low_ts, num_values_observed));
+      IntentAwareIteratorPrefixScope prefix_scope(key, iter);
+      RETURN_NOT_OK(BuildSubDocument(
+          iter, data.Adjusted(key, &descendant), low_ts, num_values_observed));
     }
     if (descendant.value_type() == ValueType::kInvalidValueType) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
     }
 
-    // For the purposes of comparison, we strip the found key until it matches the length of both
-    // the low and high subkeys for their respective calculations.
-    SubDocKey found_key_prefix_low = found_key;
-    SubDocKey found_key_prefix_high = found_key;
-    found_key_prefix_low.KeepPrefix(data.low_subkey->num_subkeys());
-    found_key_prefix_high.KeepPrefix(data.high_subkey->num_subkeys());
-
-    if (data.low_subkey->IsValid() && !data.low_subkey->CanInclude(found_key_prefix_low)) {
+    if (!data.low_subkey->CanInclude(key)) {
+      VLOG(3) << "Filtered by low_subkey: " << data.low_subkey->ToString()
+              << ", key: " << SubDocKey::DebugSliceToString(key);
       // The value provided is lower than what we are looking for, seek to the lower bound.
       SeekToLowerBound(*data.low_subkey, iter);
       continue;
@@ -557,9 +548,14 @@ CHECKED_STATUS BuildSubDocument(
       continue;
     }
 
-    if ((data.high_subkey->IsValid() && !data.high_subkey->CanInclude(found_key_prefix_high)) ||
-        !data.high_index->CanInclude(current_values_observed)) {
+    if (!data.high_subkey->CanInclude(key)) {
+      VLOG(3) << "Filtered by high_subkey: " << data.high_subkey->ToString()
+              << ", key: " << SubDocKey::DebugSliceToString(key);
       // We have encountered a subkey higher than our constraints, we should stop here.
+      return Status::OK();
+    }
+
+    if (!data.high_index->CanInclude(current_values_observed)) {
       return Status::OK();
     }
 
@@ -569,10 +565,17 @@ CHECKED_STATUS BuildSubDocument(
 
     SubDocument* current = data.result;
 
-    for (int i = data.subdocument_key->num_subkeys(); i < found_key.num_subkeys() - 1; i++) {
-      current = current->GetOrAddChild(found_key.subkeys()[i]).first;
+    Slice temp = key;
+    temp.remove_prefix(data.subdocument_key.size());
+    for (;;) {
+      PrimitiveValue child;
+      RETURN_NOT_OK(child.DecodeFromKey(&temp));
+      if (temp.empty()) {
+        current->SetChild(child, std::move(descendant));
+        break;
+      }
+      current = current->GetOrAddChild(child).first;
     }
-    current->SetChild(found_key.subkeys().back(), SubDocument(descendant));
   }
 
   return Status::OK();
@@ -586,9 +589,8 @@ yb::Status GetSubDocument(
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
     const ReadHybridTime& read_time) {
-  const auto doc_key_encoded = data.subdocument_key->doc_key().Encode();
   auto iter = CreateIntentAwareIterator(
-      db, BloomFilterMode::USE_BLOOM_FILTER, doc_key_encoded.AsSlice(), query_id, txn_op_context,
+      db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id, txn_op_context,
       read_time);
   return GetSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
@@ -596,7 +598,7 @@ yb::Status GetSubDocument(
 yb::Status GetSubDocument(
     IntentAwareIterator *db_iter,
     const GetSubDocumentData& data,
-    const vector<PrimitiveValue>* projection,
+    const std::vector<PrimitiveValue>* projection,
     const SeekFwdSuffices seek_fwd_suffices) {
   // TODO(dtxn) scan through all involved first transactions to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
@@ -608,38 +610,47 @@ yb::Status GetSubDocument(
   // Question: what will break if we allow later commit at ht <= scan_ht ? Need to write down
   // detailed example.
   *data.doc_found = false;
-  DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", data.subdocument_key->ToString(),
+  DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", data.subdocument_key.ToDebugHexString(),
                   db_iter->read_time().ToString());
   DocHybridTime max_deleted_ts(DocHybridTime::kMin);
 
-  VLOG(4) << "GetSubDocument(" << data.subdocument_key->ToString() << ")";
+  VLOG(4) << "GetSubDocument(" << data << ")";
 
   SubDocKey found_subdoc_key;
 
-  DCHECK(!data.subdocument_key->has_hybrid_time());
-  KeyBytes key_bytes = data.subdocument_key->doc_key().Encode();
+  auto dockey_size =
+      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::WHOLE_DOC_KEY));
 
-  auto doc_key_bytes = key_bytes;
-  IntentAwareIteratorPrefixScope prefix_scope(doc_key_bytes, db_iter);
+  Slice key_slice(data.subdocument_key.data(), dockey_size);
+
+  IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
 
   if (seek_fwd_suffices) {
-    db_iter->SeekForwardWithoutHt(key_bytes);
+    db_iter->SeekForward(key_slice);
   } else {
-    db_iter->SeekWithoutHt(key_bytes);
+    db_iter->Seek(key_slice);
   }
 
   // Check ancestors for init markers and tombstones, update max_deleted_ts with them.
-  for (const PrimitiveValue& subkey : data.subdocument_key->subkeys()) {
-    RETURN_NOT_OK(db_iter->FindLastWriteTime(key_bytes, &max_deleted_ts, nullptr));
-    subkey.AppendToKey(&key_bytes);
+  {
+    auto temp_key = data.subdocument_key;
+    temp_key.remove_prefix(dockey_size);
+    for (;;) {
+      auto decode_result = VERIFY_RESULT(SubDocKey::DecodeSubkey(&temp_key));
+      if (!decode_result) {
+        break;
+      }
+      RETURN_NOT_OK(db_iter->FindLastWriteTime(
+          key_slice, &max_deleted_ts, nullptr /* result_value */));
+      key_slice = Slice(key_slice.data(), temp_key.data() - key_slice.data());
+    }
   }
-
   // By this point key_bytes is the encoded representation of the DocKey and all the subkeys of
   // subdocument_key.
 
   // Check for init-marker / tombstones at the top level, update max_deleted_ts.
   Value doc_value = Value(PrimitiveValue(ValueType::kInvalidValueType));
-  RETURN_NOT_OK(db_iter->FindLastWriteTime(key_bytes, &max_deleted_ts, &doc_value));
+  RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &max_deleted_ts, &doc_value));
 
   if (data.return_type_only) {
     *data.doc_found = doc_value.value_type() != ValueType::kInvalidValueType;
@@ -649,8 +660,8 @@ yb::Status GetSubDocument(
 
   if (projection == nullptr) {
     *data.result = SubDocument(ValueType::kInvalidValueType);
-    IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
     int64 num_values_observed = 0;
+    IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_deleted_ts, &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueType::kInvalidValueType;
     if (*data.doc_found && doc_value.value_type() == ValueType::kRedisSet) {
@@ -667,18 +678,16 @@ yb::Status GetSubDocument(
   // For each subkey in the projection, build subdocument.
   *data.result = SubDocument();
   for (const PrimitiveValue& subkey : *projection) {
-    SubDocKey projection_subdockey = *data.subdocument_key;
-    projection_subdockey.AppendSubKeysAndMaybeHybridTime(subkey);
+    KeyBytes encoded_projection_subdockey(data.subdocument_key);
+    subkey.AppendToKey(&encoded_projection_subdockey);
     // This seek is to initialize the iterator for BuildSubDocument call.
-    auto encoded_projection_subdockey =
-        projection_subdockey.Encode(/* include_hybrid_time */ false);
     IntentAwareIteratorPrefixScope prefix_scope(encoded_projection_subdockey, db_iter);
-    db_iter->SeekForwardWithoutHt(encoded_projection_subdockey);
+    db_iter->SeekForward(encoded_projection_subdockey);
 
     SubDocument descendant(ValueType::kInvalidValueType);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
-        db_iter, data.Adjusted(&projection_subdockey, &descendant),
+        db_iter, data.Adjusted(encoded_projection_subdockey, &descendant),
         max_deleted_ts, &num_values_observed));
     if (descendant.value_type() != ValueType::kInvalidValueType) {
       *data.doc_found = true;
@@ -686,7 +695,7 @@ yb::Status GetSubDocument(
     data.result->SetChild(subkey, std::move(descendant));
   }
   // Make sure the iterator is placed outside the whole document in the end.
-  db_iter->SeekForwardWithoutHt(data.subdocument_key->AdvanceOutOfSubDoc());
+  db_iter->SeekForward(KeyBytes(key_slice, static_cast<char>(ValueType::kMaxByte)));
   return Status::OK();
 }
 

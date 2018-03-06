@@ -185,8 +185,24 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
 }
 
 void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
-  KeyBytes key_bytes = sub_doc_key.Encode(/* include_hybrid_time */ false);
+  KeyBytes key_bytes = sub_doc_key.EncodeWithoutHt();
   AppendDocHybridTime(DocHybridTime::kMin, &key_bytes);
+  SeekForward(key_bytes, iter);
+}
+
+KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
+  char buf[kMaxBytesPerEncodedHybridTime + 1];
+  buf[0] = static_cast<char>(ValueType::kHybridTime);
+  auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
+  return KeyBytes(key, Slice(buf, end));
+}
+
+void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
+  SeekForward(AppendDocHt(key, DocHybridTime::kMin), iter);
+}
+
+void SeekOutOfSubKey(const Slice& key, rocksdb::Iterator* iter) {
+  KeyBytes key_bytes(key, static_cast<char>(ValueType::kMaxByte));
   SeekForward(key_bytes, iter);
 }
 

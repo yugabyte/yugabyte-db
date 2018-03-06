@@ -66,6 +66,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/net/net_fwd.h"
 
 template<class T> class scoped_refptr;
@@ -818,6 +819,8 @@ typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
 
 class YBSessionData;
 
+YB_STRONGLY_TYPED_BOOL(VerifyResponse);
+
 // A YBSession belongs to a specific YBClient, and represents a context in
 // which all read/write data access should take place. Within a session,
 // multiple operations may be accumulated and batched together for better
@@ -954,7 +957,12 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // may be retrieved at any time.
   //
   // This is thread safe.
-  CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Apply(YBOperationPtr yb_op);
+
+  // verify_response - supported only in auto flush mode. Checks that after flush operation
+  // is succeeded. (i.e. op->succeeded() returns true).
+  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops,
+                       VerifyResponse verify_response = VerifyResponse::kFalse);
 
   // Flush any pending writes.
   //

@@ -324,7 +324,7 @@ Status DocWriteBatch::ReplaceInList(
     MonoDelta write_ttl) {
   SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FromDocPath(doc_path));
-  KeyBytes key_bytes = sub_doc_key.Encode( /*include_hybrid_time =*/ false);
+  KeyBytes key_bytes = sub_doc_key.Encode();
   // Ensure we seek directly to indexes and skip init marker if it exists
   key_bytes.AppendValueType(ValueType::kArrayIndex);
   rocksdb::Slice seek_key = key_bytes.AsSlice();

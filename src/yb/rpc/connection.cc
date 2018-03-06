@@ -552,7 +552,7 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
     }
     resp->mutable_calls_in_flight()->DeleteSubrange(resp->calls_in_flight_size() - 1, 1);
   } else if (direction_ != Direction::SERVER) {
-    LOG(FATAL) << "Invalid direction: " << util::to_underlying(direction_);
+    LOG(FATAL) << "Invalid direction: " << to_underlying(direction_);
   }
 
   return Status::OK();
