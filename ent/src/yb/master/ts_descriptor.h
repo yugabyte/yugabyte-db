@@ -45,8 +45,9 @@ class TSDescriptor : public yb::master::TSDescriptor {
     return placement_uuid_;
   }
 
-  CHECKED_STATUS Register(const NodeInstancePB& instance,
-                          const TSRegistrationPB& registration) override;
+ protected:
+  CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
+                                  const TSRegistrationPB& registration) override;
 
  private:
   string placement_uuid_;
