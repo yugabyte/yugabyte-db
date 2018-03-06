@@ -87,8 +87,8 @@ class TSDescriptor {
   MonoDelta TimeSinceHeartbeat() const;
 
   // Register this tablet server.
-  virtual CHECKED_STATUS Register(const NodeInstancePB& instance,
-                                  const TSRegistrationPB& registration);
+  CHECKED_STATUS Register(const NodeInstancePB& instance,
+                          const TSRegistrationPB& registration);
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
   int64_t latest_seqno() const;
@@ -210,6 +210,10 @@ class TSDescriptor {
   }
 
   explicit TSDescriptor(std::string perm_id);
+
+ protected:
+  virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
+                                          const TSRegistrationPB& registration);
 
  private:
   template <class TProxy>

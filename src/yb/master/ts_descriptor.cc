@@ -73,6 +73,12 @@ TSDescriptor::~TSDescriptor() {
 Status TSDescriptor::Register(const NodeInstancePB& instance,
                               const TSRegistrationPB& registration) {
   std::lock_guard<simple_spinlock> l(lock_);
+  RETURN_NOT_OK(RegisterUnlocked(instance, registration));
+  return Status::OK();
+}
+
+Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
+                                const TSRegistrationPB& registration) {
   CHECK_EQ(instance.permanent_uuid(), permanent_uuid_);
 
   if (instance.instance_seqno() < latest_seqno_) {
