@@ -39,6 +39,7 @@ class AwsSdkCppDependency(Dependency):
                                        ['-DCMAKE_BUILD_TYPE=Release',
                                         '-DBUILD_SHARED_LIBS={}'.format(shared),
                                         '-DBUILD_ONLY=route53',
+                                        '-DCUSTOM_MEMORY_MANAGEMENT=0',
                                         '-DENABLE_TESTING=Off',
                                         '-DENABLE_UNITY_BUILD=On',
                                         '-DCMAKE_INSTALL_PREFIX={}'.format(out_dir),

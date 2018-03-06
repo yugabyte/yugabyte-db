@@ -550,12 +550,12 @@ cql_rpc_port=9042
 
 common_params=" --version_file_json_path $build_root --callhome_enabled=false"
 
-master_optional_params=""
+master_optional_params=" ${YB_LOCAL_MASTER_EXTRA_PARAMS:-}"
 if [[ -n "$replication_factor" ]]; then
   master_optional_params+=" --replication_factor $replication_factor"
 fi
 
-tserver_optional_params=""
+tserver_optional_params=" ${YB_LOCAL_TSERVER_EXTRA_PARAMS:-}"
 if [[ -n "$yb_num_shards_per_tserver" ]]; then
   tserver_optional_params+=" --yb_num_shards_per_tserver $yb_num_shards_per_tserver"
 fi

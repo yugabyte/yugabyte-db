@@ -178,11 +178,8 @@ const string getaddrinfo_rc_to_string(int rc) {
   }
   return Substitute("$0 ($1)", rc, s);
 }
-}  // namespace
 
-Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
-  TRACE_EVENT1("net", "HostPort::ResolveAddresses",
-               "host", host_);
+Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std::string& host) {
   struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
@@ -190,20 +187,35 @@ Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
   struct addrinfo* res = nullptr;
   int rc = 0;
   LOG_SLOW_EXECUTION(WARNING, 200,
-                     Substitute("resolving address for $0", host_)) {
-    rc = getaddrinfo(host_.c_str(), nullptr, &hints, &res);
+                     Substitute("resolving address for $0", host)) {
+    rc = getaddrinfo(host.c_str(), nullptr, &hints, &res);
   }
   if (rc != 0) {
-    return STATUS(NetworkError,
-      StringPrintf("Unable to resolve address '%s', getaddrinfo returned %s",
-                   host_.c_str(),
-                   getaddrinfo_rc_to_string(rc).c_str()),
-      gai_strerror(rc));
+    return STATUS_FORMAT(NetworkError, "Unable to resolve address $0, getaddrinfo returned $1: $2",
+                         host.c_str(), getaddrinfo_rc_to_string(rc).c_str(), gai_strerror(rc));
+  } else {
+    return std::unique_ptr<addrinfo, AddrinfoDeleter>(res);
   }
-  gscoped_ptr<addrinfo, AddrinfoDeleter> scoped_res(res);
-  for (; res != nullptr; res = res->ai_next) {
-    CHECK_EQ(res->ai_family, AF_INET);
-    struct sockaddr_in* addr = reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
+}
+
+template <typename F>
+CHECKED_STATUS ResolveInetAddresses(const std::string& host, F func) {
+  auto addrinfo_holder = CHECK_RESULT(HostToInetAddrInfo(host));
+  struct addrinfo* addrinfo = addrinfo_holder.get();
+  for (; addrinfo != nullptr; addrinfo = addrinfo->ai_next) {
+    CHECK_EQ(addrinfo->ai_family, AF_INET);
+    struct sockaddr_in* addr = reinterpret_cast<struct sockaddr_in*>(addrinfo->ai_addr);
+    func(addr);
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
+  TRACE_EVENT1("net", "HostPort::ResolveAddresses",
+               "host", host_);
+  return ResolveInetAddresses(host_, [this, addresses](struct sockaddr_in* addr) {
     addr->sin_port = htons(port_);
     Endpoint sockaddr;
     memcpy(sockaddr.data(), addr, sizeof(*addr));
@@ -211,8 +223,7 @@ Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
       addresses->push_back(sockaddr);
     }
     VLOG(2) << "Resolved address " << sockaddr << " for host/port " << ToString();
-  }
-  return Status::OK();
+  });
 }
 
 Status HostPort::ParseStrings(const string& comma_sep_addrs,
@@ -493,5 +504,30 @@ std::string HostPortToString(const std::string& host, int port) {
   DCHECK_LE(port, 65535);
   return Format("$0:$1", host, port);
 }
+
+Status HostToAddresses(
+    const std::string& host,
+    boost::container::small_vector<IpAddress, 1>* addresses) {
+  return ResolveInetAddresses(host, [&addresses](struct sockaddr_in* addr) {
+    Endpoint endpoint;
+    memcpy(endpoint.data(), addr, sizeof(*addr));
+    addresses->push_back(endpoint.address());
+  });
+}
+
+Result<IpAddress> HostToAddress(const std::string& host) {
+  boost::container::small_vector<IpAddress, 1> addrs;
+  RETURN_NOT_OK(HostToAddresses(host, &addrs));
+  if (addrs.empty()) {
+    return STATUS(NetworkError, "Unable to resolve address", host);
+  }
+  auto addr = addrs.front();
+  if (addrs.size() > 1) {
+    VLOG(1) << "Hostname " << host << " resolved to more than one address. "
+            << "Using address: " << addr;
+  }
+  return addr;
+}
+
 
 } // namespace yb

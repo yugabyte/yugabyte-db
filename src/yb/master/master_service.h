@@ -46,6 +46,8 @@ class MasterServiceImpl : public MasterServiceIf,
                           public MasterServiceBase {
  public:
   explicit MasterServiceImpl(Master* server);
+  MasterServiceImpl(const MasterServiceImpl&) = delete;
+  void operator=(const MasterServiceImpl&) = delete;
 
   virtual void TSHeartbeat(const TSHeartbeatRequestPB* req,
                            TSHeartbeatResponsePB* resp,
@@ -176,7 +178,6 @@ class MasterServiceImpl : public MasterServiceIf,
       rpc::RpcContext rpc) override;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(MasterServiceImpl);
 };
 
 } // namespace master

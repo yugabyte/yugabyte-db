@@ -30,4 +30,6 @@ class CurlDependency(Dependency):
         disabled_features = ['ftp', 'file', 'ldap', 'ldaps', 'rtsp', 'dict', 'telnet', 'tftp',
                              'pop3', 'imap', 'smtp', 'gopher', 'manual', 'librtmp', 'ipv6']
         extra_args = ['--disable-' + feature for feature in disabled_features]
+        if is_mac():
+            extra_args.append('--with-ssl=/usr/local/opt/openssl')
         builder.build_with_configure(builder.log_prefix(self), extra_args)

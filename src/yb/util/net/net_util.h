@@ -36,6 +36,8 @@
 #include <vector>
 #include <memory>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/util/env.h"
 #include "yb/util/status.h"
 #include "yb/util/net/net_fwd.h"
@@ -161,6 +163,12 @@ Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter);
 
 // Convert the given host/port pair to a string of the host:port format.
 std::string HostPortToString(const std::string& host, int port);
+
+CHECKED_STATUS HostToAddresses(
+    const std::string& host,
+    boost::container::small_vector<IpAddress, 1>* addresses);
+
+Result<IpAddress> HostToAddress(const std::string& host);
 
 } // namespace yb
 #endif  // YB_UTIL_NET_NET_UTIL_H
