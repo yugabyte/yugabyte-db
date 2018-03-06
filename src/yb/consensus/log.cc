@@ -99,6 +99,17 @@ DEFINE_int32(group_commit_queue_size_bytes, 4_MB,
              "Maximum size of the group commit queue in bytes");
 TAG_FLAG(group_commit_queue_size_bytes, advanced);
 
+// Flags for controlling kernel watchdog limits.
+DEFINE_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 100,
+             "If calling consensus log callback(s) take longer than this, the kernel watchdog "
+             "will print out a stack trace.");
+TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, runtime);
+TAG_FLAG(consensus_log_scoped_watch_delay_callback_threshold_ms, advanced);
+DEFINE_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 500,
+             "If consensus log append takes longer than this, the kernel watchdog "
+             "will print out a stack trace.");
+TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, runtime);
+TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, advanced);
 // Fault/latency injection flags.
 // -----------------------------
 DEFINE_bool(log_inject_latency, false,
@@ -256,7 +267,7 @@ void Log::Appender::SyncWork() {
   } else {
     TRACE_EVENT0("log", "Callbacks");
     VLOG(2) << "Synchronized " << sync_batch_.size() << " entry batches";
-    SCOPED_WATCH_STACK(100);
+    SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms);
     for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
       if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
         entry_batch->callback().Run(Status::OK());
@@ -532,7 +543,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
 
   LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
     SCOPED_LATENCY_METRIC(metrics_, append_latency);
-    SCOPED_WATCH_STACK(500);
+    SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms);
 
     RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
 
