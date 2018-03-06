@@ -187,6 +187,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   for (const auto& desc : descs) {
     desc->GetTSInformationPB(resp->add_tservers());
   }
+  server_->OnTSHeartbeat(descs);
 
   rpc.RespondSuccess();
 }
