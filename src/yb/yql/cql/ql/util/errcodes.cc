@@ -28,7 +28,7 @@
 namespace yb {
 namespace ql {
 
-const std::unordered_map<ErrorCode, const char*, util::EnumHash> kQLErrorMessage {
+const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   //------------------------------------------------------------------------------------------------
   { ErrorCode::SUCCESS, "Success" },
 
@@ -120,14 +120,14 @@ ErrorCode GetErrorCode(const Status& s) {
 const char *ErrorText(const ErrorCode error_code) {
   auto it = kQLErrorMessage.find(error_code);
   if (it == kQLErrorMessage.end()) {
-    LOG(DFATAL) << "Unknown error code: " << util::to_underlying(error_code);
+    LOG(DFATAL) << "Unknown error code: " << to_underlying(error_code);
     return "Unknown error";
   }
   return it->second;
 }
 
 Status ErrorStatus(const ErrorCode code, const std::string& mesg) {
-  return STATUS(QLError, ErrorText(code), mesg, util::to_underlying(code));
+  return STATUS(QLError, ErrorText(code), mesg, to_underlying(code));
 }
 
 std::string FormatForComparisonFailureMessage(ErrorCode op, ErrorCode) {

@@ -31,7 +31,6 @@
 #include "yb/util/math_util.h"
 
 namespace yb {
-namespace util {
 
 // Convert a strongly typed enum to its underlying type.
 // Based on an answer to this StackOverflow question: https://goo.gl/zv2Wg3
@@ -98,7 +97,7 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
     if (c_str != nullptr) \
       return c_str; \
     return "<unknown " BOOST_PP_STRINGIZE(enum_name) " : " + \
-           std::to_string(::yb::util::to_underlying(value)) + ">"; \
+           std::to_string(::yb::to_underlying(value)) + ">"; \
   } \
   inline __attribute__((unused)) std::ostream& operator<<(std::ostream& out, enum_name value) { \
     return out << ToString(value); \
@@ -148,7 +147,7 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
           std::is_same<decltype(_value_copy), enum_type>::value, \
           "Type of enum value passed to FATAL_INVALID_ENUM_VALUE must be " \
           BOOST_PP_STRINGIZE(enum_type)); \
-      ::yb::util::FatalInvalidEnumValueInternal<enum_type>( \
+      ::yb::FatalInvalidEnumValueInternal<enum_type>( \
           BOOST_PP_STRINGIZE(enum_type), _value_copy, BOOST_PP_STRINGIZE(value_macro_arg)); \
     } while (0)
 
@@ -180,7 +179,6 @@ struct EnumHash {
   }
 };
 
-}  // namespace util
 }  // namespace yb
 
 #endif  // YB_UTIL_ENUMS_H_

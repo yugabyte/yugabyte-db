@@ -46,7 +46,6 @@
 using namespace std::literals;
 using std::vector;
 
-using yb::util::to_underlying;
 using yb::server::LogicalClock;
 
 namespace yb {

@@ -347,21 +347,21 @@ ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
 
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \
-  __extension__ ({ auto&& result = (expr); CHECK_OK(result); std::move(*result); })
+  __extension__ ({ auto&& __result = (expr); CHECK_OK(__result); std::move(*__result); })
 
 // Returns if result is not ok, extracts result value is case of success.
 #define VERIFY_RESULT(expr) \
-  __extension__ ({ auto&& result = (expr); RETURN_NOT_OK(result); std::move(*result); })
+  __extension__ ({ auto&& __result = (expr); RETURN_NOT_OK(__result); std::move(*__result); })
 
 // Returns if result is not ok, prepending status with provided message,
 // extracts result value is case of success.
 #define VERIFY_RESULT_PREPEND(expr, message) \
   __extension__ ({ \
-    auto&& result = (expr); RETURN_NOT_OK_PREPEND(result, message); std::move(*result); })
+    auto&& __result = (expr); RETURN_NOT_OK_PREPEND(__result, message); std::move(*__result); })
 
 // Asserts that result is ok, extracts result value is case of success.
 #define ASSERT_RESULT(expr) \
-  __extension__ ({ auto&& result = (expr); ASSERT_OK(result); std::move(*result); })
+  __extension__ ({ auto&& __result = (expr); ASSERT_OK(__result); std::move(*__result); })
 
 } // namespace yb
 

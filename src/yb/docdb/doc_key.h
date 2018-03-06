@@ -159,6 +159,7 @@ class DocKey {
 
   // Converts a redis string key to a doc key
   static DocKey FromRedisKey(uint16_t hash, const string& key);
+  static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
 
  private:
   class DecodeFromCallback;
@@ -298,7 +299,8 @@ class SubDocKey {
     return !doc_key_.empty();
   }
 
-  KeyBytes Encode(bool include_hybrid_time = true) const;
+  KeyBytes Encode() const { return DoEncode(true /* include_hybrid_time */); }
+  KeyBytes EncodeWithoutHt() const { return DoEncode(false /* include_hybrid_time */); }
 
   // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key.
   // @param slice
@@ -478,6 +480,8 @@ class SubDocKey {
   static Status DoDecode(rocksdb::Slice* slice,
                          HybridTimeRequired require_hybrid_time,
                          const Callback& callback);
+
+  KeyBytes DoEncode(bool include_hybrid_time) const;
 
   DocKey doc_key_;
   DocHybridTime doc_ht_;

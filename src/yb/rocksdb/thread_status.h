@@ -108,8 +108,8 @@ struct ThreadStatus {
   // The maximum number of properties of an operation.
   // This number should be set to the biggest NUM_XXX_PROPERTIES.
   static constexpr auto kNumOperationProperties =
-      yb::constexpr_max(yb::util::to_underlying(NUM_COMPACTION_PROPERTIES),
-                        yb::util::to_underlying(NUM_FLUSH_PROPERTIES));
+      yb::constexpr_max(yb::to_underlying(NUM_COMPACTION_PROPERTIES),
+                        yb::to_underlying(NUM_FLUSH_PROPERTIES));
 
   // The type used to refer to a thread state.
   // A state describes lower-level action of a thread

@@ -31,7 +31,6 @@ using std::ostringstream;
 
 using strings::Substitute;
 
-using yb::util::to_underlying;
 using yb::util::CompareVectors;
 using yb::util::CompareUsingLessThan;
 
@@ -340,11 +339,23 @@ DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
   return new_doc_key;
 }
 
+KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, const std::string &key) {
+  KeyBytes result;
+  result.AppendValueType(ValueType::kUInt16Hash);
+  result.AppendUInt16(hash);
+  result.AppendValueType(ValueType::kString);
+  result.AppendString(key);
+  result.AppendValueType(ValueType::kGroupEnd);
+  result.AppendValueType(ValueType::kGroupEnd);
+  DCHECK_EQ(result.data(), FromRedisKey(hash, key).Encode().data());
+  return result;
+}
+
 // ------------------------------------------------------------------------------------------------
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
 
-KeyBytes SubDocKey::Encode(bool include_hybrid_time) const {
+KeyBytes SubDocKey::DoEncode(bool include_hybrid_time) const {
   KeyBytes key_bytes = doc_key_.Encode();
   for (const auto& subkey : subkeys_) {
     subkey.AppendToKey(&key_bytes);
@@ -607,7 +618,7 @@ int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {
 }
 
 KeyBytes SubDocKey::AdvanceOutOfSubDoc() const {
-  KeyBytes subdoc_key_no_ts = Encode(/* include_hybrid_time = */ false);
+  KeyBytes subdoc_key_no_ts = EncodeWithoutHt();
   subdoc_key_no_ts.AppendValueType(ValueType::kMaxByte);
   return subdoc_key_no_ts;
 }

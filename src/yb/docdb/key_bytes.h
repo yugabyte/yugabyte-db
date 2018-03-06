@@ -38,6 +38,22 @@ class KeyBytes {
   explicit KeyBytes(const std::string& data) : data_(data) {}
   explicit KeyBytes(const rocksdb::Slice& slice) : data_(slice.ToBuffer()) {}
 
+  KeyBytes(const Slice& slice, char suffix) {
+    data_.reserve(slice.size() + 1);
+    data_.append(slice.cdata(), slice.size());
+    data_.push_back(suffix);
+  }
+
+  KeyBytes(const Slice& slice1, const Slice& slice2) {
+    data_.reserve(slice1.size() + slice2.size());
+    data_.append(slice1.cdata(), slice1.size());
+    data_.append(slice2.cdata(), slice2.size());
+  }
+
+  void Reserve(size_t len) {
+    data_.reserve(len);
+  }
+
   std::string ToString() const {
     return yb::util::FormatBytesAsStr(data_);
   }

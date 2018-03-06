@@ -50,10 +50,12 @@ typedef std::shared_ptr<YBSession> YBSessionPtr;
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
 
+class YBOperation;
+typedef std::shared_ptr<YBOperation> YBOperationPtr;
+
 class TableHandle;
 class TransactionManager;
 class YBMetaDataCache;
-class YBOperation;
 class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;

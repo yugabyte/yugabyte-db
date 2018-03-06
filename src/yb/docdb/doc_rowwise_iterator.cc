@@ -100,7 +100,7 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
       db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_, read_time_,
       doc_spec.CreateFileFilter());
 
-  db_iter_->SeekWithoutHt(row_key_encoded);
+  db_iter_->Seek(row_key_encoded);
   row_ready_ = false;
 
   if (is_forward_scan_) {
@@ -175,8 +175,8 @@ bool DocRowwiseIterator::HasNext() const {
     KeyBytes old_key(*fetched_key);
     // The iterator is positioned by the previous GetSubDocument call
     // (which places the iterator outside the previous doc_key).
-    SubDocKey sub_doc_key(row_key_);
-    GetSubDocumentData data = { &sub_doc_key, &row_, &doc_found };
+    auto sub_doc_key = SubDocKey(row_key_).EncodeWithoutHt();
+    GetSubDocumentData data = { sub_doc_key, &row_, &doc_found };
     data.table_ttl = TableTTL(schema_);
     status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
@@ -343,7 +343,7 @@ CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequest
       QLPagingStatePB* paging_state = response->mutable_paging_state();
       paging_state->set_next_partition_key(
           PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
-      paging_state->set_next_row_key(next_key.Encode(true /* include_hybrid_time */).data());
+      paging_state->set_next_row_key(next_key.Encode().data());
     }
   }
   return Status::OK();

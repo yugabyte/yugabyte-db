@@ -1487,6 +1487,10 @@ Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
   return data_->Apply(std::move(yb_op));
 }
 
+Status YBSession::Apply(const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response) {
+  return data_->Apply(ops, verify_response);
+}
+
 int YBSession::CountBufferedOperations() const {
   return data_->CountBufferedOperations();
 }

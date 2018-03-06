@@ -127,9 +127,9 @@ Result<RedisDataType> GetRedisValueType(
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
-  SubDocKey subdoc_key;
+  KeyBytes encoded_subdoc_key;
   if (subkey_index == kNilSubkeyIndex) {
-    subdoc_key = SubDocKey(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()));
+    encoded_subdoc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
   } else {
     if (subkey_index >= key_value_pb.subkey_size()) {
       return STATUS_SUBSTITUTE(InvalidArgument,
@@ -139,8 +139,8 @@ Result<RedisDataType> GetRedisValueType(
 
     PrimitiveValue subkey_primitive;
     RETURN_NOT_OK(PrimitiveValueFromSubKey(key_value_pb.subkey(subkey_index), &subkey_primitive));
-    subdoc_key = SubDocKey(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()),
-                           subkey_primitive);
+    encoded_subdoc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
+    subkey_primitive.AppendToKey(&encoded_subdoc_key);
   }
   SubDocument doc;
   bool doc_found = false;
@@ -148,7 +148,7 @@ Result<RedisDataType> GetRedisValueType(
   // Use the cached entry if possible to determine the value type.
   boost::optional<DocWriteBatchCache::Entry> cached_entry;
   if (doc_write_batch) {
-    cached_entry = doc_write_batch->LookupCache(subdoc_key.Encode());
+    cached_entry = doc_write_batch->LookupCache(encoded_subdoc_key);
   }
   if (cached_entry) {
     doc_found = true;
@@ -156,7 +156,7 @@ Result<RedisDataType> GetRedisValueType(
   } else {
     // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
     // support for Redis.
-    GetSubDocumentData data = { &subdoc_key, &doc, &doc_found };
+    GetSubDocumentData data = { encoded_subdoc_key, &doc, &doc_found };
     data.return_type_only = true;
 
     RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr,
@@ -196,7 +196,7 @@ Result<RedisValue> GetRedisValue(
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
-  SubDocKey doc_key(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()));
+  auto encoded_doc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
 
   if (!key_value_pb.subkey().empty()) {
     if (key_value_pb.subkey().size() != 1 && subkey_index == kNilSubkeyIndex) {
@@ -207,7 +207,7 @@ Result<RedisValue> GetRedisValue(
     RETURN_NOT_OK(PrimitiveValueFromSubKey(
         key_value_pb.subkey(subkey_index == kNilSubkeyIndex ? 0 : subkey_index),
         &subkey_primitive));
-    doc_key.AppendSubKeysAndMaybeHybridTime(subkey_primitive);
+    subkey_primitive.AppendToKey(&encoded_doc_key);
   }
 
   SubDocument doc;
@@ -215,7 +215,7 @@ Result<RedisValue> GetRedisValue(
 
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
-  GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+  GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
 
   RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
@@ -404,12 +404,12 @@ void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response
 CHECKED_STATUS GetCardinality(IntentAwareIterator* iterator,
                               const RedisKeyValuePB& kv,
                               int64_t *result) {
-  SubDocKey key_card = SubDocKey(DocKey::FromRedisKey(kv.hash_code(), kv.key()),
-                                    PrimitiveValue(ValueType::kCounter));
+  auto encoded_key_card = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());
+  PrimitiveValue(ValueType::kCounter).AppendToKey(&encoded_key_card);
   SubDocument subdoc_card;
 
   bool subdoc_card_found = false;
-  GetSubDocumentData data = { &key_card, &subdoc_card, &subdoc_card_found };
+  GetSubDocumentData data = { encoded_key_card, &subdoc_card, &subdoc_card_found };
 
   RETURN_NOT_OK(GetSubDocument(iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
@@ -604,7 +604,9 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
                                             PrimitiveValue(kv.value(i)));
           SubDocument subdoc_reverse;
           bool subdoc_reverse_found = false;
-          GetSubDocumentData get_data = { &key_reverse, &subdoc_reverse, &subdoc_reverse_found };
+          auto encoded_key_reverse = key_reverse.EncodeWithoutHt();
+          GetSubDocumentData get_data = { encoded_key_reverse, &subdoc_reverse,
+                                          &subdoc_reverse_found };
           RETURN_NOT_OK(GetSubDocument(
               data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
               boost::none /* txn_op_context */, data.read_time));
@@ -852,7 +854,9 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
         // Todo(Rahul): Add values to the write batch cache and then do an additional check.
         // As of now, we only check to see if a value is in rocksdb, and we should also check
         // the write batch.
-        GetSubDocumentData get_data = { &subdoc_key_reverse, &doc_reverse, &doc_reverse_found };
+        auto encoded_subdoc_key_reverse = subdoc_key_reverse.EncodeWithoutHt();
+        GetSubDocumentData get_data = { encoded_subdoc_key_reverse, &doc_reverse,
+                                        &doc_reverse_found };
         RETURN_NOT_OK(GetSubDocument(
         data.doc_write_batch->rocksdb(), get_data, redis_query_id(),
         boost::none /* txn_op_context */, data.read_time));
@@ -1121,7 +1125,8 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueType value_type,
   bool doc_found = false;
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
-  GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+  auto encoded_doc_key = doc_key.EncodeWithoutHt();
+  GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
   switch (value_type) {
     case ValueType::kRedisSortedSet: {
       if (add_keys || add_values) {
@@ -1206,60 +1211,64 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       }
 
       if (request_type == RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE) {
-        SubDocKey doc_key(
-            DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()),
-            PrimitiveValue(ValueType::kSSForward));
+        auto encoded_doc_key = DocKey::EncodedFromRedisKey(
+            request_.key_value().hash_code(), request_.key_value().key());
+        PrimitiveValue(ValueType::kSSForward).AppendToKey(&encoded_doc_key);
         double low_double = lower_bound.subkey_bound().double_subkey();
         double high_double = upper_bound.subkey_bound().double_subkey();
 
-        SubDocKey low_sub_key_bound = SubDocKey(doc_key.doc_key(),
-                                                PrimitiveValue(ValueType::kSSForward),
-                                                PrimitiveValue::Double(low_double));
+        KeyBytes low_sub_key_bound;
+        KeyBytes high_sub_key_bound;
 
-        SubDocKey high_sub_key_bound = SubDocKey(doc_key.doc_key(),
-                                                 PrimitiveValue(ValueType::kSSForward),
-                                                 PrimitiveValue::Double(high_double));
-
-        SubDocKeyBound low_subkey = (lower_bound.has_infinity_type()) ?
-            SubDocKeyBound() : SubDocKeyBound(low_sub_key_bound,
-                                              lower_bound.is_exclusive(),
-                                              /* is_lower_bound */ true);
-        SubDocKeyBound high_subkey = (upper_bound.has_infinity_type()) ?
-            SubDocKeyBound() : SubDocKeyBound(high_sub_key_bound,
-                                              upper_bound.is_exclusive(),
-                                              /* is_lower_bound */ false);
+        SliceKeyBound low_subkey;
+        if (!lower_bound.has_infinity_type()) {
+          low_sub_key_bound = encoded_doc_key;
+          PrimitiveValue::Double(low_double).AppendToKey(&low_sub_key_bound);
+          low_subkey = SliceKeyBound(low_sub_key_bound, LowerBound(lower_bound.is_exclusive()));
+        }
+        SliceKeyBound high_subkey;
+        if (!upper_bound.has_infinity_type()) {
+          high_sub_key_bound = encoded_doc_key;
+          PrimitiveValue::Double(high_double).AppendToKey(&high_sub_key_bound);
+          high_subkey = SliceKeyBound(high_sub_key_bound, UpperBound(upper_bound.is_exclusive()));
+        }
 
         bool add_keys = request_.get_collection_range_request().with_scores();
 
         SubDocument doc;
         bool doc_found = false;
-        GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+        GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
         RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesSortedSets,
             data, ValueType::kObject, request_, &response_,
             /* add_keys */ add_keys, /* add_values */ true, /* reverse */ false));
       } else {
-        SubDocKey doc_key(
-            DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()));
+        auto encoded_doc_key = DocKey::EncodedFromRedisKey(
+            request_.key_value().hash_code(), request_.key_value().key());
         int64_t low_timestamp = lower_bound.subkey_bound().timestamp_subkey();
         int64_t high_timestamp = upper_bound.subkey_bound().timestamp_subkey();
+
+        KeyBytes low_sub_key_bound;
+        KeyBytes high_sub_key_bound;
+
+        SliceKeyBound low_subkey;
         // Need to switch the order since we store the timestamps in descending order.
-        SubDocKeyBound low_subkey = (upper_bound.has_infinity_type()) ?
-            SubDocKeyBound() : SubDocKeyBound(SubDocKey(doc_key.doc_key(),
-                                                        PrimitiveValue(high_timestamp,
-                                                                       SortOrder::kDescending)),
-                                              upper_bound.is_exclusive(), /* is_lower_bound */
-                                              true);
-        SubDocKeyBound high_subkey = (lower_bound.has_infinity_type()) ?
-            SubDocKeyBound() : SubDocKeyBound(SubDocKey(doc_key.doc_key(),
-                                                        PrimitiveValue(low_timestamp,
-                                                                       SortOrder::kDescending)),
-                                              lower_bound.is_exclusive(), /* is_lower_bound */
-                                              false);
+        if (!upper_bound.has_infinity_type()) {
+          low_sub_key_bound = encoded_doc_key;
+          PrimitiveValue(high_timestamp, SortOrder::kDescending).AppendToKey(&low_sub_key_bound);
+          low_subkey = SliceKeyBound(low_sub_key_bound, LowerBound(upper_bound.is_exclusive()));
+        }
+        SliceKeyBound high_subkey;
+        if (!lower_bound.has_infinity_type()) {
+          high_sub_key_bound = encoded_doc_key;
+          PrimitiveValue(low_timestamp, SortOrder::kDescending).AppendToKey(&high_sub_key_bound);
+          high_subkey = SliceKeyBound(high_sub_key_bound, UpperBound(lower_bound.is_exclusive()));
+        }
+
         SubDocument doc;
         bool doc_found = false;
-        GetSubDocumentData data = { &doc_key, &doc, &doc_found };
+        GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
         data.low_subkey = &low_subkey;
         data.high_subkey = &high_subkey;
         RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesGeneric, data,
@@ -1305,9 +1314,9 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
                                            true));
         return Status::OK();
       }
-      SubDocKey doc_key(
-          DocKey::FromRedisKey(request_.key_value().hash_code(), request_.key_value().key()),
-          PrimitiveValue(ValueType::kSSForward));
+      auto encoded_doc_key = DocKey::EncodedFromRedisKey(
+          request_.key_value().hash_code(), request_.key_value().key());
+      PrimitiveValue(ValueType::kSSForward).AppendToKey(&encoded_doc_key);
 
       bool add_keys = request_.get_collection_range_request().with_scores();
       bool low_is_exclusive = low_index_bound.is_exclusive();
@@ -1320,18 +1329,19 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
       SubDocument doc;
       bool doc_found = false;
-      GetSubDocumentData data = { &doc_key, &doc, &doc_found};
+      GetSubDocumentData data = { encoded_doc_key, &doc, &doc_found};
       data.low_index = &low_bound;
       data.high_index = &high_bound;
 
-      RETURN_NOT_OK(GetAndPopulateResponseValues(iterator_.get(), AddResponseValuesSortedSets, data,
-      ValueType::kObject, request_, &response_,
-      /* add_keys */ add_keys, /* add_values */ true, /* reverse */ true));
+      RETURN_NOT_OK(GetAndPopulateResponseValues(
+          iterator_.get(), AddResponseValuesSortedSets, data, ValueType::kObject, request_,
+          &response_, add_keys, /* add_values */ true, /* reverse */ true));
       break;
     }
     case RedisCollectionGetRangeRequestPB_GetRangeRequestType_UNKNOWN:
       return STATUS(InvalidCommand, "Unknown Collection Get Range Request not supported");
   }
+
   return Status::OK();
 }
 

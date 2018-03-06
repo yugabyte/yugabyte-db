@@ -131,15 +131,19 @@ void YBSessionData::set_allow_local_calls_in_curr_thread(bool flag) {
   allow_local_calls_in_curr_thread_ = flag;
 }
 
-Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
+internal::Batcher& YBSessionData::Batcher() {
   if (!batcher_) {
-    batcher_.reset(new Batcher(client_.get(), error_collector_.get(), shared_from_this(),
-                               transaction_));
+    batcher_.reset(new internal::Batcher(
+        client_.get(), error_collector_.get(), shared_from_this(), transaction_));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);
     }
   }
-  Status s = batcher_->Add(yb_op);
+  return *batcher_;
+}
+
+Status YBSessionData::Apply(YBOperationPtr yb_op) {
+  Status s = Batcher().Add(yb_op);
   if (!PREDICT_FALSE(s.ok())) {
     error_collector_->AddError(yb_op, s);
     return s;
@@ -147,6 +151,34 @@ Status YBSessionData::Apply(std::shared_ptr<YBOperation> yb_op) {
 
   if (flush_mode_ == YBSession::AUTO_FLUSH_SYNC) {
     return Flush();
+  }
+
+  return Status::OK();
+}
+
+Status YBSessionData::Apply(
+    const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response) {
+  auto& batcher = Batcher();
+  for (const auto& op : ops) {
+    Status s = batcher.Add(op);
+    if (!PREDICT_FALSE(s.ok())) {
+      error_collector_->AddError(op, s);
+      return s;
+    }
+  }
+
+  if (flush_mode_ == YBSession::AUTO_FLUSH_SYNC) {
+    return Flush();
+  } else if (verify_response) {
+    LOG(DFATAL) << "Verify response could be used only with sync flush mode.";
+  }
+
+  if (verify_response) {
+    for (const auto& op : ops) {
+      if (!op->succeeded()) {
+        return STATUS_FORMAT(RuntimeError, "Operation failed: ", op);
+      }
+    }
   }
 
   return Status::OK();

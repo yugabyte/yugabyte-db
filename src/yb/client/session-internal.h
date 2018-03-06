@@ -59,7 +59,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   YBSessionData(const YBSessionData&) = delete;
   void operator=(const YBSessionData&) = delete;
 
-  CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op);
+  CHECKED_STATUS Apply(YBOperationPtr yb_op);
+  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops, VerifyResponse verify_response);
 
   void FlushAsync(boost::function<void(const Status&)> callback);
 
@@ -99,6 +100,8 @@ class YBSessionData : public std::enable_shared_from_this<YBSessionData> {
   bool allow_local_calls_in_curr_thread() const;
 
  private:
+  internal::Batcher& Batcher();
+
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;
 

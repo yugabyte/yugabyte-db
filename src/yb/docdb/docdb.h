@@ -230,6 +230,68 @@ class SubDocKeyBound : public SubDocKey {
   const bool is_lower_bound_;
 };
 
+YB_DEFINE_ENUM(BoundType,
+    (kInvalid)
+    (kExclusiveLower)
+    (kInclusiveLower)
+    (kExclusiveUpper)
+    (kInclusiveUpper));
+
+inline BoundType LowerBound(bool exclusive) {
+  return exclusive ? BoundType::kExclusiveLower : BoundType::kInclusiveLower;
+}
+
+inline BoundType UpperBound(bool exclusive) {
+  return exclusive ? BoundType::kExclusiveUpper : BoundType::kInclusiveUpper;
+}
+
+class SliceKeyBound {
+ public:
+  SliceKeyBound() {}
+  SliceKeyBound(const Slice& key, BoundType type)
+      : key_(key), type_(type) {}
+
+  bool CanInclude(const Slice& other) const {
+    if (!is_valid()) {
+      return true;
+    }
+    int comp = key_.compare(Slice(other.data(), std::min(other.size(), key_.size())));
+    if (is_lower()) {
+      comp = -comp;
+    }
+    return is_exclusive() ? comp > 0 : comp >= 0;
+  }
+
+  static const SliceKeyBound& Invalid();
+
+  bool is_valid() const { return type_ != BoundType::kInvalid; }
+  const Slice& key() const { return key_; }
+
+  bool is_exclusive() const {
+    return type_ == BoundType::kExclusiveLower || type_ == BoundType::kExclusiveUpper;
+  }
+
+  bool is_lower() const {
+    return type_ == BoundType::kExclusiveLower || type_ == BoundType::kInclusiveLower;
+  }
+
+  explicit operator bool() const {
+    return is_valid();
+  }
+
+  std::string ToString() const {
+    if (!is_valid()) {
+      return "{ empty }";
+    }
+    return Format("{ $0$1 $2 }", is_lower() ? ">" : "<", is_exclusive() ? "" : "=",
+                  SubDocKey::DebugSliceToString(key_));
+  }
+
+ private:
+  Slice key_;
+  BoundType type_ = BoundType::kInvalid;
+};
+
 class IndexBound {
  public:
   IndexBound() :
@@ -264,12 +326,12 @@ class IndexBound {
 // Pass data to GetSubDocument function.
 struct GetSubDocumentData {
   GetSubDocumentData(
-      const SubDocKey* subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr)
+      const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr)
       : subdocument_key(subdoc_key),
         result(result_),
         doc_found(doc_found_) {}
 
-  const SubDocKey* subdocument_key;
+  Slice subdocument_key;
   SubDocument* result;
   bool* doc_found;
 
@@ -277,15 +339,15 @@ struct GetSubDocumentData {
   bool return_type_only = false;
 
   // Represent bounds on the first and last subkey to be considered.
-  const SubDocKeyBound* low_subkey = &SubDocKeyBound::Empty();
-  const SubDocKeyBound* high_subkey = &SubDocKeyBound::Empty();
+  const SliceKeyBound* low_subkey = &SliceKeyBound::Invalid();
+  const SliceKeyBound* high_subkey = &SliceKeyBound::Invalid();
 
   // Represent bounds on the first and last ranks to be considered.
   const IndexBound* low_index = &IndexBound::Empty();
   const IndexBound* high_index = &IndexBound::Empty();
 
   GetSubDocumentData Adjusted(
-      const SubDocKey* subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
+      const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
     GetSubDocumentData result(subdoc_key, result_, doc_found_);
     result.table_ttl = table_ttl;
     result.return_type_only = return_type_only;
@@ -299,7 +361,8 @@ struct GetSubDocumentData {
   std::string ToString() const {
     return Format("{ subdocument_key: $0 table_ttl: $1 return_type_only: $2 low_subkey: $3 "
                       "high_subkey: $4 }",
-                  *subdocument_key, table_ttl, return_type_only, *low_subkey, *high_subkey);
+                  SubDocKey::DebugSliceToString(subdocument_key), table_ttl, return_type_only,
+                  *low_subkey, *high_subkey);
   }
 };
 
@@ -370,7 +433,6 @@ class DocHybridTimeBuffer {
  private:
   std::array<char, 1 + kMaxBytesPerEncodedHybridTime> buffer_;
 };
-
 
 }  // namespace docdb
 }  // namespace yb

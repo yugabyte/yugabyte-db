@@ -103,7 +103,6 @@ using log::AsyncLogReader;
 using log::Log;
 using std::unique_ptr;
 using rpc::Messenger;
-using util::to_underlying;
 using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, majority_done_ops, "Leader Operations Acked by Majority",

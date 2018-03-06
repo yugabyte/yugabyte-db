@@ -59,6 +59,11 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
 // this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
 // enough, does not perform a seek.
 void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter);
+void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter);
+
+void SeekOutOfSubKey(const Slice& key, rocksdb::Iterator* iter);
+
+KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
 
 // A wrapper around the RocksDB seek operation that uses Next() up to the configured number of
 // times to avoid invalidating iterator state. In debug mode it also allows printing detailed
