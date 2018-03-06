@@ -9,9 +9,9 @@ namespace yb {
 namespace master {
 namespace enterprise {
 
-Status TSDescriptor::Register(const NodeInstancePB& instance,
+Status TSDescriptor::RegisterUnlocked(const NodeInstancePB& instance,
                               const TSRegistrationPB& registration) {
-  RETURN_NOT_OK(super::Register(instance, registration));
+  RETURN_NOT_OK(super::RegisterUnlocked(instance, registration));
   if (registration.common().has_placement_uuid()) {
     placement_uuid_ = registration.common().placement_uuid();
   } else {
