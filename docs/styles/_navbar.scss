@@ -152,7 +152,7 @@ a.anchor {
     padding: 12px 0px;
     line-height: 18px;
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 900;
 
     .dropdown {
       display: inline-block;
@@ -160,19 +160,18 @@ a.anchor {
     }
 
     .dropdown-row {
-      display: inline-block;
-      width: 484px;
-      padding: 0 0 5px 10px;
+      display: flex;
+      flex-direction: row;
+      align-content: start;
+      padding: 0 10px 5px;
 
-      @media (max-width: 991px) {
-        width: 440px;
-      }
     }
 
     .dropdown-column {
-      float: left;
+
       margin: 0 10px 10px;
       text-align: left;
+      white-space: nowrap;
 
       h3 {
         border-bottom: 1px solid $YB_ORANGE;
