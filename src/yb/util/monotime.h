@@ -157,7 +157,7 @@ class MonoTime {
   // Return the earliest (minimum) of the two monotimes.
   static const MonoTime& Earliest(const MonoTime& a, const MonoTime& b);
 
-  MonoTime() {}
+  MonoTime() noexcept {}
   MonoTime(std::chrono::steady_clock::time_point value) : value_(value) {} // NOLINT
 
   bool Initialized() const { return value_ != std::chrono::steady_clock::time_point(); }
