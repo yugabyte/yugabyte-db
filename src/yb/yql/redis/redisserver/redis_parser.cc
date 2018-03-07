@@ -821,7 +821,7 @@ CHECKED_STATUS RedisParser::BulkArgumentSize() {
   if (!status.ok() || incomplete_) {
     return status;
   }
-  auto current_size = VERIFY_RESULT(ParseNumber('$', 0, kMaxBufferSize, "Argument size"));
+  auto current_size = VERIFY_RESULT(ParseNumber('$', 0, kMaxRedisValueSize, "Argument size"));
   state_ = State::BULK_ARGUMENT_BODY;
   token_begin_ = pos_;
   current_argument_size_ = current_size;

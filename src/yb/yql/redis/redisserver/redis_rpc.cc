@@ -46,10 +46,10 @@ DEFINE_uint64(redis_max_concurrent_commands, 1,
 DEFINE_uint64(redis_max_batch, 500, "Max number of redis commands that forms batch");
 DEFINE_int32(rpcz_max_redis_query_dump_size, 4_KB,
              "The maximum size of the Redis query string in the RPCZ dump.");
-DEFINE_uint64(redis_max_read_buffer_size, yb::redisserver::kMaxBufferSize,
+DEFINE_uint64(redis_max_read_buffer_size, 128_MB,
               "Max read buffer size for Redis connections.");
 
-DEFINE_uint64(redis_max_queued_bytes, 16_MB,
+DEFINE_uint64(redis_max_queued_bytes, 128_MB,
               "Max number of bytes in queued redis commands.");
 
 namespace yb {
