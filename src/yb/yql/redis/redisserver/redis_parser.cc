@@ -31,6 +31,7 @@
 #include "yb/util/split.h"
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 namespace redisserver {
@@ -110,7 +111,12 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   int idx = 3;
   while (idx < args.size()) {
-    if (args[idx] == "EX" || args[idx] == "PX") {
+    string upper_arg;
+    if (args[idx].size() == 2) {
+      ToUpperCase(args[idx].ToBuffer(), &upper_arg);
+    }
+
+    if (upper_arg == "EX" || upper_arg == "PX") {
       if (args.size() < idx + 2) {
         return STATUS_SUBSTITUTE(InvalidCommand,
             "Expected TTL field after the EX flag, no value found");
@@ -122,13 +128,13 @@ CHECKED_STATUS ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
             "TTL field $0 is not within valid bounds", args[idx + 1]);
       }
       const int64_t milliseconds_per_unit =
-          args[idx] == "EX" ? MonoTime::kMillisecondsPerSecond : 1;
+          upper_arg == "EX" ? MonoTime::kMillisecondsPerSecond : 1;
       op->mutable_request()->mutable_set_request()->set_ttl(*ttl_val * milliseconds_per_unit);
       idx += 2;
-    } else if (args[idx] == "XX") {
+    } else if (upper_arg == "XX") {
       op->mutable_request()->mutable_set_request()->set_mode(REDIS_WRITEMODE_UPDATE);
       idx += 1;
-    } else if (args[idx] == "NX") {
+    } else if (upper_arg == "NX") {
       op->mutable_request()->mutable_set_request()->set_mode(REDIS_WRITEMODE_INSERT);
       idx += 1;
     } else {
