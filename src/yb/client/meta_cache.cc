@@ -57,7 +57,7 @@ using std::map;
 using std::shared_ptr;
 using strings::Substitute;
 
-DEFINE_int32(max_concurrent_master_lookups, 50,
+DEFINE_int32(max_concurrent_master_lookups, 500,
              "Maximum number of concurrent tablet location lookups from YB client to master");
 
 namespace yb {

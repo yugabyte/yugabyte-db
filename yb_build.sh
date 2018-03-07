@@ -717,11 +717,17 @@ if [[ -n $cxx_test_name ]]; then
     sub_yb_build_args=()
     extra_args=( --skip-build --host-for-tests "" )
     for arg in "${original_args[@]}"; do
-      if [[ $arg == "--" ]]; then
-        sub_yb_build_args+=( "${extra_args[@]}" )
-        extra_args=()
-      fi
-      sub_yb_build_args+=( "$arg" )
+      case $arg in
+        --)
+          sub_yb_build_args+=( "${extra_args[@]}" "$arg" )
+          extra_args=()
+        ;;
+        --clean|--clean-thirdparty)
+          # Do not pass these arguments to the child yb_build.sh.
+        ;;
+        *)
+          sub_yb_build_args+=( "$arg" )
+      esac
     done
     sub_yb_build_args+=( "${extra_args[@]}" )
     set -u

@@ -31,7 +31,7 @@
 namespace yb {
 namespace redisserver {
 
-constexpr size_t kMaxBufferSize = 512_MB;
+constexpr size_t kMaxRedisValueSize = 512_MB;
 constexpr int64_t kNoneTtl = -1;
 
 CHECKED_STATUS ParseSet(client::YBRedisWriteOp *op, const RedisClientCommand& args);
