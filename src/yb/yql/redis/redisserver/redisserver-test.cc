@@ -1242,13 +1242,22 @@ TEST_F(TestRedisService, TestTtl) {
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
   SyncClient();
-  std::this_thread::sleep_for(std::chrono::seconds(2));
+  std::this_thread::sleep_for(2s);
 
   DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "v1");
   DoRedisTestNull(__LINE__, {"GET", "k2"});
   DoRedisTestBulkString(__LINE__, {"GET", "k3"}, "v3");
   DoRedisTestBulkString(__LINE__, {"GET", "k4"}, "v4");
   DoRedisTestNull(__LINE__, {"GET", "k5"});
+
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"SET", "k10", "v10", "EX", "5", "NX"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "k10"}, "v10");
+  SyncClient();
+
+  std::this_thread::sleep_for(10s);
+  DoRedisTestOk(__LINE__, {"SET", "k10", "v10", "EX", "5", "NX"});
 
   SyncClient();
   VerifyCallbacks();
