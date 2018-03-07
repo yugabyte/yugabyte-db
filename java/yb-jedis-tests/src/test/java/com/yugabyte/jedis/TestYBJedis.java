@@ -82,6 +82,36 @@ public class TestYBJedis extends BaseJedisTest {
   }
 
   @Test
+  public void testSetCommandWithOptions() throws Exception {
+    // Test with lowercase "ex" option.
+    assertEquals("OK", jedis_client.set("k_ex", "v", "ex", 2));
+    assertEquals("v", jedis_client.get("k_ex"));
+    Thread.sleep(2000);
+    assertEquals(null, jedis_client.get("k_ex"));
+
+    // Test with uppercase "EX" option.
+    assertEquals("OK", jedis_client.set("k_ex", "v", "EX", 2));
+    assertEquals("v", jedis_client.get("k_ex"));
+    Thread.sleep(2000);
+    assertEquals(null, jedis_client.get("k_ex"));
+
+    // Test with lowercase "px" option.
+    assertEquals("OK", jedis_client.set("k_px", "v", "px", 2000));
+    assertEquals("v", jedis_client.get("k_px"));
+    Thread.sleep(2000);
+    assertEquals(null, jedis_client.get("k_px"));
+
+    // Test with uppercase "PX" option.
+    assertEquals("OK", jedis_client.set("k_px", "v", "PX", 2000));
+    assertEquals("v", jedis_client.get("k_px"));
+    Thread.sleep(2000);
+    assertEquals(null, jedis_client.get("k_px"));
+
+    // TODO(hector): add tests for options NX and XX once
+    // https://github.com/YugaByte/yugabyte-db/issues/88 is resolved.
+  }
+
+  @Test
   public void testTSAddCommand() throws Exception {
     TSValuePairs pairs = new TSValuePairs((1));
     assertEquals("OK", jedis_client.tsadd("k0", pairs.pairs));
