@@ -460,7 +460,6 @@ CHECKED_STATUS BuildSubDocument(
           }
         }
       }
-
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
       if (IsCollectionType(doc_value.value_type()) ||
@@ -654,7 +653,23 @@ yb::Status GetSubDocument(
 
   if (data.return_type_only) {
     *data.doc_found = doc_value.value_type() != ValueType::kInvalidValueType;
-    *data.result = SubDocument(doc_value.primitive_value());
+    // Check for ttl.
+    if (*data.doc_found) {
+      const MonoDelta ttl = ComputeTTL(doc_value.ttl(), data.table_ttl);
+      DocHybridTime write_time(DocHybridTime::kMin);
+      RETURN_NOT_OK(db_iter->FindLastWriteTime(key_slice, &write_time, nullptr));
+      if (write_time != DocHybridTime::kMin && !ttl.Equals(Value::kMaxTtl)) {
+        const HybridTime expiry =
+            server::HybridClock::AddPhysicalTimeToHybridTime(write_time.hybrid_time(), ttl);
+        if (db_iter->read_time().read.CompareTo(expiry) > 0) {
+          *data.doc_found = false;
+        }
+      }
+    }
+
+    if (*data.doc_found) {
+      *data.result = SubDocument(doc_value.primitive_value());
+    }
     return Status::OK();
   }
 
