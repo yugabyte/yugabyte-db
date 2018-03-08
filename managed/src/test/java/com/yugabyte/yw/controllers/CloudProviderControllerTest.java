@@ -198,11 +198,16 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       ObjectNode configJson = Json.newObject();
       ObjectNode configFileJson = Json.newObject();
       if (code.equals("gcp")) {
+        // Technically this is not the input format of the file, but we're using this to match the
+        // number of elements...
         configFileJson.put("GCE_EMAIL", "email");
         configFileJson.put("GCE_PROJECT", "project");
         configFileJson.put("GOOGLE_APPLICATION_CREDENTIALS", "credentials");
+        configJson.put("config_file_contents", configFileJson);
+      } else if (code.equals("aws")) {
+        configJson.put("foo", "bar");
+        configJson.put("foo2", "bar2");
       }
-      configJson.put("config_file_contents", configFileJson);
       bodyJson.set("config", configJson);
       Result result = createProvider(bodyJson);
       JsonNode json = Json.parse(contentAsString(result));
@@ -210,13 +215,13 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertValue(json, "name", providerName);
       Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
       Map<String, String> config = provider.getConfig();
+      assertFalse(config.isEmpty());
+      // We should technically check the actual content, but the keys are different between the
+      // input payload and the saved config.
       if (code.equals("gcp")) {
-        assertFalse(config.isEmpty());
-        // We should technically check the actual content, but the keys are different between the
-        // input payload and the saved config.
         assertEquals(configFileJson.size(), config.size());
       } else {
-        assertTrue(config.isEmpty());
+        assertEquals(configJson.size(), config.size());
       }
     }
   }

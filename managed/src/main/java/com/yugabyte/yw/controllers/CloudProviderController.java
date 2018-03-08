@@ -131,9 +131,13 @@ public class CloudProviderController extends AuthenticatedController {
     // parse it from the requestBody
     JsonNode requestBody = request().body().asJson();
     Map<String, String> config = new HashMap<>();
-    if (requestBody.has("config") && providerCode.equals(Common.CloudType.gcp)) {
+    if (requestBody.has("config")) {
       JsonNode configNode = requestBody.get("config");
-      config = Json.fromJson(configNode.get("config_file_contents"), Map.class);
+      if (providerCode.equals(Common.CloudType.gcp)) {
+        config = Json.fromJson(configNode.get("config_file_contents"), Map.class);
+      } else {
+        config = Json.fromJson(configNode, Map.class);
+      }
     }
     try {
       provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
