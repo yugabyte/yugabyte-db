@@ -469,6 +469,7 @@ export default class ClusterFields extends Component {
       this.setState({nodeSetViaAZList: false, replicationFactor: value}, function () {
         if (self.state.numNodes <= value) {
           self.setState({numNodes: value});
+              updateFormField(`${clusterType}.numNodes`, value);
         }
       });
     }
