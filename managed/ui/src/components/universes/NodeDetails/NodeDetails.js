@@ -7,8 +7,7 @@ import { YBPanelItem } from '../../panels';
 import NodeConnectModal from './NodeConnectModal';
 import { YBLoadingIcon } from '../../common/indicators';
 import { YBButton } from '../../common/forms/fields';
-import { isValidObject, isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase,
-  isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster, isNodeRemovable } from '../../../utils/UniverseUtils';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
@@ -21,9 +20,6 @@ export default class NodeDetails extends Component {
 
   componentWillReceiveProps(nextProps) {
     const { universe: { universeMasterLeader }, uuid } = this.props;
-    if (isValidObject(this.refs.nodeDetailTable)) {
-      this.refs.nodeDetailTable.handleSort('asc', 'name');
-    }
     if (this.isNodeStatusLoadingOrInit() && !this.state.universeCreated) {
       const universeCreated = this.checkTasksForUniverseCreated();
       this.setState({universeCreated: universeCreated});
@@ -70,8 +66,9 @@ export default class NodeDetails extends Component {
     const loadingIcon = <YBLoadingIcon size='inline' />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
+    const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
 
-    const nodeDetailRows = nodeDetails.map((nodeDetail) => {
+    const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
 
       if (!inLoadingOrInitState && isNonEmptyObject(universePerNodeStatus.data)
