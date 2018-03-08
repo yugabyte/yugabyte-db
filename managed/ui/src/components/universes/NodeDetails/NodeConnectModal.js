@@ -32,8 +32,16 @@ class NodeConnectModal extends Component {
     }
 
     let fromAdminMsg = "From Admin host: ";
+    let hostPrivateIP = "";
+    if (hostInfo) {
+      Object.keys(hostInfo).forEach(function(hostProviderKey){
+        if (!hostInfo[hostProviderKey].error) {
+          hostPrivateIP = hostInfo[hostProviderKey].privateIp;
+        }
+      });
+    }
     if (hostInfo && !hostInfo.error) {
-      fromAdminMsg += hostInfo.privateIp;
+      fromAdminMsg += hostPrivateIP;
     }
 
     const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
