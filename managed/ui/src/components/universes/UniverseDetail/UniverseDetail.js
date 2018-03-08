@@ -20,7 +20,7 @@ import { YBMapLegend } from '../../maps';
 import { isEmptyObject, isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { YBLoading } from '../../common/indicators';
+import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
@@ -72,6 +72,7 @@ class UniverseDetail extends Component {
 
   render() {
     const {
+      uuid,
       universe,
       universe: { currentUniverse, showModal, visibleModal },
       location: { query, pathname },
@@ -92,6 +93,11 @@ class UniverseDetail extends Component {
     if (isNonEmptyObject(query) && query.edit) {
       return <UniverseFormContainer type="Edit" />;
     }
+
+    if (getPromiseState(currentUniverse).isError()) {
+      return <YBErrorIndicator type="universe" uuid={uuid}/>;
+    }
+
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     let placementInfoRegionList = [];
