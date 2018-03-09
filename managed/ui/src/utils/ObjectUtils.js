@@ -246,6 +246,30 @@ export function getPointsOnCircle(numPoints, center, radius) {
   return pointsOnCircle;
 }
 
+export function isYAxisGreaterThanThousand(dataArray) {
+  for (var counter = 0; counter < dataArray.length; counter ++) {
+    if (isNonEmptyArray(dataArray[counter].y)) {
+      for (var idx = 0; idx < dataArray[counter].y.length; idx ++) {
+        if (Number(dataArray[counter].y[idx]) > 1000) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+export function divideYAxisByThousand(dataArray) {
+  for (var counter = 0; counter < dataArray.length; counter ++) {
+    if (isNonEmptyArray(dataArray[counter].y)) {
+      for (var idx = 0; idx < dataArray[counter].y.length; idx ++) {
+        dataArray[counter].y[idx] = Number(dataArray[counter].y[idx]) / 1000;
+      }
+    }
+  }
+  return dataArray;
+}
+
 // FIXME: Deprecated. Change all references to use isNonEmptyArray instead.
 export const isValidArray = isNonEmptyArray;
 

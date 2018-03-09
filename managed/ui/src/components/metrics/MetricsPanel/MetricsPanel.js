@@ -2,7 +2,8 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { removeNullProperties, isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { removeNullProperties, isNonEmptyObject, isNonEmptyArray, isNonEmptyString,
+        isYAxisGreaterThanThousand, divideYAxisByThousand } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
 
@@ -23,6 +24,14 @@ export default class MetricsPanel extends Component {
     if (isNonEmptyObject(metric)) {
       // Remove Null Properties from the layout
       removeNullProperties(metric.layout);
+      // Detect if unit is µs and Y axis value is > 1000.
+      // if so divide all Y axis values by 1000 and replace unit to ms.
+      if (isNonEmptyObject(metric.layout.yaxis) && metric.layout.yaxis.ticksuffix === "&nbsp;µs" && isNonEmptyArray(metric.data)) {
+        if (isYAxisGreaterThanThousand(metric.data)) {
+          metric.data = divideYAxisByThousand(metric.data);
+          metric.layout.yaxis.ticksuffix = "&nbsp;ms"
+        }
+      }
 
       // TODO: send this data from backend.
       let max = 0;
