@@ -405,6 +405,15 @@ void TestRedisService::SetUp() {
     FLAGS_consensus_rpc_timeout_ms = 3000;
 #endif
   }
+  if (FLAGS_redis_max_queued_bytes > 0) {
+    // If FLAGS_redis_max_queued_bytes is 0, we're most likely in
+    // TestRedisService.ReceiveBufferOverflow, which also modifies FLAGS_redis_max_read_buffer_size.
+    // Otherwise, set the buffer size to a large value as may be required by the HugeCommandInline
+    // test.
+    FLAGS_redis_max_read_buffer_size = 512_MB;
+  }
+  LOG(INFO) << "FLAGS_redis_max_read_buffer_size=" << FLAGS_redis_max_read_buffer_size
+            << ", FLAGS_redis_max_queued_bytes=" << FLAGS_redis_max_queued_bytes;
 
   RedisTableTestBase::SetUp();
 
