@@ -281,9 +281,7 @@ void TabletInvoker::InitialLookupTabletDone(const Status& status) {
 }
 
 bool TabletInvoker::IsLocalCall() const {
-  return (current_ts_ != nullptr &&
-          current_ts_->proxy() != nullptr &&
-          current_ts_->proxy()->IsServiceLocal());
+  return current_ts_ != nullptr && current_ts_->IsLocal();
 }
 
 std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const {
