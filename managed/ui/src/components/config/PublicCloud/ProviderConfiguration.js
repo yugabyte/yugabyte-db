@@ -115,6 +115,7 @@ class ProviderConfiguration extends Component {
       }
       const providerInfo = [
         {name: "Name", data: currentProvider.name},
+        {name: "Provider UUID", data: currentProvider.uuid},
         {name: "SSH Key", data: keyPairName},
       ];
       if (isNonEmptyObject(hostInfo)) {

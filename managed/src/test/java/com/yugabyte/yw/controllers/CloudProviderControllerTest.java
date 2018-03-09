@@ -132,6 +132,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertValues(json, "uuid", (List) ImmutableList.of(p1.uuid.toString(), p2.uuid.toString()));
     assertValues(json, "name", (List) ImmutableList.of(p1.name, p2.name));
   }
+
   @Test
   public void testListProvidersWithValidCustomer() {
     Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");

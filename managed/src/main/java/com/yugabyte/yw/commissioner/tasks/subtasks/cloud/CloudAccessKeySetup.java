@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +25,9 @@ public class CloudAccessKeySetup extends CloudTaskBase {
 
   @Override
   public void run() {
-    String accessKeyCode = String.format("yb-%s-key", getProvider().name
-                                                                   .replaceAll("\\s+", "-"))
-                                                                   .toLowerCase();
+    String sanitizedProviderName = getProvider().name.replaceAll("\\s+", "-").toLowerCase();
+    String accessKeyCode = String.format(
+        "yb-%s-%s-key", Customer.get(getProvider().customerUUID).code, sanitizedProviderName);
     String regionCode = taskParams().regionCode;
     Region region = Region.getByCode(getProvider(), regionCode);
     if (region == null) {
