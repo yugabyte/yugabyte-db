@@ -175,6 +175,7 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
 }
 
 bool RemoteTabletServer::IsLocal() const {
+  std::lock_guard<simple_spinlock> l(lock_);
   return proxy_ != nullptr && proxy_->IsServiceLocal();
 }
 
