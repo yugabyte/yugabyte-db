@@ -463,7 +463,7 @@ class ClusterControl:
             custom_flags = self.get_tserver_only_flags(daemon_id)
 
         if len(self.options.placement_info) > 0:
-            mod_val = daemon_id.index % len(self.options.placement_info)
+            mod_val = (daemon_id.index - 1) % len(self.options.placement_info)
             custom_flags.extend(self.get_placement_info_flags(self.options.placement_info[mod_val]))
         command = self.build_command(daemon_id, custom_flags)
         logging.info("Starting {} with:\n{}".format(daemon_id, command))
