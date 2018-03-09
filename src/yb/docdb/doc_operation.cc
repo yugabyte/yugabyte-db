@@ -744,7 +744,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
       RETURN_NOT_OK(data_type);
       if ((mode == RedisWriteMode::REDIS_WRITEMODE_INSERT && *data_type != REDIS_TYPE_NONE)
           || (mode == RedisWriteMode::REDIS_WRITEMODE_UPDATE && *data_type == REDIS_TYPE_NONE)) {
-        response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+        response_.set_code(RedisResponsePB_RedisStatusCode_NIL);
         return Status::OK();
       }
     }

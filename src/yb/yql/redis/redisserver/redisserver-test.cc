@@ -1917,7 +1917,7 @@ TEST_F(TestRedisService, TestOverwrites) {
   // Test NX.
   DoRedisTestOk(__LINE__, {"SET", "key", "value1", "NX"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value1");
-  DoRedisTestExpectError(__LINE__, {"SET", "key", "value2", "NX"});
+  DoRedisTestNull(__LINE__, {"SET", "key", "value2", "NX"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value1");
 
   // Test XX.
@@ -1925,7 +1925,7 @@ TEST_F(TestRedisService, TestOverwrites) {
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value2");
   DoRedisTestOk(__LINE__, {"SET", "key", "value3", "XX"});
   DoRedisTestBulkString(__LINE__, {"GET", "key"}, "value3");
-  DoRedisTestExpectError(__LINE__, {"SET", "unknown_key", "value", "XX"});
+  DoRedisTestNull(__LINE__, {"SET", "unknown_key", "value", "XX"});
 
   SyncClient();
   VerifyCallbacks();

@@ -107,8 +107,33 @@ public class TestYBJedis extends BaseJedisTest {
     Thread.sleep(2000);
     assertEquals(null, jedis_client.get("k_px"));
 
-    // TODO(hector): add tests for options NX and XX once
-    // https://github.com/YugaByte/yugabyte-db/issues/88 is resolved.
+    // Test with lowercase "nx" option.
+    assertEquals("OK", jedis_client.set("k_nx", "v", "nx"));
+    assertEquals("v", jedis_client.get("k_nx"));
+    assertEquals(null, jedis_client.set("k_nx", "v", "nx"));
+    assertEquals("v", jedis_client.get("k_nx"));
+
+    // Test with uppercase "NX" option.
+    assertEquals("OK", jedis_client.set("k_NX", "v", "NX"));
+    assertEquals("v", jedis_client.get("k_NX"));
+    assertEquals(null, jedis_client.set("k_NX", "v", "NX"));
+    assertEquals("v", jedis_client.get("k_NX"));
+
+    // Test with lowercase "xx" option.
+    assertEquals(null, jedis_client.set("k_xx", "v", "xx"));
+    assertEquals(null, jedis_client.get("k_xx"));
+    assertEquals("OK", jedis_client.set("k_xx", "v"));
+    assertEquals("v", jedis_client.get("k_xx"));
+    assertEquals("OK", jedis_client.set("k_xx", "v2", "xx"));
+    assertEquals("v2", jedis_client.get("k_xx"));
+
+    // Test with uppercase "XX" option.
+    assertEquals(null, jedis_client.set("k_XX", "v", "XX"));
+    assertEquals(null, jedis_client.get("k_XX"));
+    assertEquals("OK", jedis_client.set("k_XX", "v"));
+    assertEquals("v", jedis_client.get("k_XX"));
+    assertEquals("OK", jedis_client.set("k_XX", "v2", "XX"));
+    assertEquals("v2", jedis_client.get("k_XX"));
   }
 
   @Test
