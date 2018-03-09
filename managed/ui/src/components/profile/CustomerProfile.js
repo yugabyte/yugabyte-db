@@ -15,6 +15,7 @@ export default class CustomerProfile extends Component {
     if (!_.isEqual(this.props.customer, nextProps.customer)) {
       this.props.change("email", nextProps.customer.email);
       this.props.change("name", nextProps.customer.name);
+      this.props.change("code", nextProps.customer.code);
     }
   }
 
@@ -35,6 +36,7 @@ export default class CustomerProfile extends Component {
               <h3>Profile Info</h3>
               <Field name="name" type="text" component={YBInputField} label="Full Name" placeHolder="Full Name"/>
               <Field name="email" type="text" component={YBInputField} isReadOnly={true} label="Email" placeHolder="Email Address"/>
+              <Field name="code" type="text" component={YBInputField} isReadOnly={true} label="Code" placeHolder="Customer Code"/>
             </Col>
             <Col md={6} sm={12}>
               <h3>Change Password</h3>

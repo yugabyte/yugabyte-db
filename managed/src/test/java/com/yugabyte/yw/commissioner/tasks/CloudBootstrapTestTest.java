@@ -66,7 +66,9 @@ public class CloudBootstrapTestTest extends CommissionerBaseTest {
     assertValue(Json.toJson(taskInfo), "taskState", "Success");
     Region r = Region.getByCode(defaultProvider, "us-west-1");
     verify(mockAWSInitializer, times(1)).initialize(defaultCustomer.uuid, defaultProvider.uuid);
-    verify(mockAccessManager, times(1)).addKey(r.uuid, "yb-amazon-key");
+    String expectedAccessKeyCode = String.format(
+        "yb-%s-%s-key", defaultCustomer.code, defaultProvider.name.toLowerCase());
+    verify(mockAccessManager, times(1)).addKey(r.uuid, expectedAccessKeyCode);
     Set<AvailabilityZone> zones = r.zones;
     assertNotNull(r);
     assertNotNull(zones);
