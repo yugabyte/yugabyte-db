@@ -707,6 +707,7 @@ fi
 
 if [[ -n $cxx_test_name ]]; then
   if [[ -n ${YB_HOST_FOR_RUNNING_TESTS:-} && \
+        $YB_HOST_FOR_RUNNING_TESTS != "localhost" && \
         $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME && \
         $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]]; then
     log "Running tests on host '$YB_HOST_FOR_RUNNING_TESTS' (current host is '$HOSTNAME')"
@@ -715,7 +716,8 @@ if [[ -n $cxx_test_name ]]; then
     # first "--".
     set +u
     sub_yb_build_args=()
-    extra_args=( --skip-build --host-for-tests "" )
+    extra_args=( --skip-build --host-for-tests "localhost" )
+
     for arg in "${original_args[@]}"; do
       case $arg in
         --)
@@ -732,7 +734,7 @@ if [[ -n $cxx_test_name ]]; then
     sub_yb_build_args+=( "${extra_args[@]}" )
     set -u
 
-    log "Invoking on '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
+    log "Running tests on server '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
     run_remote_cmd "$YB_HOST_FOR_RUNNING_TESTS" "$YB_SRC_ROOT/yb_build.sh" \
       "${sub_yb_build_args[@]}"
     exit

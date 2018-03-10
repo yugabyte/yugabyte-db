@@ -190,7 +190,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   remote_peer->SetTermForTest(2);
 
   // signal the peer there are requests pending.
-  ASSERT_OK(remote_peer->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+  ASSERT_OK(remote_peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
 
   // Now wait on the status of the last operation. This will complete once the peer has logged all
   // requests.
@@ -222,8 +222,8 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   OpId first = MakeOpId(0, 1);
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, first.index(), 1);
 
-  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
-  ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
 
   // Replication should time out, because the time
   WaitForMajorityReplicatedIndex(first.index());
@@ -252,8 +252,8 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
 
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, first.index(), 1);
 
-  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
-  ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
+  ASSERT_OK(remote_peer2->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
 
   // Now wait for the message to be replicated, this should succeed since
   // majority = 2 and only one peer was delayed. The majority is made up
@@ -286,7 +286,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   ASSERT_FALSE(consensus_->IsMajorityReplicated(2));
 
   // Signal one of the two remote peers.
-  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+  ASSERT_OK(remote_peer1->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
   // We should now be able to wait for it to replicate, since two peers (a majority)
   // have replicated the message.
   WaitForMajorityReplicatedIndex(2);
@@ -322,7 +322,7 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
 
   // Add an op to the queue and start sending requests to the peer.
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 1);
-  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::ALWAYS_SEND));
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kAlwaysSend));
 
   // We should be able to close the peer even though it has more data pending.
   peer->Close();
@@ -353,7 +353,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   mock_proxy->set_update_response(initial_resp);
 
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 1);
-  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::ALWAYS_SEND));
+  ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kAlwaysSend));
 
   // Now wait for the message to be replicated, this should succeed since
   // the local (leader) peer always acks and the follower also acked this time.
@@ -368,7 +368,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   // Add a bunch of messages to the queue.
   for (int i = 2; i <= 100; i++) {
     AppendReplicateMessagesToQueue(message_queue_.get(), clock_, i, 1);
-    ASSERT_OK(peer->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY));
+    ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
     SleepFor(MonoDelta::FromMilliseconds(2));
   }
 

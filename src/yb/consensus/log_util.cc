@@ -804,15 +804,19 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
   return Status::OK();
 }
 
-
-void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs,
-                                        LogEntryBatchPB* batch) {
+// Creates a LogEntryBatchPB from pre-allocated ReplicateMsgs managed using shared pointers. The
+// caller has to ensure these messages are not deleted twice, both by LogEntryBatchPB and by
+// the shared pointers.
+void CreateBatchFromAllocatedOperations(const ReplicateMsgs& msgs, LogEntryBatchPB* batch) {
   LogEntryBatchPB entry_batch;
   entry_batch.mutable_entry()->Reserve(msgs.size());
-  for (const auto& msg : msgs) {
+  for (const auto& msg_ptr : msgs) {
     LogEntryPB* entry_pb = entry_batch.add_entry();
     entry_pb->set_type(log::REPLICATE);
-    entry_pb->set_allocated_replicate(msg.get());
+    // entry_pb does not actually own the ReplicateMsg object, even though it thinks it does,
+    // because we release it in ~LogEntryBatch. LogEntryBatchPB has a separate vector of shared
+    // pointers to messages.
+    entry_pb->set_allocated_replicate(msg_ptr.get());
   }
   batch->Swap(&entry_batch);
 }

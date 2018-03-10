@@ -30,10 +30,15 @@
 // under the License.
 //
 
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
+#include <vector>
+#include <chrono>
 
 #include <gtest/gtest.h>
+#include <boost/scope_exit.hpp>
 
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus-test-util.h"
@@ -53,6 +58,11 @@ DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 
 METRIC_DECLARE_entity(tablet);
+
+using std::atomic;
+using std::vector;
+using std::thread;
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace consensus {
@@ -110,9 +120,9 @@ class LogCacheTest : public YBTest {
   }
 
   Status AppendReplicateMessagesToCache(
-    int first,
-    int count,
-    int payload_size = 0) {
+      int first,
+      int count,
+      int payload_size = 0) {
 
     for (int i = first; i < first + count; i++) {
       int term = i / 7;
@@ -327,6 +337,67 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
   EXPECT_EQ(Substitute("Pinned index: 2, LogCacheStats(num_ops=1, bytes=$0)",
                        size_with_one_msg),
             cache_->ToString());
+}
+
+TEST_F(LogCacheTest, TestMTReadAndWrite) {
+  atomic<bool> stop { false };
+  bool stopped = false;
+  atomic<int64_t> num_appended{0};
+  atomic<int64_t> next_index{0};
+  vector<thread> threads;
+
+  auto stop_workload = [&]() {
+    if (!stopped) {
+      LOG(INFO) << "Stopping workload";
+      stop = true;
+      for (auto& t : threads) {
+        t.join();
+      }
+      stopped = true;
+      LOG(INFO) << "Workload stopped";
+    }
+  };
+
+  BOOST_SCOPE_EXIT(&stop_workload) {
+    stop_workload();
+  } BOOST_SCOPE_EXIT_END;
+
+  // Add a writer thread.
+  threads.emplace_back([&] {
+    const int kBatch = 10;
+    int64_t index = 1;
+    while (!stop) {
+      auto append_status = AppendReplicateMessagesToCache(index, kBatch);
+      if (append_status.IsServiceUnavailable()) {
+        std::this_thread::sleep_for(10ms);
+        continue;
+      }
+      index += kBatch;
+      next_index = index;
+      num_appended++;
+    }
+  });
+
+  // Add a reader thread.
+  threads.emplace_back([&] {
+    int64_t index = 0;
+    while (!stop) {
+      ReplicateMsgs messages;
+      OpId preceding;
+      if (index >= next_index) {
+        // We've gone ahead of the writer.
+        std::this_thread::sleep_for(5ms);
+        continue;
+      }
+      ASSERT_OK(cache_->ReadOps(index, 1024 * 1024, &messages, &preceding));
+      index += messages.size();
+    }
+  });
+
+  LOG(INFO) << "Starting the workload";
+  std::this_thread::sleep_for(5s);
+  stop_workload();
+  ASSERT_GT(num_appended, 0);
 }
 
 } // namespace consensus

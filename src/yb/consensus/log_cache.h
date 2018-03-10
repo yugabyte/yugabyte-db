@@ -63,10 +63,9 @@ class ReplicateMsg;
 
 // Write-through cache for the log.
 //
-// This stores a set of log messages by their index. New operations
-// can be appended to the end as they are written to the log. Readers
-// fetch entries that were explicitly appended, or they can fetch older
-// entries which are asynchronously fetched from the disk.
+// This stores a set of log messages by their index. New operations can be appended to the end as
+// they are written to the log. Readers fetch entries that were explicitly appended, or they can
+// fetch older entries which are asynchronously fetched from the disk.
 class LogCache {
  public:
   LogCache(const scoped_refptr<MetricEntity>& metric_entity,
@@ -77,44 +76,41 @@ class LogCache {
 
   // Initialize the cache.
   //
-  // 'preceding_op' is the current latest op. The next AppendOperation() call
-  // must follow this op.
+  // 'preceding_op' is the current latest op. The next AppendOperation() call must follow this op.
   //
   // Requires that the cache is empty.
   void Init(const OpId& preceding_op);
 
-  // Read operations from the log, following 'after_op_index'.
-  // If such an op exists in the log, an OK result will always include at least one
-  // operation.
+  // Read operations from the log, following 'after_op_index'.  If such an op exists in the log, an
+  // OK result will always include at least one operation.
   //
-  // The result will be limited such that the total ByteSize() of the returned ops
-  // is less than max_size_bytes, unless that would result in an empty result, in
-  // which case exactly one op is returned.
+  // The result will be limited such that the total ByteSize() of the returned ops is less than
+  // max_size_bytes, unless that would result in an empty result, in which case exactly one op is
+  // returned.
   //
-  // The OpId which precedes the returned ops is returned in *preceding_op.
-  // The index of this OpId will match 'after_op_index'.
+  // The OpId which precedes the returned ops is returned in *preceding_op.  The index of this OpId
+  // will match 'after_op_index'.
   //
-  // If the ops being requested are not available in the log, this will synchronously
-  // read these ops from disk. Therefore, this function may take a substantial amount
-  // of time and should not be called with important locks held, etc.
+  // If the ops being requested are not available in the log, this will synchronously read these ops
+  // from disk. Therefore, this function may take a substantial amount of time and should not be
+  // called with important locks held, etc.
   CHECKED_STATUS ReadOps(int64_t after_op_index,
                  int max_size_bytes,
                  ReplicateMsgs* messages,
                  OpId* preceding_op);
 
-  // Append the operations into the log and the cache.
-  // When the messages have completed writing into the on-disk log, fires 'callback'.
+  // Append the operations into the log and the cache.  When the messages have completed writing
+  // into the on-disk log, fires 'callback'.
   //
-  // If the cache memory limit is exceeded, the entries may no longer be in the cache
-  // when the callback fires.
+  // If the cache memory limit is exceeded, the entries may no longer be in the cache when the
+  // callback fires.
   //
   // Returns non-OK if the Log append itself fails.
   CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs,
                                   const StatusCallback& callback);
 
-  // Return true if an operation with the given index has been written through
-  // the cache. The operation may not necessarily be durable yet -- it could still be
-  // en route to the log.
+  // Return true if an operation with the given index has been written through the cache. The
+  // operation may not necessarily be durable yet -- it could still be en route to the log.
   bool HasOpBeenWritten(int64_t log_index) const;
 
   // Evict any operations with op index <= 'index'.
@@ -139,9 +135,8 @@ class LogCache {
 
   std::string ToString() const;
 
-  // Look up the OpId for the given operation index.
-  // If it is not in the cache, this consults the on-disk log index and thus
-  // may take a non-trivial amount of time due to IO.
+  // Look up the OpId for the given operation index.  If it is not in the cache, this consults the
+  // on-disk log index and thus may take a non-trivial amount of time due to IO.
   //
   // Returns "Incomplete" if the op has not yet been written.
   // Returns "NotFound" if the op has been GCed.
@@ -185,29 +180,25 @@ class LogCache {
 
   mutable simple_spinlock lock_;
 
-  // An ordered map that serves as the buffer for the cached messages.
-  // Maps from log index -> ReplicateMsg
+  // An ordered map that serves as the buffer for the cached messages.  Maps from log index ->
+  // ReplicateMsg
   typedef std::map<uint64_t, ReplicateMsgPtr> MessageCache;
   MessageCache cache_;
 
-  // The next log index to append. Each append operation must either
-  // start with this log index, or go backward (but never skip forward).
+  // The next log index to append. Each append operation must either start with this log index, or
+  // go backward (but never skip forward).
   int64_t next_sequential_op_index_;
 
-  // Any operation with an index >= min_pinned_op_ may not be
-  // evicted from the cache. This is used to prevent ops from being evicted
-  // until they successfully have been appended to the underlying log.
-  // Protected by lock_.
+  // Any operation with an index >= min_pinned_op_ may not be evicted from the cache. This is used
+  // to prevent ops from being evicted until they successfully have been appended to the underlying
+  // log.  Protected by lock_.
   int64_t min_pinned_op_index_;
 
-  // Pointer to a parent memtracker for all log caches. This
-  // exists to compute server-wide cache size and enforce a
-  // server-wide memory limit.  When the first instance of a log
-  // cache is created, a new entry is added to MemTracker's static
-  // map; subsequent entries merely increment the refcount, so that
-  // the parent tracker can be deleted if all log caches are
-  // deleted (e.g., if all tablets are deleted from a server, or if
-  // the server is shutdown).
+  // Pointer to a parent memtracker for all log caches. This exists to compute server-wide cache
+  // size and enforce a server-wide memory limit.  When the first instance of a log cache is
+  // created, a new entry is added to MemTracker's static map; subsequent entries merely increment
+  // the refcount, so that the parent tracker can be deleted if all log caches are deleted (e.g., if
+  // all tablets are deleted from a server, or if the server is shutdown).
   std::shared_ptr<MemTracker> parent_tracker_;
 
   // A MemTracker for this instance.
