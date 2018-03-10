@@ -45,6 +45,8 @@ Options:
     be allowed.
   --skip-log-compression
     Don't compress kept logs.
+  --stop-at-failure
+    Stop running further iterations after the first failure happens.
 EOT
 }
 
@@ -55,16 +57,6 @@ delete_tmp_files() {
   fi
 }
 
-store_log_file_and_report_result() {
-  if "$skip_log_compression"; then
-    test_log_stored_path="$test_log_path"
-  else
-    gzip "$test_log_path"
-    test_log_stored_path="$test_log_path.gz"
-  fi
-  echo "$1: iteration $iteration (log: $test_log_stored_path)"
-}
-
 set -euo pipefail
 
 . "${0%/*}"/../build-support/common-test-env.sh
@@ -73,7 +65,7 @@ unset TEST_TMPDIR
 
 trap delete_tmp_files EXIT
 
-script_name=${0##*/}
+script_name=${BASH_SOURCE##*/}
 script_name_no_ext=${script_name%.sh}
 skip_address_already_in_use=false
 
@@ -92,6 +84,7 @@ skip_log_compression=false
 original_args=( "$@" )
 yb_compiler_type_arg=""
 verbose=false
+stop_at_failure=false
 
 while [[ $# -gt 0 ]]; do
   if [[ ${#positional_args[@]} -eq 0 ]] && is_valid_build_type "$1"; then
@@ -99,7 +92,7 @@ while [[ $# -gt 0 ]]; do
     shift
     continue
   fi
-  case "$1" in
+  case ${1//_/-} in
     -h|--help)
       show_usage >&2
       exit 1
@@ -115,7 +108,7 @@ while [[ $# -gt 0 ]]; do
       parallelism=$2
       shift
     ;;
-    --log_dir)
+    --log-dir)
       # Used internally for parallel execution
       log_dir="$2"
       if [[ ! -d $log_dir ]]; then
@@ -152,6 +145,9 @@ while [[ $# -gt 0 ]]; do
               "but --clang is specified on the command line"
       fi
       yb_compiler_type_arg="clang"
+    ;;
+    --stop-at-failure)
+      stop_at_failure=true
     ;;
     *)
       positional_args+=( "$1" )
@@ -202,21 +198,28 @@ if [[ $rel_test_binary == $abs_test_binary_path ]]; then
         "BUILD_ROOT ('$BUILD_ROOT')"
 fi
 
+timestamp=$( get_timestamp_for_filenames )
 if [[ -z $log_dir ]]; then
-  log_dir=$HOME/logs/$script_name_no_ext/$test_binary_name/$test_filter/$(
-    get_timestamp_for_filenames
-  )
+  log_dir=$HOME/logs/$script_name_no_ext/$test_binary_name/$test_filter/$timestamp
   mkdir -p "$log_dir"
 fi
 
+# We create this file when the first failure happens.
+failure_flag_file_path="$log_dir/failure_flag"
+
 if [[ $iteration -gt 0 ]]; then
+  if "$stop_at_failure" && [[ -f $failure_flag_file_path ]]; then
+    exit
+  fi
   # One iteration with a specific "id" ($iteration).
   test_log_path_prefix=$log_dir/$iteration
   raw_test_log_path=${test_log_path_prefix}__raw.log
   test_log_path=$test_log_path_prefix.log
 
   set +e
-  export TEST_TMPDIR=/tmp/yb__${0##*/}__$RANDOM.$RANDOM.$RANDOM.$$
+  current_timestamp=$( get_timestamp_for_filenames )
+  export TEST_TMPDIR=/tmp/yb__${script_name_no_ext}_${build_type}_${current_timestamp}_\
+$RANDOM.$RANDOM.$RANDOM.$$
   mkdir -p "$TEST_TMPDIR"
   set_expected_core_dir "$TEST_TMPDIR"
   determine_test_timeout
@@ -228,6 +231,7 @@ if [[ $iteration -gt 0 ]]; then
     "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
 
+  declare -i start_time_sec=$( date +%s )
   (
     cd "$TEST_TMPDIR"
     if "$verbose"; then
@@ -237,7 +241,12 @@ if [[ $iteration -gt 0 ]]; then
     ( set -x; "${test_wrapper_cmd_line[@]}" ) &>"$raw_test_log_path"
   )
   exit_code=$?
+  declare -i end_time_sec=$( date +%s )
+  declare -i elapsed_time_sec=$(( $end_time_sec - $start_time_sec ))
   set -e
+  comment=""
+  keep_log=$keep_all_logs
+  pass_or_fail="PASSED"
   if ! did_test_succeed "$exit_code" "$raw_test_log_path"; then
     postprocess_test_log
     process_core_file
@@ -246,18 +255,28 @@ if [[ $iteration -gt 0 ]]; then
          egrep '\bWebserver: Could not start on address\b' "$test_log_path" >/dev/null ); then
       # TODO: perhaps we should not skip some types of errors that did_test_succeed finds in the
       # logs (ASAN/TSAN, check failures, etc.), even if we see "address already in use".
-      echo "PASSED: iteration $iteration (assuming \"Address already in use\" is a false positive)"
-      rm -f "$test_log_path"
+      comment=" [assuming \"Address already in use\" is a false positive]"
     else
-      store_log_file_and_report_result "FAILED"
+      pass_or_fail="FAILED"
+      keep_log=true
     fi
-  elif "$keep_all_logs"; then
-    postprocess_test_log
-    store_log_file_and_report_result "PASSED"
+  fi
+  if "$keep_log"; then
+    if ! "$skip_log_compression"; then
+      if [[ -f $test_log_path ]]; then
+        gzip "$test_log_path"
+      else
+        pass_or_fail="FAILED"
+        comment+=" [test log '$test_log_path' not found]"
+      fi
+      test_log_path+=".gz"
+    fi
+    comment+="; test log path: $test_log_path"
   else
-    echo "PASSED: iteration $iteration"
     rm -f "$raw_test_log_path"
   fi
+
+  echo "$pass_or_fail: iteration $iteration, $elapsed_time_sec sec$comment"
 else
   if [[ -n $yb_compiler_type_from_env ]]; then
     log "YB_COMPILER_TYPE env variable was set to '$yb_compiler_type_from_env' by the caller."
@@ -268,7 +287,8 @@ else
   elif "$verbose"; then
     log "YB_EXTRA_GTEST_FLAGS is not set"
   fi
-  # Parallel execution of many iterations
+  # Parallel execution of many iterations.
+  log "Saving repeated test execution logs to: $log_dir"
   seq 1 $num_iter | \
     xargs -P $parallelism -n 1 "$0" "${original_args[@]}" --log_dir "$log_dir" --iteration
 fi

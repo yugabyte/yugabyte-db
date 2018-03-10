@@ -883,7 +883,7 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
     RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(rounds));
   }
 
-  peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
+  peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
   RETURN_NOT_OK(ExecuteHook(POST_REPLICATE));
   return Status::OK();
 }
@@ -1018,7 +1018,7 @@ void RaftConsensus::UpdateMajorityReplicated(
       state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
     lock.unlock();
     // No need to hold the lock while calling SignalRequest.
-    peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
+    peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
   }
 }
 
@@ -2106,7 +2106,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                                            client_cb)));
   }
 
-  peer_manager_->SignalRequest(RequestTriggerMode::NON_EMPTY_ONLY);
+  peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
   return Status::OK();
 }

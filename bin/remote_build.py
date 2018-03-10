@@ -116,7 +116,7 @@ def main():
                         default=default_path,
                         help='path used for build')
     parser.add_argument('--branch', type=str, default='origin/master', help='base branch for build')
-    parser.add_argument('--build-type', type=str, default='debug', help='build type')
+    parser.add_argument('--build-type', type=str, default=None, help='build type')
     parser.add_argument('--skip-build',
                         action='store_const',
                         const=True,
@@ -138,7 +138,7 @@ def main():
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     print("Host: {0}, build type: {1}, remote path: {2}".format(args.host,
-                                                                args.build_type,
+                                                                args.build_type or 'N/A',
                                                                 args.remote_path))
 
     commit = check_output_line(['git', 'merge-base', args.branch, 'HEAD'])
@@ -194,7 +194,9 @@ def main():
     if args.skip_build:
         sys.exit(0)
 
-    ybd_args = [args.build_type]
+    ybd_args = []
+    if args.build_type:
+        ybd_args.append(args.build_type)
 
     if len(args.args) != 0 and args.args[0] == '--':
         ybd_args += args.args[1:]

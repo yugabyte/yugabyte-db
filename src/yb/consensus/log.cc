@@ -160,6 +160,8 @@ class Log::Appender {
   // Initializes the objects and starts the task.
   Status Init();
 
+  // Submits an entry for appending to the log. Takes ownership of the entry batch in case of
+  // successful submission.
   CHECKED_STATUS Submit(LogEntryBatch* item) {
     return task_stream_->Submit(item);
   }
@@ -282,7 +284,6 @@ void Log::Appender::SyncWork() {
 }
 
 void Log::Appender::Shutdown() {
-  log_->entry_queue()->Shutdown();
   std::lock_guard<std::mutex> lock_guard(lock_);
   if (task_stream_) {
     VLOG(1) << "Shutting down log task stream for tablet " << log_->tablet_id();
@@ -345,7 +346,6 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       active_segment_sequence_number_(0),
       log_state_(kLogInitialized),
       max_segment_size_(options_.segment_size_bytes),
-      entry_batch_queue_(FLAGS_group_commit_queue_size_bytes),
       appender_(new Appender(this, append_thread_pool)),
       durable_wal_write_(options_.durable_wal_write),
       interval_durable_wal_write_(options_.interval_durable_wal_write),
@@ -483,9 +483,11 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
   entry_batch->set_callback(callback);
   entry_batch->MarkReady();
 
-  if (PREDICT_FALSE(!appender_->Submit(entry_batch).ok())) {
+  Status submit_status = appender_->Submit(entry_batch);
+  if (!submit_status.ok()) {
+    YB_LOG_EVERY_N(WARNING, 100) << "AsyncAppend failed: " << submit_status.ToString();
     delete entry_batch;
-    return kLogShutdownStatus;
+    return submit_status;
   }
 
   return Status::OK();
@@ -498,9 +500,9 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs,
 
   LogEntryBatch* reserved_entry_batch;
   RETURN_NOT_OK(Reserve(REPLICATE, &batch, &reserved_entry_batch));
-  // If we're able to reserve set the vector of replicate scoped ptrs in
-  // the LogEntryBatch. This will make sure there's a reference for each
-  // replicate while we're appending.
+
+  // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
+  // This will make sure there's a reference for each replicate while we're appending.
   reserved_entry_batch->SetReplicates(msgs);
 
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, callback));
@@ -740,7 +742,7 @@ Status Log::Append(LogEntryPB* phys_entry) {
 }
 
 Status Log::WaitUntilAllFlushed() {
-  // In order to make sure we empty the queue we need to use the async api.
+  // In order to make sure we empty the queue we need to use the async API.
   LogEntryBatchPB entry_batch;
   entry_batch.add_entry()->set_type(log::FLUSH_MARKER);
   LogEntryBatch* reserved_entry_batch;
@@ -1077,6 +1079,13 @@ LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB* entry_batch_p
 }
 
 LogEntryBatch::~LogEntryBatch() {
+  // ReplicateMsg objects are pointed to by LogEntryBatchPB but are really owned by shared pointers
+  // in replicates_. To avoid double freeing, release them from the protobuf.
+  for (auto& entry : *entry_batch_pb_.mutable_entry()) {
+    if (entry.has_replicate()) {
+      entry.release_replicate();
+    }
+  }
 }
 
 void LogEntryBatch::MarkReserved() {

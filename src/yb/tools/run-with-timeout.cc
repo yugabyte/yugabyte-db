@@ -25,6 +25,10 @@
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 
+#ifdef __linux__
+#include <sys/resource.h>
+#endif
+
 constexpr int kWaitSecAfterSigQuit = 10;
 constexpr int kWaitSecAfterSigSegv = 10;
 
@@ -80,7 +84,7 @@ int main(int argc, char** argv) {
     cerr << "Runs the given program with the given timeout. If the program is still" << endl;
     cerr << "running after the given amount of time, it gets sent the SIGQUIT signal" << endl;
     cerr << "to make it create a core dump and terminate. If it is still running after" << endl;
-    cerr << "that, it is killed with a SIGKILL." << endl;
+    cerr << "that, we send SIGSEGV, and finally a SIGKILL." << endl;
     cerr << endl;
     cerr << "A timeout value of 0 means no timeout." << endl;
     return EXIT_FAILURE;
@@ -100,6 +104,22 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const string program = args[1];
+
+#ifdef __linux__
+  struct rlimit64 core_limits;
+  if (getrlimit64(RLIMIT_CORE, &core_limits) == 0) {
+    LOG(INFO) << "Core file size limits set by parent process: "
+              << "current=" << core_limits.rlim_cur
+              << ", max=" << core_limits.rlim_max << ". Trying to set both to infinity.";
+  } else {
+    perror("getrlimit64 failed");
+  }
+  core_limits.rlim_cur = RLIM_INFINITY;
+  core_limits.rlim_max = RLIM_INFINITY;
+  if (setrlimit64(RLIMIT_CORE, &core_limits) != 0) {
+    perror("setrlimit64 failed");
+  }
+#endif
 
   // Arguments include the program name, so we only erase the first argument from our own args: the
   // timeout value.

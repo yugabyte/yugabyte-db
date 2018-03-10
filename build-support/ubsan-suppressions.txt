@@ -9,3 +9,8 @@ alignment:snappy::internal::CompressFragment
 alignment:snappy::EmitLiteral
 alignment:snappy::EmitCopyLessThan64
 alignment:snappy::internal::CompressFragment
+
+# TODO: verify if it is OK to ignore these.
+# Tracked here: https://goo.gl/kPaUgS
+signed-integer-overflow:Aws::Utils::HashingUtils::HashString
+bool:Aws::Client::AWSAuthV4Signer::ComputeLongLivedHash

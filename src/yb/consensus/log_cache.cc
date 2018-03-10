@@ -99,8 +99,8 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
   const int64_t max_ops_size_bytes = FLAGS_log_cache_size_limit_mb * 1024 * 1024;
   const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1024 * 1024;
 
-  // Set up (or reuse) a tracker with the global limit. It is parented directly
-  // to the root tracker so that it's always global.
+  // Set up (or reuse) a tracker with the global limit. It is parented directly to the root tracker
+  // so that it's always global.
   parent_tracker_ = MemTracker::FindOrCreateTracker(global_max_ops_size_bytes,
                                                     kParentMemTrackerId);
 
@@ -110,8 +110,7 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
                                      local_uuid, tablet_id),
       parent_tracker_);
 
-  // Put a fake message at index 0, since this simplifies a lot of our
-  // code paths elsewhere.
+  // Put a fake message at index 0, since this simplifies a lot of our code paths elsewhere.
   auto zero_op = std::make_shared<ReplicateMsg>();
   *zero_op->mutable_id() = MinimumOpId();
   InsertOrDie(&cache_, 0, zero_op);
@@ -128,8 +127,7 @@ LogCache::~LogCache() {
 
 void LogCache::Init(const OpId& preceding_op) {
   std::lock_guard<simple_spinlock> l(lock_);
-  CHECK_EQ(cache_.size(), 1)
-    << "Cache should have only our special '0' op";
+  CHECK_EQ(cache_.size(), 1) << "Cache should have only our special '0' op";
   next_sequential_op_index_ = preceding_op.index() + 1;
   min_pinned_op_index_ = next_sequential_op_index_;
 }
@@ -141,14 +139,14 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
   int size = msgs.size();
   CHECK_GT(size, 0);
 
-  // If we're not appending a consecutive op we're likely overwriting and
-  // need to replace operations in the cache.
+  // If we're not appending a consecutive op we're likely overwriting and need to replace operations
+  // in the cache.
   int64_t first_idx_in_batch = msgs.front()->id().index();
   int64_t last_idx_in_batch = msgs.back()->id().index();
 
   if (first_idx_in_batch != next_sequential_op_index_) {
-    // If the index is not consecutive then it must be lower than or equal
-    // to the last index, i.e. we're overwriting.
+    // If the index is not consecutive then it must be lower than or equal to the last index, i.e.
+    // we're overwriting.
     CHECK_LE(first_idx_in_batch, next_sequential_op_index_);
 
     // Now remove the overwritten operations.
@@ -179,27 +177,31 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
                         << HumanReadableNumBytes::ToString(spare)
                         << "): attempting to evict some operations...";
 
-    // TODO: we should also try to evict from other tablets - probably better to
-    // evict really old ops from another tablet than evict recent ops from this one.
+    // TODO: we should also try to evict from other tablets - probably better to evict really old
+    // ops from another tablet than evict recent ops from this one.
     EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
 
-    // Force consuming, so that we don't refuse appending data. We might
-    // blow past our limit a little bit (as much as the number of tablets times
-    // the amount of in-flight data in the log), but until implementing the above TODO,
-    // it's difficult to solve this issue.
+    // Force consuming, so that we don't refuse appending data. We might blow past our limit a
+    // little bit (as much as the number of tablets times the amount of in-flight data in the log),
+    // but until implementing the above TODO, it's difficult to solve this issue.
     tracker_->Consume(mem_required);
 
     borrowed_memory = parent_tracker_->LimitExceeded();
   }
 
   for (const auto& msg : msgs) {
-    InsertOrDie(&cache_,  msg->id().index(), msg);
+    auto index = msg->id().index();
+    InsertOrDie(&cache_, index, msg);
+    next_sequential_op_index_ = index  + 1;
   }
 
-  // We drop the lock during the AsyncAppendReplicates call, since it may block
-  // if the queue is full, and the queue might not drain if it's trying to call
-  // our callback and blocked on this lock.
+  // We drop the lock during the AsyncAppendReplicates call, since it may block if the queue is
+  // full, and the queue might not drain if it's trying to call our callback and blocked on this
+  // lock.
   l.unlock();
+
+  metrics_.log_cache_size->IncrementBy(mem_required);
+  metrics_.log_cache_num_ops->IncrementBy(msgs.size());
 
   Status log_status = log_->AsyncAppendReplicates(
     msgs, Bind(&LogCache::LogCallback,
@@ -207,17 +209,12 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs,
                last_idx_in_batch,
                borrowed_memory,
                callback));
-  l.lock();
+
   if (!log_status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status.ToString();
     tracker_->Release(mem_required);
     return log_status;
   }
-
-  metrics_.log_cache_size->IncrementBy(mem_required);
-  metrics_.log_cache_num_ops->IncrementBy(msgs.size());
-
-  next_sequential_op_index_ = msgs.back()->id().index() + 1;
 
   return Status::OK();
 }
@@ -233,8 +230,8 @@ void LogCache::LogCallback(int64_t last_idx_in_batch,
       min_pinned_op_index_ = last_idx_in_batch + 1;
     }
 
-    // If we went over the global limit in order to log this batch, evict some to
-    // get back down under the limit.
+    // If we went over the global limit in order to log this batch, evict some to get back down
+    // under the limit.
     if (borrowed_memory) {
       int64_t spare_capacity = parent_tracker_->SpareCapacity();
       if (spare_capacity < 0) {
@@ -255,10 +252,9 @@ Status LogCache::LookupOpId(int64_t op_index, OpId* op_id) const {
   {
     std::lock_guard<simple_spinlock> l(lock_);
 
-    // We sometimes try to look up OpIds that have never been written
-    // on the local node. In that case, don't try to read the op from
-    // the log reader, since it might actually race against the writing
-    // of the op.
+    // We sometimes try to look up OpIds that have never been written on the local node. In that
+    // case, don't try to read the op from the log reader, since it might actually race against the
+    // writing of the op.
     if (op_index >= next_sequential_op_index_) {
       return STATUS(Incomplete, Substitute("Op with index $0 is ahead of the local log "
                                            "(next sequential op: $1)",
@@ -276,21 +272,24 @@ Status LogCache::LookupOpId(int64_t op_index, OpId* op_id) const {
 }
 
 namespace {
-// Calculate the total byte size that will be used on the wire to replicate
-// this message as part of a consensus update request. This accounts for the
-// length delimiting and tagging of the message.
+
+// Calculate the total byte size that will be used on the wire to replicate this message as part of
+// a consensus update request. This accounts for the length delimiting and tagging of the message.
 int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
   int msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
     msg.ByteSize());
   msg_size += 1; // for the type tag
   return msg_size;
 }
+
 } // anonymous namespace
 
 Status LogCache::ReadOps(int64_t after_op_index,
                          int max_size_bytes,
                          ReplicateMsgs* messages,
                          OpId* preceding_op) {
+  DCHECK_ONLY_NOTNULL(messages);
+  DCHECK_ONLY_NOTNULL(preceding_op);
   DCHECK_GE(after_op_index, 0);
   RETURN_NOT_OK(LookupOpId(after_op_index, preceding_op));
 
@@ -301,16 +300,15 @@ Status LogCache::ReadOps(int64_t after_op_index,
   int64_t remaining_space = max_size_bytes;
   while (remaining_space > 0 && next_index < next_sequential_op_index_) {
 
-    // If the messages the peer needs haven't been loaded into the queue yet,
-    // load them.
+    // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
       int64_t up_to;
       if (iter == cache_.end()) {
-        // Read all the way to the current op
+        // Read all the way to the current op.
         up_to = next_sequential_op_index_ - 1;
       } else {
-        // Read up to the next entry that's in the cache
+        // Read up to the next entry that's in the cache.
         up_to = iter->first - 1;
       }
 
@@ -319,7 +317,7 @@ Status LogCache::ReadOps(int64_t after_op_index,
       ReplicateMsgs raw_replicate_ptrs;
       RETURN_NOT_OK_PREPEND(
         log_->GetLogReader()->ReadReplicatesInRange(
-          next_index, up_to, remaining_space, &raw_replicate_ptrs),
+            next_index, up_to, remaining_space, &raw_replicate_ptrs),
         Substitute("Failed to read ops $0..$1", next_index, up_to));
       l.lock();
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Successfully read " << raw_replicate_ptrs.size() << " ops "

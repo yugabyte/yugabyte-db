@@ -119,7 +119,7 @@ Peer::Peer(
       sem_(1),
       heartbeater_(
           peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
-          std::bind(&Peer::SignalRequest, this, RequestTriggerMode::ALWAYS_SEND)),
+          std::bind(&Peer::SignalRequest, this, RequestTriggerMode::kAlwaysSend)),
       raft_pool_token_(raft_pool_token),
       state_(kPeerCreated),
       consensus_(consensus) {}
@@ -153,7 +153,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     // For the first request sent by the peer, we send it even if the queue is empty, which it will
     // always appear to be for the first request, since this is the negotiation round.
     if (PREDICT_FALSE(state_ == kPeerStarted)) {
-      trigger_mode = RequestTriggerMode::ALWAYS_SEND;
+      trigger_mode = RequestTriggerMode::kAlwaysSend;
       state_ = kPeerRunning;
     }
     DCHECK_EQ(state_, kPeerRunning);
@@ -166,7 +166,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     // ignoring the signal, ask the heartbeater to "expedite" the next heartbeat in order to achieve
     // something like exponential backoff after an error. As it is implemented today, any transient
     // error will result in a latency blip as long as the heartbeat period.
-    if (failed_attempts_ > 0 && trigger_mode == RequestTriggerMode::NON_EMPTY_ONLY) {
+    if (failed_attempts_ > 0 && trigger_mode == RequestTriggerMode::kNonEmptyOnly) {
       sem_.Release();
       return Status::OK();
     }
@@ -234,7 +234,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
         LOG(WARNING) << "Unable to change role for peer " << peer_pb_.permanent_uuid()
             << ": " << status.ToString(false);
         // Since we released the semaphore, we need to call SignalRequest again to send a message
-        status = SignalRequest(RequestTriggerMode::ALWAYS_SEND);
+        status = SignalRequest(RequestTriggerMode::kAlwaysSend);
         if (PREDICT_FALSE(!status.ok())) {
           LOG(WARNING) << "Unexpected error when trying to send request: "
                        << status.ToString(false);
@@ -252,7 +252,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
 
   // If the queue is empty, check if we were told to send a status-only message (which is what
   // happens during heartbeats). If not, just return.
-  if (PREDICT_FALSE(!req_has_ops && trigger_mode == RequestTriggerMode::NON_EMPTY_ONLY)) {
+  if (PREDICT_FALSE(!req_has_ops && trigger_mode == RequestTriggerMode::kNonEmptyOnly)) {
     sem_.Release();
     return;
   }
@@ -332,7 +332,7 @@ void Peer::DoProcessResponse() {
   // the worst thing that could happen is that we'll make one more request before
   // noticing a close.
   if (more_pending && ANNOTATE_UNPROTECTED_READ(state_) != kPeerClosed) {
-    SendNextRequest(RequestTriggerMode::ALWAYS_SEND);
+    SendNextRequest(RequestTriggerMode::kAlwaysSend);
   } else {
     sem_.Release();
   }

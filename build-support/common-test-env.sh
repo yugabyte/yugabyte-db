@@ -277,7 +277,7 @@ Shared library .* loaded at address 0x[0-9a-f]+$" || true ) \
     >"$gtest_list_stderr_path.filtered"
 
   # -s tests if the given file is non-empty
-  if [ -s "$gtest_list_stderr_path.filtered" ]; then
+  if [[ -s "$gtest_list_stderr_path.filtered" ]]; then
     (
       echo
       echo "'$abs_test_binary_path' produced non-empty stderr output when run with" \
@@ -1228,6 +1228,7 @@ fix_cxx_test_name() {
       ;;
       1)
         log "Auto-correcting $cxx_test_name -> ${possible_corrections[0]}"
+        test_binary_name=$cxx_test_name
         cxx_test_name=${possible_corrections[0]}
       ;;
       *)

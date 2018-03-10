@@ -69,8 +69,6 @@ class LogEntryBatch;
 class LogIndex;
 class LogReader;
 
-typedef BlockingQueue<LogEntryBatch*, LogEntryBatchLogicalSize> LogEntryBatchQueue;
-
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
 //
@@ -328,10 +326,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   CHECKED_STATUS GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
 
-  LogEntryBatchQueue* entry_queue() {
-    return &entry_batch_queue_;
-  }
-
   const SegmentAllocationState allocation_state() {
     boost::shared_lock<boost::shared_mutex> shared_lock(allocation_lock_);
     return allocation_state_;
@@ -398,10 +392,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // doubling (for each subsequent WAL segment) till it gets to max_segment_size_.
   // Note: The first WAL segment will start off as twice of this value.
   uint64_t cur_max_segment_size_ = 512 * 1024;
-
-  // The queue used to communicate between the thread calling Reserve() and the thread appending to
-  // the Log.
-  LogEntryBatchQueue entry_batch_queue_;
 
   // Appender manages a TaskStream writing to the log. We will use one taskstream per tablet.
   std::unique_ptr<Appender> appender_;

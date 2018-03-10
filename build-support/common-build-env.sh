@@ -1179,7 +1179,7 @@ is_jenkins_master_build() {
 
 # Check if we're using an NFS partition in YugaByte's build environment.
 is_src_root_on_nfs() {
-  if [[ $YB_SRC_ROOT =~ ^/n/ ]]; then
+  if [[ $YB_SRC_ROOT =~ ^/(n|z)/ ]]; then
     return 0
   fi
   return 1

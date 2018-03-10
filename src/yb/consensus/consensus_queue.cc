@@ -205,14 +205,13 @@ PeerMessageQueue::TrackedPeer* PeerMessageQueue::TrackPeerUnlocked(const string&
   DCHECK_EQ(queue_state_.state, State::kQueueOpen);
 
   TrackedPeer* tracked_peer = new TrackedPeer(uuid);
-  // We don't know the last operation received by the peer so, following the
-  // Raft protocol, we set next_index to one past the end of our own log. This
-  // way, if calling this method is the result of a successful leader election
-  // and the logs between the new leader and remote peer match, the
-  // peer->next_index will point to the index of the soon-to-be-written NO_OP
-  // entry that is used to assert leadership. If we guessed wrong, and the peer
-  // does not have a log that matches ours, the normal queue negotiation
-  // process will eventually find the right point to resume from.
+
+  // We don't know the last operation received by the peer so, following the Raft protocol, we set
+  // next_index to one past the end of our own log. This way, if calling this method is the result
+  // of a successful leader election and the logs between the new leader and remote peer match, the
+  // peer->next_index will point to the index of the soon-to-be-written NO_OP entry that is used to
+  // assert leadership. If we guessed wrong, and the peer does not have a log that matches ours, the
+  // normal queue negotiation process will eventually find the right point to resume from.
   tracked_peer->next_index = queue_state_.last_appended.index() + 1;
   InsertOrDie(&peers_map_, uuid, tracked_peer);
 
@@ -254,9 +253,8 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   CHECK_OK(status);
 
   // Fake an RPC response from the local peer.
-  // TODO: we should probably refactor the ResponseFromPeer function
-  // so that we don't need to construct this fake response, but this
-  // seems to work for now.
+  // TODO: we should probably refactor the ResponseFromPeer function so that we don't need to
+  // construct this fake response, but this seems to work for now.
   ConsensusResponsePB fake_response;
   fake_response.set_responder_uuid(local_peer_uuid_);
   *fake_response.mutable_status()->mutable_last_received() = id;
@@ -293,10 +291,9 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
     queue_state_.current_term = last_id.term();
   }
 
-  // Unlock ourselves during Append to prevent a deadlock: it's possible that
-  // the log buffer is full, in which case AppendOperations would block. However,
-  // for the log buffer to empty, it may need to call LocalPeerAppendFinished()
-  // which also needs queue_lock_.
+  // Unlock ourselves during Append to prevent a deadlock: it's possible that the log buffer is
+  // full, in which case AppendOperations would block. However, for the log buffer to empty, it may
+  // need to call LocalPeerAppendFinished() which also needs queue_lock_.
   lock.unlock();
   RETURN_NOT_OK(log_cache_.AppendOperations(msgs,
                                             Bind(&PeerMessageQueue::LocalPeerAppendFinished,
@@ -367,8 +364,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
     if (CountVoters(*queue_state_.active_config) > 2) {
-      // We never drop from 2 to 1 automatically, at least for now. We may want
-      // to revisit this later, we're just being cautious with this.
+      // We never drop from 2 to 1 automatically, at least for now. We may want to revisit this
+      // later, we're just being cautious with this.
       string msg = Substitute("Leader has been unable to successfully communicate "
                               "with Peer $0 for more than $1 seconds ($2)",
                               uuid,
@@ -387,9 +384,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
   *needs_remote_bootstrap = false;
 
-  // If we've never communicated with the peer, we don't know what messages to
-  // send, so we'll send a status-only request. Otherwise, we grab requests
-  // from the log starting at the last_received point.
+  // If we've never communicated with the peer, we don't know what messages to send, so we'll send a
+  // status-only request. Otherwise, we grab requests from the log starting at the last_received
+  // point.
   if (!peer->is_new) {
     DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
     // The batch of messages to send to the peer.
@@ -403,16 +400,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                   &preceding_id);
     if (PREDICT_FALSE(!s.ok())) {
       if (PREDICT_TRUE(s.IsNotFound())) {
-        // It's normal to have a NotFound() here if a follower falls behind where
-        // the leader has GCed its logs.
+        // It's normal to have a NotFound() here if a follower falls behind where the leader has
+        // GCed its logs.
         string msg = Substitute("The logs necessary to catch up peer $0 have been "
                                 "garbage collected. The follower will never be able "
                                 "to catch up ($1)", uuid, s.ToString());
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
         return s;
       } else if (s.IsIncomplete()) {
-        // IsIncomplete() means that we tried to read beyond the head of the log
-        // (in the future). See KUDU-1078.
+        // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
+        // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
+        // happen under normal circumstances.
         LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
                                         << "while preparing peer request: "
                                         << s.ToString() << ". Destination peer: "
@@ -425,10 +423,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       }
     }
 
-    // We use AddAllocated rather than copy, because we pin the log cache at the
-    // "all replicated" point. At some point we may want to allow partially loading
-    // (and not pinning) earlier messages. At that point we'll need to do something
-    // smarter here, like copy or ref-count.
+    // We use AddAllocated rather than copy, because we pin the log cache at the "all replicated"
+    // point. At some point we may want to allow partially loading (and not pinning) earlier
+    // messages. At that point we'll need to do something smarter here, like copy or ref-count.
     for (const auto& msg : messages) {
       request->mutable_ops()->AddAllocated(msg.get());
     }
@@ -721,8 +718,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       peer->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
     }
 
-    // Sanity checks.
-    // Some of these can be eventually removed, but they are handy for now.
+    // Sanity checks.  Some of these can be eventually removed, but they are handy for now.
     DCHECK(response.status().IsInitialized()) << "Error: Uninitialized: "
         << response.InitializationErrorString() << ". Response: " << response.ShortDebugString();
     // TODO: Include uuid in error messages as well.
@@ -748,11 +744,10 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     peer->last_known_committed_idx = status.last_committed_idx();
     peer->last_successful_communication_time = MonoTime::Now();
 
-    // If the reported last-received op for the replica is in our local log,
-    // then resume sending entries from that point onward. Otherwise, resume
-    // after the last op they received from us. If we've never successfully
-    // sent them anything, start after the last-committed op in their log, which
-    // is guaranteed by the Raft protocol to be a valid op.
+    // If the reported last-received op for the replica is in our local log, then resume sending
+    // entries from that point onward. Otherwise, resume after the last op they received from us. If
+    // we've never successfully sent them anything, start after the last-committed op in their log,
+    // which is guaranteed by the Raft protocol to be a valid op.
 
     bool peer_has_prefix_of_log = IsOpInLog(status.last_received());
     if (peer_has_prefix_of_log) {
@@ -761,19 +756,18 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       peer->next_index = peer->last_received.index() + 1;
 
     } else if (!OpIdEquals(status.last_received_current_leader(), MinimumOpId())) {
-      // Their log may have diverged from ours, however we are in the process
-      // of replicating our ops to them, so continue doing so. Eventually, we
-      // will cause the divergent entry in their log to be overwritten.
+      // Their log may have diverged from ours, however we are in the process of replicating our ops
+      // to them, so continue doing so. Eventually, we will cause the divergent entry in their log
+      // to be overwritten.
       peer->last_received = status.last_received_current_leader();
       peer->next_index = peer->last_received.index() + 1;
 
     } else {
-      // The peer is divergent and they have not (successfully) received
-      // anything from us yet. Start sending from their last committed index.
-      // This logic differs from the Raft spec slightly because instead of
-      // stepping back one-by-one from the end until we no longer have an LMP
-      // error, we jump back to the last committed op indicated by the peer with
-      // the hope that doing so will result in a faster catch-up process.
+      // The peer is divergent and they have not (successfully) received anything from us yet. Start
+      // sending from their last committed index.  This logic differs from the Raft spec slightly
+      // because instead of stepping back one-by-one from the end until we no longer have an LMP
+      // error, we jump back to the last committed op indicated by the peer with the hope that doing
+      // so will result in a faster catch-up process.
       DCHECK_GE(peer->last_known_committed_idx, 0);
       peer->next_index = peer->last_known_committed_idx + 1;
     }
@@ -812,12 +806,12 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     peer->is_last_exchange_successful = true;
 
     if (response.has_responder_term()) {
-      // The peer must have responded with a term that is greater than or equal to
-      // the last known term for that peer.
+      // The peer must have responded with a term that is greater than or equal to the last known
+      // term for that peer.
       peer->CheckMonotonicTerms(response.responder_term());
 
-      // If the responder didn't send an error back that must mean that it has
-      // a term that is the same or lower than ours.
+      // If the responder didn't send an error back that must mean that it has a term that is the
+      // same or lower than ours.
       CHECK_LE(response.responder_term(), queue_state_.current_term);
     }
 
@@ -826,8 +820,8 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
           << "Response: " << response.ShortDebugString();
     }
 
-    // If our log has the next request for the peer or if the peer's committed index is
-    // lower than our own, set 'more_pending' to true.
+    // If our log has the next request for the peer or if the peer's committed index is lower than
+    // our own, set 'more_pending' to true.
     *more_pending = log_cache_.HasOpBeenWritten(peer->next_index) ||
         (peer->last_known_committed_idx < queue_state_.committed_index.index());
 
@@ -888,8 +882,7 @@ OpId PeerMessageQueue::GetMajorityReplicatedOpIdForTests() const {
 }
 
 void PeerMessageQueue::UpdateMetrics() {
-  // Since operations have consecutive indices we can update the metrics based
-  // on simple index math.
+  // Since operations have consecutive indices we can update the metrics based on simple index math.
   metrics_.num_majority_done_ops->set_value(
       queue_state_.committed_index.index() -
       queue_state_.all_replicated_opid.index());
@@ -927,8 +920,8 @@ void PeerMessageQueue::Close() {
 }
 
 string PeerMessageQueue::ToString() const {
-  // Even though metrics are thread-safe obtain the lock so that we get
-  // a "consistent" snapshot of the metrics.
+  // Even though metrics are thread-safe obtain the lock so that we get a "consistent" snapshot of
+  // the metrics.
   LockGuard lock(queue_lock_);
   return ToStringUnlocked();
 }
@@ -1017,8 +1010,8 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
     copy = observers_;
   }
 
-  // TODO move commit index advancement here so that the queue is not dependent on
-  // consensus at all, but that requires a bit more work.
+  // TODO move commit index advancement here so that the queue is not dependent on consensus at all,
+  // but that requires a bit more work.
   OpId new_committed_index;
   for (PeerMessageQueueObserver* observer : copy) {
     observer->UpdateMajorityReplicated(majority_replicated_data, &new_committed_index);
@@ -1101,9 +1094,8 @@ PeerMessageQueue::~PeerMessageQueue() {
 }
 
 string PeerMessageQueue::LogPrefixUnlocked() const {
-  // TODO: we should probably use an atomic here. We'll just annotate
-  // away the TSAN error for now, since the worst case is a slightly out-of-date
-  // log message, and not very likely.
+  // TODO: we should probably use an atomic here. We'll just annotate away the TSAN error for now,
+  // since the worst case is a slightly out-of-date log message, and not very likely.
   Mode mode = ANNOTATE_UNPROTECTED_READ(queue_state_.mode);
   return Substitute("T $0 P $1 [$2]: ",
                     tablet_id_,
