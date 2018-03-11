@@ -1004,6 +1004,7 @@ void Executor::FlushAsyncDone(const Status &s) {
         }
       }
 
+      const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
       for (auto itr = exec_contexts_.begin(); itr != exec_contexts_.end();) {
         ExecContext& exec_context = *itr;
         if (exec_context.op() != nullptr) {
@@ -1020,7 +1021,6 @@ void Executor::FlushAsyncDone(const Status &s) {
             // Update the metrics for SELECT/INSERT/UPDATE/DELETE here after the ops have been
             // completed but exclude the time to commit the transaction if any.
             if (ql_metrics_ != nullptr) {
-              const auto now = MonoTime::Now();
               const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
               switch (exec_context.tnode()->opcode()) {
                 case TreeNodeOpcode::kPTSelectStmt:
@@ -1038,6 +1038,7 @@ void Executor::FlushAsyncDone(const Status &s) {
                 default:
                   LOG(FATAL) << "unexpected operation";
               }
+              ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
             }
             itr = exec_contexts_.erase(itr);
           }
@@ -1164,13 +1165,10 @@ void Executor::StatementExecuted(const Status& s) {
   // Update metrics for all statements executed.
   if (s.ok() && ql_metrics_ != nullptr) {
     const MonoTime now = MonoTime::Now();
+    MonoTime transaction_start_time;
     for (const auto& exec_context : exec_contexts_) {
       const TreeNode* tnode = exec_context.tnode();
       if (tnode != nullptr) {
-        const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
-
-        ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
-
         switch (tnode->opcode()) {
           case TreeNodeOpcode::kPTSelectStmt: FALLTHROUGH_INTENDED;
           case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
@@ -1181,18 +1179,21 @@ void Executor::StatementExecuted(const Status& s) {
             // been completed in FlushAsyncDone(). Exclude PTListNode also as we are interested
             // in the metrics of its consistuent DMLs only.
             break;
-          default:
-            ql_metrics_->ql_others_->Increment(delta_usec);
+          case TreeNodeOpcode::kPTStartTransaction:
+            transaction_start_time = exec_context.start_time();
             break;
+          case TreeNodeOpcode::kPTCommit: {
+            const auto delta_usec = (now - transaction_start_time).ToMicroseconds();
+            ql_metrics_->ql_transaction_->Increment(delta_usec);
+            break;
+          }
+          default: {
+            const auto delta_usec = (now - exec_context.start_time()).ToMicroseconds();
+            ql_metrics_->ql_others_->Increment(delta_usec);
+            ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
+            break;
+          }
         }
-      }
-    }
-
-    if (!exec_contexts_.empty()) {
-      const TreeNode* last_tnode = exec_contexts_.back().tnode();
-      if (last_tnode != nullptr && last_tnode->opcode() == TreeNodeOpcode::kPTCommit) {
-        const MonoDelta delta = now - exec_contexts_.front().start_time();
-        ql_metrics_->ql_transaction_->Increment(delta.ToMicroseconds());
       }
     }
   }
