@@ -47,7 +47,7 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   for (const TableIdentifierPB& table_id_pb : req->tables()) {
     MasterErrorPB::Code error = MasterErrorPB::UNKNOWN_ERROR;
 
-    const Result<TabletInfos>  res_tablets = catalog_manager_->GetTabletsOrSetupError(
+    const Result<TabletInfos> res_tablets = catalog_manager_->GetTabletsOrSetupError(
         table_id_pb, &error, &table);
     if (!res_tablets.ok()) {
       return SetupError(resp->mutable_error(), error, res_tablets.status());
