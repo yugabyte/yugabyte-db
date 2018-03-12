@@ -45,24 +45,24 @@ class MacLibraryPackager:
         src = self.build_dir
         dst = self.dest_dir
 
-        dst_bin_dir = os.path.join(dst, "bin")
-        dst_lib_dir = os.path.join(dst, "lib")
+        dst_bin_dir = os.path.join(dst, 'bin')
+        dst_lib_dir = os.path.join(dst, 'lib')
 
         try:
             os.makedirs(dst_bin_dir)
         except OSError as e:
-            raise RuntimeError("Unable to create dir %s" % dst)
+            raise RuntimeError('Unable to create directory %s', dst)
 
-        logging.debug("Created directory %s" % dst)
+        logging.debug('Created directory %s', dst)
 
         bin_dir_files = []
         for seed_executable_glob in self.seed_executable_patterns:
             if seed_executable_glob.startswith('bin/'):
                 bin_dir_files.append(os.path.basename(seed_executable_glob))
-                logging.debug("Adding file '%s' to bash_scripts" % seed_executable_glob)
+                logging.debug("Adding file '%s' to bash_scripts", seed_executable_glob)
             updated_glob = seed_executable_glob.replace('$BUILD_ROOT', self.build_dir)
             if updated_glob != seed_executable_glob:
-                logging.info("Substituting: {} -> {}".format(seed_executable_glob, updated_glob))
+                logging.info('Substituting: {} -> {}'.format(seed_executable_glob, updated_glob))
                 seed_executable_glob = updated_glob
             glob_results = glob.glob(seed_executable_glob)
             if not glob_results:
@@ -71,29 +71,33 @@ class MacLibraryPackager:
             for executable in glob_results:
                 shutil.copy(executable, dst_bin_dir)
 
+        processed_libs = []
         for bin_file in os.listdir(dst_bin_dir):
-            if bin_file.endswith(".sh") or bin_file in bin_dir_files:
-                logging.info("Not modifying rpath for file '%s' because it's not a binary file"
-                             % bin_file)
+            if bin_file.endswith('.sh') or bin_file in bin_dir_files:
+                logging.info("Not modifying rpath for file '%s' because it's not a binary file",
+                             bin_file)
                 continue
 
-            logging.debug("Processing binary file: %s" % bin_file)
+            logging.debug('Processing binary file: %s', bin_file)
             libs = []
-            processed_libs = []
-            os.makedirs(os.path.join(dst, "lib", bin_file))
+
+            os.makedirs(os.path.join(dst, 'lib', bin_file))
             libs = self.fix_load_paths(os.path.join(dst_bin_dir, bin_file),
                                        os.path.join(dst_lib_dir, bin_file),
-                                       os.path.join("@loader_path/../lib/", bin_file))
+                                       os.path.join('@loader_path/../lib/', bin_file))
 
             # Elements in libs are absolute paths.
-            logging.info("library dependencies for file %s: %s" % (bin_file, libs))
+            logging.info('library dependencies for file %s: %s', bin_file, libs)
             for lib in libs:
                 if lib in processed_libs:
                     continue
 
-                logging.debug("processing library: %s" % lib)
+                # For each library dependency, check whether it already has its own directory (if it
+                # does, a physical copy of this library must exist there). If it doesn't, create it
+                # and copy the physical file there.
+                logging.debug('Processing library: %s', lib)
                 libname = os.path.basename(lib)
-                lib_dir_path = os.path.join(dst, "lib", libname)
+                lib_dir_path = os.path.join(dst, 'lib', libname)
                 if os.path.exists(lib_dir_path):
                     continue
 
@@ -102,29 +106,33 @@ class MacLibraryPackager:
 
                 lib_file_path = os.path.join(lib_dir_path, libname)
 
-                self.fix_load_paths(lib_file_path, lib_dir_path, "@loader_path")
+                new_libs = self.fix_load_paths(lib_file_path, lib_dir_path, '@loader_path')
+                for new_lib in new_libs:
+                    if new_lib not in processed_libs and new_lib not in libs:
+                        logging.info('Adding dependency %s for library %s', new_lib, lib_file_path)
+                        libs.append(new_lib)
                 processed_libs.append(lib)
 
     # Run otool to extract information from an object file. Returns the command's output to stdout,
     # or an empty string if filename is not a valid object file.
     # parameter must include the dash.
     def run_otool(self, parameter, filename):
-        result = run_program(["otool", parameter, filename], error_ok=True)
+        result = run_program(['otool', parameter, filename], error_ok=True)
 
         if result.stdout.endswith('is not an object file') or \
                 result.stderr.endswith('The file was not recognized as a valid object file'):
-            logging.info("Unable to run 'otool %s %s'. File '%s' is not an object file" %
-                         (filename, parameter, filename))
+            logging.info("Unable to run 'otool %s %s'. File '%s' is not an object file",
+                         filename, parameter, filename)
             return None
 
         if result.returncode != 0:
-            raise RuntimeError("Unexpected error running 'otool -l %s': '%s'" %
-                               (filename, result.stderr))
+            raise RuntimeError("Unexpected error running 'otool -l %s': '%s'",
+                               filename, result.stderr)
 
         return result.stdout
 
     def extract_rpaths(self, filename):
-        stdout = self.run_otool("-l", filename)
+        stdout = self.run_otool('-l', filename)
 
         if not stdout:
             return []
@@ -139,16 +147,16 @@ class MacLibraryPackager:
             #         path /Users/hector/code/yugabyte/thirdparty/installed/common/lib (offset 12)
             if line.strip() == 'cmd LC_RPATH':
                 path_line = lines[idx + 2]
-                if path_line.split()[0] != "path":
+                if path_line.split()[0] != 'path':
                     raise RuntimeError("Invalid output from 'otool -l %s'. "
-                                       "Expecting line to start with 'path'. Got '%s'" %
-                                       (filename, path_line.split()[0]))
+                                       "Expecting line to start with 'path'. Got '%s'",
+                                       filename, path_line.split()[0])
                 rpaths.append(path_line.split()[1])
 
         return rpaths
 
     def extract_dependency_paths(self, filename, rpaths):
-        stdout = self.run_otool("-L", filename)
+        stdout = self.run_otool('-L', filename)
 
         if not stdout:
             return [], []
@@ -177,7 +185,7 @@ class MacLibraryPackager:
 
             # If we don't skip system libraries and package it, macOS will complain that the library
             # exists in two different places (in /usr/lib and in our package lib directory).
-            if path.startswith("/usr/lib"):
+            if path.startswith('/usr/lib'):
                 continue
             if path.startswith('@rpath'):
                 name = os.path.basename(path)
@@ -192,7 +200,7 @@ class MacLibraryPackager:
                 if os.path.isfile(path):
                     absolute_dependency_paths.append(path)
                 else:
-                    raise RuntimeError("File %s doesn't exist" % path)
+                    raise RuntimeError("File %s doesn't exist", path)
 
             dependency_paths.append(path)
 
@@ -200,8 +208,8 @@ class MacLibraryPackager:
 
     def remove_rpaths(self, filename, rpaths):
         for rpath in rpaths:
-            run_program(["install_name_tool", "-delete_rpath", rpath, filename])
-            logging.info("Successfully removed rpath %s from %s" % (rpath, filename))
+            run_program(['install_name_tool', '-delete_rpath', rpath, filename])
+            logging.info('Successfully removed rpath %s from %s', rpath, filename)
 
     def set_new_path(self, filename, old_path, new_path):
         # We need to use a different command if the path is pointing to itself. Example:
@@ -211,21 +219,21 @@ class MacLibraryPackager:
 
         cmd = []
         if os.path.basename(filename) == os.path.basename(old_path):
-            run_program(["install_name_tool", "-id", new_path, filename])
-            logging.debug('install_name_tool -id %s %s' % (new_path, filename))
+            run_program(['install_name_tool', '-id', new_path, filename])
+            logging.debug('install_name_tool -id %s %s', new_path, filename)
         else:
-            run_program(["install_name_tool", "-change", old_path, new_path, filename])
-            logging.debug('install_name_tool -change %s %s %s' % (old_path, new_path, filename))
+            run_program(['install_name_tool', '-change', old_path, new_path, filename])
+            logging.debug('install_name_tool -change %s %s %s', old_path, new_path, filename)
 
     def fix_load_paths(self, filename, lib_bin_dir, loader_path):
-        logging.debug('Processing file %s' % filename)
+        logging.debug('Processing file %s', filename)
 
         original_mode = os.stat(filename).st_mode
         # Made the file writable.
         try:
             os.chmod(filename, os.stat(filename).st_mode | stat.S_IWUSR)
         except OSError as e:
-            logging.error("Unable to make file % writable" % filename)
+            logging.error('Unable to make file %s writable', filename)
             raise
 
         # Extract the paths that are used to resolve paths that start with @rpath.
@@ -238,8 +246,8 @@ class MacLibraryPackager:
         dependency_paths, absolute_dependency_paths = self.extract_dependency_paths(filename,
                                                                                     rpaths)
 
-        logging.debug('absolute_dependency_paths for file %s: %s' % (filename,
-                      absolute_dependency_paths))
+        logging.debug('Absolute_dependency_paths for file %s: %s',
+                      filename, absolute_dependency_paths)
 
         # Prepend @loader_path to all dependency paths.
         for dependency_path in dependency_paths:
@@ -248,27 +256,26 @@ class MacLibraryPackager:
 
             self.set_new_path(filename, dependency_path, new_path)
 
-        logging.debug('absolute_paths: %s' % absolute_dependency_paths)
+        logging.debug('Absolute_paths for %s: %s', filename, absolute_dependency_paths)
 
-        # For each library dependency, check whether it already has its own directory (if it does,
-        # a physical copy of this library must exist there). If it doesn't, create it and copy the
-        # physical file there.
+        # Since we have changed the dependency path, create a symlink so that the dependency path
+        # points to a valid file. It's not guaranteed that this symlink will point to a valid
+        # physical file, so the caller is responsible to make sure the physical file exists.
         for absolute_path in absolute_dependency_paths:
-            # Don't copy the file again.
             lib_file_name = os.path.basename(absolute_path)
             relative_lib_path = os.path.join("..", lib_file_name, lib_file_name)
 
             # Create symlink in lib_bin_dir.
             symlink_path = os.path.join(lib_bin_dir, lib_file_name)
             if not os.path.exists(symlink_path):
-                logging.info('Creating symlink %s' % symlink_path)
+                logging.info('Creating symlink %s -> %s', symlink_path, relative_lib_path)
                 os.symlink(relative_lib_path, symlink_path)
 
         # Restore the file's mode.
         try:
             os.chmod(filename, original_mode)
         except OSError as e:
-            logging.error('Unable to restore file %s mode' % filename)
+            logging.error('Unable to restore file %s mode', filename)
             raise
 
         return absolute_dependency_paths
