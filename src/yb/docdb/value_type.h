@@ -33,6 +33,10 @@ enum class ValueType : char {
   // This ValueType is used as -infinity for scanning purposes only.
   kLowest = 0,
 
+  // All intents are stored in the beginning of the keyspace to be able to read them without
+  // polluting cache with other values. Later we'll put intents in a separate rocksdb.
+  kIntentPrefix = 10,
+
   // We use ASCII code 20 in order to have it before all other value types which can occur in key,
   // so intents will be written in the same order as original keys for which intents are written.
   kIntentType = 20,
@@ -42,10 +46,6 @@ enum class ValueType : char {
   // of components of another key sorts before the other key.
   // kGroupEnd is also used as the end marker for a frozen value.
   kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
-
-  // All intents are stored in the beginning of the keyspace to be able to read them without
-  // polluting cache with other values. Later we'll put intents in a separate rocksdb.
-  kIntentPrefix = '"', // ASCII code 34
 
   // HybridTime must be lower than all other primitive types (other than kGroupEnd) so that
   // SubDocKeys that have fewer subkeys within a document sort above those that have all the same
