@@ -42,6 +42,11 @@ Result<bool> TabletBootstrap::OpenTablet() {
             LOG(WARNING) << "Cannot delete old temporary snapshot directory "
                          << snapshot_dir << ": " << s;
           }
+
+          s = meta_->fs_manager()->env()->SyncDir(top_snapshots_dir);
+          if (!s.ok()) {
+            LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir << ": " << s;
+          }
         }
       }
     }
@@ -77,6 +82,11 @@ Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg)
     case TabletSnapshotOpRequestPB::RESTORE: {
       handled = true;
       RETURN_NOT_OK_PREPEND(tablet_->RestoreSnapshot(&tx_state), "Failed to RestoreSnapshot:");
+      break;
+    }
+    case TabletSnapshotOpRequestPB::DELETE: {
+      handled = true;
+      RETURN_NOT_OK_PREPEND(tablet_->DeleteSnapshot(&tx_state), "Failed to DeleteSnapshot:");
       break;
     }
     case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.

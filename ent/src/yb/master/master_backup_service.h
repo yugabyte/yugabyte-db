@@ -31,6 +31,10 @@ class MasterBackupServiceImpl : public MasterBackupServiceIf,
       const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp,
       rpc::RpcContext rpc) override;
 
+  virtual void DeleteSnapshot(
+      const DeleteSnapshotRequestPB* req, DeleteSnapshotResponsePB* resp,
+      rpc::RpcContext rpc) override;
+
   virtual void ImportSnapshotMeta(
       const ImportSnapshotMetaRequestPB* req, ImportSnapshotMetaResponsePB* resp,
       rpc::RpcContext rpc) override;

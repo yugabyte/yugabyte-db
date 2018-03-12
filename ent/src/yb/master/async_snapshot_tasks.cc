@@ -94,6 +94,14 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
             tablet_.get(), resp_.has_error());
         break;
       }
+      case tserver::TabletSnapshotOpRequestPB::DELETE: {
+        handled = true;
+        // TODO: this class should not know CatalogManager API,
+        //       remove circular dependency between classes.
+        master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
+            snapshot_id_, tablet_.get(), resp_.has_error());
+        break;
+      }
       case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
     }
 

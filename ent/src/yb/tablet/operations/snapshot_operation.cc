@@ -89,6 +89,11 @@ Status SnapshotOperation::Apply() {
       RETURN_NOT_OK(tablet->RestoreSnapshot(state()));
       break;
     }
+    case TabletSnapshotOpRequestPB::DELETE: {
+      handled = true;
+      RETURN_NOT_OK(tablet->DeleteSnapshot(state()));
+      break;
+    }
     case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
   }
 
