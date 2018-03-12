@@ -17,6 +17,7 @@ message TabletSnapshotOpRequestPB {
     UNKNOWN = 0;
     CREATE = 1;
     RESTORE = 2;
+    DELETE = 3;
   }
 
   // UUID of server this request is addressed to.
