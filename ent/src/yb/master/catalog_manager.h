@@ -46,6 +46,10 @@ struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntr
   bool is_restoring() const {
     return state() == SysSnapshotEntryPB::RESTORING;
   }
+
+  bool is_deleting() const {
+    return state() == SysSnapshotEntryPB::DELETING;
+  }
 };
 
 // The information about a snapshot.
@@ -70,6 +74,9 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
   // Returns true if the snapshot restoring is in-progress.
   bool IsRestoreInProgress() const;
+
+  // Returns true if the snapshot deleting is in-progress.
+  bool IsDeleteInProgress() const;
 
   CHECKED_STATUS AddEntries(const scoped_refptr<NamespaceInfo> ns,
                             const scoped_refptr<TableInfo>& table,
@@ -110,12 +117,18 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS RestoreSnapshot(const RestoreSnapshotRequestPB* req,
                                  RestoreSnapshotResponsePB* resp);
 
+  // API to delete a snapshot.
+  CHECKED_STATUS DeleteSnapshot(const DeleteSnapshotRequestPB* req,
+                                DeleteSnapshotResponsePB* resp);
+
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
                                     ImportSnapshotMetaResponsePB* resp);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
+
+  void HandleDeleteTabletSnapshotResponse(SnapshotId snapshot_id, TabletInfo *tablet, bool error);
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
@@ -163,6 +176,12 @@ class CatalogManager : public yb::master::CatalogManager {
 
   void SendRestoreTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
                                         const std::string& snapshot_id);
+
+  void SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
+                                       const std::string& snapshot_id);
+
+  static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
+                                      SysSnapshotEntryPB* snapshot_pb);
 
   template <class Collection>
   typename Collection::value_type::second_type LockAndFindPtrOrNull(

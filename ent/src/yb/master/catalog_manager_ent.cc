@@ -268,30 +268,24 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
   }
 
-  auto snapshot_l = snapshot->LockForWrite();
+  auto snapshot_lock = snapshot->LockForWrite();
 
-  if (snapshot_l->data().started_deleting()) {
+  if (snapshot_lock->data().started_deleting()) {
     Status s = STATUS(NotFound, "The snapshot was deleted", req->snapshot_id());
     return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
   }
 
-  if (!snapshot_l->data().is_complete()) {
+  if (!snapshot_lock->data().is_complete()) {
     Status s = STATUS(IllegalState, "The snapshot state is not complete", req->snapshot_id());
     return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_IS_NOT_READY, s);
   }
 
   TRACE("Updating snapshot metadata on disk");
-  SysSnapshotEntryPB& snapshot_pb = snapshot_l->mutable_data()->pb;
+  SysSnapshotEntryPB& snapshot_pb = snapshot_lock->mutable_data()->pb;
   snapshot_pb.set_state(SysSnapshotEntryPB::RESTORING);
 
   // Update tablet states.
-  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
-      snapshot_pb.mutable_tablet_snapshots();
-
-  for (int i = 0; i < tablet_snapshots->size(); ++i) {
-    SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
-    tablet_info->set_state(SysSnapshotEntryPB::RESTORING);
-  }
+  SetTabletSnapshotsState(SysSnapshotEntryPB::RESTORING, &snapshot_pb);
 
   // Update sys-catalog with the updated snapshot state.
   Status s = sys_catalog_->UpdateItem(snapshot.get());
@@ -317,7 +311,7 @@ Status CatalogManager::RestoreSnapshot(const RestoreSnapshotRequestPB* req,
 
   // Commit in memory snapshot data descriptor.
   TRACE("Committing in-memory snapshot state");
-  snapshot_l->Commit();
+  snapshot_lock->Commit();
 
   LOG(INFO) << "Successfully started snapshot " << snapshot->ToString() << " restoring";
   return Status::OK();
@@ -376,6 +370,76 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
           "Unexpected entry type in the snapshot: $0", entry.type()));
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
+                                      DeleteSnapshotResponsePB* resp) {
+  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+  std::lock_guard<LockType> l(lock_);
+  TRACE("Acquired catalog manager lock");
+
+  TRACE("Looking up snapshot");
+  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(snapshot_ids_map_, req->snapshot_id());
+  if (snapshot == nullptr) {
+    const Status s = STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id());
+    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+  }
+
+  auto snapshot_lock = snapshot->LockForWrite();
+
+  if (snapshot_lock->data().started_deleting()) {
+    Status s = STATUS(NotFound, "The snapshot was deleted", req->snapshot_id());
+    return SetupError(resp->mutable_error(), MasterErrorPB::SNAPSHOT_NOT_FOUND, s);
+  }
+
+  if (snapshot_lock->data().is_restoring()) {
+    Status s = STATUS(InvalidArgument, "The snapshot is being restored now", req->snapshot_id());
+    return SetupError(resp->mutable_error(), MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION, s);
+  }
+
+  TRACE("Updating snapshot metadata on disk");
+  SysSnapshotEntryPB& snapshot_pb = snapshot_lock->mutable_data()->pb;
+  snapshot_pb.set_state(SysSnapshotEntryPB::DELETING);
+
+  // Update tablet states.
+  SetTabletSnapshotsState(SysSnapshotEntryPB::DELETING, &snapshot_pb);
+
+  // Update sys-catalog with the updated snapshot state.
+  Status s = sys_catalog_->UpdateItem(snapshot.get());
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
+                                     s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+
+  // Send DeleteSnapshot requests to all TServers (one tablet - one request).
+  for (const SysRowEntry& entry : snapshot_pb.entries()) {
+    if (entry.type() == SysRowEntry::TABLET) {
+      TRACE("Looking up tablet");
+      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(tablet_map_, entry.id());
+      if (tablet == nullptr) {
+        LOG(WARNING) << "Deleting tablet not found " << entry.id();
+      } else {
+        TRACE("Locking tablet");
+        auto l = tablet->LockForRead();
+
+        LOG(INFO) << "Sending DeleteTabletSnapshot to tablet: " << tablet->ToString();
+        // Send DeleteSnapshot requests to all TServers (one tablet - one request).
+        SendDeleteTabletSnapshotRequest(tablet, req->snapshot_id());
+      }
+    }
+  }
+
+  // Commit in memory snapshot data descriptor.
+  TRACE("Committing in-memory snapshot state");
+  snapshot_lock->Commit();
+
+  LOG(INFO) << "Successfully started snapshot " << snapshot->ToString() << " deletion";
   return Status::OK();
 }
 
@@ -615,6 +679,15 @@ void CatalogManager::SendRestoreTabletSnapshotRequest(const scoped_refptr<Tablet
   WARN_NOT_OK(call->Run(), "Failed to send restore snapshot request");
 }
 
+void CatalogManager::SendDeleteTabletSnapshotRequest(const scoped_refptr<TabletInfo>& tablet,
+                                                     const string& snapshot_id) {
+  auto call = std::make_shared<AsyncTabletSnapshotOp>(
+      master_, worker_pool_.get(), tablet, snapshot_id,
+      tserver::TabletSnapshotOpRequestPB::DELETE);
+  tablet->table()->AddTask(call);
+  WARN_NOT_OK(call->Run(), "Failed to send delete snapshot request");
+}
+
 void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {
   DCHECK_ONLY_NOTNULL(tablet);
 
@@ -772,6 +845,89 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
   l->Commit();
 }
 
+void CatalogManager::HandleDeleteTabletSnapshotResponse(
+    SnapshotId snapshot_id, TabletInfo *tablet, bool error) {
+  DCHECK_ONLY_NOTNULL(tablet);
+
+  LOG(INFO) << "Handling Delete Tablet Snapshot Response for tablet " << tablet->ToString()
+            << (error ? "  ERROR" : "  OK");
+
+  // Get the snapshot data descriptor from the catalog manager.
+  scoped_refptr<SnapshotInfo> snapshot;
+  {
+    std::lock_guard<LockType> manager_l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    snapshot = FindPtrOrNull(snapshot_ids_map_, snapshot_id);
+
+    if (!snapshot) {
+      LOG(WARNING) << "Snapshot not found: " << snapshot_id;
+      return;
+    }
+  }
+
+  if (!snapshot->IsDeleteInProgress()) {
+    LOG(WARNING) << "Snapshot is not in deleting state: " << snapshot->id();
+    return;
+  }
+
+  auto tablet_l = tablet->LockForRead();
+  auto l = snapshot->LockForWrite();
+  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
+      l->mutable_data()->pb.mutable_tablet_snapshots();
+  int num_tablets_complete = 0;
+
+  for (int i = 0; i < tablet_snapshots->size(); ++i) {
+    SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
+
+    if (tablet_info->id() == tablet->id()) {
+      tablet_info->set_state(error ? SysSnapshotEntryPB::FAILED : SysSnapshotEntryPB::DELETED);
+    }
+
+    if (tablet_info->state() != SysSnapshotEntryPB::DELETING) {
+      ++num_tablets_complete;
+    }
+  }
+
+  Status s;
+  if (num_tablets_complete == tablet_snapshots->size()) {
+    // Delete the snapshot.
+    l->mutable_data()->pb.set_state(SysSnapshotEntryPB::DELETED);
+    LOG(INFO) << "Deleted snapshot " << snapshot->id();
+
+    s = sys_catalog_->DeleteItem(snapshot.get());
+
+    std::lock_guard<LockType> manager_l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    if (current_snapshot_id_ == snapshot_id) {
+      current_snapshot_id_ = "";
+    }
+
+    // Remove it from the maps.
+    TRACE("Removing from maps");
+    if (snapshot_ids_map_.erase(snapshot_id) < 1) {
+      LOG(WARNING) << "Could not remove snapshot " << snapshot_id << " from map";
+    }
+  } else if (error) {
+    l->mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
+    LOG(WARNING) << "Failed snapshot " << snapshot->id() << " deletion on tablet " << tablet->id();
+
+    s = sys_catalog_->UpdateItem(snapshot.get());
+  }
+
+  if (!s.ok()) {
+    LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString();
+    return;
+  }
+
+  l->Commit();
+
+  VLOG(1) << "Deleting snapshot: " << snapshot->id()
+          << " PB: " << l->mutable_data()->pb.DebugString()
+          << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
+}
+
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   super::DumpState(out, on_disk_dump);
 
@@ -831,6 +987,17 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
   }
 }
 
+void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
+                                             SysSnapshotEntryPB* snapshot_pb) {
+  RepeatedPtrField<SysSnapshotEntryPB_TabletSnapshotPB>* tablet_snapshots =
+      snapshot_pb->mutable_tablet_snapshots();
+
+  for (int i = 0; i < tablet_snapshots->size(); ++i) {
+    SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
+    tablet_info->set_state(state);
+  }
+}
+
 } // namespace enterprise
 
 ////////////////////////////////////////////////////////////
@@ -861,6 +1028,11 @@ bool SnapshotInfo::IsCreateInProgress() const {
 bool SnapshotInfo::IsRestoreInProgress() const {
   auto l = LockForRead();
   return l->data().is_restoring();
+}
+
+bool SnapshotInfo::IsDeleteInProgress() const {
+  auto l = LockForRead();
+  return l->data().is_deleting();
 }
 
 Status SnapshotInfo::AddEntries(const scoped_refptr<NamespaceInfo> ns,
