@@ -173,8 +173,8 @@ DateTimeInputFormat DateTime::CqlDateTimeInputFormat = []() -> DateTimeInputForm
   string time_fmt_no_sec = "(\\d{1,2}):(\\d{1,2})" + fmt_empty;
   string time_empty = fmt_empty + fmt_empty + fmt_empty;
   string frac_fmt = "\\.(\\d{1,3})";
-  // Offset, i.e. +/-xx:xx
-  string tzX_fmt = "((?:\\+|-)\\d{2}:\\d{2})";
+  // Offset, i.e. +/-xx:xx, +/-0000, timezone parser will do additional checking.
+  string tzX_fmt = "((?:\\+|-)\\d{2}:?\\d{2})";
   // Timezone name, abbreviation, or offset (preceded by space), e.g. PDT, UDT+/-xx:xx, etc..
   // At this point this allows anything that starts with a letter or '+' (after space), and leaves
   // further processing to the timezone parser.
