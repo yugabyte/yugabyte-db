@@ -93,6 +93,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               Substitute("Unable to import snapshot meta file $0", file_name));
         return Status::OK();
       });
+
+  Register(
+      "delete_snapshot", " <snapshot_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 3) {
+          UsageAndExit(args[0]);
+        }
+
+        const string snapshot_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->DeleteSnapshot(snapshot_id),
+                              Substitute("Unable to delete snapshot $0", snapshot_id));
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise
