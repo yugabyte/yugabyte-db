@@ -888,5 +888,65 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> 
   }
 }
 
+TEST_F(DocRowwiseIteratorTest, IntentAwareIteratorSeek) {
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+
+  TransactionStatusManagerMock txn_status_manager;
+
+  Result<TransactionId> txn = FullyDecodeTransactionId("0000000000000001");
+  ASSERT_OK(txn);
+
+  // Have a mix of transactional / non-transaction writes.
+  SetCurrentTransactionId(*txn);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
+      PrimitiveValue("row1_c_txn"), HybridTime::FromMicros(500)));
+
+  txn_status_manager.Commit(*txn, HybridTime::FromMicros(600));
+
+  ResetCurrentTransactionId();
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
+      PrimitiveValue("row1_c"), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, PrimitiveValue(40_ColId)),
+      PrimitiveValue(10000), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(30_ColId)),
+      PrimitiveValue("row2_c"), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, PrimitiveValue(40_ColId)),
+      PrimitiveValue(20000), HybridTime::FromMicros(1000)));
+
+  // Verify the content of RocksDB.
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) "row1_c_txn"
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
+    SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 1000 }]) -> "row2_c"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 20000
+      )#");
+
+  // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
+  // first non-intent key.
+  IntentAwareIterator iter(
+      rocksdb(), rocksdb::ReadOptions(), ReadHybridTime::FromMicros(1000), boost::none);
+  iter.Seek(DocKey());
+  Result<Slice> key = iter.FetchKey();
+  ASSERT_OK(key);
+  SubDocKey subdoc_key;
+  ASSERT_OK(subdoc_key.FullyDecodeFrom(*key));
+  ASSERT_EQ(subdoc_key.ToString(),
+            R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]))#");
+}
+
 }  // namespace docdb
 }  // namespace yb
