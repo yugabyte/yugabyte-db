@@ -42,6 +42,9 @@ class Tablet : public yb::tablet::Tablet {
   // Restore snapshot for this tablet.
   CHECKED_STATUS RestoreSnapshot(SnapshotOperationState* tx_state);
 
+  // Delete snapshot for this tablet.
+  CHECKED_STATUS DeleteSnapshot(SnapshotOperationState* tx_state);
+
   // Restore the RocksDB checkpoint from the provided directory.
   // Only used when table_type_ == YQL_TABLE_TYPE.
   CHECKED_STATUS RestoreCheckpoint(

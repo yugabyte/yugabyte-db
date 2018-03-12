@@ -59,6 +59,8 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
     LOG(INFO) << "Deleting old snapshot dir " << snapshot_dir;
     RETURN_NOT_OK_PREPEND(env->DeleteRecursively(snapshot_dir),
                           "Cannot recursively delete old snapshot dir " + snapshot_dir);
+    RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
+                          "Cannot sync top snapshots dir " + top_snapshots_dir);
   }
 
   LOG(INFO) << "Started tablet snapshot creation for tablet " << tablet_id()
@@ -71,24 +73,38 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
     LOG(INFO) << "Deleting old temp snapshot dir " << tmp_snapshot_dir;
     RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tmp_snapshot_dir),
                           "Cannot recursively delete old temp snapshot dir " + tmp_snapshot_dir);
+    RETURN_NOT_OK_PREPEND(env->SyncDir(top_snapshots_dir),
+                          "Cannot sync top snapshots dir " + top_snapshots_dir);
   }
 
   bool exit_on_failure = true;
   // Delete snapshot (RocksDB checkpoint) directories on exit.
-  BOOST_SCOPE_EXIT(env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir) {
+  BOOST_SCOPE_EXIT(env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir) {
+    bool do_sync = false;
+
     if (env->FileExists(tmp_snapshot_dir)) {
-      const Status del_s = env->DeleteRecursively(tmp_snapshot_dir);
-      if (PREDICT_FALSE(!del_s.ok())) {
+      do_sync = true;
+      const Status deletion_status = env->DeleteRecursively(tmp_snapshot_dir);
+      if (PREDICT_FALSE(!deletion_status.ok())) {
         LOG(WARNING) << "Cannot recursively delete temp snapshot dir " << tmp_snapshot_dir
-                     << ": " << del_s;
+                     << ": " << deletion_status;
       }
     }
 
     if (exit_on_failure && env->FileExists(snapshot_dir)) {
-      const Status del_s = env->DeleteRecursively(snapshot_dir);
-      if (PREDICT_FALSE(!del_s.ok())) {
+      do_sync = true;
+      const Status deletion_status = env->DeleteRecursively(snapshot_dir);
+      if (PREDICT_FALSE(!deletion_status.ok())) {
         LOG(WARNING) << "Cannot recursively delete snapshot dir " << snapshot_dir
-                     << ": " << del_s;
+                     << ": " << deletion_status;
+      }
+    }
+
+    if (do_sync) {
+      const Status sync_status = env->SyncDir(top_snapshots_dir);
+      if (PREDICT_FALSE(!sync_status.ok())) {
+        LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
+                     << ": " << sync_status;
       }
     }
   } BOOST_SCOPE_EXIT_END;
@@ -199,6 +215,42 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
   RETURN_NOT_OK_PREPEND(fs->CreateDirIfMissingAndSync(top_snapshots_dir),
                         Substitute("Unable to create snapshots directory $0",
                                    top_snapshots_dir));
+  return Status::OK();
+}
+
+Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
+  // The table type must be checked on the Master side.
+  DCHECK_EQ(table_type_, TableType::YQL_TABLE_TYPE);
+
+  const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
+                                               tx_state->request()->snapshot_id());
+
+  std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
+  Env* const env = metadata_->fs_manager()->env();
+
+  if (env->FileExists(snapshot_dir)) {
+    const Status deletion_status = env->DeleteRecursively(snapshot_dir);
+    if (PREDICT_FALSE(!deletion_status.ok())) {
+      LOG(WARNING) << "Cannot recursively delete snapshot dir " << snapshot_dir
+                   << ": " << deletion_status;
+    }
+
+    const Status sync_status = env->SyncDir(top_snapshots_dir);
+    if (PREDICT_FALSE(!sync_status.ok())) {
+      LOG(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
+                   << ": " << sync_status;
+    }
+  }
+
+  docdb::ConsensusFrontier frontier;
+  frontier.set_op_id(tx_state->op_id());
+  frontier.set_hybrid_time(tx_state->hybrid_time());
+  RETURN_NOT_OK(SetFlushedFrontier(frontier));
+
+  LOG(INFO) << "Complete snapshot deletion on tablet " << tablet_id()
+            << " in folder " << snapshot_dir;
+
   return Status::OK();
 }
 

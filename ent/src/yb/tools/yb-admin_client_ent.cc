@@ -26,6 +26,8 @@ using rpc::RpcController;
 
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
+using master::DeleteSnapshotRequestPB;
+using master::DeleteSnapshotResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::RestoreSnapshotRequestPB;
@@ -129,6 +131,23 @@ Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id) {
   }
 
   cout << "Started restoring snapshot: " << snapshot_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  DeleteSnapshotRequestPB req;
+  DeleteSnapshotResponsePB resp;
+  req.set_snapshot_id(snapshot_id);
+  RETURN_NOT_OK(master_backup_proxy_->DeleteSnapshot(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Deleted snapshot: " << snapshot_id << endl;
   return Status::OK();
 }
 
