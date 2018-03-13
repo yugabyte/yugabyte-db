@@ -53,7 +53,6 @@
 #include "yb/util/opid.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
-#include "yb/util/threadpool.h"
 
 namespace yb {
 
@@ -68,6 +67,8 @@ struct LogMetrics;
 class LogEntryBatch;
 class LogIndex;
 class LogReader;
+
+typedef BlockingQueue<LogEntryBatch*, LogEntryBatchLogicalSize> LogEntryBatchQueue;
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
@@ -106,7 +107,6 @@ class Log : public RefCountedThreadSafe<Log> {
                              const Schema& schema,
                              uint32_t schema_version,
                              const scoped_refptr<MetricEntity>& metric_entity,
-                             ThreadPool *append_thread_pool,
                              scoped_refptr<Log> *log);
 
   ~Log();
@@ -255,7 +255,7 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
 
-  class Appender;
+  class AppendThread;
 
   // Log state.
   enum LogState {
@@ -273,8 +273,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   Log(LogOptions options, FsManager* fs_manager, std::string log_path,
       std::string tablet_id, std::string tablet_wal_path, const Schema& schema,
-      uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity,
-      ThreadPool* append_thread_pool);
+      uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity);
 
   // Initializes a new one or continues an existing log.
   CHECKED_STATUS Init();
@@ -325,6 +324,10 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   CHECKED_STATUS GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
+
+  LogEntryBatchQueue* entry_queue() {
+    return &entry_batch_queue_;
+  }
 
   const SegmentAllocationState allocation_state() {
     boost::shared_lock<boost::shared_mutex> shared_lock(allocation_lock_);
@@ -393,8 +396,11 @@ class Log : public RefCountedThreadSafe<Log> {
   // Note: The first WAL segment will start off as twice of this value.
   uint64_t cur_max_segment_size_ = 512 * 1024;
 
-  // Appender manages a TaskStream writing to the log. We will use one taskstream per tablet.
-  std::unique_ptr<Appender> appender_;
+  // The queue used to communicate between the thread calling Reserve() and the Log Appender thread.
+  LogEntryBatchQueue entry_batch_queue_;
+
+  // Thread writing to the log.
+  gscoped_ptr<AppendThread> append_thread_;
 
   // A thread pool for asynchronously pre-allocating new log segments.
   gscoped_ptr<ThreadPool> allocation_pool_;

@@ -37,7 +37,6 @@
 #include <thread>
 
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/scope_exit.hpp>
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
@@ -64,14 +63,12 @@
 #include "yb/util/random.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/taskstream.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
 using namespace yb::size_literals;
 using namespace std::literals;
-using namespace std::placeholders;
 
 // Log retention configuration.
 // -----------------------------
@@ -110,6 +107,7 @@ DEFINE_int32(consensus_log_scoped_watch_delay_append_threshold_ms, 500,
              "will print out a stack trace.");
 TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, runtime);
 TAG_FLAG(consensus_log_scoped_watch_delay_append_threshold_ms, advanced);
+
 // Fault/latency injection flags.
 // -----------------------------
 DEFINE_bool(log_inject_latency, false,
@@ -149,147 +147,136 @@ namespace log {
 using consensus::OpId;
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
-using std::unique_ptr;
 using strings::Substitute;
 
-// This class is responsible for managing the task in a threadpool that appends to the log file.
-class Log::Appender {
+// This class is responsible for managing the thread that appends to the log file.
+class Log::AppendThread {
  public:
-  explicit Appender(Log* log, ThreadPool* append_thread_pool);
+  explicit AppendThread(Log* log);
 
-  // Initializes the objects and starts the task.
+  // Initializes the objects and starts the thread.
   Status Init();
 
-  // Submits an entry for appending to the log. Takes ownership of the entry batch in case of
-  // successful submission.
-  CHECKED_STATUS Submit(LogEntryBatch* item) {
-    return task_stream_->Submit(item);
-  }
-
-  // Waits until the last enqueued elements are processed, sets the appender_ to closing
+  // Waits until the last enqueued elements are processed, sets the Appender thread to closing
   // state. If any entries are added to the queue during the process, invoke their callbacks'
   // 'OnFailure()' method.
   void Shutdown();
 
  private:
-  // Process the given log entry batch or does a sync if a null is passed.
-  void ProcessBatch(LogEntryBatch* entry_batch);
-  void SyncWork();
+  void RunThread();
 
   Log* const log_;
 
   // Lock to protect access to thread_ during shutdown.
   mutable std::mutex lock_;
-  unique_ptr<TaskStream<LogEntryBatch>> task_stream_;
-  std::vector<std::unique_ptr<LogEntryBatch>> sync_batch_;
-  MonoTime time_started_;
+  scoped_refptr<Thread> thread_;
 };
 
-Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
-  : log_(log), task_stream_(new TaskStream<LogEntryBatch>(
-    std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool)) {
+Log::AppendThread::AppendThread(Log *log)
+  : log_(log) {
   DCHECK(dummy);
 }
 
-Status Log::Appender::Init() {
-  VLOG(1) << "Starting log task stream for tablet " << log_->tablet_id();
+Status Log::AppendThread::Init() {
+  DCHECK(!thread_) << "Already initialized";
+  VLOG(1) << "Starting log append thread for tablet " << log_->tablet_id();
+  RETURN_NOT_OK(yb::Thread::Create("log", "appender",
+      &AppendThread::RunThread, this, &thread_));
   return Status::OK();
 }
 
-void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
-  // A callback function to TaskStream is expected to process the accumulated batch of entries.
-  // Here, we do a sync.
-  if (entry_batch == nullptr) {
-    SyncWork();
-    return;
-  }
+void Log::AppendThread::RunThread() {
+  bool shutting_down = false;
 
-  if (sync_batch_.empty()) { // Start of batch.
-    // Used in tests to delay writing log entries.
+  while (PREDICT_TRUE(!shutting_down)) {
+    std::vector<LogEntryBatch*> entry_batches;
+    ElementDeleter d(&entry_batches);
+
+    MonoTime wait_timeout_deadline = MonoTime::kMax;
+    if ((log_->interval_durable_wal_write_)
+        && log_->periodic_sync_needed_.load()) {
+      wait_timeout_deadline = log_->periodic_sync_earliest_unsync_entry_time_
+          + log_->interval_durable_wal_write_;
+    }
+
+    // We shut down the entry_queue when it's time to shut down the append thread, which causes this
+    // call to return false, while still populating the entry_batches vector with the final set of
+    // log entry batches that were enqueued. We finish processing this last bunch of log entry
+    // batches before exiting the main RunThread() loop.
+    if (PREDICT_FALSE(!log_->entry_queue()->BlockingDrainTo(&entry_batches,
+                                                            wait_timeout_deadline))) {
+      shutting_down = true;
+    }
+
     auto sleep_duration = log_->sleep_duration_.load(std::memory_order_acquire);
     if (sleep_duration.count() > 0) {
       std::this_thread::sleep_for(sleep_duration);
     }
-    time_started_ = MonoTime::Now();
-  }
-  TRACE_EVENT_FLOW_END0("log", "Batch", entry_batch);
-  Status s = log_->DoAppend(entry_batch);
 
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG(ERROR) << "Error appending to the log: " << s.ToString();
-    DLOG(FATAL) << "Aborting: " << s.ToString();
-    entry_batch->set_failed_to_append();
-    // TODO If a single operation fails to append, should we abort all subsequent operations
-    // in this batch or allow them to be appended? What about operations in future batches?
-    if (!entry_batch->callback().is_null()) {
-      entry_batch->callback().Run(s);
+    if (log_->metrics_) {
+      log_->metrics_->entry_batches_per_group->Increment(entry_batches.size());
     }
-    return;
-  }
-  if (!log_->sync_disabled_) {
-    if (!log_->periodic_sync_needed_.load()) {
-      log_->periodic_sync_needed_.store(true);
-      log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::Now();
-    }
-    log_->periodic_sync_unsynced_bytes_ += entry_batch->total_size_bytes();
-    sync_batch_.emplace_back(entry_batch);
-  }
-}
+    TRACE_EVENT1("log", "batch", "batch_size", entry_batches.size());
 
-void Log::Appender::SyncWork() {
-  MonoTime wait_timeout_deadline = MonoTime::kMax;
-  if (log_->interval_durable_wal_write_ && log_->periodic_sync_needed_.load()) {
-    wait_timeout_deadline = log_->periodic_sync_earliest_unsync_entry_time_
-        + log_->interval_durable_wal_write_;
-  }
+    SCOPED_LATENCY_METRIC(log_->metrics_, group_commit_latency);
 
-  if (log_->metrics_) {
-    log_->metrics_->entry_batches_per_group->Increment(sync_batch_.size());
-  }
-  TRACE_EVENT1("log", "batch", "batch_size", sync_batch_.size());
+    for (LogEntryBatch* entry_batch : entry_batches) {
+      TRACE_EVENT_FLOW_END0("log", "Batch", entry_batch);
+      Status s = log_->DoAppend(entry_batch);
 
-  BOOST_SCOPE_EXIT(this_) {
-    MonoTime time_now = MonoTime::Now();
-    if (this_->log_->metrics_) {
-      this_->log_->metrics_->group_commit_latency->Increment(
-          time_now.GetDeltaSince(this_->time_started_).ToMicroseconds());
-    }
-    this_->sync_batch_.clear();
-  } BOOST_SCOPE_EXIT_END;
-
-  Status s = log_->Sync();
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG(ERROR) << "Error syncing log" << s.ToString();
-    DLOG(FATAL) << "Aborting: " << s.ToString();
-    for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
-      if (!entry_batch->callback().is_null()) {
-        entry_batch->callback().Run(s);
+      if (PREDICT_FALSE(!s.ok())) {
+        LOG(ERROR) << "Error appending to the log: " << s.ToString();
+        DLOG(FATAL) << "Aborting: " << s.ToString();
+        entry_batch->set_failed_to_append();
+        // TODO If a single operation fails to append, should we abort all subsequent operations
+        // in this batch or allow them to be appended? What about operations in future batches?
+        if (!entry_batch->callback().is_null()) {
+          entry_batch->callback().Run(s);
+        }
+      } else if (!log_->sync_disabled_) {
+        if (!log_->periodic_sync_needed_.load()) {
+          log_->periodic_sync_needed_.store(true);
+          log_->periodic_sync_earliest_unsync_entry_time_ = MonoTime::Now();
+        }
+        log_->periodic_sync_unsynced_bytes_ += entry_batch->total_size_bytes();
       }
     }
-  } else {
-    TRACE_EVENT0("log", "Callbacks");
-    VLOG(2) << "Synchronized " << sync_batch_.size() << " entry batches";
-    SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms);
-    for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
-      if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
-        entry_batch->callback().Run(Status::OK());
+
+    Status s = log_->Sync();
+    if (PREDICT_FALSE(!s.ok())) {
+      LOG(ERROR) << "Error syncing log" << s.ToString();
+      DLOG(FATAL) << "Aborting: " << s.ToString();
+      for (LogEntryBatch* entry_batch : entry_batches) {
+        if (!entry_batch->callback().is_null()) {
+          entry_batch->callback().Run(s);
+        }
       }
-      // It's important to delete each batch as we see it, because deleting it may free up memory
-      // from memory trackers, and the callback of a later batch may want to use that memory.
-      entry_batch.reset();
+    } else {
+      TRACE_EVENT0("log", "Callbacks");
+      VLOG(2) << "Synchronized " << entry_batches.size() << " entry batches";
+      SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms);
+      for (LogEntryBatch* entry_batch : entry_batches) {
+        if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
+          entry_batch->callback().Run(Status::OK());
+        }
+        // It's important to delete each batch as we see it, because deleting it may free up memory
+        // from memory trackers, and the callback of a later batch may want to use that memory.
+        delete entry_batch;
+      }
+      entry_batches.clear();
     }
-    sync_batch_.clear();
   }
-  VLOG(1) << "Exiting AppendTask for tablet " << log_->tablet_id();
+  VLOG(1) << "Exiting AppendThread for tablet " << log_->tablet_id();
 }
 
-void Log::Appender::Shutdown() {
+void Log::AppendThread::Shutdown() {
+  log_->entry_queue()->Shutdown();
   std::lock_guard<std::mutex> lock_guard(lock_);
-  if (task_stream_) {
-    VLOG(1) << "Shutting down log task stream for tablet " << log_->tablet_id();
-    task_stream_->Stop();
-    VLOG(1) << "Log append task stream for tablet " << log_->tablet_id() << " is shut down";
-    task_stream_.reset();
+  if (thread_) {
+    VLOG(1) << "Shutting down log append thread for tablet " << log_->tablet_id();
+    CHECK_OK(ThreadJoiner(thread_.get()).Join());
+    VLOG(1) << "Log append thread for tablet " << log_->tablet_id() << " is shut down";
+    thread_.reset();
   }
 }
 
@@ -309,7 +296,6 @@ Status Log::Open(const LogOptions &options,
                  const Schema& schema,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
-                 ThreadPool* append_thread_pool,
                  scoped_refptr<Log>* log) {
 
   RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(tablet_wal_path)),
@@ -325,8 +311,7 @@ Status Log::Open(const LogOptions &options,
                                      tablet_wal_path,
                                      schema,
                                      schema_version,
-                                     metric_entity,
-                                     append_thread_pool));
+                                     metric_entity));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
   return Status::OK();
@@ -334,8 +319,7 @@ Status Log::Open(const LogOptions &options,
 
 Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
          string tablet_id, string tablet_wal_path, const Schema& schema, uint32_t schema_version,
-         const scoped_refptr<MetricEntity>& metric_entity,
-         ThreadPool* append_thread_pool)
+         const scoped_refptr<MetricEntity>& metric_entity)
     : options_(std::move(options)),
       fs_manager_(fs_manager),
       log_dir_(std::move(log_path)),
@@ -346,7 +330,8 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       active_segment_sequence_number_(0),
       log_state_(kLogInitialized),
       max_segment_size_(options_.segment_size_bytes),
-      appender_(new Appender(this, append_thread_pool)),
+      entry_batch_queue_(FLAGS_group_commit_queue_size_bytes),
+      append_thread_(new AppendThread(this)),
       durable_wal_write_(options_.durable_wal_write),
       interval_durable_wal_write_(options_.interval_durable_wal_write),
       bytes_durable_wal_write_mb_(options_.bytes_durable_wal_write_mb),
@@ -401,7 +386,7 @@ Status Log::Init() {
   RETURN_NOT_OK(allocation_status_.Get());
   RETURN_NOT_OK(SwitchToAllocatedSegment());
 
-  RETURN_NOT_OK(appender_->Init());
+  RETURN_NOT_OK(append_thread_->Init());
   log_state_ = kLogWriting;
   return Status::OK();
 }
@@ -483,11 +468,8 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
   entry_batch->set_callback(callback);
   entry_batch->MarkReady();
 
-  Status submit_status = appender_->Submit(entry_batch);
-  if (!submit_status.ok()) {
-    YB_LOG_EVERY_N(WARNING, 100) << "AsyncAppend failed: " << submit_status.ToString();
-    delete entry_batch;
-    return submit_status;
+  if (PREDICT_FALSE(!entry_batch_queue_.BlockingPut(entry_batch))) {
+    return kLogShutdownStatus;
   }
 
   return Status::OK();
@@ -893,7 +875,7 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 
 Status Log::Close() {
   allocation_pool_->Shutdown();
-  appender_->Shutdown();
+  append_thread_->Shutdown();
 
   std::lock_guard<percpu_rwlock> l(state_lock_);
   switch (log_state_) {

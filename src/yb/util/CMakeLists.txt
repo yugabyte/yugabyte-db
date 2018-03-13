@@ -200,6 +200,7 @@ set(UTIL_SRCS
   subprocess.cc
   sync_point.cc
   test_graph.cc
+  taskstream.cc
   thread.cc
   thread_restrictions.cc
   threadlocal.cc
