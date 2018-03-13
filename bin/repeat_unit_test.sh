@@ -45,7 +45,7 @@ Options:
     be allowed.
   --skip-log-compression
     Don't compress kept logs.
-  --stop-at-failure
+  --stop-at-failure, --stop-on-failure
     Stop running further iterations after the first failure happens.
 EOT
 }
@@ -146,10 +146,13 @@ while [[ $# -gt 0 ]]; do
       fi
       yb_compiler_type_arg="clang"
     ;;
-    --stop-at-failure)
+    --stop-at-failure|--stop-on-failure)
       stop_at_failure=true
     ;;
     *)
+      if [[ $1 == "--" ]]; then
+        fatal "'--' is not a valid positional argument, something is wrong."
+      fi
       positional_args+=( "$1" )
     ;;
   esac
@@ -163,7 +166,7 @@ fi
 
 set_cmake_build_type_and_compiler_type
 set_build_root
-set_asan_tsan_runtime_options
+set_sanitizer_runtime_options
 
 declare -i -r num_pos_args=${#positional_args[@]}
 if [[ $num_pos_args -lt 1 || $num_pos_args -gt 2 ]]; then
@@ -277,6 +280,10 @@ $RANDOM.$RANDOM.$RANDOM.$$
   fi
 
   echo "$pass_or_fail: iteration $iteration, $elapsed_time_sec sec$comment"
+
+  if [[ $pass_or_fail == "FAILED" ]]; then
+    touch "$failure_flag_file_path"
+  fi
 else
   if [[ -n $yb_compiler_type_from_env ]]; then
     log "YB_COMPILER_TYPE env variable was set to '$yb_compiler_type_from_env' by the caller."

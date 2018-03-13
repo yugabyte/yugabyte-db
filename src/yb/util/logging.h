@@ -45,8 +45,11 @@
 #define YB_UTIL_LOGGING_H
 
 #include <fcntl.h>
+
 #include <string>
+
 #include <glog/logging.h>
+#include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -297,6 +300,8 @@ class LogFatalHandlerSink : public google::LogSink {
             const char* base_filename, int line, const struct tm* tm_time, const char* message,
             size_t message_len) override;
 };
+
+#define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (yb::ToString(expr))
 
 } // namespace yb
 

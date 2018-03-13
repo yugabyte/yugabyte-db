@@ -85,7 +85,7 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   fi
   set_common_test_paths
   set_mvn_parameters
-  set_asan_tsan_runtime_options
+  set_sanitizer_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
 
   # This can't include $YB_TEST_INVOCATION_ID -- previously, when we did that, it looked like some
@@ -95,19 +95,30 @@ if [[ $# -eq 2 && -d $YB_SRC_ROOT/java/$1 ]]; then
   surefire_rel_tmp_dir=surefire${timestamp}_${RANDOM}_${RANDOM}_${RANDOM}_$$
 
   cd "$YB_SRC_ROOT/java"
-  set -x +e
   # We specify tempDir to use a separate temporary directory for each test.
   # http://maven.apache.org/surefire/maven-surefire-plugin/test-mojo.html
-  mvn -Dtest="$test_class" \
-    --projects "$module_name" \
-    --settings "$YB_MVN_SETTINGS_PATH" \
-    -DbinDir="$BUILD_ROOT/bin" \
-    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO" \
-    -DtempDir="$surefire_rel_tmp_dir" \
-    -DskipAssembly \
-    -Dmaven.javadoc.skip \
-    -X \
-    surefire:test
+  mvn_options=(
+    -Dtest="$test_class"
+    --projects "$module_name"
+    -DbinDir="$BUILD_ROOT/bin"
+    -Dmaven.repo.local="$YB_MVN_LOCAL_REPO"
+    -DtempDir="$surefire_rel_tmp_dir"
+    -DskipAssembly
+    -Dmaven.javadoc.skip
+  )
+
+  if is_jenkins || \
+     [[ $YB_MVN_SETTINGS_PATH != "$HOME/.m2/settings.xml" ]] || \
+     [[ -f $YB_MVN_SETTINGS_PATH ]]; then
+    mvn_options+=( --settings "$YB_MVN_SETTINGS_PATH" )
+  fi
+
+  if is_jenkins; then
+    # When running on Jenkins we'd like to see more debug output.
+    mvn_options+=( -X )
+  fi
+
+  ( set -x; mvn "${mvn_options[@]}" surefire:test )
   # See the cleanup() function above for how we kill stuck processes based on the
   # $YB_TEST_INVOCATION_ID pattern.
   exit
@@ -165,7 +176,7 @@ TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 TEST_DIR_BASENAME="$( basename "$TEST_DIR" )"
 LOG_PATH_BASENAME_PREFIX=$TEST_NAME
 
-set_asan_tsan_runtime_options
+set_sanitizer_runtime_options
 
 tests=()
 rel_test_binary="$TEST_DIR_BASENAME/$TEST_NAME"

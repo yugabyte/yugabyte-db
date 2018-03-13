@@ -118,8 +118,20 @@ def main():
             }
     content = json.dumps(data)
 
-    with file(output_path, "w") as f:
-        print >>f, content
+    # Frequently getting errors here when rebuilding on NFS:
+    # https://gist.githubusercontent.com/mbautin/572dc0ab6b9c269910c1a51f31d79b38/raw
+    attempts_left = 10
+    while attempts_left > 0:
+        try:
+            with file(output_path, "w") as f:
+                print >>f, content
+            break
+        except IOError, ex:
+            if attempts_left == 0:
+                raise ex
+            if 'Resource temporarily unavailable' in ex.message:
+                time.sleep(0.1)
+        attempts_left -= 1
 
     return 0
 

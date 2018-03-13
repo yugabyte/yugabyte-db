@@ -2084,8 +2084,6 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     cc_req->set_tablet_id(tablet_id());
     *cc_req->mutable_old_config() = committed_config;
     *cc_req->mutable_new_config() = new_config;
-    // TODO: We should have no-ops (?) and config changes be COMMIT_WAIT
-    // operations. See KUDU-798.
     // Note: This hybrid_time has no meaning from a serialization perspective
     // because this method is not executed on the TabletPeer's prepare thread.
     cc_replicate->set_hybrid_time(clock_->Now().ToUint64());

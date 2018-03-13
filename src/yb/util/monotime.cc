@@ -226,9 +226,11 @@ MonoTime MonoTime::Min() {
 }
 
 bool MonoTime::IsMax() const {
-  static const MonoTime MAX_MONO = Max();
+  return Equals(kMax);
+}
 
-  return Equals(MAX_MONO);
+bool MonoTime::IsMin() const {
+  return Equals(kMin);
 }
 
 const MonoTime& MonoTime::Earliest(const MonoTime& a, const MonoTime& b) {
@@ -258,6 +260,12 @@ bool MonoTime::ComesBefore(const MonoTime &rhs) const {
 }
 
 std::string MonoTime::ToString() const {
+  if (!Initialized())
+    return "MonoTime::kUninitialized";
+  if (IsMax())
+    return "MonoTime::kMax";
+  if (IsMin())
+    return "MonoTime::kMin";
   return StringPrintf("%.3fs", ToSeconds());
 }
 

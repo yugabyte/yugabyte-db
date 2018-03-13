@@ -535,7 +535,7 @@ fi
 # Run tests, either on Spark or locally.
 # If YB_COMPILE_ONLY is set to 1, we skip running all tests (Java and C++).
 
-set_asan_tsan_runtime_options
+set_sanitizer_runtime_options
 
 if [[ $YB_COMPILE_ONLY != "1" ]]; then
   if spark_available; then

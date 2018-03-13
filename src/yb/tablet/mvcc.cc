@@ -84,8 +84,9 @@ void MvccManager::PopFront(std::lock_guard<std::mutex>* lock) {
 }
 
 void MvccManager::AddPending(HybridTime* ht) {
+  const bool is_follower_side = ht->is_valid();
   std::lock_guard<std::mutex> lock(mutex_);
-  if (ht->is_valid()) {
+  if (is_follower_side) {
     // This must be a follower-side transaction with already known hybrid time.
     VLOG_WITH_PREFIX(1) << "AddPending(" << *ht << ")";
   } else {
@@ -97,8 +98,15 @@ void MvccManager::AddPending(HybridTime* ht) {
   CHECK_GT(*ht, max_safe_time_returned_with_lease_) << LogPrefix();
   CHECK_GT(*ht, max_safe_time_returned_without_lease_) << LogPrefix();
   CHECK_GT(*ht, max_safe_time_returned_for_follower_) << LogPrefix();
-  if (!queue_.empty()) {
-    CHECK_GT(*ht, queue_.back()) << LogPrefix();
+  if (!queue_.empty() && *ht <= queue_.back()) {
+    LOG(FATAL) << "Attempted to add a pending operation with a hybrid time lower than the "
+               << "last hybrid time in the queue. "
+               << "ht=" << (*ht)
+               << ", is_follower_side: " << is_follower_side
+               << ", last time in the queue: " << queue_.back()
+               << ", difference: " << (queue_.back().ToUint64() - ht->ToUint64())
+               << ", queue size: " << queue_.size()
+               << ", queue: " << ToString(queue_);
   }
   CHECK_GT(*ht, last_replicated_) << LogPrefix();
   queue_.push_back(*ht);
@@ -220,13 +228,19 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   VLOG_WITH_PREFIX(1) << "DoGetSafeTime(" << min_allowed << ", "
                       << ht_lease << "), result = " << result;
 
-  CHECK_GE(result, has_lease ? max_safe_time_returned_with_lease_
-                             : max_safe_time_returned_without_lease_) << LogPrefix()
-      << "has_lease=" << has_lease
-      << ", ht_lease=" << ht_lease
-      << ", max_ht_lease_seen_=" << max_ht_lease_seen_
-      << ", last_replicated=" << last_replicated_
-      << ", clock_->Now()=" << clock_->Now();
+  auto enforced_min_time = has_lease ? max_safe_time_returned_with_lease_
+                                     : max_safe_time_returned_without_lease_;
+  CHECK_GE(result, enforced_min_time) << LogPrefix()
+      << ": " << EXPR_VALUE_FOR_LOG(has_lease)
+      << ", " << EXPR_VALUE_FOR_LOG(enforced_min_time.ToUint64() - result.ToUint64())
+      << ", " << EXPR_VALUE_FOR_LOG(ht_lease)
+      << ", " << EXPR_VALUE_FOR_LOG(max_ht_lease_seen_)
+      << ", " << EXPR_VALUE_FOR_LOG(last_replicated_)
+      << ", " << EXPR_VALUE_FOR_LOG(clock_->Now())
+      << ", " << EXPR_VALUE_FOR_LOG(deadline.ToString())
+      << ", " << EXPR_VALUE_FOR_LOG(queue_.size())
+      << ", " << EXPR_VALUE_FOR_LOG(queue_);
+
   if (has_lease) {
     max_safe_time_returned_with_lease_ = result;
   } else {

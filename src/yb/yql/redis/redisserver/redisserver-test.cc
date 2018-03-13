@@ -690,6 +690,7 @@ TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
+  LOG(INFO) << "Creating a value of size " << FLAGS_redis_max_value_size;
   std::string value(FLAGS_redis_max_value_size, 'T');
   DoRedisTestOk(__LINE__, {"SET", "foo", value});
   SyncClient();

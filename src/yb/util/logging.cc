@@ -70,6 +70,8 @@ TAG_FLAG(log_filename, stable);
 DEFINE_string(fatal_details_path_prefix, "",
               "A prefix to use for the path of a file to save fatal failure stack trace and "
               "other details to.");
+DEFINE_string(minicluster_daemon_id, "",
+              "A human-readable 'daemon id', e.g. 'm-1' or 'ts-2', used in tests.");
 
 const char* kProjName = "yb";
 
@@ -366,6 +368,9 @@ string GetFatalDetailsPathPrefix() {
 
   string fatal_log_path;
   GetFullLogFilename(LogSeverity::SEVERITY_FATAL, &fatal_log_path);
+  if (!FLAGS_minicluster_daemon_id.empty()) {
+    fatal_log_path += "." + FLAGS_minicluster_daemon_id;
+  }
   return fatal_log_path + ".details";
 }
 
@@ -390,23 +395,29 @@ void LogFatalHandlerSink::send(
     StringAppendStrftime(&timestamp_for_filename, "%Y-%m-%dT%H_%M_%S", tm_time);
     const string output_path = Format(
         "$0.$1.pid$2.txt", GetFatalDetailsPathPrefix(), timestamp_for_filename, getpid());
+    // Use a line format similar to glog with a couple of slight differences:
+    // - Report full file path.
+    // - Time has no microsecond component.
+    string output_str = "F";
+    StringAppendStrftime(&output_str, "%Y%m%d %H:%M:%S", tm_time);
+    // TODO: append thread id if we need to.
+    StringAppendF(&output_str, " %s:%d] ", full_filename, line_number);
+    output_str += std::string(message, message_len);
+    output_str += "\n";
+    output_str += GetStackTrace();
+
     ofstream out_f(output_path);
     if (out_f) {
-      // Use a line format similar to glog with a couple of slight differences:
-      // - Report full file path.
-      // - Time has no microsecond component.
-      string output_line = "F";
-      StringAppendStrftime(&output_line, "%Y%m%d %H:%M:%S", tm_time);
-      // TODO: append thread id if we need to.
-      StringAppendF(&output_line, " %s:%d] ", full_filename, line_number);
-      output_line += std::string(message, message_len);
-      out_f << output_line << "\n" << GetStackTrace() << endl;
+      out_f << output_str << endl;
     }
     if (out_f.bad()) {
       cerr << "Failed to write fatal failure details to " << output_path << endl;
     } else {
       cerr << "Fatal failure details written to " << output_path << endl;
     }
+    // Also output fatal failure details to stderr so make sure we have a properly symbolized stack
+    // trace in the context of a test.
+    cerr << output_str << endl;
   }
 }
 

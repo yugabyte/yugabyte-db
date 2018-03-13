@@ -395,7 +395,7 @@ void Peer::Close() {
   std::lock_guard<Semaphore> l(sem_);
   queue_->UntrackPeer(peer_pb_.permanent_uuid());
   // We don't own the ops (the queue does).
-  request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), nullptr);
+  request_.mutable_ops()->ExtractSubrange(0, request_.ops_size(), /* elements */ nullptr);
   replicate_msg_refs_.clear();
 }
 
