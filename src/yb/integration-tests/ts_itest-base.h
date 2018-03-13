@@ -54,6 +54,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
 DEFINE_string(master_flags, "", "Flags to pass through to masters");
@@ -89,6 +90,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void SetUp() override {
     TabletServerTestBase::SetUp();
+    FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
   }
 
   void AddExtraFlags(const std::string& flags_str, std::vector<std::string>* flags) {

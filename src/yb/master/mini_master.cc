@@ -48,6 +48,7 @@
 using strings::Substitute;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 namespace master {
@@ -69,6 +70,7 @@ MiniMaster::~MiniMaster() {
 Status MiniMaster::Start() {
   CHECK(!running_);
   FLAGS_rpc_server_allow_ephemeral_ports = true;
+  FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
   RETURN_NOT_OK(StartOnPorts(rpc_port_, web_port_));
   return master_->WaitForCatalogManagerInit();
 }

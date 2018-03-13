@@ -191,7 +191,7 @@ class YBClientBuilder {
   YBClientBuilder& default_rpc_timeout(const MonoDelta& timeout);
 
   // Set the number of reactor threads that are used to send out the requests.
-  // (defaults to the flag value yb_client_num_reactors : 4).
+  // (defaults to the flag value yb_client_num_reactors : 16).
   YBClientBuilder& set_num_reactors(int32_t num_reactors);
 
   // Sets the cloud info for the client, indicating where the client is located.

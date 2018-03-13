@@ -80,6 +80,7 @@
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(log_inject_latency);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(log_inject_latency_ms_mean);
 DECLARE_int32(log_inject_latency_ms_stddev);
@@ -133,6 +134,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
+    FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
   }
 
   void SetUp() override {

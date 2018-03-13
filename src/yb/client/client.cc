@@ -55,6 +55,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/flags.h"
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
@@ -314,7 +315,9 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   return Status::OK();
 }
 
-YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {}
+YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {
+  yb::InitCommonFlags();
+}
 
 YBClient::~YBClient() {
   if (data_->meta_cache_) {
@@ -1273,7 +1276,7 @@ Status YBTableCreator::Create() {
         int tserver_count = 0;
         RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
         data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
-        VLOG(1) << "num_tablets=" << data_->num_tablets_<< ": "
+        VLOG(1) << "num_tablets = " << data_->num_tablets_ << ": "
                 << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
                 << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
       }

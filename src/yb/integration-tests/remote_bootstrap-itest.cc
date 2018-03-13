@@ -160,7 +160,9 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   opts.num_tablet_servers = num_tablet_servers;
   opts.extra_tserver_flags = extra_tserver_flags;
   opts.extra_tserver_flags.push_back("--never_fsync"); // fsync causes flakiness on EC2.
+  opts.extra_tserver_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
   opts.extra_master_flags = extra_master_flags;
+  opts.extra_master_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
