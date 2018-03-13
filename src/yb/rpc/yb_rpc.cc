@@ -100,7 +100,8 @@ size_t YBConnectionContext::BufferLimit() {
 }
 
 Result<size_t> YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
-                                                 const IoVecs& data) {
+                                                 const IoVecs& data,
+                                                 ReadBufferFull read_buffer_full) {
   if (state_ == RpcConnectionPB::NEGOTIATING) {
     // We assume that header is fully contained in the first block.
     if (data[0].iov_len < kConnectionHeaderSize) {

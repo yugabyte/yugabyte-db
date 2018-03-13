@@ -397,11 +397,19 @@ Result<bool> Connection::TryProcessCalls() {
     return false;
   }
 
-  auto consumed = context_->ProcessCalls(shared_from_this(), read_buffer_.AppendedVecs());
+  rpc::ReadBufferFull read_buffer_full(read_buffer_.size() == read_buffer_.limit());
+  auto consumed = context_->ProcessCalls(
+      shared_from_this(), read_buffer_.AppendedVecs(), read_buffer_full);
   if (PREDICT_FALSE(!consumed.ok())) {
     LOG(WARNING) << ToString() << " command sequence failure: " << consumed;
     return consumed.status();
   }
+
+  if (!*consumed && read_buffer_full && context_->Idle()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Command is greater than read buffer: $0", read_buffer_.size());
+  }
+
   read_buffer_.Consume(*consumed);
   return true;
 }
