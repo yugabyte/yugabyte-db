@@ -186,6 +186,11 @@ class IntentAwareIterator {
   // Whether current entry is regular key-value pair.
   bool IsEntryRegular();
 
+  // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
+  // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
+  // beyond the current regular key unnecessarily.
+  CHECKED_STATUS SetIntentUpperbound();
+
   const ReadHybridTime read_time_;
   const TransactionOperationContextOpt txn_op_context_;
   std::unique_ptr<rocksdb::Iterator> intent_iter_;
@@ -193,6 +198,10 @@ class IntentAwareIterator {
   bool iter_valid_ = false;
   Status status_;
   HybridTime max_seen_ht_ = HybridTime::kMin;
+
+  // Exclusive upperbound of the intent key.
+  KeyBytes intent_upperbound_keybytes_;
+  Slice intent_upperbound_;
 
   // Following fields contain information related to resolved suitable intent.
   ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;
