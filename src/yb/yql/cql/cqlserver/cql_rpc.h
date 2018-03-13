@@ -55,7 +55,8 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
 
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
   Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
-                              const IoVecs& bytes_to_process) override;
+                              const IoVecs& bytes_to_process,
+                              rpc::ReadBufferFull read_buffer_full) override;
   size_t BufferLimit() override;
 
   // Takes ownership of call_data content.

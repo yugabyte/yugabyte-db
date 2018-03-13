@@ -18,12 +18,14 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/net/socket.h"
 
 namespace yb {
 namespace rpc {
 
 typedef std::function<void()> IdleListener;
+YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 
 // ConnectionContext class is used by connection for doing protocol
 // specific logic.
@@ -34,7 +36,8 @@ class ConnectionContext {
   // Split data into separate calls and invoke them.
   // Returns number of processed bytes.
   virtual Result<size_t> ProcessCalls(const ConnectionPtr& connection,
-                                      const IoVecs& data) = 0;
+                                      const IoVecs& data,
+                                      ReadBufferFull read_buffer_full) = 0;
 
   // Dump information about status of this connection context to protobuf.
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;

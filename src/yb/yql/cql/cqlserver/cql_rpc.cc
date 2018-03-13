@@ -60,7 +60,8 @@ CQLConnectionContext::CQLConnectionContext()
 }
 
 Result<size_t> CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                                  const IoVecs& data) {
+                                                  const IoVecs& data,
+                                                  rpc::ReadBufferFull read_buffer_full) {
   return parser_.Parse(connection, data);
 }
 

@@ -34,7 +34,8 @@ class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCal
   size_t BufferLimit() override;
 
   Result<size_t> ProcessCalls(const ConnectionPtr& connection,
-                              const IoVecs& data) override;
+                              const IoVecs& data,
+                              ReadBufferFull read_buffer_full) override;
 
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;

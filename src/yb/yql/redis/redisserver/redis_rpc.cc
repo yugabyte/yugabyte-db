@@ -62,7 +62,8 @@ RedisConnectionContext::RedisConnectionContext()
 RedisConnectionContext::~RedisConnectionContext() {}
 
 Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                                    const IoVecs& data) {
+                                                    const IoVecs& data,
+                                                    rpc::ReadBufferFull read_buffer_full) {
   if (!can_enqueue()) {
     return 0;
   }
@@ -93,7 +94,7 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
   // Create call for rest of commands.
   // Do not form new call if we are in a middle of command.
   // It means that soon we should receive remaining data for this command and could wait.
-  if (commands_in_batch_ > 0 && end_of_batch == IoVecsFullSize(data)) {
+  if (commands_in_batch_ > 0 && (end_of_batch == IoVecsFullSize(data) || read_buffer_full)) {
     std::vector<char> call_data;
     IoVecsToBuffer(data, begin_of_batch, end_of_batch, &call_data);
     RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));

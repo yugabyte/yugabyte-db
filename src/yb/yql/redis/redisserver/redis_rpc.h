@@ -42,7 +42,8 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   }
 
   Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
-                              const IoVecs& bytes_to_process) override;
+                              const IoVecs& bytes_to_process,
+                              rpc::ReadBufferFull read_buffer_full) override;
   size_t BufferLimit() override;
 
   // Takes ownership of data content.

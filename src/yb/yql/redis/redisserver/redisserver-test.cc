@@ -35,6 +35,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/protobuf.h"
 #include "yb/util/test_util.h"
+#include "yb/util/value_changer.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
@@ -374,6 +375,7 @@ class TestRedisService : public RedisTableTestBase {
   std::string int64MaxExclusive_ = "(" + int64Max_;
   std::string int64Min_ = std::to_string(std::numeric_limits<int64_t>::min());
   std::string int64MinExclusive_ = "(" + int64Min_;
+  uint64_t redis_max_read_buffer_size_ = 512_MB;
 
  private:
   std::atomic_int num_callbacks_called_;
@@ -405,13 +407,7 @@ void TestRedisService::SetUp() {
     FLAGS_consensus_rpc_timeout_ms = 3000;
 #endif
   }
-  if (FLAGS_redis_max_queued_bytes > 0) {
-    // If FLAGS_redis_max_queued_bytes is 0, we're most likely in
-    // TestRedisService.ReceiveBufferOverflow, which also modifies FLAGS_redis_max_read_buffer_size.
-    // Otherwise, set the buffer size to a large value as may be required by the HugeCommandInline
-    // test.
-    FLAGS_redis_max_read_buffer_size = 512_MB;
-  }
+  FLAGS_redis_max_read_buffer_size = redis_max_read_buffer_size_;
   LOG(INFO) << "FLAGS_redis_max_read_buffer_size=" << FLAGS_redis_max_read_buffer_size
             << ", FLAGS_redis_max_queued_bytes=" << FLAGS_redis_max_queued_bytes;
 
@@ -637,18 +633,20 @@ class TestRedisServiceReceiveBufferOverflow : public TestRedisService {
     FLAGS_redis_max_concurrent_commands = 1;
     FLAGS_redis_max_batch = 1;
     FLAGS_rpc_initial_buffer_size = 128;
-    FLAGS_redis_max_read_buffer_size = 128;
+    redis_max_read_buffer_size_changer_.Init(128, &redis_max_read_buffer_size_);
     FLAGS_redis_max_queued_bytes = 0;
     TestRedisService::SetUp();
   }
 
   void TearDown() override {
     TestRedisService::TearDown();
+    redis_max_read_buffer_size_changer_.Reset();
     saver_.reset();
   }
 
  private:
   boost::optional<google::FlagSaver> saver_;
+  ValueChanger<uint64_t> redis_max_read_buffer_size_changer_;
 };
 
 TEST_F_EX(TestRedisService, ReceiveBufferOverflow, TestRedisServiceReceiveBufferOverflow) {
@@ -660,6 +658,35 @@ TEST_F_EX(TestRedisService, ReceiveBufferOverflow, TestRedisServiceReceiveBuffer
       __LINE__,
       Format("DEBUGSLEEP 2000\r\nSET key1 $0\r\nSET key2 $0\r\n", key, key),
       "+OK\r\n+OK\r\n+OK\r\n");
+}
+
+class TestTooBigCommand : public TestRedisService {
+  void SetUp() override {
+    saver_.emplace();
+
+    FLAGS_rpc_initial_buffer_size = 128;
+    redis_max_read_buffer_size_changer_.Init(128, &redis_max_read_buffer_size_);
+    TestRedisService::SetUp();
+  }
+
+  void TearDown() override {
+    TestRedisService::TearDown();
+    redis_max_read_buffer_size_changer_.Reset();
+    saver_.reset();
+  }
+
+ private:
+  boost::optional<google::FlagSaver> saver_;
+  ValueChanger<uint64_t> redis_max_read_buffer_size_changer_;
+};
+
+TEST_F_EX(TestRedisService, TooBigCommand, TestTooBigCommand) {
+  std::string small_key(FLAGS_redis_max_read_buffer_size / 2, 'X');
+  SendCommandAndExpectResponse(
+      __LINE__, Format("SET key1 $0\r\nSET key2 $0\r\n", small_key), "+OK\r\n+OK\r\n");
+  std::string big_key(FLAGS_redis_max_read_buffer_size, 'X');
+  auto status = SendCommandAndGetResponse(Format("SET key $0\r\n", big_key), 1);
+  ASSERT_TRUE(status.IsNetworkError()) << "Status: " << status;
 }
 
 TEST_F(TestRedisService, HugeCommandInline) {
