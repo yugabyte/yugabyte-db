@@ -77,14 +77,19 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "import_snapshot", " <file_name>",
+      "import_snapshot", " <file_name> [<keyspace> <table_name>]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() != 3 && args.size() != 5) {
           UsageAndExit(args[0]);
         }
 
         const string file_name = args[2];
-        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name),
+        YBTableName table_name;
+        if (args.size() >= 5) {
+          table_name.set_namespace_name(args[3]);
+          table_name.set_table_name(args[4]);
+        }
+        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, table_name),
                               Substitute("Unable to import snapshot meta file $0", file_name));
         return Status::OK();
       });
