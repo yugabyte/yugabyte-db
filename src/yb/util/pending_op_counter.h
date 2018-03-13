@@ -119,7 +119,7 @@ class ScopedPendingOperation {
 
 // RETURN_NOT_OK macro support.
 inline Status MoveStatus(const ScopedPendingOperation& scoped) {
-  return scoped.ok() ? Status::OK() : STATUS(IllegalState, "RocksDB object is unavailable");
+  return scoped.ok() ? Status::OK() : STATUS(Busy, "RocksDB store is busy");
 }
 
 // A convenience class to automatically pause/resume a PendingOperationCounter.
