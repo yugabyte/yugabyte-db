@@ -29,7 +29,7 @@ export default class MetricsPanel extends Component {
       if (isNonEmptyObject(metric.layout.yaxis) && metric.layout.yaxis.ticksuffix === "&nbsp;µs" && isNonEmptyArray(metric.data)) {
         if (isYAxisGreaterThanThousand(metric.data)) {
           metric.data = divideYAxisByThousand(metric.data);
-          metric.layout.yaxis.ticksuffix = "&nbsp;ms"
+          metric.layout.yaxis.ticksuffix = "&nbsp;ms";
         }
       }
 
