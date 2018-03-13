@@ -91,6 +91,8 @@ DECLARE_int32(scanner_ttl_ms);
 DECLARE_int32(tablet_server_svc_queue_length);
 
 DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
+DECLARE_int32(min_backoff_ms_exponent);
+DECLARE_int32(max_backoff_ms_exponent);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -1850,6 +1852,10 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
   FLAGS_tablet_server_svc_queue_length = 1;
+  // Set the backoff limits to be small for this test, so that we finish in a reasonable
+  // amount of time.
+  FLAGS_min_backoff_ms_exponent = 0;
+  FLAGS_max_backoff_ms_exponent = 3;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     ASSERT_OK(ts->Restart());

@@ -148,7 +148,7 @@ class ServicePoolImpl {
             yb::ToString(call->remote_address()),
             type,
             limit);
-    LOG(WARNING) << err_msg;
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << err_msg;
     const auto response_status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
     call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, response_status);
@@ -162,9 +162,9 @@ class ServicePoolImpl {
       Overflow(call, "global", thread_pool_->options().queue_limit);
       return;
     }
-    LOG(WARNING) << call->method_name() << " request on "
-                 << service_->service_name() << " from " << call->remote_address()
-                 << " dropped because of: " << status.ToString();
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << call->method_name() << " request on " << service_->service_name() << " from "
+        << call->remote_address() << " dropped because of: " << status.ToString();
     const auto response_status = STATUS(ServiceUnavailable, "Service is shutting down");
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, response_status);
   }

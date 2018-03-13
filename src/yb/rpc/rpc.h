@@ -79,6 +79,7 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
 };
 
 YB_DEFINE_ENUM(RpcRetrierState, (kIdle)(kRunning)(kWaiting)(kFinished));
+YB_DEFINE_ENUM(BackoffStrategy, (kLinear)(kExponential));
 
 // Provides utilities for retrying failed RPCs.
 //
@@ -111,7 +112,9 @@ class RpcRetrier {
   // deadline has already expired at the time that Retry() was called.
   //
   // Callers should ensure that 'rpc' remains alive.
-  CHECKED_STATUS DelayedRetry(RpcCommand* rpc, const Status& why_status);
+  CHECKED_STATUS DelayedRetry(
+      RpcCommand* rpc, const Status& why_status,
+      BackoffStrategy strategy = BackoffStrategy::kLinear);
 
   RpcController* mutable_controller() { return &controller_; }
   const RpcController& controller() const { return controller_; }
