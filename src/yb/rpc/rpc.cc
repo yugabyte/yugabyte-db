@@ -42,6 +42,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -54,6 +55,19 @@ DEFINE_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
              "Extra allowed time for a single RPC command to complete after its deadline.");
 DEFINE_int64(retryable_rpc_single_call_timeout_ms, 5000 * yb::kTimeMultiplier,
              "Timeout of single RPC call in retryable RPC command.");
+DEFINE_int32(
+    min_backoff_ms_exponent, 7,
+    "Min amount of backoff delay if the server responds with TOO BUSY (default: 128ms). "
+    "Set this to some amount, during which the server might have recovered.");
+DEFINE_int32(
+    max_backoff_ms_exponent, 16,
+    "Max amount of backoff delay if the server responds with TOO BUSY (default: 64 sec). "
+    "Set this to some duration, past which you are okay having no backoff for a Ddos "
+    "style build-up, during times when the server is overloaded, and unable to recover.");
+TAG_FLAG(min_backoff_ms_exponent, hidden);
+TAG_FLAG(min_backoff_ms_exponent, advanced);
+TAG_FLAG(max_backoff_ms_exponent, hidden);
+TAG_FLAG(max_backoff_ms_exponent, advanced);
 
 namespace yb {
 
@@ -74,7 +88,7 @@ bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
     if (err &&
         err->has_code() &&
         err->code() == ErrorStatusPB::ERROR_SERVER_TOO_BUSY) {
-      auto status = DelayedRetry(rpc, controller_status);
+      auto status = DelayedRetry(rpc, controller_status, BackoffStrategy::kExponential);
       if (!status.ok()) {
         *out_status = status;
         return false;
@@ -87,7 +101,8 @@ bool RpcRetrier::HandleResponse(RpcCommand* rpc, Status* out_status) {
   return false;
 }
 
-Status RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
+Status RpcRetrier::DelayedRetry(
+    RpcCommand* rpc, const Status& why_status, BackoffStrategy strategy) {
   if (!why_status.ok() && (last_error_.ok() || last_error_.IsTimedOut())) {
     last_error_ = why_status;
   }
@@ -95,7 +110,14 @@ Status RpcRetrier::DelayedRetry(RpcCommand* rpc, const Status& why_status) {
   //
   // If the delay causes us to miss our deadline, RetryCb will fail the
   // RPC on our behalf.
-  int num_ms = attempt_num_++ + RandomUniformInt(0, 4);
+  // makes the call redundant by then.
+  int num_ms =
+      (strategy == BackoffStrategy::kExponential
+           ? 1 << std::min(
+                 FLAGS_min_backoff_ms_exponent + attempt_num_, FLAGS_max_backoff_ms_exponent)
+           : attempt_num_) +
+      RandomUniformInt(0, 4);
+  attempt_num_++;
 
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
   while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kWaiting)) {
