@@ -34,7 +34,7 @@
 #include "yb/util/metrics.h"
 
 DEFINE_int32(
-    yb_client_num_reactors, 4,
+    yb_client_num_reactors, 16,
     "Number of reactor threads for the yb client to communicate with different tservers.");
 
 namespace yb {

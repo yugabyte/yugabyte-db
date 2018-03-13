@@ -66,6 +66,7 @@ DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 #define NAMESPACE_ENTRY(namespace) \
     std::make_tuple(k##namespace##NamespaceName, k##namespace##NamespaceId)
@@ -127,6 +128,8 @@ class MasterTest : public YBTest {
     // In this test, we create tables to test catalog manager behavior,
     // but we have no tablet servers. Typically this would be disallowed.
     FLAGS_catalog_manager_check_ts_count_for_create_table = false;
+
+    FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
 
     // Start master with the create flag on.
     mini_master_.reset(

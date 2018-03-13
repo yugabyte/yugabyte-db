@@ -59,7 +59,7 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_int32(consensus_rpc_timeout_ms, 2000,
+DEFINE_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 

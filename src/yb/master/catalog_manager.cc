@@ -63,6 +63,7 @@
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <glog/logging.h>
+#include "yb/common/flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
@@ -671,6 +672,7 @@ CatalogManager::CatalogManager(Master* master)
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new YB_EDITION_NS_PREFIX ClusterLoadBalancer(this)) {
+  yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));

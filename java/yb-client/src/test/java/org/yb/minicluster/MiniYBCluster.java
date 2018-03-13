@@ -364,6 +364,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
         "--cql_proxy_webserver_port=" + cqlWebPort,
+        "--leader_failure_max_missed_heartbeat_periods=6",
         "--callhome_enabled=false");
     tsCmdLine.addAll(getCommonDaemonFlags());
     if (tserverArgs != null) {
@@ -407,6 +408,7 @@ public class MiniYBCluster implements AutoCloseable {
       "--catalog_manager_bg_task_wait_ms=" + CATALOG_MANAGER_BG_TASK_WAIT_MS,
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
+      "--leader_failure_max_missed_heartbeat_periods=6",
       "--callhome_enabled=false");
   }
 

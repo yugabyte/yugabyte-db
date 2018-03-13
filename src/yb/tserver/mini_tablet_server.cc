@@ -69,6 +69,7 @@ using strings::Substitute;
 using yb::tablet::TabletPeer;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 namespace tserver {
@@ -83,6 +84,7 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
+  FLAGS_leader_failure_max_missed_heartbeat_periods = 6;
   opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.$0:$1", index_, rpc_port);
   opts_.webserver_opts.port = 0;
   opts_.fs_opts.wal_paths = { fs_root };

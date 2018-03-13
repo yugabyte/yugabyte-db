@@ -240,6 +240,8 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   vector<string> ts_flags;
   vector<string> master_flags;
   ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  ts_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
+  master_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
   master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 

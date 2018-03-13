@@ -255,6 +255,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
     vector<string> common_flags;
 
     common_flags.push_back("--skip_remove_old_recovery_dir");
+    common_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
 
     vector<string> ts_flags(common_flags);
     if (FLAGS_stress_wal_gc) {

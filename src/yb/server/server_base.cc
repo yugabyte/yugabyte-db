@@ -178,13 +178,10 @@ Status RpcServerBase::Init() {
 
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
-    // But bound it between 2 & 8.
-    LOG(INFO) << "Auto setting FLAGS_num_reactor_threads...";
-    const int32 num_cores = std::thread::hardware_concurrency();
-    const int32 num_reactors = std::min(8, num_cores);
-    FLAGS_num_reactor_threads = std::max(2, num_reactors);
+    FLAGS_num_reactor_threads =
+        std::min(16, static_cast<int>(std::thread::hardware_concurrency()));
+    LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
-  LOG(INFO) << "FLAGS_num_reactor_threads=" << FLAGS_num_reactor_threads;
 
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());

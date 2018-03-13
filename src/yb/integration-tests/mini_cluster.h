@@ -42,6 +42,7 @@
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
@@ -180,7 +181,7 @@ class MiniCluster : public MiniClusterBase {
 
   enum {
     kTabletReportWaitTimeSeconds = 5,
-    kRegistrationWaitTimeSeconds = 30,
+    kRegistrationWaitTimeSeconds = NonTsanVsTsan(30, 60)
   };
 
   // Create a client configured to talk to this cluster. Builder may contain

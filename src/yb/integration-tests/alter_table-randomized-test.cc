@@ -88,6 +88,8 @@ class AlterTableRandomized : public YBTest {
     // and rewriting metadata files quite a bit. Globally disabling fsync
     // speeds the test runtime up dramatically.
     opts.extra_tserver_flags.push_back("--never_fsync");
+    opts.extra_tserver_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
+    opts.extra_master_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 

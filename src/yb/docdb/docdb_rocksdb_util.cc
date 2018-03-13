@@ -33,7 +33,7 @@ DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
 DEFINE_int32(rocksdb_base_background_compactions, 2,
              "Number threads to do background compactions.");
-DEFINE_int32(rocksdb_max_background_compactions, 4,
+DEFINE_int32(rocksdb_max_background_compactions, 2,
              "Increased number of threads to do background compactions (used when compactions need "
              "to catch up.)");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
