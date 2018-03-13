@@ -257,7 +257,7 @@ export default class ClusterFields extends Component {
       }, 0);
       // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
       if (this.props.type === "Edit") {
-        let cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+        const cluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
         if (isDefinedNotNull(cluster)) {
           numNodesAvailable += cluster.userIntent.numNodes;
         }
@@ -469,7 +469,7 @@ export default class ClusterFields extends Component {
       this.setState({nodeSetViaAZList: false, replicationFactor: value}, function () {
         if (self.state.numNodes <= value) {
           self.setState({numNodes: value});
-              updateFormField(`${clusterType}.numNodes`, value);
+          updateFormField(`${clusterType}.numNodes`, value);
         }
       });
     }

@@ -214,9 +214,10 @@ export function convertSpaceToDash(string) {
 }
 
 export function sortInstanceTypeList(instanceTypeArr) {
-  return instanceTypeArr.sort(function(a, b){
-    let x = a.instanceTypeCode.toLowerCase(), y = b.instanceTypeCode.toLowerCase();
-      return x < y ? -1 : x > y ? 1 : 0;
+  return instanceTypeArr.sort(function(a, b) {
+    return a.instanceTypeCode.localeCompare(
+      b.instanceTypeCode, undefined,
+      { numeric: true, sensitivity: 'base' });
   });
 }
 
@@ -254,9 +255,9 @@ export function getPointsOnCircle(numPoints, center, radius) {
 }
 
 export function isYAxisGreaterThanThousand(dataArray) {
-  for (var counter = 0; counter < dataArray.length; counter ++) {
+  for (let counter = 0; counter < dataArray.length; counter ++) {
     if (isNonEmptyArray(dataArray[counter].y)) {
-      for (var idx = 0; idx < dataArray[counter].y.length; idx ++) {
+      for (let idx = 0; idx < dataArray[counter].y.length; idx ++) {
         if (Number(dataArray[counter].y[idx]) > 1000) {
           return true;
         }
@@ -267,9 +268,9 @@ export function isYAxisGreaterThanThousand(dataArray) {
 }
 
 export function divideYAxisByThousand(dataArray) {
-  for (var counter = 0; counter < dataArray.length; counter ++) {
+  for (let counter = 0; counter < dataArray.length; counter ++) {
     if (isNonEmptyArray(dataArray[counter].y)) {
-      for (var idx = 0; idx < dataArray[counter].y.length; idx ++) {
+      for (let idx = 0; idx < dataArray[counter].y.length; idx ++) {
         dataArray[counter].y[idx] = Number(dataArray[counter].y[idx]) / 1000;
       }
     }
