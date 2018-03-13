@@ -99,11 +99,11 @@ DEFINE_int32(master_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC threads for the master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
 
-DEFINE_int32(master_tserver_svc_queue_length, 50,
+DEFINE_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
 TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
-DEFINE_int32(master_svc_queue_length, 50,
+DEFINE_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 

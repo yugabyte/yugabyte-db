@@ -55,7 +55,7 @@
 #include "yb/util/status.h"
 #include "yb/util/user.h"
 
-DEFINE_int32(num_connections_to_server, 4, "Number of underlying connections to each server");
+DEFINE_int32(num_connections_to_server, 8, "Number of underlying connections to each server");
 
 using google::protobuf::Message;
 using std::string;

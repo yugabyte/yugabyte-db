@@ -27,6 +27,3 @@ DEFINE_uint64(tserver_master_replication_factor, 0,
     "but could be specified explicitly together with passing one or more master service domain "
     "name and port through tserver_master_addrs for masters auto-discovery when running on "
     "Kubernetes.");
-
-DEFINE_int32(yb_num_shards_per_tserver, yb::NonTsanVsTsan(8, 2),
-             "The default number of shards per table per tablet server when a table is created.");
