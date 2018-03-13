@@ -450,17 +450,18 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   // Recreate NAMESPACE.
   s_data->old_namespace_id = entry.id();
 
-  TRACE("Looking up namespace");
-  scoped_refptr<NamespaceInfo> ns = LockAndFindPtrOrNull(namespace_ids_map_, entry.id());
-
-  if (ns != nullptr) {
-    s_data->new_namespace_id = s_data->old_namespace_id;
-    return Status::OK();
-  }
-
+  // Parse namespace PB.
   SysNamespaceEntryPB meta;
   const string& data = entry.data();
   RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
+
+  TRACE("Looking up namespace");
+  scoped_refptr<NamespaceInfo> ns = LockAndFindPtrOrNull(namespace_ids_map_, entry.id());
+
+  if (ns != nullptr && ns->name() == meta.name()) {
+    s_data->new_namespace_id = s_data->old_namespace_id;
+    return Status::OK();
+  }
 
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
@@ -485,19 +486,27 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
   // Recreate TABLE.
   s_data->old_table_id = entry.id();
 
-  TRACE("Looking up table");
-  scoped_refptr<TableInfo> table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
+  // Parse table PB.
+  SysTablesEntryPB meta;
+  const string& data = entry.data();
+  RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
 
-  // Check table is active.
-  if (table != nullptr && !table->is_running()) {
-    table.reset();
+  DCHECK(!s_data->new_namespace_id.empty());
+  DCHECK(!s_data->old_namespace_id.empty());
+  scoped_refptr<TableInfo> table;
+
+  // Create new table if namespace was changed.
+  if (s_data->new_namespace_id == s_data->old_namespace_id) {
+    TRACE("Looking up table");
+    table = LockAndFindPtrOrNull(table_ids_map_, entry.id());
+
+    // Check table is active OR table name was changed.
+    if (table != nullptr && (!table->is_running() || table->name() != meta.name())) {
+      table.reset();
+    }
   }
 
   if (table == nullptr) {
-    SysTablesEntryPB meta;
-    const string& data = entry.data();
-    RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
-
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
     req.set_name(meta.name());
@@ -507,7 +516,6 @@ Status CatalogManager::ImportTableEntry(const SysRowEntry& entry,
     *req.mutable_replication_info() = meta.replication_info();
 
     // Supporting now 1 table & 1 namespace in snapshot.
-    DCHECK(!s_data->new_namespace_id.empty());
     req.mutable_namespace_()->set_id(s_data->new_namespace_id);
 
     // Clear column IDs.

@@ -26,7 +26,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS CreateSnapshotMetaFile(const std::string& snapshot_id,
                                         const std::string& file_name);
-  CHECKED_STATUS ImportSnapshotMetaFile(const std::string& file_name);
+  CHECKED_STATUS ImportSnapshotMetaFile(const std::string& file_name,
+                                        const client::YBTableName& table_name);
 
  private:
   std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
