@@ -213,6 +213,13 @@ export function convertSpaceToDash(string) {
   return string && string.replace(/\s+/g, '-');
 }
 
+export function sortInstanceTypeList(instanceTypeArr) {
+  return instanceTypeArr.sort(function(a, b){
+    let x = a.instanceTypeCode.toLowerCase(), y = b.instanceTypeCode.toLowerCase();
+      return x < y ? -1 : x > y ? 1 : 0;
+  });
+}
+
 export function insertSpacesFromCamelCase(string) {
   string = string.replace(/([a-z])([A-Z])/g, '$1 $2');
   string = string.replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
