@@ -49,7 +49,4 @@ class TaskStream {
 };
 
 }  // namespace yb
-
-#include "yb/util/taskstream_impl.h"
-
 #endif  // YB_UTIL_TASKSTREAM_H

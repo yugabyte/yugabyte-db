@@ -255,9 +255,7 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
       metric_registry_(data.metric_registry),
       listener_(data.listener),
       log_anchor_registry_(data.log_anchor_registry),
-      tablet_options_(data.tablet_options),
-      append_pool_(data.append_pool) {
-}
+      tablet_options_(data.tablet_options) {}
 
 TabletBootstrap::~TabletBootstrap() {}
 
@@ -481,7 +479,6 @@ Status TabletBootstrap::OpenNewLog() {
                           *tablet_->schema(),
                           tablet_->metadata()->schema_version(),
                           tablet_->GetMetricEntity(),
-                          append_pool_,
                           &log_));
   // Disable sync temporarily in order to speed up appends during the bootstrap process.
   log_->DisableSync();
