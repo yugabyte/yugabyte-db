@@ -1,5 +1,59 @@
-# False positive from libunwind
-alignment:access_mem
+# https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#runtime-suppressions
+
+# See ubsan_checks.inc from the UBSAN source for the list of possible UBSAN checks.
+# The source code is at https://github.com/llvm-mirror/compiler-rt
+
+# Here is a copy-and-paste for convenience:
+# https://gist.githubusercontent.com/mbautin/fb08c1864783cfa410c16caf7c1b4833/raw
+
+# It looks like in the suppression files we should use the last argument out of the three  arguments
+# to the UBSAN_CHECK macro. Here is a list for convenience.
+#
+# alignment
+# bool
+# bounds
+# cfi
+# enum
+# float-cast-overflow
+# float-divide-by-zero
+# function
+# integer-divide-by-zero
+# invalid-builtin-use
+# nonnull-attribute
+# null
+# object-size
+# pointer-overflow
+# return
+# returns-nonnull-attribute
+# shift-base
+# shift-exponent
+# signed-integer-overflow
+# undefined
+# unreachable
+# unsigned-integer-overflow
+# vla-bound
+# vptr
+
+# -------------------------------------------------------------------------------------------------
+# UBSAN issues in the AWS C++ SDK.
+# -------------------------------------------------------------------------------------------------
+
+# TODO: verify if it is OK to ignore these.
+# Tracked here: https://goo.gl/kPaUgS
+signed-integer-overflow:Aws::Utils::HashingUtils::HashString
+
+# Invalid bool load:
+# https://gist.githubusercontent.com/mbautin/2d34b20f632b7efacac5541227579434/raw
+# Happens in Aws::Utils::Outcome<Aws::Utils::Array<unsigned char>, bool>::operator=
+#
+# The error is:
+# runtime error: load of value 156, which is not a valid value for type 'typename
+# remove_reference<bool &>::type' (aka 'bool')
+#
+# Weirdly, even though 'bool' is mentioned above, we have to use 'enum' here.
+enum:Aws::Utils::Outcome*operator=
+
+# -------------------------------------------------------------------------------------------------
 
 # crcutil works with unaligned data
 alignment:crcutil::Crc32cSSE4::Crc32c
@@ -9,8 +63,4 @@ alignment:snappy::internal::CompressFragment
 alignment:snappy::EmitLiteral
 alignment:snappy::EmitCopyLessThan64
 alignment:snappy::internal::CompressFragment
-
-# TODO: verify if it is OK to ignore these.
-# Tracked here: https://goo.gl/kPaUgS
-signed-integer-overflow:Aws::Utils::HashingUtils::HashString
-bool:Aws::Client::AWSAuthV4Signer::ComputeLongLivedHash
+alignment:snappy::SnappyDecompressor::DecompressAllTags

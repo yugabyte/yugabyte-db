@@ -119,6 +119,7 @@ DECLARE_string(vmodule);
 DECLARE_int32(replication_factor);
 DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
+DECLARE_string(minicluster_daemon_id);
 
 DEFINE_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "

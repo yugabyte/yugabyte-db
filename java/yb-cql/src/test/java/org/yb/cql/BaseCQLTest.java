@@ -126,6 +126,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @Before
   public void setUpCqlClient() throws Exception {
     LOG.info("BaseCQLTest.setUpCqlClient is running");
+
     if (miniCluster == null) {
       final String errorMsg =
           "Mini-cluster must already be running by the time setUpCqlClient is invoked";
@@ -140,6 +141,31 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
     session = buildDefaultSession(cluster);
+
+    final int numTServers = miniCluster.getTabletServers().size();
+    final int expectedNumPeers = Math.max(0, Math.min(numTServers - 1, 2));
+    LOG.info("Waiting until system.peers contains at least " + expectedNumPeers + " entries (" +
+        "number of tablet servers: " + numTServers + ")");
+    int attemptsMade = 0;
+    boolean waitSuccessful = false;
+
+    while (attemptsMade < 30) {
+      int numPeers = 0;
+      for (Row row : execute("select peer from system.peers")) {
+        numPeers++;
+      }
+      if (numPeers >= expectedNumPeers) {
+        waitSuccessful = true;
+        break;
+      }
+      LOG.info("system.peers still contains only " + numPeers + " entries, waiting");
+      Thread.sleep(1000);
+    }
+    if (waitSuccessful) {
+      LOG.info("Succeeded waiting for " + expectedNumPeers + " peers to show up in system.peers");
+    } else {
+      LOG.warn("Timed out waiting for " + expectedNumPeers + " peers to show up in system.peers");
+    }
 
     // Create and use test keyspace to be able to use short table names later.
     createKeyspaceIfNotExists(DEFAULT_TEST_KEYSPACE);

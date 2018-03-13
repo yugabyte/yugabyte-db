@@ -271,7 +271,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   // when we add the next one remote_peer2 might find the next message
   // in the queue and will replicate it, which is not what we want.
   while (!OpIdEquals(message_queue_->GetAllReplicatedIndexForTests(), first)) {
-    SleepFor(MonoDelta::FromMilliseconds(1));
+    std::this_thread::sleep_for(1ms);
   }
 
   // Now append another message to the queue
@@ -300,7 +300,7 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
                                 message_queue_.get(),
                                 raft_pool_token_.get(),
                                 gscoped_ptr<PeerProxy>(mock_proxy),
-                                nullptr,
+                                nullptr,  // consensus
                                 &peer));
 
   // Make the peer respond without making any progress -- it always returns
@@ -334,11 +334,11 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
                                 message_queue_.get(),
                                 raft_pool_token_.get(),
                                 gscoped_ptr<PeerProxy>(mock_proxy),
-                                nullptr,
+                                nullptr,  // consensus
                                 &peer));
 
-  // Initial response has to be successful -- otherwise we'll consider the peer
-  // "new" and only send heartbeat RPCs.
+  // Initial response has to be successful -- otherwise we'll consider the peer "new" and only send
+  // heartbeat RPCs.
   ConsensusResponsePB initial_resp;
   initial_resp.set_responder_uuid(kFollowerUuid);
   initial_resp.set_responder_term(0);
@@ -352,8 +352,8 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 1);
   ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kAlwaysSend));
 
-  // Now wait for the message to be replicated, this should succeed since
-  // the local (leader) peer always acks and the follower also acked this time.
+  // Now wait for the message to be replicated, this should succeed since the local (leader) peer
+  // always acks and the follower also acked this time.
   WaitForMajorityReplicatedIndex(1);
 
   // Set up the peer to respond with an error.
@@ -364,9 +364,11 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
 
   // Add a bunch of messages to the queue.
   for (int i = 2; i <= 100; i++) {
-    AppendReplicateMessagesToQueue(message_queue_.get(), clock_, i, 1);
+    AppendReplicateMessagesToQueue(message_queue_.get(), clock_, i, /* count */ 1);
     ASSERT_OK(peer->SignalRequest(RequestTriggerMode::kNonEmptyOnly));
-    SleepFor(MonoDelta::FromMilliseconds(2));
+    // Sleep for a longer time during the first iteration so we have a higher chance of handling
+    // the response and incrementing failed_attempts_.
+    std::this_thread::sleep_for(i == 2 ? 100ms : 2ms);
   }
 
   // Check that we didn't attempt to send one UpdateConsensus call per

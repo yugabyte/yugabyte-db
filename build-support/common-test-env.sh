@@ -56,7 +56,8 @@ readonly RELEVANT_LOG_LINES_RE
 # Some functions use this to output to stdout/stderr along with a file.
 append_output_to=/dev/null
 
-readonly ADDRESS_ALREADY_IN_USE_PATTERN="Address already in use"
+readonly TEST_RESTART_PATTERN="Address already in use|\
+pthread .*: Device or resource busy"
 
 # We use this to submit test jobs for execution on Spark.
 readonly SPARK_SUBMIT_CMD_PATH_NON_TSAN=/n/tools/spark/current/bin/spark-submit
@@ -75,6 +76,9 @@ readonly TEST_DESCRIPTOR_SEPARATOR=":::"
 readonly LIST_OF_TESTS_DIR_NAME="list_of_tests"
 
 readonly JENKINS_NFS_BUILD_REPORT_BASE_DIR="/n/jenkins/build_stats"
+
+# https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
+readonly SANITIZER_COMMON_OPTIONS=""
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -239,6 +243,12 @@ collect_gtest_tests() {
     gtest_list_tests_cmd+=( "--gtest_filter=$YB_GTEST_FILTER" )
   fi
 
+  # We need to list the tests without any user-specified sanitizer options, because that might
+  # produce unintended output.
+  local old_sanitizer_extra_options=${YB_SANITIZER_EXTRA_OPTIONS:-}
+  local YB_SANITIZER_EXTRA_OPTIONS=""
+  set_sanitizer_runtime_options
+
   set +e
   pushd "$gtest_list_tests_tmp_dir" >/dev/null
   local gtest_list_tests_result  # this has to be on a separate line to capture the exit code
@@ -248,6 +258,10 @@ collect_gtest_tests() {
   gtest_list_tests_exit_code=$?
   popd >/dev/null
   set -e
+
+  YB_SANITIZER_EXTRA_OPTIONS=$old_sanitizer_extra_options
+  set_sanitizer_runtime_options
+
 
   set_expected_core_dir "$gtest_list_tests_tmp_dir"
   test_log_path="$gtest_list_stderr_path"
@@ -853,9 +867,9 @@ run_one_test() {
     # See if the test failed due to "Address already in use" and log a message if we still have more
     # attempts left.
     if [[ $attempts_left -gt 0 ]] && \
-       egrep -q "$ADDRESS_ALREADY_IN_USE_PATTERN" "$test_log_path"; then
-      log "Found 'Address already in use' in test log, re-running the test:"
-      egrep "$ADDRESS_ALREADY_IN_USE_PATTERN" "$test_log_path" >&2
+       egrep -q "$TEST_RESTART_PATTERN" "$test_log_path"; then
+      log "Found one of the intermittent error patterns in the log, restarting the test (once):"
+      egrep "$TEST_RESTART_PATTERN" "$test_log_path" >&2
     elif [[ $test_exit_code -ne 0 ]]; then
       # Avoid retrying any other kinds of failures.
       break
@@ -934,8 +948,15 @@ run_test_and_process_results() {
   delete_successful_output_if_needed
 }
 
-set_asan_tsan_runtime_options() {
+set_sanitizer_runtime_options() {
   expect_vars_to_be_set BUILD_ROOT
+
+  # Don't allow setting these options directly from outside. We will allow controlling them through
+  # our own "extra options" environment variables.
+  export ASAN_OPTIONS=""
+  export TSAN_OPTIONS=""
+  export LSAN_OPTIONS=""
+  export UBSAN_OPTIONS=""
 
   local -r build_root_basename=${BUILD_ROOT##*/}
 
@@ -982,11 +1003,10 @@ set_asan_tsan_runtime_options() {
   if [[ $build_root_basename =~ ^asan- ]]; then
     # Enable leak detection even under LLVM 3.4, where it was disabled by default.
     # This flag only takes effect when running an ASAN build.
-    ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=1"
-    export ASAN_OPTIONS
+    export ASAN_OPTIONS="detect_leaks=1"
 
     # Set up suppressions for LeakSanitizer
-    LSAN_OPTIONS="${LSAN_OPTIONS:-} suppressions=$YB_SRC_ROOT/build-support/lsan-suppressions.txt"
+    LSAN_OPTIONS="suppressions=$YB_SRC_ROOT/build-support/lsan-suppressions.txt"
 
     # If we print out object addresses somewhere else, we can match them to LSAN-reported
     # addresses of leaked objects.
@@ -994,8 +1014,10 @@ set_asan_tsan_runtime_options() {
     export LSAN_OPTIONS
 
     # Enable stack traces for UBSAN failures
-    UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1"
-    UBSAN_OPTIONS="${UBSAN_OPTIONS} suppressions=$YB_SRC_ROOT/build-support/ubsan-suppressions.txt"
+    UBSAN_OPTIONS="print_stacktrace=1"
+    local ubsan_suppressions_path=$YB_SRC_ROOT/build-support/ubsan-suppressions.txt
+    ensure_file_exists "$ubsan_suppressions_path"
+    UBSAN_OPTIONS+=" suppressions=$ubsan_suppressions_path"
     export UBSAN_OPTIONS
   fi
 
@@ -1008,12 +1030,18 @@ set_asan_tsan_runtime_options() {
     #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
     # 2. Many unit tests report lock-order-inversion warnings; they should be
     #    fixed before reenabling the detector.
-    TSAN_OPTIONS="${TSAN_OPTIONS:-} detect_deadlocks=0"
-    TSAN_OPTIONS="$TSAN_OPTIONS suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
-    TSAN_OPTIONS="$TSAN_OPTIONS history_size=7"
-    TSAN_OPTIONS="$TSAN_OPTIONS external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
+    TSAN_OPTIONS="detect_deadlocks=0"
+    TSAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
+    TSAN_OPTIONS+=" history_size=7"
+    TSAN_OPTIONS+=" external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
     export TSAN_OPTIONS
   fi
+
+  local extra_opts=${YB_SANITIZER_EXTRA_OPTIONS:-}
+  export ASAN_OPTIONS="$SANITIZER_COMMON_OPTIONS ${ASAN_OPTIONS:-} $extra_opts"
+  export LSAN_OPTIONS="$SANITIZER_COMMON_OPTIONS ${LSAN_OPTIONS:-} $extra_opts"
+  export TSAN_OPTIONS="$SANITIZER_COMMON_OPTIONS ${TSAN_OPTIONS:-} $extra_opts"
+  export UBSAN_OPTIONS="$SANITIZER_COMMON_OPTIONS ${UBSAN_OPTIONS:-} $extra_opts"
 }
 
 did_test_succeed() {
@@ -1045,7 +1073,7 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
+  if grep -q '(AddressSanitizer|UndefinedBehaviorSanitizer): undefined-behavior' "$log_path"; then
     log 'Detected undefined behavior'
     return 1
   fi

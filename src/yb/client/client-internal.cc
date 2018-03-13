@@ -1013,7 +1013,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
       ResetLeaderMasterAndRetry();
       return;
     }
-    LOG(INFO) << "DEBUG: resp_.error().status()=" << resp_.error().status().DebugString();
+    VLOG(2) << "resp_.error().status()=" << resp_.error().status().DebugString();
     new_status = StatusFromPB(resp_.error().status());
   }
 

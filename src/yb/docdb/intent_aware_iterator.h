@@ -64,7 +64,7 @@ class TransactionStatusCache {
 // When seeking to some (sub)dockey, it will ignore values for this (sub)dockey
 // (except write intents written by the same transaction) with HT higher than high_ht.
 //
-// For intents from the same transaction, intent with maximal HT would be picked, ignoring high_ht.
+// For intents from the same transaction, intent with maximum HT would be picked, ignoring high_ht.
 // And returned as key with time equals to high_ht.
 // Intent data format:
 //   kIntentPrefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value.

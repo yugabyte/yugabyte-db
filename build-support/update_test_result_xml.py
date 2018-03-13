@@ -21,6 +21,9 @@ import sys
 from xml.dom import minidom
 
 
+MAX_RESULT_XML_SIZE_BYTES = 16 * 1024 * 1024
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -58,6 +61,13 @@ def main():
         dest="mark_as_failed")
 
     args = parser.parse_args()
+    result_xml_size = os.stat(args.result_xml).st_size
+    if result_xml_size > MAX_RESULT_XML_SIZE_BYTES:
+        logging.error(
+            "Result XML file size is more than max allowed size (%d bytes): %d bytes. "
+            "Refusing to parse this XML file and add the log path there.",
+            MAX_RESULT_XML_SIZE_BYTES, result_xml_size)
+        return False
 
     # Basic JUnit XML format description:
     #
@@ -126,6 +136,12 @@ def main():
     with open(args.result_xml, 'w') as output_file:
         output_file.write(output_xml_str)
 
+    return True
+
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if main():
+        exit_code = 0
+    else:
+        exit_code = 1
+    sys.exit(exit_code)

@@ -402,6 +402,7 @@ public class TestUtils {
   }
 
   public static void waitFor(Condition condition, long timeoutMs) throws Exception {
+    timeoutMs *= getTimeoutMultiplier();
     final long startTimeMs = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
       Thread.sleep(SLEEP_TIME_MS);

@@ -105,6 +105,16 @@ void YBTest::SetUp() {
   InitGoogleLoggingSafeBasic("yb_test");
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
+  for (const char* env_var_name : {
+      "ASAN_OPTIONS",
+      "LSAN_OPTIONS",
+      "UBSAN_OPTIONS",
+      "TSAN_OPTIONS"
+  }) {
+    const char* value = getenv(env_var_name);
+    LOG(INFO) << "Environment variable " << env_var_name << ": "
+              << (value ? value : "undefined");
+  }
 }
 
 string YBTest::GetTestPath(const string& relative_path) {

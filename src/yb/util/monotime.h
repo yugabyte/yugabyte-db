@@ -169,6 +169,7 @@ class MonoTime {
   std::string ToString() const;
   bool Equals(const MonoTime& other) const;
   bool IsMax() const;
+  bool IsMin() const;
 
   uint64_t ToUint64() const { return value_.time_since_epoch().count(); }
   static MonoTime FromUint64(uint64_t value) {
