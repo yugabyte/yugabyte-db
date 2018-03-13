@@ -46,6 +46,8 @@
 #include <string>
 #include <iostream>
 
+#include <regex>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
@@ -280,8 +282,8 @@ class GlobalBacktraceState {
         BacktraceErrorCallback,
         /* data */ nullptr);
 
-    // To complete initialization we should call backtrace, otherwise it could fail
-    // in case of concurrent initialization.
+    // To complete initialization we should call backtrace, otherwise it could fail in case of
+    // concurrent initialization.
     backtrace_full(bt_state_, /* skip = */ 1, DummyCallback,
                    BacktraceErrorCallback, nullptr);
   }
@@ -330,13 +332,28 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
     }
   }
 
+  string pretty_fn_name;
   if (function_name_to_use == nullptr) {
-    function_name_to_use = kUnknownSymbol;
+    pretty_fn_name = kUnknownSymbol;
+  } else {
+    // Allocating regexes on the heap so that they would never get deallocated. This is because
+    // the kernel watchdog thread could still be symbolizing stack traces as global destructors
+    // are being called.
+    static const std::regex* kStdColonColonOneRE = new std::regex("\\bstd::__1::\\b");
+    pretty_fn_name = std::regex_replace(function_name_to_use, *kStdColonColonOneRE, "std::");
+
+    static const std::regex* kStringRE = new std::regex(
+        "\\bstd::basic_string<char, std::char_traits<char>, std::allocator<char> >");
+    pretty_fn_name = std::regex_replace(pretty_fn_name, *kStringRE, "string");
+
+    static const std::regex* kRemoveStdPrefixRE =
+        new std::regex("\\bstd::(string|tuple|shared_ptr|unique_ptr)\\b");
+    pretty_fn_name = std::regex_replace(pretty_fn_name, *kRemoveStdPrefixRE, "$1");
   }
 
   const string frame_without_file_line =
       StringPrintf(kStackTraceEntryFormat, kPrintfPointerFieldWidth,
-          reinterpret_cast<void*>(pc), function_name_to_use);
+          reinterpret_cast<void*>(pc), pretty_fn_name.c_str());
   // We have not appended an end-of-line character yet. Let's see if we have file name / line number
   // information first. BTW kStackTraceEntryFormat is used both here and in glog-based
   // symbolization.

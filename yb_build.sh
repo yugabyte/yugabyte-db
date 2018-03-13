@@ -52,8 +52,12 @@ Options:
     Force a static build.
   --target, --targets
     Pass the given target or set of targets to make.
-  --cxx-test <test_name>
-    Build and run the given C++ test. We run the test using ctest.
+  --cxx-test <cxx_test_program_name>
+    Build and run the given C++ test program. We run the test using ctest. Specific tests within the
+    test program can be chosen using --gtest_filter.
+  --java-test <java_test_name>
+    Build and run the given Java test. Test name format is e.g.
+    org.yb.loadtester.TestRF1Cluster[#testRF1toRF3].
   --no-tcmalloc
     Do not use tcmalloc.
   --no-rebuild-thirdparty, --nbtp, --nb3p, --nrtp, --nr3p
@@ -127,6 +131,10 @@ Options:
     variable.
   --test-timeout-sec
     Test timeout in seconds
+  --sanitizer-extra-options, --extra-sanitizer-options
+    Extra options to pass to ASAN/LSAN/UBSAN/TSAN. See https://goo.gl/VbTjHH for possible values.
+  --sanitizer-verbosity
+    Use the given verbosity value for clang sanitizers. The default is 0.
   --
     Pass all arguments after -- to repeat_unit_test.
 Build types:
@@ -151,6 +159,18 @@ set_cxx_test_name() {
   fi
   cxx_test_name=$1
   build_java=false
+}
+
+set_java_test_name() {
+  expect_num_args 1 "$@"
+  if [[ $java_test_name == $1 ]]; then
+    # Duplicate test name specified, ignore.
+    return
+  fi
+  if [[ -n $java_test_name ]]; then
+    fatal "Only one Java test name can be specified (found '$java_test_name' and '$1')."
+  fi
+  java_test_name=$1
 }
 
 set_vars_for_cxx_test() {
@@ -185,6 +205,192 @@ print_summary() {
 set_flags_to_skip_build() {
   build_cxx=false
   build_java=false
+}
+
+create_build_descriptor_file() {
+  if [[ -n $build_descriptor_path ]]; then
+    # The format of this file is YAML.
+    cat >"$build_descriptor_path" <<-EOT
+build_type: "$build_type"
+cmake_build_type: "$cmake_build_type"
+build_root: "$BUILD_ROOT"
+compiler_type: "$YB_COMPILER_TYPE"
+thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
+EOT
+    log "Created a build descriptor file at '$build_descriptor_path'"
+  fi
+}
+run_cxx_build() {
+  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
+     ! "$force_no_run_cmake"; then
+    if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
+      build_compiler_if_necessary
+    fi
+    log "Using cmake binary: $( which cmake )"
+    log "Running cmake in $PWD"
+    cmake_start_time_sec=$(date +%s)
+    ( set -x; cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT" )
+    cmake_end_time_sec=$(date +%s)
+  fi
+
+  if "$cmake_only"; then
+    log "CMake has been invoked, stopping here (--cmake-only specified)."
+    exit
+  fi
+
+  if [[ ${#object_files_to_delete[@]} -gt 0 ]]; then
+    log_empty_line
+    log "Deleting object files corresponding to: ${object_files_to_delete[@]}"
+    # TODO: can delete multiple files using the same find command.
+    for object_file_to_delete in "${object_files_to_delete[@]}"; do
+      ( set -x; find "$BUILD_ROOT" -name "$object_file_to_delete" -exec rm -fv {} \; )
+    done
+    log_empty_line
+  fi
+
+  log "Running $make_program in $PWD"
+  make_start_time_sec=$(date +%s)
+  set +u +e  # "set -u" may cause failures on empty lists
+  time (
+    set -x
+
+    "$make_program" "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" "${make_targets[@]}"
+  )
+
+  local exit_code=$?
+  set -u -e
+  make_end_time_sec=$(date +%s)
+  log "Non-java build finished with exit code $exit_code" \
+      "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
+      "Timing information is available above."
+  if [[ $exit_code -ne 0 ]]; then
+    exit "$exit_code"
+  fi
+
+  # Don't check for test binary existence in case targets are explicitly specified.
+  if "$test_existence_check" && [[ ${#make_targets[@]} -eq 0 ]]; then
+    (
+      cd "$BUILD_ROOT"
+      log "Checking if all test binaries referenced by CMakeLists.txt files exist."
+      if ! check_test_existence; then
+        log "Re-running test existence check again with more verbose output"
+        # We need to do this because sometimes we get an error with no useful output otherwise.
+        # We pass a pattern that includes all lines in the output.
+        check_test_existence '.*'
+        fatal "Some test binaries referenced in CMakeLists.txt files do not exist," \
+              "or failed to check. See detailed output above."
+      fi
+    )
+  fi
+}
+
+run_ctest() {
+  # Not setting YB_CTEST_VERBOSE here because we don't want the output of a potentially large number
+  # of tests to go to stdout.
+  (
+    cd "$BUILD_ROOT"
+    set -x
+    ctest -j"$YB_NUM_CPUS" --verbose $ctest_args 2>&1 |
+      egrep -v "^[0-9]+: Test timeout computed to be: "
+  )
+}
+
+run_test_on_remote_host() {
+  if [[ -n ${YB_HOST_FOR_RUNNING_TESTS:-} && \
+        $YB_HOST_FOR_RUNNING_TESTS != "localhost" && \
+        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME && \
+        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]]; then
+    log "Running tests on host '$YB_HOST_FOR_RUNNING_TESTS' (current host is '$HOSTNAME')"
+
+    # Add extra arguments to the sub-invocation of yb_build.sh. We have to add them before the
+    # first "--".
+    set +u
+    sub_yb_build_args=()
+    extra_args=( --skip-build --host-for-tests "localhost" )
+
+    for arg in "${original_args[@]}"; do
+      case $arg in
+        --)
+          sub_yb_build_args+=( "${extra_args[@]}" "$arg" )
+          extra_args=()
+        ;;
+        --clean|--clean-thirdparty)
+          # Do not pass these arguments to the child yb_build.sh.
+        ;;
+        *)
+          sub_yb_build_args+=( "$arg" )
+      esac
+    done
+    sub_yb_build_args+=( "${extra_args[@]}" )
+    set -u
+
+    log "Running tests on server '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
+    run_remote_cmd "$YB_HOST_FOR_RUNNING_TESTS" "$YB_SRC_ROOT/yb_build.sh" \
+      "${sub_yb_build_args[@]}"
+    exit
+  fi
+}
+
+run_cxx_test() {
+  fix_cxx_test_name
+
+  if [[ $num_test_repetitions -eq 1 ]]; then
+    (
+      set_sanitizer_runtime_options
+      cd "$BUILD_ROOT"
+
+      # The following makes our test framework repeat the test log in stdout in addition writing the
+      # log file instead of simply redirecting it to the log file. Combined with the --verbose ctest
+      # option, this gives us nice real-time test output, while still taking advantage of correct
+      # test flags such (e.g. ASAN/TSAN options and suppression rules) that are set in run-test.sh.
+      export YB_CTEST_VERBOSE=1
+
+      # --verbose: enable verbose output from tests.  Test output is normally suppressed and only
+      # summary information is displayed.  This option will show all test output.
+      # --output-on-failure is unnecessary when --verbose is specified. In fact, adding
+      # --output-on-failure will result in duplicate output in case of a failure.
+      set -x
+      ctest --verbose -R ^"$cxx_test_name"$
+    )
+  else
+    (
+      export YB_COMPILER_TYPE
+      set +u
+      repeat_unit_test_extra_args=( "${repeat_unit_test_inherited_args[@]}" )
+      set -u
+      if "$verbose"; then
+        repeat_unit_test_extra_args+=( --verbose )
+      fi
+      set -x +u
+      "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$test_binary_name" \
+         --num-iter "$num_test_repetitions" "${repeat_unit_test_extra_args[@]}"
+      set -u
+    )
+  fi
+}
+
+run_java_test() {
+  local module_dir
+  local language
+  local java_test_method_name=${java_test_name##*#}
+  local java_test_class=${java_test_name%#*}
+  local rel_java_src_path=${java_test_class//./\/}
+
+  module_name=""
+  for module_dir in "$YB_SRC_ROOT"/java/*; do
+    for language in java scala; do
+      if [[ -d $module_dir && \
+            -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
+        module_name=${module_dir##*/}
+      fi
+    done
+  done
+
+  if [[ -z $module_name ]]; then
+    fatal "Could not find module name for Java/Scala test '$java_test_name'"
+  fi
+
+  $YB_SRC_ROOT/build-support/run-test.sh "$module_name" "$java_test_name"
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -224,6 +430,7 @@ use_shared_thirdparty=false
 run_python_tests=false
 cmake_extra_args=""
 predefined_build_root=""
+java_test_name=""
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
@@ -305,6 +512,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
+      shift
+    ;;
+    --java-test|--jt)
+      set_java_test_name "$2"
       shift
     ;;
     --ctest)
@@ -466,6 +677,15 @@ while [[ $# -gt 0 ]]; do
       fi
       shift
     ;;
+    --sanitizer-extra-options|--extra-sanitizer-options)
+      export YB_SANITIZER_EXTRA_OPTIONS=$2
+      shift
+    ;;
+    --sanitizer-verbosity)
+      YB_SANITIZER_EXTRA_OPTIONS=${YB_SANITIZER_EXTRA_OPTIONS:-}
+      export YB_SANITIZER_EXTRA_OPTIONS+=" verbosity=$2"
+      shift
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -493,7 +713,12 @@ fi
 
 if "$should_run_ctest"; then
   if [[ -n $cxx_test_name ]]; then
-    fatal "--cxx-test (run one C++ test) is mutually exclusive with --ctest (run a number of tests)"
+    fatal "--cxx-test (running  one C++ test) is mutually exclusive with" \
+          "--ctest (running a number of C++ tests)"
+  fi
+  if [[ -n $java_test_name ]]; then
+    fatal "--java-test (running one Java test) is mutually exclusive with " \
+          "--ctest (running a number of C++ tests)"
   fi
   if ! "$run_java_tests"; then
     build_java=false
@@ -527,6 +752,15 @@ if "$run_python_tests"; then
   log "--python-tests specified, only running Python tests"
   run_python_tests
   exit
+fi
+
+if [[ -n $java_test_name ]]; then
+  if [[ -n $cxx_test_name ]]; then
+    fatal "Cannot run a Java test and a C++ test at the same time"
+  fi
+  if $should_run_ctest; then
+    fatal "Cannot run a Java test and ctest at the same time"
+  fi
 fi
 
 if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
@@ -642,155 +876,26 @@ log "Using make parallelism of $YB_MAKE_PARALLELISM" \
 
 set_build_env_vars
 
+create_build_descriptor_file
+
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
-  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
-     ! "$force_no_run_cmake"; then
-    if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
-      build_compiler_if_necessary
-    fi
-    log "Using cmake binary: $( which cmake )"
-    log "Running cmake in $PWD"
-    cmake_start_time_sec=$(date +%s)
-    ( set -x; cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT" )
-    cmake_end_time_sec=$(date +%s)
-  fi
-
-  if "$cmake_only"; then
-    log "CMake has been invoked, stopping here (--cmake-only specified)."
-    exit
-  fi
-  if [[ "${#object_files_to_delete[@]}" -gt 0 ]]; then
-    log_empty_line
-    log "Deleting object files corresponding to: ${object_files_to_delete[@]}"
-    # TODO: can delete multiple files using the same find command.
-    for object_file_to_delete in "${object_files_to_delete[@]}"; do
-      ( set -x; find "$BUILD_ROOT" -name "$object_file_to_delete" -exec rm -fv {} \; )
-    done
-    log_empty_line
-  fi
-
-  log "Running $make_program in $PWD"
-  make_start_time_sec=$(date +%s)
-  set +u +e  # "set -u" may cause failures on empty lists
-  time (
-    set -x
-
-    "$make_program" "-j$YB_MAKE_PARALLELISM" "${make_opts[@]}" "${make_targets[@]}"
-  )
-
-  exit_code=$?
-  set -u -e
-  make_end_time_sec=$(date +%s)
-  log "Non-java build finished with exit code $exit_code" \
-      "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
-      "Timing information is available above."
-  if [ "$exit_code" -ne 0 ]; then
-    exit "$exit_code"
-  fi
-
-  # Don't check for test binary existence in case targets are explicitly specified.
-  if "$test_existence_check" && [[ ${#make_targets[@]} -eq 0 ]]; then
-    (
-      cd "$BUILD_ROOT"
-      log "Checking if all test binaries referenced by CMakeLists.txt files exist."
-      if ! check_test_existence; then
-        log "Re-running test existence check again with more verbose output"
-        # We need to do this because sometimes we get an error with no useful output otherwise.
-        # We pass a pattern that includes all lines in the output.
-        check_test_existence '.*'
-        fatal "Some test binaries referenced in CMakeLists.txt files do not exist," \
-              "or failed to check. See detailed output above."
-      fi
-    )
-  fi
+  run_cxx_build
 fi
 
+run_test_on_remote_host
+
 if [[ -n $cxx_test_name ]]; then
-  if [[ -n ${YB_HOST_FOR_RUNNING_TESTS:-} && \
-        $YB_HOST_FOR_RUNNING_TESTS != "localhost" && \
-        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME && \
-        $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]]; then
-    log "Running tests on host '$YB_HOST_FOR_RUNNING_TESTS' (current host is '$HOSTNAME')"
-
-    # Add extra arguments to the sub-invocation of yb_build.sh. We have to add them before the
-    # first "--".
-    set +u
-    sub_yb_build_args=()
-    extra_args=( --skip-build --host-for-tests "localhost" )
-
-    for arg in "${original_args[@]}"; do
-      case $arg in
-        --)
-          sub_yb_build_args+=( "${extra_args[@]}" "$arg" )
-          extra_args=()
-        ;;
-        --clean|--clean-thirdparty)
-          # Do not pass these arguments to the child yb_build.sh.
-        ;;
-        *)
-          sub_yb_build_args+=( "$arg" )
-      esac
-    done
-    sub_yb_build_args+=( "${extra_args[@]}" )
-    set -u
-
-    log "Running tests on server '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
-    run_remote_cmd "$YB_HOST_FOR_RUNNING_TESTS" "$YB_SRC_ROOT/yb_build.sh" \
-      "${sub_yb_build_args[@]}"
-    exit
-  fi
-  fix_cxx_test_name
-
-  if [[ $num_test_repetitions -eq 1 ]]; then
-    (
-      set_asan_tsan_runtime_options
-      cd "$BUILD_ROOT"
-
-      # The following makes our test framework repeat the test log in stdout in addition writing the
-      # log file instead of simply redirecting it to the log file. Combined with the --verbose ctest
-      # option, this gives us nice real-time test output, while still taking advantage of correct
-      # test flags such (e.g. ASAN/TSAN options and suppression rules) that are set in run-test.sh.
-      export YB_CTEST_VERBOSE=1
-
-      # --verbose: enable verbose output from tests.  Test output is normally suppressed and only
-      # summary information is displayed.  This option will show all test output.
-      # --output-on-failure is unnecessary when --verbose is specified. In fact, adding
-      # --output-on-failure will result in duplicate output in case of a failure.
-      set -x
-      ctest --verbose -R ^"$cxx_test_name"$
-    )
-  else
-    (
-      export YB_COMPILER_TYPE
-      set +u
-      repeat_unit_test_extra_args=( "${repeat_unit_test_inherited_args[@]}" )
-      set -u
-      if "$verbose"; then
-        repeat_unit_test_extra_args+=( --verbose )
-      fi
-      set -x +u
-      "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$test_binary_name" \
-         --num-iter "$num_test_repetitions" "${repeat_unit_test_extra_args[@]}"
-      set -u
-    )
-  fi
+  run_cxx_test
 fi
 
 if "$should_run_ctest"; then
-  # Not setting YB_CTEST_VERBOSE here because we don't want the output of a potentially large number
-  # of tests to go to stdout.
-  (
-    cd "$BUILD_ROOT"
-    set -x
-    ctest -j"$YB_NUM_CPUS" --verbose $ctest_args 2>&1 |
-      egrep -v "^[0-9]+: Test timeout computed to be: "
-  )
+  run_ctest
 fi
 
 # Check if the Java build is needed, and skip Java unit test runs if requested.
 if "$build_java"; then
   # We'll need this for running Java tests.
-  set_asan_tsan_runtime_options
+  set_sanitizer_runtime_options
 
   cd "$YB_SRC_ROOT"/java
   build_opts=( install )
@@ -808,16 +913,8 @@ if "$build_java"; then
   log "Java build finished, total time information above."
 fi
 
-if [[ -n $build_descriptor_path ]]; then
-  # The format of this file is YAML.
-  cat >"$build_descriptor_path" <<-EOT
-build_type: "$build_type"
-cmake_build_type: "$cmake_build_type"
-build_root: "$BUILD_ROOT"
-compiler_type: "$YB_COMPILER_TYPE"
-thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
-EOT
-  log "Created a build descriptor file at '$build_descriptor_path'"
+if [[ -n $java_test_name ]]; then
+  run_java_test
 fi
 
 print_summary

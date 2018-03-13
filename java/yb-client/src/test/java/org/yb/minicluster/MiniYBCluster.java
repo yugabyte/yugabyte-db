@@ -286,6 +286,13 @@ public class MiniYBCluster implements AutoCloseable {
     // The following props are set via yb-client's pom.
     String baseDirPath = TestUtils.getBaseTmpDir();
 
+    for (String envVarName :
+        new String[]{"ASAN_OPTIONS", "TSAN_OPTIONS", "LSAN_OPTIONS", "UBSAN_OPTIONS",
+                     "ASAN_SYMBOLIZER_PATH"}) {
+      String envVarValue = System.getenv(envVarName);
+      LOG.info("Environment variable " + envVarName + ": " +
+               (envVarValue == null ? "not set" : envVarValue));
+    }
     LOG.info("Starting {} masters...", numMasters);
     startMasters(numMasters, baseDirPath, masterArgs);
     LOG.info("Starting {} tablet servers...", numTservers);

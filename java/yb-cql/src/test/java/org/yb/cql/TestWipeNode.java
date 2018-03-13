@@ -127,7 +127,7 @@ public class TestWipeNode  extends BaseCQLTest {
         }
       }
       return true;
-    }, WAIT_FOR_OP_MS * (long)TestUtils.getTimeoutMultiplier());
+    }, WAIT_FOR_OP_MS);
 
     // Writes should still succeed.
     writeRows(tableName, 100);

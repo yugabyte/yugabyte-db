@@ -106,7 +106,7 @@ DEFINE_int32(redis_service_yb_client_timeout_millis, kDefaultRedisServiceTimeout
 DEFINE_int32(redis_max_command_size, 253_MB,
              "Maximum size of the command in redis");
 
-// Maximumum value size is 64MB
+// Maximum value size is 64MB
 DEFINE_int32(redis_max_value_size, 64_MB,
              "Maximum size of the value in redis");
 

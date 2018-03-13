@@ -190,7 +190,13 @@ public class TestClusterBase extends BaseCQLTest {
     }
 
     public void waitNumOpsAtLeast(long expectedNumOps) throws Exception {
-      TestUtils.waitFor(() -> testRunner.numOps() >= expectedNumOps, WAIT_FOR_OPS_TIMEOUT_MS);
+      TestUtils.waitFor(() -> {
+        long numOps = testRunner.numOps();
+        if (numOps >= expectedNumOps)
+          return true;
+        LOG.info("Current num ops: " + numOps + ", expected: " + expectedNumOps);
+        return false;
+      }, WAIT_FOR_OPS_TIMEOUT_MS);
       totalOps = testRunner.numOps();
       LOG.info("Num Ops: " + totalOps + ", Expected: " + expectedNumOps);
       assertTrue(totalOps >= expectedNumOps);
@@ -203,15 +209,31 @@ public class TestClusterBase extends BaseCQLTest {
   }
 
   private void verifyMetrics(int minOps) throws Exception {
+    StringBuilder failureMessage = new StringBuilder();
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       // Wait for the webserver to be up.
       TestUtils.waitForServer(ts.getLocalhostIP(), ts.getCqlWebPort(), WEBSERVER_TIMEOUT_MS);
       Metrics metrics = new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server");
-      long numOps = metrics.getHistogram(
-        "handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest").totalCount;
+      long numOps =
+          metrics.getHistogram(
+              "handler_latency_yb_cqlserver_SQLProcessor_InsertStmt").totalCount +
+          metrics.getHistogram(
+              "handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt").totalCount;
 
       LOG.info("TSERVER: " + ts.getLocalhostIP() + ", num_ops: " + numOps + ", min_ops: " + minOps);
-      assertTrue(numOps >= minOps);
+      if (numOps < minOps) {
+        String msg = "Assertion failed: expected numOps >= minOps, found numOps=" + numOps +
+            ", minOps=" + minOps + " for " + ts;
+        if (failureMessage.length() > 0) {
+          failureMessage.append('\n');
+        }
+        failureMessage.append(msg);
+        LOG.error(msg);
+      }
+    }
+
+    if (failureMessage.length() > 0) {
+      throw new AssertionError(failureMessage.toString());
     }
   }
 
