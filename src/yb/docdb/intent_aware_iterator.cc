@@ -218,7 +218,9 @@ IntentAwareIterator::IntentAwareIterator(
     intent_iter_ = docdb::CreateRocksDBIterator(rocksdb,
                                                 docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                                 boost::none,
-                                                rocksdb::kDefaultQueryId);
+                                                rocksdb::kDefaultQueryId,
+                                                nullptr /* file_filter */,
+                                                &intent_upperbound_);
   }
   iter_.reset(rocksdb->NewIterator(read_opts));
 }
@@ -239,6 +241,10 @@ void IntentAwareIterator::Seek(const Slice& key) {
   ROCKSDB_SEEK(iter_.get(), key);
   SkipFutureRecords();
   if (intent_iter_) {
+    status_ = SetIntentUpperbound();
+    if (!status_.ok()) {
+      return;
+    }
     ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key));
     SeekForwardToSuitableIntent();
   }
@@ -256,6 +262,10 @@ void IntentAwareIterator::SeekForward(const Slice& key) {
   auto key_bytes = AppendDocHt(key, DocHybridTime(read_time_.global_limit, kMaxWriteId));
   SeekForwardRegular(key_bytes);
   if (intent_iter_ && status_.ok()) {
+    status_ = SetIntentUpperbound();
+    if (!status_.ok()) {
+      return;
+    }
     GetIntentPrefixForKeyWithoutHt(key, &key_bytes);
     SeekForwardToSuitableIntent(key_bytes);
   }
@@ -270,6 +280,10 @@ void IntentAwareIterator::SeekPastSubKey(const Slice& key) {
   docdb::SeekPastSubKey(key, iter_.get());
   SkipFutureRecords();
   if (intent_iter_ && status_.ok()) {
+    status_ = SetIntentUpperbound();
+    if (!status_.ok()) {
+      return;
+    }
     KeyBytes intent_prefix = GetIntentPrefixForKeyWithoutHt(key);
     // Skip all intents for subdoc_key.
     intent_prefix.mutable_data()->push_back(static_cast<char>(ValueType::kIntentType) + 1);
@@ -285,6 +299,10 @@ void IntentAwareIterator::SeekOutOfSubDoc(const Slice& key) {
 
   docdb::SeekOutOfSubKey(key, iter_.get());
   if (intent_iter_ && status_.ok()) {
+    status_ = SetIntentUpperbound();
+    if (!status_.ok()) {
+      return;
+    }
     KeyBytes intent_prefix = GetIntentPrefixForKeyWithoutHt(key);
     // See comment for SubDocKey::AdvanceOutOfSubDoc.
     intent_prefix.AppendValueType(ValueType::kMaxByte);
@@ -435,7 +453,9 @@ void IntentAwareIterator::SeekForwardToSuitableIntent(const KeyBytes &intent_key
       resolved_intent_key_prefix_.CompareTo(intent_key_prefix) >= 0) {
     return;
   }
-  docdb::SeekForward(intent_key_prefix, intent_iter_.get());
+  // Use ROCKSDB_SEEK() to force re-seek of "intent_iter_" in case the iterator was invalid by the
+  // previous intent upperbound, but the upperbound has changed therefore requiring re-seek.
+  ROCKSDB_SEEK(intent_iter_.get(), intent_key_prefix.AsSlice());
   SeekForwardToSuitableIntent();
 }
 
@@ -448,9 +468,6 @@ void IntentAwareIterator::SeekForwardToSuitableIntent() {
   // Find latest suitable intent for the first SubDocKey having suitable intents.
   while (intent_iter_->Valid()) {
     auto intent_key = intent_iter_->key();
-    if (GetKeyType(intent_key) != KeyType::kIntentKey) {
-      break;
-    }
     VLOG(4) << "Intent found: " << DebugIntentKeyToString(intent_key)
             << ", resolved state: " << yb::ToString(resolved_intent_state_);
     if (resolved_intent_state_ != ResolvedIntentState::kNoIntent &&
@@ -649,6 +666,28 @@ void IntentAwareIterator::SkipFutureIntents() {
     }
   }
   SeekForwardToSuitableIntent();
+}
+
+Status IntentAwareIterator::SetIntentUpperbound() {
+  intent_upperbound_keybytes_.Clear();
+  intent_upperbound_keybytes_.AppendValueType(ValueType::kIntentPrefix);
+  if (iter_->Valid()) {
+    // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append
+    // to upperbound with 0xff.
+    Slice subdoc_key = iter_->key();
+    int doc_ht_size = 0;
+    RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(subdoc_key, &doc_ht_size));
+    subdoc_key.remove_suffix(1 + doc_ht_size);
+    intent_upperbound_keybytes_.AppendRawBytes(subdoc_key);
+    intent_upperbound_keybytes_.AppendValueType(ValueType::kMaxByte);
+  } else {
+    // In case the current position of the regular iterator is invalid, set the exclusive
+    // upperbound to the beginning of the transaction metadata region.
+    intent_upperbound_keybytes_.AppendValueType(ValueType::kTransactionId);
+  }
+  intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
+  VLOG(4) << "SetIntentUpperbound = " << intent_upperbound_.ToDebugString();
+  return Status::OK();
 }
 
 }  // namespace docdb
