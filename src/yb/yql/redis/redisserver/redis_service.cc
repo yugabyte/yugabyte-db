@@ -433,7 +433,8 @@ class Block : public std::enable_shared_from_this<Block> {
     if (!status.ok()) {
       if (session_.get() != nullptr) {
         for (const auto& error : session_->GetPendingErrors()) {
-          LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
+          YB_LOG_EVERY_N_SECS(WARNING, 1) << "Explicit error while inserting: "
+                                          << error->status().ToString();
         }
       }
     }

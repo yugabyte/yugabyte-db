@@ -263,7 +263,7 @@ bool TabletInvoker::Done(Status* status) {
                tablet_id_,
                current_ts_string,
                retrier_->attempt_num()));
-    LOG(WARNING) << status->ToString();
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << status->ToString();
     rpc_->Failed(old_status);
   }
 
