@@ -111,7 +111,6 @@ class ThreadPoolBuilder {
   // in order to provide traditional Builder pattern conveniences.
   ThreadPoolBuilder& set_min_threads(int min_threads);
   ThreadPoolBuilder& set_max_threads(int max_threads);
-  ThreadPoolBuilder& unlimited_threads();
   ThreadPoolBuilder& set_max_queue_size(int max_queue_size);
   ThreadPoolBuilder& set_idle_timeout(const MonoDelta& idle_timeout);
   ThreadPoolBuilder& set_metrics(ThreadPoolMetrics metrics);

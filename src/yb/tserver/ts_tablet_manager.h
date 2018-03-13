@@ -147,7 +147,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* read_pool() const { return read_pool_.get(); }
-  ThreadPool* append_pool() const { return append_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -434,9 +433,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Thread pool for Raft-related operations, shared between all tablets.
   std::unique_ptr<ThreadPool> raft_pool_;
-
-  // Thread pool for appender threads, shared between all tablets.
-  std::unique_ptr<ThreadPool> append_pool_;
 
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;

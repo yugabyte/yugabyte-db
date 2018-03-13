@@ -95,11 +95,6 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_max_threads(int max_threads) {
   return *this;
 }
 
-ThreadPoolBuilder& ThreadPoolBuilder::unlimited_threads() {
-  max_threads_ = std::numeric_limits<int>::max();
-  return *this;
-}
-
 ThreadPoolBuilder& ThreadPoolBuilder::set_max_queue_size(int max_queue_size) {
   CHECK_GT(max_queue_size, 0);
   max_queue_size_ = max_queue_size;

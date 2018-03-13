@@ -314,14 +314,11 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   // However, the effective upper bound is the number of replicas as each will
   // submit its own tasks via a dedicated token.
   CHECK_OK(ThreadPoolBuilder("raft")
-               .unlimited_threads()
+               .set_max_threads(std::numeric_limits<int>::max())
                .Build(&raft_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare")
-               .unlimited_threads()
+               .set_max_threads(std::numeric_limits<int>::max())
                .Build(&tablet_prepare_pool_));
-  CHECK_OK(ThreadPoolBuilder("append")
-               .unlimited_threads()
-               .Build(&append_pool_));
   ThreadPoolMetrics read_metrics = {
       METRIC_op_read_queue_length.Instantiate(server_->metric_entity()),
       METRIC_op_read_queue_time.Instantiate(server_->metric_entity()),
@@ -914,8 +911,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
         tablet_peer->log_anchor_registry(),
         tablet_options_,
         tablet_peer.get(),
-        tablet_peer.get(),
-        append_pool()};
+        tablet_peer.get()};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
@@ -935,7 +931,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                                     log,
                                     tablet->GetMetricEntity(),
                                     raft_pool(),
-                                    append_pool());
+                                    tablet_prepare_pool());
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -1017,9 +1013,6 @@ void TSTabletManager::Shutdown() {
   }
   if (tablet_prepare_pool_) {
     tablet_prepare_pool_->Shutdown();
-  }
-  if (append_pool_) {
-    append_pool_->Shutdown();
   }
 
   {
