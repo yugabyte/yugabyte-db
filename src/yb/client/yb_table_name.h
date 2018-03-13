@@ -84,6 +84,10 @@ class YBTableName {
     return namespace_name_;
   }
 
+  bool has_table() const {
+    return !table_name_.empty();
+  }
+
   const std::string& table_name() const {
     return table_name_;
   }
