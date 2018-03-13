@@ -165,53 +165,61 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   cout << "Exporting snapshot " << snapshot_id << " ("
        << snapshot->entry().state() << ") to file " << file_name << endl;
 
-  string str;
-  if (!snapshot->SerializeToString(&str)) {
-    return STATUS_FORMAT(
-        InternalError, "Failed snapshot serialization to string: $0", snapshot_id);
-  }
+  // Serialize snapshot protobuf to given path.
+  RETURN_NOT_OK(pb_util::WritePBContainerToPath(
+      Env::Default(), file_name, *snapshot, pb_util::OVERWRITE, pb_util::SYNC));
 
-  const Slice slice(util::to_uchar_ptr(str.data()), str.size());
-  RETURN_NOT_OK(WriteStringToFile(Env::Default(), slice, file_name));
   cout << "Snapshot meta data was saved into file: " << file_name << endl;
-
   return Status::OK();
 }
 
-Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
-  faststring fstr;
-  RETURN_NOT_OK(ReadFileToString(Env::Default(), file_name, &fstr));
-
+Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
+                                                  const YBTableName& table_name) {
   cout << "Read snapshot meta file " << file_name << endl;
 
   ImportSnapshotMetaRequestPB req;
   ImportSnapshotMetaResponsePB resp;
 
   SnapshotInfoPB* const snapshot_info = req.mutable_snapshot();
-  if (!snapshot_info->ParseFromString(fstr.ToString())) {
-    return STATUS_FORMAT(
-        RuntimeError, "Failed to parse snapshot meta file: $0", file_name);
-  }
+
+  // Read snapshot protobuf from given path.
+  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(Env::Default(), file_name, snapshot_info));
 
   cout << "Importing snapshot " << snapshot_info->id()
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
-  string keyspace_name;
-  string table_name;
-  for (const SysRowEntry& entry : snapshot_info->entry().entries()) {
+  if (!table_name.empty()) {
+    DCHECK(table_name.has_namespace());
+    DCHECK(table_name.has_table());
+    cout << "Target imported table name: " << table_name.ToString() << endl;
+  }
+
+  YBTableName orig_table_name;
+  for (SysRowEntry& entry : *snapshot_info->mutable_entry()->mutable_entries()) {
     switch (entry.type()) {
       case SysRowEntry::NAMESPACE: {
         SysNamespaceEntryPB meta;
         const string &data = entry.data();
         RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
-        keyspace_name = meta.name();
+        orig_table_name.set_namespace_name(meta.name());
+
+        if (!table_name.empty() &&
+            table_name.namespace_name() != orig_table_name.namespace_name()) {
+          meta.set_name(table_name.namespace_name());
+          entry.set_data(meta.SerializeAsString());
+        }
         break;
       }
       case SysRowEntry::TABLE: {
         SysTablesEntryPB meta;
         const string &data = entry.data();
         RETURN_NOT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
-        table_name = meta.name();
+        orig_table_name.set_table_name(meta.name());
+
+        if (!table_name.empty() && table_name.table_name() != orig_table_name.table_name()) {
+          meta.set_name(table_name.table_name());
+          entry.set_data(meta.SerializeAsString());
+        }
         break;
       }
       default:
@@ -219,12 +227,12 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name) {
     }
   }
 
-  if (keyspace_name.empty() || table_name.empty()) {
+  if (!orig_table_name.has_namespace() || !orig_table_name.has_table()) {
     return STATUS(IllegalState,
                   "Could not find table name or keyspace name from snapshot metadata");
   }
 
-  cout << "Table being imported: " << keyspace_name << "." << table_name << endl;
+  cout << "Table being imported: " << orig_table_name.ToString() << endl;
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
