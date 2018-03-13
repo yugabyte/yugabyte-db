@@ -17,7 +17,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
-import {isNonEmptyArray} from 'utils/ObjectUtils';
+import {isNonEmptyArray, sortInstanceTypeList} from 'utils/ObjectUtils';
 import _ from 'lodash';
 
 const INITIAL_STATE = {
@@ -73,7 +73,7 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status !== 200) {
         return setFailureState(state, "instanceTypes", action.payload.data.error);
       }
-      return setSuccessState(state, "instanceTypes", _.sortBy(action.payload.data, "name"));
+      return setSuccessState(state, "instanceTypes", sortInstanceTypeList(action.payload.data));
 
     case GET_SUGGESTED_SPOT_PRICE:
       return setLoadingState(state, "suggestedSpotPrice", {});
