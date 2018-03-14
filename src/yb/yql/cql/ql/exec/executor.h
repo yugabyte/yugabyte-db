@@ -21,7 +21,6 @@
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/partial_row.h"
 #include "yb/common/common.pb.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"

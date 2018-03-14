@@ -98,19 +98,18 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
 
       result->set_list_value();
       if (!org_list_value.IsNull() && !sub_list_value.IsNull()) {
-        const QLSeqValuePB& org_list = org_list_value.list_value();
-        const QLSeqValuePB& sub_list = sub_list_value.list_value();
-        for (const QLValuePB& org_elem : org_list.elems()) {
+        QLSeqValuePB* org_list = org_list_value.mutable_list_value();
+        QLSeqValuePB* sub_list = sub_list_value.mutable_list_value();
+        for (QLValuePB& org_elem : *org_list->mutable_elems()) {
           bool should_remove = false;
-          for (const QLValuePB& sub_elem : sub_list.elems()) {
+          for (QLValuePB& sub_elem : *sub_list->mutable_elems()) {
             if (org_elem == sub_elem) {
               should_remove = true;
               break;
             }
           }
           if (!should_remove) {
-            auto elem = result->add_list_elem();
-            elem->CopyFrom(org_elem);
+            *result->add_list_elem() = std::move(org_elem);
           }
         }
       }
