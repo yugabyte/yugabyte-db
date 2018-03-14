@@ -473,11 +473,10 @@ public class TestYBClient extends BaseYBClientTest {
   public void testRedisTable() throws Exception {
     LOG.info("Starting testRedisTable");
     String redisTableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
-    YBTable table = syncClient.createRedisTable(redisTableName, 16);
+    YBTable table = syncClient.createRedisTable(redisTableName);
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(redisTableName));
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
-    assertEquals(16, table.getTabletsLocations(100000).size());
 
     table = syncClient.openTable(YBClient.REDIS_KEYSPACE_NAME, redisTableName);
     assertEquals(redisSchema.getColumnCount(), table.getSchema().getColumnCount());
