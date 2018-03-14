@@ -54,7 +54,7 @@ public class TestHideRedis extends BaseCQLTest {
     session.execute(String.format("DROP TABLE test.\"%s\"", YBClient.REDIS_DEFAULT_TABLE_NAME));
 
     YBClient client = miniCluster.getClient();
-    client.createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME, 1);
+    client.createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME);
     try {
       // Can't perform SELECT queries on redis table.
       runInvalidQuery(String.format("SELECT * FROM %s.\"%s\"", YBClient.REDIS_KEYSPACE_NAME,

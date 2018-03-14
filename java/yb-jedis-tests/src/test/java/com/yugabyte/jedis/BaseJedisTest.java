@@ -34,7 +34,6 @@ import static org.yb.client.YBClient.REDIS_KEYSPACE_NAME;
 
 public class BaseJedisTest extends BaseMiniClusterTest {
 
-  protected static final int REDIS_NUM_TABLETS = NUM_TABLET_SERVERS * 8;
   private static final int JEDIS_SOCKET_TIMEOUT_MS = 10000;
   protected Jedis jedis_client;
   private static final Logger LOG = LoggerFactory.getLogger(BaseJedisTest.class);
@@ -45,7 +44,7 @@ public class BaseJedisTest extends BaseMiniClusterTest {
     waitForTServersAtMasterLeader();
 
     // Create the redis table.
-    miniCluster.getClient().createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME, REDIS_NUM_TABLETS);
+    miniCluster.getClient().createRedisTable(YBClient.REDIS_DEFAULT_TABLE_NAME);
 
     YBClient ybClient;
 
