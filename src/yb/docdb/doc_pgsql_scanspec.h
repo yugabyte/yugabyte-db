@@ -25,8 +25,6 @@ namespace docdb {
 // DocDB variant of scanspec.
 class DocPgsqlScanSpec : public common::PgsqlScanSpec {
  public:
-  // Constants.
-  static constexpr int32_t kUnspecifiedHashCode_ = -1;
 
   // Scan for the specified doc_key.
   DocPgsqlScanSpec(const Schema& schema,
@@ -38,8 +36,8 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const std::vector<PrimitiveValue>& hashed_components,
-                   int32_t hash_code,
-                   int32_t max_hash_code,
+                   boost::optional<int32_t> hash_code,
+                   boost::optional<int32_t> max_hash_code,
                    const PgsqlExpressionPB *bool_expr,
                    const DocKey& start_doc_key = DocKey(),
                    bool is_forward_scan = true);
@@ -83,11 +81,12 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   const std::vector<PrimitiveValue> *hashed_components_;
 
   // Hash code is used if hashed_components_ vector is empty.
-  // hash values are positive int16_t, here -1 is default and means unset
-  const int32_t hash_code_;
+  // hash values are positive int16_t.
+  const boost::optional<int32_t> hash_code_;
 
-  // Max hash code is used if hashed_components_ vertor is empty.
-  const int32_t max_hash_code_;
+  // Max hash code is used if hashed_components_ vector is empty.
+  // hash values are positive int16_t.
+  const boost::optional<int32_t> max_hash_code_;
 
   // Filter condition.
   const PgsqlExpressionPB *condition_;

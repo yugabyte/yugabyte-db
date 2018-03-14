@@ -138,13 +138,14 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
       if (has_range_column) {
         QL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         // - <column> IN (<value>) --> min/max values = <value>
-        // TODO(Mihnea) handle the other cases here too
-        if (val_expr->value().list_value().elems_size() == 1) {
-          QLValuePB value = val_expr->value().list_value().elems(0);
+        // IN arguments should have already been de-duplicated and ordered by the executor.
+        int in_size = val_expr->value().list_value().elems_size();
+        if (in_size > 0) {
           const ColumnId column_id(col_expr->column_id());
-          ranges_.at(column_id).min_value = value;
-          ranges_.at(column_id).max_value = value;
+          ranges_.at(column_id).min_value = val_expr->value().list_value().elems(0);
+          ranges_.at(column_id).max_value = val_expr->value().list_value().elems(in_size - 1);
         }
+        has_in_range_options_ = true;
       }
       return;
     }
@@ -218,6 +219,8 @@ QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
       range.max_value = other_range.max_value;
     }
   }
+  has_in_range_options_ = has_in_range_options_ || other.has_in_range_options_;
+
   return *this;
 }
 
@@ -241,6 +244,8 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
       SetNull(&range.max_value);
     }
   }
+  has_in_range_options_ = has_in_range_options_ && other.has_in_range_options_;
+
   return *this;
 }
 
@@ -261,6 +266,8 @@ QLScanRange& QLScanRange::operator~() {
       range.min_value.Swap(&range.max_value);
     }
   }
+  has_in_range_options_ = false;
+
   return *this;
 }
 

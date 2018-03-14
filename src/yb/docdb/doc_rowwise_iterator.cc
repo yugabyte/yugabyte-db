@@ -102,7 +102,6 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
       doc_db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_,
       deadline_, read_time_, doc_spec.CreateFileFilter());
 
-  db_iter_->Seek(row_key_encoded);
   row_ready_ = false;
 
   if (is_forward_scan_) {
@@ -117,12 +116,35 @@ Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
     }
   }
 
-  if (is_forward_scan_) {
-    if (has_bound_key_) {
-      db_iter_->Seek(lower_doc_key);
+  if (doc_spec.range_options()) {
+    range_cols_scan_options_ = doc_spec.range_options();
+    current_scan_target_idxs_.resize(range_cols_scan_options_->size());
+    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+      current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
     }
+
+    // Initialize target doc key.
+    if (is_forward_scan_) {
+      current_scan_target_ = lower_doc_key;
+      if (!current_scan_target_.range_group().empty()) {
+        current_scan_target_.ClearRangeComponents();
+        GoToScanTarget(lower_doc_key);
+      }
+    } else {
+      current_scan_target_ = upper_doc_key;
+      if (!current_scan_target_.range_group().empty()) {
+        current_scan_target_.ClearRangeComponents();
+        GoToScanTarget(upper_doc_key);
+      }
+    }
+    return EnsureIteratorPositionCorrect();
+  }
+
+  if (is_forward_scan_) {
+    db_iter_->Seek(lower_doc_key);
   } else {
-    if (has_bound_key_) {
+    // TODO consider adding an operator bool to DocKey to use instead of empty() here.
+    if (!upper_doc_key.empty()) {
       db_iter_->PrevDocKey(upper_doc_key);
     } else {
       db_iter_->SeekToLastDocKey();
@@ -157,7 +179,6 @@ Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
       doc_db_, mode, row_key_encoded_as_slice, doc_spec.QueryId(), txn_op_context_,
       deadline_, read_time_, doc_spec.CreateFileFilter());
 
-  db_iter_->Seek(row_key_encoded);
   row_ready_ = false;
 
   if (is_forward_scan_) {
@@ -173,11 +194,9 @@ Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
   }
 
   if (is_forward_scan_) {
-    if (has_bound_key_) {
-      db_iter_->Seek(lower_doc_key);
-    }
+    db_iter_->Seek(lower_doc_key);
   } else {
-    if (has_bound_key_) {
+    if (!upper_doc_key.empty()) {
       db_iter_->PrevDocKey(upper_doc_key);
     } else {
       db_iter_->SeekToLastDocKey();
@@ -188,12 +207,24 @@ Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
 }
 
 Status DocRowwiseIterator::EnsureIteratorPositionCorrect() const {
-  if (!is_forward_scan_) {
+
+  if (IsMultiKeyScan()) {
+    // Seek to the current target doc key if needed.
+    if (current_scan_target_ != row_key_ && !FinishedScanTargetsList()) {
+      if (is_forward_scan_) {
+        db_iter_->Seek(current_scan_target_);
+      } else {
+        DocKey tmp = current_scan_target_;
+        tmp.AddRangeComponent(PrimitiveValue(ValueType::kHighest));
+        db_iter_->PrevDocKey(tmp);
+      }
+    }
+  } else if (!is_forward_scan_) {
     db_iter_->PrevDocKey(row_key_);
   }
+
   return Status::OK();
 }
-
 
 bool DocRowwiseIterator::HasNext() const {
   if (!status_.ok() || row_ready_) {
@@ -203,6 +234,12 @@ bool DocRowwiseIterator::HasNext() const {
   }
 
   if (done_) return false;
+
+  if (IsMultiKeyScan() && FinishedScanTargetsList()) {
+    // If there are no more options left to scan then we are done.
+    done_ = true;
+    return false;
+  }
 
   bool doc_found = false;
   while (!doc_found) {
@@ -236,7 +273,6 @@ bool DocRowwiseIterator::HasNext() const {
       status_ = dockey_size.status();
       return true;
     }
-
     if (has_bound_key_ && is_forward_scan_ == (row_key_ >= bound_key_)) {
       done_ = true;
       return false;
@@ -244,6 +280,30 @@ bool DocRowwiseIterator::HasNext() const {
 
     // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
     Slice sub_doc_key(iter_key_.data().data(), *dockey_size);
+
+    if (IsMultiKeyScan()) {
+      if (current_scan_target_ != row_key_) {
+        // We must have seeked past the target key we are looking for (no result) so we can safely
+        // skip all scan targets between the current target and row key (excluding row_key_ itself).
+        // Update the target key and iterator and call HasNext again to try the next target.
+        GoToScanTarget(row_key_);
+        if (done_) return false;
+        status_ = EnsureIteratorPositionCorrect();
+        if (!status_.ok()) {
+          // Defer error reporting to NextRow().
+          return true;
+        }
+
+        if (current_scan_target_ != row_key_) {
+          // We updated scan target above, if it passed row_key_ we need to seek again.
+          return HasNext();
+        }
+      }
+
+      // Otherwise, we found a match for this target key so we prepare for scanning the next one.
+      GoToNextScanTarget();
+    }
+
     GetSubDocumentData data = { sub_doc_key, &row_, &doc_found, TableTTL(schema_) };
     status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
     // After this, the iter should be positioned right after the subdocument.
@@ -366,6 +426,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
       }
     }
   }
+
   row_ready_ = false;
   return Status::OK();
 }
@@ -415,6 +476,98 @@ CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequest
     }
   }
   return Status::OK();
+}
+
+void DocRowwiseIterator::IncrementScanTargetAtColumn(size_t start_col) const {
+  DCHECK_LE(start_col, current_scan_target_idxs_.size());
+
+  // Increment start col, move backwards in case of overflow.
+  for (int col_idx = start_col; col_idx >= 0; col_idx--) {
+    const auto& choices = range_cols_scan_options_->at(col_idx);
+    auto& it = current_scan_target_idxs_[col_idx];
+
+    if (it < --choices.end()) {
+      it++;
+      current_scan_target_.SetRangeComponent(*it, col_idx);
+      return;
+    }
+    it = choices.begin();
+    current_scan_target_.SetRangeComponent(*it, col_idx);
+  }
+
+  // If we got here we finished all the options and are done.
+  current_scan_target_idxs_.clear();
+}
+
+bool DocRowwiseIterator::InitScanTargetRangeGroupIfNeeded() const {
+  // Initialize the range key values if needed (i.e. we scanned the static row until now).
+  if (current_scan_target_.range_group().empty()) {
+    for (size_t col_idx = 0; col_idx < range_cols_scan_options_->size(); col_idx++) {
+      current_scan_target_.AddRangeComponent(*current_scan_target_idxs_[col_idx]);
+    }
+    return true;
+  }
+  return false;
+}
+
+void DocRowwiseIterator::GoToNextScanTarget() const {
+  DCHECK(!FinishedScanTargetsList());
+
+  // Initialize the first target/option if not done already, otherwise go to the next one.
+  if (!InitScanTargetRangeGroupIfNeeded()) {
+    IncrementScanTargetAtColumn(range_cols_scan_options_->size() - 1);
+  }
+}
+
+void DocRowwiseIterator::GoToScanTarget(const DocKey &new_target) const {
+  DCHECK(!FinishedScanTargetsList());
+  InitScanTargetRangeGroupIfNeeded();
+
+  size_t col_idx = 0;
+  while (col_idx < range_cols_scan_options_->size()) {
+    const PrimitiveValue &target_value = new_target.range_group()[col_idx];
+    const auto& choices = range_cols_scan_options_->at(col_idx);
+    auto& it = current_scan_target_idxs_[col_idx];
+
+    // Fast-path in case the existing value for this column already matches the new target.
+    if (target_value == *it) {
+      col_idx++;
+      continue;
+    }
+
+    // Search for the option that matches new target value (for the current column).
+    if (is_forward_scan_) {
+      it = std::lower_bound(choices.begin(), choices.end(), target_value);
+    } else {
+      it = std::lower_bound(choices.begin(), choices.end(), target_value, std::greater<>());
+    }
+
+    // If we overflowed, the new target value for this column is larger than all our options, so
+    // we go back and increment the previous column instead.
+    if (it == choices.end()) {
+      IncrementScanTargetAtColumn(col_idx - 1);
+      break;
+    }
+
+    // Else, update the current target value for this column.
+    current_scan_target_.SetRangeComponent(*it, col_idx);
+
+    // If we did not find an exact match we are already beyond the new target so we can stop.
+    if (target_value != *it) {
+      col_idx++;
+      break;
+    }
+
+    col_idx++;
+  }
+
+  // If there are any columns left (i.e. we stopped early), it means we did not find an exact
+  // match and we reached beyond the new target key. So we need to include all options for the
+  // leftover columns (i.e. set all following indexes to 0).
+  for (size_t i = col_idx; i < current_scan_target_idxs_.size(); i++) {
+    current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
+    current_scan_target_.SetRangeComponent(*current_scan_target_idxs_[i], i);
+  }
 }
 
 }  // namespace docdb

@@ -269,6 +269,24 @@ CHECKED_STATUS Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& c
 
   // Operand 2: The expression.
   expr_pb = condition->add_operands();
+
+  // Special case for IN condition arguments on primary key -- we de-duplicate and order them here
+  // to match Cassandra semantics.
+  if (col_op.yb_op() == QL_OP_IN && col_op.desc()->is_primary()) {
+    QLExpressionPB tmp_expr_pb;
+    RETURN_NOT_OK(PTExprToPB(col_op.expr(), &tmp_expr_pb));
+    std::set<QLValuePB> opts_set;
+    for (auto &value_pb : *tmp_expr_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
+      opts_set.insert(std::move(value_pb));
+    }
+
+    expr_pb->mutable_value()->mutable_list_value(); // Set value type to list.
+    for (auto &value_pb : opts_set) {
+      *expr_pb->mutable_value()->mutable_list_value()->add_elems() = value_pb;
+    }
+    return Status::OK();
+  }
+
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 

@@ -142,6 +142,40 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Read next row into a value map using the specified projection.
   CHECKED_STATUS DoNextRow(const Schema& projection, QLTableRow* table_row) override;
 
+  // Returns true if this is a (multi)key scan (as opposed to an e.g. sequential scan).
+  // It means we have a (non-empty) list of target keys that we will seek for in order (or reverse
+  // order for reverse scans).
+  bool IsMultiKeyScan() const {
+    return range_cols_scan_options_ != nullptr;
+  }
+
+  // Utility function for (multi)key scans. Returns false if there are still target keys we need
+  // to scan, and true if we are done.
+  bool FinishedScanTargetsList() const {
+    // We clear the options indexes array when we finished traversing all scan target options.
+    return current_scan_target_idxs_.empty();
+  }
+
+  // Utility function for (multi)key scans. Updates the target scan key by incrementing the option
+  // index for one column. Will handle overflow by setting current column index to 0 and
+  // incrementing the previous column instead. If it overflows at first column it means we are done,
+  // so it clears the scan target idxs array.
+  void IncrementScanTargetAtColumn(size_t start_col) const;
+
+  // Utility function for (multi)key scans to initialize the range portion of the current scan
+  // target, scan target with the first option.
+  // Only needed for scans that include the static row, otherwise Init will take care of this.
+  bool InitScanTargetRangeGroupIfNeeded() const;
+
+  // For a (multi)key scan, go to the next scan target if any. Otherwise clear the scan target idxs
+  // array to mark that we are done.
+  void GoToNextScanTarget() const;
+
+  // For a (multi)key scan, go (directly) to the new target (or the one after if new_target does not
+  // exist in the target list). If the new_target is larger than all scan target options it means we
+  // are done so it cleares the scan target idxs array.
+  void GoToScanTarget(const DocKey &new_target) const;
+
   const Schema& projection_;
   // Used to maintain ownership of projection_.
   // Separate field is used since ownership could be optional.
@@ -165,6 +199,21 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // reverse scans.
   bool has_bound_key_;
   DocKey bound_key_;
+
+  // TODO (mihnea) refactor this logic into a separate class for iterating through options.
+  // For (multi)key scans (e.g. selects with 'IN' condition on the range columns) we hold the
+  // options for each range column as we iteratively seek to each target key.
+  // e.g. for a query "h = 1 and r1 in (2,3) and r2 in (4,5) and r3 = 6":
+  //  range_cols_scan_options_   [[2, 3], [4, 5], [6]] -- value options for each column.
+  //  current_scan_target_idxs_  goes from [0, 0, 0] up to [1, 1, 0] -- except when including the
+  //                             static row when it starts from [0, 0, -1] instead.
+  //  current_scan_target_       goes from [1][2,4,6] up to [1][3,5,6] -- is the doc key containing,
+  //                             for each range column, the value (option) referenced by the
+  //                             corresponding index (updated along with current_scan_target_idxs_).
+  std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_cols_scan_options_;
+  mutable std::vector<std::vector<PrimitiveValue>::const_iterator> current_scan_target_idxs_;
+  mutable DocKey current_scan_target_;
+
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 

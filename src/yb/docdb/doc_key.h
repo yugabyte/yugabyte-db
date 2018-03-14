@@ -93,6 +93,11 @@ class DocKey {
   // Clear the range components of the document key only.
   void ClearRangeComponents();
 
+  // Resize the range components:
+  //  - drop elements (primitive values) from the end if new_size is smaller than the old size.
+  //  - append kNull primitive values (default constructor) if new_size is bigger than the old size.
+  void ResizeRangeComponents(int new_size);
+
   DocKeyHash hash() const {
     return hash_;
   }
@@ -143,6 +148,8 @@ class DocKey {
   bool HashedComponentsEqual(const DocKey& other) const;
 
   void AddRangeComponent(const PrimitiveValue& val);
+
+  void SetRangeComponent(const PrimitiveValue& val, int idx);
 
   int CompareTo(const DocKey& other) const;
 

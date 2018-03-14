@@ -2545,7 +2545,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             request_.hashed_column_values(), schema_, 0,
             schema_.num_hash_key_columns(), &hashed_components));
 
-        DocQLScanSpec spec(projection, request_.hash_code(), -1, hashed_components,
+        DocQLScanSpec spec(projection, request_.hash_code(), boost::none, hashed_components,
             request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
             request_.query_id());
 
@@ -2801,9 +2801,9 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   QLTableRow non_static_row;
   QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
 
-  // In case when we are continuing a select with a paging state, the static columns for the next
-  // row to fetch are not included in the first iterator and we need to fetch them with a separate
-  // spec and iterator before beginning the normal fetch below.
+  // In case when we are continuing a select with a paging state, or when using a reverse scan,
+  // the static columns for the next row to fetch are not included in the first iterator and we
+  // need to fetch them with a separate spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
     std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
@@ -2857,6 +2857,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       }
     } else {
       if (last_read_static) {
+
         // If the next row to be read is not static, deal with it later, as we do not know whether
         // the non-static row corresponds to this static row; if the non-static row doesn't
         // correspond to this static row, we will have to add it later, so set static_dealt_with to
@@ -2867,8 +2868,8 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
         }
 
         AddProjection(non_static_projection, &static_row);
-        RETURN_NOT_OK(AddRowToResult(
-            spec, static_row, row_count_limit, offset, resultset, &match_count, &num_rows_skipped));
+        RETURN_NOT_OK(AddRowToResult(spec, static_row, row_count_limit, offset, resultset,
+                                     &match_count, &num_rows_skipped));
       } else {
         // We also have to do the join if we are not reading any static columns, as Cassandra
         // reports nulls for static rows with no corresponding non-static row
@@ -2877,7 +2878,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                                static_projection,
                                                static_row,
                                                &non_static_row);
-          // Add the static row is the join was not successful and it is the first time we are
+          // Add the static row if the join was not successful and it is the first time we are
           // dealing with this static row
           if (!join_successful && !static_dealt_with) {
             AddProjection(non_static_projection, &static_row);

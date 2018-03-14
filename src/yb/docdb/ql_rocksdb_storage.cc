@@ -53,10 +53,10 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request
                                                   static_row_spec,
                                                   ReadHybridTime* req_read_time) const {
   // Populate dockey from QL key columns.
-  int32_t hash_code = request.has_hash_code() ?
-      static_cast<docdb::DocKeyHash>(request.hash_code()) : -1;
-  int32_t max_hash_code = request.has_max_hash_code() ?
-      static_cast<docdb::DocKeyHash>(request.max_hash_code()) : -1;
+  auto hash_code = request.has_hash_code() ?
+      boost::make_optional<int32_t>(request.hash_code()) : boost::none;
+  auto max_hash_code = request.has_max_hash_code() ?
+      boost::make_optional<int32_t>(request.max_hash_code()) : boost::none;
 
   vector<PrimitiveValue> hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
@@ -86,13 +86,17 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request
       static_row_spec->reset(new DocQLScanSpec(static_projection, hashed_doc_key,
           request.query_id(), request.is_forward_scan()));
     }
+  } else if (!request.is_forward_scan() && include_static_columns) {
+      const DocKey hashed_doc_key(hash_code ? *hash_code : 0, hashed_components);
+      static_row_spec->reset(new DocQLScanSpec(static_projection, hashed_doc_key,
+          request.query_id(), /* is_forward_scan = */ true));
   }
 
   // Construct the scan spec basing on the WHERE condition.
   spec->reset(new DocQLScanSpec(schema, hash_code, max_hash_code, hashed_components,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.query_id(), request.is_forward_scan(), include_static_columns,
-      start_sub_doc_key.doc_key()));
+      request.query_id(), request.is_forward_scan(),
+      request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();
 }
 
@@ -122,10 +126,10 @@ CHECKED_STATUS QLRocksDBStorage::BuildYQLScanSpec(const PgsqlReadRequestPB& requ
                                                   common::PgsqlScanSpec::UniPtr* spec,
                                                   ReadHybridTime* req_read_time) const {
   // Populate dockey from QL key columns.
-  int32_t hash_code = request.has_hash_code() ?
-      static_cast<docdb::DocKeyHash>(request.hash_code()) : -1;
-  int32_t max_hash_code = request.has_max_hash_code() ?
-      static_cast<docdb::DocKeyHash>(request.max_hash_code()) : -1;
+  auto hash_code = request.has_hash_code() ?
+      boost::make_optional<int32_t>(request.hash_code()) : boost::none;
+  auto max_hash_code = request.has_max_hash_code() ?
+      boost::make_optional<int32_t>(request.max_hash_code()) : boost::none;
   vector<PrimitiveValue> hashed_components;
   RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request.partition_column_values(),
                                              schema,
