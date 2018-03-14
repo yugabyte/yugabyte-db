@@ -403,6 +403,7 @@ class ClusterControl:
     def get_master_only_flags(self, daemon_id):
         command_list = [
             "--replication_factor={}".format(self.options.replication_factor),
+            "--yb_num_shards_per_tserver {}".format(self.options.num_shards_per_tserver)
         ]
 
         if not self.options.is_shell_master:
