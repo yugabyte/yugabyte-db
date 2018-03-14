@@ -38,6 +38,11 @@ import java.util.TreeSet;
 
 public class TestOrderedColumns extends BaseCQLTest {
 
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 300;
+  }
+
   private void createTable(String type1, String type2, String orderStmt, boolean invalid)
       throws Exception {
     String createStmt = String.format("CREATE TABLE test_create " +
