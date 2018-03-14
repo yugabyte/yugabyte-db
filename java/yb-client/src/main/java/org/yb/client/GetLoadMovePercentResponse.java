@@ -22,7 +22,7 @@ public class GetLoadMovePercentResponse extends YRpcResponse {
   private Master.MasterErrorPB serverError;
   private boolean hasRetriableErr = false;
 
-  GetLoadMovePercentResponse(
+  public GetLoadMovePercentResponse(
       long ellapsedMillis, String masterUUID, double percent,
       Master.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
