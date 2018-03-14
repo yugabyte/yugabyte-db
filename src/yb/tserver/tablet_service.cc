@@ -1298,7 +1298,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     return;
   }
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
-  LOG_IF(WARNING, s.ok()) << "Start remote bootstrap failed: " << s;
+  LOG_IF(WARNING, !s.ok()) << "Start remote bootstrap failed: " << s;
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
 }
