@@ -63,6 +63,8 @@ class IndexReader {
   // that was allocated in block cache.
   virtual size_t ApproximateMemoryUsage() const = 0;
 
+  virtual void CheckTableReader(TableReader* reader) {}
+
  protected:
   ComparatorPtr comparator_;
 };
@@ -164,12 +166,12 @@ class MultiLevelIndexReader : public IndexReader {
 
   // Read the top level index from the file and create an instance for `MultiLevelIndexReader`.
   static Result<std::unique_ptr<MultiLevelIndexReader>> Create(
-      BlockBasedTable* table, RandomAccessFileReader* file, const Footer& footer, int num_levels,
+      RandomAccessFileReader* file, const Footer& footer, int num_levels,
       const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator,
       std::unique_ptr<TwoLevelIteratorState> state);
 
   MultiLevelIndexReader(
-      BlockBasedTable* table, const ComparatorPtr& comparator, int num_levels,
+      const ComparatorPtr& comparator, int num_levels,
       std::unique_ptr<Block> top_level_index_block,
       std::unique_ptr<TwoLevelIteratorState> state)
       : IndexReader(comparator),
@@ -192,6 +194,10 @@ class MultiLevelIndexReader : public IndexReader {
 
   size_t ApproximateMemoryUsage() const override {
     return top_level_index_block_->ApproximateMemoryUsage();
+  }
+
+  void CheckTableReader(TableReader* reader) override {
+    state_->CheckTableReader(reader);
   }
 
   const int num_levels_;

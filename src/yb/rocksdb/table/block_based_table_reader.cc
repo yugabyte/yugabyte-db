@@ -59,7 +59,9 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/util/logging.h"
@@ -958,6 +960,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   // index reader has already been pre-populated.
   IndexReader* index_reader = rep_->data_index_reader.get(std::memory_order_acquire);
   if (index_reader) {
+    index_reader->CheckTableReader(this);
     return index_reader->NewIterator(input_iter, read_options.total_order_seek);
   }
   PERF_TIMER_GUARD(read_index_block_nanos);
@@ -981,6 +984,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
 
     if (cache_handle != nullptr) {
       index_reader = static_cast<IndexReader*>(block_cache->Value(cache_handle));
+      index_reader->CheckTableReader(this);
     } else {
     // Create index reader and put it in the cache.
     std::unique_ptr<IndexReader> index_reader_unique;
@@ -994,10 +998,9 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     if (s.ok()) {
       assert(cache_handle != nullptr);
       index_reader = index_reader_unique.release();
+      index_reader->CheckTableReader(this);
     } else {
-
-      // make sure if something goes wrong, data_index_reader shall remain intact.
-
+        // make sure if something goes wrong, data_index_reader shall remain intact.
         return ReturnErrorIterator(s, input_iter);
       }
     }
@@ -1029,6 +1032,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
           return ReturnErrorIterator(s, input_iter);
         }
       }
+      index_reader->CheckTableReader(this);
       return index_reader->NewIterator(input_iter, read_options.total_order_seek);
     }
   }
@@ -1154,19 +1158,33 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
         block_type_(block_type) {}
 
   InternalIterator* NewSecondaryIterator(const Slice& index_value) override {
-    return table_->NewDataBlockIterator(read_options_, index_value, block_type_);
+    return table_.load(std::memory_order_relaxed)->NewDataBlockIterator(
+        read_options_, index_value, block_type_);
   }
 
   bool PrefixMayMatch(const Slice& internal_key) override {
     if (read_options_.total_order_seek || skip_filters_) {
       return true;
     }
-    return table_->PrefixMayMatch(internal_key);
+    return table_.load(std::memory_order_relaxed)->PrefixMayMatch(internal_key);
   }
+
+  void CheckTableReader(TableReader* reader) override {
+    auto bbt = pointer_cast<BlockBasedTable*>(reader);
+    if (table_.load(std::memory_order_acquire) != bbt) {
+      table_.store(bbt, std::memory_order_release);
+      YB_LOG_EVERY_N_SECS(ERROR, 5) << "BlockEntryIteratorState table reader check failed: "
+          << "table_=" << table_ << " reader=" << reader;
+      if (!is_stack_trace_logged_.exchange(true, std::memory_order_acq_rel)) {
+        LOG(ERROR) << yb::GetStackTrace();
+      }
+    }
+  };
 
  private:
   // Don't own table_
-  BlockBasedTable* const table_;
+  std::atomic<BlockBasedTable*> table_;
+  std::atomic<bool> is_stack_trace_logged_{false};
   const ReadOptions read_options_;
   const bool skip_filters_;
   const BlockType block_type_;
@@ -1542,7 +1560,7 @@ Status BlockBasedTable::CreateDataBlockIndexReader(
       auto state = std::make_unique<BlockEntryIteratorState>(
           this, ReadOptions::kDefault, skip_filters, BlockType::kIndex);
       auto result = MultiLevelIndexReader::Create(
-          this, file, footer, num_levels, footer.index_handle(), env, comparator, std::move(state));
+          file, footer, num_levels, footer.index_handle(), env, comparator, std::move(state));
       RETURN_NOT_OK(result);
       *index_reader = std::move(*result);
       return Status::OK();

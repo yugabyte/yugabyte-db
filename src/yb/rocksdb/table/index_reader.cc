@@ -277,15 +277,15 @@ class MultiLevelIterator : public InternalIterator {
 };
 
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
-    BlockBasedTable* table, RandomAccessFileReader* file, const Footer& footer,
-    const int num_levels, const BlockHandle& top_level_index_handle, Env* env,
+    RandomAccessFileReader* file, const Footer& footer, const int num_levels,
+    const BlockHandle& top_level_index_handle, Env* env,
     const ComparatorPtr& comparator, std::unique_ptr<TwoLevelIteratorState> state) {
   std::unique_ptr<Block> index_block;
   RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
       file, footer, ReadOptions::kDefault, top_level_index_handle, &index_block, env));
 
   return std::make_unique<MultiLevelIndexReader>(
-      table, comparator, num_levels, std::move(index_block), std::move(state));
+      comparator, num_levels, std::move(index_block), std::move(state));
 }
 
 InternalIterator* MultiLevelIndexReader::NewIterator(BlockIter* iter, bool) {
