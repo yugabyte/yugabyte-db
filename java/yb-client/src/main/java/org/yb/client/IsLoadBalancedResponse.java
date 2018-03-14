@@ -20,9 +20,9 @@ import org.yb.master.Master;
 public class IsLoadBalancedResponse extends YRpcResponse {
   private Master.MasterErrorPB serverError;
 
-  IsLoadBalancedResponse(long ellapsedMillis,
-                         String masterUUID,
-                         Master.MasterErrorPB error) {
+  public IsLoadBalancedResponse(long ellapsedMillis,
+                                String masterUUID,
+                                Master.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
     serverError = error;
   }

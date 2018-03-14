@@ -427,7 +427,7 @@ Status SysCatalogTable::GoIntoShellMode() {
                                           master_->fs_manager()->uuid(),
                                           yb::OpId()));
   RETURN_NOT_OK(tablet_peer_->tablet_metadata()->DeleteSuperBlock());
-
+  RETURN_NOT_OK(master_->fs_manager()->DeleteFileSystemLayout());
   tablet_peer_.reset();
   apply_pool_.reset();
   raft_pool_.reset();

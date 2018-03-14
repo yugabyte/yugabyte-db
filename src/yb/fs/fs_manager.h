@@ -106,12 +106,17 @@ struct FsManagerOpts {
 // and it's responsible for abstracting the file-system layout.
 //
 // The user should not be aware of where files are placed,
-// but instead should interact with the storage in terms of "open the block xyz"
+// but instead should interact with the storage in terms of "open the file xyz"
 // or "write a new schema metadata file for table kwz".
 //
-// The current layout is:
-//    <yb.root.dir>/data/
-//    <yb.root.dir>/data/<prefix-0>/<prefix-2>/<prefix-4>/<name>
+// The current top-level dir layout is <yb.root.dir>/yb-data/<server>/. Subdirs under it are:
+//     logs/
+//     instance
+//     wals/<table>/<tablet>
+//     tablet-meta/<tablet>
+//     data/rocksdb/<table>/<tablet>/
+//     consensus-meta/<tablet>
+
 class FsManager {
  public:
   static const char *kWalDirName;
@@ -134,6 +139,9 @@ class FsManager {
   //
   // Returns an error if the file system is already initialized.
   CHECKED_STATUS CreateInitialFileSystemLayout();
+
+  // Deletes the top level yb-data directory. Needed for a shell process that can get restarted.
+  CHECKED_STATUS DeleteFileSystemLayout();
 
   void DumpFileSystemTree(std::ostream& out);
 

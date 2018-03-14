@@ -256,6 +256,21 @@ Status FsManager::Open() {
   return Status::OK();
 }
 
+Status FsManager::DeleteFileSystemLayout() {
+  CHECK(!read_only_);
+  for (const string& root : canonicalized_all_fs_roots_) {
+    string target_dir = GetServerTypeDataPath(root, server_type_);
+    bool is_dir = false;
+    Status s = env_->IsDirectory(target_dir, &is_dir);
+    if (!s.ok() || !is_dir) {
+      LOG(INFO) << target_dir << " does not exist or is not a directory.";
+      continue;
+    }
+    RETURN_NOT_OK(env_->DeleteRecursively(target_dir));
+  }
+  return Status::OK();
+}
+
 Status FsManager::CreateInitialFileSystemLayout() {
   CHECK(!read_only_);
 
