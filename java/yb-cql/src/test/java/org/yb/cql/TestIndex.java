@@ -782,14 +782,13 @@ public class TestIndex extends BaseCQLTest {
                 "Row[false, 1, a, 1]");
     assertInvalidUniqueIndexDML("insert into test_cond_unique (k, v1, v2) values (2, 2, 'a') " +
                                 "if not exists;", "test_cond_unique_by_v2");
-    assertQuery("select * from test_cond_unique;",
-                new HashSet<String>(Arrays.asList("Row[1, 1, a]")));
+    assertQueryRowsUnordered("select * from test_cond_unique;",
+                             "Row[1, 1, a]");
 
     assertQuery("insert into test_cond_unique (k, v1, v2) values (2, 2, 'b') if not exists;",
                 "Row[true]");
-    assertQuery("select * from test_cond_unique;",
-                new HashSet<String>(Arrays.asList("Row[1, 1, a]",
-                                                  "Row[2, 2, b]")));
+    assertQueryRowsUnordered("select * from test_cond_unique;",
+                             "Row[1, 1, a]", "Row[2, 2, b]");
   }
 
   @Test

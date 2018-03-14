@@ -66,6 +66,10 @@ class QLScanRange {
   // Return the inclusive lower and upper range values to scan.
   std::vector<QLValuePB> range_values(bool lower_bound) const;
 
+  bool has_in_range_options() const {
+    return has_in_range_options_;
+  }
+
   // Intersect / union / complement operators.
   QLScanRange& operator&=(const QLScanRange& other);
   QLScanRange& operator|=(const QLScanRange& other);
@@ -80,6 +84,10 @@ class QLScanRange {
 
   // Mapping of column id to the column value ranges (inclusive lower/upper bounds) to scan.
   std::unordered_map<ColumnId, QLRange> ranges_;
+
+  // Whether the condition has an IN condition on a range (clustering) column.
+  // Used in doc_ql_scanspec to try to construct the set of options for a multi-point scan.
+  bool has_in_range_options_ = false;
 };
 
 // A scan specification for a QL scan. It may be used to scan either a specified doc key

@@ -36,7 +36,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
@@ -53,6 +52,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -494,11 +494,39 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected void assertQuery(Statement stmt, Set<String> expectedRows) {
     ResultSet rs = session.execute(stmt);
-    HashSet<String> actualRows = new HashSet<>();
+    Set<String> actualRows = new HashSet<>();
     for (Row row : rs) {
       actualRows.add(row.toString());
     }
     assertEquals(expectedRows, actualRows);
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is not enforced.
+   * To be used, for instance, when querying over multiple hashes where the order is defined by the
+   * hash function not just the values.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the expected rows in no particular order
+   */
+  protected void assertQueryRowsUnordered(String stmt, String... expectedRows) {
+    assertQuery(stmt, Arrays.stream(expectedRows).collect(Collectors.toSet()));
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is enforced.
+   * To be used, for instance, for queries where (range) column ordering (ASC/DESC) is being tested.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the rows in the expected order
+   */
+  protected void assertQueryRowsOrdered(String stmt, String... expectedRows) {
+    ResultSet rs = session.execute(stmt);
+    List<String> actualRows = new ArrayList<String>();
+    for (Row row : rs) {
+      actualRows.add(row.toString());
+    }
+    assertEquals(Arrays.stream(expectedRows).collect(Collectors.toList()), actualRows);
   }
 
   // blob type utils

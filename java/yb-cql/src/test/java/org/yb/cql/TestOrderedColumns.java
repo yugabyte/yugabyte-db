@@ -427,4 +427,30 @@ public class TestOrderedColumns extends BaseCQLTest {
 
     dropTable();
   }
+
+  @Test
+  public void testOrderingWithStaticColumns() throws Exception {
+    session.execute("CREATE TABLE test_static (h int, s int static, r1 int, r2 int, v int, " +
+        "primary key((h), r1, r2)) WITH CLUSTERING ORDER BY(r1 DESC, r2 ASC);");
+
+    session.execute("INSERT INTO test_static (h, s, r1, r2, v) VALUES (1, 2, 1, 1, 1);");
+    session.execute("INSERT INTO test_static (h, s, r1, r2, v) VALUES (1, 2, 1, 2, 1);");
+    session.execute("INSERT INTO test_static (h, s, r1, r2, v) VALUES (1, 2, 2, 1, 1);");
+    session.execute("INSERT INTO test_static (h, s, r1, r2, v) VALUES (1, 2, 2, 2, 1);");
+
+    String selectTemplate = "SELECT h, s, r1, r2, v FROM test_static WHERE h = 1";
+
+    assertQueryRowsOrdered(selectTemplate,
+        "Row[1, 2, 2, 1, 1]",
+        "Row[1, 2, 2, 2, 1]",
+        "Row[1, 2, 1, 1, 1]",
+        "Row[1, 2, 1, 2, 1]");
+
+    assertQueryRowsOrdered(selectTemplate + " ORDER BY r1 ASC, r2 DESC",
+        "Row[1, 2, 1, 2, 1]",
+        "Row[1, 2, 1, 1, 1]",
+        "Row[1, 2, 2, 2, 1]",
+        "Row[1, 2, 2, 1, 1]");
+  }
+
 }

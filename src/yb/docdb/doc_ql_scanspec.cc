@@ -15,6 +15,8 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/rocksdb/db/compaction.h"
 
+using std::vector;
+
 namespace yb {
 namespace docdb {
 
@@ -23,22 +25,20 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const rocksdb::QueryId query_id,
                              const bool is_forward_scan)
     : QLScanSpec(nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
-      range_(nullptr),
+      range_bounds_(nullptr),
       schema_(schema),
-      hash_code_(kUnspecifiedHashCode_),
-      max_hash_code_(kUnspecifiedHashCode_),
       hashed_components_(nullptr),
+      include_static_columns_(false),
       doc_key_(doc_key),
       start_doc_key_(DocKey()),
       lower_doc_key_(DocKey()),
       upper_doc_key_(DocKey()),
-      include_static_columns_(false),
       query_id_(query_id) {
 }
 
 DocQLScanSpec::DocQLScanSpec(const Schema& schema,
-                             const int32_t hash_code,
-                             const int32_t max_hash_code,
+                             const boost::optional<int32_t> hash_code,
+                             const boost::optional<int32_t> max_hash_code,
                              const std::vector<PrimitiveValue>& hashed_components,
                              const QLConditionPB* condition,
                              const rocksdb::QueryId query_id,
@@ -46,29 +46,109 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
                              const bool include_static_columns,
                              const DocKey& start_doc_key)
     : QLScanSpec(condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
-      range_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
+      range_bounds_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       hashed_components_(&hashed_components),
+      include_static_columns_(include_static_columns),
       doc_key_(),
       start_doc_key_(start_doc_key),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
-      include_static_columns_(include_static_columns),
       query_id_(query_id) {
+
+  // If the hash key is fixed and we have range columns with IN condition, try to construct the
+  // exact list of range options to scan for.
+  if (!hashed_components_->empty() && schema_.num_range_key_columns() > 0 &&
+      range_bounds_ && range_bounds_->has_in_range_options()) {
+    DCHECK(condition);
+    range_options_ =
+        std::make_shared<std::vector<std::vector<PrimitiveValue>>>(schema_.num_range_key_columns());
+    InitRangeOptions(*condition);
+
+    // Range options are only valid if all range columns are set (i.e. have one or more options).
+    for (int i = 0; i < schema_.num_range_key_columns(); i++) {
+      if ((*range_options_)[i].empty()) {
+        range_options_ = nullptr;
+        break;
+      }
+    }
+  }
+}
+
+void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
+  size_t num_hash_cols = schema_.num_hash_key_columns();
+  switch (condition.op()) {
+    case QLOperator::QL_OP_AND:
+      for (const auto& operand : condition.operands()) {
+        DCHECK(operand.has_condition());
+        InitRangeOptions(operand.condition());
+      }
+      break;
+
+    case QLOperator::QL_OP_EQUAL:
+    case QLOperator::QL_OP_IN: {
+      DCHECK_EQ(condition.operands_size(), 2);
+      // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
+      if (condition.operands(0).expr_case() != QLExpressionPB::kColumnId) {
+        return;
+      }
+
+      // Skip any RHS expressions that are not evaluated yet.
+      if (condition.operands(1).expr_case() != QLExpressionPB::kValue) {
+        return;
+      }
+
+      ColumnId col_id = ColumnId(condition.operands(0).column_id());
+      int col_idx = schema_.find_column_by_id(col_id);
+
+      // Skip any non-range columns.
+      if (!schema_.is_range_column(col_idx)) {
+        return;
+      }
+
+      ColumnSchema::SortingType sortingType = schema_.column(col_idx).sorting_type();
+
+      if (condition.op() == QL_OP_EQUAL) {
+        auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
+        (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+      } else { // QL_OP_IN
+        DCHECK_EQ(condition.op(), QL_OP_IN);
+        DCHECK(condition.operands(1).value().has_list_value());
+        const auto &options = condition.operands(1).value().list_value();
+        int opt_size = options.elems_size();
+        (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
+
+        // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
+        bool is_reverse_order = is_forward_scan_ ^ (sortingType == ColumnSchema::kAscending);
+        for (int i = 0; i < opt_size; i++) {
+          int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
+          const auto &elem = options.elems(elem_idx);
+          auto pv = PrimitiveValue::FromQLValuePB(elem, sortingType);
+          (*range_options_)[col_idx - num_hash_cols].push_back(std::move(pv));
+        }
+      }
+
+      break;
+    }
+
+    default:
+      // We don't support any other operators at this level.
+      break;
+  }
 }
 
 DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
-    if (lower_bound && hash_code_ != kUnspecifiedHashCode_) {
-      return DocKey(hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
+    if (lower_bound && hash_code_) {
+      return DocKey(*hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
     }
     // use upper bound hash code if set in request (for scans using token)
-    if (!lower_bound && max_hash_code_ != kUnspecifiedHashCode_) {
-      return DocKey(max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
+    if (!lower_bound && max_hash_code_) {
+      return DocKey(*max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
     }
     return DocKey();
   }
@@ -77,36 +157,43 @@ DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
   // callers to provide it.
   // https://yugabyte.atlassian.net/browse/ENG-3416
 
-  DocKeyHash min_hash = hash_code_ == kUnspecifiedHashCode_ ?
-      std::numeric_limits<DocKeyHash>::min() : static_cast<DocKeyHash> (hash_code_);
-  DocKeyHash max_hash = max_hash_code_ == kUnspecifiedHashCode_ ?
-      std::numeric_limits<DocKeyHash>::max() : static_cast<DocKeyHash> (max_hash_code_);
+  DocKeyHash min_hash = hash_code_ ?
+      static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
+  DocKeyHash max_hash = max_hash_code_ ?
+      static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
 
-  // if hash_code not set (-1) default to 0 (start from the beginning)
+  // if hash_code not set default to 0 (start from the beginning)
   return DocKey(lower_bound ? min_hash : max_hash,
       *hashed_components_, range_components(lower_bound));
 }
 
 std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound) const {
   std::vector<PrimitiveValue> result;
-  if (range_ != nullptr) {
-    const std::vector<QLValuePB> range_values = range_->range_values(lower_bound);
+
+  if (range_bounds_ != nullptr) {
+    const std::vector<QLValuePB> range_values = range_bounds_->range_values(lower_bound);
     result.reserve(range_values.size());
     size_t column_idx = schema_.num_hash_key_columns();
     for (const auto& value : range_values) {
       const auto& column = schema_.column(column_idx);
       if (IsNull(value)) {
-        result.emplace_back(PrimitiveValue(lower_bound ? ValueType::kLowest : ValueType::kHighest));
+        result.emplace_back(lower_bound ? ValueType::kLowest : ValueType::kHighest);
       } else {
         result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));
       }
       column_idx++;
     }
   }
+
   if (!lower_bound) {
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    result.emplace_back(PrimitiveValue(ValueType::kHighest));
+    result.emplace_back(ValueType::kHighest);
+  } else if (schema_.has_statics() && !include_static_columns_ && result.empty()) {
+    // If we want to skip static columns, make sure the range components are non-empty.
+    // We use kMinPrimitiveValueType instead of kLowest because it compares as higher than
+    // kHybridTime in RocksDB.
+    result.emplace_back(kMinPrimitiveValueType);
   }
   return result;
 }
@@ -150,7 +237,8 @@ Status DocQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
 
   // If start doc_key is set, that is the lower bound for the scan range.
   if (lower_bound && !start_doc_key_.empty()) {
-    if (range_ != nullptr && !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
+    if (range_bounds_ != nullptr &&
+        !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
       return STATUS_SUBSTITUTE(Corruption,
           "Invalid start_doc_key: $0. Range: $1, $2",
           start_doc_key_.ToString(),
@@ -164,7 +252,7 @@ Status DocQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
   if (lower_bound) {
     *key = lower_doc_key_;
 
-    // For lower-bound key, if static columns should be incldued in the scan, the lower-bound key
+    // For lower-bound key, if static columns should be included in the scan, the lower-bound key
     // should be the hash key with no range components in order to include the static columns.
     if (include_static_columns_) {
       key->ClearRangeComponents();

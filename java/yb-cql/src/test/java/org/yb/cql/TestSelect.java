@@ -766,6 +766,16 @@ public class TestSelect extends BaseCQLTest {
       assertTrue(expected_values.isEmpty());
     }
 
+    // Test basic IN condition on both hash and range columns.
+    {
+      String stmt = "SELECT h1 FROM in_test WHERE " +
+          "h1 IN (3, -1, 4, 7, 1) AND h2 in ('h7', 'h3', 'h1', 'h4') AND " +
+          "r1 IN (107, -100, 101, 104) and r2 IN ('r101', 'foo', 'r107', 'r104')";
+
+      // Check rows: expecting no duplicates and ascending order.
+      assertQueryRowsOrdered(stmt, "Row[1]", "Row[4]", "Row[7]");
+    }
+
     // Test basic IN condition on regular column.
     {
       ResultSet rs = session.execute("SELECT * FROM in_test WHERE v1 IN (1006, 1002, -1)");
@@ -902,24 +912,30 @@ public class TestSelect extends BaseCQLTest {
 
     // Setup the table.
     session.execute("CREATE TABLE parallel_in_test(h1 int, h2 int, r1 int, v1 int," +
-                        "primary key ((h1, h2), r1))");
+                        "PRIMARY KEY ((h1, h2), r1))");
 
     PreparedStatement insert = session.prepare(
-        "INSERT INTO parallel_in_test(h1, h2, r1, v1) VALUES (?, ?, ?, ?)");
-    for (Integer i = 0; i < 400; i++) {
-      session.execute(insert.bind(i / 20, i % 20, new Integer(1), new Integer(1)));
+        "INSERT INTO parallel_in_test(h1, h2, r1, v1) VALUES (?, ?, 1, 1)");
+
+    for (Integer h1 = 0; h1 < 20; h1++) {
+      for (Integer h2 = 0; h2 < 20; h2++) {
+        session.execute(insert.bind(h1, h2));
+      }
     }
 
-    // SELECT statement: 200 options, 100 with actual results (i.e. for r = 1).
+    // SELECT statement: 200 (10 * 10 * 2), 100 with actual results (i.e. for r1 = 1).
+    // We expect 100 internal queries, one for each hash key option (the 2 range key options are
+    // handled in one multi-point query).
     String select = "SELECT * FROM parallel_in_test WHERE " +
-        "h1 IN (0,2,4,6,8,10,12,14,16,18) AND h2 IN (1,3,5,7,9,11,13,15,17,19) AND r1 IN (1,2)";
+        "h1 IN (0,2,4,6,8,10,12,14,16,18) AND h2 IN (1,3,5,7,9,11,13,15,17,19) AND " +
+        "r1 IN (0,1)";
 
     // Compute expected rows.
     List<String> expectedRows = new ArrayList<>();
     String rowTemplate = "Row[%d, %d, 1, 1]";
-    for (int i = 0; i < 20; i += 2) {
-      for (int j = 1; j < 20; j += 2) {
-        expectedRows.add(String.format(rowTemplate, i, j));
+    for (int h1 = 0; h1 < 20; h1 += 2) {
+      for (int h2 = 1; h2 < 20; h2 += 2) {
+        expectedRows.add(String.format(rowTemplate, h1, h2));
       }
     }
 
@@ -943,6 +959,195 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testClusteringInSparseData() throws Exception {
+    String createStmt = "CREATE TABLE in_sparse_cols_test(" +
+        "h int, r1 int, r2 int, r3 int, r4 int, r5 int, v int, " +
+        "PRIMARY KEY (h, r1, r2, r3, r4, r5)) " +
+        "WITH CLUSTERING ORDER BY (r1 DESC, r2 DESC, r3 DESC, r4 DESC, r5 DESC);";
+    session.execute(createStmt);
+
+    // Testing sparse table data with dense in queries, load only 5 rows.
+    String insertTemplate = "INSERT INTO in_sparse_cols_test(h, r1, r2, r3, r4, r5, v) " +
+        "VALUES (1, %d, %d, %d, %d, %d, 100)";
+    for (int i = 0; i < 50; i += 10) {
+      session.execute(String.format(insertTemplate, i % 50, (i + 10) % 50, (i + 20) % 50,
+                                    (i + 30) % 50, (i + 40) % 50));
+    }
+
+    // Up to 16 opts per column so around 1 mil total options.
+    String allOpts = "(-1, -3, 0, 4, 8, 10, 12, 20, 21, 22, 30, 32, 37, 40, 41, 43)";
+    String partialOpts = "(8, 10, 12, 20, 21, 22, 30, 32, 33, 37)";
+    String selectTemplate = "SELECT * FROM in_sparse_cols_test WHERE h = 1 AND " +
+        "r1 IN %s AND r2 IN %s AND r3 IN %s AND r4 IN %s AND r5 IN %s";
+
+
+    // Test basic select.
+    assertQueryRowsOrdered(
+        String.format(selectTemplate, allOpts, allOpts, allOpts, allOpts, allOpts),
+        "Row[1, 40, 0, 10, 20, 30, 100]",
+        "Row[1, 30, 40, 0, 10, 20, 100]",
+        "Row[1, 20, 30, 40, 0, 10, 100]",
+        "Row[1, 10, 20, 30, 40, 0, 100]",
+        "Row[1, 0, 10, 20, 30, 40, 100]");
+
+    // Test reverse order.
+    assertQueryRowsOrdered(String.format(selectTemplate + " ORDER BY r1 ASC",
+                                         allOpts, allOpts, allOpts, allOpts, allOpts),
+                           "Row[1, 0, 10, 20, 30, 40, 100]",
+                           "Row[1, 10, 20, 30, 40, 0, 100]",
+                           "Row[1, 20, 30, 40, 0, 10, 100]",
+                           "Row[1, 30, 40, 0, 10, 20, 100]",
+                           "Row[1, 40, 0, 10, 20, 30, 100]");
+
+    // Test partial options (missing 0 and 40 for r1)
+    assertQueryRowsOrdered(
+        String.format(selectTemplate, partialOpts, allOpts, allOpts, allOpts, allOpts),
+        "Row[1, 30, 40, 0, 10, 20, 100]",
+        "Row[1, 20, 30, 40, 0, 10, 100]",
+        "Row[1, 10, 20, 30, 40, 0, 100]");
+
+    // Test partial options (missing 0 and 40 for r5) plus reverse order.
+    assertQueryRowsOrdered(String.format(selectTemplate + " ORDER BY r1 ASC",
+                                         allOpts, allOpts, allOpts, allOpts, partialOpts),
+        "Row[1, 20, 30, 40, 0, 10, 100]",
+        "Row[1, 30, 40, 0, 10, 20, 100]",
+        "Row[1, 40, 0, 10, 20, 30, 100]");
+
+    // Test partial options (missing 0 and 40 for r3 and r4)
+    assertQueryRowsOrdered(
+        String.format(selectTemplate, allOpts, allOpts, partialOpts, partialOpts, allOpts),
+        "Row[1, 40, 0, 10, 20, 30, 100]",
+        "Row[1, 0, 10, 20, 30, 40, 100]");
+  }
+
+  @Test
+  public void testClusteringInSeeks() throws Exception {
+    String createTable = "CREATE TABLE in_range_test(h int, r1 int, r2 text, v int," +
+        " PRIMARY KEY((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC)";
+    session.execute(createTable);
+
+    String insertTemplate = "INSERT INTO in_range_test(h, r1, r2, v) VALUES (%d, %d, '%d', %d)";
+
+    for (int h = 0; h < 10; h++) {
+      for (int r1 = 0; r1 < 10; r1++) {
+        for (int r2 = 0; r2 < 10; r2++) {
+          int v = h * 100 + r1 * 10 + r2;
+          // Multiplying range keys by 10 so we can test sparser data with dense keys later.
+          // (i.e. several key options given by IN condition, in between two actual rows).
+          session.execute(String.format(insertTemplate, h, r1 * 10, r2 * 10, v));
+        }
+      }
+    }
+
+    // Test basic IN results and ordering.
+    {
+      String query =
+          "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (60, 80, 10) AND r2 IN ('70', '30')";
+
+      String[] rows = {"Row[1, 80, 30, 183]",
+                       "Row[1, 80, 70, 187]",
+                       "Row[1, 60, 30, 163]",
+                       "Row[1, 60, 70, 167]",
+                       "Row[1, 10, 30, 113]",
+                       "Row[1, 10, 70, 117]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // 3 * 2 = 6 options.
+      assertEquals(6, metrics.seekCount);
+    }
+
+    // Test IN results and ordering with non-existing keys.
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (70, -10, 20) AND " +
+          "r2 IN ('40', '10', '-10')";
+
+      String[] rows = {"Row[1, 70, 10, 171]",
+                       "Row[1, 70, 40, 174]",
+                       "Row[1, 20, 10, 121]",
+                       "Row[1, 20, 40, 124]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // 9 options, but the first seek should jump over 3 options (with r1 = -10).
+      assertEquals(7, metrics.seekCount);
+    }
+
+    // Test combining IN and equality conditions.
+    {
+      String query =
+          "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (80, -10, 0, 30) AND r2 = '50'";
+
+      String[] rows = {"Row[1, 80, 50, 185]",
+                       "Row[1, 30, 50, 135]",
+                       "Row[1, 0, 50, 105]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // 1 * 4 = 4 options.
+      assertEquals(4, metrics.seekCount);
+    }
+
+    // Test ORDER BY clause with IN (reverse scan).
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+          "r1 IN (70, 20) AND r2 IN ('40', '10') ORDER BY r1 ASC, r2 DESC";
+
+      String[] rows = {"Row[1, 20, 40, 124]",
+                       "Row[1, 20, 10, 121]",
+                       "Row[1, 70, 40, 174]",
+                       "Row[1, 70, 10, 171]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // 4 options, but reverse scans do 2 seeks for each option since PrevDocKey calls Seek twice
+      // internally.
+      assertEquals(8, metrics.seekCount);
+    }
+
+    // Test single IN option (equivalent to just using equality constraint).
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (90) AND r2 IN ('40')";
+
+      String[] rows = {"Row[1, 90, 40, 194]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      assertEquals(1, metrics.seekCount);
+    }
+
+    // Test dense IN target keys (with sparse table rows).
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+              "r1 IN (57, 59, 60, 61, 63, 65, 67, 73, 75, 80, 82, 83) AND " +
+              "r2 IN ('18', '19', '20', '23', '27', '31', '36', '40', '42', '43')";
+
+      String[] rows = {"Row[1, 80, 20, 182]",
+                       "Row[1, 80, 40, 184]",
+                       "Row[1, 60, 20, 162]",
+                       "Row[1, 60, 40, 164]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // There are 12 * 10 = 120 total target keys, but we should skip most of them as one seek in
+      // the DB will invalidate (jump over) several target keys:
+      // 1. Initialize start seek target as smallest target key.
+      // 2. Seek for current target key (will find the first DB key equal or bigger than target).
+      // 3. If that matches the current (or a bigger) target key we add to the result.
+      // 4. We continue seeking from the next target key.
+      // Note that r1 is sorted DESC, and r2 is sorted ASC, so e.g. [83, "18"] is the smallest key
+      // Seek No.   Seek For       Find       Matches
+      //    1      [83, "18"]    [80, "0"]       N
+      //    2      [80, "18"]    [80, "20"]      Y (Result row 1)
+      //    3      [80, "23"]    [80, "30"]      N
+      //    4      [80, "31"]    [80, "40"]      Y (Result row 2)
+      //    5      [80, "42"]    [80, "50"]      N
+      //    6      [75, "18"]    [70, "0"]       N
+      //    7      [67, "18"]    [60, "0"]       N
+      //    8      [60, "18"]    [60, "20"]      Y (Result row 3)
+      //    9      [60, "23"]    [60, "30"]      N
+      //   10      [60, "31"]    [60, "40"]      Y (Result row 4)
+      //   11      [60, "42"]    [60, "50"]      N
+      //   12      [59, "18"]    [50, "0"]       N (Bigger than largest target key so we are done)
+      assertEquals(12, metrics.seekCount);
+    }
+  }
+
+  @Test
   public void testStatementList() throws Exception {
     // Verify handling of empty statements.
     assertEquals(0, session.execute("").all().size());
@@ -955,14 +1160,14 @@ public class TestSelect extends BaseCQLTest {
   }
 
   // Execute query, assert results and return RocksDB metrics.
-  private RocksDBMetrics assertPartialRangeSpec(String tableName, String query, Set<String> rows)
+  private RocksDBMetrics assertPartialRangeSpec(String tableName, String query, String... rows)
       throws Exception {
     RocksDBMetrics beforeMetrics = getRocksDBMetric(tableName);
     LOG.info(tableName + " metric before: " + beforeMetrics);
-    assertQuery(query, rows);
+    assertQueryRowsOrdered(query, rows);
     RocksDBMetrics afterMetrics = getRocksDBMetric(tableName);
     LOG.info(tableName + " metric after: " + afterMetrics);
-    return afterMetrics.subtract(afterMetrics);
+    return afterMetrics.subtract(beforeMetrics);
   }
 
   @Test
@@ -982,12 +1187,12 @@ public class TestSelect extends BaseCQLTest {
 
       // Specify only r1 range in SELECT. Verify result.
       String query = "SELECT * FROM test_range WHERE h = 2 AND r1 >= 'r2' AND r1 <= 'r3';";
-      Set<String> rows = new HashSet<>(Arrays.asList("Row[2, r2, 1, 1]",
-                                                     "Row[2, r2, 2, 2]",
-                                                     "Row[2, r2, 3, 3]",
-                                                     "Row[2, r3, 1, 1]",
-                                                     "Row[2, r3, 2, 2]",
-                                                     "Row[2, r3, 3, 3]"));
+      String[] rows = {"Row[2, r2, 1, 1]",
+                       "Row[2, r2, 2, 2]",
+                       "Row[2, r2, 3, 3]",
+                       "Row[2, r3, 1, 1]",
+                       "Row[2, r3, 2, 2]",
+                       "Row[2, r3, 3, 3]"};
       RocksDBMetrics metrics1 = assertPartialRangeSpec("test_range", query, rows);
 
       // Insert some more rows
@@ -1031,18 +1236,18 @@ public class TestSelect extends BaseCQLTest {
       // Specify only r1 and r3 ranges in SELECT. Verify result.
       String query = "SELECT * FROM test_range WHERE " +
                      "h = 2 AND r1 >= 2 AND r1 <= 3 AND r3 >= 4 and r3 <= 5;";
-      Set<String> rows = new HashSet<>(Arrays.asList("Row[2, 2, r1, 4, 4]",
-                                                     "Row[2, 2, r1, 5, 5]",
-                                                     "Row[2, 2, r2, 4, 4]",
-                                                     "Row[2, 2, r2, 5, 5]",
-                                                     "Row[2, 2, r3, 4, 4]",
-                                                     "Row[2, 2, r3, 5, 5]",
-                                                     "Row[2, 3, r1, 4, 4]",
-                                                     "Row[2, 3, r1, 5, 5]",
-                                                     "Row[2, 3, r2, 4, 4]",
-                                                     "Row[2, 3, r2, 5, 5]",
-                                                     "Row[2, 3, r3, 4, 4]",
-                                                     "Row[2, 3, r3, 5, 5]"));
+      String[] rows = {"Row[2, 2, r1, 4, 4]",
+                       "Row[2, 2, r1, 5, 5]",
+                       "Row[2, 2, r2, 4, 4]",
+                       "Row[2, 2, r2, 5, 5]",
+                       "Row[2, 2, r3, 4, 4]",
+                       "Row[2, 2, r3, 5, 5]",
+                       "Row[2, 3, r1, 4, 4]",
+                       "Row[2, 3, r1, 5, 5]",
+                       "Row[2, 3, r2, 4, 4]",
+                       "Row[2, 3, r2, 5, 5]",
+                       "Row[2, 3, r3, 4, 4]",
+                       "Row[2, 3, r3, 5, 5]"};
       RocksDBMetrics metrics1 = assertPartialRangeSpec("test_range", query, rows);
 
       // Insert some more rows
