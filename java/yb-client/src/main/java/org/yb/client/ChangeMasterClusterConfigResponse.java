@@ -20,7 +20,8 @@ import org.yb.master.Master;
 public class ChangeMasterClusterConfigResponse extends YRpcResponse {
   private Master.MasterErrorPB serverError;
 
-  ChangeMasterClusterConfigResponse(long ellapsedMillis, String masterUUID, Master.MasterErrorPB error) {
+  public ChangeMasterClusterConfigResponse(long ellapsedMillis, String masterUUID,
+                                           Master.MasterErrorPB error) {
     super(ellapsedMillis, masterUUID);
     serverError = error;
   }
