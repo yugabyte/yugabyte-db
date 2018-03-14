@@ -85,8 +85,6 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
     : PgsqlScanSpec(YQL_CLIENT_PGSQL),
       query_id_(query_id),
       hashed_components_(nullptr),
-      hash_code_(kUnspecifiedHashCode_),
-      max_hash_code_(kUnspecifiedHashCode_),
       doc_key_(doc_key),
       start_doc_key_(DocKey()),
       lower_doc_key_(DocKey()),
@@ -97,8 +95,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
                                    const std::vector<PrimitiveValue>& hashed_components,
-                                   const int32_t hash_code,
-                                   const int32_t max_hash_code,
+                                   const boost::optional<int32_t> hash_code,
+                                   const boost::optional<int32_t> max_hash_code,
                                    const PgsqlExpressionPB *bool_expr,
                                    const DocKey& start_doc_key,
                                    const bool is_forward_scan)
@@ -123,20 +121,20 @@ DocKey DocPgsqlScanSpec::bound_key(const bool lower_bound) const {
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
-    if (lower_bound && hash_code_ != kUnspecifiedHashCode_) {
-      return DocKey(hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
+    if (lower_bound && hash_code_) {
+      return DocKey(*hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
     }
     // use upper bound hash code if set in request (for scans using token)
-    if (!lower_bound && max_hash_code_ != kUnspecifiedHashCode_) {
-      return DocKey(max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
+    if (!lower_bound && max_hash_code_) {
+      return DocKey(*max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
     }
     return DocKey();
   }
 
-  DocKeyHash min_hash = hash_code_ == kUnspecifiedHashCode_ ?
-      std::numeric_limits<DocKeyHash>::min() : static_cast<DocKeyHash> (hash_code_);
-  DocKeyHash max_hash = max_hash_code_ == kUnspecifiedHashCode_ ?
-      std::numeric_limits<DocKeyHash>::max() : static_cast<DocKeyHash> (max_hash_code_);
+  DocKeyHash min_hash = hash_code_ ?
+      static_cast<DocKeyHash> (*hash_code_) : std::numeric_limits<DocKeyHash>::min();
+  DocKeyHash max_hash = max_hash_code_ ?
+      static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
 
 
   // if hash_code not set (-1) default to 0 (start from the beginning)

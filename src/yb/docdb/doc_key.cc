@@ -140,6 +140,10 @@ void DocKey::ClearRangeComponents() {
   range_group_.clear();
 }
 
+void DocKey::ResizeRangeComponents(int new_size) {
+  range_group_.resize(new_size);
+}
+
 namespace {
 
 class DecodeDocKeyCallback {
@@ -312,6 +316,11 @@ bool DocKey::HashedComponentsEqual(const DocKey& other) const {
 
 void DocKey::AddRangeComponent(const PrimitiveValue& val) {
   range_group_.push_back(val);
+}
+
+void DocKey::SetRangeComponent(const PrimitiveValue& val, int idx) {
+  DCHECK_LT(idx, range_group_.size());
+  range_group_[idx] = val;
 }
 
 int DocKey::CompareTo(const DocKey& other) const {

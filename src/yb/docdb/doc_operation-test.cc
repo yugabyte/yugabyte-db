@@ -414,7 +414,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
-                             /* request = */ nullptr, rocksdb::kDefaultQueryId);
+      /* request = */ nullptr, rocksdb::kDefaultQueryId);
+
   DocRowwiseIterator ql_iter(
       schema, schema, kNonTransactionalOperationContext, doc_db(),
       MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));
@@ -461,7 +462,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue::Int32(101)});
   DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
-                                    hashed_components_system, nullptr, rocksdb::kDefaultQueryId);
+      hashed_components_system, /* request = */ nullptr, rocksdb::kDefaultQueryId);
+
   DocRowwiseIterator ql_iter_system(
       schema, schema, kNonTransactionalOperationContext, doc_db(),
       MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(3000));

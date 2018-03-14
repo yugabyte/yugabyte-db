@@ -129,8 +129,7 @@ public class TestTransaction extends BaseCQLTest {
       session.execute("insert into test_txn1 (k, c1, c2) values (?, ?, ?);",
                       Integer.valueOf(i), Integer.valueOf(i), "v" + i);
     }
-    assertQuery("select * from test_txn1;",
-                new HashSet<String>(Arrays.asList("Row[1, 1, v1]", "Row[2, 2, v2]")));
+    assertQueryRowsUnordered("select * from test_txn1;", "Row[1, 1, v1]", "Row[2, 2, v2]");
 
     // Test a mix of insert/update/delete in the same transaction.
     session.execute("begin transaction" +
@@ -391,9 +390,9 @@ public class TestTransaction extends BaseCQLTest {
     }
 
     // Also verify that the rows are inserted indeed.
-    assertQuery("select k, v from test_write_conflicts",
-                new HashSet<>(Arrays.asList("Row[1, 1000]",
-                                            "Row[2, 2000]")));
+    assertQueryRowsUnordered("select k, v from test_write_conflicts",
+                             "Row[1, 1000]",
+                             "Row[2, 2000]");
   }
 
   @Test

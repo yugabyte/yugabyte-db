@@ -18,8 +18,6 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Random;
 
 import org.yb.YBTestRunner;
@@ -557,12 +555,12 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
                                   "with transactions = {'enabled' : true};"));
 
     // Verify the transactions property.
-    assertQuery("select table_name, transactions from system_schema.tables where " +
+    assertQueryRowsUnordered("select table_name, transactions from system_schema.tables where " +
                 "keyspace_name = '" + DEFAULT_TEST_KEYSPACE + "' and " +
                 "table_name in ('test_txn_1', 'test_txn_2', 'test_txn_3');",
-                new HashSet<String>(Arrays.asList("Row[test_txn_1, {enabled=false}]",
-                                                  "Row[test_txn_2, {enabled=false}]",
-                                                  "Row[test_txn_3, {enabled=true}]")));
+        "Row[test_txn_1, {enabled=false}]",
+        "Row[test_txn_2, {enabled=false}]",
+        "Row[test_txn_3, {enabled=true}]");
 
     // Test invalid transactions property settings.
     RunInvalidTableProperty("transactions = {'enabled' : 'bar'}");
