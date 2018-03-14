@@ -1385,19 +1385,19 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
     case INET: {
       QLValue temp_value;
       temp_value.set_inetaddress_value(*primitive_value.GetInetaddress());
-      ql_value->CopyFrom(temp_value.value());
+      *ql_value = std::move(*temp_value.mutable_value());
       return;
     }
     case UUID: {
       QLValue temp_value;
       temp_value.set_uuid_value(primitive_value.GetUuid());
-      ql_value->CopyFrom(temp_value.value());
+      *ql_value = std::move(*temp_value.mutable_value());
       return;
     }
     case TIMEUUID: {
       QLValue temp_value;
       temp_value.set_timeuuid_value(primitive_value.GetUuid());
-      ql_value->CopyFrom(temp_value.value());
+      *ql_value = std::move(*temp_value.mutable_value());
       return;
     }
     case STRING:

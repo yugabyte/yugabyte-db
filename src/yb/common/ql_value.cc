@@ -518,11 +518,10 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue key;
         RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
-        // TODO (mihnea) refactor QLValue to avoid copying here and below
-        add_map_key()->CopyFrom(key.value());
+        *add_map_key() = std::move(*key.mutable_value());
         QLValue value;
         RETURN_NOT_OK(value.Deserialize(values_type, client, data));
-        add_map_value()->CopyFrom(value.value());
+        *add_map_value() = std::move(*value.mutable_value());
       }
       return Status::OK();
     }
@@ -534,7 +533,7 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
-        add_set_elem()->CopyFrom(elem.value());
+        *add_set_elem() = std::move(*elem.mutable_value());
       }
       return Status::OK();
     }
@@ -546,7 +545,7 @@ Status QLValue::Deserialize(
       for (int i = 0; i < nr_elems; i++) {
         QLValue elem;
         RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
-        add_list_elem()->CopyFrom(elem.value());
+        *add_list_elem() = std::move(*elem.mutable_value());
       }
       return Status::OK();
     }
@@ -560,7 +559,7 @@ Status QLValue::Deserialize(
         RETURN_NOT_OK(value.Deserialize(ql_type->param_type(i), client, data));
         if (!value.IsNull()) {
           add_map_key()->set_int16_value(i);
-          add_map_value()->CopyFrom(value.value());
+          *add_map_value() = std::move(*value.mutable_value());
         }
       }
       return Status::OK();
@@ -578,10 +577,10 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue key;
             RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
-            add_frozen_elem()->CopyFrom(key.value());
+            *add_frozen_elem() = std::move(*key.mutable_value());
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(values_type, client, data));
-            add_frozen_elem()->CopyFrom(value.value());
+            *add_frozen_elem() = std::move(*value.mutable_value());
           }
           return Status::OK();
         }
@@ -592,7 +591,7 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
-            add_frozen_elem()->CopyFrom(elem.value());
+            *add_frozen_elem() = std::move(*elem.mutable_value());
           }
           return Status::OK();
         }
@@ -603,18 +602,18 @@ Status QLValue::Deserialize(
           for (int i = 0; i < nr_elems; i++) {
             QLValue elem;
             RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
-            add_frozen_elem()->CopyFrom(elem.value());
+            *add_frozen_elem() = std::move(*elem.mutable_value());
           }
           return Status::OK();
         }
 
         case USER_DEFINED_TYPE: {
-          size_t fields_size = type->udtype_field_names().size();
+          const size_t fields_size = type->udtype_field_names().size();
           for (size_t i = 0; i < fields_size; i++) {
             // TODO (mihnea) default to null if value missing (CQL behavior)
             QLValue value;
             RETURN_NOT_OK(value.Deserialize(type->param_type(i), client, data));
-            add_frozen_elem()->CopyFrom(value.value());
+            *add_frozen_elem() = std::move(*value.mutable_value());
           }
           return Status::OK();
         }

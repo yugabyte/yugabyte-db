@@ -95,7 +95,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *ex
                                                          bind_pt->pos(),
                                                          bind_pt->ql_type(),
                                                          &ql_bind));
-  expr_pb->mutable_value()->Swap(ql_bind.mutable_value());
+  *expr_pb->mutable_value() = std::move(*ql_bind.mutable_value());
   return Status::OK();
 }
 

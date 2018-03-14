@@ -423,7 +423,7 @@ CHECKED_STATUS BuildSubDocument(
         << "Found key: " << SubDocKey::DebugSliceToString(key);
 
     if (low_ts > doc_ht) {
-      VLOG(3) << "SeekPastSubKey: $0" << SubDocKey::DebugSliceToString(key);
+      VLOG(3) << "SeekPastSubKey: " << SubDocKey::DebugSliceToString(key);
       iter->SeekPastSubKey(key);
       continue;
     }

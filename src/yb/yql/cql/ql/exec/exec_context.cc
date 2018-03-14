@@ -89,7 +89,7 @@ void ExecContext::InitializePartition(QLReadRequestPB *req, uint64_t start_parti
   for (int i = unset_cols_size - 1; i >= 0; i--) {
     const auto& options = (*hash_values_options_)[i];
     int pos = start_partition % options.size();
-    req->mutable_hashed_column_values(i + set_cols_size)->CopyFrom(options[pos]);
+    *req->mutable_hashed_column_values(i + set_cols_size) = options[pos];
     start_partition /= options.size();
   }
 }
@@ -112,7 +112,7 @@ void ExecContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   for (int i = hash_key_size - 1; i >= fixed_cols_size; i--) {
     const auto& options = (*hash_values_options_)[i - fixed_cols_size];
     int pos = partition_counter % options.size();
-    req->mutable_hashed_column_values(i)->CopyFrom(options[pos]);
+    *req->mutable_hashed_column_values(i) = options[pos];
     if (pos != 0) break; // The previous position hash values must be unchanged.
     partition_counter /= options.size();
   }

@@ -43,7 +43,7 @@ CHECKED_STATUS Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
   if (expr->expr_op() == ExprOperator::kBindVar) {
     QLExpressionPB expr_pb;
     RETURN_NOT_OK(PTExprToPB(static_cast<const PTBindVar*>(expr.get()), &expr_pb));
-    const_pb->Swap(expr_pb.mutable_value());
+    *const_pb = std::move(*expr_pb.mutable_value());
     return Status::OK();
   }
 
@@ -272,7 +272,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *cons
 
       QLValue ql_const;
       ql_const.set_inetaddress_value(value);
-      const_pb->CopyFrom(ql_const.value());
+      *const_pb = std::move(*ql_const.mutable_value());
       break;
     }
 
@@ -322,7 +322,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
 
       QLValue ql_const;
       ql_const.set_uuid_value(uuid);
-      const_pb->CopyFrom(ql_const.value());
+      *const_pb = std::move(*ql_const.mutable_value());
       break;
     }
     case InternalType::kTimeuuidValue: {
@@ -332,7 +332,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
 
       QLValue ql_const;
       ql_const.set_timeuuid_value(uuid);
-      const_pb->CopyFrom(ql_const.value());
+      *const_pb = std::move(*ql_const.mutable_value());
       break;
     }
     default:
@@ -414,11 +414,9 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
             values_it++;
           }
 
-          for (const auto &pair : map_values) {
-            QLValuePB *key_pb = frozen_value->add_elems();
-            key_pb->CopyFrom(pair.first);
-            QLValuePB *value_pb = frozen_value->add_elems();
-            value_pb->CopyFrom(pair.second);
+          for (auto &pair : map_values) {
+            *frozen_value->add_elems() = std::move(pair.first);
+            *frozen_value->add_elems() = std::move(pair.second);
           }
           break;
         }
@@ -428,12 +426,11 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB 
           for (const auto &elem : const_pt->values()) {
             QLValuePB elem_pb;
             RETURN_NOT_OK(PTConstToPB(elem, &elem_pb));
-            set_values.insert(elem_pb);
+            set_values.insert(std::move(elem_pb));
           }
 
-          for (const auto &elem : set_values) {
-            QLValuePB *elem_pb = frozen_value->add_elems();
-            elem_pb->CopyFrom(elem);
+          for (auto &elem : set_values) {
+            *frozen_value->add_elems() = std::move(elem);
           }
           break;
         }
