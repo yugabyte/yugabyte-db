@@ -70,7 +70,7 @@
 // Example usage:
 //   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
 #define YB_LOG_EVERY_N_SECS(severity, n_secs) \
-  static logging_internal::LogThrottler LOG_THROTTLER;  \
+  static yb::logging_internal::LogThrottler LOG_THROTTLER;  \
   int num_suppressed = 0; \
   if (LOG_THROTTLER.ShouldLog(n_secs, &num_suppressed)) \
     google::LogMessage( \
