@@ -46,6 +46,7 @@ class QLValue {
   // Constructors & destructors.
   QLValue() { }
   explicit QLValue(const QLValuePB& pb) { pb_ = pb; }
+  explicit QLValue(QLValuePB&& pb) { pb_ = std::move(pb); }
   virtual ~QLValue();
 
   //-----------------------------------------------------------------------------------------
@@ -196,11 +197,17 @@ class QLValue {
   virtual void set_decimal_value(const std::string& val) {
     pb_.set_decimal_value(val);
   }
+  virtual void set_decimal_value(std::string&& val) {
+    pb_.set_decimal_value(std::move(val));
+  }
   virtual void set_bool_value(bool val) {
     pb_.set_bool_value(val);
   }
   virtual void set_string_value(const std::string& val) {
     pb_.set_string_value(val);
+  }
+  virtual void set_string_value(std::string&& val) {
+    pb_.set_string_value(std::move(val));
   }
   virtual void set_string_value(const char* val) {
     pb_.set_string_value(val);
@@ -217,28 +224,30 @@ class QLValue {
   virtual void set_binary_value(const std::string& val) {
     pb_.set_binary_value(val);
   }
+  virtual void set_binary_value(std::string&& val) {
+    pb_.set_binary_value(std::move(val));
+  }
   virtual void set_binary_value(const void* val, size_t size) {
     pb_.set_binary_value(val, size);
   }
   virtual void set_inetaddress_value(const InetAddress& val) {
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));
-    pb_.set_inetaddress_value(bytes);
+    pb_.set_inetaddress_value(std::move(bytes));
   }
   virtual void set_uuid_value(const Uuid& val) {
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));
-    pb_.set_uuid_value(bytes);
+    pb_.set_uuid_value(std::move(bytes));
   }
   virtual void set_timeuuid_value(const Uuid& val) {
     CHECK_OK(val.IsTimeUuid());
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));
-    pb_.set_timeuuid_value(bytes);
+    pb_.set_timeuuid_value(std::move(bytes));
   }
   virtual void set_varint_value(const util::VarInt& val) {
-    std::string bytes = val.EncodeToComparable();
-    pb_.set_varint_value(bytes);
+    pb_.set_varint_value(val.EncodeToComparable());
   }
 
   //--------------------------------- mutable value methods ----------------------------------
@@ -253,6 +262,18 @@ class QLValue {
   }
   std::string* mutable_binary_value() {
     return pb_.mutable_binary_value();
+  }
+  QLMapValuePB* mutable_map_value() {
+    return pb_.mutable_map_value();
+  }
+  QLSeqValuePB* mutable_set_value() {
+    return pb_.mutable_set_value();
+  }
+  QLSeqValuePB* mutable_list_value() {
+    return pb_.mutable_list_value();
+  }
+  QLSeqValuePB* mutable_frozen_value() {
+    return pb_.mutable_frozen_value();
   }
 
   // To extend/construct collections we return freshly allocated elements for the caller to set.
@@ -290,12 +311,11 @@ class QLValue {
 
   //----------------------------------- assignment methods ----------------------------------
   QLValue& operator=(const QLValuePB& other) {
-    pb_.CopyFrom(other);
+    pb_ = other;
     return *this;
   }
-
   QLValue& operator=(QLValuePB&& other) {
-    pb_.Swap(&other);
+    pb_ = std::move(other);
     return *this;
   }
 

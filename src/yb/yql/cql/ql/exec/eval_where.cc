@@ -168,18 +168,18 @@ CHECKED_STATUS Executor::WhereClauseToPB(QLReadRequestPB *req,
         }
 
         std::set<QLValuePB> set_values;
-        for (const QLValuePB &value_pb : col_pb.value().list_value().elems()) {
-          set_values.insert(value_pb);
+        for (QLValuePB &value_pb : *col_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
+          set_values.insert(std::move(value_pb));
         }
 
         // Adding partition options information to the execution context.
         partitions_count *= set_values.size();
         exec_context().hash_values_options()->emplace_back();
         auto& options = exec_context().hash_values_options()->back();
-        for (const QLValuePB &value_pb : set_values) {
+        for (auto& value_pb : set_values) {
           options.emplace_back();
           options.back().set_column_id(col_desc->id());
-          options.back().mutable_value()->CopyFrom(value_pb);
+          *options.back().mutable_value() = std::move(value_pb);
         }
         break;
       }
