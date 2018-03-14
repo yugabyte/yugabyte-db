@@ -350,9 +350,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Create a task to create a table.
    *
    * @param tableName name of the table.
-   * @param numTablets number of tablets.
+   * @param tableDetails table options and related  details.
    */
-  public SubTaskGroup createTableTask(Common.TableType tableType, String tableName, int numTablets,
+  public SubTaskGroup createTableTask(Common.TableType tableType, String tableName,
                                       TableDetails tableDetails) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("CreateTable", executor);
     CreateTable task = new CreateTable();
@@ -361,7 +361,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.tableType = tableType;
     params.tableName = tableName;
     params.tableDetails = tableDetails;
-    params.numTablets = numTablets;
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);

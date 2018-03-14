@@ -19,9 +19,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public class CreateUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
 
-  // Set initial number of tablets per tablet servers.
-  public static int NUM_TABLETS_PER_TSERVER = 8;
-
   @Override
   public void run() {
     LOG.info("Started {} task.", getName());
@@ -114,10 +111,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createSwamperTargetUpdateTask(false /* removeFile */, SubTaskGroupType.ConfigureUniverse);
 
       // Create a simple redis table.
-      int numTServers = PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet).size();
-      int numTablets = NUM_TABLETS_PER_TSERVER * numTServers;
-      createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME,
-                      numTablets, null)
+      createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.

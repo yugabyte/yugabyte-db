@@ -29,7 +29,7 @@ public class CreateCassandraTable extends UniverseTaskBase {
       lockUniverse(-1 /* expectedUniverseVersion */);
 
       // Create table task
-      createTableTask(Common.TableType.YQL_TABLE_TYPE, taskParams().tableDetails.tableName, -1,
+      createTableTask(Common.TableType.YQL_TABLE_TYPE, taskParams().tableDetails.tableName,
                       taskParams().tableDetails)
           .setSubTaskGroupType(SubTaskGroupType.CreatingTable);
 
