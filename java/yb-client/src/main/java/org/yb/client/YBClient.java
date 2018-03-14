@@ -96,38 +96,18 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Create redis table options object.
-   * @param numTablets number of pre-split tablets.
-   * @return an options object to be used during table creation.
-   */
-  public static CreateTableOptions getRedisTableOptions(int numTablets) {
-    CreateTableOptions cto = new CreateTableOptions();
-
-    if (numTablets == 0) {
-      LOG.info("Number of tablets cannot be zero, defaulting it to 1.");
-      numTablets = 1;
-    }
-
-    cto.setTableType(TableType.REDIS_TABLE_TYPE)
-        .setNumTablets(numTablets);
-
-    return cto;
-  }
-
-  /**
    * Create a redis table on the cluster with the specified name.
-   * @param name Tables name
-   * @param numTablets number of pre-split tablets
+   * @param name Table name
    * @return an object to communicate with the created table.
    */
-  public YBTable createRedisTable(String name, int numTablets) throws Exception {
+  public YBTable createRedisTable(String name) throws Exception {
     CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME);
     if (resp.hasError()) {
       throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME + ". Error :" +
                                 resp.errorMessage());
     }
     return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
-                       getRedisTableOptions(numTablets));
+                       new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
   }
 
   /**
