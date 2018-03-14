@@ -5,42 +5,11 @@ weight: 2410
 
 `yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`] (/admin/yb-master/) and [`yb-tserver`] (/admin/yb-tserver/) binaries to perform the necessary administration.
 
-## Help command
-
 Use the **-\-help** option to see all the commands supported.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl --help
 ```
-```sh
-usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
-              [--replication_factor REPLICATION_FACTOR]
-              [--require_clock_sync REQUIRE_CLOCK_SYNC]
-              {create,destroy,status,add_node,remove_node,setup_redis} ...
-
-positional arguments:
-  {create,destroy,status,add_node,remove_node,setup_redis}
-    create              Create a new cluster
-    destroy             Destroy the current cluster
-    status              Get info on the current cluster processes
-    add_node            Add a new tserver to the current cluster
-    remove_node         Remove a tserver from the current cluster
-    setup_redis         Setup YugaByte to support Redis queries
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --binary_dir BINARY_DIR
-                        Specify a custom directory in which to find the
-                        yugabyte binaries.
-  --data_dir DATA_DIR   Specify a custom directory where to store data.
-  --replication_factor REPLICATION_FACTOR, --rf REPLICATION_FACTOR
-                        Replication factor for the cluster as well as default
-                        number of masters.
-  --require_clock_sync REQUIRE_CLOCK_SYNC
-                        Use ntpd for clock syncronization. Needed for real
-                        time dependent use-cases.
-```
-
 Here are the default values for all the optional arguments.
 
 Optional Argument | Default | Description
@@ -49,150 +18,200 @@ Optional Argument | Default | Description
 `--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the YugaByte DB
 `--replication_factor`| `3` | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established
 `--require_clock_sync`| `false` | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster
+`--num_shards_per_tserver`| `2` | Number of shards (tablets) per tablet server for each table
 
+## Creating a cluster
 
-## Create cluster
+The `create` cluster command is used to create a cluster.
 
-- Create a 3 node local cluster with replication factor 3. 
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. 
+Use the [add_node](/admin/yb-ctl/#add-a-node) and [remove_node](/admin/yb-ctl/#remove-a-node) commands to expand or shrink the cluster.
 
-Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
+Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal the replication factor for the cluster to be considered operating normally.
+
+- Creating a local cluster with replication factor 3.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl create
 ```
-```sh
-2017-10-16 21:46:52,558 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_interface 127.0.0.1 --rpc_bind_addresses 127.0.0.1 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-1/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/master.err" &
-2017-10-16 21:46:52,567 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_interface 127.0.0.2 --rpc_bind_addresses 127.0.0.2 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-2/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/master.err" &
-2017-10-16 21:46:52,588 INFO: Starting master with:
-/home/vagrant/yugabyte/bin/yb-master --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_interface 127.0.0.3 --rpc_bind_addresses 127.0.0.3 --webserver_doc_root "/home/vagrant/yugabyte/www" --replication_factor=3 --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 >"/tmp/yugabyte-local-cluster/disk1/node-3/master.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/master.err" &
-2017-10-16 21:46:52,594 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-1,/tmp/yugabyte-local-cluster/disk2/node-1" --webserver_interface 127.0.0.1 --rpc_bind_addresses 127.0.0.1 --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 --memory_limit_hard_bytes 1073741824 --redis_proxy_bind_address 127.0.0.1 --cql_proxy_bind_address 127.0.0.1 --local_ip_for_outbound_sockets 127.0.0.1 >"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-1/tserver.err" &
-2017-10-16 21:46:52,601 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-2,/tmp/yugabyte-local-cluster/disk2/node-2" --webserver_interface 127.0.0.2 --rpc_bind_addresses 127.0.0.2 --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 --memory_limit_hard_bytes 1073741824 --redis_proxy_bind_address 127.0.0.2 --cql_proxy_bind_address 127.0.0.2 --local_ip_for_outbound_sockets 127.0.0.2 >"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-2/tserver.err" &
-2017-10-16 21:46:52,609 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver --fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-3,/tmp/yugabyte-local-cluster/disk2/node-3" --webserver_interface 127.0.0.3 --rpc_bind_addresses 127.0.0.3 --webserver_doc_root "/home/vagrant/yugabyte/www" --tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 --memory_limit_hard_bytes 1073741824 --redis_proxy_bind_address 127.0.0.3 --cql_proxy_bind_address 127.0.0.3 --local_ip_for_outbound_sockets 127.0.0.3 >"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-3/tserver.err" &
-```
 
-- Create a 5 node local cluster with replication factor 5. 
+Note that the default replication factor is 3.
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](/admin/yb-ctl/#add-a-node) and [remove_node](/admin/yb-ctl/#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
+- Creating a 4 node cluster with replication factor 3.
+
+First create 3 node cluster with replication factor 3.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl --rf 5 create
+$ ./bin/yb-ctl create
 ```
 
-## Check cluster status
-
-Get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer.
-
-```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl status
-```
-```sh
-2017-10-16 21:47:32,937 INFO: Server is running: type=master, node_id=1, PID=27942, admin service=127.0.0.1:7000
-2017-10-16 21:47:32,942 INFO: Server is running: type=master, node_id=2, PID=27945, admin service=127.0.0.2:7000
-2017-10-16 21:47:32,947 INFO: Server is running: type=master, node_id=3, PID=27948, admin service=127.0.0.3:7000
-2017-10-16 21:47:32,952 INFO: Server is running: type=tserver, node_id=1, PID=27951, admin service=127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379
-2017-10-16 21:47:32,957 INFO: Server is running: type=tserver, node_id=2, PID=27954, admin service=127.0.0.2:9000, cql service=127.0.0.2:9042, redis service=127.0.0.2:6379
-2017-10-16 21:47:32,961 INFO: Server is running: type=tserver, node_id=3, PID=27957, admin service=127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379
-```
-
-## Setup Redis
-
-Run this command after creating the cluster in case you are looking to use YugaByte's Redis API.
-
-```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl setup_redis
-```
-```sh
-I0918 22:48:20.253942 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.254120 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.254149 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.254155 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.256132 12246 client-internal.cc:1125] Skipping reinitialize of master addresses, no REST endpoint or file specified
-I0918 22:48:20.262192 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.262212 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.262218 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:20.262228 12246 reactor.cc:124] Create reactor with keep alive_time: 65.000s, coarse timer granularity: 0.100s
-I0918 22:48:21.376051 12246 client.cc:1184] Created table redis_keyspace..redis of type REDIS_TABLE_TYPE
-I0918 22:48:21.376237 12246 yb-admin.cc:580] Table 'redis_keyspace..redis' created.
-```
-
-
-## Add a node
-
-
-Add a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
+Add a node to make it a 4 node cluster.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl add_node
 ```
-```sh
-2017-10-16 22:05:31,517 INFO: Starting tserver with:
-/home/vagrant/yugabyte/bin/yb-tserver 
---fs_data_dirs "/tmp/yugabyte-local-cluster/disk1/node-4,/tmp/yugabyte-local-cluster/disk2/node-4" 
---webserver_interface 127.0.0.4 
---rpc_bind_addresses 127.0.0.4 
---tserver_master_addrs 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 
---memory_limit_hard_bytes 1073741824 
---redis_proxy_bind_address 127.0.0.4 
---cql_proxy_bind_address 127.0.0.4 
---local_ip_for_outbound_sockets 127.0.0.4 
->"/tmp/yugabyte-local-cluster/disk1/node-4/tserver.out" 2>"/tmp/yugabyte-local-cluster/disk1/node-4/tserver.err" &
-```
 
-## Remove a node
-
-Remove a node from the cluster by executing the following command. The command takes the node_id of the node to be removed as input.
-
-### Help
+- Creating a 5 node cluster with replciation factor 5.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl remove_node -h
-```
-```sh
-usage: yb-ctl remove_node [-h] node_id
-
-positional arguments:
-  node_id     The index of the tserver to remove
-
-optional arguments:
-  -h, --help  show this help message and exit
+$ ./bin/yb-ctl create --rf 5
 ```
 
-### Example
+## Checking cluster status
+
+You can get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer using the `status` command.
 
 ```{.sh .copy .separator-dollar}
-$ ./bin/yb-ctl remove_node 4
-```
-```sh
-2017-09-06 22:56:11,929 INFO: Removing server type=tserver node_id=4
-2017-09-06 22:56:11,935 INFO: Stopping server type=tserver node_id=4 PID=28874
-2017-09-06 22:56:11,935 INFO: Waiting for server type=tserver node_id=4 PID=28874 to stop...
+$ ./bin/yb-ctl status
 ```
 
-## Destroy cluster
+## Initializing the Redis API
 
-The command below destroys the cluster which includes deleting the data directories.
+The `setup_redis` command to initialize YugaByte's Redis API.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl setup_redis
+```
+
+## Adding and removing nodes
+
+### Adding nodes
+
+- Adding a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl add_node
+```
+
+### Stopping/removing nodes
+
+We can Stop a cluster node by executing the `stop` command. The command takes the node id of the node
+that has to be removed as input. Stop node command expects a node id which denotes the index of the server that
+needs to be stopped. It also takes an optional flag `--master` which denotes that the server is a
+master.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl stop_node 4
+```
+
+At this point of time `remove_node` and `stop_node` do the same thing. So they can be used interchangeably.
+
+## Destroying a cluster
+
+You can use the `destroy` command to destroy a cluster. This command stops all the nodes and 
+deletes the data directory of the cluster.
 
 ```{.sh .copy .separator-dollar}
 $ ./bin/yb-ctl destroy
 ```
-```sh
-2017-09-06 22:56:41,230 INFO: Stopping server type=master node_id=1 PID=28494
-2017-09-06 22:56:41,231 INFO: Waiting for server type=master node_id=1 PID=28494 to stop...
-2017-09-06 22:56:41,739 INFO: Stopping server type=master node_id=2 PID=28504
-2017-09-06 22:56:41,739 INFO: Waiting for server type=master node_id=2 PID=28504 to stop...
-2017-09-06 22:56:42,246 INFO: Stopping server type=master node_id=3 PID=28507
-2017-09-06 22:56:42,246 INFO: Waiting for server type=master node_id=3 PID=28507 to stop...
-2017-09-06 22:56:42,753 INFO: Stopping server type=tserver node_id=1 PID=28512
-2017-09-06 22:56:42,753 INFO: Waiting for server type=tserver node_id=1 PID=28512 to stop...
-2017-09-06 22:56:43,260 INFO: Stopping server type=tserver node_id=2 PID=28516
-2017-09-06 22:56:43,260 INFO: Waiting for server type=tserver node_id=2 PID=28516 to stop...
-2017-09-06 22:56:43,768 INFO: Stopping server type=tserver node_id=3 PID=28519
-2017-09-06 22:56:43,768 INFO: Waiting for server type=tserver node_id=3 PID=28519 to stop...
-2017-09-06 22:56:44,276 INFO: Server type=tserver node_id=4 already stopped
-2017-09-06 22:56:44,276 INFO: Removing base directory: /tmp/yugabyte-local-cluster
+
+## Advanced commands
+
+### Creating a local cluster across multiple zones, regions and clouds
+
+You can pass the placement information for nodes in a cluster from the command line. The placement information is provided as a set of (cloud, region, zone) tuples separated by commas. Each cloud, region and zone entry is separated by dots.
+
+```{.sh .copy .seperator-dollar}
+$ ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2"
+```
+
+The total number of placement information entries cannot be more than the replication factor (this is because we would not be able to satisfy the data placement constraints for this replication factor).
+If the total number of placement information entries is lesser than the replication factor, the placement information is passed down to the node in a round robin fashion.
+
+To add a node:
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
+```
+
+### Creating a local cluster with custom flags
+
+You can also pass custom flags to the masters and tservers.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
+```
+
+To add a node with custom tserver flags.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl add_node --tserver_flags "log_inject_latency=false,log_segment_size_mb=128"
+```
+
+To add a node with custom master flags:
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
+```
+
+### Restarting a cluster
+
+The `restart` command can be used to restart a cluster. Please note that if you restart the cluster,
+all custom defined flags and placement information will be lost. Nevertheless, you can pass the
+placement information and custom flags in the same way as they are passed in the `create` command.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl restart
+```
+
+Restarting with cloud, region and zone flags:
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+```
+
+Restarting with custom flags:
+
+```{.sh .copy .seperator-dollar}
+$ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
+```
+
+### Restarting a node
+
+The `restart` first stops the node and then starts it again(essentially restarting it). At this point of time the node is not decommissioned from the cluster.
+Thus one of the primary advantages of this command is that it can be used to wipe out old flags and pass in new ones. Just like 
+create, you can pass the cloud/region/zone and custom flags in the `restart` command.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl restart_node 2
+```
+
+- Restarting node with placement info:
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl restart_node 2 --placement_info "cloud1.region1.zone1"
+```
+
+- Restarting master node:
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl restart_node 2 --master
+```
+
+- Restarting node with flags:
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl restart_node 2 --master --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
+```
+
+### Wipe and restart a cluster
+
+We can use the `wipe_restart` command for this. This command stops all the nodes, removes the underlying data directort, then starts back the same
+number of nodes that you had in your previous configuration.
+
+Just like the `restart` command the custom defined flags and placement information will be lost during `wipe_restart`,
+though you can pass placement information and custom flags in the same way as they are passed in the
+`create` command.
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl wipe_restart
+```
+
+Wipe and restart with placement info flags:
+
+```{.sh .copy .separator-dollar}
+$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+```
+
+Wipe and restart with custom flags:
+
+```{.sh .copy .seperator-dollar}
+$ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
