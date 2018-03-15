@@ -161,8 +161,9 @@ export default class NodeDetails extends Component {
         }
         body={
           <div>
-            <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
-              <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
+            <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows}>
+              <TableHeaderColumn dataField="name" isKey={true} className={'node-name-field'} columnClassName={'node-name-field'}
+                dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
               <TableHeaderColumn dataField="regionItem">Region</TableHeaderColumn>
               <TableHeaderColumn dataField="azItem">Zone</TableHeaderColumn>
               <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
