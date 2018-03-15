@@ -109,7 +109,7 @@ class ProcessContextBase {
   mutable std::unique_ptr<Arena> ptemp_mem_;
 
   // Latest parsing or scanning error code.
-  ErrorCode error_code_;
+  ErrorCode error_code_ = ErrorCode::SUCCESS;
 
   // Error messages. All reported error messages will be concatenated to the end.
   std::unique_ptr<MCString> error_msgs_;
