@@ -40,7 +40,7 @@ public class ReleaseManager {
       FileSystems.getDefault().getPathMatcher("glob:**yugabyte*.tar.gz");
   Predicate<Path> packagesFilter = p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
 
-  final Pattern ybPackagePattern = Pattern.compile("[^.]+yugabyte\\.([^.]+)\\.(.+?).tar.gz");
+  final Pattern ybPackagePattern = Pattern.compile("[^.]+yugabyte-ee-(.*)-centos(.*).tar.gz");
 
   public Map<String, String> getLocalReleases(String localReleasePath) {
     Map<String, String> releaseMap = new HashMap<>();
@@ -87,7 +87,7 @@ public class ReleaseManager {
         .filter(Matcher::matches)
         .forEach(match -> {
           File releaseFile = new File(match.group());
-          File destinationFolder = new File(ybReleasesPath, match.group(2));
+          File destinationFolder = new File(ybReleasesPath, match.group(1));
           File destinationFile = new File(destinationFolder, releaseFile.getName());
           if (!destinationFolder.exists()) {
             destinationFolder.mkdir();
