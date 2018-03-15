@@ -180,26 +180,47 @@ set_vars_for_cxx_test() {
   test_existence_check=false
 }
 
-print_summary() {
-  (
-    echo
-    thick_horizontal_line
-    echo "YUGABYTE BUILD SUMMARY"
-    thick_horizontal_line
-    echo "Build type:            ${build_type:-undefined}"
-    echo "Edition:               ${YB_EDITION:-undefined}"
-    if [[ -n ${cmake_end_time_sec:-} ]]; then
-      echo "CMake time:            $(( $cmake_end_time_sec - $cmake_start_time_sec )) seconds"
-    fi
-    if [[ -n ${make_end_time_sec:-} ]]; then
-      echo "C++ compilation time:  $(( $make_end_time_sec - $make_start_time_sec )) seconds"
-    fi
-    if [[ -n ${java_build_end_time_sec:-} ]]; then
-      echo "Java compilation time: $(( $java_build_end_time_sec - $java_build_start_time_sec))" \
-           "seconds"
-    fi
-    horizontal_line
-  ) >&2
+print_report_line() {
+  local format_suffix=$1
+  shift
+  printf '%-32s : '"$format_suffix\n" "$@"
+}
+
+report_time() {
+  expect_num_args 2 "$@"
+  local description=$1
+  local time_var_prefix=$2
+
+  local start_time_var_name="${time_var_prefix}_start_time_sec"
+  local end_time_var_name="${time_var_prefix}_end_time_sec"
+
+  local -i start_time=${!start_time_var_name:-0}
+  local -i end_time=${!end_time_var_name:-0}
+
+  if [[ $start_time -ne 0 && $end_time -ne 0 ]]; then
+    local caption="$description time"
+    print_report_line "%d seconds" "$caption" "$(( $end_time - $start_time ))"
+  fi
+}
+
+print_report() {
+  if "$show_report"; then
+    (
+      echo
+      thick_horizontal_line
+      echo "YUGABYTE BUILD SUMMARY"
+      thick_horizontal_line
+      print_report_line "%s" "Build type" "${build_type:-undefined}"
+      print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
+      report_time "CMake" "cmake"
+      report_time "C++ compilation" "make"
+      report_time "Java compilation" "java_build"
+      report_time "C++ (one test program)" "cxx_test"
+      report_time "ctest (multiple C++ test programs)" "ctest"
+      report_time "Remote tests" "remote_tests"
+      horizontal_line
+    ) >&2
+  fi
 }
 
 set_flags_to_skip_build() {
@@ -220,6 +241,13 @@ EOT
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
 }
+
+capture_sec_timestamp() {
+  expect_num_args 1 "$@"
+  local current_timestamp=$(date +%s)
+  eval "${1}_time_sec=$current_timestamp"
+}
+
 run_cxx_build() {
   if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
      ! "$force_no_run_cmake"; then
@@ -228,9 +256,9 @@ run_cxx_build() {
     fi
     log "Using cmake binary: $( which cmake )"
     log "Running cmake in $PWD"
-    cmake_start_time_sec=$(date +%s)
+    capture_sec_timestamp "cmake_start"
     ( set -x; cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT" )
-    cmake_end_time_sec=$(date +%s)
+    capture_sec_timestamp "cmake_end"
   fi
 
   if "$cmake_only"; then
@@ -249,7 +277,7 @@ run_cxx_build() {
   fi
 
   log "Running $make_program in $PWD"
-  make_start_time_sec=$(date +%s)
+  capture_sec_timestamp "make_start"
   set +u +e  # "set -u" may cause failures on empty lists
   time (
     set -x
@@ -259,8 +287,9 @@ run_cxx_build() {
 
   local exit_code=$?
   set -u -e
-  make_end_time_sec=$(date +%s)
-  log "Non-java build finished with exit code $exit_code" \
+  capture_sec_timestamp "make_end"
+
+  log "C++ build finished with exit code $exit_code" \
       "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
       "Timing information is available above."
   if [[ $exit_code -ne 0 ]]; then
@@ -300,6 +329,7 @@ run_test_on_remote_host() {
         $YB_HOST_FOR_RUNNING_TESTS != "localhost" && \
         $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME && \
         $YB_HOST_FOR_RUNNING_TESTS != $HOSTNAME.* ]]; then
+    capture_sec_timestamp "remote_tests_start"
     log "Running tests on host '$YB_HOST_FOR_RUNNING_TESTS' (current host is '$HOSTNAME')"
 
     # Add extra arguments to the sub-invocation of yb_build.sh. We have to add them before the
@@ -321,12 +351,15 @@ run_test_on_remote_host() {
           sub_yb_build_args+=( "$arg" )
       esac
     done
-    sub_yb_build_args+=( "${extra_args[@]}" )
+    sub_yb_build_args+=( "${extra_args[@]}" --no-report )
     set -u
 
     log "Running tests on server '$YB_HOST_FOR_RUNNING_TESTS': yb_build.sh ${sub_yb_build_args[*]}"
     run_remote_cmd "$YB_HOST_FOR_RUNNING_TESTS" "$YB_SRC_ROOT/yb_build.sh" \
       "${sub_yb_build_args[@]}"
+
+    capture_sec_timestamp "remote_tests_end"
+    print_report
     exit
   fi
 }
@@ -431,6 +464,7 @@ run_python_tests=false
 cmake_extra_args=""
 predefined_build_root=""
 java_test_name=""
+show_report=true
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
@@ -686,6 +720,9 @@ while [[ $# -gt 0 ]]; do
       export YB_SANITIZER_EXTRA_OPTIONS+=" verbosity=$2"
       shift
     ;;
+    --no-report)
+      show_report=false
+    ;;
     *)
       echo "Invalid option: '$1'" >&2
       exit 1
@@ -796,7 +833,7 @@ if "$save_log"; then
   ( set -x; "$0" "${filtered_args[@]}" ) 2>&1 | tee "$log_path"
   exit_code=$?
   echo "Log saved to $log_path (also symlinked to $latest_log_symlink_path)" >&2
-  print_summary
+  print_report
   exit "$exit_code"
 fi
 
@@ -885,11 +922,15 @@ fi
 run_test_on_remote_host
 
 if [[ -n $cxx_test_name ]]; then
+  capture_sec_timestamp cxx_test_start
   run_cxx_test
+  capture_sec_timestamp cxx_test_end
 fi
 
 if "$should_run_ctest"; then
+  capture_sec_timestamp ctest_start
   run_ctest
+  capture_sec_timestamp ctest_end
 fi
 
 # Check if the Java build is needed, and skip Java unit test runs if requested.
@@ -917,4 +958,4 @@ if [[ -n $java_test_name ]]; then
   run_java_test
 fi
 
-print_summary
+print_report
