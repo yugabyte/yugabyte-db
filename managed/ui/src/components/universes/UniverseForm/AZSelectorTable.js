@@ -242,7 +242,9 @@ export default class AZSelectorTable extends Component {
           sortedGroupArray.push(currentazItem);
         }
       });
-      groupsArray = sortedGroupArray;
+      if (isNonEmptyArray(sortedGroupArray)) {
+        groupsArray = sortedGroupArray;
+      }
     }
     return ({groups: groupsArray,
       uniqueRegions: uniqueRegions.length,
