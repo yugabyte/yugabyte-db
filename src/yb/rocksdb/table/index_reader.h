@@ -49,9 +49,12 @@ class IndexReader {
   // caller as an index iterator, then nullptr is returned.
   // Otherwise, new iterator is created and returned.
   //
-  // For multi-level index, top level index block iterator is passed and updated instead of the
-  // whole index iterator, but return semantic is the same - the whole index iterator is returned.
+  // For multi-level index:
+  // - top level index block iterator is passed and updated instead of the whole index iterator,
+  // but return semantic is the same - the whole index iterator is returned.
+  // - index_iterator_state is used to create secondary iterators on index.
   virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
+                                        TwoLevelIteratorState* index_iterator_state = nullptr,
                                         bool total_order_seek = true) = 0;
 
   // The size of the index.
@@ -62,8 +65,6 @@ class IndexReader {
   // Report an approximation of how much memory has been used other than memory
   // that was allocated in block cache.
   virtual size_t ApproximateMemoryUsage() const = 0;
-
-  virtual void CheckTableReader(TableReader* reader) {}
 
  protected:
   ComparatorPtr comparator_;
@@ -82,7 +83,10 @@ class BinarySearchIndexReader : public IndexReader {
       RandomAccessFileReader* file, const Footer& footer, const BlockHandle& index_handle, Env* env,
       const ComparatorPtr& comparator, std::unique_ptr<IndexReader>* index_reader);
 
-  InternalIterator* NewIterator(BlockIter* iter = nullptr, bool dont_care = true) override {
+  InternalIterator* NewIterator(
+      BlockIter* iter = nullptr,
+      // Rest of parameters are ignored by BinarySearchIndexReader.
+      TwoLevelIteratorState* state = nullptr, bool total_order_seek = true) override {
     auto new_iter = index_block_->NewIterator(comparator_.get(), iter, true);
     return iter ? nullptr : new_iter;
   }
@@ -124,7 +128,9 @@ class HashIndexReader : public IndexReader {
       InternalIterator* meta_index_iter, std::unique_ptr<IndexReader>* index_reader,
       bool hash_index_allow_collision);
 
-  InternalIterator* NewIterator(BlockIter* iter = nullptr, bool total_order_seek = true) override {
+  InternalIterator* NewIterator(
+      BlockIter* iter = nullptr, TwoLevelIteratorState* state = nullptr,
+      bool total_order_seek = true) override {
     auto new_iter = index_block_->NewIterator(comparator_.get(), iter, total_order_seek);
     return iter ? nullptr : new_iter;
   }
@@ -163,29 +169,26 @@ class HashIndexReader : public IndexReader {
 // Index that allows binary search lookup in a multi-level index structure.
 class MultiLevelIndexReader : public IndexReader {
  public:
-
   // Read the top level index from the file and create an instance for `MultiLevelIndexReader`.
   static Result<std::unique_ptr<MultiLevelIndexReader>> Create(
       RandomAccessFileReader* file, const Footer& footer, int num_levels,
-      const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator,
-      std::unique_ptr<TwoLevelIteratorState> state);
+      const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator);
 
   MultiLevelIndexReader(
       const ComparatorPtr& comparator, int num_levels,
-      std::unique_ptr<Block> top_level_index_block,
-      std::unique_ptr<TwoLevelIteratorState> state)
+      std::unique_ptr<Block> top_level_index_block)
       : IndexReader(comparator),
         num_levels_(num_levels),
-        top_level_index_block_(std::move(top_level_index_block)),
-        state_(std::move(state)) {
+        top_level_index_block_(std::move(top_level_index_block)) {
     DCHECK_ONLY_NOTNULL(top_level_index_block_.get());
   }
 
   ~MultiLevelIndexReader() {}
 
- private:
-  InternalIterator* NewIterator(BlockIter* iter, bool) override;
+  InternalIterator* NewIterator(
+      BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) override;
 
+ private:
   size_t size() const override { return top_level_index_block_->size(); }
 
   size_t usable_size() const override {
@@ -196,13 +199,8 @@ class MultiLevelIndexReader : public IndexReader {
     return top_level_index_block_->ApproximateMemoryUsage();
   }
 
-  void CheckTableReader(TableReader* reader) override {
-    state_->CheckTableReader(reader);
-  }
-
   const int num_levels_;
   const std::unique_ptr<Block> top_level_index_block_;
-  std::unique_ptr<TwoLevelIteratorState> state_;
 };
 
 } // namespace rocksdb
