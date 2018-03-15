@@ -18,6 +18,8 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_EXPR_H_
 #define YB_YQL_CQL_QL_PTREE_PT_EXPR_H_
 
+#include <boost/optional.hpp>
+
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
@@ -1046,21 +1048,13 @@ class PTBindVar : public PTExpr {
   typedef MCSharedPtr<PTBindVar> SharedPtr;
   typedef MCSharedPtr<const PTBindVar> SharedPtrConst;
 
-  // Unset bind position.
-  static constexpr int64_t kUnsetPosition = INT64_MIN;
-
   // Compare 2 bind variable positions in a statement.
   struct SetCmp {
     bool operator() (const PTBindVar* v1, const PTBindVar* v2) const {
       const YBLocation& l1 = v1->loc();
       const YBLocation& l2 = v2->loc();
-      if (l1.BeginLine() < l2.BeginLine()) {
-        return true;
-      } else if (l1.BeginLine() == l2.BeginLine()) {
-        return l1.BeginColumn() < l2.BeginColumn();
-      } else {
-        return false;
-      }
+      return (l1.BeginLine() < l2.BeginLine() ||
+              l1.BeginLine() == l2.BeginLine() && l1.BeginColumn() < l2.BeginColumn());
     }
   };
 
@@ -1095,13 +1089,13 @@ class PTBindVar : public PTExpr {
 
   // Access functions for position.
   int64_t pos() const {
-    return pos_;
+    return *pos_;
   }
   void set_pos(const int64_t pos) {
     pos_ = pos;
   }
   bool is_unset_pos() const {
-    return pos_ == kUnsetPosition;
+    return !pos_;
   }
 
   // Access functions for name.
@@ -1156,7 +1150,7 @@ class PTBindVar : public PTExpr {
  private:
   // 0-based position.
   PTConstVarInt::SharedPtr user_pos_; // pos used for parsing.
-  int64_t pos_; // pos after parsing is done.
+  boost::optional<int64_t> pos_; // pos after parsing is done.
   // Variable name.
   MCSharedPtr<MCString> name_;
   // Hash column descriptor.

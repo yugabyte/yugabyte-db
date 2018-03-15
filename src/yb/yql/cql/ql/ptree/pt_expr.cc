@@ -871,8 +871,6 @@ PTBindVar::PTBindVar(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      const MCSharedPtr<MCString>& name)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
-      user_pos_(nullptr),
-      pos_(kUnsetPosition),
       name_(name) {
 }
 
@@ -880,9 +878,7 @@ PTBindVar::PTBindVar(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      PTConstVarInt::SharedPtr user_pos)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
-      user_pos_(user_pos),
-      pos_(kUnsetPosition),
-      name_(nullptr) {
+      user_pos_(user_pos) {
 }
 
 PTBindVar::~PTBindVar() {
@@ -896,17 +892,18 @@ CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
   }
 
   if (user_pos_ != nullptr) {
-    if (!user_pos_->ToInt64(&pos_, false).ok()) {
+    int64_t pos = 0;
+    if (!user_pos_->ToInt64(&pos, false).ok()) {
       return sem_context->Error(this, "Bind position is invalid!",
                                 ErrorCode::INVALID_ARGUMENTS);
     }
 
-    if (pos_ <= 0) {
+    if (pos <= 0) {
       return sem_context->Error(this, "Bind variable position should be positive!",
                                 ErrorCode::INVALID_ARGUMENTS);
     }
     // Convert from 1 based to 0 based.
-    pos_--;
+    set_pos(pos - 1);
   }
 
   if (sem_context->expr_expected_ql_type()->main() == DataType::UNKNOWN_DATA) {

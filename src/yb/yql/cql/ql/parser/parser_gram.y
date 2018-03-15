@@ -195,7 +195,7 @@ using namespace yb::ql;
 // Active tree node declarations (%type).
 // The rule names are currently used by QL.
 %type <PListNode>         // Statement lists.
-                          stmtblock stmtmulti
+                          stmtblock stmtmulti dml_list
 
 %type <PTreeNode>         // Statement as tree node.
                           stmt
@@ -234,7 +234,10 @@ using namespace yb::ql;
                           UpdateStmt
                           set_target_list
 
-                          // Begin / end transaction.
+                          // Insert/update/delete DML.
+                          dml
+
+                          // Start transaction / commit.
                           TransactionStmt
 
                           // Alter table.
@@ -388,8 +391,8 @@ using namespace yb::ql;
                           opt_timezone opt_no_inherit opt_ordinality opt_instead opt_unique
                           opt_concurrently opt_verbose opt_full opt_freeze opt_default opt_recheck
                           copy_from opt_program all_or_distinct opt_trusted opt_restart_seqs
-                          opt_or_replace opt_grant_grant_option opt_grant_admin_option opt_nowait
-                          opt_if_exists opt_with_data opt_allow_filtering
+                          opt_or_replace opt_grant_grant_option /* opt_grant_admin_option */
+                          opt_nowait opt_if_exists opt_with_data opt_allow_filtering
                           TriggerForSpec TriggerForType
 
 %type <PInt64>            TableLikeOptionList TableLikeOption key_actions key_delete key_match
@@ -768,6 +771,14 @@ stmtblock:
     $$ = $1;
     parser_->SaveGeneratedParseTree($$);
   }
+  | BEGIN_P TRANSACTION
+      dml_list ';'
+    END_P TRANSACTION ';' {
+    $3->Prepend(MAKE_NODE(@1, PTStartTransaction));
+    $3->Append(MAKE_NODE(@5, PTCommit));
+    $$ = $3;
+    parser_->SaveGeneratedParseTree($$);
+  }
 ;
 
 // The thrashing around here is to discard "empty" statements...
@@ -788,6 +799,42 @@ stmtmulti:
       $1->Append($3);
       $$ = $1;
     }
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// DML statement list
+//--------------------------------------------------------------------------------------------------
+
+dml_list:
+  dml {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  |
+  dml_list ';' dml {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+dml:
+  InsertStmt {
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
+    $$ = $1;
+  }
+  | UpdateStmt {
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
+    $$ = $1;
+  }
+  | DeleteStmt {
+    if ($1 != nullptr) {
+      parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+    }
+    $$ = $1;
   }
 ;
 
@@ -7819,15 +7866,16 @@ RevokeRoleStmt:
   | REVOKE ADMIN OPTION FOR privilege_list FROM role_list opt_granted_by opt_drop_behavior {
   }
 ;
-
+/*
 opt_grant_admin_option:
   WITH ADMIN OPTION {
     $$ = true;
   }
-  | /*EMPTY*/ {
+  | /-*EMPTY*-/ {
     $$ = false;
   }
 ;
+*/
 
 opt_granted_by:
   GRANTED BY RoleSpec {
@@ -8805,8 +8853,8 @@ UnlistenStmt:
  *
  *    Transactions:
  *
- *    BEGIN / COMMIT / ROLLBACK
- *    (also older versions END / ABORT)
+ *    START TRANSACTION / COMMIT / ROLLBACK
+ *    (also older versions ABORT)
  *
  *****************************************************************************/
 
@@ -8814,16 +8862,10 @@ TransactionStmt:
   ABORT_P opt_transaction {
     PARSER_UNSUPPORTED(@1);
   }
-  | BEGIN_P opt_transaction transaction_mode_list_or_empty {
-    $$ = MAKE_NODE(@1, PTStartTransaction);
-  }
   | START TRANSACTION transaction_mode_list_or_empty {
     $$ = MAKE_NODE(@1, PTStartTransaction);
   }
   | COMMIT opt_transaction {
-    $$ = MAKE_NODE(@1, PTCommit);
-  }
-  | END_P opt_transaction {
     $$ = MAKE_NODE(@1, PTCommit);
   }
   | ROLLBACK opt_transaction {

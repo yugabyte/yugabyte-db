@@ -191,9 +191,9 @@ public class CassandraTransactionalKeyValue extends AppBase {
 
   protected PreparedStatement getPreparedInsert()  {
     return getPreparedInsert(String.format(
-        "BEGIN TRANSACTION;" +
-        "INSERT INTO %s (k, v) VALUES (:k1, :v);" +
-        "INSERT INTO %s (k, v) VALUES (:k2, :v);" +
+        "BEGIN TRANSACTION" +
+        "  INSERT INTO %s (k, v) VALUES (:k1, :v);" +
+        "  INSERT INTO %s (k, v) VALUES (:k2, :v);" +
         "END TRANSACTION;",
         getTableName(),
         getTableName()));

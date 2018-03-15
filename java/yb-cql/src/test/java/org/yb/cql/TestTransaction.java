@@ -46,10 +46,10 @@ public class TestTransaction extends BaseCQLTest {
     createTables();
 
     // Insert into multiple tables and ensure all rows are written with same writetime.
-    session.execute("begin transaction;" +
-                    "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                    "insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
-                    "insert into test_txn3 (k, c1, c2) values (?, ?, ?);" +
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                    "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
+                    "  insert into test_txn3 (k, c1, c2) values (?, ?, ?);" +
                     "end transaction;",
                     Integer.valueOf(1), Integer.valueOf(1), "v1",
                     Integer.valueOf(2), Integer.valueOf(2), "v2",
@@ -121,10 +121,10 @@ public class TestTransaction extends BaseCQLTest {
                 new HashSet<String>(Arrays.asList("Row[1, 1, v1]", "Row[2, 2, v2]")));
 
     // Test a mix of insert/update/delete in the same transaction.
-    session.execute("begin transaction;" +
-                    "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                    "update test_txn1 set c1 = 0, c2 = 'v0' where k = ?;" +
-                    "delete from test_txn1 where k = ?;" +
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                    "  update test_txn1 set c1 = 0, c2 = 'v0' where k = ?;" +
+                    "  delete from test_txn1 where k = ?;" +
                     "end transaction;",
                     Integer.valueOf(3), Integer.valueOf(3), "v3",
                     Integer.valueOf(2),
@@ -150,13 +150,13 @@ public class TestTransaction extends BaseCQLTest {
 
     // Test writes to the same row.
     session.execute("truncate test_txn1;");
-    session.execute("begin transaction;" +
-                    "insert into test_txn1 (k, c1, c2) values (1, 1, 'v1');" +
-                    "insert into test_txn1 (k, c1, c2) values (2, 2, 'v2');" +
-                    "insert into test_txn1 (k, c1, c2) values (2, 22, 'v2');" +
-                    "insert into test_txn1 (k, c1, c2) values (3, 3, 'v3');" +
-                    "delete from test_txn1 where k = 1;" +
-                    "update test_txn1 set c2 = 'v22' where k = 2;" +
+    session.execute("begin transaction" +
+                    "  insert into test_txn1 (k, c1, c2) values (1, 1, 'v1');" +
+                    "  insert into test_txn1 (k, c1, c2) values (2, 2, 'v2');" +
+                    "  insert into test_txn1 (k, c1, c2) values (2, 22, 'v2');" +
+                    "  insert into test_txn1 (k, c1, c2) values (3, 3, 'v3');" +
+                    "  delete from test_txn1 where k = 1;" +
+                    "  update test_txn1 set c2 = 'v22' where k = 2;" +
                     "end transaction;");
 
     // Verify the rows.
@@ -183,10 +183,10 @@ public class TestTransaction extends BaseCQLTest {
     // Prepare a transaction statement. Verify the hash key of the whole statement is the first
     // insert statement that has the full hash key specified (third insert).
     PreparedStatement stmt =
-        session.prepare("begin transaction;" +
-                        "insert into test_hash (h1, h2, r, c) values (1, 1, ?, ?);" +
-                        "insert into test_hash (h1, h2, r, c) values (?, 2, ?, ?);" +
-                        "insert into test_hash (h1, h2, r, c) values (?, ?, ?, ?);" +
+        session.prepare("begin transaction" +
+                        "  insert into test_hash (h1, h2, r, c) values (1, 1, ?, ?);" +
+                        "  insert into test_hash (h1, h2, r, c) values (?, 2, ?, ?);" +
+                        "  insert into test_hash (h1, h2, r, c) values (?, ?, ?, ?);" +
                         "end transaction;");
     int hashIndexes[] = stmt.getRoutingKeyIndexes();
     assertEquals(2, hashIndexes.length);
@@ -217,9 +217,9 @@ public class TestTransaction extends BaseCQLTest {
   public void testStaticColumn() throws Exception {
     // Multiple writes to the same static row are not allowed
     createTable("test_static", "h int, r int, s int static, c int, primary key ((h), r)", true);
-    session.execute("begin transaction;" +
-                    "insert into test_static (h, r, s, c) values (1, 1, 1, 1);" +
-                    "insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
+    session.execute("begin transaction" +
+                    "  insert into test_static (h, r, s, c) values (1, 1, 1, 1);" +
+                    "  insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
                     "end transaction;");
 
     // Verify the rows.
@@ -247,9 +247,9 @@ public class TestTransaction extends BaseCQLTest {
                    "commit;");
 
     // Missing "end transaction"
-    runInvalidStmt("begin transaction;" +
-                   "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                   "insert into test_txn2 (k, c1, c2) values (?, ?, ?);");
+    runInvalidStmt("begin transaction" +
+                   "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                   "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);");
 
     // Missing "begin / end transaction"
     runInvalidStmt("insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
@@ -257,14 +257,14 @@ public class TestTransaction extends BaseCQLTest {
 
     // Writing to non-transactional table
     createTable("test_non_txn", "k int primary key, c1 int, c2 text", false);
-    runInvalidStmt("begin transaction;" +
-                   "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                   "insert into test_non_txn (k, c1, c2) values (?, ?, ?);" +
+    runInvalidStmt("begin transaction" +
+                   "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                   "  insert into test_non_txn (k, c1, c2) values (?, ?, ?);" +
                    "end transaction;");
 
     // Conditional DML not supported yet
-    runInvalidStmt("begin transaction;" +
-                   "insert into test_txn1 (k, c1, c2) values (?, ?, ?) if not exists;" +
+    runInvalidStmt("begin transaction" +
+                   "  insert into test_txn1 (k, c1, c2) values (?, ?, ?) if not exists;" +
                    "end transaction;");
   }
 
@@ -279,9 +279,9 @@ public class TestTransaction extends BaseCQLTest {
     final int BATCH_SIZE = 10;
     final int KEY_COUNT = 5000;
 
-    String insert = "begin transaction;";
+    String insert = "begin transaction";
     for (int j = 0; j < BATCH_SIZE; j++) {
-      insert += "insert into test_read_write (k, v) values (?, ?);";
+      insert += "  insert into test_read_write (k, v) values (?, ?);";
     }
     insert +=  "end transaction;";
 

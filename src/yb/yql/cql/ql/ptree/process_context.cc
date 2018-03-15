@@ -30,8 +30,7 @@ using std::string;
 
 ProcessContextBase::ProcessContextBase(const char *stmt, size_t stmt_len)
     : stmt_(stmt),
-      stmt_len_(stmt_len),
-      error_code_(ErrorCode::SUCCESS) {
+      stmt_len_(stmt_len) {
 }
 
 ProcessContextBase::~ProcessContextBase() {
