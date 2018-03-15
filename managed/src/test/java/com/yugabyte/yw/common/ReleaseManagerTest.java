@@ -66,9 +66,9 @@ public class ReleaseManagerTest {
       if (inDockerPath) {
         versionPath = TMP_DOCKER_STORAGE_PATH;
       }
-      createTempFile(versionPath, "yugabyte.xyz." + version + ".tar.gz", "Sample data");
+      createTempFile(versionPath, "yugabyte-ee-" + version + "-centos-x86_64.tar.gz", "Sample data");
       if (multipleRepos) {
-        createTempFile(versionPath, "devops.xyz." + version + ".tar.gz", "Sample data");
+        createTempFile(versionPath, "devops.xyz." + version + "-centos-x86_64.tar.gz", "Sample data");
       }
     });
   }
@@ -121,7 +121,7 @@ public class ReleaseManagerTest {
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
     releaseMap = ArgumentCaptor.forClass(HashMap.class);
     Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
-    Map expectedMap = ImmutableMap.of("0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte.xyz.0.0.1.tar.gz");
+    Map expectedMap = ImmutableMap.of("0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz");
     assertEquals(releaseMap.getValue(), expectedMap);
     assertEquals(configType.getValue(), SoftwareReleases);
   }
@@ -132,7 +132,7 @@ public class ReleaseManagerTest {
     when(appConfig.getString("yb.docker.release")).thenReturn(TMP_DOCKER_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.1");
     createDummyReleases(versions, false, false);
-    List<String> dockerVersions = ImmutableList.of("0.0.2");
+    List<String> dockerVersions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(dockerVersions, false, true);
     releaseManager.loadReleasesToDB();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
@@ -141,10 +141,10 @@ public class ReleaseManagerTest {
     releaseMap = ArgumentCaptor.forClass(HashMap.class);
     Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap = ImmutableMap.of(
-        "0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte.xyz.0.0.1.tar.gz",
-        "0.0.2", TMP_STORAGE_PATH + "/0.0.2/yugabyte.xyz.0.0.2.tar.gz");
-    assertEquals(releaseMap.getValue(), expectedMap);
-    assertEquals(configType.getValue(), SoftwareReleases);
+        "0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz",
+        "0.0.2-b2", TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz");
+    assertEquals(expectedMap, releaseMap.getValue());
+    assertEquals(SoftwareReleases, configType.getValue());
 
     File dockerStoragePath = new File(TMP_DOCKER_STORAGE_PATH);
     File[] files = dockerStoragePath.listFiles();
