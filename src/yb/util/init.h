@@ -48,7 +48,8 @@ CHECKED_STATUS SetupLogDir(const std::string& server_type);
 
 // Initialize YB, checking that the platform we are running on is supported, etc.
 // Issues a FATAL log message if we fail to init.
-CHECKED_STATUS InitYB(const std::string &server_type);
+// argv0 is passed to InitGoogleLoggingSafe.
+CHECKED_STATUS InitYB(const std::string &server_type, const char* argv0);
 
 } // namespace yb
 #endif /* YB_UTIL_INIT_H */

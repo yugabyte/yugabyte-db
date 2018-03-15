@@ -40,6 +40,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/version_info.h"
@@ -101,10 +102,13 @@ Status SetupLogDir(const std::string& server_type) {
   return Status::OK();
 }
 
-Status InitYB(const std::string &server_type) {
+Status InitYB(const std::string &server_type, const char* argv0) {
   RETURN_NOT_OK(CheckCPUFlags());
   RETURN_NOT_OK(SetupLogDir(server_type));
-  return VersionInfo::Init();
+  RETURN_NOT_OK(VersionInfo::Init());
+  InitGoogleLoggingSafe(argv0);
+  LOG(INFO) << VersionInfo::GetShortVersionString();
+  return Status::OK();
 }
 
 } // namespace yb
