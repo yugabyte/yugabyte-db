@@ -200,7 +200,7 @@ Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std:
 
 template <typename F>
 CHECKED_STATUS ResolveInetAddresses(const std::string& host, F func) {
-  auto addrinfo_holder = CHECK_RESULT(HostToInetAddrInfo(host));
+  auto addrinfo_holder = VERIFY_RESULT(HostToInetAddrInfo(host));
   struct addrinfo* addrinfo = addrinfo_holder.get();
   for (; addrinfo != nullptr; addrinfo = addrinfo->ai_next) {
     CHECK_EQ(addrinfo->ai_family, AF_INET);
