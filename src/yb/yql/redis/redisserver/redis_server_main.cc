@@ -38,8 +38,7 @@ static int RedisServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("redisserver"));
-  InitGoogleLoggingSafe(argv[0]);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("redisserver", argv[0]));
 
   RedisServerOptions opts;
   opts.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;

@@ -75,8 +75,7 @@ static int MasterMain(int argc, char** argv) {
     return 1;
   }
 
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType));
-  InitGoogleLoggingSafe(argv[0]);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(MasterOptions::kServerType, argv[0]));
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);

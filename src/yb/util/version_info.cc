@@ -69,10 +69,12 @@ string VersionInfo::GetGitHash() {
 string VersionInfo::GetShortVersionString() {
   auto* data = GetVersionData();
 
-  return strings::Substitute("version $0 build $1 build_type $2",
+  return strings::Substitute("version $0 build $1 revision $2 build_type $3 built at $4",
                              data->version_number(),
                              data->build_number(),
-                             data->build_type());
+                             data->git_hash(),
+                             data->build_type(),
+                             data->build_timestamp());
 }
 
 string VersionInfo::GetAllVersionInfo() {
@@ -80,7 +82,7 @@ string VersionInfo::GetAllVersionInfo() {
 
   string ret = strings::Substitute(
       "version $0\n"
-      "build $1"
+      "build $1\n"
       "revision $2\n"
       "build_type $3\n"
       "built by $4 at $5 on $6",
