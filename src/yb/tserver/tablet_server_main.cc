@@ -112,8 +112,7 @@ static int TabletServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType));
-  InitGoogleLoggingSafe(argv[0]);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
 
 #ifdef TCMALLOC_ENABLED
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<

@@ -48,8 +48,7 @@ static int CQLServerMain(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("cqlserver"));
-  InitGoogleLoggingSafe(argv[0]);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("cqlserver", argv[0]));
 
   CQLServerOptions cql_server_options;
   cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
