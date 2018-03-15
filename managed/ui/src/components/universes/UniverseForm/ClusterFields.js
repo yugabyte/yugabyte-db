@@ -332,7 +332,7 @@ export default class ClusterFields extends Component {
 
 
   numNodesChangedViaAzList(value) {
-    this.setState({nodeSetViaAZList: false, numNodes: value});
+    this.setState({nodeSetViaAZList: true, numNodes: value});
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -574,7 +574,7 @@ export default class ClusterFields extends Component {
 
   numNodesChanged(value) {
     const {updateFormField, clusterType} = this.props;
-    this.setState({numNodes: value});
+    this.setState({numNodes: value, nodeSetViaAZList: false});
     updateFormField(`${clusterType}.numNodes`, value);
   }
 
