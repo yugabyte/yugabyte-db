@@ -31,7 +31,6 @@ namespace rocksdb {
 struct ReadOptions;
 class InternalKeyComparator;
 class Arena;
-class TableReader;
 
 struct TwoLevelIteratorState {
   explicit TwoLevelIteratorState(bool _check_prefix_may_match)
@@ -40,11 +39,6 @@ struct TwoLevelIteratorState {
   virtual ~TwoLevelIteratorState() {}
   virtual InternalIterator* NewSecondaryIterator(const Slice& handle) = 0;
   virtual bool PrefixMayMatch(const Slice& internal_key) = 0;
-
-  // Temporary fix for ENG-3060. Overridden in BlockEntryIteratorState to verify if TableReader
-  // pointer saved inside IndexIterator's state is obsolete (due to TableReader evicted from cache)
-  // and should be updated.
-  virtual void CheckTableReader(TableReader* reader) {}
 
   // If call PrefixMayMatch()
   bool check_prefix_may_match;

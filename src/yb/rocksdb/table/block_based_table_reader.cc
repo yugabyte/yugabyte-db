@@ -59,9 +59,7 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/string_util.h"
-#include "yb/util/trace.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/util/logging.h"
@@ -210,6 +208,7 @@ struct BlockBasedTable::Rep {
   Footer footer;
   std::mutex data_index_reader_mutex;
   yb::AtomicUniquePtr<IndexReader> data_index_reader;
+  unique_ptr<BlockEntryIteratorState> data_index_iterator_state;
   unique_ptr<IndexReader> filter_index_reader;
   unique_ptr<FilterBlockReader> filter;
 
@@ -231,6 +230,42 @@ struct BlockBasedTable::Rep {
   unique_ptr<SliceTransform> internal_prefix_transform;
   DataIndexLoadMode data_index_load_mode;
 };
+
+// BlockEntryIteratorState doesn't actually store any iterator state and is only used as an adapter
+// to BlockBasedTable. It is used by TwoLevelIterator and MultiLevelIterator to call BlockBasedTable
+// functions in order to check if prefix may match or to create a secondary iterator.
+class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
+ public:
+  BlockEntryIteratorState(
+      BlockBasedTable* table, const ReadOptions& read_options, bool skip_filters,
+      BlockType block_type)
+      : TwoLevelIteratorState(table->rep_->ioptions.prefix_extractor != nullptr),
+        table_(table),
+        read_options_(read_options),
+        skip_filters_(skip_filters),
+        block_type_(block_type) {}
+
+  InternalIterator* NewSecondaryIterator(const Slice& index_value) override {
+    return table_->NewDataBlockIterator(read_options_, index_value, block_type_);
+  }
+
+  bool PrefixMayMatch(const Slice& internal_key) override {
+    if (read_options_.total_order_seek || skip_filters_) {
+      return true;
+    }
+    return table_->PrefixMayMatch(internal_key);
+  }
+
+ private:
+  // Don't own table_. BlockEntryIteratorState should only be stored in iterators or in
+  // corresponding BlockBasedTable. TableReader (superclass of BlockBasedTable) is only destroyed
+  // after iterator is deleted.
+  BlockBasedTable* const table_;
+  const ReadOptions read_options_;
+  const bool skip_filters_;
+  const BlockType block_type_;
+};
+
 
 class BlockBasedTable::IndexIteratorHolder {
  public:
@@ -516,6 +551,11 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
   }
 
   if (s.ok()) {
+    // Filters are checked before seeking the index.
+    const bool skip_filters_for_index = true;
+    rep->data_index_iterator_state = std::make_unique<BlockEntryIteratorState>(
+        new_table.get(), ReadOptions::kDefault, skip_filters_for_index, BlockType::kIndex);
+
     *table_reader = std::move(new_table);
   }
 
@@ -823,7 +863,9 @@ Status BlockBasedTable::GetFixedSizeFilterBlockHandle(const Slice& filter_key,
   // Determine block of fixed-size bloom filter using filter index.
   BlockIter fiter;
   rep_->filter_index_reader->NewIterator(&fiter,
-      true /* ignored by BinarySearchIndexReader which we use as filter_index_reader */);
+      // Following parameters are ignored by BinarySearchIndexReader which we use as
+      // filter_index_reader.
+      nullptr /* index_iterator_state */, true /* total_order_seek */);
   fiter.Seek(filter_key);
   if (fiter.Valid()) {
     Slice filter_block_handle_encoded = fiter.value();
@@ -957,11 +999,12 @@ InternalIterator* ReturnNoIOErrorIterator(BlockIter* input_iter) {
 
 InternalIterator* BlockBasedTable::NewIndexIterator(
     const ReadOptions& read_options, BlockIter* input_iter) {
-  // index reader has already been pre-populated.
+  const auto index_iter_state = rep_->data_index_iterator_state.get();
   IndexReader* index_reader = rep_->data_index_reader.get(std::memory_order_acquire);
   if (index_reader) {
-    index_reader->CheckTableReader(this);
-    return index_reader->NewIterator(input_iter, read_options.total_order_seek);
+    // Index reader has already been pre-populated.
+    return index_reader->NewIterator(
+        input_iter, index_iter_state, read_options.total_order_seek);
   }
   PERF_TIMER_GUARD(read_index_block_nanos);
 
@@ -984,7 +1027,6 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
 
     if (cache_handle != nullptr) {
       index_reader = static_cast<IndexReader*>(block_cache->Value(cache_handle));
-      index_reader->CheckTableReader(this);
     } else {
     // Create index reader and put it in the cache.
     std::unique_ptr<IndexReader> index_reader_unique;
@@ -998,7 +1040,6 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     if (s.ok()) {
       assert(cache_handle != nullptr);
       index_reader = index_reader_unique.release();
-      index_reader->CheckTableReader(this);
     } else {
         // make sure if something goes wrong, data_index_reader shall remain intact.
         return ReturnErrorIterator(s, input_iter);
@@ -1006,7 +1047,8 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     }
 
     assert(cache_handle);
-    auto new_iter = index_reader->NewIterator(input_iter, read_options.total_order_seek);
+    auto new_iter = index_reader->NewIterator(
+        input_iter, index_iter_state, read_options.total_order_seek);
     auto iter = new_iter ? new_iter : implicit_cast<InternalIterator*>(input_iter);
     iter->RegisterCleanup(&ReleaseCachedEntry, block_cache, cache_handle);
     return new_iter;
@@ -1032,8 +1074,8 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
           return ReturnErrorIterator(s, input_iter);
         }
       }
-      index_reader->CheckTableReader(this);
-      return index_reader->NewIterator(input_iter, read_options.total_order_seek);
+      return index_reader->NewIterator(
+          input_iter, index_iter_state, read_options.total_order_seek);
     }
   }
 }
@@ -1145,50 +1187,6 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
   }
   return iter;
 }
-
-class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
- public:
-  BlockEntryIteratorState(
-      BlockBasedTable* table, const ReadOptions& read_options, bool skip_filters,
-      BlockType block_type)
-      : TwoLevelIteratorState(table->rep_->ioptions.prefix_extractor != nullptr),
-        table_(table),
-        read_options_(read_options),
-        skip_filters_(skip_filters),
-        block_type_(block_type) {}
-
-  InternalIterator* NewSecondaryIterator(const Slice& index_value) override {
-    return table_.load(std::memory_order_relaxed)->NewDataBlockIterator(
-        read_options_, index_value, block_type_);
-  }
-
-  bool PrefixMayMatch(const Slice& internal_key) override {
-    if (read_options_.total_order_seek || skip_filters_) {
-      return true;
-    }
-    return table_.load(std::memory_order_relaxed)->PrefixMayMatch(internal_key);
-  }
-
-  void CheckTableReader(TableReader* reader) override {
-    auto bbt = pointer_cast<BlockBasedTable*>(reader);
-    if (table_.load(std::memory_order_acquire) != bbt) {
-      table_.store(bbt, std::memory_order_release);
-      YB_LOG_EVERY_N_SECS(ERROR, 5) << "BlockEntryIteratorState table reader check failed: "
-          << "table_=" << table_ << " reader=" << reader;
-      if (!is_stack_trace_logged_.exchange(true, std::memory_order_acq_rel)) {
-        LOG(ERROR) << yb::GetStackTrace();
-      }
-    }
-  };
-
- private:
-  // Don't own table_
-  std::atomic<BlockBasedTable*> table_;
-  std::atomic<bool> is_stack_trace_logged_{false};
-  const ReadOptions read_options_;
-  const bool skip_filters_;
-  const BlockType block_type_;
-};
 
 // This will be broken if the user specifies an unusual implementation
 // of Options.comparator, or if the user specifies an unusual
@@ -1555,12 +1553,8 @@ Status BlockBasedTable::CreateDataBlockIndexReader(
             BlockBasedTablePropertyNames::kNumIndexLevels);
       }
       int num_levels = DecodeFixed32(pos->second.c_str());
-      // Filters are already checked before seeking the index.
-      const bool skip_filters = true;
-      auto state = std::make_unique<BlockEntryIteratorState>(
-          this, ReadOptions::kDefault, skip_filters, BlockType::kIndex);
       auto result = MultiLevelIndexReader::Create(
-          file, footer, num_levels, footer.index_handle(), env, comparator, std::move(state));
+          file, footer, num_levels, footer.index_handle(), env, comparator);
       RETURN_NOT_OK(result);
       *index_reader = std::move(*result);
       return Status::OK();
