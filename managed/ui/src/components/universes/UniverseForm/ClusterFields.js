@@ -332,7 +332,7 @@ export default class ClusterFields extends Component {
 
 
   numNodesChangedViaAzList(value) {
-    this.setState({nodeSetViaAZList: true, numNodes: value});
+    this.setState({nodeSetViaAZList: false, numNodes: value});
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
@@ -767,7 +767,7 @@ export default class ClusterFields extends Component {
     if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
       assignPublicIP = (
         <Field name={`${clusterType}.assignPublicIP`}
-               component={YBToggle}
+               component={YBToggle} isReadOnly={isFieldReadOnly}
                checkedVal={this.state.assignPublicIP}
                onToggle={this.toggleAssignPublicIP}
                label="Assign Public IP"

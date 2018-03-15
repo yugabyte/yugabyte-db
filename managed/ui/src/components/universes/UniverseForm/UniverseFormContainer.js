@@ -152,7 +152,7 @@ function mapStateToProps(state, ownProps) {
       data.primary = {};
       data.primary.universeName = currentUniverse.data.name;
       data.formType = "edit";
-
+      data.primary.assignPublicIP = userIntent.assignPublicIP;
       data.primary.provider = userIntent.provider;
       data.primary.numNodes = userIntent.numNodes;
       data.primary.replicationFactor = userIntent.replicationFactor;
