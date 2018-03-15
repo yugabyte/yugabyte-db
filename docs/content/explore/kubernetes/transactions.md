@@ -119,9 +119,9 @@ Here are a couple of examples of executing transactions.
 - Let us say John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows.
 
 ```{.sql .copy}
-BEGIN TRANSACTION;
-UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='savings';
-UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='John' AND account_type='checking';
+BEGIN TRANSACTION
+  UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='savings';
+  UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='John' AND account_type='checking';
 END TRANSACTION;
 ```
 
@@ -163,9 +163,9 @@ from banking.accounts where account_name='John';
 - Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
 
 ```{.sql .copy}
-BEGIN TRANSACTION;
-UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='checking';
-UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='Smith' AND account_type='checking';
+BEGIN TRANSACTION
+  UPDATE banking.accounts SET balance = balance - 200 WHERE account_name='John' AND account_type='checking';
+  UPDATE banking.accounts SET balance = balance + 200 WHERE account_name='Smith' AND account_type='checking';
 END TRANSACTION;
 ```
 

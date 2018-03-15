@@ -24,9 +24,9 @@ String create_stmt =
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
 
 ```sh
-BEGIN TRANSACTION;
-statement 1
-statement 2
+BEGIN TRANSACTION
+  statement 1
+  statement 2
 END TRANSACTION;
 ```
 
@@ -38,9 +38,9 @@ Here is a code snippet of how you would insert data into this table.
 ```{.java .copy}
 // Insert two key values, (key1, value1) and (key2, value2) as a transaction.
 String create_stmt = 
-  String.format("BEGIN TRANSACTION;" +
-                "INSERT INTO %s (k, v) VALUES (%s, %s);" +
-                "INSERT INTO %s (k, v) VALUES (%s, %s);" +
+  String.format("BEGIN TRANSACTION" +
+                "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
+                "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
                 "END TRANSACTION;",
                 tablename, key1, value1,
                 tablename, key2, value2;
@@ -56,9 +56,9 @@ You can prepare statements with transactions and bind variables to the prepared 
 
 ```{.java .copy}
 String create_stmt = 
-  String.format("BEGIN TRANSACTION;" +
-                "INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
-                "INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
+  String.format("BEGIN TRANSACTION" +
+                "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
+                "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
                 "END TRANSACTION;",
                 tablename, key1, value1,
                 tablename, key2, value2;
