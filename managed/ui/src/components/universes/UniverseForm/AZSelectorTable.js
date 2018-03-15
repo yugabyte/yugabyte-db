@@ -6,7 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
 import { isNonEmptyArray, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
-import { getPrimaryCluster, getAsyncCluster } from '../../../utils/UniverseUtils';
+import { getPrimaryCluster, getAsyncCluster, getClusterByType } from '../../../utils/UniverseUtils';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
@@ -18,6 +18,7 @@ export default class AZSelectorTable extends Component {
     super(props);
     this.state = {azItemState: {}};
   }
+
   static propTypes = {
     universe: PropTypes.object,
   };
@@ -39,7 +40,7 @@ export default class AZSelectorTable extends Component {
       currentAZState[listKey].value = event.target.value;
       this.updatePlacementInfo(currentAZState, universeTemplate);
     }
-  }
+  };
 
   handleAZNodeCountChange(listKey, value) {
     const {universe: {universeConfigTemplate}} = this.props;
@@ -47,7 +48,7 @@ export default class AZSelectorTable extends Component {
     const currentAZState = this.state.azItemState;
     currentAZState[listKey].count = value;
     this.updatePlacementInfo(currentAZState, universeTemplate);
-  }
+  };
 
   handleAffinitizedZoneChange(idx) {
     const {universe: {universeConfigTemplate}} = this.props;
@@ -55,6 +56,17 @@ export default class AZSelectorTable extends Component {
     const universeTemplate = _.clone(universeConfigTemplate.data);
     currentAZState[idx].isAffinitized = !currentAZState[idx].isAffinitized;
     this.updatePlacementInfo(currentAZState, universeTemplate);
+  };
+
+  // Method takes in the cluster object that is being modified
+  // and returns a list of objects each containing the azUUID, azName and count in the record.
+  getZonesWithCounts = (cluster) => {
+    const {cloud: {regions}} = this.props;
+    return regions.data.filter((region) => {
+      return cluster.userIntent.regionList.includes(region.uuid);
+    }).reduce((az, region) => {
+      return az.concat(region.zones);
+    }, []);
   }
 
   updatePlacementInfo = (currentAZState, universeConfigTemplate) => {
@@ -155,8 +167,8 @@ export default class AZSelectorTable extends Component {
   };
 
   getGroupWithCounts = universeConfigTemplate => {
+    const {cloud: {regions}, clusterType} = this.props;
     const uniConfigArray = [];
-    const {clusterType} = this.props;
     let cluster = null;
     if (isNonEmptyObject(universeConfigTemplate)) {
       if (clusterType === "primary") {
@@ -191,7 +203,7 @@ export default class AZSelectorTable extends Component {
         }
       });
     }
-    const groupsArray = [];
+    let groupsArray = [];
     const uniqueRegions = [];
     if (isNonEmptyObject(cluster) &&
         isNonEmptyObject(cluster.placementInfo) &&
@@ -211,8 +223,28 @@ export default class AZSelectorTable extends Component {
         });
       });
     }
-    const sortedGroups = groupsArray.sort((a, b)=>(a.value - b.value));
-    return ({groups: sortedGroups,
+
+    const clusters = universeConfigTemplate.clusters;
+    if (isNonEmptyArray(clusters)) {
+      let azListForSelectedRegions = [];
+      const sortedGroupArray = [];
+      const currentCluster = getClusterByType(clusters, clusterType);
+      if (isNonEmptyObject(currentCluster) && isNonEmptyObject(currentCluster.userIntent) &&
+        isNonEmptyArray(currentCluster.userIntent.regionList) && isNonEmptyArray(regions.data)) {
+        azListForSelectedRegions = this.getZonesWithCounts(currentCluster);
+      }
+      const sortedAZListForSelectedRegions = azListForSelectedRegions.sort(function(a, b){
+        return a.code > b.code ? 1 : -1 ;
+      });
+      sortedAZListForSelectedRegions.forEach(function(azListRegionItem){
+        const currentazItem = groupsArray.find((a)=>(a.value  === azListRegionItem.uuid));
+        if (isNonEmptyObject(currentazItem)) {
+          sortedGroupArray.push(currentazItem);
+        }
+      });
+      groupsArray = sortedGroupArray;
+    }
+    return ({groups: groupsArray,
       uniqueRegions: uniqueRegions.length,
       uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length});
   };
@@ -250,19 +282,19 @@ export default class AZSelectorTable extends Component {
   }
 
   render() {
-    const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
+    const {universe: {universeConfigTemplate}, cloud: {regions}, clusterType} = this.props;
     const self = this;
     let azListForSelectedRegions = [];
-    const primaryCluster = isNonEmptyObject(universeConfigTemplate.data) ?
-      getPrimaryCluster(universeConfigTemplate.data.clusters) :
-      null;
-    if (isNonEmptyObject(primaryCluster) && isNonEmptyObject(primaryCluster.userIntent) &&
-        isNonEmptyArray(primaryCluster.userIntent.regionList) && isNonEmptyArray(regions.data)) {
-      azListForSelectedRegions = regions.data.filter((region) => {
-        return primaryCluster.userIntent.regionList.includes(region.uuid);
-      }).reduce((az, region) => {
-        return az.concat(region.zones);
-      }, []);
+
+    let currentCluster = null;
+
+    if (isNonEmptyObject(universeConfigTemplate.data) && isNonEmptyArray(universeConfigTemplate.data.clusters)) {
+      currentCluster = getClusterByType(universeConfigTemplate.data.clusters, clusterType);
+    }
+
+    if (isNonEmptyObject(currentCluster) && isNonEmptyObject(currentCluster.userIntent) &&
+        isNonEmptyArray(currentCluster.userIntent.regionList) && isNonEmptyArray(regions.data)) {
+      azListForSelectedRegions = this.getZonesWithCounts(currentCluster);
     }
     let azListOptions = <option/>;
     if (isNonEmptyArray(azListForSelectedRegions)) {
@@ -290,7 +322,7 @@ export default class AZSelectorTable extends Component {
             </Row>
           </FlexGrow>
           <FlexShrink power={0} key={idx} className="form-right-control">
-            <Field name={"test"} component={YBCheckBox} checkState={azGroupItem.isAffinitized}
+            <Field name={`affinitized${idx}`} component={YBCheckBox} checkState={azGroupItem.isAffinitized}
                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
           </FlexShrink>
         </FlexContainer>

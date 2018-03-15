@@ -30,7 +30,7 @@ export function getAsyncCluster(clusters) {
 
 export function getClusterByType(clusters, clusterType) {
   if (isNonEmptyArray(clusters)) {
-    const foundClusters = clusters.filter((cluster) => cluster.clusterType === clusterType);
+    const foundClusters = clusters.filter((cluster) => cluster.clusterType.toLowerCase() === clusterType.toLowerCase());
     if (foundClusters.length === 1) {
       return foundClusters[0];
     }
