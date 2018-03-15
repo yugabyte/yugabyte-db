@@ -27,11 +27,16 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 Status PTListNode::AnalyzeStatementBlock(SemContext *sem_context) {
-  // The only statement block we support currently is
-  //   START TRANSACTION | BEGIN TRANSACTION;
+  // The only statement block we support currently is transaction block as either
+  //   BEGIN TRANSACTION
   //     dml;
   //     ...
-  //   COMMIT | END TRANSACTION;
+  //   END TRANSACTION;
+  // or
+  //   START TRANSACTION;
+  //     dml;
+  //     ...
+  //   COMMIT;
 
   if (node_list().empty()) {
     return Status::OK();

@@ -33,7 +33,7 @@ namespace ql {
 class SemContext;
 
 YB_DEFINE_ENUM(TreeNodeOpcode,
-               ((kNoOp, 0))
+               (kNoOp)
                (kTreeNode)
                (kPTListNode)
                (kPTCreateKeyspace)
