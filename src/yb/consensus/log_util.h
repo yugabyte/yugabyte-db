@@ -269,8 +269,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   //
   // NOTE: this is performance-critical since it is used by ScanForValidEntryHeaders
   // and thus returns bool instead of Status.
-  bool DecodeEntryHeader(const Slice& data, EntryHeader* header);
-
+  CHECKED_STATUS DecodeEntryHeader(const Slice& data, EntryHeader* header);
 
   // Reads a log entry batch from the provided readable segment, which gets decoded
   // into 'entry_batch' and increments 'offset' by the batch's length.
