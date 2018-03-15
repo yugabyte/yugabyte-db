@@ -268,7 +268,7 @@ class MultiLevelIterator : public InternalIterator {
   TwoLevelIteratorState* const state_;
   boost::container::small_vector<IteratorWrapper, kIterChainInitialCapacity> iter_;
   // If iter_[level] holds non-nullptr, then "index_block_handle_[level-1]" holds the
-  // handle passed state_->NewSecondaryIterator to create iter_[level].
+  // handle passed to state_->NewSecondaryIterator to create iter_[level].
   boost::container::small_vector<std::string, kIterChainInitialCapacity - 1> index_block_handle_;
   IteratorWrapper* const bottom_level_iter_;
   bool need_free_top_level_iter_;
@@ -278,20 +278,20 @@ class MultiLevelIterator : public InternalIterator {
 
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
     RandomAccessFileReader* file, const Footer& footer, const int num_levels,
-    const BlockHandle& top_level_index_handle, Env* env,
-    const ComparatorPtr& comparator, std::unique_ptr<TwoLevelIteratorState> state) {
+    const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator) {
   std::unique_ptr<Block> index_block;
   RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
       file, footer, ReadOptions::kDefault, top_level_index_handle, &index_block, env));
 
-  return std::make_unique<MultiLevelIndexReader>(
-      comparator, num_levels, std::move(index_block), std::move(state));
+  return std::make_unique<MultiLevelIndexReader>(comparator, num_levels, std::move(index_block));
 }
 
-InternalIterator* MultiLevelIndexReader::NewIterator(BlockIter* iter, bool) {
+InternalIterator* MultiLevelIndexReader::NewIterator(
+    BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) {
   InternalIterator* top_level_iter =
       top_level_index_block_->NewIterator(comparator_.get(), iter, true /* total_order_seek */);
-  return new MultiLevelIterator(state_.get(), top_level_iter, num_levels_, top_level_iter != iter);
+  return new MultiLevelIterator(
+      index_iterator_state, top_level_iter, num_levels_, top_level_iter != iter);
 }
 
 } // namespace rocksdb
