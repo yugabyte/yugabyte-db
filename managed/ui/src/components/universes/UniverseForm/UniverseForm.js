@@ -113,6 +113,7 @@ class UniverseForm extends Component {
           return item.value;
         }),
         provider: formValues[clusterType].provider,
+        assignPublicIP: formValues[clusterType].assignPublicIP,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
