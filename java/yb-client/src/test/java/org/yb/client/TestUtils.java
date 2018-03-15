@@ -606,7 +606,8 @@ public class TestUtils {
     }
     return new File(
         surefireDir,
-        testClass.getName() + "." + BaseYBTest.getCurrentTestMethodName() + "-").toString();
+        testClass.getName() + "." + BaseYBTest.getCurrentTestMethodName() + "-output."
+    ).toString();
   }
 
 }

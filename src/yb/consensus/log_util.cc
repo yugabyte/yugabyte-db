@@ -576,7 +576,7 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
       Slice potential_header = Slice(&chunk[off_in_chunk], kEntryHeaderSize);
 
       EntryHeader header;
-      if (DecodeEntryHeader(potential_header, &header)) {
+      if (DecodeEntryHeader(potential_header, &header).ok()) {
         LOG(INFO) << "Found a valid entry header at offset " << (offset + off_in_chunk);
         *has_valid_entries = true;
         return Status::OK();
@@ -641,14 +641,12 @@ Status ReadableLogSegment::ReadEntryHeader(int64_t *offset, EntryHeader* header)
                                   &slice, scratch),
                         "Could not read log entry header");
 
-  if (PREDICT_FALSE(!DecodeEntryHeader(slice, header))) {
-    return STATUS(Corruption, "CRC mismatch in log entry header");
-  }
+  RETURN_NOT_OK(DecodeEntryHeader(slice, header));
   *offset += slice.size();
   return Status::OK();
 }
 
-bool ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* header) {
+Status ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* header) {
   DCHECK_EQ(kEntryHeaderSize, data.size());
   header->msg_length = DecodeFixed32(&data[0]);
   header->msg_crc    = DecodeFixed32(&data[4]);
@@ -656,7 +654,12 @@ bool ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* heade
 
   // Verify the header.
   uint32_t computed_crc = crc::Crc32c(&data[0], 8);
-  return computed_crc == header->header_crc;
+  if (computed_crc != header->header_crc) {
+    return STATUS_FORMAT(
+        Corruption, "Invalid checksum in log entry head header: found=$0, computed=$1",
+        header->header_crc, computed_crc);
+  }
+  return Status::OK();
 }
 
 
