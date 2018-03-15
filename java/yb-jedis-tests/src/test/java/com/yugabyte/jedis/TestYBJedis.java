@@ -275,8 +275,7 @@ public class TestYBJedis extends BaseJedisTest {
     try {
       List<String> values = jedis_client.tsrangeByTime("k0", "foo", "bar");
     } catch (Exception e) {
-      assertEquals(e.getMessage(),
-          "ERR TSRANGEBYTIME: foo is not a valid number: Invalid argument");
+      assertEquals("ERR TSRANGEBYTIME: foo is not a valid number", e.getMessage());
       return;
     }
     // We shouldn't reach here.
