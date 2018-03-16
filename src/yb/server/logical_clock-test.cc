@@ -76,27 +76,6 @@ TEST_F(LogicalClockTest, TestUpdate_LogicalValueDoesNotIncrease) {
   ASSERT_EQ(now.value(), 2);
 }
 
-TEST_F(LogicalClockTest, TestWaitUntilAfterIsUnavailable) {
-  Status status = clock_->WaitUntilAfter(
-      HybridTime(10), MonoTime::Now());
-  ASSERT_TRUE(status.IsServiceUnavailable());
-}
-
-TEST_F(LogicalClockTest, TestIsAfter) {
-  HybridTime ht1 = clock_->Now();
-  ASSERT_TRUE(clock_->IsAfter(ht1));
-
-  // Update the clock in the future, make sure it still
-  // handles "IsAfter" properly even when it's running in
-  // "logical" mode.
-  HybridTime now_increased = HybridTime(1000);
-  clock_->Update(now_increased);
-  HybridTime ht2 = clock_->Now();
-
-  ASSERT_TRUE(clock_->IsAfter(ht1));
-  ASSERT_TRUE(clock_->IsAfter(ht2));
-}
-
 }  // namespace server
 }  // namespace yb
 

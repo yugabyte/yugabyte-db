@@ -1,0 +1,74 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#ifndef YB_SERVER_SKEWED_CLOCK_H
+#define YB_SERVER_SKEWED_CLOCK_H
+
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/util/physical_time.h"
+
+namespace yb {
+namespace server {
+
+class SkewedClock : public PhysicalClock {
+ public:
+  typedef int64_t DeltaTime;
+
+  static const std::string kName;
+
+  explicit SkewedClock(PhysicalClockPtr clock);
+
+  template <class Duration>
+  DeltaTime SetDelta(Duration duration) {
+    auto micros = static_cast<DeltaTime>(
+        std::chrono::duration_cast<std::chrono::microseconds>(duration).count());
+    return SetDelta(micros);
+  }
+
+  DeltaTime SetDelta(DeltaTime new_delta);
+
+  static void Register();
+
+ private:
+  Result<PhysicalTime> Now() override;
+
+  PhysicalClockPtr impl_;
+  std::atomic<DeltaTime> delta_{0};
+};
+
+typedef std::shared_ptr<SkewedClock> SkewedClockPtr;
+
+class SkewedClockDeltaChanger {
+ public:
+  template <class Delta>
+  SkewedClockDeltaChanger(Delta new_delta, SkewedClockPtr skewed_clock)
+      : skewed_clock_(skewed_clock), old_delta_(skewed_clock->SetDelta(new_delta)) {
+  }
+
+  SkewedClockDeltaChanger(SkewedClockDeltaChanger&& rhs);
+
+  SkewedClockDeltaChanger(const SkewedClockDeltaChanger&) = delete;
+  void operator=(const SkewedClockDeltaChanger&) = delete;
+
+  ~SkewedClockDeltaChanger();
+
+ private:
+  SkewedClockPtr skewed_clock_;
+  SkewedClock::DeltaTime old_delta_;
+};
+
+} // namespace server
+} // namespace yb
+
+#endif // YB_SERVER_SKEWED_CLOCK_H

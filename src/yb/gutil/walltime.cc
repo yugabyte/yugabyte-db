@@ -71,7 +71,7 @@ static inline time_t gmktime(struct tm *tm) {
   return rt < 0 ? time_t(-1) : rt;
 }
 
-void StringAppendStrftime(string* dst,
+void StringAppendStrftime(std::string* dst,
                           const char* format,
                           const struct tm* tm) {
   char space[1024];
@@ -197,7 +197,7 @@ WallTime WallTime_Now() {
 #endif  // defined(__APPLE__)
 }
 
-void StringAppendStrftime(string* dst,
+void StringAppendStrftime(std::string* dst,
                           const char* format,
                           time_t when,
                           bool local) {
@@ -215,8 +215,8 @@ void StringAppendStrftime(string* dst,
   StringAppendStrftime(dst, format, &tm);
 }
 
-string LocalTimeAsString() {
-  string ret;
+std::string LocalTimeAsString() {
+  std::string ret;
   StringAppendStrftime(&ret, "%Y-%m-%d %H:%M:%S %Z", time(nullptr), true);
   return ret;
 }

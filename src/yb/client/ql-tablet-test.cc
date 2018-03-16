@@ -32,7 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 
-#include "yb/server/test_clock.h"
+#include "yb/server/skewed_clock.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -47,7 +47,7 @@ using namespace std::literals; // NOLINT
 DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int64(db_write_buffer_size);
-DECLARE_bool(use_test_clock);
+DECLARE_string(time_source);
 
 namespace yb {
 namespace client {
@@ -73,7 +73,8 @@ const int kBigSeqNo = 100500;
 class QLTabletTest : public QLDmlTestBase {
  protected:
   void SetUp() override {
-    FLAGS_use_test_clock = true;
+    server::SkewedClock::Register();
+    FLAGS_time_source = server::SkewedClock::kName;
     QLDmlTestBase::SetUp();
   }
 

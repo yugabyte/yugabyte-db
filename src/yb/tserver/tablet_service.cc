@@ -902,6 +902,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   for (;;) {
     resp->Clear();
     context.ResetRpcSidecars();
+    LOG(INFO) << "Read time: " << read_time << ", safe: " << safe_ht_to_read;
     auto result = DoRead(tablet.get(), req, read_time, safe_ht_to_read, require_lease,
                          &host_port_pb, resp, &context);
     if (!result.ok()) {

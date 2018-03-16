@@ -30,7 +30,7 @@
 #include "yb/rpc/rpc.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/test_clock.h"
+#include "yb/server/skewed_clock.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
@@ -52,8 +52,8 @@ DECLARE_double(transaction_ignore_applying_probability_in_tests);
 DECLARE_uint64(transaction_check_interval_usec);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
-DECLARE_bool(use_test_clock);
 DECLARE_uint64(transaction_delay_status_reply_usec_in_tests);
+DECLARE_string(time_source);
 
 namespace yb {
 namespace client {
@@ -125,7 +125,8 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
 class QLTransactionTest : public QLDmlTestBase {
  protected:
   void SetUp() override {
-    FLAGS_use_test_clock = true;
+    server::SkewedClock::Register();
+    FLAGS_time_source = server::SkewedClock::kName;
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder builder;
@@ -140,11 +141,15 @@ class QLTransactionTest : public QLDmlTestBase {
     FLAGS_transaction_table_num_tablets = 1;
     FLAGS_log_segment_size_bytes = 128;
     FLAGS_log_min_seconds_to_retain = 5;
-    server::ClockPtr clock(
-        clock_ = new server::TestClock(server::ClockPtr(new server::HybridClock)));
-    ASSERT_OK(clock->Init());
+
     HybridTime::TEST_SetPrettyToString(true);
-    transaction_manager_.emplace(client_, clock);
+
+    ASSERT_OK(clock_->Init());
+    transaction_manager_.emplace(client_, clock_);
+
+    server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
+    ASSERT_OK(clock2->Init());
+    transaction_manager2_.emplace(client_, clock2);
   }
 
   shared_ptr<YBSession> CreateSession(const YBTransactionPtr& transaction = nullptr) {
@@ -255,6 +260,11 @@ class QLTransactionTest : public QLDmlTestBase {
         transaction_manager_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
   }
 
+  YBTransactionPtr CreateTransaction2() {
+    return std::make_shared<YBTransaction>(
+        transaction_manager2_.get_ptr(), IsolationLevel::SNAPSHOT_ISOLATION);
+  }
+
   void VerifyRows(const YBSessionPtr& session,
                   size_t transaction = 0,
                   const WriteOpType op_type = WriteOpType::INSERT,
@@ -301,8 +311,7 @@ class QLTransactionTest : public QLDmlTestBase {
     size_t result = 0;
     for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
-      std::vector<tablet::TabletPeerPtr> peers;
-      tablet_manager->GetTabletPeers(&peers);
+      auto peers = tablet_manager->GetTabletPeers();
       for (const auto& peer : peers) {
         if (peer->consensus()->leader_status() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
           result += peer->tablet()->transaction_coordinator()->test_count_transactions();
@@ -318,8 +327,11 @@ class QLTransactionTest : public QLDmlTestBase {
   void TestReadRestart(bool commit = true);
 
   TableHandle table_;
+  std::shared_ptr<server::SkewedClock> skewed_clock_{
+      std::make_shared<server::SkewedClock>(WallClock())};
+  server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};
   boost::optional<TransactionManager> transaction_manager_;
-  server::TestClock* clock_;
+  boost::optional<TransactionManager> transaction_manager2_;
 };
 
 TEST_F(QLTransactionTest, Simple) {
@@ -362,8 +374,9 @@ void QLTransactionTest::TestReadRestart(bool commit) {
       }
     } BOOST_SCOPE_EXIT_END;
 
-    server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-    auto txn1 = CreateTransaction();
+    server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
+
+    auto txn1 = CreateTransaction2();
     BOOST_SCOPE_EXIT(txn1, commit) {
       if (!commit) {
         txn1->Abort();
@@ -460,8 +473,8 @@ TEST_F(QLTransactionTest, WriteRestart) {
 
   WriteData();
 
-  server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto txn1 = CreateTransaction();
+  server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
+  auto txn1 = CreateTransaction2();
   YBTransactionPtr txn2;
   auto session = CreateSession(txn1);
   for (bool retry : {false, true}) {
@@ -528,15 +541,18 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
     ASSERT_OK(write_txn->CommitFuture().get());
   }
 
-  server::TestClockDeltaChanger delta_changer(-100ms, clock_);
-  auto parent_txn = CreateTransaction();
-  TransactionManager manager2(client_, clock_);
+  server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
+  auto parent_txn = CreateTransaction2();
 
   auto data_pb = parent_txn->PrepareChildFuture().get();
   ASSERT_OK(data_pb);
   auto data = ChildTransactionData::FromPB(*data_pb);
   ASSERT_OK(data);
-  auto child_txn = std::make_shared<YBTransaction>(&manager2, std::move(*data));
+
+  server::ClockPtr clock3(new server::HybridClock(skewed_clock_));
+  ASSERT_OK(clock3->Init());
+  TransactionManager manager3(client_, clock3);
+  auto child_txn = std::make_shared<YBTransaction>(&manager3, std::move(*data));
 
   auto session = CreateSession(child_txn);
   for (size_t r = 0; r != kNumRows; ++r) {

@@ -72,35 +72,12 @@ class Clock : public ClockBase {
   // plus the max_error.
   virtual HybridTime NowLatest() = 0;
 
-  // Obtain a timestamp which is guaranteed to be later than the current time
-  // on any machine in the cluster.
-  //
-  // NOTE: this is not a very tight bound.
-  virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) {
-    return STATUS(NotSupported, "clock does not support global properties");
-  }
-
   // Update the clock with a transaction timestamp originating from
   // another server. For instance replicas can call this so that,
   // if elected leader, they are guaranteed to generate timestamps
   // higher than the timestamp of the last transaction accepted from the
   // leader.
   virtual void Update(const HybridTime& to_update) = 0;
-
-  // Waits until the clock on all machines has advanced past 'then'.
-  // Can also be used to implement 'external consistency' in the same sense as
-  // Google's Spanner.
-  virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
-                                const MonoTime& deadline) = 0;
-
-  // Waits until the clock on this machine advances past 'then'. Unlike
-  // WaitUntilAfter(), this does not make any global guarantees.
-  virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
-                                       const MonoTime& deadline) = 0;
-
-  // Return true if the given time has definitely passed (i.e any future call
-  // to Now() would return a higher value than t).
-  virtual bool IsAfter(HybridTime t) = 0;
 
   // Register the clock metrics in the given entity.
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) = 0;

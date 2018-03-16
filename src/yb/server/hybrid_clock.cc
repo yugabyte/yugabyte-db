@@ -47,24 +47,10 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
-DEFINE_uint64(max_clock_sync_error_usec, 10 * 1000 * 1000,
-              "Maximum allowed clock synchronization error as reported by NTP "
-              "before the server will abort.");
-DEFINE_bool(disable_clock_sync_error, true,
-            "Whether or not we should keep running if we detect a clock synchronization issue.");
-TAG_FLAG(disable_clock_sync_error, advanced);
-TAG_FLAG(max_clock_sync_error_usec, advanced);
-TAG_FLAG(max_clock_sync_error_usec, runtime);
-
 DEFINE_bool(use_hybrid_clock, true,
             "Whether HybridClock should be used as the default clock"
             " implementation. This should be disabled for testing purposes only.");
 TAG_FLAG(use_hybrid_clock, hidden);
-
-DEFINE_bool(use_mock_wall_clock, false,
-            "Whether HybridClock should use a mock wall clock which is updated manually"
-            "instead of reading time from the system clock, for tests.");
-TAG_FLAG(use_mock_wall_clock, hidden);
 
 METRIC_DEFINE_gauge_uint64(server, hybrid_clock_hybrid_time,
                            "Hybrid Clock HybridTime",
@@ -75,6 +61,12 @@ METRIC_DEFINE_gauge_uint64(server, hybrid_clock_error,
                            yb::MetricUnit::kMicroseconds,
                            "Server clock maximum error.");
 
+DEFINE_string(time_source, "",
+              "The clock source that HybridClock should use (for tests only). "
+              "Leave empty for WallClock, other values depend on added clock providers and "
+              "specific for appropriate tests, that adds them.");
+TAG_FLAG(time_source, hidden);
+
 using yb::Status;
 using strings::Substitute;
 
@@ -83,126 +75,45 @@ namespace server {
 
 namespace {
 
-Status CheckDeadlineNotWithinMicros(const MonoTime& deadline, int64_t wait_for_usec) {
-  if (!deadline.Initialized()) {
-    // No deadline.
-    return Status::OK();
+std::mutex providers_mutex;
+std::unordered_map<std::string, PhysicalClockProvider> providers;
+
+PhysicalClockPtr GetClock(const std::string& name) {
+  if (name.empty()) {
+    return WallClock();
   }
-  int64_t us_until_deadline = deadline.GetDeltaSince(
-      MonoTime::Now()).ToMicroseconds();
-  if (us_until_deadline <= wait_for_usec) {
-    return STATUS(TimedOut, Substitute(
-        "specified time is $0us in the future, but deadline expires in $1us",
-        wait_for_usec, us_until_deadline));
+  std::lock_guard<std::mutex> lock(providers_mutex);
+  auto it = providers.find(name);
+  if (it == providers.end()) {
+    LOG(DFATAL) << "Unknown time source: " << name;
+    return WallClock();
   }
-  return Status::OK();
+  return it->second();
 }
 
-}  // anonymous namespace
+} // namespace
 
 const int HybridClock::kBitsToShift = HybridTime::kBitsForLogicalComponent;
 
 const uint64_t HybridClock::kLogicalBitMask = HybridTime::kLogicalBitMask;
 
-const uint64_t HybridClock::kNanosPerSec = 1000000;
-
 const double HybridClock::kAdjtimexScalingFactor = 65536;
 
-HybridClock::HybridClock()
-    : mock_clock_time_usec_(0),
-      mock_clock_max_error_usec_(0),
-#if !defined(__APPLE__)
-      divisor_(1),
-#endif
-      tolerance_adjustment_(1),
-      components_({0, 0}),
-      state_(kNotInitialized) {
+void HybridClock::RegisterProvider(std::string name, PhysicalClockProvider provider) {
+  std::lock_guard<std::mutex> lock(providers_mutex);
+  providers.emplace(std::move(name), std::move(provider));
 }
 
-#if !defined(__APPLE__)
-int HybridClock::NtpAdjtime(timex* timex) {
-  return ntp_adjtime(timex);
-}
+HybridClock::HybridClock() : HybridClock(FLAGS_time_source) {}
 
-int HybridClock::NtpGettime(ntptimeval* timeval) {
-  return ntp_gettime(timeval);
-}
+HybridClock::HybridClock(PhysicalClockPtr clock) : clock_(std::move(clock)) {}
 
-// Returns the clock modes and checks if the clock is synchronized.
-Status HybridClock::GetClockModes(timex* timex) {
-  // this makes ntp_adjtime a read-only call
-  timex->modes = 0;
-  int rc = NtpAdjtime(timex);
-  if (PREDICT_FALSE(rc == TIME_ERROR) && !FLAGS_disable_clock_sync_error) {
-    return STATUS(ServiceUnavailable,
-        Substitute("Error reading clock. Clock considered unsynchronized. Return code: $0", rc));
-  }
-  // TODO what to do about leap seconds? see KUDU-146
-  if (PREDICT_FALSE(rc != TIME_OK) && rc != TIME_ERROR) {
-    LOG(ERROR) << Substitute("TODO Server undergoing leap second. Return code: $0", rc);
-  }
-  return Status::OK();
-}
-
-// Returns the current time/max error and checks if the clock is synchronized.
-Status HybridClock::GetClockTime(ntptimeval* timeval) {
-  int rc = NtpGettime(timeval);
-  switch (rc) {
-    case TIME_OK:
-      return Status::OK();
-    case -1: // generic error
-      return STATUS(ServiceUnavailable, "Error reading clock. ntp_gettime() failed",
-                                        ErrnoToString(errno));
-    case TIME_ERROR:
-      if (!FLAGS_disable_clock_sync_error) {
-        return STATUS(ServiceUnavailable, "Error reading clock. Clock considered unsynchronized");
-      } else {
-        return Status::OK();
-      }
-    default:
-      // TODO what to do about leap seconds? see KUDU-146
-      YB_LOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency issues"
-        << " (rc=" << rc << ")";
-      return Status::OK();
-  }
-}
-#endif // !defined(__APPLE__)
-
+HybridClock::HybridClock(const std::string& time_source) : HybridClock(GetClock(time_source)) {}
 
 Status HybridClock::Init() {
-  if (PREDICT_FALSE(FLAGS_use_mock_wall_clock)) {
-    LOG(WARNING) << "HybridClock set to mock the wall clock.";
-    state_ = kInitialized;
-    return Status::OK();
-  }
 #if defined(__APPLE__)
   LOG(WARNING) << "HybridClock initialized in local mode (OS X only). "
                << "Not suitable for distributed clusters.";
-#else
-  // Read the current time. This will return an error if the clock is not synchronized.
-  uint64_t now_usec;
-  uint64_t error_usec;
-  RETURN_NOT_OK(WalltimeWithError(&now_usec, &error_usec));
-
-  timex timex;
-  RETURN_NOT_OK(GetClockModes(&timex));
-  // read whether the STA_NANO bit is set to know whether we'll get back nanos
-  // or micros in timeval.time.tv_usec. See:
-  // http://stackoverflow.com/questions/16063408/does-ntp-gettime-actually-return-nanosecond-precision
-  // set the timeval.time.tv_usec divisor so that we always get micros
-  if (timex.status & STA_NANO) {
-    divisor_ = 1000;
-  } else {
-    divisor_ = 1;
-  }
-
-  // Calculate the sleep skew adjustment according to the max tolerance of the clock.
-  // Tolerance comes in parts per million but needs to be applied a scaling factor.
-  tolerance_adjustment_ = (1 + ((timex.tolerance / kAdjtimexScalingFactor) / 1000000.0));
-
-  LOG(INFO) << "HybridClock initialized. Resolution in nanos?: " << (divisor_ == 1000)
-            << " Wait times tolerance adjustment: " << tolerance_adjustment_
-            << " Current error (microseconds): " << error_usec;
 #endif // defined(__APPLE__)
 
   state_ = kInitialized;
@@ -230,36 +141,26 @@ HybridTime HybridClock::NowLatest() {
   return HybridTimeFromMicrosecondsAndLogicalValue(now_latest, now_logical);
 }
 
-Status HybridClock::GetGlobalLatest(HybridTime* t) {
-  HybridTime now = Now();
-  uint64_t now_latest = GetPhysicalValueMicros(now) + FLAGS_max_clock_sync_error_usec;
-  uint64_t now_logical = GetLogicalValue(now);
-  *t = HybridTimeFromMicrosecondsAndLogicalValue(now_latest, now_logical);
-  return Status::OK();
-}
-
 void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec) {
   DCHECK_EQ(state_, kInitialized) << "Clock not initialized. Must call Init() first.";
 
-  uint64_t now_usec;
-  uint64_t error_usec;
-  Status s = WalltimeWithError(&now_usec, &error_usec);
-  if (PREDICT_FALSE(!s.ok())) {
+  auto now = clock_->Now();
+  if (PREDICT_FALSE(!now.ok())) {
     LOG(FATAL) << Substitute("Couldn't get the current time: Clock unsynchronized. "
-        "Status: $0", s.ToString());
+        "Status: $0", now.status().ToString());
   }
 
   // If the current time surpasses the last update just return it
   HybridClockComponents current_components = components_.load(std::memory_order_acquire);
-  HybridClockComponents new_components = { now_usec, 1 };
+  HybridClockComponents new_components = { now->time_point, 1 };
   // Loop over the check in case of concurrent updates making the CAS fail.
-  while (now_usec > current_components.last_usec) {
+  while (now->time_point > current_components.last_usec) {
     if (components_.compare_exchange_weak(current_components, new_components)) {
       *hybrid_time = HybridTimeFromMicroseconds(new_components.last_usec);
-      *max_error_usec = error_usec;
+      *max_error_usec = now->max_error;
       if (PREDICT_FALSE(VLOG_IS_ON(2))) {
         VLOG(2) << "Current clock is higher than the last one. Resetting logical values."
-            << " Time: " << HybridTime(now_usec, 0) << ", Error: " << error_usec;
+            << " Time: " << *hybrid_time << ", Error: " << *max_error_usec;
       }
       return;
     }
@@ -288,14 +189,15 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
     new_components.logical = current_components.logical + 1;
     // Loop over the check until the CAS succeeds, in case there's concurrent updates.
   } while (!components_.compare_exchange_weak(current_components, new_components));
-  *max_error_usec = new_components.last_usec - (now_usec - error_usec);
+
+  *max_error_usec = new_components.last_usec - (now->time_point - now->max_error);
   // We've already atomically incremented the logical, so subtract 1.
   auto logical_time = new_components.logical - 1;
   *hybrid_time = HybridTimeFromMicrosecondsAndLogicalValue(
       new_components.last_usec, logical_time);
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG(2) << "Current clock is lower than the last one. Returning last read and incrementing"
-        " logical values. Physical Value: " << now_usec << " usec Logical Value: "
+        " logical values. Physical Value: " << now->time_point << " usec Logical Value: "
         << logical_time  << " Error: " << *max_error_usec;
   }
 }
@@ -312,142 +214,6 @@ void HybridClock::Update(const HybridTime& to_update) {
   // Keep trying to CAS until it works or until HT has advanced past this update.
   while (current_components < new_components &&
       !components_.compare_exchange_weak(current_components, new_components)) {}
-}
-
-Status HybridClock::WaitUntilAfter(const HybridTime& then_latest,
-                                   const MonoTime& deadline) {
-  TRACE_EVENT0("clock", "HybridClock::WaitUntilAfter");
-  HybridTime now;
-  uint64_t error;
-  NowWithError(&now, &error);
-
-  // "unshift" the hybrid_times so that we can measure actual time
-  uint64_t now_usec = GetPhysicalValueMicros(now);
-  uint64_t then_latest_usec = GetPhysicalValueMicros(then_latest);
-
-  uint64_t now_earliest_usec = now_usec - error;
-
-  // Case 1, event happened definitely in the past, return
-  if (PREDICT_TRUE(then_latest_usec < now_earliest_usec)) {
-    return Status::OK();
-  }
-
-  // Case 2 wait out until we are sure that then_latest has passed
-
-  // We'll sleep then_latest_usec - now_earliest_usec so that the new
-  // nw.earliest is higher than then.latest.
-  uint64_t wait_for_usec = (then_latest_usec - now_earliest_usec);
-
-  // Additionally adjust the sleep time with the max tolerance adjustment
-  // to account for the worst case clock skew while we're sleeping.
-  wait_for_usec *= tolerance_adjustment_;
-
-  // Check that sleeping wouldn't sleep longer than our deadline.
-  RETURN_NOT_OK(CheckDeadlineNotWithinMicros(deadline, wait_for_usec));
-
-  SleepFor(MonoDelta::FromMicroseconds(wait_for_usec));
-
-
-  VLOG(1) << "WaitUntilAfter(): Incoming time(latest): " << then_latest_usec
-          << " Now(earliest): " << now_earliest_usec << " error: " << error
-          << " Waiting for: " << wait_for_usec;
-
-  return Status::OK();
-}
-
-Status HybridClock::WaitUntilAfterLocally(const HybridTime& then,
-                                          const MonoTime& deadline) {
-  while (true) {
-    HybridTime now;
-    uint64_t error;
-    NowWithError(&now, &error);
-    if (now.CompareTo(then) > 0) {
-      return Status::OK();
-    }
-    uint64_t wait_for_usec = GetPhysicalValueMicros(then) - GetPhysicalValueMicros(now);
-
-    // Check that sleeping wouldn't sleep longer than our deadline.
-    RETURN_NOT_OK(CheckDeadlineNotWithinMicros(deadline, wait_for_usec));
-  }
-}
-
-bool HybridClock::IsAfter(HybridTime t) {
-  HybridClockComponents current_components = components_.load(std::memory_order_acquire);
-  HybridClockComponents given_components = { GetPhysicalValueMicros(t), GetLogicalValue(t) };
-  // If the time has already passed, we can bypass getting the clock.
-  if (given_components < current_components) {
-    return true;
-  }
-
-  // Manually get the time, rather than using Now(), so we don't end up causing
-  // a time update.
-  uint64_t now_usec;
-  uint64_t error_usec;
-  CHECK_OK(WalltimeWithError(&now_usec, &error_usec));
-
-  HybridClockComponents now_components;
-  if (now_usec > current_components.last_usec) {
-    now_components.last_usec = now_usec;
-    now_components.logical = 1;
-    // This is an opportunistic update. It is not required that this succeeds.
-    components_.compare_exchange_strong(current_components, now_components);
-  } else {
-    // last_usec may be in the future if we were updated from a remote
-    // node.
-    now_components = current_components;
-  }
-
-  return given_components < now_components;
-}
-
-yb::Status HybridClock::CheckClockSyncError(uint64_t error_usec) {
-  if (!FLAGS_disable_clock_sync_error && error_usec > FLAGS_max_clock_sync_error_usec) {
-    return STATUS(ServiceUnavailable, Substitute("Error: Clock error was too high ($0 us), max "
-                                                 "allowed ($1 us).", error_usec,
-                                                 FLAGS_max_clock_sync_error_usec));
-  }
-  return Status::OK();
-}
-
-yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec) {
-  if (PREDICT_FALSE(FLAGS_use_mock_wall_clock)) {
-    auto mock_clock_time_usec = mock_clock_time_usec_.load(std::memory_order_acquire);
-    auto mock_clock_max_error_usec = mock_clock_max_error_usec_.load(std::memory_order_acquire);
-    VLOG(1) << "Current clock time: " << mock_clock_time_usec << " error: "
-            << mock_clock_max_error_usec << ". Updating to time: " << now_usec
-            << " and error: " << error_usec;
-    *now_usec = mock_clock_time_usec;
-    *error_usec = mock_clock_max_error_usec;
-  } else {
-#if defined(__APPLE__)
-    *now_usec = GetCurrentTimeMicros();
-    // We use a fixed small clock error for Mac OS X builds.
-    *error_usec = 1000;
-  }
-#else
-    // Read the time. This will return an error if the clock is not synchronized.
-    ntptimeval timeval;
-    RETURN_NOT_OK(GetClockTime(&timeval));
-    *now_usec = timeval.time.tv_sec * kNanosPerSec + timeval.time.tv_usec / divisor_;
-    *error_usec = timeval.maxerror;
-  }
-
-  // If the clock is synchronized but has max_error beyond max_clock_sync_error_usec
-  // we also return a non-ok status.
-  RETURN_NOT_OK(CheckClockSyncError(*error_usec));
-#endif // defined(__APPLE__)
-  return yb::Status::OK();
-}
-
-void HybridClock::SetMockClockWallTimeForTests(uint64_t now_usec) {
-  CHECK(FLAGS_use_mock_wall_clock);
-  CHECK_GE(now_usec, mock_clock_time_usec_);
-  mock_clock_time_usec_.store(now_usec, std::memory_order_release);
-}
-
-void HybridClock::SetMockMaxClockErrorForTests(uint64_t max_error_usec) {
-  CHECK(FLAGS_use_mock_wall_clock);
-  mock_clock_max_error_usec_.store(max_error_usec, std::memory_order_release);
 }
 
 // Used to get the hybrid_time for metrics.

@@ -179,6 +179,7 @@ set(UTIL_SRCS
   pb_util-internal.cc
   pb_util.cc
   pending_op_counter.cc
+  physical_time.cc
   port_picker.cc
   pstack_watcher.cc
   random_util.cc
