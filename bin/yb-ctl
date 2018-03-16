@@ -552,7 +552,7 @@ class ClusterControl:
             if daemon_id.is_tserver():
                 info_list.extend([
                     ("cql service", get_address("cql_rpc")),
-                    ("redis service", get_address("redis_rpc"))
+                    ("redis service", get_address("redis_rpc")),
                     ("pgsql service", get_address("pgsql_rpc"))
                 ])
             logging.info("Server is running: {}".format(
