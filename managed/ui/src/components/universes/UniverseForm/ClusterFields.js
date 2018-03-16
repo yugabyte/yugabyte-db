@@ -644,8 +644,8 @@ export default class ClusterFields extends Component {
   getSuggestedSpotPrice(instanceType, regions) {
     const currentProvider = this.getCurrentProvider(this.state.providerSelected);
     const regionUUIDs = regions.map(region => region.value);
-    if (this.props.type !== "Edit" && isDefinedNotNull(currentProvider) && currentProvider.code === "aws"
-      && isNonEmptyArray(regionUUIDs)) {
+    if (this.props.type !== "Edit" && isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === "aws" || currentProvider.code === "gcp") && isNonEmptyArray(regionUUIDs)) {
       this.props.getSuggestedSpotPrice(this.state.providerSelected, instanceType, regionUUIDs);
       this.setState({gettingSuggestedSpotPrice: true});
     }
@@ -764,7 +764,8 @@ export default class ClusterFields extends Component {
     let assignPublicIP = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
-    if (isDefinedNotNull(currentProvider) && currentProvider.code === "aws") {
+    if (isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === "aws" || currentProvider.code === "gcp")) {
       assignPublicIP = (
         <Field name={`${clusterType}.assignPublicIP`}
                component={YBToggle} isReadOnly={isFieldReadOnly}
@@ -785,7 +786,7 @@ export default class ClusterFields extends Component {
           <Field name={`${clusterType}.spotPrice`} type="text"
                  component={YBTextInputWithLabel}
                  label="Spot Price (Per Hour)"
-                 isReadOnly={isFieldReadOnly || !this.state.useSpotPrice}
+                 isReadOnly={isFieldReadOnly || !this.state.useSpotPrice || currentProvider.code === "gcp"}
                  normalizeOnBlur={(val) => this.spotPriceChanged(val, true)}
                  initValue={this.state.spotPrice.toString()}
                  onValueChanged={(val) => this.spotPriceChanged(val, false)}/>

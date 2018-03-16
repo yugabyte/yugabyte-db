@@ -109,7 +109,11 @@ public class CloudQueryHelper extends DevopsBase {
   public double getSuggestedSpotPrice(List<Region> regions, String instanceType) {
     String command = "spot-pricing";
     double maxPriceFound = 0.0;
+    String providerCode = null;
     for (Region region : regions) {
+      if (providerCode == null) {
+        providerCode = region.provider.code;
+      }
       for (AvailabilityZone availabilityZone : AvailabilityZone.getAZsForRegion(region.uuid)) {
         List<String> cloudArgs = ImmutableList.of("--zone", availabilityZone.code);
         List<String> commandArgs = ImmutableList.of("--instance_type", instanceType);
@@ -121,6 +125,10 @@ public class CloudQueryHelper extends DevopsBase {
         if (price > maxPriceFound) maxPriceFound = price;
       }
     }
-    return 2.0 * maxPriceFound;
+    if (providerCode.equals("aws")) {
+      return 2.0 * maxPriceFound;
+    } else {
+      return maxPriceFound;
+    }
   }
 }
