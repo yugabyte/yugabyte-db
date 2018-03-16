@@ -172,7 +172,7 @@ public class InstanceTypeController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     Provider provider = Provider.get(customerUUID, providerUUID);
-    if (provider == null || !provider.code.equals(aws.toString())) {
+    if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);

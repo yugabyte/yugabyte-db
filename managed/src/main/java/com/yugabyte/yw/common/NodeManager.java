@@ -280,9 +280,13 @@ public class NodeManager extends DevopsBase {
           // For now we wouldn't add machine image for aws and fallback on the default
           // one devops gives us, we need to transition to having this use versioning
           // like base_image_version [ENG-1859]
-          if (cloudType.equals(Common.CloudType.aws) && taskParam.spotPrice > 0.0) {
-            commandArgs.add("--spot_price");
-            commandArgs.add(Double.toString(taskParam.spotPrice));
+          if (taskParam.spotPrice > 0.0) {
+            if (cloudType.equals(Common.CloudType.aws)) {
+              commandArgs.add("--spot_price");
+              commandArgs.add(Double.toString(taskParam.spotPrice));
+            } else if (cloudType.equals(Common.CloudType.gcp)) {
+              commandArgs.add("--use_preemptible");
+            }
           }
           if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
             commandArgs.add("--machine_image");
