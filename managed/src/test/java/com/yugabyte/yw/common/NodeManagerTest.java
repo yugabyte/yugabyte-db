@@ -174,6 +174,7 @@ public class NodeManagerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     testData = new ArrayList<TestData>();
     testData.addAll(getTestData(customer, Common.CloudType.aws));
+    testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
@@ -185,7 +186,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
     expectedCommand.add("instance");
     expectedCommand.add(type.toString().toLowerCase());
-    switch(type) {
+    switch (type) {
       case List:
         expectedCommand.add("--as_json");
         break;
@@ -202,14 +203,20 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--cloud_subnet");
           expectedCommand.add(setupParams.subnetId);
           if (setupParams.spotPrice > 0.0) {
-            expectedCommand.add("--spot_price");
-            expectedCommand.add(Double.toString(setupParams.spotPrice));
+            if (cloud.equals(Common.CloudType.aws)) {
+              expectedCommand.add("--spot_price");
+              expectedCommand.add(Double.toString(setupParams.spotPrice));
+            } else if (cloud.equals(Common.CloudType.aws)) {
+              expectedCommand.add("--use_preemptible");
+            }
           }
-          if (!cloud.equals(Common.CloudType.aws)) {
+          if (!cloud.equals(Common.CloudType.aws) && !cloud.equals(Common.CloudType.gcp)) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(setupParams.getRegion().ybImage);
           }
-          expectedCommand.add("--assign_public_ip");
+          if (setupParams.assignPublicIP) {
+            expectedCommand.add("--assign_public_ip");
+          }
         }
         break;
       case Configure:
@@ -351,8 +358,10 @@ public class NodeManagerTest extends FakeDBApplication {
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t.cloudType));
-      Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
-      expectedCommand.removeIf(stringPredicate);
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        Predicate<String> stringPredicate = p -> p.equals("--assign_public_ip");
+        expectedCommand.removeIf(stringPredicate);
+      }
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
