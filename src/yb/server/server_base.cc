@@ -55,7 +55,7 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base_options.h"
 #include "yb/server/tcmalloc_metrics.h"
-#include "yb/server/test_clock.h"
+#include "yb/server/skewed_clock.h"
 #include "yb/server/tracing-path-handlers.h"
 #include "yb/server/webserver.h"
 #include "yb/util/atomic.h"
@@ -77,8 +77,6 @@ DEFINE_int32(num_reactor_threads, -1,
 TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
-
-DEFINE_bool(use_test_clock, false, "Wrap clock with TestClock, useful for tests.");
 
 DEFINE_int32(generic_svc_num_threads, 10,
              "Number of RPC worker threads to run for the generic service");
@@ -136,9 +134,6 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
     clock_ = new HybridClock();
   } else {
     clock_ = LogicalClock::CreateStartingAt(HybridTime::kInitial);
-  }
-  if (FLAGS_use_test_clock) {
-    clock_.reset(new TestClock(clock_));
   }
 }
 

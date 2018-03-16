@@ -43,7 +43,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
-#include "yb/server/test_clock.h"
+#include "yb/server/skewed_clock.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/path_util.h"
@@ -484,12 +484,14 @@ void MiniCluster::EnsurePortsAllocated(int new_num_masters, int new_num_tservers
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
 }
 
-std::vector<server::TestClockDeltaChanger> SkewClocks(
+std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew) {
-  std::vector<server::TestClockDeltaChanger> delta_changers;
+  std::vector<server::SkewedClockDeltaChanger> delta_changers;
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto* tserver = cluster->mini_tablet_server(i)->server();
-    delta_changers.emplace_back(i * clock_skew, down_cast<server::TestClock*>(tserver->clock()));
+    auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
+    delta_changers.emplace_back(
+        i * clock_skew, std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock()));
   }
   return delta_changers;
 }

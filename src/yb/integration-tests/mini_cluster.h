@@ -58,7 +58,7 @@ class TabletLocationsPB;
 }
 
 namespace server {
-class TestClockDeltaChanger;
+class SkewedClockDeltaChanger;
 }
 
 namespace tserver {
@@ -226,7 +226,7 @@ class MiniCluster : public MiniClusterBase {
   PortPicker port_picker_;
 };
 
-MUST_USE_RESULT std::vector<server::TestClockDeltaChanger> SkewClocks(
+MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
 
 }  // namespace yb

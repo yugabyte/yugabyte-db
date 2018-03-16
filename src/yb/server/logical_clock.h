@@ -70,14 +70,6 @@ class LogicalClock : public Clock {
 
   virtual void Update(const HybridTime& to_update) override;
 
-  // The Wait*() functions are not available for this clock.
-  virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
-                                const MonoTime& deadline) override;
-  virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
-                                       const MonoTime& deadline) override;
-
-  virtual bool IsAfter(HybridTime t) override;
-
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
 
   virtual std::string Stringify(HybridTime hybrid_time) override;
