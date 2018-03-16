@@ -1214,6 +1214,9 @@ Parallel()
          ->  Parallel Seq Scan on p2_c3
 (21 rows)
 
+-- Use tuples-only mode so that long \@abs_srcdir\@ won't let the
+-- following query make an unstable result.
+\t
 -- Hints on unhintable relations are just ignored
 /*+Parallel(p1 5 hard) Parallel(s1 3 hard) IndexScan(ft1) SeqScan(cte1)
   TidScan(fs1) IndexScan(t) IndexScan(*VALUES*) */
@@ -1239,8 +1242,6 @@ Parallel(s1 3 hard)
 duplication hint:
 error hint:
 
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
  Append
    ->  Result
          ->  Append
@@ -1274,8 +1275,9 @@ error hint:
    ->  Function Scan on pg_stat_statements
    ->  Subquery Scan on "*SELECT* 5"
          ->  Values Scan on "*VALUES*"
-(33 rows)
 
+-- Turn off tuples-only mode
+\t
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();
  pg_reload_conf 

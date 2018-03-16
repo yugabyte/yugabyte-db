@@ -203,6 +203,9 @@ EXPLAIN (COSTS false) SELECT * FROM p1;
    Parallel(p1 8 hoge)Parallel(p1)Parallel(p1 100 soft x)*/
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
+-- Use tuples-only mode so that long \@abs_srcdir\@ won't let the
+-- following query make an unstable result.
+\t
 -- Hints on unhintable relations are just ignored
 /*+Parallel(p1 5 hard) Parallel(s1 3 hard) IndexScan(ft1) SeqScan(cte1)
   TidScan(fs1) IndexScan(t) IndexScan(*VALUES*) */
@@ -216,6 +219,7 @@ SELECT userid FROM pg_stat_statements fs1
  UNION ALL
 SELECT x FROM (VALUES (1), (2), (3)) t(x);
 
-
+-- Turn off tuples-only mode
+\t
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();
