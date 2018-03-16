@@ -68,23 +68,6 @@ void LogicalClock::Update(const HybridTime& to_update) {
   }
 }
 
-Status LogicalClock::WaitUntilAfter(const HybridTime& then,
-                                    const MonoTime& deadline) {
-  return STATUS(ServiceUnavailable,
-      "Logical clock does not support WaitUntilAfter()");
-}
-
-Status LogicalClock::WaitUntilAfterLocally(const HybridTime& then,
-                                           const MonoTime& deadline) {
-  if (IsAfter(then)) return Status::OK();
-  return STATUS(ServiceUnavailable,
-      "Logical clock does not support WaitUntilAfterLocally()");
-}
-
-bool LogicalClock::IsAfter(HybridTime t) {
-  return now_.load(std::memory_order_acquire) >= t.value();
-}
-
 LogicalClock* LogicalClock::CreateStartingAt(const HybridTime& hybrid_time) {
   // initialize at 'hybrid_time' - 1 so that the  first output value is 'hybrid_time'.
   return new LogicalClock(hybrid_time.value() - 1);

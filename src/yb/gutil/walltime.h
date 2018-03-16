@@ -57,9 +57,9 @@ typedef double WallTime;
 // Append result to a supplied string.
 // If an error occurs during conversion 'dst' is not modified.
 void StringAppendStrftime(std::string* dst,
-                                 const char* format,
-                                 time_t when,
-                                 bool local);
+                          const char* format,
+                          time_t when,
+                          bool local);
 
 void StringAppendStrftime(string* dst,
                           const char* format,
@@ -73,10 +73,10 @@ std::string LocalTimeAsString();
 // time. If local is set to true, the same exact result as
 // WallTime_Parse is returned.
 bool WallTime_Parse_Timezone(const char* time_spec,
-                                    const char* format,
-                                    const struct tm* default_time,
-                                    bool local,
-                                    WallTime* result);
+                             const char* format,
+                             const struct tm* default_time,
+                             bool local,
+                             WallTime* result);
 
 // Return current time in seconds as a WallTime.
 WallTime WallTime_Now();

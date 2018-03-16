@@ -40,13 +40,10 @@
 #include <string>
 #include <limits>
 
+#include "yb/util/physical_time.h"
 #include "yb/util/status.h"
 
 namespace yb {
-
-// This is used to represent the physical component of a HybridTime (microseconds since the UNIX
-// epoch).
-using MicrosTime = uint64_t;
 
 // An alias for the raw in-memory representation of a HybridTime.
 using HybridTimeRepr = uint64_t;

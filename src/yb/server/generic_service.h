@@ -57,10 +57,6 @@ class GenericServiceImpl : public GenericServiceIf {
                    ServerClockResponsePB* resp,
                    rpc::RpcContext rpc) override;
 
-  void SetServerWallClockForTests(const SetServerWallClockForTestsRequestPB *req,
-                                  SetServerWallClockForTestsResponsePB *resp,
-                                  rpc::RpcContext rpc) override;
-
   void GetStatus(const GetStatusRequestPB* req,
                  GetStatusResponsePB* resp,
                  rpc::RpcContext rpc) override;

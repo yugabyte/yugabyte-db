@@ -116,20 +116,6 @@ message GetStatusResponsePB {
   required ServerStatusPB status = 1;
 }
 
-// Makes the HybridClock of the server use these values for wall clock time and error,
-// for testing purposes.
-// Requires that the server was started with '--use_mock_wall_clock=true'.
-message SetServerWallClockForTestsRequestPB {
-  optional uint64 now_usec = 1;
-  optional uint64 max_error_usec = 2;
-}
-
-// Response corresponding to the request above.
-message SetServerWallClockForTestsResponsePB {
-  // Set to 'true' if the clock was updated successfully.
-  required bool success = 1;
-}
-
 message PingRequestPB {
 }
 
@@ -145,9 +131,6 @@ service GenericService {
 
   rpc ServerClock(ServerClockRequestPB)
     returns (ServerClockResponsePB);
-
-  rpc SetServerWallClockForTests(SetServerWallClockForTestsRequestPB)
-    returns (SetServerWallClockForTestsResponsePB);
 
   rpc GetStatus(GetStatusRequestPB)
     returns (GetStatusResponsePB);

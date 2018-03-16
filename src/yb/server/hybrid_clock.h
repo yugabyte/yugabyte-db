@@ -43,7 +43,7 @@
 #include "yb/server/clock.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
-#include "yb/util/status.h"
+#include "yb/util/physical_time.h"
 
 namespace yb {
 namespace server {
@@ -55,6 +55,8 @@ namespace server {
 class HybridClock : public Clock {
  public:
   HybridClock();
+  explicit HybridClock(PhysicalClockPtr clock);
+  explicit HybridClock(const std::string& time_source);
 
   virtual CHECKED_STATUS Init() override;
 
@@ -65,67 +67,10 @@ class HybridClock : public Clock {
   // time.
   virtual HybridTime NowLatest() override;
 
-  // Obtain a hybrid_time which is guaranteed to be later than the current time
-  // on any machine in the cluster.
-  //
-  // NOTE: this is not a very tight bound.
-  virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) override;
-
   // Updates the clock with a hybrid_time originating on another machine.
   virtual void Update(const HybridTime& to_update) override;
 
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
-
-  // Blocks the caller thread until the true time is after 'then'.
-  // In other words, waits until the HybridClock::Now() on _all_ nodes
-  // will return a value greater than 'then'.
-  //
-  // The incoming time 'then' is assumed to be the latest time possible
-  // at the time the read was performed, i.e. 'then' = now + max_error.
-  //
-  // This method can be used to make YB behave like Spanner/TrueTime.
-  // This is implemented by possibly making the caller thread wait for a
-  // a certain period of time.
-  //
-  // As an example, the following cases might happen:
-  //
-  // 1 - 'then' is lower than now.earliest() -> Definitely in
-  // the past, no wait necessary.
-  //
-  // 2 - 'then' is greater than > now.earliest(): need to wait until
-  // 'then' <= now.earliest()
-  //
-  // Returns OK if it waited long enough or if no wait was necessary.
-  //
-  // Returns Status::ServiceUnavailable if the system clock was not
-  // synchronized and therefore it couldn't wait out the error.
-  //
-  // Returns Status::TimedOut() if 'deadline' will pass before the specified
-  // hybrid_time. NOTE: unlike most "wait" methods, this may return _immediately_
-  // with a timeout, rather than actually waiting for the timeout to expire.
-  // This is because, by looking at the current clock, we can know how long
-  // we'll have to wait, in contrast to most Wait() methods which are waiting
-  // on some external condition to become true.
-  virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
-                                const MonoTime& deadline) override;
-
-  // Blocks the caller thread until the local time is after 'then'.
-  // This is in contrast to the above method, which waits until the time
-  // on _all_ machines is past the given time.
-  //
-  // Returns Status::TimedOut() if 'deadline' will pass before the specified
-  // hybrid_time. NOTE: unlike most "wait" methods, this may return _immediately_
-  // with a timeout. See WaitUntilAfter() for details.
-  virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
-                                       const MonoTime& deadline) override;
-
-  // Return true if the given time has passed (i.e any future call
-  // to Now() would return a higher value than t).
-  //
-  // NOTE: this only refers to the _local_ clock, and is not a guarantee
-  // that other nodes' clocks have definitely passed this hybrid_time.
-  // This is in contrast to WaitUntilAfter() above.
-  virtual bool IsAfter(HybridTime t) override;
 
   // Obtains the hybrid_time corresponding to the current time and the associated
   // error in micros. This may fail if the clock is unsynchronized or synchronized
@@ -169,63 +114,18 @@ class HybridClock : public Clock {
   // separated.
   static std::string StringifyHybridTime(const HybridTime& hybrid_time);
 
-  // Sets the time to be returned by a mock call to the system clock, for tests.
-  // Requires that 'FLAGS_use_mock_wall_clock' is set to true and that 'now_usec' is less
-  // than the previously set time.
-  // NOTE: This refers to the time returned by the system clock, not the time returned
-  // by HybridClock, i.e. 'now_usec' is not a HybridTime timestmap and shouldn't have
-  // a logical component.
-  void SetMockClockWallTimeForTests(uint64_t now_usec);
+  static void RegisterProvider(std::string name, PhysicalClockProvider provider);
 
-  // Sets the max. error to be returned by a mock call to the system clock, for tests.
-  // Requires that 'FLAGS_use_mock_wall_clock' is set to true.
-  // This can be used to make HybridClock report the wall clock as unsynchronized, by
-  // setting error to be more than the configured tolerance.
-  void SetMockMaxClockErrorForTests(uint64_t max_error_usec);
-
- protected:
-#if !defined(__APPLE__)
-  CHECKED_STATUS GetClockModes(timex* timex);
-  CHECKED_STATUS GetClockTime(ntptimeval* timeval);
-  // Wrappers around ntp_adjtime() and ntp_gettime() to assist in mocking.
-  virtual int NtpAdjtime(timex* timex);
-  virtual int NtpGettime(ntptimeval* timeval);
-#endif // !defined(__APPLE__)
+  const PhysicalClockPtr& TEST_clock() { return clock_; }
 
  private:
-  FRIEND_TEST(HybridClockTest, TestCheckClockSyncError);
-  FRIEND_TEST(HybridClockTest, TestNtpErrorsNotIgnored);
-  FRIEND_TEST(HybridClockTest, TestNtpErrorsIgnored);
-
-  // Obtains the current wallclock time and maximum error in microseconds,
-  // and checks if the clock is synchronized.
-  //
-  // On OS X, the error will always be 0.
-  CHECKED_STATUS WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec);
-
-  // Returns Status::OK if the clock error_usec provided is within acceptable limits, otherwise
-  // it returns a not OK status if disable_clock_sync_error is not true.
-  static CHECKED_STATUS CheckClockSyncError(uint64_t error_usec);
+  PhysicalClockPtr clock_;
 
   // Used to get the hybrid_time for metrics.
   uint64_t NowForMetrics();
 
   // Used to get the current error, for metrics.
   uint64_t ErrorForMetrics();
-
-  // Set by calls to SetMockClockWallTimeForTests().
-  // For testing purposes only.
-  std::atomic<uint64_t> mock_clock_time_usec_;
-
-  // Set by calls to SetMockClockErrorForTests().
-  // For testing purposes only.
-  std::atomic<uint64_t> mock_clock_max_error_usec_;
-
-#if !defined(__APPLE__)
-  uint64_t divisor_;
-#endif
-
-  double tolerance_adjustment_;
 
   struct HybridClockComponents {
     // the last clock read/update, in microseconds.
@@ -241,7 +141,7 @@ class HybridClock : public Clock {
       return last_usec < o.last_usec || last_usec == o.last_usec && logical <= o.logical;
     }
   };
-  std::atomic<HybridClockComponents> components_;
+  std::atomic<HybridClockComponents> components_{{0, 0}};
 
   // How many bits to left shift a microseconds clock read. The remainder
   // of the hybrid_time will be reserved for logical values.
@@ -249,8 +149,6 @@ class HybridClock : public Clock {
 
   // Mask to extract the pure logical bits.
   static const uint64_t kLogicalBitMask;
-
-  static const uint64_t kNanosPerSec;
 
   // The scaling factor used to obtain ppms. From the adjtimex source:
   // "scale factor used by adjtimex freq param.  1 ppm = 65536"
@@ -261,7 +159,7 @@ class HybridClock : public Clock {
     kInitialized
   };
 
-  State state_;
+  State state_ = kNotInitialized;
 
   // Clock metrics are set to detach to their last value. This means
   // that, during our destructor, we'll need to access other class members

@@ -44,9 +44,6 @@
 #include "yb/server/server_base.h"
 #include "yb/util/flag_tags.h"
 
-DECLARE_bool(use_mock_wall_clock);
-DECLARE_bool(use_hybrid_clock);
-
 using std::string;
 using std::unordered_set;
 
@@ -133,26 +130,6 @@ void GenericServiceImpl::ServerClock(const ServerClockRequestPB* req,
                                      ServerClockResponsePB* resp,
                                      rpc::RpcContext rpc) {
   resp->set_hybrid_time(server_->clock()->Now().ToUint64());
-  rpc.RespondSuccess();
-}
-
-void GenericServiceImpl::SetServerWallClockForTests(const SetServerWallClockForTestsRequestPB *req,
-                                                    SetServerWallClockForTestsResponsePB *resp,
-                                                    rpc::RpcContext rpc) {
-  if (!FLAGS_use_hybrid_clock || !FLAGS_use_mock_wall_clock) {
-    LOG(WARNING) << "Error setting wall clock for tests. Server is not using HybridClock"
-        "or was not started with '--use_mock_wall_clock= true'";
-    resp->set_success(false);
-  }
-
-  server::HybridClock* clock = down_cast<server::HybridClock*>(server_->clock());
-  if (req->has_now_usec()) {
-    clock->SetMockClockWallTimeForTests(req->now_usec());
-  }
-  if (req->has_max_error_usec()) {
-    clock->SetMockMaxClockErrorForTests(req->max_error_usec());
-  }
-  resp->set_success(true);
   rpc.RespondSuccess();
 }
 
