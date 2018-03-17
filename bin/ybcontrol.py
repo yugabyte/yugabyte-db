@@ -33,7 +33,7 @@ def list_command(service):
 
 
 def service_command(service, command):
-    return "sudo -u yugabyte {0}/bin/yb-server-ctl.sh {1} {2}".format(YB_HOME_DIR, service, command)
+    return "{0}/bin/yb-server-ctl.sh {1} {2}".format(YB_HOME_DIR, service, command)
 
 
 def stop_command(service):
@@ -56,7 +56,7 @@ class ClusterManager(object):
         self.tserver_ips = ClusterManager.get_arg(args, 'tserver_ips')
         default_pem = os.path.join(os.environ["HOME"], ".yugabyte/yugabyte-dev-aws-keypair.pem")
         self.pem_file = ClusterManager.get_arg(args, 'pem_file', default_pem)
-        self.user = ClusterManager.get_arg(args, 'user', 'centos')
+        self.user = ClusterManager.get_arg(args, 'user', 'yugabyte')
         self.repo = ClusterManager.get_arg(args, 'repo',
                                            os.path.join(os.environ["HOME"], 'code/yugabyte'))
         self.version_string = file("version.txt").read().strip().split("-")[0]
@@ -281,17 +281,15 @@ class CopyTarProcedure(Procedure):
             tar_prefix = self.manager.tar_prefix
             if self.step == 1:
                 print("Tar copied to {0}".format(self.host))
-                command = "sudo -u yugabyte rm -rf {0}/{1}".format(
+                command = "rm -rf {0}/{1}".format(
                     YB_SOFTWARE_DIR, tar_prefix)
                 self.process = self.manager.remote_launch(self.host, command)
             elif self.step == 2:
                 print("Extracting tar at {0}".format(self.host))
-                command = "sudo chown yugabyte /tmp/{1}.tar.gz && " \
-                          "{0} mv /tmp/{1}.tar.gz {4}/ && " \
-                          "{0} tar xvf {4}/{1}.tar.gz -C {4}/ && " \
-                          "{0} mv {4}/yugabyte-{2} {3}/{1} && " \
-                          "{0} {3}/{1}/bin/post_install.sh".format(
-                              "sudo -u yugabyte",
+                command = "mv /tmp/{0}.tar.gz {3}/ && " \
+                          "tar xvf {3}/{0}.tar.gz -C {3}/ && " \
+                          "mv {3}/yugabyte-{1} {2}/{0} && " \
+                          "{2}/{0}/bin/post_install.sh".format(
                               tar_prefix,
                               self.manager.version_string,
                               YB_SOFTWARE_DIR,
@@ -349,11 +347,10 @@ class RollTask:
     def execute(self):
         print(self.description)
         if self.upgrade:
-            pattern = "for dir in $({0} ls {1}/{3}); do " \
-                      "{0} ln -sfn {1}/{3}/$dir {4}/{2}/$dir;" \
+            pattern = "for dir in $(ls {0}/{2}); do " \
+                      "ln -sfn {0}/{2}/$dir {3}/{1}/$dir;" \
                       "done"
             command = pattern.format(
-                    "sudo -u yugabyte",
                     YB_SOFTWARE_DIR,
                     self.service,
                     self.manager.tar_prefix,
