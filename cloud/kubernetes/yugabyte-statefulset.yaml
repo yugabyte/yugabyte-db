@@ -5,6 +5,7 @@
 #    - a headless service to expose a DNS entry for discovery
 #    - a service to expose end-points to the outside world
 #    - the stateful set itself
+#    - a load-balancer service to view the universe dashboard UI
 #
 # Using YB with k8s
 #    - Create cluster    : kubectl apply -f yugabyte-statefulset.yaml
@@ -34,6 +35,21 @@ spec:
     port: 7100
   selector:
     app: yb-master
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yb-master-ui
+  labels:
+    app: yb-master
+spec:
+  clusterIP:
+  ports:
+  - name: ui
+    port: 7000
+  selector:
+    app: yb-master
+  type: LoadBalancer
 ---
 apiVersion: apps/v1beta1
 kind: StatefulSet
@@ -109,7 +125,7 @@ spec:
       accessModes: [ "ReadWriteOnce" ]
       resources:
         requests:
-          storage: 1Gi
+          storage: 10Gi
 
 ---
 apiVersion: v1
@@ -201,4 +217,4 @@ spec:
       accessModes: [ "ReadWriteOnce" ]
       resources:
         requests:
-          storage: 1Gi
+          storage: 10Gi
