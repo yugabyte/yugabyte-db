@@ -53,6 +53,10 @@
 DEFINE_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
 
+DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction"
+    "threads. It allows splitting small vs large compactions.");
+
+
 namespace rocksdb {
 
 ImmutableCFOptions::ImmutableCFOptions(const Options& options)
@@ -250,7 +254,7 @@ DBOptions::DBOptions()
       delete_obsolete_files_period_micros(6ULL * 60 * 60 * 1000000),
       base_background_compactions(-1),
       max_background_compactions(1),
-      num_reserved_small_compaction_threads(-1),
+      num_reserved_small_compaction_threads(FLAGS_num_reserved_small_compaction_threads),
       compaction_size_threshold_bytes(std::numeric_limits<uint64_t>::max()),
       max_subcompactions(1),
       max_background_flushes(1),
