@@ -21,4 +21,5 @@ It's compatible with **PostgreSQL 9.2 and above**.
    :caption: Contents:
 
    hypothetical_indexes
+   installation
    contributing
