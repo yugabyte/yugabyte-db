@@ -22,4 +22,5 @@ It's compatible with **PostgreSQL 9.2 and above**.
 
    hypothetical_indexes
    installation
+   usage
    contributing
