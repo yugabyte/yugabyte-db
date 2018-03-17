@@ -34,6 +34,7 @@ HypoPG is now available.  You can check easily if the extension is present
 using `psql <https://www.postgresql.org/docs/current/static/app-psql.html>`_:
 
 .. code-block:: psql
+  :emphasize-lines: 5
 
   \dx
                        List of installed extensions
