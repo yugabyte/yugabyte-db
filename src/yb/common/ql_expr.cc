@@ -382,6 +382,14 @@ CHECKED_STATUS QLTableRow::GetValue(ColumnIdRep col_id, QLValue *column) const {
   return Status::OK();
 }
 
+boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const {
+  const auto& col_iter = col_map_.find(col_id);
+  if (col_iter == col_map_.end()) {
+    return boost::none;
+  }
+  return col_iter->second.value;
+}
+
 bool QLTableRow::MatchColumn(ColumnIdRep col_id, const QLTableRow& source) const {
   auto this_iter = col_map_.find(col_id);
   auto source_iter = source.col_map_.find(col_id);
@@ -400,6 +408,11 @@ QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id) {
 
 QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id, const QLValue& ql_value) {
   col_map_[col_id].value = ql_value.value();
+  return col_map_[col_id];
+}
+
+QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id, const QLValuePB& ql_value) {
+  col_map_[col_id].value = ql_value;
   return col_map_[col_id];
 }
 

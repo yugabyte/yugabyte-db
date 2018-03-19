@@ -68,6 +68,10 @@ class QLTableRow {
   QLTableColumn& AllocColumn(const ColumnId& col, const QLValue& ql_value) {
     return AllocColumn(col.rep(), ql_value);
   }
+  QLTableColumn& AllocColumn(ColumnIdRep col_id, const QLValuePB& ql_value);
+  QLTableColumn& AllocColumn(const ColumnId& col, const QLValuePB& ql_value) {
+    return AllocColumn(col.rep(), ql_value);
+  }
 
   // Copy column-value from 'source' to the 'col_id' entry in the cached column-map.
   CHECKED_STATUS CopyColumn(ColumnIdRep col_id, const QLTableRow& source);
@@ -85,6 +89,10 @@ class QLTableRow {
   CHECKED_STATUS GetValue(ColumnIdRep col_id, QLValue *column) const;
   CHECKED_STATUS GetValue(const ColumnId& col, QLValue *column) const {
     return GetValue(col.rep(), column);
+  }
+  boost::optional<const QLValuePB&> GetValue(ColumnIdRep col_id) const;
+  boost::optional<const QLValuePB&> GetValue(const ColumnId& col) const {
+    return GetValue(col.rep());
   }
 
   // Get the column value in PB format.

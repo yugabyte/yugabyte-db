@@ -43,7 +43,6 @@ add_library(ql_ptree
             pt_bcall.cc
             pt_option.cc
             process_context.cc
-            selectivity.cc
             sem_context.cc
             sem_state.cc)
 

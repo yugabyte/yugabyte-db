@@ -25,6 +25,8 @@
 namespace yb {
 namespace ql {
 
+using strings::Substitute;
+
 const PTExpr::SharedPtr PTDmlStmt::kNullPointerRef = nullptr;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
@@ -33,24 +35,21 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      PTExpr::SharedPtr if_clause,
                      PTDmlUsingClause::SharedPtr using_clause)
   : PTCollection(memctx, loc),
-    is_system_(false),
+    where_clause_(where_clause),
+    if_clause_(if_clause),
+    using_clause_(using_clause),
+    bind_variables_(memctx),
     table_columns_(memctx),
-    num_key_columns_(0),
-    num_hash_key_columns_(0),
     func_ops_(memctx),
     key_where_ops_(memctx),
     where_ops_(memctx),
     subscripted_col_where_ops_(memctx),
     partition_key_ops_(memctx),
-    where_clause_(where_clause),
-    if_clause_(if_clause),
-    using_clause_(using_clause),
-    bind_variables_(memctx),
     hash_col_bindvars_(memctx),
-    column_args_(nullptr),
     column_refs_(memctx),
     static_column_refs_(memctx),
-    selected_schemas_(nullptr) {
+    pk_only_indexes_(memctx),
+    non_pk_only_indexes_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -179,6 +178,39 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(using_clause_->Analyze(sem_context));
   return Status::OK();
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
+  const Schema& indexed_schema = table_->InternalSchema();
+  for (const auto& itr : table_->index_map()) {
+    const TableId& index_id = itr.first;
+    const IndexInfo& index = itr.second;
+    // If the index indexes the primary key columns only, index updates can be issued from the CQL
+    // proxy side without reading the current row so long as the DML does not delete the column
+    // (including setting the value to null). Otherwise, the updates needed can only be determined
+    // from the tserver side after the current values are read.
+    if (index.PrimaryKeyColumnsOnly(indexed_schema)) {
+      std::shared_ptr<client::YBTable> index_table = sem_context->GetTableDesc(index_id);
+      if (index_table == nullptr) {
+        return sem_context->Error(this, Substitute("Index table $0 not found", index_id).c_str(),
+                                  ErrorCode::TABLE_NOT_FOUND);
+      }
+      pk_only_indexes_[index_id] = index_table;
+    } else {
+      non_pk_only_indexes_.insert(index_id);
+      for (const IndexInfo::IndexColumn& column : index.columns()) {
+        const ColumnId indexed_column_id = column.indexed_column_id;
+        if (!indexed_schema.is_key_column(indexed_column_id)) {
+          column_refs_.insert(indexed_column_id);
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
+bool PTDmlStmt::RequireTransaction() const {
+  return IsWriteOp() && !DCHECK_NOTNULL(table_.get())->index_map().empty();
 }
 
 CHECKED_STATUS PTDmlStmt::AnalyzeHashColumnBindVars(SemContext *sem_context) {

@@ -73,10 +73,14 @@ class PTInsertStmt : public PTDmlStmt {
   }
 
  private:
-  // The parser will constructs the following tree nodes.
+  // --- The parser will decorate this node with the following information --
+
   PTQualifiedName::SharedPtr relation_;
   PTQualifiedNameListNode::SharedPtr columns_;
   PTCollection::SharedPtr value_clause_;
+
+  // -- The semantic analyzer will decorate this node with the following information --
+
 };
 
 }  // namespace ql

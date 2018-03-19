@@ -522,6 +522,10 @@ class TransactionParticipant::Impl {
     db_ = db;
   }
 
+  TransactionParticipantContext* context() const {
+    return &context_;
+  }
+
  private:
   typedef boost::multi_index_container<RunningTransaction,
       boost::multi_index::indexed_by <
@@ -627,6 +631,10 @@ CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& 
 
 void TransactionParticipant::SetDB(rocksdb::DB* db) {
   impl_->SetDB(db);
+}
+
+TransactionParticipantContext* TransactionParticipant::context() const {
+  return impl_->context();
 }
 
 } // namespace tablet

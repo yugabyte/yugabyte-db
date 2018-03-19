@@ -16,6 +16,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
@@ -63,10 +64,21 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
     case 0:
       return sem_context->Error(lnode, "Unexpected empty statement list",
                                 ErrorCode::SQL_STATEMENT_INVALID);
-    case 1:
-      // Hoist the statement to the root node.
-      root_ = lnode->node_list().front();
-      return root_->Analyze(sem_context);
+    case 1: {
+      const TreeNode::SharedPtr tnode = lnode->node_list().front();
+      RETURN_NOT_OK(tnode->Analyze(sem_context));
+      if ((tnode->opcode() == TreeNodeOpcode::kPTInsertStmt ||
+           tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
+           tnode->opcode() == TreeNodeOpcode::kPTDeleteStmt) &&
+          std::static_pointer_cast<PTDmlStmt>(tnode)->RequireTransaction()) {
+        lnode->Prepend(PTStartTransaction::MakeShared(sem_context->PTreeMem(), tnode->loc_ptr()));
+        lnode->Append(PTCommit::MakeShared(sem_context->PTreeMem(), tnode->loc_ptr()));
+      } else {
+        // Hoist the statement to the root node.
+        root_ = tnode;
+      }
+      return Status::OK();
+    }
     default:
       return lnode->AnalyzeStatementBlock(sem_context);
   }

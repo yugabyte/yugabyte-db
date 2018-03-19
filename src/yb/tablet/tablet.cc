@@ -50,9 +50,14 @@
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/write_batch.h"
 
+#include "yb/client/client.h"
+#include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
+#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -157,6 +162,13 @@ using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
 using strings::Substitute;
 using base::subtle::Barrier_AtomicIncrement;
+
+using client::ChildTransactionData;
+using client::TransactionManager;
+using client::YBClientPtr;
+using client::YBSession;
+using client::YBTransaction;
+using client::YBTablePtr;
 
 using docdb::DocDbAwareFilterPolicy;
 using docdb::DocKey;
@@ -322,6 +334,11 @@ Tablet::Tablet(
   if (transaction_participant_context) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
         transaction_participant_context);
+    // Create transaction manager for secondary index update.
+    if (!metadata_->index_map().empty()) {
+      transaction_manager_.emplace(transaction_participant_context->client_future().get(),
+                                   transaction_participant_context->clock_ptr());
+    }
   }
 
   if (transaction_coordinator_context) { // TODO(dtxn) Create coordinator only for status tablets
@@ -738,8 +755,9 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
     if (metadata_->schema_version() != req->schema_version()) {
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      const auto& schema = metadata_->schema();
-      auto write_op = std::make_unique<QLWriteOperation>(schema, *txn_op_ctx);
+      auto write_op = std::make_unique<QLWriteOperation>(metadata_->schema(),
+                                                         metadata_->index_map(),
+                                                         *txn_op_ctx);
       RETURN_NOT_OK(write_op->Init(req, resp));
       doc_ops.emplace_back(std::move(write_op));
     }
@@ -748,6 +766,9 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
   if (data.restart_read_ht->is_valid()) {
     return Status::OK();
   }
+
+  RETURN_NOT_OK(UpdateQLIndexes(&doc_ops));
+
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
     // If the QL write op returns a rowblock, move the op to the transaction state to return the
@@ -758,6 +779,35 @@ Status Tablet::KeyValueBatchFromQLWriteBatch(const WriteOperationData& data) {
     }
   }
 
+  return Status::OK();
+}
+
+Status Tablet::UpdateQLIndexes(docdb::DocOperations* doc_ops) {
+  for (auto& doc_op : *doc_ops) {
+    auto* write_op = static_cast<QLWriteOperation*>(doc_op.get());
+    if (write_op->index_requests()->empty()) {
+      continue;
+    }
+    if (!transaction_manager_) {
+      return STATUS(Corruption, "Transaction manager is not present for index update");
+    }
+    auto txn = std::make_shared<YBTransaction>(
+        &transaction_manager_.get(),
+        VERIFY_RESULT(ChildTransactionData::FromPB(write_op->request().child_transaction_data())));
+    const YBClientPtr client = transaction_participant_->context()->client_future().get();
+    auto session = std::make_shared<YBSession>(client, txn);
+    RETURN_NOT_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
+    for (auto& pair : *write_op->index_requests()) {
+      client::YBTablePtr index_table;
+      RETURN_NOT_OK(client->OpenTable(pair.first->table_id(), &index_table));
+      shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
+      index_op->mutable_request()->Swap(&pair.second);
+      index_op->mutable_request()->MergeFrom(pair.second);
+      RETURN_NOT_OK(session->Apply(index_op));
+    }
+    RETURN_NOT_OK(session->Flush());
+    *write_op->response()->mutable_child_transaction_result() = VERIFY_RESULT(txn->FinishChild());
+  }
   return Status::OK();
 }
 
@@ -903,6 +953,14 @@ Status Tablet::AlterSchema(AlterSchemaOperationState *operation_state) {
 
     // Update the index info.
     metadata_->SetIndexMap(std::move(operation_state->index_map()));
+
+    // Create transaction manager for secondary index update.
+    if (!metadata_->index_map().empty() && !transaction_manager_) {
+      const auto transaction_participant_context =
+          DCHECK_NOTNULL(transaction_participant_.get())->context();
+      transaction_manager_.emplace(transaction_participant_context->client_future().get(),
+                                   transaction_participant_context->clock_ptr());
+    }
 
     // If the current schema and the new one are equal, there is nothing to do.
     if (same_schema) {

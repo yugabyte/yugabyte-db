@@ -178,6 +178,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // Run error checking on USING clause.
   RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
 
+  // Analyze indexes for write operations.
+  RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
+
   return Status::OK();
 }
 

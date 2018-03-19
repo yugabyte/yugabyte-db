@@ -239,6 +239,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return *clock_;
   }
 
+  const server::ClockPtr& clock_ptr() const override {
+    return clock_;
+  }
+
   const std::shared_future<client::YBClientPtr>& client_future() const override {
     return client_future_;
   }

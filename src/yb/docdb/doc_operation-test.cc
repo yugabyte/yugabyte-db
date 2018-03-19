@@ -92,9 +92,9 @@ class DocOperationTest : public DocDBTestBase {
   }
 
   void WriteQL(QLWriteRequestPB* ql_writereq_pb, const Schema& schema,
-                QLResponsePB* ql_writeresp_pb,
-                const HybridTime& hybrid_time = HybridTime::kMax) {
-    QLWriteOperation ql_write_op(schema, kNonTransactionalOperationContext);
+               QLResponsePB* ql_writeresp_pb,
+               const HybridTime& hybrid_time = HybridTime::kMax) {
+    QLWriteOperation ql_write_op(schema, IndexMap(), kNonTransactionalOperationContext);
     ASSERT_OK(ql_write_op.Init(ql_writereq_pb, ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     CHECK_OK(ql_write_op.Apply({&doc_write_batch, ReadHybridTime()}));

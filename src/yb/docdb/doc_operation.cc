@@ -1554,9 +1554,8 @@ void AddProjection(const Schema& schema, QLTableRow* table_row) {
 // non-static column portions.
 CHECKED_STATUS CreateProjections(const Schema& schema, const QLReferencedColumnsPB& column_refs,
                                  Schema* static_projection, Schema* non_static_projection) {
-  // The projection schemas are used to scan docdb. Keep the columns to fetch in sorted order for
-  // more efficient scan in the iterator.
-  set<ColumnId> static_columns, non_static_columns;
+  // The projection schemas are used to scan docdb.
+  unordered_set<ColumnId> static_columns, non_static_columns;
 
   // Add regular columns.
   for (int32_t id : column_refs.ids()) {
@@ -1659,10 +1658,11 @@ bool JoinNonStaticRow(
 } // namespace
 
 Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
-  response_ = response;
-  require_read_ = RequireRead(*request, schema_);
-
   request_.Swap(request);
+  response_ = response;
+  require_read_ = RequireRead(request_, schema_);
+  update_indexes_ = !request_.update_index_ids().empty();
+
   // Determine if static / non-static columns are being written.
   bool write_static_columns = false;
   bool write_non_static_columns = false;
@@ -1781,6 +1781,13 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
     RETURN_NOT_OK(iterator.Init(spec));
     if (iterator.HasNext()) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
+      // If there are indexes to update, check if liveness column exists for update/delete because
+      // that will affect whether the row will still exist after the DML and whether we need to
+      // remove the key from the indexes.
+      if (update_indexes_ && (request_.type() == QLWriteRequestPB::QL_STMT_UPDATE ||
+                              request_.type() == QLWriteRequestPB::QL_STMT_DELETE)) {
+        liveness_column_exists_ = iterator.LivenessColumnExists();
+      }
     } else {
       // If no non-static column is found, the row does not exist and we should clear the static
       // columns in the map to indicate the row does not exist.
@@ -1828,15 +1835,15 @@ Status QLWriteOperation::IsConditionSatisfied(const QLConditionPB& condition,
 
 Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   bool should_apply = true;
-  QLTableRow table_row;
+  QLTableRow current_row;
   if (request_.has_if_expr()) {
     RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
                                        data,
                                        &should_apply,
                                        &rowblock_,
-                                       &table_row));
+                                       &current_row));
   } else if (RequireReadForExpressions(request_)) {
-    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &table_row));
+    RETURN_NOT_OK(ReadColumns(data, nullptr, nullptr, &current_row));
   }
 
   if (should_apply) {
@@ -1844,6 +1851,22 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
     const UserTimeMicros user_timestamp = request_.has_user_timestamp_usec() ?
         request_.user_timestamp_usec() : Value::kInvalidUserTimestamp;
+
+    QLTableRow new_row;
+    if (update_indexes_) {
+      size_t idx = 0;
+      for (const QLExpressionPB& expr : request_.hashed_column_values()) {
+        new_row.AllocColumn(schema_.column_id(idx), expr.value());
+        idx++;
+      }
+      for (const QLExpressionPB& expr : request_.range_column_values()) {
+        new_row.AllocColumn(schema_.column_id(idx), expr.value());
+        idx++;
+      }
+      if (current_row.IsEmpty()) {
+        current_row = new_row;
+      }
+    }
 
     switch (request_.type()) {
       // QL insert == update (upsert) to be consistent with Cassandra's semantics. In either
@@ -1882,7 +1905,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                            PrimitiveValue(column_id));
 
           QLValue expr_result;
-          RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, &expr_result));
+          RETURN_NOT_OK(EvalExpr(column_value.expr(), current_row, &expr_result));
           const TSOpcode write_instr = GetTSWriteInstruction(column_value.expr());
           const SubDocument& sub_doc =
               SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
@@ -1925,6 +1948,11 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                 LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instr);
                 break;
             }
+
+            if (update_indexes_) {
+              new_row.AllocColumn(column_id, expr_result);
+            }
+
           } else {
             RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp));
 
@@ -1973,6 +2001,10 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             }
           }
         }
+
+        if (update_indexes_) {
+          RETURN_NOT_OK(UpdateIndexes(current_row, new_row));
+        }
         break;
       }
       case QLWriteRequestPB::QL_STMT_DELETE: {
@@ -1996,6 +2028,12 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
                 PrimitiveValue(column_id));
             RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(sub_path,
                                                              request_.query_id(), user_timestamp));
+            if (update_indexes_) {
+              new_row.AllocColumn(column_id);
+            }
+          }
+          if (update_indexes_) {
+            RETURN_NOT_OK(UpdateIndexes(current_row, new_row));
           }
         } else if (IsRangeOperation(request_, schema_)) {
           // If the range columns are not specified, we read everything and delete all rows for
@@ -2035,15 +2073,22 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
             bool match = false;
             RETURN_NOT_OK(spec.Match(row, &match));
             if (match) {
-              DocKey row_key = iterator.row_key();
-              DocPath row_path(row_key.Encode());
-              RETURN_NOT_OK(DeleteRow(data.doc_write_batch, row_path));
+              const DocKey& row_key = iterator.row_key();
+              const DocPath row_path(row_key.Encode());
+              RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch));
+              if (update_indexes_) {
+                liveness_column_exists_ = iterator.LivenessColumnExists();
+                RETURN_NOT_OK(UpdateIndexes(row, new_row));
+              }
             }
           }
           data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
         } else {
           // Otherwise, delete the referenced row (all columns).
-          RETURN_NOT_OK(DeleteRow(data.doc_write_batch, *pk_doc_path_));
+          RETURN_NOT_OK(DeleteRow(*pk_doc_path_, data.doc_write_batch));
+          if (update_indexes_) {
+            RETURN_NOT_OK(UpdateIndexes(current_row, new_row));
+          }
         }
         break;
       }
@@ -2055,8 +2100,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   return Status::OK();
 }
 
-Status QLWriteOperation::DeleteRow(DocWriteBatch* doc_write_batch,
-                                   const DocPath row_path) {
+Status QLWriteOperation::DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch) {
   if (request_.has_user_timestamp_usec()) {
     // If user_timestamp is provided, we need to add a tombstone for each individual
     // column in the schema since we don't want to analyze this on the read path.
@@ -2079,6 +2123,133 @@ Status QLWriteOperation::DeleteRow(DocWriteBatch* doc_write_batch,
     RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(row_path));
   }
 
+  return Status::OK();
+}
+
+namespace {
+
+YB_DEFINE_ENUM(ValueState, (kNull)(kNotNull)(kMissing));
+
+ValueState GetValueState(const QLTableRow& row, const ColumnId column_id) {
+  const auto value = row.GetValue(column_id);
+  return !value ? ValueState::kMissing : IsNull(*value) ? ValueState::kNull : ValueState::kNotNull;
+}
+
+} // namespace
+
+bool QLWriteOperation::IsRowDeleted(const QLTableRow& current_row,
+                                    const QLTableRow& new_row) const {
+  // Delete the whole row?
+  if (request_.type() == QLWriteRequestPB::QL_STMT_DELETE && request_.column_values().empty()) {
+    return true;
+  }
+
+  // For update/delete, if there is no liveness column, the row will be deleted after the DML unless
+  // a non-null column still remains.
+  if ((request_.type() == QLWriteRequestPB::QL_STMT_UPDATE ||
+       request_.type() == QLWriteRequestPB::QL_STMT_DELETE) &&
+      !liveness_column_exists_) {
+    for (size_t idx = schema_.num_key_columns(); idx < schema_.num_columns(); idx++) {
+      if (schema_.column(idx).is_static()) {
+        continue;
+      }
+      const ColumnId column_id = schema_.column_id(idx);
+      switch (GetValueState(new_row, column_id)) {
+        case ValueState::kNull: continue;
+        case ValueState::kNotNull: return false;
+        case ValueState::kMissing: break;
+      }
+      switch (GetValueState(current_row, column_id)) {
+        case ValueState::kNull: continue;
+        case ValueState::kNotNull: return false;
+        case ValueState::kMissing: break;
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+namespace {
+
+QLExpressionPB* NewKeyColumn(QLWriteRequestPB* request, const IndexInfo& index, const size_t idx) {
+  return (idx < index.hash_column_count()
+          ? request->add_hashed_column_values()
+          : request->add_range_column_values());
+}
+
+} // namespace
+
+QLWriteRequestPB* QLWriteOperation::NewIndexRequest(const IndexInfo* index,
+                                                    const QLWriteRequestPB::QLStmtType type) {
+  index_requests_.emplace_back(index, QLWriteRequestPB());
+  QLWriteRequestPB* request = &index_requests_.back().second;
+  request->set_type(type);
+  return request;
+}
+
+Status QLWriteOperation::UpdateIndexes(const QLTableRow& current_row, const QLTableRow& new_row) {
+  // Prepare the write requests to update the indexes. There should be at most 2 requests for each
+  // index (one insert and one delete).
+  const auto& index_ids = request_.update_index_ids();
+  index_requests_.reserve(index_ids.size() * 2);
+  for (const TableId& index_id : index_ids) {
+    const IndexInfo* index = VERIFY_RESULT(FindIndex(index_map_, index_id));
+    bool index_key_changed = false;
+    if (IsRowDeleted(current_row, new_row)) {
+      index_key_changed = true;
+    } else {
+      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_INSERT);
+      // Prepare the new index key.
+      for (size_t idx = 0; idx < index->key_column_count(); idx++) {
+        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
+        auto result = new_row.GetValue(index_column.indexed_column_id);
+        if (!current_row.IsEmpty()) {
+          // For each column in the index key, if there is a new value, see if the value is changed
+          // from the current value. Else, use the current value.
+          if (result) {
+            if (!new_row.MatchColumn(index_column.indexed_column_id, current_row)) {
+              index_key_changed = true;
+            }
+          } else {
+            result = current_row.GetValue(index_column.indexed_column_id);
+          }
+        }
+        if (result) {
+          key_column->mutable_value()->CopyFrom(*result);
+        }
+      }
+      // Prepare the covering columns.
+      for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
+        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        auto result = new_row.GetValue(index_column.indexed_column_id);
+        // If the index value is changed and there is no new covering column value set, use the
+        // current value.
+        if (index_key_changed && !result) {
+          result = current_row.GetValue(index_column.indexed_column_id);
+        }
+        if (result) {
+          QLColumnValuePB* covering_column = index_request->add_column_values();
+          covering_column->set_column_id(index_column.column_id);
+          covering_column->mutable_expr()->mutable_value()->CopyFrom(*result);
+        }
+      }
+    }
+    // If the index key is changed, delete the current key.
+    if (index_key_changed) {
+      QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE);
+      for (size_t idx = 0; idx < index->key_column_count(); idx++) {
+        const IndexInfo::IndexColumn& index_column = index->column(idx);
+        QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
+        auto result = current_row.GetValue(index_column.indexed_column_id);
+        if (result) {
+          key_column->mutable_value()->CopyFrom(*result);
+        }
+      }
+    }
+  }
   return Status::OK();
 }
 

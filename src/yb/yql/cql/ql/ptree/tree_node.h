@@ -96,6 +96,9 @@ class TreeNode : public MCBase {
   void set_loc(const TreeNode& other) {
     loc_ = other.loc_;
   }
+  const YBLocation::SharedPtr& loc_ptr() const {
+    return loc_;
+  }
 
  protected:
   YBLocation::SharedPtr loc_;
