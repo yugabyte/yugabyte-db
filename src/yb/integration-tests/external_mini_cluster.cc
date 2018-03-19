@@ -57,6 +57,7 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/async_util.h"
@@ -209,8 +210,11 @@ Status ExternalMiniCluster::Start() {
   RETURN_NOT_OK(HandleOptions());
   FLAGS_replication_factor = opts_.num_masters;
 
-  RETURN_NOT_OK_PREPEND(rpc::MessengerBuilder("minicluster-messenger")
-                            .set_num_reactors(1).Build().MoveTo(&messenger_),
+  rpc::MessengerBuilder builder("minicluster-messenger");
+  builder.set_num_reactors(1);
+  builder.connection_context_factory()->SetParentMemTracker(
+      MemTracker::FindOrCreateTracker("minicluster"));
+  RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
                         "Failed to start Messenger for minicluster");
 
   Status s = Env::Default()->CreateDir(data_root_);

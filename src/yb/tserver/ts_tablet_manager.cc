@@ -295,7 +295,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     async_client_init_(
         "tserver_client", 0 /* num_reactors */,
         FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
-        &server->options(), server->metric_entity()) {
+        &server->options(), server->metric_entity(), server->mem_tracker()) {
 
   ThreadPoolMetrics metrics = {
       METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()),

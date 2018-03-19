@@ -97,7 +97,8 @@ MessengerBuilder::MessengerBuilder(std::string name)
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
       num_reactors_(4),
       coarse_timer_granularity_(100ms),
-      connection_context_factory_(&std::make_unique<YBConnectionContext>) {
+      connection_context_factory_(
+          std::make_shared<rpc::ConnectionContextFactoryImpl<YBConnectionContext>>()) {
 }
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(
@@ -120,6 +121,11 @@ MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(
 MessengerBuilder &MessengerBuilder::set_metric_entity(
     const scoped_refptr<MetricEntity>& metric_entity) {
   metric_entity_ = metric_entity;
+  return *this;
+}
+
+MessengerBuilder &MessengerBuilder::use_default_mem_tracker() {
+  connection_context_factory_->UseDefaultParentMemTracker();
   return *this;
 }
 

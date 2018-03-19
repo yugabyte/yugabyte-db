@@ -118,6 +118,7 @@ class YBRedisOp : public YBOperation {
   virtual ~YBRedisOp();
 
   bool has_response() { return redis_response_ ? true : false; }
+  virtual size_t space_used_by_request() const = 0;
 
   const RedisResponsePB& response() const;
 
@@ -138,6 +139,7 @@ class YBRedisWriteOp : public YBRedisOp {
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see WriteRpc's constructor).
   const RedisWriteRequestPB& request() const { return *redis_write_request_; }
+  size_t space_used_by_request() const override;
 
   RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
 
@@ -174,6 +176,7 @@ class YBRedisReadOp : public YBRedisOp {
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see ReadRpc's constructor).
   const RedisReadRequestPB& request() const { return *redis_read_request_; }
+  size_t space_used_by_request() const override;
 
   RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
 

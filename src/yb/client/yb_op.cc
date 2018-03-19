@@ -89,6 +89,10 @@ YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
 
 YBRedisWriteOp::~YBRedisWriteOp() {}
 
+size_t YBRedisWriteOp::space_used_by_request() const {
+  return redis_write_request_->ByteSizeLong();
+}
+
 std::string YBRedisWriteOp::ToString() const {
   return "REDIS_WRITE " + redis_write_request_->key_value().key();
 }
@@ -113,6 +117,10 @@ YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
 }
 
 YBRedisReadOp::~YBRedisReadOp() {}
+
+size_t YBRedisReadOp::space_used_by_request() const {
+  return redis_read_request_->SpaceUsedLong();
+}
 
 std::string YBRedisReadOp::ToString() const {
   return "REDIS_READ " + redis_read_request_->key_value().key();

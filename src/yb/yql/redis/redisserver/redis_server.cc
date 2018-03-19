@@ -27,8 +27,13 @@ namespace yb {
 namespace redisserver {
 
 RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
-    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts),
-      tserver_(tserver) {}
+    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"),
+      opts_(opts),
+      tserver_(tserver),
+      mem_tracker_(
+          MemTracker::CreateTracker("Redis", tserver ? tserver->mem_tracker() : nullptr)) {
+  opts.connection_context_factory->SetParentMemTracker(mem_tracker_);
+}
 
 Status RedisServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());

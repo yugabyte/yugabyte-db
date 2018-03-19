@@ -34,7 +34,7 @@ class CQLServiceImpl;
 class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
                              public rpc::BinaryCallParserListener {
  public:
-  CQLConnectionContext();
+  CQLConnectionContext(const MemTrackerPtr& read_buffer_tracker, const MemTrackerPtr& call_tracker);
   void DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
               rpc::RpcConnectionPB* resp) override;
 
@@ -70,6 +70,8 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::NONE;
 
   rpc::BinaryCallParser parser_;
+
+  MemTrackerPtr call_tracker_;
 };
 
 class CQLInboundCall : public rpc::InboundCall {
@@ -79,7 +81,7 @@ class CQLInboundCall : public rpc::InboundCall {
                           ql::QLSession::SharedPtr ql_session);
 
   // Takes ownership of call_data content.
-  CHECKED_STATUS ParseFrom(std::vector<char>* call_data);
+  CHECKED_STATUS ParseFrom(const MemTrackerPtr& call_tracker, std::vector<char>* call_data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
@@ -133,6 +135,8 @@ class CQLInboundCall : public rpc::InboundCall {
   std::shared_ptr<const CQLRequest> request_;
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* service_impl_;
+
+  ScopedTrackedConsumption consumption_;
 };
 
 using CQLInboundCallPtr = std::shared_ptr<CQLInboundCall>;

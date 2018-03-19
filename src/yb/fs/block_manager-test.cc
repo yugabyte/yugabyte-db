@@ -164,7 +164,7 @@ void BlockManagerTest<FileBlockManager>::RunLogContainerPreallocationTest() {
 
 template <>
 void BlockManagerTest<FileBlockManager>::RunMemTrackerTest() {
-  shared_ptr<MemTracker> tracker = MemTracker::CreateTracker(-1, "test tracker");
+  shared_ptr<MemTracker> tracker = MemTracker::CreateTracker("test tracker");
   ASSERT_NO_FATALS(this->ReopenBlockManager(scoped_refptr<MetricEntity>(),
                                                    tracker,
                                                    { GetTestDataDirectory() },
@@ -372,7 +372,7 @@ TYPED_TEST(BlockManagerTest, PersistenceTest) {
   // on-disk metadata should still be clean.
   gscoped_ptr<BlockManager> new_bm(this->CreateBlockManager(
       scoped_refptr<MetricEntity>(),
-      MemTracker::CreateTracker(-1, "other tracker"),
+      MemTracker::CreateTracker("other tracker"),
       { GetTestDataDirectory() }));
   ASSERT_OK(new_bm->Open());
 

@@ -96,10 +96,12 @@ class MessengerBuilder {
   MessengerBuilder &set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
   // Uses the given connection type to handle the incoming connections.
-  MessengerBuilder &use_connection_context_factory(const ConnectionContextFactory& factory) {
+  MessengerBuilder &use_connection_context_factory(const ConnectionContextFactoryPtr& factory) {
     connection_context_factory_ = factory;
     return *this;
   }
+
+  MessengerBuilder &use_default_mem_tracker();
 
   Result<std::shared_ptr<Messenger>> Build();
 
@@ -111,13 +113,17 @@ class MessengerBuilder {
     return coarse_timer_granularity_;
   }
 
+  const ConnectionContextFactoryPtr& connection_context_factory() const {
+    return connection_context_factory_;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
   int num_reactors_;
   CoarseMonoClock::Duration coarse_timer_granularity_;
   scoped_refptr<MetricEntity> metric_entity_;
-  ConnectionContextFactory connection_context_factory_;
+  ConnectionContextFactoryPtr connection_context_factory_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -231,7 +237,7 @@ class Messenger {
 
   const std::string name_;
 
-  ConnectionContextFactory connection_context_factory_;
+  ConnectionContextFactoryPtr connection_context_factory_;
 
   // Protects closing_, acceptor_pools_, rpc_services_.
   mutable percpu_rwlock lock_;

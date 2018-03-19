@@ -29,7 +29,7 @@ const size_t kInitialSize = 0x100;
 const size_t kSizeLimit = 0x1000;
 
 TEST_F(GrowableBufferTest, TestLimit) {
-  GrowableBuffer buffer(kInitialSize, kSizeLimit);
+  GrowableBuffer buffer(kInitialSize, kSizeLimit, MemTrackerPtr());
 
   ASSERT_EQ(buffer.capacity_left(), kInitialSize);
   unsigned int seed = SeedRandom();
@@ -44,7 +44,7 @@ TEST_F(GrowableBufferTest, TestLimit) {
 }
 
 TEST_F(GrowableBufferTest, TestPrepareRead) {
-  GrowableBuffer buffer(kInitialSize, kSizeLimit);
+  GrowableBuffer buffer(kInitialSize, kSizeLimit, MemTrackerPtr());
 
   unsigned int seed = SeedRandom();
 
@@ -59,7 +59,7 @@ TEST_F(GrowableBufferTest, TestPrepareRead) {
 }
 
 TEST_F(GrowableBufferTest, TestConsume) {
-  GrowableBuffer buffer(kInitialSize, kSizeLimit);
+  GrowableBuffer buffer(kInitialSize, kSizeLimit, MemTrackerPtr());
 
   int counter = 0;
 

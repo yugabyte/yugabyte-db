@@ -22,7 +22,8 @@ namespace client {
 AsyncClientInitialiser::AsyncClientInitialiser(
     const std::string& client_name, const uint32_t num_reactors, const uint32_t timeout_seconds,
     const std::string& tserver_uuid, const yb::server::ServerBaseOptions* opts,
-    scoped_refptr<MetricEntity> metric_entity)
+    scoped_refptr<MetricEntity> metric_entity,
+    const std::shared_ptr<MemTracker>& parent_mem_tracker)
     : client_future_(client_promise_.get_future()) {
   client_builder_.set_client_name(client_name);
   client_builder_.default_rpc_timeout(MonoDelta::FromSeconds(timeout_seconds));
@@ -32,6 +33,7 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   if (num_reactors > 0) {
     client_builder_.set_num_reactors(num_reactors);
   }
+  client_builder_.set_parent_mem_tracker(parent_mem_tracker);
 
   // Build cloud_info_pb.
   CloudInfoPB cloud_info_pb;

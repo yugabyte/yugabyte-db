@@ -27,7 +27,8 @@ class AsyncClientInitialiser {
   AsyncClientInitialiser(const std::string& client_name, const uint32_t num_reactors,
                    const uint32_t timeout_seconds, const std::string& tserver_uuid,
                    const server::ServerBaseOptions* opts,
-                   scoped_refptr<MetricEntity> metric_entity);
+                   scoped_refptr<MetricEntity> metric_entity,
+                   const std::shared_ptr<MemTracker>& parent_mem_tracker);
 
   ~AsyncClientInitialiser();
 

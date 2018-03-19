@@ -211,6 +211,8 @@ class YBClientBuilder {
   // proxy clients.
   YBClientBuilder& set_tserver_uuid(const TabletServerId& uuid);
 
+  YBClientBuilder& set_parent_mem_tracker(const std::shared_ptr<MemTracker>& mem_tracker);
+
   // Creates the client.
   //
   // The return value may indicate an error in the create operation, or a
