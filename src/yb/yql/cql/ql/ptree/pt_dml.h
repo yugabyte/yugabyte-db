@@ -174,12 +174,6 @@ class PTDmlStmt : public PTCollection {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
-  // Semantic-analyzing the where clause.
-  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
-
-  // Semantic-analyzing the if clause.
-  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context, const PTExpr::SharedPtr& if_clause);
-
   // Table name.
   virtual client::YBTableName table_name() const = 0;
 
@@ -311,19 +305,37 @@ class PTDmlStmt : public PTCollection {
     return selected_schemas_;
   }
 
-
-  bool IsWriteOp() {
+  bool IsWriteOp() const {
     return opcode() == TreeNodeOpcode::kPTInsertStmt ||
            opcode() == TreeNodeOpcode::kPTUpdateStmt ||
            opcode() == TreeNodeOpcode::kPTDeleteStmt;
   }
 
+  bool RequireTransaction() const;
+
+  const MCUnorderedMap<TableId, std::shared_ptr<client::YBTable>>& pk_only_indexes() const {
+    return pk_only_indexes_;
+  }
+
+  const MCUnorderedSet<TableId>& non_pk_only_indexes() const {
+    return non_pk_only_indexes_;
+  }
+
  protected:
-  // Protected functions.
-  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
+  // Semantic-analyzing the where clause.
+  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
+
+  // Semantic-analyzing the if clause.
+  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context, const PTExpr::SharedPtr& if_clause);
 
   // Semantic-analyzing the USING TTL clause.
   CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
+
+  // Semantic-analyzing the indexes for write operations.
+  CHECKED_STATUS AnalyzeIndexesForWrites(SemContext *sem_context);
+
+  // Protected functions.
+  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
 
   // Semantic-analyzing the bind variables for hash columns.
   CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
@@ -331,16 +343,20 @@ class PTDmlStmt : public PTCollection {
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
 
-  // The semantic analyzer will decorate this node with the following information.
+  // --- The parser will decorate this node with the following information --
+
+  const PTExpr::SharedPtr where_clause_;
+  const PTExpr::SharedPtr if_clause_;
+  const PTDmlUsingClause::SharedPtr using_clause_;
+  MCVector<PTBindVar*> bind_variables_;
+
+  // -- The semantic analyzer will decorate this node with the following information --
+
   std::shared_ptr<client::YBTable> table_;
-
-  // Is the table a system table?
-  bool is_system_;
-
-  // Table columns.
-  MCVector<ColumnDesc> table_columns_;
-  int num_key_columns_;
-  int num_hash_key_columns_;
+  bool is_system_ = false; // Is the table a system table?
+  MCVector<ColumnDesc> table_columns_; // Table columns.
+  int num_key_columns_ = 0;
+  int num_hash_key_columns_ = 0;
 
   // Where operator list.
   // - When reading (SELECT), key_where_ops_ has only HASH (partition) columns.
@@ -356,17 +372,9 @@ class PTDmlStmt : public PTCollection {
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;
 
-  PTExpr::SharedPtr where_clause_;
-  PTExpr::SharedPtr if_clause_;
-  PTDmlUsingClause::SharedPtr using_clause_;
-
-  // Bind variables set up by during parsing.
-  MCVector<PTBindVar*> bind_variables_;
-
   // List of bind variables associated with hash columns ordered by their column ids.
   MCSet<PTBindVar*, PTBindVar::HashColCmp> hash_col_bindvars_;
 
-  // Semantic phase will decorate the following fields.
   MCSharedPtr<MCVector<ColumnArg>> column_args_;
   MCSharedPtr<MCVector<SubscriptedColumnArg>> subscripted_col_args_;
 
@@ -383,6 +391,11 @@ class PTDmlStmt : public PTCollection {
   // NOTE: Only SELECT and DML with RETURN clause statements have outputs.
   //       We prepare this vector once at compile time and use it at execution times.
   std::shared_ptr<vector<ColumnSchema>> selected_schemas_;
+
+  // The map of index ids that index primary key columns of the indexed table only and the
+  // corresponding tables, and the set of indexes that do not.
+  MCUnorderedMap<TableId, std::shared_ptr<client::YBTable>> pk_only_indexes_;
+  MCUnorderedSet<TableId> non_pk_only_indexes_;
 
   static const PTExpr::SharedPtr kNullPointerRef;
 };

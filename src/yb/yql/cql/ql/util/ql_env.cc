@@ -26,8 +26,6 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/trace.h"
 
-using namespace std::literals;
-
 namespace yb {
 namespace ql {
 
@@ -51,12 +49,6 @@ using client::YBTableName;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
-namespace {
-
-const auto kSessionTimeout = 60s;
-
-}
-
 // Runs the callback (cb) and returns if the status s is not OK.
 #define CB_RETURN_NOT_OK(cb, s)    \
   do {                             \
@@ -74,7 +66,6 @@ QLEnv::QLEnv(weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
       session_(client->NewSession()),
       messenger_(messenger),
       cql_rpcserver_env_(cql_rpcserver_env) {
-  session_->SetTimeout(kSessionTimeout);
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
@@ -114,6 +105,17 @@ void QLEnv::StartTransaction(const IsolationLevel isolation_level) {
   }
   transaction_ = std::make_shared<YBTransaction>(transaction_manager_.get(), isolation_level);
   session_->SetTransaction(transaction_);
+}
+
+Status QLEnv::PrepareChildTransaction(ChildTransactionDataPB* data) {
+  ChildTransactionDataPB result =
+      VERIFY_RESULT(DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture().get());
+  *data = std::move(result);
+  return Status::OK();
+}
+
+Status QLEnv::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
+  return DCHECK_NOTNULL(transaction_.get())->ApplyChildResult(result);
 }
 
 void QLEnv::CommitTransaction(CommitCallback callback) {

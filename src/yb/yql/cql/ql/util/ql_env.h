@@ -82,6 +82,12 @@ class QLEnv {
   // Start a distributed transaction.
   void StartTransaction(IsolationLevel isolation_level);
 
+  // Prepare a child distributed transaction.
+  CHECKED_STATUS PrepareChildTransaction(ChildTransactionDataPB* data);
+
+  // Apply the result of a child distributed transaction.
+  CHECKED_STATUS ApplyChildTransactionResult(const ChildTransactionResultPB& result);
+
   // Commit the current distributed transaction.
   void CommitTransaction(client::CommitCallback callback);
 

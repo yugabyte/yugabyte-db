@@ -84,6 +84,10 @@ class DocRowwiseIterator : public common::QLRowwiseIteratorIf {
     return row_key_;
   }
 
+  // Check if liveness column exists. Should be called only after HasNext() has been called to
+  // verify the row exists.
+  bool LivenessColumnExists() const;
+
   // Skip the current row.
   void SkipRow() override;
 

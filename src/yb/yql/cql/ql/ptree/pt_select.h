@@ -18,7 +18,6 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
 #define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
 
-#include "yb/yql/cql/ql/ptree/selectivity.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -171,7 +170,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTSelectStmt(MemoryContext *memctx,
                YBLocation::SharedPtr loc,
                bool distinct,
-               PTExprListNode::SharedPtr target,
+               PTExprListNode::SharedPtr selected_exprs,
                PTTableRefListNode::SharedPtr from_clause,
                PTExpr::SharedPtr where_clause,
                PTListNode::SharedPtr group_by_clause,
@@ -215,10 +214,7 @@ class PTSelectStmt : public PTDmlStmt {
     return limit_clause_ != nullptr;
   }
 
-  virtual PTExpr::SharedPtr limit() const {
-    if (!has_limit()) {
-      return nullptr;
-    }
+  PTExpr::SharedPtr limit() const {
     return limit_clause_;
   }
 
@@ -236,7 +232,6 @@ class PTSelectStmt : public PTDmlStmt {
   virtual const YBLocation& table_loc() const override {
     return from_clause_->loc();
   }
-
 
   PTOrderByListNode::SharedPtr order_by_clause() const {
     return order_by_clause_;
@@ -259,12 +254,13 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
  private:
-
   CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context);
   CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
   CHECKED_STATUS ConstructSelectedSchema();
+
+  // --- The parser will decorate this node with the following information --
 
   // The following members represent different components of SELECT statement. However, Cassandra
   // doesn't support all of SQL syntax and semantics.
@@ -275,15 +271,20 @@ class PTSelectStmt : public PTDmlStmt {
   //   GROUP BY  <group_by_clause_> HAVING <having_clause_>
   //   ORDER BY  <order_by_clause_>
   //   LIMIT     <limit_clause_>
-  const bool distinct_;
-  bool is_forward_scan_;
-  PTExprListNode::SharedPtr selected_exprs_;
-  PTTableRefListNode::SharedPtr from_clause_;
-  PTListNode::SharedPtr group_by_clause_;
-  PTListNode::SharedPtr having_clause_;
+  const bool distinct_ = false;
+  const PTExprListNode::SharedPtr selected_exprs_;
+  const PTTableRefListNode::SharedPtr from_clause_;
+  const PTListNode::SharedPtr group_by_clause_;
+  const PTListNode::SharedPtr having_clause_;
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
+
+  // -- The semantic analyzer will decorate this node with the following information --
+
+  bool is_forward_scan_ = true;
   bool is_aggregate_ = false;
+
+  // Index info.
   bool use_index_ = false;
   bool read_just_index_ = false;
   TableId index_id_;

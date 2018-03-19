@@ -258,6 +258,12 @@ message QLWriteRequestPB {
 
   // User-provided timestamp in microseconds.
   optional uint64 user_timestamp_usec = 13;
+
+  // Ids of indexes that need update.
+  repeated bytes update_index_ids = 15;
+
+  // Child transaction data for additional write requests necessary for index updates, etc.
+  optional ChildTransactionDataPB child_transaction_data = 16;
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -364,4 +370,7 @@ message QLResponsePB {
 
   // Paging state for continuing the read in the next QLReadRequestPB fetch.
   optional QLPagingStatePB paging_state = 5;
+
+  // Result of child transaction.
+  optional ChildTransactionResultPB child_transaction_result = 6;
 }

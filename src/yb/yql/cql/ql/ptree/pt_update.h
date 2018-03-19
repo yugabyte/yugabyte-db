@@ -151,8 +151,12 @@ class PTUpdateStmt : public PTDmlStmt {
   }
 
  private:
+  // --- The parser will decorate this node with the following information --
+
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;
+
+  // -- The semantic analyzer will decorate this node with the following information --
 
   // Indicate if a column read is required to execute this update statement.
   bool require_column_read_ = false;

@@ -147,6 +147,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
 
+  // Analyze indexes for write operations.
+  RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
+
   return Status::OK();
 }
 

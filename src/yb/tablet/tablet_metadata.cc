@@ -588,15 +588,6 @@ TableType TabletMetadata::table_type() const {
   return table_type_;
 }
 
-Result<IndexInfo> TabletMetadata::FindIndex(const TableId& index_id) const {
-  std::lock_guard<LockType> l(data_lock_);
-  const auto itr = index_map_.find(index_id);
-  if (itr != index_map_.end()) {
-    return itr->second;
-  }
-  return STATUS(NotFound, Format("Index id $0 not found", index_id));
-}
-
 uint32_t TabletMetadata::schema_version() const {
   std::lock_guard<LockType> l(data_lock_);
   DCHECK_NE(state_, kNotLoadedYet);

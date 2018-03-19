@@ -315,6 +315,12 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
   return Status::OK();
 }
 
+bool DocRowwiseIterator::LivenessColumnExists() const {
+  const SubDocument* subdoc = row_.GetChild(
+      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+  return subdoc != nullptr && subdoc->value_type() != ValueType::kInvalidValueType;
+}
+
 CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
   if (db_iter_ == nullptr) {
     return STATUS(Corruption, "Iterator not initialized.");

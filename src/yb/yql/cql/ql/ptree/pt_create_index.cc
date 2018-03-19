@@ -88,9 +88,16 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
     }
   }
 
+  // TODO: create local index when co-partition table is available.
+  if (is_local_) {
+    LOG(WARNING) << "Creating local secondary index " << yb_table_name().ToString()
+                 << " as global index.";
+    is_local_ = false;
+  }
+
   if (!is_local_ && !table_->InternalSchema().table_properties().is_transactional()) {
     return sem_context->Error(this,
-                              "Non-local secondary index cannot be created "
+                              "Global secondary index cannot be created "
                               "on a table in which transactions are disabled",
                               ErrorCode::INVALID_TABLE_DEFINITION);
   }

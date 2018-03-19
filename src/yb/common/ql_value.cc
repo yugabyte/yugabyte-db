@@ -204,11 +204,12 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
       }
       break;
     }
+    case QLValue::InternalType::VALUE_NOT_SET:
+      break;
     case QLValue::InternalType::kBoolValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case QLValue::InternalType::kSetValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::kListValue: FALLTHROUGH_INTENDED;
-    case QLValue::InternalType::VALUE_NOT_SET:
+    case QLValue::InternalType::kListValue:
       LOG(FATAL) << "Runtime error: This datatype("
                  << int(value_pb.value_case())
                  << ") is not supported in hash key";

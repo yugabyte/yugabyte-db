@@ -393,6 +393,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
         static_cast<const PTCreateIndex*>(tnode)->indexed_table_name();
     result_ = std::make_shared<SchemaChangeResult>(
         "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
+    ql_env_->RemoveCachedTableDesc(indexed_table_name);
   } else {
     result_ = std::make_shared<SchemaChangeResult>(
         "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
@@ -443,6 +444,7 @@ Status Executor::ExecPTNode(const PTAlterTable *tnode) {
 
   result_ = std::make_shared<SchemaChangeResult>(
       "UPDATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+  ql_env_->RemoveCachedTableDesc(table_name);
   return Status::OK();
 }
 
@@ -460,6 +462,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "DROPPED", "TABLE", table_name.namespace_name(), table_name.table_name());
+      ql_env_->RemoveCachedTableDesc(table_name);
       break;
     }
 
@@ -471,6 +474,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>(
           "UPDATED", "TABLE", indexed_table_name.namespace_name(), indexed_table_name.table_name());
+      ql_env_->RemoveCachedTableDesc(indexed_table_name);
       break;
     }
 
@@ -490,6 +494,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       s = exec_context().DeleteUDType(namespace_name, type_name);
       error_not_found = ErrorCode::TYPE_NOT_FOUND;
       result_ = std::make_shared<SchemaChangeResult>("DROPPED", "TYPE", namespace_name, type_name);
+      ql_env_->RemoveCachedUDType(namespace_name, type_name);
       break;
     }
 
@@ -820,7 +825,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode) {
   }
 
   // Apply the operation.
-  return exec_context().Apply(insert_op, DeferOperation(insert_op));
+  return ApplyOperation(tnode, insert_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -864,7 +869,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   }
 
   // Apply the operation.
-  return exec_context().Apply(delete_op, DeferOperation(delete_op));
+  return ApplyOperation(tnode, delete_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -916,7 +921,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   }
 
   // Apply the operation.
-  return exec_context().Apply(update_op, DeferOperation(update_op));
+  return ApplyOperation(tnode, update_op);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1040,6 +1045,14 @@ void Executor::FlushAsyncDone(const Status &s) {
               }
               ql_metrics_->time_to_execute_ql_query_->Increment(delta_usec);
             }
+            // Apply child transaction results if any.
+            const QLResponsePB& response = exec_context.op()->response();
+            if (response.has_child_transaction_result()) {
+              ss = ql_env_->ApplyChildTransactionResult(response.child_transaction_result());
+              if (!ss.ok()) {
+                break;
+              }
+            }
             itr = exec_contexts_.erase(itr);
           }
         } else {
@@ -1066,6 +1079,174 @@ void Executor::FlushAsyncDone(const Status &s) {
 
 //--------------------------------------------------------------------------------------------------
 
+namespace {
+
+// Check if index updates can be issued from CQL proxy directly when executing a DML. Only indexes
+// that index primary key columns only may be updated from CQL proxy.
+bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
+  if (req.has_if_expr()) {
+    return false;
+  }
+
+  switch (req.type()) {
+    // For insert, the pk-only indexes can be updated from CQL proxy directly.
+    case QLWriteRequestPB::QL_STMT_INSERT:
+      return true;
+
+    // For update, the pk-only indexes can be updated from CQL proxy directly only when not all
+    // columns are set to null. Otherwise, the row may be removed by the DML if it was created via
+    // update (i.e. no liveness column) and the remaining columns are already null.
+    case QLWriteRequestPB::QL_STMT_UPDATE: {
+      for (const auto& column_value : req.column_values()) {
+        switch (column_value.expr().expr_case()) {
+          case QLExpressionPB::ExprCase::kValue:
+            if (!IsNull(column_value.expr().value())) {
+              return true;
+            }
+            break;
+          case QLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kSubscriptedCol: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kBfcall: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kTscall: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
+          case QLExpressionPB::ExprCase::EXPR_NOT_SET:
+            return false;
+        }
+      }
+      return false;
+    }
+    // For delete, the pk-only indexes can be updated from CQL proxy directly only if the whole
+    // is deleted and it is not a range delete.
+    case QLWriteRequestPB::QL_STMT_DELETE: {
+      const Schema& schema = tnode->table()->InternalSchema();
+      return (req.column_values().empty() &&
+              req.range_column_values_size() == schema.num_range_key_columns());
+    }
+  }
+  return false; // Not feasible
+}
+
+} // namespace
+
+Status Executor::UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+  if (tnode->table()->index_map().empty()) {
+    return Status::OK();
+  }
+
+  // DML with TTL is not allowed if indexes are present.
+  if (req->has_ttl()) {
+    return exec_context().Error(ErrorCode::FEATURE_NOT_SUPPORTED);
+  }
+
+  // If updates of pk-only indexes can be issued from CQL proxy directly, do it. Otherwise, add
+  // them to the list of indexes to be updated from tserver.
+  if (!tnode->pk_only_indexes().empty()) {
+    if (UpdateIndexesLocally(tnode, *req)) {
+      RETURN_NOT_OK(ApplyIndexWriteOps(tnode, *req));
+    } else {
+      for (const auto& index_id : tnode->pk_only_indexes()) {
+        req->add_update_index_ids(index_id.first);
+      }
+    }
+  }
+
+  // Add non-pk-only indexes to the list of indexes to be updated from tserver also.
+  for (const auto& index_id : tnode->non_pk_only_indexes()) {
+    req->add_update_index_ids(index_id);
+  }
+
+  // For update/delete, check if it just deletes some columns. If so, add the rest columns to be
+  // read so that tserver can check if they are all null also, in which case the row will be
+  // removed after the DML.
+  if ((req->type() == QLWriteRequestPB::QL_STMT_UPDATE ||
+       req->type() == QLWriteRequestPB::QL_STMT_DELETE) &&
+      !req->column_values().empty()) {
+    bool all_null = true;
+    std::set<int32> column_dels;
+    for (const QLColumnValuePB& column_value : req->column_values()) {
+      if (column_value.has_expr() &&
+          column_value.expr().has_value() &&
+          !IsNull(column_value.expr().value())) {
+        all_null = false;
+        break;
+      }
+      column_dels.insert(column_value.column_id());
+    }
+    if (all_null) {
+      const Schema& schema = tnode->table()->InternalSchema();
+      const MCSet<int32>& column_refs = tnode->column_refs();
+      for (size_t idx = schema.num_key_columns(); idx < schema.num_columns(); idx++) {
+        const int32 column_id = schema.column_id(idx);
+        if (!schema.column(idx).is_static() &&
+            column_refs.count(column_id) != 0 &&
+            column_dels.count(column_id) != 0) {
+          req->mutable_column_refs()->add_ids(column_id);
+        }
+      }
+    }
+  }
+
+  if (!req->update_index_ids().empty()) {
+    RETURN_NOT_OK(ql_env_->PrepareChildTransaction(req->mutable_child_transaction_data()));
+  }
+  return Status::OK();
+}
+
+// Apply the write operations to update the pk-only indexes.
+Status Executor::ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
+  const Schema& schema = tnode->table()->InternalSchema();
+  const bool is_upsert = (req.type() == QLWriteRequestPB::QL_STMT_INSERT ||
+                          req.type() == QLWriteRequestPB::QL_STMT_UPDATE);
+  // Populate a column-id to value map.
+  std::unordered_map<ColumnId, const QLExpressionPB&> values;
+  for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
+    values.emplace(schema.column_id(i), req.hashed_column_values(i));
+  }
+  for (size_t i = 0; i < schema.num_range_key_columns(); i++) {
+    values.emplace(schema.column_id(schema.num_hash_key_columns() + i), req.range_column_values(i));
+  }
+  if (is_upsert) {
+    for (const auto& column_value : req.column_values()) {
+      values.emplace(ColumnId(column_value.column_id()), column_value.expr());
+    }
+  }
+
+  // Create the write operation for each index and populate it using the original operation.
+  ExecContext& parent = exec_context();
+  for (const auto& pair : tnode->pk_only_indexes()) {
+    const IndexInfo* index = VERIFY_RESULT(FindIndex(tnode->table()->index_map(), pair.first));
+    const shared_ptr<YBTable>& index_table = pair.second;
+    shared_ptr<YBqlWriteOp> index_op(
+        is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
+    QLWriteRequestPB *index_req = index_op->mutable_request();
+    index_req->set_request_id(req.request_id());
+    index_req->set_query_id(req.query_id());
+    for (size_t i = 0; i < index->columns().size(); i++) {
+      const ColumnId indexed_column_id = index->column(i).indexed_column_id;
+      if (i < index->hash_column_count()) {
+        *index_req->add_hashed_column_values() = values.at(indexed_column_id);
+      } else if (i < index->key_column_count()) {
+        *index_req->add_range_column_values() = values.at(indexed_column_id);
+      } else if (is_upsert) {
+        const auto itr = values.find(indexed_column_id);
+        if (itr != values.end()) {
+          QLColumnValuePB* column_value = index_req->add_column_values();
+          column_value->set_column_id(index->column(i).column_id);
+          *column_value->mutable_expr() = itr->second;
+        }
+      }
+    }
+    exec_contexts_.emplace_back(parent, tnode);
+    RETURN_NOT_OK(exec_contexts_.back().Apply(index_op, DeferOperation(index_op)));
+  }
+
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 bool Executor::DeferOperation(const YBqlWriteOpPtr& op) {
   // Defer the given write operation if 2 conditions are met:
   // 1) It fails to be added to batched_write_ops_ because the primary / hash key overlaps with that
@@ -1079,6 +1260,12 @@ bool Executor::DeferOperation(const YBqlWriteOpPtr& op) {
   // the prior one.
   return (!batched_write_ops_.insert(op).second &&
           RequireRead(op->request(), op->table()->InternalSchema()));
+}
+
+Status Executor::ApplyOperation(const PTDmlStmt *tnode, const YBqlWriteOpPtr& op) {
+  RETURN_NOT_OK(exec_context().Apply(op, DeferOperation(op)));
+
+  return UpdateIndexes(tnode, op->mutable_request());
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -17,16 +17,20 @@ import java.util.*;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.datastax.driver.core.ColumnDefinitions;
+import com.datastax.driver.core.ColumnDefinitions.Definition;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.MiniYBCluster;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
-public class TestIndexDDL extends BaseCQLTest {
+public class TestIndex extends BaseCQLTest {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
@@ -261,5 +265,169 @@ public class TestIndexDDL extends BaseCQLTest {
       actual += row.toString();
     }
     assertEquals(columns, actual);
+  }
+
+  Map<String, String> columnMap;
+
+  @Test
+  public void testIndexUpdate() throws Exception {
+    // Create test table and indexes.
+    session.execute("create table test_update " +
+                    "(h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, " +
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index i1 on test_update (h1);");
+    session.execute("create index i2 on test_update ((r1, r2)) covering (c2);");
+    session.execute("create index i3 on test_update (r2, r1) covering (c1, c2);");
+    session.execute("create index i4 on test_update (c1);");
+    session.execute("create index i5 on test_update (c2) covering (c1);");
+
+    columnMap = new HashMap<String, String>() {{
+        put("i1", "h1, h2, r1, r2");
+        put("i2", "r1, r2, h1, h2, c2");
+        put("i3", "r2, r1, h1, h2, c1, c2");
+        put("i4", "c1, h1, h2, r1, r2");
+        put("i5", "c2, h1, h2, r1, r2, c1");
+      }};
+
+    // test_update: Row[1, a, 2, b, 3]
+    assertIndexUpdate("insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 2, 'b', 3);");
+
+    // test_update: Row[1, a, 2, b, 3, c]
+    assertIndexUpdate("update test_update set c2 = 'c' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: Row[1, a, 2, b, 4, d]
+    assertIndexUpdate("update test_update set c1 = 4, c2 = 'd' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: Row[1, a, 2, b, 4, e]
+    assertIndexUpdate("update test_update set c2 = 'e' " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: Row[1, a, 2, b, 4, e]
+    //              Row[1, a, 12, bb, 6]
+    assertIndexUpdate("insert into test_update (h1, h2, r1, r2, c1) values (1, 'a', 12, 'bb', 6);");
+
+    // test_update: Row[1, a, 12, bb, 6]
+    assertIndexUpdate("delete from test_update " +
+                      "where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';");
+
+    // test_update: empty
+    assertIndexUpdate("delete from test_update where h1 = 1 and h2 = 'a';");
+
+    // test_update: Row[11, aa, 22, bb, 3]
+    assertIndexUpdate("update test_update set c1 = 3 " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
+
+    // test_update: empty
+    assertIndexUpdate("update test_update set c1 = null " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 22 and r2 = 'bb';");
+
+    // test_update: Row[11, aa, 222, bbb, 3, c]
+    assertIndexUpdate("update test_update set c1 = 3, c2 = 'c' " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
+
+    // test_update: empty
+    assertIndexUpdate("delete c1, c2 from test_update " +
+                      "where h1 = 11 and h2 = 'aa' and r1 = 222 and r2 = 'bbb';");
+  }
+
+  private Set<String> queryTable(String table, String columns) {
+    Set<String> rows = new HashSet<String>();
+    for (Row row : session.execute(String.format("select %s from %s;", columns, table))) {
+      rows.add(row.toString());
+    }
+    return rows;
+  }
+
+  private void assertIndexUpdate(String query) throws Exception {
+    session.execute(query);
+    for (Map.Entry<String, String> entry : columnMap.entrySet()) {
+      assertEquals("Index " + entry.getKey() + " after " + query,
+                   queryTable("test_update", entry.getValue()),
+                   queryTable(entry.getKey(), entry.getValue()));
+    }
+  }
+
+
+  private void assertRoutingVariables(String query,
+                                      List<String> expectedVars,
+                                      Object[] values,
+                                      String expectedRow) {
+    PreparedStatement stmt = session.prepare(query);
+    int hashIndexes[] = stmt.getRoutingKeyIndexes();
+    if (expectedVars == null) {
+      assertNull(hashIndexes);
+    } else {
+      List<String> actualVars = new Vector<String>();
+      ColumnDefinitions vars = stmt.getVariables();
+      for (int hashIndex : hashIndexes) {
+        actualVars.add(vars.getTable(hashIndex) + "." + vars.getName(hashIndex));
+      }
+      assertEquals(expectedVars, actualVars);
+    }
+    assertEquals(expectedRow, session.execute(stmt.bind(values)).one().toString());
+  }
+
+  @Test
+  public void testPreparedStatement() throws Exception {
+    // Create test table and indexes.
+    session.execute("create table test_prepare " +
+                    "(h1 int, h2 text, r1 int, r2 text, c1 int, c2 text, " +
+                    "primary key ((h1, h2), r1, r2)) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index i1 on test_prepare (h1);");
+    session.execute("create index i2 on test_prepare ((r1, r2));");
+    session.execute("create index i3 on test_prepare (r2, r1);");
+    session.execute("create index i4 on test_prepare (c1);");
+    session.execute("create index i5 on test_prepare (c2) covering (c1);");
+
+    // Insert a row.
+    session.execute("insert into test_prepare (h1, h2, r1, r2, c1, c2) " +
+                    "values (1, 'a', 2, 'b', 3, 'c');");
+
+    // Select using index i1.
+    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h1 = ?;",
+                           Arrays.asList("i1.h1"),
+                           new Object[] {Integer.valueOf(1)},
+                           "Row[1, a, 2, b]");
+
+    // Select using base table because i1 does not cover c1.
+    assertRoutingVariables("select h1, h2, r1, r2, c1 from test_prepare where h1 = ?;",
+                           null,
+                           new Object[] {Integer.valueOf(1)},
+                           "Row[1, a, 2, b, 3]");
+
+    // Select using base table because there is no index on h2.
+    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h2 = ?;",
+                           null,
+                           new Object[] {"a"},
+                           "Row[1, a, 2, b]");
+
+    // Select using index i2 because (r1, r2) is more selective than i1 alone.
+    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare " +
+                           "where h1 = ? and r1 = ? and r2 = ?;",
+                           Arrays.asList("i2.r1", "i2.r2"),
+                           new Object[] {Integer.valueOf(1), Integer.valueOf(2), "b"},
+                           "Row[1, a, 2, b]");
+
+    // Select using index i3.
+    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h2 = ? and r2 = ?;",
+                           Arrays.asList("i3.r2"),
+                           new Object[] {"a", "b"},
+                           "Row[1, a, 2, b]");
+
+    // Select using index i4.
+    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h2 = ? and c1 = ?;",
+                           Arrays.asList("i4.c1"),
+                           new Object[] {"a", Integer.valueOf(3)},
+                           "Row[1, a, 2, b]");
+
+    // Select using index i5 covering c1.
+    assertRoutingVariables("select h1, h2, r1, r2, c1, c2 from test_prepare where c2 = ?;",
+                           Arrays.asList("i5.c2"),
+                           new Object[] {"c"},
+                           "Row[1, a, 2, b, 3, c]");
   }
 }

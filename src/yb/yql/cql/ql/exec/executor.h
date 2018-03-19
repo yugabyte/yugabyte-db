@@ -278,6 +278,11 @@ class Executor : public QLExprExecutor {
 
   //------------------------------------------------------------------------------------------------
   bool DeferOperation(const client::YBqlWriteOpPtr& op);
+  CHECKED_STATUS ApplyOperation(const PTDmlStmt *tnode, const client::YBqlWriteOpPtr& op);
+
+  //------------------------------------------------------------------------------------------------
+  CHECKED_STATUS UpdateIndexes(const PTDmlStmt *tnode, QLWriteRequestPB *req);
+  CHECKED_STATUS ApplyIndexWriteOps(const PTDmlStmt *tnode, const QLWriteRequestPB& req);
 
   //------------------------------------------------------------------------------------------------
   ExecContext& exec_context();
