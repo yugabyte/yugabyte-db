@@ -17,6 +17,7 @@
 #define YB_RPC_RPC_FWD_H
 
 #include <chrono>
+#include <functional>
 
 #include <boost/version.hpp>
 

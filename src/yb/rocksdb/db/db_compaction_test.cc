@@ -21,6 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <atomic>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/experimental.h"
@@ -29,6 +31,8 @@
 #include "yb/rocksdb/util/testutil.h"
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
+
+using std::atomic;
 
 namespace rocksdb {
 
@@ -685,7 +689,8 @@ TEST_F(DBCompactionTest, BGCompactionsAllowed) {
 }
 
 TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
-  int slowdown_writes = 0, stop_writes = 0;
+  atomic<int> slowdown_writes{0};
+  atomic<int> stop_writes{0};
 
   rocksdb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop",
@@ -763,8 +768,10 @@ TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
 }
 
 TEST_F(DBCompactionTest, ClogMultipleCompactionQueues) {
-  int slowdown_writes = 0, stop_writes = 0;
-  int num_large_compactions = 0, num_small_compactions = 0;
+  atomic<int> slowdown_writes{0};
+  atomic<int> stop_writes{0};
+  atomic<int> num_large_compactions{0};
+  atomic<int> num_small_compactions{0};
 
   // Create several column families. Make large compaction triggers in all
   // but one of them and see no slowdown in writes when small compactions

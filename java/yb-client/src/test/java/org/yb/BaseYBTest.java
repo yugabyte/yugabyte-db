@@ -24,6 +24,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -58,6 +61,19 @@ public class BaseYBTest {
     protected void starting(Description description) {
       currentTestClassName = description.getClassName();
       currentTestMethodName = description.getMethodName();
+
+      if (TestUtils.isEnvVarTrue("YB_JAVA_PER_TEST_METHOD_OUTPUT_FILES")) {
+        // An experimental mode with a separate output file for each test method.
+        System.out.flush();
+        System.err.flush();
+        String outputPrefix = TestUtils.getSurefireTestReportPrefix();
+        try {
+          System.setOut(new PrintStream(new FileOutputStream(outputPrefix + "stdout.txt")));
+          System.setErr(new PrintStream(new FileOutputStream(outputPrefix + "stderr.txt")));
+        } catch (IOException ex) {
+          throw new RuntimeException(ex);
+        }
+      }
 
       // The format of the heading below is important as it is parsed by external test dashboarding
       // tools.

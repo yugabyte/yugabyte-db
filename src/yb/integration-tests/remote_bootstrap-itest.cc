@@ -100,19 +100,23 @@ class RemoteBootstrapITest : public YBTest {
   void TearDown() override {
     if (HasFatalFailure()) {
       LOG(INFO) << "Found fatal failure";
-      for (int i = 0; i < 3; i++) {
-        if (!cluster_->tablet_server(i)->IsProcessAlive()) {
-          LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
-          continue;
+      if (cluster_) {
+        for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+          if (!cluster_->tablet_server(i)->IsProcessAlive()) {
+            LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
+            continue;
+          }
+          LOG(INFO) << "Attempting to dump stacks of TS " << i
+                    << " with UUID " << cluster_->tablet_server(i)->uuid()
+                    << " and pid " << cluster_->tablet_server(i)->pid();
+          WARN_NOT_OK(PstackWatcher::DumpPidStacks(cluster_->tablet_server(i)->pid()),
+                      "Couldn't dump stacks");
         }
-        LOG(INFO) << "Attempting to dump stacks of TS " << i
-                  << " with UUID " << cluster_->tablet_server(i)->uuid()
-                  << " and pid " << cluster_->tablet_server(i)->pid();
-        WARN_NOT_OK(PstackWatcher::DumpPidStacks(cluster_->tablet_server(i)->pid()),
-                    "Couldn't dump stacks");
       }
     }
-    if (cluster_) cluster_->Shutdown();
+    if (cluster_) {
+      cluster_->Shutdown();
+    }
     YBTest::TearDown();
     ts_map_.clear();
   }

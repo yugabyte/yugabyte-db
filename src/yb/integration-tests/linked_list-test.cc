@@ -187,11 +187,6 @@ class LinkedListTester {
       bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count);
 
-  // Run the verify step on a specific tablet.
-  CHECKED_STATUS VerifyLinkedListLocal(const tablet::Tablet* tablet,
-                                       const int64_t expected,
-                                       int64_t* verified_count);
-
   // A variant of VerifyLinkedListRemote that is more robust towards ongoing
   // bootstrapping and replication.
   CHECKED_STATUS WaitAndVerify(const int seconds_to_run,
@@ -208,10 +203,6 @@ class LinkedListTester {
   CHECKED_STATUS WaitAndVerify(
       int seconds_to_run, int64_t expected, bool latest_at_leader,
       const std::function<Status(const std::string&)>& cb);
-
-  // Generates a vector of keys for the table such that each tablet is
-  // responsible for an equal fraction of the int64 key space.
-  std::vector<const YBPartialRow*> GenerateSplitRows(const client::YBSchema& schema);
 
   // Generate a vector of ints which form the split keys.
   std::vector<int64_t> GenerateSplitInts();
@@ -526,17 +517,6 @@ class LinkedListVerifier {
 // LinkedListTester
 /////////////////////////////////////////////////////////////
 
-std::vector<const YBPartialRow*> LinkedListTester::GenerateSplitRows(
-    const client::YBSchema& schema) {
-  std::vector<const YBPartialRow*> split_keys;
-  for (int64_t val : GenerateSplitInts()) {
-    YBPartialRow* row = schema.NewRow();
-    CHECK_OK(row->SetInt64(kKeyColumnName, val));
-    split_keys.push_back(row);
-  }
-  return split_keys;
-}
-
 std::vector<int64_t> LinkedListTester::GenerateSplitInts() {
   vector<int64_t> ret;
   ret.reserve(num_tablets_ - 1);
@@ -745,34 +725,6 @@ Status LinkedListTester::VerifyLinkedListRemote(
   Status s = verifier.VerifyData(verified_count, log_errors);
   LOG(INFO) << "Snapshot: " << snapshot_str << " verified. Result: " << s.ToString();
   return s;
-}
-
-Status LinkedListTester::VerifyLinkedListLocal(const tablet::Tablet* tablet,
-                                               int64_t expected,
-                                               int64_t* verified_count) {
-  DCHECK(tablet != NULL);
-  LinkedListVerifier verifier(num_chains_, enable_mutation_, expected,
-                              GenerateSplitInts());
-  verifier.StartScanTimer();
-
-  const Schema* tablet_schema = tablet->schema();
-  // Cannot use schemas with col indexes in a scan (assertions fire).
-  Schema projection(tablet_schema->columns(), tablet_schema->num_key_columns());
-  auto iter = tablet->NewRowIterator(projection, boost::none);
-  RETURN_NOT_OK_PREPEND(iter, "Cannot create new row iterator");
-
-  QLTableRow row;
-  while ((**iter).HasNext()) {
-    RETURN_NOT_OK((**iter).NextRow(&row));
-    QLValue key, link, updated;
-    RETURN_NOT_OK(row.GetValue(tablet_schema->column_id(0), &key));
-    RETURN_NOT_OK(row.GetValue(tablet_schema->column_id(1), &link));
-    RETURN_NOT_OK(row.GetValue(tablet_schema->column_id(3), &updated));
-
-    verifier.RegisterResult(key.int64_value(), link.int64_value(), updated.bool_value());
-  }
-
-  return verifier.VerifyData(verified_count, true);
 }
 
 Status LinkedListTester::WaitAndVerify(

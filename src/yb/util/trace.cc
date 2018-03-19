@@ -159,7 +159,7 @@ int64_t GetCurrentMicrosFast(MonoTime now) {
 } // namespace
 
 ScopedAdoptTrace::ScopedAdoptTrace(Trace* t)
-    : old_trace_(Trace::threadlocal_trace_), is_enabled_(FLAGS_enable_tracing) {
+    : old_trace_(Trace::threadlocal_trace_), is_enabled_(GetAtomicFlag(&FLAGS_enable_tracing)) {
   if (is_enabled_) {
     trace_ = t;
     Trace::threadlocal_trace_ = t;

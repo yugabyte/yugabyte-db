@@ -517,6 +517,8 @@ class Builder:
         self.set_build_type(type)
         instrumented = type == BUILD_TYPE_ASAN or type == BUILD_TYPE_TSAN
         self.set_instrumented(instrumented)
+        # This is needed at least for glog to be able to find gflags.
+        self.add_rpath(os.path.join(self.tp_installed_dir, self.build_type, 'lib'))
         build_group = BUILD_GROUP_COMMON if type == BUILD_TYPE_COMMON else BUILD_GROUP_INSTRUMENTED
         for dep in self.selected_dependencies:
             if dep.build_group == build_group and dep.should_build(instrumented):

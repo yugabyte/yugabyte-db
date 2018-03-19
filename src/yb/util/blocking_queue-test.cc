@@ -35,6 +35,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <functional>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
