@@ -43,7 +43,7 @@ static int PgServerDriver(int argc, char** argv) {
     std::cerr << "usage: " << argv[0] << std::endl;
     return 1;
   }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("pgsqlserver"));
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB("pgsqlserver", argv[0]));
   InitGoogleLoggingSafe(argv[0]);
 
   // Construct server.
