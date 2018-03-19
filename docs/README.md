@@ -25,10 +25,17 @@ brew install hugo
 brew install npm
 ```
 
-## To run locally on your Mac ## 
+## To run locally ##
 ```
 npm start
 ```
+
+If you would like to share the URL of your local docs with someone else, you can do that through:
+```
+YB_HUGO_BASE=<YOUR_IP_OR_HOSTNAME> npm start
+```
+
+Then, just share the `<YOUR_IP_OR_HOSTNAME>:1313` link to whomever you want to view your docs changes.
 
 ## To publish to S3 ##
 Caution: This would publish the docs to our website which is used by customers

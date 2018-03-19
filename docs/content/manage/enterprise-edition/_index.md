@@ -14,15 +14,15 @@ weight: 710
     </div>
   </a>
 
-	<a class="section-link icon-offset" href="edit-universe/">
-  	<div class="icon">
+  <a class="section-link icon-offset" href="edit-universe/">
+    <div class="icon">
       <img src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-  	</div>
-  	<div class="text">
-  		Edit Universe
-  		<div class="caption">Expand, shrink and reconfigure universes without any downtime.</div>
-  	</div>
-	</a>
+    </div>
+    <div class="text">
+      Edit Universe
+      <div class="caption">Expand, shrink and reconfigure universes without any downtime.</div>
+    </div>
+  </a>
 
   <a class="section-link icon-offset" href="edit-config/">
     <div class="icon">

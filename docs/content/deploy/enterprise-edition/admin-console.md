@@ -40,14 +40,11 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 - A YugaByte license file (attached to your welcome email from YugaByte Support)
 - Ability to connect from the YugaWare host to all the YugaByte DB data nodes. If this is not setup, [setup passwordless ssh](/deploy/enterprise-edition/admin-console/#step-5-troubleshoot-yugaware).
 
-If you are running on AWS, all you need is a dedicated [**c4.xlarge**] (https://aws.amazon.com/ec2/instance-types/) or higher instance running Ubuntu 16.04. If you are running in the US West (Oregon) Region, use `ami-a58d0dc5` to launch a new instance if you don't already have one.
-
-
-## Step 1. Install Replicated 
+## Step 1. Install Replicated
 
 ### On an Internet-connected host
 
-YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated. 
+YugaByte clusters are created and managed from YugaWare. First step to getting started with YugaWare is to install Replicated.
 
 
 ```{.sh .copy .separator-dollar}
@@ -75,7 +72,7 @@ $ curl -x http://<proxy_address>:<proxy_port> https://get.replicated.com/docker 
 ```
 
 ```{.sh .copy .separator-dollar}
-# after replicated install completes, make sure it is running 
+# after replicated install completes, make sure it is running
 $ sudo docker ps
 ```
 You should see an output similar to the following.
@@ -107,7 +104,7 @@ $ cd /opt/downloads
 
 ```{.sh .copy .separator-dollar}
 # get the replicated binary
-$ wget https://downloads.yugabyte.com/replicated.tar.gz 
+$ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
 
 ```{.sh .copy .separator-dollar}
@@ -136,7 +133,7 @@ $ cat ./install.sh | sudo bash -s airgap
 ```
 
 ```{.sh .copy .separator-dollar}
-# after replicated install completes, make sure it is running 
+# after replicated install completes, make sure it is running
 $ sudo docker ps
 ```
 
@@ -157,7 +154,7 @@ Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yu
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
 
-You can provide your own custom SSL certificate along with a hostname. 
+You can provide your own custom SSL certificate along with a hostname.
 
 ![Replicated HTTPS setup](/images/replicated/replicated-https.png)
 
@@ -167,7 +164,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ### Upload License File
 
-Now upload the YugaByte license file received from YugaByte Support. 
+Now upload the YugaByte license file received from YugaByte Support.
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 
@@ -221,7 +218,7 @@ After starting the YugaWare application, you must register a new tenant in YugaW
 
 ### Register tenant
 
-Go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register) to register a tenant account. Note that by default YugaWare runs as a single-tenant application. 
+Go to [http://yugaware-host-public-ip/register](http://yugaware-host-public-ip/register) to register a tenant account. Note that by default YugaWare runs as a single-tenant application.
 
 ![Register](/images/ee/register.png)
 
@@ -237,7 +234,7 @@ Next step is to configure one or more cloud providers in YugaWare as documented 
 
 ## Step 4. Maintain YugaWare
 
-### Backup 
+### Backup
 
 We recommend a weekly machine snapshot and weekly backups of `/opt/yugabyte`.
 
@@ -252,7 +249,7 @@ Upgrades to Replicated are as simple as rerunning the Replicated install command
 
 ### Uninstall
 
-Stop and remove the YugaWare application on Replicated first. 
+Stop and remove the YugaWare application on Replicated first.
 
 ```{.sh .copy .separator-dollar}
 # stop the yugaware application on replicated
@@ -277,7 +274,7 @@ $ rm -rf /opt/yugabyte
 
 And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated).
 
-## Step 5. Troubleshoot 
+## Step 5. Troubleshoot
 
 ### SELinux turned on on YugaWare host
 
@@ -310,7 +307,7 @@ $ for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do
 done
 ```
 
-### Check host resources on the data nodes 
+### Check host resources on the data nodes
 heck resources on the data nodes with private IPs 10.1.13.150, 10.1.13.151, 10.1.13.152
 ```{.sh .copy}
 for IP in 10.1.13.150 10.1.13.151 10.1.13.152; do echo $IP; ssh $IP 'echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem'; done

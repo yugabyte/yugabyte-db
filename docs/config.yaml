@@ -230,6 +230,10 @@ menu:
       identifier: enterprise-edition
       url: /deploy/enterprise-edition/
       weight: 660
+    - name: Prepare Cloud Environment
+      parent: enterprise-edition
+      url: /deploy/enterprise-edition/prepare-cloud-environment/
+      weight: 669
     - name: Install Admin Console
       parent: enterprise-edition
       url: /deploy/enterprise-edition/admin-console/
@@ -242,10 +246,6 @@ menu:
       identifier: manage
       url: /manage/
       weight: 700
-    - name: Diagnostics Reporting
-      parent: manage
-      url: /manage/diagnostics-reporting/
-      weight: 702
     - name: Enterprise Edition
       identifier: manage-ee
       parent: manage
@@ -271,6 +271,10 @@ menu:
       parent: manage-ee
       url: /manage/enterprise-edition/delete-universe/
       weight: 760
+    - name: Diagnostics Reporting
+      parent: manage
+      url: /manage/diagnostics-reporting/
+      weight: 770
     - name: Troubleshoot
       identifier: troubleshoot
       url: /troubleshoot/
