@@ -93,10 +93,15 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
 
   resp->set_old_value(old_val);
 
+  // The gflags library sets new values of flags without synchronization.
+  // TODO: patch gflags to use proper synchronization.
+  ANNOTATE_IGNORE_WRITES_BEGIN();
   // Try to set the new value.
   string ret = google::SetCommandLineOption(
       req->flag().c_str(),
       req->value().c_str());
+  ANNOTATE_IGNORE_WRITES_END();
+
   if (ret.empty()) {
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");

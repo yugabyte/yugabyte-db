@@ -282,8 +282,9 @@ class QLTransactionTest : public QLDmlTestBase {
       ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
       auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
       ASSERT_EQ(rowblock->row_count(), 1);
-      ASSERT_EQ(rowblock->row(0).column(0).int32_value(),
-                ValueForTransactionAndIndex(transaction, r, op_type));
+      const auto& first_column = rowblock->row(0).column(0);
+      ASSERT_EQ(QLValue::InternalType::kInt32Value, first_column.type());
+      ASSERT_EQ(first_column.int32_value(), ValueForTransactionAndIndex(transaction, r, op_type));
     }
   }
 

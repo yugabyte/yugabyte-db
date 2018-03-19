@@ -409,18 +409,42 @@ run_java_test() {
   local java_test_class=${java_test_name%#*}
   local rel_java_src_path=${java_test_class//./\/}
 
-  module_name=""
+  local module_name=""
   for module_dir in "$YB_SRC_ROOT"/java/*; do
-    for language in java scala; do
-      if [[ -d $module_dir && \
-            -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
-        module_name=${module_dir##*/}
-      fi
-    done
+    if [[ -d $module_dir ]]; then
+      for language in java scala; do
+        if [[ -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
+          module_name=${module_dir##*/}
+        fi
+      done
+    fi
   done
 
   if [[ -z $module_name ]]; then
-    fatal "Could not find module name for Java/Scala test '$java_test_name'"
+    # Could not find the test source assuming we are given the complete package. Let's assume we
+    # only have the class name.
+    module_name=""
+    for module_dir in "$YB_SRC_ROOT"/java/*; do
+      if [[ -d $module_dir ]]; then
+        local IFS=$'\n'
+        local module_test_src_root="$module_dir/src/test"
+        if [[ -d $module_test_src_root && -n $(
+                find "$module_test_src_root" \( -name "$java_test_class.java" -or \
+                                                -name "$java_test_class.scala" \) \
+              ) ]]; then
+          local current_module_name=${module_dir##*/}
+          if [[ -n $module_name ]]; then
+            fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
+                  "'$module_name' and '$current_moudle_name' are valid candidates."
+          fi
+          module_name=$current_module_name
+        fi
+      fi
+    done
+
+    if [[ -z $module_name ]]; then
+      fatal "Could not find module name for Java/Scala test '$java_test_name'"
+    fi
   fi
 
   $YB_SRC_ROOT/build-support/run-test.sh "$module_name" "$java_test_name"
@@ -914,6 +938,11 @@ log "Using make parallelism of $YB_MAKE_PARALLELISM" \
 set_build_env_vars
 
 create_build_descriptor_file
+
+if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
+  # Only build yb-master / yb-tserver when we're only trying to run a Java test.
+  make_targets+=( yb-master yb-tserver )
+fi
 
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
   run_cxx_build

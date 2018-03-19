@@ -610,4 +610,12 @@ public class TestUtils {
     ).toString();
   }
 
+  public static boolean isEnvVarTrue(String envVarName) {
+    String value = System.getenv(envVarName);
+    if (value == null)
+      return false;
+    value = value.trim();
+    return !value.isEmpty() && !value.equals("0") && !value.equals("no") && !value.equals("false");
+  }
+
 }

@@ -241,6 +241,7 @@ Status Webserver::Start() {
 }
 
 void Webserver::Stop() {
+  std::lock_guard<std::mutex> lock_(stop_mutex_);
   if (context_ != nullptr) {
     sq_stop(context_);
     context_ = nullptr;

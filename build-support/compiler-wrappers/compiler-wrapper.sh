@@ -319,7 +319,10 @@ local_build_exit_handler() {
 compiler_args=( "$@" )
 
 YB_SRC="$YB_SRC_ROOT/src"
-handle_build_root_from_current_dir
+if [[ ! "$*" == */testCCompiler.c.o\ -c\ testCCompiler.c* && \
+      ! "$*" == */testCXXCompiler\.cxx\.o\ -o* ]]; then
+  handle_build_root_from_current_dir
+fi
 
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is

@@ -46,6 +46,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 
@@ -63,7 +64,7 @@ DECLARE_bool(enable_tracing);
 //  TRACE("Acquired timestamp $0", timestamp);
 #define TRACE(format, substitutions...) \
   do { \
-    if (FLAGS_enable_tracing) { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
       yb::Trace* _trace = Trace::CurrentTrace(); \
       if (_trace) { \
         _trace->SubstituteAndTrace(__FILE__, __LINE__, MonoTime::Now(), (format),  \
@@ -75,7 +76,7 @@ DECLARE_bool(enable_tracing);
 // Like the above, but takes the trace pointer as an explicit argument.
 #define TRACE_TO(trace, format, substitutions...) \
   do { \
-    if (FLAGS_enable_tracing) { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
       (trace)->SubstituteAndTrace( \
           __FILE__, __LINE__, MonoTime::Now(), (format), ##substitutions); \
     } \
@@ -84,7 +85,7 @@ DECLARE_bool(enable_tracing);
 // Like the above, but takes the trace pointer as an explicit argument.
 #define TRACE_TO_WITH_TIME(trace, time, format, substitutions...) \
   do { \
-    if (FLAGS_enable_tracing) { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
       (trace)->SubstituteAndTrace( \
           __FILE__, __LINE__, (time), (format), ##substitutions); \
     } \
@@ -92,7 +93,7 @@ DECLARE_bool(enable_tracing);
 
 #define PLAIN_TRACE_TO(trace, message) \
   do { \
-    if (FLAGS_enable_tracing) { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
       (trace)->Trace(__FILE__, __LINE__, (message)); \
     } \
   } while (0)
