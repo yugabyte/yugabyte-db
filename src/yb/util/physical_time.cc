@@ -13,7 +13,7 @@
 
 #include "yb/util/physical_time.h"
 
-#if !defined(_APPLE__)
+#if !defined(__APPLE__)
 #include <sys/timex.h>
 #endif
 
