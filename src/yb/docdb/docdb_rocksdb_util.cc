@@ -13,6 +13,7 @@
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 
+#include <thread>
 #include <memory>
 
 #include "yb/common/transaction.h"
@@ -31,9 +32,9 @@ using namespace yb::size_literals;  // NOLINT.
 
 DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable background compactions.");
-DEFINE_int32(rocksdb_base_background_compactions, 2,
+DEFINE_int32(rocksdb_base_background_compactions, -1,
              "Number threads to do background compactions.");
-DEFINE_int32(rocksdb_max_background_compactions, 2,
+DEFINE_int32(rocksdb_max_background_compactions, -1,
              "Increased number of threads to do background compactions (used when compactions need "
              "to catch up.)");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
@@ -413,6 +414,20 @@ void InitRocksDBOptions(
   options->num_levels = 1;
 
   if (compactions_enabled) {
+    if (FLAGS_rocksdb_max_background_compactions == -1) {
+      FLAGS_rocksdb_max_background_compactions = 4;
+      int num_cpus = std::thread::hardware_concurrency();
+      if (num_cpus <= 4) {
+        FLAGS_rocksdb_max_background_compactions = 1;
+      } else if (num_cpus <= 8) {
+        FLAGS_rocksdb_max_background_compactions = 2;
+      } else if (num_cpus <= 32) {
+        FLAGS_rocksdb_max_background_compactions = 3;
+      }
+    }
+    if (FLAGS_rocksdb_base_background_compactions == -1) {
+      FLAGS_rocksdb_base_background_compactions = FLAGS_rocksdb_max_background_compactions;
+    }
     options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
     options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
     options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
