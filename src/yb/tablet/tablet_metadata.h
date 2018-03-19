@@ -153,6 +153,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   void SetSchema(const Schema& schema, uint32_t version);
 
+  const IndexMap& index_map() const { return index_map_; }
   void SetIndexMap(IndexMap&& index_map);
 
   void SetTableName(const std::string& table_name);
@@ -165,8 +166,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
         base::subtle::Acquire_Load(reinterpret_cast<const AtomicWord*>(&schema_)));
     return *s;
   }
-
-  Result<IndexInfo> FindIndex(const TableId& index_id) const;
 
   // Returns the partition schema of the tablet's table.
   const PartitionSchema& partition_schema() const {

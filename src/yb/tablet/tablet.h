@@ -47,6 +47,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/transaction_manager.h"
 
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -579,6 +580,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<TransactionParticipant> transaction_participant_;
 
+  // Created only when the secondary indexes are present.
+  boost::optional<client::TransactionManager> transaction_manager_;
+
   std::atomic<int64_t> last_committed_write_index_{0};
 
   // Remembers he HybridTime of the oldest write that is still not scheduled to
@@ -590,6 +594,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
  private:
   HybridTime DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+
+  CHECKED_STATUS UpdateQLIndexes(docdb::DocOperations* doc_ops);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

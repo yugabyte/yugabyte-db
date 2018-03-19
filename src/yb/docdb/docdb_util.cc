@@ -52,11 +52,11 @@ CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
     }
 
     if (!column_value.has_value() || IsNull(column_value.value())) {
-      return STATUS(InvalidArgument, "Invalid primary key value");
+      components->push_back(PrimitiveValue(ValueType::kNull));
+    } else {
+      components->push_back(PrimitiveValue::FromQLValuePB(
+          column_value.value(), schema.column(column_idx).sorting_type()));
     }
-
-    components->push_back(PrimitiveValue::FromQLValuePB(
-        column_value.value(), schema.column(column_idx).sorting_type()));
     column_idx++;
   }
   return Status::OK();

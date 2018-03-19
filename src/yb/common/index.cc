@@ -48,6 +48,30 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       columns_(IndexColumnFromPB(pb.columns())),
       hash_column_count_(pb.hash_column_count()),
       range_column_count_(pb.range_column_count()) {
+  for (const IndexInfo::IndexColumn &index_col : columns_) {
+    covered_column_ids_.insert(index_col.indexed_column_id);
+  }
+}
+
+bool IndexInfo::PrimaryKeyColumnsOnly(const Schema& indexed_schema) const {
+  for (size_t i = 0; i < hash_column_count_ + range_column_count_; i++) {
+    if (!indexed_schema.is_key_column(columns_[i].indexed_column_id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IndexInfo::IsColumnCovered(const ColumnId column_id) const {
+  return covered_column_ids_.find(column_id) != covered_column_ids_.end();
+}
+
+Result<const IndexInfo*> FindIndex(const IndexMap& index_map, const TableId& index_id) {
+  const auto itr = index_map.find(index_id);
+  if (itr == index_map.end()) {
+    return STATUS(NotFound, Format("Index id $0 not found", index_id));
+  }
+  return &itr->second;
 }
 
 }  // namespace yb

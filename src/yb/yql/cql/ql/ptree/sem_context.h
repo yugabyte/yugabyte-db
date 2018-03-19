@@ -111,6 +111,15 @@ class SemContext : public ProcessContext {
                              int* num_hash_key_columns = nullptr,
                              MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
 
+  // Load index schema into symbol table.
+  CHECKED_STATUS LookupIndex(const TableId& index_id,
+                             const YBLocation& loc,
+                             std::shared_ptr<client::YBTable>* index_table,
+                             MCVector<ColumnDesc>* col_descs = nullptr,
+                             int* num_key_columns = nullptr,
+                             int* num_hash_key_columns = nullptr,
+                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
+
   //------------------------------------------------------------------------------------------------
   // Access functions to current processing table and column.
   PTColumnDefinition *current_column() {
@@ -273,6 +282,12 @@ class SemContext : public ProcessContext {
   void Reset();
 
  private:
+  CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,
+                            MCVector<ColumnDesc>* col_descs = nullptr,
+                            int* num_key_columns = nullptr,
+                            int* num_hash_key_columns = nullptr,
+                            MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
+
   // Find symbol.
   SymbolEntry *SeekSymbol(const MCString& name);
 

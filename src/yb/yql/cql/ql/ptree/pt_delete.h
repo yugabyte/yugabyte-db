@@ -74,8 +74,12 @@ class PTDeleteStmt : public PTDmlStmt {
   CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
 
  private:
+  // --- The parser will decorate this node with the following information --
+
   PTExprListNode::SharedPtr target_;
   PTTableRef::SharedPtr relation_;
+
+  // -- The semantic analyzer will decorate this node with the following information --
 
   // Will be set to true during Analyze if target columns are specified and are all static.
   bool deleting_only_static_cols_ = false;

@@ -27,6 +27,8 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/server/server_fwd.h"
+
 #include "yb/consensus/opid_util.h"
 
 #include "yb/util/opid.pb.h"
@@ -72,6 +74,7 @@ class TransactionParticipantContext {
  public:
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClientPtr>& client_future() const = 0;
+  virtual const server::ClockPtr& clock_ptr() const = 0;
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
 
@@ -103,6 +106,8 @@ class TransactionParticipant : public TransactionStatusManager {
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data);
 
   void SetDB(rocksdb::DB* db);
+
+  TransactionParticipantContext* context() const;
 
  private:
   class Impl;

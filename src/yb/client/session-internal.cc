@@ -40,6 +40,8 @@
 #include "yb/client/error_collector.h"
 #include "yb/client/yb_op.h"
 
+DEFINE_int32(client_read_write_timeout_ms, 60000, "Timeout for client read and write operations.");
+
 MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
                  yb::client::YBSession::AUTO_FLUSH_SYNC,
                  yb::client::YBSession::MANUAL_FLUSH);
@@ -58,7 +60,8 @@ YBSessionData::YBSessionData(shared_ptr<YBClient> client,
                              const YBTransactionPtr& transaction)
     : client_(std::move(client)),
       transaction_(transaction),
-      error_collector_(new ErrorCollector()) {
+      error_collector_(new ErrorCollector()),
+      timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)) {
   const auto metric_entity = client_->messenger()->metric_entity();
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }

@@ -389,8 +389,7 @@ void WriteRpc::ProcessResponseFromTserver(const Status& status) {
           Slice rows_data;
           CHECK_OK(retrier().controller().GetSidecar(
               ql_response.rows_data_sidecar(), &rows_data));
-          down_cast<YBqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
-              util::to_char_ptr(rows_data.data()), rows_data.size());
+          ql_op->mutable_rows_data()->assign(util::to_char_ptr(rows_data.data()), rows_data.size());
         }
         ql_idx++;
         break;
@@ -527,8 +526,7 @@ void ReadRpc::ProcessResponseFromTserver(const Status& status) {
           Slice rows_data;
           CHECK_OK(retrier().controller().GetSidecar(
               ql_response.rows_data_sidecar(), &rows_data));
-          down_cast<YBqlReadOp*>(yb_op)->mutable_rows_data()->assign(
-              util::to_char_ptr(rows_data.data()), rows_data.size());
+          ql_op->mutable_rows_data()->assign(util::to_char_ptr(rows_data.data()), rows_data.size());
         }
         ql_idx++;
         break;

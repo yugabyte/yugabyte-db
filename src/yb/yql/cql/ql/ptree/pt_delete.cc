@@ -88,6 +88,9 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   // Run error checking on USING clause.
   RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
 
+  // Analyze indexes for write operations.
+  RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
+
   if (using_clause_ != nullptr && using_clause_->has_ttl_seconds()) {
     // Delete only supports TIMESTAMP as part of the using clause.
     return sem_context->Error(this, "DELETE statement cannot have TTL",

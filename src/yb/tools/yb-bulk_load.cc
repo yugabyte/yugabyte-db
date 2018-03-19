@@ -99,6 +99,7 @@ class BulkLoadTask : public Runnable {
                                      QLExpressionPB *column_value);
   CHECKED_STATUS InsertRow(const string &row,
                            const Schema &schema,
+                           const IndexMap& index_map,
                            BulkLoadDocDBUtil *const db_fixture,
                            docdb::DocWriteBatch *const doc_write_batch,
                            YBPartitionGenerator *const partition_generator);
@@ -169,8 +170,8 @@ void BulkLoadTask::Run() {
     const string &row = entry.second;
 
     // Populate the row.
-    CHECK_OK(InsertRow(row, table_->InternalSchema(), db_fixture_, &doc_write_batch,
-                       partition_generator_));
+    CHECK_OK(InsertRow(row, table_->InternalSchema(), table_->index_map(), db_fixture_,
+                       &doc_write_batch, partition_generator_));
   }
 
   // Flush the batch.
@@ -226,6 +227,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
+                               const IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
                                YBPartitionGenerator *const partition_generator) {
@@ -284,7 +286,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   // Comment from PritamD: Don't need cross shard transaction support in bulk load, but I guess
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
-  docdb::QLWriteOperation op(schema, boost::none);
+  docdb::QLWriteOperation op(schema, index_map, boost::none);
   RETURN_NOT_OK(op.Init(&req, &resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,

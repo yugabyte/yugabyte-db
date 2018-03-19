@@ -18,6 +18,7 @@
 #define YB_COMMON_INDEX_H_
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "yb/common/entity_ids.h"
@@ -50,6 +51,12 @@ class IndexInfo {
   size_t range_column_count() const { return range_column_count_; }
   size_t key_column_count() const { return hash_column_count_ + range_column_count_; }
 
+  // Index primary key columns of the indexed table only?
+  bool PrimaryKeyColumnsOnly(const Schema& indexed_schema) const;
+
+  // Is column covered by this index? (Note: indexed columns are always covered)
+  bool IsColumnCovered(ColumnId column_id) const;
+
  private:
   const TableId table_id_;            // Index table id.
   const uint32_t schema_version_ = 0; // Index table's schema version.
@@ -57,10 +64,15 @@ class IndexInfo {
   const std::vector<IndexColumn> columns_; // Index columns.
   const size_t hash_column_count_ = 0;     // Number of hash columns in the index.
   const size_t range_column_count_ = 0;    // Number of range columns in the index.
+
+  // Column ids covered by the index (include indexed columns).
+  std::unordered_set<ColumnId> covered_column_ids_;
 };
 
 // A map to look up an index by its index table id.
 using IndexMap = std::unordered_map<TableId, IndexInfo>;
+
+Result<const IndexInfo*> FindIndex(const IndexMap& index_map, const TableId& index_id);
 
 }  // namespace yb
 

@@ -51,28 +51,12 @@ SemContext::~SemContext() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status SemContext::LookupTable(const YBTableName& name,
-                               const YBLocation& loc,
-                               const bool write_table,
-                               shared_ptr<YBTable>* table,
-                               bool* is_system,
-                               MCVector<ColumnDesc>* col_descs,
-                               int* num_key_columns,
-                               int* num_hash_key_columns,
-                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
-  *is_system = name.is_system();
-  if (*is_system && write_table && client::FLAGS_yb_system_namespace_readonly) {
-    return Error(loc, ErrorCode::SYSTEM_NAMESPACE_READONLY);
-  }
-
-  VLOG(3) << "Loading table descriptor for " << name.ToString();
-  *table = GetTableDesc(name);
-  if (*table == nullptr || (*table)->IsIndex() && !FLAGS_allow_index_table_read_write) {
-    return Error(loc, ErrorCode::TABLE_NOT_FOUND);
-  }
-  set_current_table(*table);
-
-  const YBSchema& schema = (*table)->schema();
+Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
+                              MCVector<ColumnDesc>* col_descs,
+                              int* num_key_columns,
+                              int* num_hash_key_columns,
+                              MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
+  const YBSchema& schema = table->schema();
   const int num_columns = schema.num_columns();
   if (num_key_columns != nullptr) {
     *num_key_columns = schema.num_key_columns();
@@ -119,6 +103,48 @@ Status SemContext::LookupTable(const YBTableName& name,
   }
 
   return Status::OK();
+}
+
+Status SemContext::LookupTable(const YBTableName& name,
+                               const YBLocation& loc,
+                               const bool write_table,
+                               shared_ptr<YBTable>* table,
+                               bool* is_system,
+                               MCVector<ColumnDesc>* col_descs,
+                               int* num_key_columns,
+                               int* num_hash_key_columns,
+                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
+  *is_system = name.is_system();
+  if (*is_system && write_table && client::FLAGS_yb_system_namespace_readonly) {
+    return Error(loc, ErrorCode::SYSTEM_NAMESPACE_READONLY);
+  }
+
+  VLOG(3) << "Loading table descriptor for " << name.ToString();
+  *table = GetTableDesc(name);
+  if (*table == nullptr || (*table)->IsIndex() && !FLAGS_allow_index_table_read_write) {
+    return Error(loc, ErrorCode::TABLE_NOT_FOUND);
+  }
+  set_current_table(*table);
+
+  return LoadSchema(*table, col_descs, num_key_columns, num_hash_key_columns, column_definitions);
+}
+
+Status SemContext::LookupIndex(const TableId& index_id,
+                               const YBLocation& loc,
+                               shared_ptr<YBTable>* index_table,
+                               MCVector<ColumnDesc>* col_descs,
+                               int* num_key_columns,
+                               int* num_hash_key_columns,
+                               MCVector<PTColumnDefinition::SharedPtr>* column_definitions) {
+  VLOG(3) << "Loading table descriptor for " << index_id;
+  *index_table = GetTableDesc(index_id);
+  if (*index_table == nullptr || !(*index_table)->IsIndex()) {
+    return Error(loc, ErrorCode::TABLE_NOT_FOUND);
+  }
+  set_current_table(*index_table);
+
+  return LoadSchema(*index_table, col_descs, num_key_columns, num_hash_key_columns,
+                    column_definitions);
 }
 
 Status SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
