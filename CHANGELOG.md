@@ -1,6 +1,21 @@
 Changelog
 =========
 
+WIP version 1.1.1:
+------------------
+
+  **Bug fixes**:
+
+    - Fix potentially uninitialized variables, thanks to Jeremy Finzel for the
+      report.
+    - Support hypothetical indexes on materialized view, thanks to Andrew Kane
+      for the report.
+
+
+  **Miscellaneous**:
+
+    - add support for PostgreSQL 11
+
 2017-10-04 version 1.1.0:
 -------------------------
 
