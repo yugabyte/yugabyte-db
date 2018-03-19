@@ -249,6 +249,10 @@ class Operation {
     return *operation_;
   }
 
+  size_t space_used_by_request() const {
+    return operation_ ? operation_->space_used_by_request() : 0;
+  }
+
   RedisResponsePB& response() {
     if (read_) {
       return *down_cast<YBRedisReadOp*>(operation_.get())->mutable_response();
@@ -579,12 +583,14 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
                client::YBTable* table,
                SessionPool* session_pool,
                const std::shared_ptr<RedisInboundCall>& call,
-               rpc::RpcMethodMetrics* metrics_internal)
+               rpc::RpcMethodMetrics* metrics_internal,
+               const MemTrackerPtr& mem_tracker)
       : client_(client),
         table_(table),
         session_pool_(session_pool),
         call_(call),
         metrics_internal_(metrics_internal),
+        consumption_(mem_tracker, 0),
         operations_(&arena_),
         tablets_(&arena_) {}
 
@@ -627,6 +633,8 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
     operations_.emplace_back(call_, std::forward<Args>(args)...);
     if (PREDICT_FALSE(operations_.back().responded())) {
       operations_.pop_back();
+    } else {
+      consumption_.Add(operations_.back().space_used_by_request());
     }
   }
 
@@ -661,6 +669,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
   SessionPool* session_pool_;
   std::shared_ptr<RedisInboundCall> call_;
   rpc::RpcMethodMetrics* metrics_internal_;
+  ScopedTrackedConsumption consumption_;
 
   Arena arena_;
   MCDeque<Operation> operations_;
@@ -973,6 +982,7 @@ Status RedisServiceImpl::Impl::SetUpYBClient() {
     client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
     client_builder.add_master_server_addr(yb_tier_master_addresses_);
     client_builder.set_metric_entity(server_->metric_entity());
+    client_builder.set_parent_mem_tracker(server_->mem_tracker());
     RETURN_NOT_OK(client_builder.Build(&client_));
 
     // Add proxy to call local tserver if available.
@@ -1021,7 +1031,8 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
   // Each read commands are processed individually.
   // Sequential write commands use single session and the same batcher.
   auto context = make_scoped_refptr<BatchContext>(
-      client_, table_.get(), &session_pool_, call, metrics_internal_.data());
+      client_, table_.get(), &session_pool_, call, metrics_internal_.data(),
+      server_->mem_tracker());
   const auto& batch = call->client_batch();
   for (size_t idx = 0; idx != batch.size(); ++idx) {
     const RedisClientCommand& c = batch[idx];

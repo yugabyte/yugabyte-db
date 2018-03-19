@@ -90,7 +90,8 @@ ServerBaseOptions::ServerBaseOptions()
       placement_region(FLAGS_placement_region),
       placement_zone(FLAGS_placement_zone),
       placement_uuid(FLAGS_placement_uuid),
-      connection_context_factory(&std::make_unique<rpc::YBConnectionContext>) {}
+      connection_context_factory(
+          std::make_shared<rpc::ConnectionContextFactoryImpl<rpc::YBConnectionContext>>()) {}
 
 ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
     : env(options.env),

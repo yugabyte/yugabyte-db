@@ -75,6 +75,7 @@ std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
   bld.set_connection_keepalive_time(options.keep_alive_timeout);
   bld.set_coarse_timer_granularity(coarse_time_granularity);
   bld.set_metric_entity(metric_entity);
+  bld.connection_context_factory()->SetParentMemTracker(MemTracker::FindOrCreateTracker(name));
   auto messenger = bld.Build();
   CHECK_OK(messenger);
   return *messenger;

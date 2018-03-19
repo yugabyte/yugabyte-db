@@ -59,6 +59,7 @@ set(YRPC_SRCS
     acceptor.cc
     binary_call_parser.cc
     connection.cc
+    connection_context.cc
     growable_buffer.cc
     inbound_call.cc
     io_thread_pool.cc

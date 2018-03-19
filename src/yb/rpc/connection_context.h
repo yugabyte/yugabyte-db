@@ -22,6 +22,9 @@
 #include "yb/util/net/socket.h"
 
 namespace yb {
+
+class MemTracker;
+
 namespace rpc {
 
 typedef std::function<void()> IdleListener;
@@ -55,6 +58,8 @@ class ConnectionContext {
   // The reading buffer will never be larger than this limit.
   virtual size_t BufferLimit() = 0;
 
+  virtual const std::shared_ptr<MemTracker>& GetMemTracker() = 0;
+
   virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 
   virtual void AssignConnection(const ConnectionPtr& connection) {}
@@ -64,6 +69,33 @@ class ConnectionContext {
   virtual uint64_t ProcessedCallCount() = 0;
 
   virtual RpcConnectionPB::StateType State() = 0;
+};
+
+class ConnectionContextFactory {
+ public:
+  virtual std::unique_ptr<ConnectionContext> Create() = 0;
+
+  void SetParentMemTracker(const std::shared_ptr<MemTracker>& parent_mem_tracker);
+
+  void UseDefaultParentMemTracker() {
+    SetParentMemTracker(nullptr);
+  }
+
+ protected:
+  ~ConnectionContextFactory() {}
+
+  std::shared_ptr<MemTracker> read_buffer_tracker_;
+  std::shared_ptr<MemTracker> call_tracker_;
+};
+
+template <class ContextType>
+class ConnectionContextFactoryImpl : public ConnectionContextFactory {
+ public:
+  std::unique_ptr<ConnectionContext> Create() override {
+    return std::make_unique<ContextType>(read_buffer_tracker_, call_tracker_);
+  }
+
+  virtual ~ConnectionContextFactoryImpl() {}
 };
 
 } // namespace rpc

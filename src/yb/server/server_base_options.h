@@ -77,7 +77,7 @@ class ServerBaseOptions {
 
   std::string master_addresses_flag;
 
-  rpc::ConnectionContextFactory connection_context_factory;
+  rpc::ConnectionContextFactoryPtr connection_context_factory;
 
   static Status DetermineMasterAddresses(
       const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,

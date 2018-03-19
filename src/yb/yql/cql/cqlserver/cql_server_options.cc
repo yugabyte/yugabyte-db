@@ -29,7 +29,8 @@ CQLServerOptions::CQLServerOptions() {
   server_type = "tserver";
   rpc_opts.default_port = CQLServer::kDefaultPort;
   rpc_opts.connection_keepalive_time_ms = FLAGS_cql_rpc_keepalive_time_ms;
-  connection_context_factory = &std::make_unique<CQLConnectionContext>;
+  connection_context_factory =
+      std::make_shared<rpc::ConnectionContextFactoryImpl<CQLConnectionContext>>();
 }
 
 } // namespace cqlserver

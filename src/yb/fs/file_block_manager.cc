@@ -526,8 +526,7 @@ FileBlockManager::FileBlockManager(Env* env, const BlockManagerOptions& opts)
     read_only_(opts.read_only),
     root_paths_(opts.root_paths),
     rand_(GetRandomSeed32()),
-    mem_tracker_(MemTracker::CreateTracker(-1,
-                                           "file_block_manager",
+    mem_tracker_(MemTracker::CreateTracker("file_block_manager",
                                            opts.parent_mem_tracker)) {
   DCHECK_GT(root_paths_.size(), 0);
   if (opts.metric_entity) {

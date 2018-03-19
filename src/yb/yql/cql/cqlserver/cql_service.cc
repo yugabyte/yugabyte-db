@@ -46,7 +46,6 @@ using std::string;
 using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
-using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
 using yb::client::YBMetaDataCache;
@@ -58,7 +57,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       async_client_init_(
           "cql_ybclient", FLAGS_cql_ybclient_reactor_threads, kRpcTimeoutSec,
           server->tserver() ? server->tserver()->permanent_uuid() : "",
-          &opts, server->metric_entity()),
+          &opts, server->metric_entity(), server->mem_tracker()),
       next_available_processor_(processors_.end()),
       messenger_(server->messenger()),
       cql_rpcserver_env_(new CQLRpcServerEnv(server->first_rpc_address().address().to_string(),

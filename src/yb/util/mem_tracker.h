@@ -168,6 +168,12 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>());
 
+  static std::shared_ptr<MemTracker> CreateTracker(
+      const std::string& id,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>()) {
+    return CreateTracker(-1, id, parent);
+  }
+
   // If a tracker with the specified 'id' and 'parent' exists in the tree, sets
   // 'tracker' to reference that instance. Use the two-argument form if there
   // is no parent. Returns false if no such tracker exists.
@@ -184,6 +190,12 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       int64_t byte_limit,
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>());
+
+  static std::shared_ptr<MemTracker> FindOrCreateTracker(
+      const std::string& id,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>()) {
+    return FindOrCreateTracker(-1, id, parent);
+  }
 
   // Returns a list of all the valid trackers.
   static void ListTrackers(std::vector<std::shared_ptr<MemTracker> >* trackers);
@@ -389,6 +401,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   bool log_stack_;
 };
 
+typedef std::shared_ptr<MemTracker> MemTrackerPtr;
+
 // An std::allocator that manipulates a MemTracker during allocation
 // and deallocation.
 template<typename T, typename Alloc = std::allocator<T> >
@@ -440,11 +454,28 @@ class MemTrackerAllocator : public Alloc {
 // releasing it when the end of scope is reached.
 class ScopedTrackedConsumption {
  public:
-  ScopedTrackedConsumption(std::shared_ptr<MemTracker> tracker,
+  ScopedTrackedConsumption() : consumption_(0) {}
+
+  ScopedTrackedConsumption(MemTrackerPtr tracker,
                            int64_t to_consume)
       : tracker_(std::move(tracker)), consumption_(to_consume) {
-    DCHECK(tracker_);
+    DCHECK(*this);
     tracker_->Consume(consumption_);
+  }
+
+  ScopedTrackedConsumption(const ScopedTrackedConsumption&) = delete;
+  void operator=(const ScopedTrackedConsumption&) = delete;
+
+  ScopedTrackedConsumption(ScopedTrackedConsumption&& rhs)
+      : tracker_(std::move(rhs.tracker_)), consumption_(rhs.consumption_) {
+    rhs.consumption_ = 0;
+  }
+
+  void operator=(ScopedTrackedConsumption&& rhs) {
+    DCHECK(!*this);
+    tracker_ = std::move(rhs.tracker_);
+    consumption_ = rhs.consumption_;
+    rhs.consumption_ = 0;
   }
 
   void Reset(int64_t new_consumption) {
@@ -453,14 +484,30 @@ class ScopedTrackedConsumption {
     consumption_ = new_consumption;
   }
 
+  void Swap(ScopedTrackedConsumption* rhs) {
+    std::swap(tracker_, rhs->tracker_);
+    std::swap(consumption_, rhs->consumption_);
+  }
+
+  explicit operator bool() const {
+    return tracker_ != nullptr;
+  }
+
   ~ScopedTrackedConsumption() {
-    tracker_->Release(consumption_);
+    if (tracker_) {
+      tracker_->Release(consumption_);
+    }
+  }
+
+  void Add(int64_t delta) {
+    tracker_->Consume(delta);
+    consumption_ += delta;
   }
 
   int64_t consumption() const { return consumption_; }
 
  private:
-  std::shared_ptr<MemTracker> tracker_;
+  MemTrackerPtr tracker_;
   int64_t consumption_;
 };
 

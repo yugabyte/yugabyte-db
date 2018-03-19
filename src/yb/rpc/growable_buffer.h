@@ -20,11 +20,15 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/status.h"
 
 #include "yb/util/net/socket.h"
 
 namespace yb {
+
+class MemTracker;
+
 namespace rpc {
 
 // Convenience circular buffer for receiving bytes.
@@ -34,7 +38,8 @@ namespace rpc {
 //   Consume read data.
 class GrowableBuffer {
  public:
-  explicit GrowableBuffer(size_t initial, size_t limit);
+  explicit GrowableBuffer(size_t initial, size_t limit,
+                          const MemTrackerPtr& mem_tracker);
 
   inline bool empty() const { return size_ == 0; }
   inline size_t size() const { return size_; }
@@ -82,6 +87,7 @@ class GrowableBuffer {
 
   // Contained data
   std::unique_ptr<uint8_t, FreeDeleter> buffer_;
+  ScopedTrackedConsumption consumption_;
 
   // Max capacity for this buffer
   const size_t limit_;

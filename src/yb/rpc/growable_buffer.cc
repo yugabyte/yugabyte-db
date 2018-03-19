@@ -19,15 +19,20 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/mem_tracker.h"
+
 using strings::Substitute;
 
 namespace yb {
 namespace rpc {
 
-GrowableBuffer::GrowableBuffer(size_t initial, size_t limit)
+GrowableBuffer::GrowableBuffer(size_t initial, size_t limit, const MemTrackerPtr& mem_tracker)
     : buffer_(static_cast<uint8_t*>(malloc(initial))),
       limit_(limit),
       capacity_(initial) {
+  if (mem_tracker) {
+    consumption_ = ScopedTrackedConsumption(mem_tracker, initial);
+  }
 }
 
 void GrowableBuffer::DumpTo(std::ostream& out) const {
@@ -48,6 +53,7 @@ void GrowableBuffer::Swap(GrowableBuffer* rhs) {
   DCHECK_EQ(limit_, rhs->limit_);
 
   buffer_.swap(rhs->buffer_);
+  consumption_.Swap(&rhs->consumption_);
   std::swap(capacity_, rhs->capacity_);
   std::swap(size_, rhs->size_);
   std::swap(pos_, rhs->pos_);
@@ -73,6 +79,9 @@ Status GrowableBuffer::Reshape(size_t new_capacity) {
     buffer_ = std::move(new_buffer);
     pos_ = 0;
     capacity_ = new_capacity;
+    if (consumption_) {
+      consumption_.Reset(new_capacity);
+    }
   }
   return Status::OK();
 }

@@ -75,6 +75,8 @@ class YBClientBuilder::Data {
   // aid in detecting local tservers.
   TabletServerId uuid_;
 
+  std::shared_ptr<MemTracker> parent_mem_tracker_;
+
   bool skip_master_leader_resolution_ = false;
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

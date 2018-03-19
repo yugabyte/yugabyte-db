@@ -192,6 +192,8 @@ Status RemoteYsckMaster::Connect() const {
 
 Status RemoteYsckMaster::Build(const Endpoint& address, shared_ptr<YsckMaster>* master) {
   MessengerBuilder builder(kMessengerName);
+  builder.connection_context_factory()->SetParentMemTracker(
+      MemTracker::CreateTracker("RemoteYsckMaster"));
   auto messenger = builder.Build();
   RETURN_NOT_OK(messenger);
   master->reset(new RemoteYsckMaster(address, *messenger));

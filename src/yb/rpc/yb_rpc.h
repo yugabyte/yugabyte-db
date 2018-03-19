@@ -25,7 +25,9 @@ namespace rpc {
 
 class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
-  YBConnectionContext();
+  explicit YBConnectionContext(
+      const MemTrackerPtr& read_buffer_tracker,
+      const MemTrackerPtr& call_tracker);
   ~YBConnectionContext();
 
  private:
@@ -51,6 +53,8 @@ class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCal
   RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
 
   BinaryCallParser parser_;
+
+  const MemTrackerPtr call_tracker_;
 };
 
 class YBInboundCall : public InboundCall {
@@ -70,7 +74,7 @@ class YBInboundCall : public InboundCall {
   // from the reactor thread.
   //
   // Takes ownership of call_data content.
-  CHECKED_STATUS ParseFrom(std::vector<char>* call_data);
+  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, std::vector<char>* call_data);
 
   int32_t call_id() const {
     return header_.call_id();
@@ -158,6 +162,8 @@ class YBInboundCall : public InboundCall {
   // Proto service this calls belongs to. Used for routing.
   // This field is filled in when the inbound request header is parsed.
   RemoteMethod remote_method_;
+
+  ScopedTrackedConsumption consumption_;
 };
 
 } // namespace rpc

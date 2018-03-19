@@ -296,9 +296,8 @@ Tablet::Tablet(
       metadata_(metadata),
       table_type_(metadata->table_type()),
       log_anchor_registry_(log_anchor_registry),
-      mem_tracker_(
-          MemTracker::CreateTracker(-1, Substitute("tablet-$0", tablet_id()), parent_mem_tracker)),
-      dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
+      mem_tracker_(MemTracker::CreateTracker(Format("tablet-$0", tablet_id()), parent_mem_tracker)),
+      dms_mem_tracker_(MemTracker::CreateTracker(kDMSMemTrackerId, mem_tracker_)),
       clock_(clock),
       mvcc_(Format("T $0 ", metadata_->tablet_id()), clock),
       tablet_options_(tablet_options) {

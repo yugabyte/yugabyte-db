@@ -73,7 +73,8 @@ typedef boost::asio::io_service IoService;
 // our private MonoTime.
 typedef std::chrono::steady_clock::time_point SteadyTimePoint;
 
-typedef std::function<std::unique_ptr<ConnectionContext>()> ConnectionContextFactory;
+class ConnectionContextFactory;
+typedef std::shared_ptr<ConnectionContextFactory> ConnectionContextFactoryPtr;
 
 } // namespace rpc
 } // namespace yb

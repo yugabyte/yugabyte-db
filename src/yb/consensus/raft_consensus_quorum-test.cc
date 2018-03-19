@@ -114,7 +114,7 @@ class RaftConsensusQuorumTest : public YBTest {
     // Build the fsmanagers and logs
     for (int i = 0; i < config_.peers_size(); i++) {
       shared_ptr<MemTracker> parent_mem_tracker =
-          MemTracker::CreateTracker(-1, Substitute("peer-$0", i));
+          MemTracker::CreateTracker(Substitute("peer-$0", i));
       parent_mem_trackers_.push_back(parent_mem_tracker);
       string test_path = GetTestPath(Substitute("peer-$0-root", i));
       FsManagerOpts opts;

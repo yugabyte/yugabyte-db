@@ -79,7 +79,8 @@ Connection::Connection(Reactor* reactor,
       remote_(remote),
       direction_(direction),
       last_activity_time_(CoarseMonoClock::Now()),
-      read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
+      read_buffer_(
+          FLAGS_rpc_initial_buffer_size, context->BufferLimit(), context->GetMemTracker()),
       context_(std::move(context)) {
   const auto metric_entity = reactor->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
