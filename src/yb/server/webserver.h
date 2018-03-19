@@ -46,6 +46,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include <boost/thread/shared_mutex.hpp>
 #include "yb/server/webserver_options.h"
@@ -59,7 +60,7 @@ struct sq_context;
 
 namespace yb {
 
-// Wrapper class for the Mongoose web server library. Clients may register callback
+// Wrapper class for the Squeasel web server library. Clients may register callback
 // methods which produce output for a given URL path
 class Webserver : public WebCallbackRegistry {
  public:
@@ -91,6 +92,7 @@ class Webserver : public WebCallbackRegistry {
 
   // True if serving all traffic over SSL, false otherwise
   bool IsSecure() const;
+
  private:
   // Container class for a list of path handler callbacks for a single URL.
   class PathHandler {
@@ -185,6 +187,9 @@ class Webserver : public WebCallbackRegistry {
 
   // Server name for display purposes
   std::string server_name_;
+
+  // Mutex guarding against concurrenct calls to Stop().
+  std::mutex stop_mutex_;
 };
 
 } // namespace yb

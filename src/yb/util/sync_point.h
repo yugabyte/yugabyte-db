@@ -39,6 +39,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <functional>
 
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"

@@ -35,7 +35,9 @@
 #define YB_UTIL_OBJECT_POOL_H
 
 #include <stdint.h>
+
 #include <thread>
+#include <functional>
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/lockfree/stack.hpp>

@@ -93,7 +93,7 @@ const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
       }
       // Create and save the metadata cache object.
       metadata_cache_ = std::make_shared<YBMetaDataCache>(client);
-      is_metadata_initialized_.store(std::memory_order_release);
+      is_metadata_initialized_.store(true, std::memory_order_release);
     }
   }
   return client;

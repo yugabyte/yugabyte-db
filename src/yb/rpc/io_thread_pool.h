@@ -17,6 +17,7 @@
 #define YB_RPC_IO_THREAD_POOL_H
 
 #include <memory>
+#include <functional>
 
 #include "yb/rpc/rpc_fwd.h"
 

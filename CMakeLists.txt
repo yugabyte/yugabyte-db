@@ -549,6 +549,7 @@ VALIDATE_COMPILER_TYPE()
 if (NOT APPLE)
   # To enable 16-byte atomics support we should specify appropriate architecture.
   ADD_CXX_FLAGS("-march=ivybridge")
+  ADD_CXX_FLAGS("-mcx16")
 endif()
 
 # Include compiler type and version in the compiler command line so that binaries built by different
@@ -1302,8 +1303,10 @@ if (NOT APPLE)
   list(APPEND YB_BASE_LIBS unwind)
 endif()
 
-## libuuid
-if (NOT APPLE)
+# libuuid
+# We only need it on macOS and on Linux when using Linuxbrew. When building on Ubuntu 17.10+ without
+# Linuxbrew, libuuid is found in default include/library paths.
+if (USING_LINUXBREW)
   find_package(LibUuid REQUIRED)
   include_directories(SYSTEM ${LIBUUID_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(libuuid
@@ -1602,6 +1605,14 @@ endif (UNIX)
 
 # For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
+
+# C++-only flags.
+if ("${COMPILER_FAMILY}" STREQUAL "gcc" AND
+    ${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 7.0)
+  # Used with GCC 7.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -faligned-new")
+endif()
+
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 

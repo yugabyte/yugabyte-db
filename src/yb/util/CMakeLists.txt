@@ -236,6 +236,10 @@ set(UTIL_LIBS
   version_info_proto
   zlib)
 
+if (NOT APPLE AND NOT USING_LINUXBREW)
+  set(UTIL_LIBS ${UTIL_LIBS} atomic)
+endif()
+
 if(NOT APPLE)
   set(UTIL_LIBS
     ${UTIL_LIBS}
@@ -325,7 +329,6 @@ ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
-ADD_YB_TEST(interval_tree-test)
 ADD_YB_TEST(jsonreader-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(map-util-test)
