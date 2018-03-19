@@ -112,7 +112,7 @@ shared_ptr<MemTracker> CreateMemTrackerForServer() {
   if (id != 0) {
     StrAppend(&id_str, " ", id);
   }
-  return shared_ptr<MemTracker>(MemTracker::CreateTracker(-1, id_str));
+  return shared_ptr<MemTracker>(MemTracker::CreateTracker(id_str));
 }
 
 } // anonymous namespace
@@ -130,6 +130,8 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       options_(options),
       initialized_(false),
       stop_metrics_logging_latch_(1) {
+  connection_context_factory_->SetParentMemTracker(
+      MemTracker::CreateTracker("RPC Inbound", mem_tracker_));
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {

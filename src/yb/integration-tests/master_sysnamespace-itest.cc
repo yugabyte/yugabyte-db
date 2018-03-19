@@ -36,7 +36,7 @@ class MasterSysNamespaceTest : public YBTest {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
     rpc::MessengerBuilder bld("Client");
-    ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
+    client_messenger_ = ASSERT_RESULT(bld.use_default_mem_tracker().Build());
     proxy_.reset(new MasterServiceProxy(client_messenger_,
                                         cluster_->leader_mini_master()->bound_rpc_addr()));
   }

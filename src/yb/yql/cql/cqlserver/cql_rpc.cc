@@ -53,10 +53,13 @@ DEFINE_int32(max_message_length, 254_MB,
 namespace yb {
 namespace cqlserver {
 
-CQLConnectionContext::CQLConnectionContext()
-    : ql_session_(new ql::QLSession()),
+CQLConnectionContext::CQLConnectionContext(
+    const MemTrackerPtr& read_buffer_tracker, const MemTrackerPtr& call_tracker)
+    : ConnectionContextWithCallId(read_buffer_tracker),
+      ql_session_(new ql::QLSession()),
       parser_(CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
-              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this) {
+              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this),
+      call_tracker_(call_tracker) {
 }
 
 Result<size_t> CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
@@ -78,7 +81,7 @@ Status CQLConnectionContext::HandleCall(
       call_processed_listener(),
       ql_session_);
 
-  Status s = call->ParseFrom(call_data);
+  Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
     LOG(WARNING) << connection->ToString() << ": received bad data: " << s.ToString();
     return STATUS_SUBSTITUTE(NetworkError, "Bad data: $0", s.ToString());
@@ -114,9 +117,11 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
       ql_session_(std::move(ql_session)) {
 }
 
-Status CQLInboundCall::ParseFrom(std::vector<char>* call_data) {
+Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, std::vector<char>* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "CQLInboundCall", this);
   TRACE_EVENT0("rpc", "CQLInboundCall::ParseFrom");
+
+  consumption_ = ScopedTrackedConsumption(call_tracker, call_data->size());
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
   request_data_.swap(*call_data);

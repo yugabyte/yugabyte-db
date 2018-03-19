@@ -115,7 +115,7 @@ class RpcServerBase {
   std::shared_ptr<rpc::Messenger> messenger_;
   bool is_first_run_;
 
-  const rpc::ConnectionContextFactory connection_context_factory_;
+  const rpc::ConnectionContextFactoryPtr connection_context_factory_;
 
   scoped_refptr<Clock> clock_;
 

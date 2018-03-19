@@ -25,13 +25,18 @@
 #include "yb/rpc/rpc_with_queue.h"
 
 namespace yb {
+
+class MemTracker;
+
 namespace redisserver {
 
 class RedisParser;
 
 class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
  public:
-  RedisConnectionContext();
+  RedisConnectionContext(
+      const MemTrackerPtr& read_buffer_tracker,
+      const MemTrackerPtr& call_tracker);
   ~RedisConnectionContext();
 
  private:
@@ -53,6 +58,8 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
   std::unique_ptr<RedisParser> parser_;
   size_t commands_in_batch_ = 0;
+
+  MemTrackerPtr call_mem_tracker_;
 };
 
 class RedisInboundCall : public rpc::QueueableInboundCall {
@@ -64,7 +71,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   ~RedisInboundCall();
   // Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(size_t commands, std::vector<char>* data);
+  CHECKED_STATUS ParseFrom(
+      const MemTrackerPtr& mem_tracker, size_t commands, std::vector<char>* data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
@@ -104,6 +112,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Atomic bool to indicate if the quit command is present
   std::atomic<bool> quit_ = {false};
+
+  ScopedTrackedConsumption consumption_;
 };
 
 } // namespace redisserver

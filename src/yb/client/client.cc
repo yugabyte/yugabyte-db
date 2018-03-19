@@ -66,6 +66,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -296,6 +297,11 @@ YBClientBuilder& YBClientBuilder::set_tserver_uuid(const TabletServerId& uuid) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_parent_mem_tracker(const MemTrackerPtr& mem_tracker) {
+  data_->parent_mem_tracker_ = mem_tracker;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::set_skip_master_leader_resolution(bool value) {
   data_->skip_master_leader_resolution_ = value;
   return *this;
@@ -310,6 +316,8 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   MessengerBuilder builder(data_->client_name_);
   builder.set_num_reactors(data_->num_reactors_);
   builder.set_metric_entity(data_->metric_entity_);
+  builder.connection_context_factory()->SetParentMemTracker(
+      MemTracker::FindOrCreateTracker("RPC Outbound", data_->parent_mem_tracker_));
   RETURN_NOT_OK(builder.Build().MoveTo(&c->data_->messenger_));
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;

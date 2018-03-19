@@ -90,8 +90,13 @@ using google::protobuf::Message;
 using google::protobuf::MessageLite;
 using google::protobuf::io::CodedOutputStream;
 
-YBConnectionContext::YBConnectionContext()
-    : parser_(kMsgLengthPrefixLength, 0, FLAGS_rpc_max_message_size, IncludeHeader::kFalse, this) {}
+YBConnectionContext::YBConnectionContext(
+    const MemTrackerPtr& read_buffer_tracker,
+    const MemTrackerPtr& call_tracker)
+    : ConnectionContextWithCallId(read_buffer_tracker),
+      parser_(kMsgLengthPrefixLength, 0 /* size_offset */, FLAGS_rpc_max_message_size,
+              IncludeHeader::kFalse, this),
+      call_tracker_(call_tracker) {}
 
 YBConnectionContext::~YBConnectionContext() {}
 
@@ -143,7 +148,7 @@ Status YBConnectionContext::HandleInboundCall(
 
   auto call = std::make_shared<YBInboundCall>(connection, call_processed_listener());
 
-  Status s = call->ParseFrom(call_data);
+  Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
     return s;
   }
@@ -193,9 +198,11 @@ MonoTime YBInboundCall::GetClientDeadline() const {
   return deadline;
 }
 
-Status YBInboundCall::ParseFrom(std::vector<char>* call_data) {
+Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, std::vector<char>* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
+
+  consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
 
   request_data_.swap(*call_data);
   Slice source(request_data_.data(), request_data_.size());
@@ -217,11 +224,15 @@ Status YBInboundCall::ParseFrom(std::vector<char>* call_data) {
 Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
   // Check that the number of sidecars does not exceed the number of payload
   // slices that are free.
-  if (sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
+  if(sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
     return STATUS(ServiceUnavailable, "All available sidecars already used");
   }
   *idx = static_cast<int>(sidecars_.size());
+  if(consumption_) {
+    consumption_.Add(car.size());
+  }
   sidecars_.push_back(std::move(car));
+
   return Status::OK();
 }
 
@@ -339,6 +350,8 @@ Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
     LOG(WARNING) << err;
     return STATUS(InvalidArgument, err);
   }
+  consumption_.Add(message->SpaceUsedLong());
+
   return Status::OK();
 }
 

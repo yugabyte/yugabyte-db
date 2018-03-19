@@ -187,7 +187,7 @@ TEST(TestArena, TestMemoryTrackerParentReferences) {
   shared_ptr<MemTracker> child_tracker;
   {
     shared_ptr<MemTracker> parent_tracker = MemTracker::CreateTracker(1024, parent_id);
-    child_tracker = MemTracker::CreateTracker(-1, child_id, parent_tracker);
+    child_tracker = MemTracker::CreateTracker(child_id, parent_tracker);
     // Parent falls out of scope here. Should still be owned by the child.
   }
   shared_ptr<MemoryTrackingBufferAllocator> allocator(

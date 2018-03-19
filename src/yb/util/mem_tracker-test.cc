@@ -56,7 +56,7 @@ using std::unordered_map;
 using std::vector;
 
 TEST(MemTrackerTest, SingleTrackerNoLimit) {
-  shared_ptr<MemTracker> t = MemTracker::CreateTracker(-1, "t");
+  shared_ptr<MemTracker> t = MemTracker::CreateTracker("t");
   EXPECT_FALSE(t->has_limit());
   t->Consume(10);
   EXPECT_EQ(t->consumption(), 10);
@@ -188,7 +188,7 @@ TEST(MemTrackerTest, GcFunctions) {
 }
 
 TEST(MemTrackerTest, STLContainerAllocator) {
-  shared_ptr<MemTracker> t = MemTracker::CreateTracker(-1, "t");
+  shared_ptr<MemTracker> t = MemTracker::CreateTracker("t");
   MemTrackerAllocator<int> vec_alloc(t);
   MemTrackerAllocator<pair<const int, int>> map_alloc(t);
 
@@ -224,22 +224,22 @@ TEST(MemTrackerTest, FindFunctionsTakeOwnership) {
 
   shared_ptr<MemTracker> ref;
   {
-    shared_ptr<MemTracker> m = MemTracker::CreateTracker(-1, "test");
+    shared_ptr<MemTracker> m = MemTracker::CreateTracker("test");
     ASSERT_TRUE(MemTracker::FindTracker(m->id(), &ref));
   }
   LOG(INFO) << ref->ToString();
   ref.reset();
 
   {
-    shared_ptr<MemTracker> m = MemTracker::CreateTracker(-1, "test");
-    ref = MemTracker::FindOrCreateTracker(-1, m->id());
+    shared_ptr<MemTracker> m = MemTracker::CreateTracker("test");
+    ref = MemTracker::FindOrCreateTracker(m->id());
   }
   LOG(INFO) << ref->ToString();
   ref.reset();
 
   vector<shared_ptr<MemTracker> > refs;
   {
-    shared_ptr<MemTracker> m = MemTracker::CreateTracker(-1, "test");
+    shared_ptr<MemTracker> m = MemTracker::CreateTracker("test");
     MemTracker::ListTrackers(&refs);
   }
   for (const shared_ptr<MemTracker>& r : refs) {
@@ -249,7 +249,7 @@ TEST(MemTrackerTest, FindFunctionsTakeOwnership) {
 }
 
 TEST(MemTrackerTest, ScopedTrackedConsumption) {
-  shared_ptr<MemTracker> m = MemTracker::CreateTracker(-1, "test");
+  shared_ptr<MemTracker> m = MemTracker::CreateTracker("test");
   ASSERT_EQ(0, m->consumption());
   {
     ScopedTrackedConsumption consumption(m, 1);
@@ -324,8 +324,8 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
 #endif
 
 TEST(MemTrackerTest, UnregisterFromParent) {
-  shared_ptr<MemTracker> p = MemTracker::CreateTracker(-1, "parent");
-  shared_ptr<MemTracker> c = MemTracker::CreateTracker(-1, "child", p);
+  shared_ptr<MemTracker> p = MemTracker::CreateTracker("parent");
+  shared_ptr<MemTracker> c = MemTracker::CreateTracker("child", p);
   vector<shared_ptr<MemTracker> > all;
 
   // Three trackers: root, parent, and child.
@@ -343,7 +343,7 @@ TEST(MemTrackerTest, UnregisterFromParent) {
 
   // We can also recreate the child with the same name without colliding
   // with the old one.
-  shared_ptr<MemTracker> c2 = MemTracker::CreateTracker(-1, "child", p);
+  shared_ptr<MemTracker> c2 = MemTracker::CreateTracker("child", p);
 
   // We should still able to walk up to the root from the unregistered child
   // without crashing.

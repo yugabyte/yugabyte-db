@@ -39,10 +39,12 @@ class RedisServer : public server::RpcAndWebServerBase {
   using server::RpcAndWebServerBase::Shutdown;
 
   const tserver::TabletServer* tserver() const { return tserver_; }
+  const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
 
  private:
   RedisServerOptions opts_;
   const tserver::TabletServer* const tserver_;
+  MemTrackerPtr mem_tracker_;
 
   DISALLOW_COPY_AND_ASSIGN(RedisServer);
 };

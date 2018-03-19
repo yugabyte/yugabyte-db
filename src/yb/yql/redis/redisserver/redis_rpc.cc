@@ -55,9 +55,13 @@ DEFINE_uint64(redis_max_queued_bytes, 128_MB,
 namespace yb {
 namespace redisserver {
 
-RedisConnectionContext::RedisConnectionContext()
+RedisConnectionContext::RedisConnectionContext(
+    const MemTrackerPtr& read_buffer_tracker,
+    const MemTrackerPtr& call_tracker)
     : ConnectionContextWithQueue(
-        FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes) {}
+          FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes,
+          read_buffer_tracker),
+      call_mem_tracker_(call_tracker) {}
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
@@ -114,7 +118,7 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
   auto call = std::make_shared<RedisInboundCall>(
       connection, data->size(), call_processed_listener());
 
-  Status s = call->ParseFrom(commands_in_batch, data);
+  Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);
   if (!s.ok()) {
     return s;
   }
@@ -131,8 +135,7 @@ size_t RedisConnectionContext::BufferLimit() {
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
                                    size_t weight_in_bytes,
                                    CallProcessedListener call_processed_listener)
-    : QueueableInboundCall(std::move(conn), weight_in_bytes, std::move(call_processed_listener)) {
-}
+    : QueueableInboundCall(std::move(conn), weight_in_bytes, std::move(call_processed_listener)) {}
 
 RedisInboundCall::~RedisInboundCall() {
   Status status;
@@ -148,9 +151,12 @@ RedisInboundCall::~RedisInboundCall() {
   }
 }
 
-Status RedisInboundCall::ParseFrom(size_t commands, std::vector<char>* data) {
+Status RedisInboundCall::ParseFrom(
+    const MemTrackerPtr& mem_tracker, size_t commands, std::vector<char>* data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
+
+  consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
   request_data_.swap(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());

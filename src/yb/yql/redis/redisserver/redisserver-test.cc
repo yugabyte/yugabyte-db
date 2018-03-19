@@ -431,6 +431,7 @@ void TestRedisService::StartServer() {
 
   auto master_rpc_addrs = master_rpc_addresses_as_strings();
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
+  opts.connection_context_factory->UseDefaultParentMemTracker();
 
   server_.reset(new RedisServer(opts, nullptr /* tserver */));
   LOG(INFO) << "Starting redis server...";

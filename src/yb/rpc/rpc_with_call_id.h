@@ -27,6 +27,8 @@ namespace rpc {
 
 class ConnectionContextWithCallId : public ConnectionContext {
  protected:
+  explicit ConnectionContextWithCallId(const std::shared_ptr<yb::MemTracker>& mem_tracker);
+
   InboundCall::CallProcessedListener call_processed_listener() {
     return std::bind(&ConnectionContextWithCallId::CallProcessed, this, std::placeholders::_1);
   }
@@ -36,6 +38,10 @@ class ConnectionContextWithCallId : public ConnectionContext {
 
   uint64_t ProcessedCallCount() override {
     return processed_call_count_.load(std::memory_order_acquire);
+  }
+
+  const std::shared_ptr<MemTracker>& GetMemTracker() override {
+    return mem_tracker_;
   }
 
  private:
@@ -53,6 +59,7 @@ class ConnectionContextWithCallId : public ConnectionContext {
   std::unordered_map<uint64_t, InboundCall*> calls_being_handled_;
   std::atomic<uint64_t> processed_call_count_{0};
   IdleListener idle_listener_;
+  std::shared_ptr<MemTracker> mem_tracker_;
 };
 
 } // namespace rpc

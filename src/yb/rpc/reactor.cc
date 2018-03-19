@@ -487,7 +487,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
                                                  conn_id.remote(),
                                                  sock->Release(),
                                                  ConnectionDirection::CLIENT,
-                                                 messenger_->connection_context_factory_());
+                                                 messenger_->connection_context_factory_->Create());
 
   RETURN_NOT_OK(connection->Start(&loop_));
 
@@ -740,7 +740,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote) {
                                            remote,
                                            socket->Release(),
                                            ConnectionDirection::SERVER,
-                                           messenger_->connection_context_factory_());
+                                           messenger_->connection_context_factory_->Create());
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
   });

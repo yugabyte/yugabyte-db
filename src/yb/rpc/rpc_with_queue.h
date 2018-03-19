@@ -63,12 +63,17 @@ class ConnectionContextWithQueue : public ConnectionContext {
  protected:
   explicit ConnectionContextWithQueue(
       size_t max_concurrent_calls,
-      size_t max_queued_bytes);
+      size_t max_queued_bytes,
+      const std::shared_ptr<MemTracker>& mem_tracker);
 
   ~ConnectionContextWithQueue();
 
   InboundCall::CallProcessedListener call_processed_listener() {
     return std::bind(&ConnectionContextWithQueue::CallProcessed, this, std::placeholders::_1);
+  }
+
+  const std::shared_ptr<MemTracker>& GetMemTracker() override {
+    return mem_tracker_;
   }
 
   bool can_enqueue() const {
@@ -111,6 +116,7 @@ class ConnectionContextWithQueue : public ConnectionContext {
   std::atomic<QueueableInboundCall*> first_without_reply_{nullptr};
   std::atomic<uint64_t> processed_call_count_{0};
   IdleListener idle_listener_;
+  std::shared_ptr<MemTracker> mem_tracker_;
 };
 
 } // namespace rpc
