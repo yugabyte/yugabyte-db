@@ -751,7 +751,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-TEST_F(QLTransactionTest, DISABLED_ResolveIntentsWriteReadWithinTransactionAndRollback) {
+TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
   google::FlagSaver flag_saver;
   FLAGS_max_clock_skew_usec = 0; // To avoid read restart in this test.
   DisableApplyingIntents();
