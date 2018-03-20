@@ -34,9 +34,6 @@ class TableTitle extends Component {
         </div>
         <FlexContainer className="pull-right">
           <FlexShrink>
-            <input type="text" className="table-search-bar form-control" placeholder="Search Tables" />
-          </FlexShrink>
-          <FlexShrink>
             <Button bsClass="btn btn-orange" onClick={onCreateButtonClick}>
               Create Table
             </Button>
