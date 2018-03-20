@@ -40,6 +40,7 @@ TEST_F(RateLimiterTest, StartStop) {
   std::unique_ptr<RateLimiter> limiter(new GenericRateLimiter(100, 100, 10));
 }
 
+#ifndef OS_MACOSX
 TEST_F(RateLimiterTest, Rate) {
   auto* env = Env::Default();
   struct Arg {
@@ -100,6 +101,7 @@ TEST_F(RateLimiterTest, Rate) {
     }
   }
 }
+#endif
 
 }  // namespace rocksdb
 
