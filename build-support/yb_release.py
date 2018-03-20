@@ -84,11 +84,23 @@ def main():
         if '-community-' in build_root_basename or build_root_basename.endswith('community'):
             logging.info("Setting edition to Community based on build root")
             args.edition = RELEASE_EDITION_COMMUNITY
+        elif '-enterprise-' in build_root_basename or build_root_basename.endswith('enterprise'):
+            logging.info("Setting edition to Enterprise based on build root")
+            args.edition = RELEASE_EDITION_ENTERPRISE
 
+    # We must have either not had a build_root specified, or not been able to deduce from the root.
     if not args.edition:
-        # Here we are not detecting edition based on the existence of the enterprise source
-        # directory.
-        args.edition = RELEASE_EDITION_ENTERPRISE
+        ent_path = "{}/ent".format(YB_SRC_ROOT)
+        if os.path.isdir(ent_path):
+            logging.info(
+                "No --edition was specified, but found '{}', releasing Enterprise edition.".format(
+                    ent_path))
+            args.edition = RELEASE_EDITION_ENTERPRISE
+        else:
+            logging.info(
+                "No --edition was specified and '{}' is not a valid dir, releasing Community "
+                "edition.".format(ent_path))
+            args.edition = RELEASE_EDITION_COMMUNITY
 
     build_edition = "enterprise" if args.edition == RELEASE_EDITION_ENTERPRISE else "community"
 
